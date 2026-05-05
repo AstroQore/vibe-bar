@@ -28,6 +28,7 @@ public enum MenuBarItemKind: String, Codable, CaseIterable, Identifiable, Sendab
 }
 
 public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable {
+    case iconOnly
     case singleLine
     case twoRows
     case compact
@@ -36,6 +37,7 @@ public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable
 
     public var label: String {
         switch self {
+        case .iconOnly: return "Icon Only"
         case .singleLine: return "Single line"
         case .twoRows: return "Two rows"
         case .compact: return "Compact"
@@ -84,7 +86,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         self.isVisible = try c.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
         self.showTitle = try c.decodeIfPresent(Bool.self, forKey: .showTitle) ?? true
         self.layout = try c.decodeIfPresent(MenuBarLayout.self, forKey: .layout)
-            ?? (kind == .compact ? .twoRows : .singleLine)
+            ?? (kind == .compact ? .iconOnly : .singleLine)
         self.selectedFieldIds = try c.decodeIfPresent([String].self, forKey: .selectedFieldIds) ?? []
         self.customLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
     }
