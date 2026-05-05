@@ -39,7 +39,7 @@ final class SettingsWindowController: NSObject {
         win.isReleasedWhenClosed = false
         win.contentViewController = hosting
         win.center()
-        win.minSize = NSSize(width: 520, height: 540)
+        win.minSize = NSSize(width: 560, height: 540)
         win.delegate = self
         self.window = win
 

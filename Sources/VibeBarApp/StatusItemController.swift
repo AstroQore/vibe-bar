@@ -266,22 +266,29 @@ final class StatusItemController {
                 installTwoRowImageContent(
                     in: button,
                     item: item,
-                    columns: serviceStatusTwoRowColumns()
+                    columns: serviceStatusTwoRowColumns(),
+                    kind: kind
                 )
                 continue
             }
             switch itemSettings.layout {
             case .singleLine:
-                button.image = nil
-                button.imagePosition = .noImage
+                button.image = ProviderBrandIcon.image(for: kind)
+                button.imagePosition = .imageLeft
                 button.attributedTitle = singleLineMenuTitle(for: itemSettings, settings: settings)
                 item.length = NSStatusItem.variableLength
             case .twoRows:
                 installTwoRowImageContent(
                     in: button,
                     item: item,
-                    columns: twoRowMenuColumns(for: itemSettings, settings: settings)
+                    columns: twoRowMenuColumns(for: itemSettings, settings: settings),
+                    kind: kind
                 )
+            case .compact:
+                button.image = ProviderBrandIcon.image(for: kind)
+                button.imagePosition = .imageLeft
+                button.attributedTitle = compactMenuTitle(for: itemSettings, settings: settings)
+                item.length = NSStatusItem.variableLength
             }
         }
     }
@@ -372,6 +379,61 @@ final class StatusItemController {
             ))
         }
         return attributed
+    }
+
+    private func compactMenuTitle(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> NSAttributedString {
+        let fontSize = max(9, NSFont.smallSystemFontSize - 1)
+        let attributed = NSMutableAttributedString()
+        let entries = compactDisplayedFieldIds(for: itemSettings).compactMap { fieldId -> NSAttributedString? in
+            guard
+                let field = MenuBarFieldCatalog.field(id: fieldId),
+                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
+            else { return nil }
+            let percent = bucket.displayPercent(settings.displayMode)
+            return menuTextPiece(
+                label: label(for: field, bucket: bucket, itemSettings: itemSettings),
+                percent: percent,
+                color: barColor(for: percent, mode: settings.displayMode),
+                fontSize: fontSize
+            )
+        }
+
+        for (index, entry) in entries.enumerated() {
+            if index > 0 {
+                attributed.append(NSAttributedString(
+                    string: " ",
+                    attributes: [
+                        .foregroundColor: NSColor.tertiaryLabelColor,
+                        .font: NSFont.systemFont(ofSize: fontSize, weight: .regular)
+                    ]
+                ))
+            }
+            attributed.append(entry)
+        }
+
+        if entries.isEmpty {
+            attributed.append(NSAttributedString(
+                string: "—",
+                attributes: [
+                    .foregroundColor: NSColor.tertiaryLabelColor,
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
+                ]
+            ))
+        }
+        return attributed
+    }
+
+    private func compactDisplayedFieldIds(for itemSettings: MenuBarItemSettings) -> [String] {
+        if itemSettings.kind == .compact {
+            var result: [String] = []
+            for tool in ToolType.allCases {
+                if let id = itemSettings.selectedFieldIds.first(where: { MenuBarFieldCatalog.field(id: $0)?.tool == tool }) {
+                    result.append(id)
+                }
+            }
+            return result
+        }
+        return Array(itemSettings.selectedFieldIds.prefix(2))
     }
 
     private func twoRowMenuColumns(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [TwoRowMenuColumn] {
@@ -478,18 +540,19 @@ final class StatusItemController {
     private func installTwoRowImageContent(
         in button: NSStatusBarButton,
         item: NSStatusItem,
-        columns: [TwoRowMenuColumn]
+        columns: [TwoRowMenuColumn],
+        kind: MenuBarItemKind
     ) {
         // Keep two-row content as a static image; custom status-item subviews trigger continuous AppKit replicant redraws.
-        let image = twoRowImage(for: columns, appearance: button.effectiveAppearance)
+        let image = twoRowImage(for: columns, kind: kind, appearance: button.effectiveAppearance)
         button.attributedTitle = NSAttributedString(string: "")
         button.image = image
         button.imagePosition = .imageOnly
         item.length = max(MenuBarStatusMetrics.minimumTwoRowLength, ceil(image.size.width + 2))
-        button.setAccessibilityLabel(twoRowAccessibilityTitle(for: columns))
+        button.setAccessibilityLabel("\(kind.label) \(twoRowAccessibilityTitle(for: columns))")
     }
 
-    private func twoRowImage(for columns: [TwoRowMenuColumn], appearance: NSAppearance) -> NSImage {
+    private func twoRowImage(for columns: [TwoRowMenuColumn], kind: MenuBarItemKind, appearance: NSAppearance) -> NSImage {
         let columnSizes = columns.map { column -> (top: NSSize, bottom: NSSize?, width: CGFloat) in
             let topSize = column.top.size()
             let bottomSize = column.bottom?.size()
@@ -511,6 +574,8 @@ final class StatusItemController {
             max(18, ceil(contentHeight + MenuBarStatusMetrics.twoRowVerticalPadding * 2)),
             statusBarHeight
         )
+        let iconSize = NSSize(width: min(13, imageHeight - 3), height: min(13, imageHeight - 3))
+        let iconGap: CGFloat = 4
 
         var contentWidth: CGFloat = 0
         for (index, size) in columnSizes.enumerated() {
@@ -521,7 +586,7 @@ final class StatusItemController {
         }
         let imageWidth = max(
             MenuBarStatusMetrics.minimumTwoRowLength,
-            ceil(contentWidth + MenuBarStatusMetrics.twoRowHorizontalPadding * 2)
+            ceil(iconSize.width + iconGap + contentWidth + MenuBarStatusMetrics.twoRowHorizontalPadding * 2)
         )
         let imageSize = NSSize(width: imageWidth, height: imageHeight)
         let image = NSImage(size: imageSize)
@@ -533,6 +598,25 @@ final class StatusItemController {
             NSRect(origin: .zero, size: imageSize).fill()
 
             var x = MenuBarStatusMetrics.twoRowHorizontalPadding
+            if let icon = ProviderBrandIcon.image(
+                for: kind,
+                size: iconSize,
+                tint: NSColor.labelColor,
+                appearance: appearance
+            ) {
+                icon.draw(
+                    in: NSRect(
+                        x: x,
+                        y: floor((imageHeight - iconSize.height) / 2),
+                        width: iconSize.width,
+                        height: iconSize.height
+                    ),
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1
+                )
+                x += iconSize.width + iconGap
+            }
             for (column, sizes) in zip(columns, columnSizes) {
                 if let bottom = column.bottom, let bottomSize = sizes.bottom {
                     let blockHeight = topRowHeight + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing

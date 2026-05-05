@@ -65,6 +65,7 @@ private struct ServiceStatusRow: View {
 
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
+                ProviderBrandIconView(kind: tool == .codex ? .codex : .claude, size: 13)
                 Text(tool.statusProviderName)
                     .font(.system(size: 13, weight: .semibold))
                 StatusPill(indicator: snapshot?.indicator, description: snapshot?.description)

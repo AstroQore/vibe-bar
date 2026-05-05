@@ -171,4 +171,42 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(compact.customLabels["codex.five_hour"], "O5")
         XCTAssertEqual(compact.customLabels["codex.weekly"], "w")
     }
+
+    func testMockDataIsForcedOffWhenDecodingPersistedSettings() throws {
+        let json = """
+        {
+          "displayMode": "remaining",
+          "refreshIntervalSeconds": 600,
+          "launchAtLogin": false,
+          "menuBarTextEnabled": true,
+          "mockEnabled": true
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertFalse(settings.mockEnabled)
+    }
+
+    func testOverviewMenuItemAndCompactLayoutDefaults() {
+        XCTAssertEqual(MenuBarItemKind.compact.label, "Overview")
+        XCTAssertEqual(MenuBarLayout.compact.label, "Compact")
+        XCTAssertTrue(MenuBarLayout.allCases.contains(.compact))
+
+        let overview = AppSettings.default.menuBarItem(.compact)
+        XCTAssertEqual(overview.kind, .compact)
+        XCTAssertEqual(overview.layout, .twoRows)
+    }
+
+    func testMenuBarCompactLayoutRoundTrip() throws {
+        var settings = AppSettings.default
+        var codex = settings.menuBarItem(.codex)
+        codex.layout = .compact
+        settings.setMenuBarItem(codex)
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.menuBarItem(.codex).layout, .compact)
+    }
 }

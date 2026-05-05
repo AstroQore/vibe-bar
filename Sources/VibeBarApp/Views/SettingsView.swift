@@ -8,6 +8,8 @@ struct SettingsView: View {
 
     private let intervalOptions: [Int] = [60, 180, 300, 600, 1800]
     @State private var claudeCookieDeleteFailed: Bool = false
+    @State private var launchAtLoginStatusText: String = LoginItemController.statusText
+    @State private var launchAtLoginError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,143 +26,212 @@ struct SettingsView: View {
             }
             .padding(.bottom, 12)
 
-            Form {
-                // ───── General ─────
-                Section("General") {
-                    Picker("Percent shows", selection: $settingsStore.settings.displayMode) {
-                        ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    Toggle("Use mock data (offline demo)", isOn: $settingsStore.settings.mockEnabled)
-                    Picker("Refresh every", selection: $settingsStore.settings.refreshIntervalSeconds) {
-                        ForEach(intervalOptions, id: \.self) { secs in
-                            Text(intervalLabel(secs)).tag(secs)
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 14) {
+                    settingsSection("General") {
+                        Picker("Percent shows", selection: $settingsStore.settings.displayMode) {
+                            ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        Picker("Refresh every", selection: $settingsStore.settings.refreshIntervalSeconds) {
+                            ForEach(intervalOptions, id: \.self) { secs in
+                                Text(intervalLabel(secs)).tag(secs)
+                            }
                         }
                     }
-                }
 
-                // ───── Menu Bar Items ─────
-                Section("Menu Bar Items") {
-                    ForEach(MenuBarItemKind.allCases) { kind in
-                        DisclosureGroup {
-                            Toggle("Show in menu bar", isOn: menuItemVisibleBinding(kind))
-                            Toggle("Show title text", isOn: menuItemTitleBinding(kind))
-                            Picker("Layout", selection: menuItemLayoutBinding(kind)) {
-                                ForEach(MenuBarLayout.allCases) { layout in
-                                    Text(layout.label).tag(layout)
-                                }
+                    settingsSection("Menu Bar Items") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(MenuBarItemKind.allCases) { kind in
+                                menuBarItemEditor(kind)
                             }
-                            .pickerStyle(.segmented)
-                            Picker("Popover density", selection: popoverDensityBinding(kind)) {
-                                ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
+                        }
+                    }
+
+                    settingsSection("Mini Window") {
+                        Picker("Display mode", selection: miniWindowDisplayModeBinding()) {
+                            ForEach(MiniWindowDisplayMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
                             }
-                            .pickerStyle(.segmented)
-                            Text(settingsStore.settings.popoverDensity(for: kind).detail)
+                        }
+                        .pickerStyle(.segmented)
+                        Text("Pick which fields appear in the selected mini mode.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(MenuBarFieldCatalog.allFields) { field in
+                                miniFieldRow(field)
+                            }
+                        }
+                        Divider()
+                            .padding(.vertical, 2)
+                        Text("Branch group names:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(MiniWindowGroupLabelCatalog.all) { option in
+                                miniGroupLabelRow(option)
+                            }
+                        }
+                    }
+
+                    settingsSection("Claude Account") {
+                        Picker("Usage source", selection: $settingsStore.settings.claudeUsageMode) {
+                            ForEach(ClaudeUsageMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        Text(settingsStore.settings.claudeUsageMode.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            Button {
+                                environment.openClaudeWebLogin()
+                            } label: {
+                                Label("Open claude.ai login", systemImage: "person.crop.circle.badge.key")
+                            }
+                            Button(role: .destructive) {
+                                claudeCookieDeleteFailed = !environment.deleteClaudeWebCookies()
+                            } label: {
+                                Label("Delete cookies", systemImage: "trash")
+                            }
+                            .disabled(!environment.hasClaudeWebCookies)
+                        }
+                        if environment.hasClaudeWebCookies {
+                            Text("Cookies saved.")
+                                .font(.caption2).foregroundStyle(.green)
+                        }
+                        if claudeCookieDeleteFailed {
+                            Text("Could not delete saved cookies.")
+                                .font(.caption2).foregroundStyle(.orange)
+                        }
+                    }
+
+                    settingsSection("System") {
+                        Toggle("Launch at login", isOn: launchAtLoginBinding())
+                        Text(launchAtLoginStatusText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        if let launchAtLoginError {
+                            Text(launchAtLoginError)
                                 .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                            if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
-                                Text("Fields shown when title text is on:")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.top, 2)
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(MenuBarFieldCatalog.fields(for: kind)) { field in
-                                        menuFieldRow(kind: kind, field: field)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Label(kind.label, systemImage: menuItemIcon(kind))
+                                .foregroundStyle(.orange)
                         }
                     }
-                }
 
-                // ───── Mini Window ─────
-                Section("Mini Window") {
-                    Picker("Display mode", selection: miniWindowDisplayModeBinding()) {
-                        ForEach(MiniWindowDisplayMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
+                    settingsSection("Cost Data") {
+                        Text("Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Pricing data: \(CostUsagePricing.pricingDataUpdatedAt)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
                     }
-                    .pickerStyle(.segmented)
-                    Text("Pick which fields appear in the selected mini mode.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(MenuBarFieldCatalog.allFields) { field in
-                            miniFieldRow(field)
-                        }
-                    }
-                    Divider()
-                        .padding(.vertical, 2)
-                    Text("Branch group names:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(MiniWindowGroupLabelCatalog.all) { option in
-                            miniGroupLabelRow(option)
-                        }
-                    }
-                }
 
-                // ───── Accounts ─────
-                Section("Claude account") {
-                    Picker("Usage source", selection: $settingsStore.settings.claudeUsageMode) {
-                        ForEach(ClaudeUsageMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
+                    settingsSection("Privacy") {
+                        Text("Tokens are read from local CLI credentials. Settings, quota cache, and Claude Web cookies are stored under ~/.vibebar.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    Text(settingsStore.settings.claudeUsageMode.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        Button {
-                            environment.openClaudeWebLogin()
-                        } label: {
-                            Label("Open claude.ai login", systemImage: "person.crop.circle.badge.key")
-                        }
-                        Button(role: .destructive) {
-                            claudeCookieDeleteFailed = !environment.deleteClaudeWebCookies()
-                        } label: {
-                            Label("Delete cookies", systemImage: "trash")
-                        }
-                        .disabled(!environment.hasClaudeWebCookies)
-                    }
-                    if environment.hasClaudeWebCookies {
-                        Text("Cookies saved.")
-                            .font(.caption2).foregroundStyle(.green)
-                    }
-                    if claudeCookieDeleteFailed {
-                        Text("Could not delete saved cookies.")
-                            .font(.caption2).foregroundStyle(.orange)
-                    }
-                }
-
-                // ───── System ─────
-                Section("System") {
-                    Toggle("Launch at login", isOn: $settingsStore.settings.launchAtLogin)
-                    Text("Preference only — register with launchd via System Settings → Login Items.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Section("Cost data") {
-                    Text("Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Pricing data: \(CostUsagePricing.pricingDataUpdatedAt)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                Section("Privacy") {
-                    Text("Tokens are read from local CLI credentials. Settings, quota cache, and Claude Web cookies are stored under ~/.vibebar.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
-            .formStyle(.grouped)
         }
         .padding(20)
-        .frame(width: 600, height: 740)
+        .frame(minWidth: 560, idealWidth: 640, minHeight: 560, idealHeight: 720)
+        .onAppear(perform: refreshLaunchAtLoginState)
+    }
+
+    private func settingsSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+            )
+        }
+    }
+
+    private func menuBarItemEditor(_ kind: MenuBarItemKind) -> some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Show in menu bar", isOn: menuItemVisibleBinding(kind))
+                Toggle("Show title text", isOn: menuItemTitleBinding(kind))
+                Picker("Layout", selection: menuItemLayoutBinding(kind)) {
+                    ForEach(MenuBarLayout.allCases) { layout in
+                        Text(layout.label).tag(layout)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Picker("Popover density", selection: popoverDensityBinding(kind)) {
+                    ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Text(settingsStore.settings.popoverDensity(for: kind).detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
+                    Text("Fields")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(MenuBarFieldCatalog.fields(for: kind)) { field in
+                            menuFieldRow(kind: kind, field: field)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack(spacing: 8) {
+                ProviderBrandIconView(kind: kind, size: 15)
+                Text(kind.label)
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 8)
+                Text(settingsStore.settings.menuBarItem(kind).layout.label)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+    }
+
+    private func launchAtLoginBinding() -> Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.launchAtLogin },
+            set: { enabled in
+                do {
+                    try LoginItemController.setEnabled(enabled)
+                    launchAtLoginError = nil
+                } catch {
+                    launchAtLoginError = error.localizedDescription
+                }
+                refreshLaunchAtLoginState()
+            }
+        )
+    }
+
+    private func refreshLaunchAtLoginState() {
+        settingsStore.settings.launchAtLogin = LoginItemController.isEnabled
+        launchAtLoginStatusText = LoginItemController.statusText
     }
 
     private func miniFieldRow(_ field: MenuBarFieldOption) -> some View {
@@ -241,13 +312,9 @@ struct SettingsView: View {
                 Text(field.title)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
-                Text(field.id)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
             }
         }
+        .help(field.id)
     }
 
     private func fieldLabelTextField(field: MenuBarFieldOption, label: Binding<String>) -> some View {
@@ -404,15 +471,6 @@ struct SettingsView: View {
                 settingsStore.settings.setMenuBarItem(item)
             }
         )
-    }
-
-    private func menuItemIcon(_ kind: MenuBarItemKind) -> String {
-        switch kind {
-        case .compact: return "rectangle.compress.vertical"
-        case .codex:   return "terminal"
-        case .claude:  return "sparkles"
-        case .status:  return "dot.radiowaves.left.and.right"
-        }
     }
 
     private func intervalLabel(_ seconds: Int) -> String {
