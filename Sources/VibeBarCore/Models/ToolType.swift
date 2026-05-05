@@ -29,13 +29,6 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
-    public var planLabel: String {
-        switch self {
-        case .codex:  return "Pro (20X)"
-        case .claude: return "Max (20x)"
-        }
-    }
-
     public var menuTitle: String {
         switch self {
         case .codex:  return "OpenAI"

@@ -40,6 +40,17 @@ struct SettingsView: View {
                         }
                     }
 
+                    settingsSection("Provider Badges") {
+                        Text("Leave a badge blank to use the detected account plan.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(ToolType.allCases, id: \.self) { tool in
+                                providerBadgeRow(tool)
+                            }
+                        }
+                    }
+
                     settingsSection("Menu Bar Items") {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(MenuBarItemKind.allCases) { kind in
@@ -284,6 +295,23 @@ struct SettingsView: View {
         }
     }
 
+    private func providerBadgeRow(_ tool: ToolType) -> some View {
+        HStack(spacing: 10) {
+            ProviderBrandIconView(kind: menuBarKind(for: tool), size: 14)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tool.menuTitle)
+                    .font(.system(size: 12, weight: .medium))
+                Text(autoPlanLabel(for: tool))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 8)
+            TextField("Auto", text: providerPlanLabelBinding(tool))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 130)
+        }
+    }
+
     private func fieldRowHorizontal(
         isOn: Binding<Bool>,
         field: MenuBarFieldOption,
@@ -473,6 +501,31 @@ struct SettingsView: View {
                 settingsStore.settings.setMenuBarItem(item)
             }
         )
+    }
+
+    private func providerPlanLabelBinding(_ tool: ToolType) -> Binding<String> {
+        Binding(
+            get: { settingsStore.settings.providerPlanLabels[tool] ?? "" },
+            set: { value in
+                settingsStore.settings.setProviderPlanLabel(value, for: tool)
+            }
+        )
+    }
+
+    private func autoPlanLabel(for tool: ToolType) -> String {
+        let label = settingsStore.settings.planBadgeLabel(
+            for: tool,
+            quotaPlan: environment.quota(for: tool)?.plan,
+            accountPlan: environment.account(for: tool)?.plan
+        )
+        return label.map { "Auto: \($0)" } ?? "Auto: hidden until detected"
+    }
+
+    private func menuBarKind(for tool: ToolType) -> MenuBarItemKind {
+        switch tool {
+        case .codex:  return .codex
+        case .claude: return .claude
+        }
     }
 
     private func intervalLabel(_ seconds: Int) -> String {

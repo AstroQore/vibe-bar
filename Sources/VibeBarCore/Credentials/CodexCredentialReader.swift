@@ -5,6 +5,9 @@ import Foundation
 public struct CodexCredential: Sendable {
     public let accessToken: String
     public let accountId: String?
+    public let idToken: String?
+    public let email: String?
+    public let plan: String?
     public let authMode: String
     public let lastRefresh: String?
     public let source: CredentialSource
@@ -38,11 +41,22 @@ public enum CodexCredentialReader {
         let lastRefresh = root["last_refresh"] as? String
 
         let tokens = (root["tokens"] as? [String: Any]) ?? [:]
-        let accessToken = (tokens["access_token"] as? String)
-            ?? (root["access_token"] as? String)
+        let accessToken = stringValue(in: tokens, snakeCaseKey: "access_token", camelCaseKey: "accessToken")
+            ?? stringValue(in: root, snakeCaseKey: "access_token", camelCaseKey: "accessToken")
             ?? ""
-        let accountId = (tokens["account_id"] as? String)
-            ?? (root["account_id"] as? String)
+        let idToken = stringValue(in: tokens, snakeCaseKey: "id_token", camelCaseKey: "idToken")
+            ?? stringValue(in: root, snakeCaseKey: "id_token", camelCaseKey: "idToken")
+        let payload = JWTClaims.parse(idToken)
+        let authDictionaryKey = "https://api.openai.com/auth"
+        let profileDictionaryKey = "https://api.openai.com/profile"
+        let accountId = stringValue(in: tokens, snakeCaseKey: "account_id", camelCaseKey: "accountId")
+            ?? stringValue(in: root, snakeCaseKey: "account_id", camelCaseKey: "accountId")
+            ?? JWTClaims.string(["chatgpt_account_id"], in: payload, nested: authDictionaryKey)
+            ?? JWTClaims.string(["chatgpt_account_id"], in: payload)
+        let email = JWTClaims.string(["email"], in: payload)
+            ?? JWTClaims.string(["email"], in: payload, nested: profileDictionaryKey)
+        let plan = JWTClaims.string(["chatgpt_plan_type"], in: payload, nested: authDictionaryKey)
+            ?? JWTClaims.string(["chatgpt_plan_type"], in: payload)
 
         if accessToken.isEmpty {
             throw QuotaError.needsLogin
@@ -56,6 +70,9 @@ public enum CodexCredentialReader {
         return CodexCredential(
             accessToken: accessToken,
             accountId: accountId,
+            idToken: idToken,
+            email: email,
+            plan: plan,
             authMode: authMode.isEmpty ? "chatgpt" : authMode,
             lastRefresh: lastRefresh,
             source: source
@@ -75,5 +92,21 @@ public enum CodexCredentialReader {
         }
         let data = try Data(contentsOf: url)
         return try decode(data: data, source: .cliDetected)
+    }
+
+    private static func stringValue(
+        in dictionary: [String: Any],
+        snakeCaseKey: String,
+        camelCaseKey: String
+    ) -> String? {
+        if let value = dictionary[snakeCaseKey] as? String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        if let value = dictionary[camelCaseKey] as? String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
     }
 }

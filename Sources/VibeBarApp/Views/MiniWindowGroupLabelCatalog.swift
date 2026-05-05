@@ -13,8 +13,7 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "claude.design", title: "CLAUDE · Design", defaultLabel: "Design"),
         .init(id: "claude.routine", title: "CLAUDE · Routine", defaultLabel: "Routine"),
         .init(id: "claude.opus", title: "CLAUDE · Opus", defaultLabel: "Opus"),
-        .init(id: "claude.oauth", title: "CLAUDE · OAuth", defaultLabel: "OAuth"),
-        .init(id: "claude.iguana", title: "CLAUDE · Iguana", defaultLabel: "Iguana")
+        .init(id: "claude.oauth", title: "CLAUDE · OAuth", defaultLabel: "OAuth")
     ]
 
     static func defaultLabel(for id: String) -> String? {

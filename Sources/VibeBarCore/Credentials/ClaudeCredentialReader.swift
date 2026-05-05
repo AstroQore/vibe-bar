@@ -3,6 +3,7 @@ import Foundation
 public struct ClaudeCredential: Sendable {
     public let accessToken: String
     public let expiresAt: Date?
+    public let rateLimitTier: String?
     public let source: CredentialSource
 }
 
@@ -42,10 +43,12 @@ public enum ClaudeCredentialReader {
         }
 
         let expiresAt = parseExpiresAt(oauth["expiresAt"] ?? oauth["expires_at"])
+        let rateLimitTier = stringValue(oauth["rateLimitTier"] ?? oauth["rate_limit_tier"])
 
         return ClaudeCredential(
             accessToken: accessToken,
             expiresAt: expiresAt,
+            rateLimitTier: rateLimitTier,
             source: source
         )
     }
@@ -85,5 +88,11 @@ public enum ClaudeCredentialReader {
         default:
             return nil
         }
+    }
+
+    private static func stringValue(_ any: Any?) -> String? {
+        guard let string = any as? String else { return nil }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

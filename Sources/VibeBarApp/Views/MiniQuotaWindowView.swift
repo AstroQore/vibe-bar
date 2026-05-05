@@ -86,8 +86,7 @@ struct MiniQuotaWindowView: View {
              "weekly_design",
              "daily_routines",
              "weekly_opus",
-             "weekly_oauth_apps",
-             "iguana_necktie":
+             "weekly_oauth_apps":
             return true
         default:
             return false
@@ -204,7 +203,6 @@ private struct MiniBranchCell: Identifiable {
         case "daily_routines": return "Daily"
         case "weekly_opus": return "Opus"
         case "weekly_oauth_apps": return "OAuth"
-        case "iguana_necktie": return "Iguana"
         default:
             let group = bucket.groupTitle ?? bucket.shortLabel
             return group
@@ -227,8 +225,6 @@ private struct MiniBranchCell: Identifiable {
             return "claude.opus"
         case "weekly_oauth_apps":
             return "claude.oauth"
-        case "iguana_necktie":
-            return "claude.iguana"
         default:
             return "\(tool.rawValue).\(field.bucketId)"
         }
@@ -251,8 +247,6 @@ private struct MiniBranchCell: Identifiable {
             return "Opus"
         case "weekly_oauth_apps":
             return "OAuth"
-        case "iguana_necktie":
-            return "Iguana"
         default:
             return (bucket.groupTitle ?? bucket.shortLabel)
                 .replacingOccurrences(of: "GPT-5.3 Codex Spark", with: "Spark")

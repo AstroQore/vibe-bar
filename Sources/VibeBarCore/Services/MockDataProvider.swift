@@ -4,20 +4,20 @@ public enum MockDataProvider {
     public static func sampleAccounts() -> [AccountIdentity] {
         [
             AccountIdentity(
-                id: "mock-codex",
+                id: "demo-codex",
                 tool: .codex,
-                email: "alice@example.com",
-                alias: "Codex Mock",
-                plan: "TEAM",
-                accountId: "acct_mock_codex",
+                email: "codex-demo@example.invalid",
+                alias: "OpenAI Demo",
+                plan: "demo",
+                accountId: "acct_demo_codex",
                 source: .cliDetected
             ),
             AccountIdentity(
-                id: "mock-claude",
+                id: "demo-claude",
                 tool: .claude,
-                email: "alice@example.com",
-                alias: "Claude Mock",
-                plan: "PRO",
+                email: "claude-demo@example.invalid",
+                alias: "Claude Demo",
+                plan: "demo",
                 source: .cliDetected
             )
         ]

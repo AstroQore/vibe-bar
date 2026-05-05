@@ -41,8 +41,7 @@ public enum ClaudeResponseParser {
         .init(key: "seven_day_sonnet", id: "weekly_sonnet", title: "Weekly", shortLabel: "Sonnet wk", windowSeconds: 604_800, groupTitle: "Sonnet"),
         .init(key: "seven_day_omelette", id: "weekly_design", title: "Weekly", shortLabel: "Designs", windowSeconds: 604_800, groupTitle: "Designs"),
         .init(key: "seven_day_opus", id: "weekly_opus", title: "Weekly", shortLabel: "Opus wk", windowSeconds: 604_800, groupTitle: "Opus"),
-        .init(key: "seven_day_oauth_apps", id: "weekly_oauth_apps", title: "Weekly", shortLabel: "OAuth wk", windowSeconds: 604_800, groupTitle: "OAuth Apps"),
-        .init(key: "iguana_necktie", id: "iguana_necktie", title: "Weekly", shortLabel: "Iguana wk", windowSeconds: 604_800, groupTitle: "Iguana")
+        .init(key: "seven_day_oauth_apps", id: "weekly_oauth_apps", title: "Weekly", shortLabel: "OAuth wk", windowSeconds: 604_800, groupTitle: "OAuth Apps")
     ]
 
     /// Aliases the API may use for the same logical key. Tried in order.

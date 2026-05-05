@@ -12,6 +12,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Per-popover density. Each menu bar item kind has its own density so the
     /// user can keep one popover roomy and another tight.
     public var popoverDensities: [MenuBarItemKind: PopoverDensity]
+    /// Optional user-visible plan badge overrides. Empty means "Auto".
+    public var providerPlanLabels: [ToolType: String]
 
     public static let `default` = AppSettings(
         displayMode: .remaining,
@@ -22,7 +24,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         claudeUsageMode: .cliThenWeb,
         menuBarItems: Self.defaultMenuBarItems,
         miniWindow: Self.defaultMiniWindow,
-        popoverDensities: Self.defaultPopoverDensities
+        popoverDensities: Self.defaultPopoverDensities,
+        providerPlanLabels: Self.defaultProviderPlanLabels
     )
 
     public static let defaultMenuBarItems: [MenuBarItemSettings] = [
@@ -37,12 +40,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 "claude.five_hour",
                 "claude.weekly"
             ],
-            customLabels: [
-                "codex.five_hour": "O5",
-                "codex.weekly": "w",
-                "claude.five_hour": "C5",
-                "claude.weekly": "w"
-            ]
+            customLabels: [:]
         ),
         MenuBarItemSettings(
             kind: .codex,
@@ -70,12 +68,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static let defaultMiniWindow = MiniWindowSettings(
         selectedFieldIds: MenuBarFieldCatalog.allFields.map(\.id),
         compactSelectedFieldIds: MenuBarFieldCatalog.allFields.map(\.id),
-        customLabels: [
-            "codex.five_hour": "O5",
-            "codex.weekly": "W",
-            "claude.five_hour": "C5",
-            "claude.weekly": "W"
-        ]
+        customLabels: [:]
     )
 
     /// New defaults: Overview is roomy (it shows 2 providers stacked), individual
@@ -87,6 +80,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         .status: .regular
     ]
 
+    public static let defaultProviderPlanLabels: [ToolType: String] = [:]
+
     public init(
         displayMode: DisplayMode,
         refreshIntervalSeconds: Int,
@@ -96,7 +91,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         claudeUsageMode: ClaudeUsageMode = .cliThenWeb,
         menuBarItems: [MenuBarItemSettings] = AppSettings.defaultMenuBarItems,
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
-        popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities
+        popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
+        providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -107,6 +103,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.menuBarItems = Self.normalizedMenuBarItems(menuBarItems)
         self.miniWindow = miniWindow
         self.popoverDensities = popoverDensities
+        self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -120,6 +117,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case miniWindow
         case popoverDensities
         case popoverDensity   // legacy single-value form
+        case providerPlanLabels
     }
 
     public init(from decoder: Decoder) throws {
@@ -153,6 +151,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
         } else {
             self.popoverDensities = Self.defaultPopoverDensities
         }
+
+        if let labels = try c.decodeIfPresent([String: String].self, forKey: .providerPlanLabels) {
+            var map: [ToolType: String] = [:]
+            for (raw, value) in labels {
+                if let tool = ToolType(rawValue: raw) { map[tool] = value }
+            }
+            self.providerPlanLabels = Self.normalizedProviderPlanLabels(map)
+        } else {
+            self.providerPlanLabels = Self.defaultProviderPlanLabels
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -167,6 +175,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(miniWindow, forKey: .miniWindow)
         let stringKeyed = Dictionary(uniqueKeysWithValues: popoverDensities.map { ($0.key.rawValue, $0.value) })
         try c.encode(stringKeyed, forKey: .popoverDensities)
+        let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
+        try c.encode(planLabels, forKey: .providerPlanLabels)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {
@@ -192,6 +202,31 @@ public struct AppSettings: Codable, Equatable, Sendable {
         popoverDensities[kind] = density
     }
 
+    public func planBadgeLabel(
+        for tool: ToolType,
+        quotaPlan: String? = nil,
+        accountPlan: String? = nil
+    ) -> String? {
+        if let override = Self.normalizedProviderPlanLabels(providerPlanLabels)[tool] {
+            return override
+        }
+        if let label = ProviderPlanDisplay.displayName(for: tool, rawPlan: quotaPlan) {
+            return label
+        }
+        return ProviderPlanDisplay.displayName(for: tool, rawPlan: accountPlan)
+    }
+
+    public mutating func setProviderPlanLabel(_ label: String?, for tool: ToolType) {
+        var labels = providerPlanLabels
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            labels.removeValue(forKey: tool)
+        } else {
+            labels[tool] = trimmed
+        }
+        providerPlanLabels = Self.normalizedProviderPlanLabels(labels)
+    }
+
     private static func normalizedMenuBarItems(_ items: [MenuBarItemSettings]) -> [MenuBarItemSettings] {
         MenuBarItemKind.allCases.map { kind in
             items.first { $0.kind == kind }.map(migratedMenuBarItem)
@@ -202,6 +237,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private static func normalizedPopoverDensities(_ map: [MenuBarItemKind: PopoverDensity]) -> [MenuBarItemKind: PopoverDensity] {
         var out = defaultPopoverDensities
         for (k, v) in map { out[k] = v }
+        return out
+    }
+
+    private static func normalizedProviderPlanLabels(_ labels: [ToolType: String]) -> [ToolType: String] {
+        var out: [ToolType: String] = [:]
+        for (tool, label) in labels {
+            let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { out[tool] = trimmed }
+        }
         return out
     }
 
