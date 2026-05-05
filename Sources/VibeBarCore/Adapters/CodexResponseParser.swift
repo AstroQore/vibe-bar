@@ -64,6 +64,17 @@ public enum CodexResponseParser {
         return buckets
     }
 
+    public static func planType(data: Data) -> String? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+            let raw = root["plan_type"] as? String
+        else {
+            return nil
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private static func makeBucket(
         from dict: [String: Any],
         fallbackId: String,

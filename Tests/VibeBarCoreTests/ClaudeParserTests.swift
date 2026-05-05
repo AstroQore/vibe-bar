@@ -191,7 +191,6 @@ final class ClaudeParserTests: XCTestCase {
             "utilization": 42.0,
             "resets_at": "2026-04-30T20:00:00.765533+00:00"
           },
-          "iguana_necktie": null,
           "omelette_promotional": null,
           "extra_usage": {
             "is_enabled": false,

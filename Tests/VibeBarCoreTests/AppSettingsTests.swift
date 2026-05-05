@@ -29,7 +29,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.miniWindow.selectedFieldIds.contains("claude.weekly"))
         XCTAssertTrue(settings.miniWindow.compactSelectedFieldIds.contains("claude.weekly"))
         XCTAssertTrue(settings.miniWindow.selectedFieldIds.contains("claude.daily_routines"))
-        XCTAssertEqual(settings.miniWindow.customLabels["codex.five_hour"], "O5")
+        XCTAssertNil(settings.miniWindow.customLabels["codex.five_hour"])
     }
 
     func testMenuBarFieldLabelsRoundTrip() throws {
@@ -168,8 +168,8 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(compact.layout, .iconOnly)
         XCTAssertFalse(compact.showTitle)
-        XCTAssertEqual(compact.customLabels["codex.five_hour"], "O5")
-        XCTAssertEqual(compact.customLabels["codex.weekly"], "w")
+        XCTAssertNil(compact.customLabels["codex.five_hour"])
+        XCTAssertNil(compact.customLabels["codex.weekly"])
     }
 
     func testMockDataIsForcedOffWhenDecodingPersistedSettings() throws {
@@ -203,6 +203,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(AppSettings.default.menuBarItem(.claude).isVisible)
         XCTAssertFalse(AppSettings.default.menuBarItem(.status).isVisible)
         XCTAssertEqual(AppSettings.default.menuBarItems.filter(\.isVisible).map(\.kind), [.compact])
+        XCTAssertTrue(overview.customLabels.isEmpty)
     }
 
     func testMenuBarCompactLayoutRoundTrip() throws {
@@ -234,5 +235,27 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(MenuBarLayout.singleLine.showsMenuBarIcon)
         XCTAssertFalse(MenuBarLayout.twoRows.showsMenuBarIcon)
         XCTAssertFalse(MenuBarLayout.compact.showsMenuBarIcon)
+    }
+
+    func testProviderPlanLabelsDefaultToAutoAndNormalizeProviderPlans() {
+        let settings = AppSettings.default
+
+        XCTAssertNil(settings.planBadgeLabel(for: .codex))
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite"), "Pro Lite")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, accountPlan: "self_serve_business_usage_based"), "Self Serve Business Usage Based")
+        XCTAssertEqual(settings.planBadgeLabel(for: .claude, quotaPlan: "default_claude_max_20x"), "Max")
+        XCTAssertEqual(settings.planBadgeLabel(for: .claude, accountPlan: "Claude Pro Account"), "Pro")
+    }
+
+    func testProviderPlanLabelOverrideWinsAndRoundTrips() throws {
+        var settings = AppSettings.default
+        settings.setProviderPlanLabel("Founder", for: .codex)
+
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "pro"), "Founder")
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.planBadgeLabel(for: .codex, quotaPlan: "pro"), "Founder")
     }
 }

@@ -103,7 +103,7 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
             accountId: account.id,
             tool: .claude,
             buckets: buckets,
-            plan: account.plan,
+            plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential.rateLimitTier) ?? account.plan,
             email: account.email,
             queriedAt: Date(),
             error: nil,
@@ -165,6 +165,7 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
     private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
         let cookieHeader = try ClaudeWebCookieStore.readCookieHeader()
         let organization = try await organizationID(cookieHeader: cookieHeader)
+        let webAccount = await webAccountInfo(organizationID: organization.id, cookieHeader: cookieHeader)
 
         var data: Data
         var response: URLResponse
@@ -199,8 +200,8 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
             accountId: account.id,
             tool: .claude,
             buckets: buckets,
-            plan: account.plan,
-            email: account.email,
+            plan: webAccount?.plan ?? account.plan,
+            email: webAccount?.email ?? account.email,
             queriedAt: Date(),
             error: nil,
             providerExtras: extras
@@ -238,6 +239,43 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("https://claude.ai/", forHTTPHeaderField: "Referer")
         request.setValue("claude.ai", forHTTPHeaderField: "Origin")
+    }
+
+    private func webAccountInfo(organizationID: String?, cookieHeader: String) async -> (email: String?, plan: String?)? {
+        guard let url = URL(string: "https://claude.ai/api/account") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        configureClaudeWebHeaders(&request, cookieHeader: cookieHeader)
+        request.timeoutInterval = 15
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            guard let parsed = try? JSONDecoder().decode(ClaudeWebAccountResponse.self, from: data) else {
+                return nil
+            }
+            let membership = Self.selectedMembership(parsed.memberships, organizationID: organizationID)
+            let plan = ProviderPlanDisplay.claudeDisplayName(
+                rateLimitTier: membership?.organization.rateLimitTier,
+                billingType: membership?.organization.billingType
+            )
+            let email = parsed.emailAddress?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (email?.isEmpty == false ? email : nil, plan)
+        } catch {
+            return nil
+        }
+    }
+
+    private static func selectedMembership(
+        _ memberships: [ClaudeWebAccountResponse.Membership]?,
+        organizationID: String?
+    ) -> ClaudeWebAccountResponse.Membership? {
+        guard let memberships, !memberships.isEmpty else { return nil }
+        if let organizationID,
+           let match = memberships.first(where: { $0.organization.uuid == organizationID }) {
+            return match
+        }
+        return memberships.first
     }
 
     private func validateClaudeWebResponse(_ response: URLResponse) throws {
@@ -278,5 +316,31 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
             matching: DateComponents(hour: 0, minute: 0, second: 0),
             matchingPolicy: .nextTime
         )
+    }
+}
+
+private struct ClaudeWebAccountResponse: Decodable {
+    let emailAddress: String?
+    let memberships: [Membership]?
+
+    enum CodingKeys: String, CodingKey {
+        case emailAddress = "email_address"
+        case memberships
+    }
+
+    struct Membership: Decodable {
+        let organization: Organization
+    }
+
+    struct Organization: Decodable {
+        let uuid: String?
+        let rateLimitTier: String?
+        let billingType: String?
+
+        enum CodingKeys: String, CodingKey {
+            case uuid
+            case rateLimitTier = "rate_limit_tier"
+            case billingType = "billing_type"
+        }
     }
 }

@@ -71,8 +71,8 @@ public struct CodexQuotaAdapter: QuotaAdapter {
             accountId: account.id,
             tool: .codex,
             buckets: buckets,
-            plan: account.plan,
-            email: account.email,
+            plan: CodexResponseParser.planType(data: data) ?? credential.plan ?? account.plan,
+            email: credential.email ?? account.email,
             queriedAt: Date(),
             error: nil
         )

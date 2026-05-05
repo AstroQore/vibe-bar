@@ -37,7 +37,9 @@ public final class AccountStore: ObservableObject {
         return AccountIdentity(
             id: id,
             tool: .codex,
+            email: cred.email,
             alias: "Codex CLI",
+            plan: cred.plan,
             accountId: cred.accountId,
             source: .cliDetected,
             createdAt: Date(),
@@ -48,11 +50,12 @@ public final class AccountStore: ObservableObject {
     private func autoDetectClaude(mode: ClaudeUsageMode) -> AccountIdentity? {
         switch mode {
         case .cliThenWeb:
-            if (try? ClaudeCredentialReader.loadFromCLI()) != nil {
+            if let credential = try? ClaudeCredentialReader.loadFromCLI() {
                 return AccountIdentity(
                     id: "cli-claude",
                     tool: .claude,
                     alias: "Claude Code",
+                    plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential.rateLimitTier),
                     source: .cliDetected,
                     allowsWebFallback: true,
                     createdAt: Date(),
@@ -64,21 +67,23 @@ public final class AccountStore: ObservableObject {
             if let web = webClaudeAccount(allowsCLIFallback: true) {
                 return web
             }
-            guard (try? ClaudeCredentialReader.loadFromCLI()) != nil else { return nil }
+            guard let credential = try? ClaudeCredentialReader.loadFromCLI() else { return nil }
             return AccountIdentity(
                 id: "cli-claude",
                 tool: .claude,
                 alias: "Claude Code",
+                plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential.rateLimitTier),
                 source: .cliDetected,
                 createdAt: Date(),
                 updatedAt: Date()
             )
         case .cliOnly:
-            guard (try? ClaudeCredentialReader.loadFromCLI()) != nil else { return nil }
+            guard let credential = try? ClaudeCredentialReader.loadFromCLI() else { return nil }
             return AccountIdentity(
                 id: "cli-claude",
                 tool: .claude,
                 alias: "Claude Code",
+                plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential.rateLimitTier),
                 source: .cliDetected,
                 createdAt: Date(),
                 updatedAt: Date()

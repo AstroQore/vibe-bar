@@ -59,7 +59,7 @@ struct PopoverRoot: View {
 
     private var activeDensity: Theme.Density {
         let popDens = settingsStore.settings.popoverDensity(for: kind)
-        switch activeKind {
+        switch kind {
         case .compact:
             return Theme.overviewDensity(for: popDens)
         case .codex, .claude:
@@ -96,7 +96,7 @@ struct PopoverRoot: View {
     }
 
     private var headerTitle: String {
-        switch activeKind {
+        switch kind {
         case .compact: return "Overview"
         case .codex:   return "OpenAI"
         case .claude:  return "Claude"
@@ -105,7 +105,7 @@ struct PopoverRoot: View {
     }
 
     private var headerSubtitle: String? {
-        switch activeKind {
+        switch kind {
         case .compact: return "All providers · quota & cost"
         case .codex:   return ToolType.codex.subtitle
         case .claude:  return ToolType.claude.subtitle
@@ -114,15 +114,15 @@ struct PopoverRoot: View {
     }
 
     private var headerPlan: String? {
-        switch activeKind {
+        switch kind {
         case .compact, .status: return nil
-        case .codex:   return ToolType.codex.planLabel
-        case .claude:  return ToolType.claude.planLabel
+        case .codex:   return planBadgeLabel(for: .codex)
+        case .claude:  return planBadgeLabel(for: .claude)
         }
     }
 
     private var visibleTools: [ToolType] {
-        switch activeKind {
+        switch kind {
         case .compact, .status: return ToolType.allCases
         case .codex:            return [.codex]
         case .claude:           return [.claude]
@@ -142,9 +142,12 @@ struct PopoverRoot: View {
         return ids.contains { quotaService.inFlightAccountIds.contains($0) }
     }
 
-    private var activeKind: MenuBarItemKind {
-        guard kind == .compact else { return kind }
-        return overviewPage.menuBarKind
+    private func planBadgeLabel(for tool: ToolType) -> String? {
+        settingsStore.settings.planBadgeLabel(
+            for: tool,
+            quotaPlan: environment.quota(for: tool)?.plan,
+            accountPlan: environment.account(for: tool)?.plan
+        )
     }
 }
 
@@ -183,9 +186,7 @@ private struct OverviewPageSwitch: View {
             ForEach(OverviewPage.allCases) { page in
                 let isSelected = selection == page
                 BorderlessRowButton(action: {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
-                        selection = page
-                    }
+                    selection = page
                 }) {
                     Text(page.label)
                         .font(.system(size: max(9.5, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
@@ -605,6 +606,11 @@ struct ProviderQuotaCard: View {
         let quota = environment.quota(for: tool)
         let liveError = account.flatMap { quotaService.lastErrorByAccount[$0.id] }
         let isProviderRefreshing = account.map { quotaService.inFlightAccountIds.contains($0.id) } == true
+        let planBadge = settingsStore.settings.planBadgeLabel(
+            for: tool,
+            quotaPlan: quota?.plan,
+            accountPlan: account?.plan
+        )
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -617,19 +623,20 @@ struct ProviderQuotaCard: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 4)
-                Text(tool.planLabel)
-                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .bold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
-                    .foregroundStyle(Color.accentColor)
+                PlanBadgeView(
+                    text: planBadge,
+                    width: 72,
+                    fontSize: max(9, density.subtitleFontSize - 1)
+                )
                 BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                     environment.refresh(tool)
                 }
                 .disabled(isProviderRefreshing)
-                if isProviderRefreshing {
+                ZStack {
                     ProgressView().controlSize(.small)
+                        .opacity(isProviderRefreshing ? 1 : 0)
                 }
+                .frame(width: 16, height: 16)
             }
 
             if let quota, !quota.buckets.isEmpty {

@@ -23,6 +23,7 @@ struct BorderlessIconButton: View {
             .rotationEffect(.degrees(rotation))
             .foregroundStyle(isEnabled ? .secondary : .tertiary)
             .padding(4)
+            .frame(width: 22, height: 22)
             .contentShape(Rectangle())
             .onTapGesture {
                 guard isEnabled else { return }
