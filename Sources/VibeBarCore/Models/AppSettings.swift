@@ -102,7 +102,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.refreshIntervalSeconds = refreshIntervalSeconds
         self.launchAtLogin = launchAtLogin
         self.menuBarTextEnabled = menuBarTextEnabled
-        self.mockEnabled = mockEnabled
+        self.mockEnabled = false
         self.claudeUsageMode = claudeUsageMode
         self.menuBarItems = Self.normalizedMenuBarItems(menuBarItems)
         self.miniWindow = miniWindow
@@ -128,7 +128,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.refreshIntervalSeconds = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalSeconds) ?? Self.default.refreshIntervalSeconds
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? Self.default.launchAtLogin
         self.menuBarTextEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarTextEnabled) ?? Self.default.menuBarTextEnabled
-        self.mockEnabled = try c.decodeIfPresent(Bool.self, forKey: .mockEnabled) ?? Self.default.mockEnabled
+        self.mockEnabled = false
         self.claudeUsageMode = try c.decodeIfPresent(ClaudeUsageMode.self, forKey: .claudeUsageMode) ?? Self.default.claudeUsageMode
 
         // Gemini support was removed; old persisted configs may contain

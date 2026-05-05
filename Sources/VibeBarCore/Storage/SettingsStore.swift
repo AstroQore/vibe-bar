@@ -13,7 +13,11 @@ public final class SettingsStore: ObservableObject {
         if
             let decoded = try? VibeBarLocalStore.readJSON(AppSettings.self, from: VibeBarLocalStore.settingsURL)
         {
-            self.settings = Self.migrated(decoded)
+            let migrated = Self.migrated(decoded)
+            self.settings = migrated
+            if migrated != decoded {
+                persist()
+            }
         } else if
             let data = userDefaults.data(forKey: defaultsKey),
             let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
@@ -36,6 +40,7 @@ public final class SettingsStore: ObservableObject {
 
     private static func migrated(_ settings: AppSettings) -> AppSettings {
         var migrated = settings
+        migrated.mockEnabled = false
         if migrated.refreshIntervalSeconds == 300 {
             migrated.refreshIntervalSeconds = AppSettings.default.refreshIntervalSeconds
         }
@@ -114,7 +119,7 @@ public final class SettingsStore: ObservableObject {
     }
     public var mockEnabled: Bool {
         get { settings.mockEnabled }
-        set { settings.mockEnabled = newValue }
+        set { settings.mockEnabled = false }
     }
     public var claudeUsageMode: ClaudeUsageMode {
         get { settings.claudeUsageMode }

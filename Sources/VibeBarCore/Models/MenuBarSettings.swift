@@ -10,7 +10,7 @@ public enum MenuBarItemKind: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var label: String {
         switch self {
-        case .compact: return "Compact"
+        case .compact: return "Overview"
         case .codex:   return "OpenAI"
         case .claude:  return "Claude"
         case .status:  return "Status"
@@ -30,6 +30,7 @@ public enum MenuBarItemKind: String, Codable, CaseIterable, Identifiable, Sendab
 public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable {
     case singleLine
     case twoRows
+    case compact
 
     public var id: String { rawValue }
 
@@ -37,6 +38,7 @@ public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable
         switch self {
         case .singleLine: return "Single line"
         case .twoRows: return "Two rows"
+        case .compact: return "Compact"
         }
     }
 }
