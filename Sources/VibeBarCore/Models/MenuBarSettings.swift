@@ -43,6 +43,10 @@ public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable
         case .compact: return "Compact"
         }
     }
+
+    public var showsMenuBarIcon: Bool {
+        self == .iconOnly
+    }
 }
 
 public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
