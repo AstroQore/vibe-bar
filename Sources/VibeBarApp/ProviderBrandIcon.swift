@@ -75,10 +75,10 @@ enum ProviderBrandIcon {
             resolvedTint.withAlphaComponent(0.86).setStroke()
 
             let side = max(1, min(size.width, size.height))
-            let scale = side / 18
+            let scale = side / 20
             let origin = NSPoint(
-                x: floor((size.width - 18 * scale) / 2),
-                y: floor((size.height - 18 * scale) / 2)
+                x: floor((size.width - 20 * scale) / 2),
+                y: floor((size.height - 20 * scale) / 2)
             )
             func scaledRect(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> NSRect {
                 NSRect(
@@ -90,31 +90,37 @@ enum ProviderBrandIcon {
             }
 
             let topBar = NSBezierPath(
-                roundedRect: scaledRect(x: 2.3, y: 12.3, width: 13.4, height: 3.4),
-                xRadius: 1.7 * scale,
-                yRadius: 1.7 * scale
+                roundedRect: scaledRect(x: 2.2, y: 13.2, width: 15.6, height: 4.0),
+                xRadius: 2.0 * scale,
+                yRadius: 2.0 * scale
             )
-            topBar.lineWidth = max(0.9, 1.05 * scale)
+            topBar.lineWidth = max(0.85, 1.05 * scale)
             topBar.stroke()
 
-            let dotXs: [CGFloat] = [4.3, 6.5, 8.7]
+            let dotXs: [CGFloat] = [4.4, 6.6, 8.8]
             for dotX in dotXs {
                 NSBezierPath(
-                    ovalIn: scaledRect(x: dotX, y: 13.45, width: 0.85, height: 0.85)
+                    ovalIn: scaledRect(x: dotX, y: 14.55, width: 1.0, height: 1.0)
                 ).fill()
             }
 
+            NSBezierPath(
+                roundedRect: scaledRect(x: 13.9, y: 14.35, width: 2.8, height: 1.4),
+                xRadius: 0.7 * scale,
+                yRadius: 0.7 * scale
+            ).fill()
+
             let bars: [(x: CGFloat, height: CGFloat)] = [
-                (3.0, 8.9),
-                (7.1, 5.8),
-                (11.2, 7.4),
-                (15.3, 9.9)
+                (3.5, 8.5),
+                (7.7, 5.6),
+                (11.9, 7.1),
+                (16.1, 9.2)
             ]
             for bar in bars {
                 NSBezierPath(
-                    roundedRect: scaledRect(x: bar.x, y: 2.0, width: 2.1, height: bar.height),
-                    xRadius: 1.05 * scale,
-                    yRadius: 1.05 * scale
+                    roundedRect: scaledRect(x: bar.x, y: 2.2, width: 2.4, height: bar.height),
+                    xRadius: 1.2 * scale,
+                    yRadius: 1.2 * scale
                 ).fill()
             }
 

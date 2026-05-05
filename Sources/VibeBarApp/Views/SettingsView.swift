@@ -198,7 +198,9 @@ struct SettingsView: View {
             .padding(.top, 8)
         } label: {
             HStack(spacing: 8) {
-                ProviderBrandIconView(kind: kind, size: 15)
+                if settingsStore.settings.menuBarItem(kind).layout.showsMenuBarIcon {
+                    ProviderBrandIconView(kind: kind, size: 15)
+                }
                 Text(kind.label)
                     .font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 8)

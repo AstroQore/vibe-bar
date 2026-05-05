@@ -278,8 +278,6 @@ final class StatusItemController {
             case .iconOnly:
                 installIconOnlyContent(in: button, item: item, kind: kind)
             case .singleLine:
-                button.image = ProviderBrandIcon.image(for: kind)
-                button.imagePosition = .imageLeft
                 button.attributedTitle = singleLineMenuTitle(for: itemSettings, settings: settings)
                 item.length = NSStatusItem.variableLength
             case .twoRows:
@@ -290,8 +288,6 @@ final class StatusItemController {
                     kind: kind
                 )
             case .compact:
-                button.image = ProviderBrandIcon.image(for: kind)
-                button.imagePosition = .imageLeft
                 button.attributedTitle = compactMenuTitle(for: itemSettings, settings: settings)
                 item.length = NSStatusItem.variableLength
             }
@@ -558,7 +554,7 @@ final class StatusItemController {
         kind: MenuBarItemKind
     ) {
         // Keep two-row content as a static image; custom status-item subviews trigger continuous AppKit replicant redraws.
-        let image = twoRowImage(for: columns, kind: kind, appearance: button.effectiveAppearance)
+        let image = twoRowImage(for: columns, appearance: button.effectiveAppearance)
         button.attributedTitle = NSAttributedString(string: "")
         button.image = image
         button.imagePosition = .imageOnly
@@ -566,7 +562,7 @@ final class StatusItemController {
         button.setAccessibilityLabel("\(kind.label) \(twoRowAccessibilityTitle(for: columns))")
     }
 
-    private func twoRowImage(for columns: [TwoRowMenuColumn], kind: MenuBarItemKind, appearance: NSAppearance) -> NSImage {
+    private func twoRowImage(for columns: [TwoRowMenuColumn], appearance: NSAppearance) -> NSImage {
         let columnSizes = columns.map { column -> (top: NSSize, bottom: NSSize?, width: CGFloat) in
             let topSize = column.top.size()
             let bottomSize = column.bottom?.size()
@@ -588,9 +584,6 @@ final class StatusItemController {
             max(18, ceil(contentHeight + MenuBarStatusMetrics.twoRowVerticalPadding * 2)),
             statusBarHeight
         )
-        let iconSize = NSSize(width: min(13, imageHeight - 3), height: min(13, imageHeight - 3))
-        let iconGap: CGFloat = 4
-
         var contentWidth: CGFloat = 0
         for (index, size) in columnSizes.enumerated() {
             if index > 0 {
@@ -600,7 +593,7 @@ final class StatusItemController {
         }
         let imageWidth = max(
             MenuBarStatusMetrics.minimumTwoRowLength,
-            ceil(iconSize.width + iconGap + contentWidth + MenuBarStatusMetrics.twoRowHorizontalPadding * 2)
+            ceil(contentWidth + MenuBarStatusMetrics.twoRowHorizontalPadding * 2)
         )
         let imageSize = NSSize(width: imageWidth, height: imageHeight)
         let image = NSImage(size: imageSize)
@@ -612,25 +605,6 @@ final class StatusItemController {
             NSRect(origin: .zero, size: imageSize).fill()
 
             var x = MenuBarStatusMetrics.twoRowHorizontalPadding
-            if let icon = ProviderBrandIcon.image(
-                for: kind,
-                size: iconSize,
-                tint: NSColor.labelColor,
-                appearance: appearance
-            ) {
-                icon.draw(
-                    in: NSRect(
-                        x: x,
-                        y: floor((imageHeight - iconSize.height) / 2),
-                        width: iconSize.width,
-                        height: iconSize.height
-                    ),
-                    from: .zero,
-                    operation: .sourceOver,
-                    fraction: 1
-                )
-                x += iconSize.width + iconGap
-            }
             for (column, sizes) in zip(columns, columnSizes) {
                 if let bottom = column.bottom, let bottomSize = sizes.bottom {
                     let blockHeight = topRowHeight + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing

@@ -228,4 +228,11 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(decoded.menuBarItem(.codex).layout, .iconOnly)
     }
+
+    func testOnlyIconOnlyLayoutShowsMenuBarIcon() {
+        XCTAssertTrue(MenuBarLayout.iconOnly.showsMenuBarIcon)
+        XCTAssertFalse(MenuBarLayout.singleLine.showsMenuBarIcon)
+        XCTAssertFalse(MenuBarLayout.twoRows.showsMenuBarIcon)
+        XCTAssertFalse(MenuBarLayout.compact.showsMenuBarIcon)
+    }
 }
