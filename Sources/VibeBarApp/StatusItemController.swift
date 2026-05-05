@@ -261,8 +261,11 @@ final class StatusItemController {
             item.isVisible = allHidden ? kind == .compact : itemSettings.isVisible
             guard let button = item.button else { continue }
             button.title = ""
+            button.attributedTitle = NSAttributedString(string: "")
+            button.image = nil
+            button.imagePosition = .noImage
             removeTwoRowStatusContent(from: button)
-            if kind == .status {
+            if kind == .status && itemSettings.layout != .iconOnly {
                 installTwoRowImageContent(
                     in: button,
                     item: item,
@@ -272,6 +275,8 @@ final class StatusItemController {
                 continue
             }
             switch itemSettings.layout {
+            case .iconOnly:
+                installIconOnlyContent(in: button, item: item, kind: kind)
             case .singleLine:
                 button.image = ProviderBrandIcon.image(for: kind)
                 button.imagePosition = .imageLeft
@@ -382,9 +387,19 @@ final class StatusItemController {
     }
 
     private func compactMenuTitle(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> NSAttributedString {
-        let fontSize = max(9, NSFont.smallSystemFontSize - 1)
+        let fontSize = MenuBarStatusMetrics.twoRowFontSize
         let attributed = NSMutableAttributedString()
-        let entries = compactDisplayedFieldIds(for: itemSettings).compactMap { fieldId -> NSAttributedString? in
+        if itemSettings.showTitle {
+            attributed.append(NSAttributedString(
+                string: "\(itemSettings.kind.title) ",
+                attributes: [
+                    .foregroundColor: NSColor.labelColor,
+                    .font: NSFont.systemFont(ofSize: fontSize, weight: .medium)
+                ]
+            ))
+        }
+
+        let entries = itemSettings.selectedFieldIds.compactMap { fieldId -> NSAttributedString? in
             guard
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
@@ -421,19 +436,6 @@ final class StatusItemController {
             ))
         }
         return attributed
-    }
-
-    private func compactDisplayedFieldIds(for itemSettings: MenuBarItemSettings) -> [String] {
-        if itemSettings.kind == .compact {
-            var result: [String] = []
-            for tool in ToolType.allCases {
-                if let id = itemSettings.selectedFieldIds.first(where: { MenuBarFieldCatalog.field(id: $0)?.tool == tool }) {
-                    result.append(id)
-                }
-            }
-            return result
-        }
-        return Array(itemSettings.selectedFieldIds.prefix(2))
     }
 
     private func twoRowMenuColumns(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [TwoRowMenuColumn] {
@@ -535,6 +537,18 @@ final class StatusItemController {
             ))
         }
         return chunk
+    }
+
+    private func installIconOnlyContent(
+        in button: NSStatusBarButton,
+        item: NSStatusItem,
+        kind: MenuBarItemKind
+    ) {
+        button.attributedTitle = NSAttributedString(string: "")
+        button.image = ProviderBrandIcon.image(for: kind)
+        button.imagePosition = .imageOnly
+        item.length = NSStatusItem.squareLength
+        button.setAccessibilityLabel(kind.label)
     }
 
     private func installTwoRowImageContent(

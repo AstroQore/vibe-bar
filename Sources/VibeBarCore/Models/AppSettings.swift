@@ -30,7 +30,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             kind: .compact,
             isVisible: true,
             showTitle: false,
-            layout: .twoRows,
+            layout: .iconOnly,
             selectedFieldIds: [
                 "codex.five_hour",
                 "codex.weekly",
@@ -46,23 +46,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
         ),
         MenuBarItemSettings(
             kind: .codex,
-            isVisible: true,
+            isVisible: false,
             showTitle: true,
             layout: .singleLine,
             selectedFieldIds: MenuBarFieldCatalog.codexFields.map(\.id)
         ),
         MenuBarItemSettings(
             kind: .claude,
-            isVisible: true,
+            isVisible: false,
             showTitle: true,
             layout: .singleLine,
             selectedFieldIds: MenuBarFieldCatalog.claudeFields.map(\.id)
         ),
         MenuBarItemSettings(
             kind: .status,
-            isVisible: true,
+            isVisible: false,
             showTitle: false,
-            layout: .singleLine,
+            layout: .iconOnly,
             selectedFieldIds: []
         )
     ]

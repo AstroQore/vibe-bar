@@ -17,8 +17,8 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
         XCTAssertEqual(settings.claudeUsageMode, .cliThenWeb)
         XCTAssertEqual(settings.menuBarItems.count, MenuBarItemKind.allCases.count)
-        XCTAssertEqual(settings.menuBarItem(.compact).layout, .twoRows)
-        XCTAssertTrue(settings.menuBarItem(.status).isVisible)
+        XCTAssertEqual(settings.menuBarItem(.compact).layout, .iconOnly)
+        XCTAssertFalse(settings.menuBarItem(.status).isVisible)
         XCTAssertFalse(settings.menuBarItem(.compact).showTitle)
         XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("codex.five_hour"))
         XCTAssertTrue(settings.menuBarItem(.codex).selectedFieldIds.contains("codex.weekly"))
@@ -136,7 +136,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(decoded.savedScreenScale)
     }
 
-    func testOldCompactDefaultMigratesToTwoRows() throws {
+    func testOldCompactDefaultMigratesToOverviewIconOnly() throws {
         let json = """
         {
           "displayMode": "remaining",
@@ -166,7 +166,7 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
         let compact = settings.menuBarItem(.compact)
 
-        XCTAssertEqual(compact.layout, .twoRows)
+        XCTAssertEqual(compact.layout, .iconOnly)
         XCTAssertFalse(compact.showTitle)
         XCTAssertEqual(compact.customLabels["codex.five_hour"], "O5")
         XCTAssertEqual(compact.customLabels["codex.weekly"], "w")
@@ -195,7 +195,14 @@ final class AppSettingsTests: XCTestCase {
 
         let overview = AppSettings.default.menuBarItem(.compact)
         XCTAssertEqual(overview.kind, .compact)
-        XCTAssertEqual(overview.layout, .twoRows)
+        XCTAssertEqual(overview.layout, .iconOnly)
+        XCTAssertFalse(overview.showTitle)
+
+        XCTAssertTrue(AppSettings.default.menuBarItem(.compact).isVisible)
+        XCTAssertFalse(AppSettings.default.menuBarItem(.codex).isVisible)
+        XCTAssertFalse(AppSettings.default.menuBarItem(.claude).isVisible)
+        XCTAssertFalse(AppSettings.default.menuBarItem(.status).isVisible)
+        XCTAssertEqual(AppSettings.default.menuBarItems.filter(\.isVisible).map(\.kind), [.compact])
     }
 
     func testMenuBarCompactLayoutRoundTrip() throws {
@@ -208,5 +215,17 @@ final class AppSettingsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
 
         XCTAssertEqual(decoded.menuBarItem(.codex).layout, .compact)
+    }
+
+    func testMenuBarIconOnlyLayoutRoundTrip() throws {
+        var settings = AppSettings.default
+        var codex = settings.menuBarItem(.codex)
+        codex.layout = .iconOnly
+        settings.setMenuBarItem(codex)
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.menuBarItem(.codex).layout, .iconOnly)
     }
 }

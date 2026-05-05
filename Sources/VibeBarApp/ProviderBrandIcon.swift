@@ -12,13 +12,13 @@ enum ProviderBrandIcon {
     ) -> NSImage? {
         switch kind {
         case .compact:
-            return providerPairImage(size: size, tint: tint, appearance: appearance, includeStatusDot: false)
+            return vibeBarGlyphImage(size: size, tint: tint, appearance: appearance, includeStatusDot: false)
         case .codex:
             return image(for: ToolType.codex, size: size, tint: tint, appearance: appearance)
         case .claude:
             return image(for: ToolType.claude, size: size, tint: tint, appearance: appearance)
         case .status:
-            return providerPairImage(size: size, tint: tint, appearance: appearance, includeStatusDot: true)
+            return vibeBarGlyphImage(size: size, tint: tint, appearance: appearance, includeStatusDot: true)
         }
     }
 
@@ -50,14 +50,14 @@ enum ProviderBrandIcon {
 
     static func fallbackSystemImage(for kind: MenuBarItemKind) -> String {
         switch kind {
-        case .compact: return "rectangle.3.group"
+        case .compact: return "chart.bar"
         case .codex:   return "sparkle.magnifyingglass"
         case .claude:  return "sparkles"
-        case .status:  return "dot.radiowaves.left.and.right"
+        case .status:  return "chart.bar.xaxis"
         }
     }
 
-    private static func providerPairImage(
+    private static func vibeBarGlyphImage(
         size: NSSize,
         tint: NSColor?,
         appearance: NSAppearance?,
@@ -70,25 +70,53 @@ enum ProviderBrandIcon {
             NSColor.clear.setFill()
             rect.fill()
 
-            let iconSize = NSSize(width: size.width * 0.64, height: size.height * 0.64)
-            let codexRect = NSRect(
-                x: 0,
-                y: floor((size.height - iconSize.height) / 2),
-                width: iconSize.width,
-                height: iconSize.height
-            )
-            let claudeRect = NSRect(
-                x: size.width - iconSize.width,
-                y: floor((size.height - iconSize.height) / 2),
-                width: iconSize.width,
-                height: iconSize.height
-            )
-
             let resolvedTint = tint ?? NSColor.labelColor
-            image(for: ToolType.codex, size: iconSize, tint: resolvedTint, appearance: appearance)?
-                .draw(in: codexRect, from: NSRect.zero, operation: NSCompositingOperation.sourceOver, fraction: 1)
-            image(for: ToolType.claude, size: iconSize, tint: resolvedTint, appearance: appearance)?
-                .draw(in: claudeRect, from: NSRect.zero, operation: NSCompositingOperation.sourceOver, fraction: 1)
+            resolvedTint.setFill()
+            resolvedTint.withAlphaComponent(0.86).setStroke()
+
+            let side = max(1, min(size.width, size.height))
+            let scale = side / 18
+            let origin = NSPoint(
+                x: floor((size.width - 18 * scale) / 2),
+                y: floor((size.height - 18 * scale) / 2)
+            )
+            func scaledRect(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> NSRect {
+                NSRect(
+                    x: origin.x + x * scale,
+                    y: origin.y + y * scale,
+                    width: width * scale,
+                    height: height * scale
+                )
+            }
+
+            let topBar = NSBezierPath(
+                roundedRect: scaledRect(x: 2.3, y: 12.3, width: 13.4, height: 3.4),
+                xRadius: 1.7 * scale,
+                yRadius: 1.7 * scale
+            )
+            topBar.lineWidth = max(0.9, 1.05 * scale)
+            topBar.stroke()
+
+            let dotXs: [CGFloat] = [4.3, 6.5, 8.7]
+            for dotX in dotXs {
+                NSBezierPath(
+                    ovalIn: scaledRect(x: dotX, y: 13.45, width: 0.85, height: 0.85)
+                ).fill()
+            }
+
+            let bars: [(x: CGFloat, height: CGFloat)] = [
+                (3.0, 8.9),
+                (7.1, 5.8),
+                (11.2, 7.4),
+                (15.3, 9.9)
+            ]
+            for bar in bars {
+                NSBezierPath(
+                    roundedRect: scaledRect(x: bar.x, y: 2.0, width: 2.1, height: bar.height),
+                    xRadius: 1.05 * scale,
+                    yRadius: 1.05 * scale
+                ).fill()
+            }
 
             if includeStatusDot {
                 let dotSize = max(4, size.width * 0.28)
