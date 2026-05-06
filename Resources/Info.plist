@@ -27,7 +27,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Vibe Bar. All rights reserved.</string>
+    <string>Copyright © 2026 AstroQore. Licensed under AGPL-3.0.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>

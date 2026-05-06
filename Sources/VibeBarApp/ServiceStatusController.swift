@@ -12,6 +12,12 @@ final class ServiceStatusController: ObservableObject {
     private let client = ServiceStatusClient()
     private var refreshTask: Task<Void, Never>?
     private var refreshTimer: Timer?
+    /// Coalesce window: skip refreshAll bursts that arrive within this
+    /// interval of a previous start. Login flows / cookie reloads can fire
+    /// reloadProviderCredentialsAndRefresh() back-to-back, and each call
+    /// hits two HTML pages + four JSON endpoints + several regex passes.
+    private static let coalesceInterval: TimeInterval = 2
+    private var lastRefreshStartedAt: Date?
 
     init() {
         let cached = ServiceStatusCacheStore.loadAll()
@@ -21,9 +27,12 @@ final class ServiceStatusController: ObservableObject {
     func start() {
         refreshAll()
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshAll() }
         }
+        timer.tolerance = 30
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
     }
 
     func stop() {
@@ -34,7 +43,13 @@ final class ServiceStatusController: ObservableObject {
     }
 
     func refreshAll() {
+        if let last = lastRefreshStartedAt,
+           Date().timeIntervalSince(last) < Self.coalesceInterval,
+           refreshTask != nil {
+            return
+        }
         refreshTask?.cancel()
+        lastRefreshStartedAt = Date()
         refreshTask = Task { [weak self] in
             guard let self else { return }
             await withTaskGroup(of: Void.self) { group in
@@ -46,6 +61,7 @@ final class ServiceStatusController: ObservableObject {
             }
             self.lastFetched = Date()
             self.persist()
+            self.refreshTask = nil
         }
     }
 

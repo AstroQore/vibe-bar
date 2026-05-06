@@ -436,20 +436,37 @@ public enum CostUsageScanner {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
         defer { try? handle.close() }
 
+        // Linear-time JSONL scan: walk a single moving cursor over the
+        // accumulated buffer and only compact when the consumed prefix
+        // exceeds one chunk. The previous `firstRange + removeSubrange`
+        // implementation was O(n²) per file because every newline shift
+        // copied the entire remaining buffer.
         var buffer = Data()
+        var lineStart = 0
         do {
             while let chunk = try handle.read(upToCount: lineChunkSize), !chunk.isEmpty {
                 buffer.append(chunk)
-                while let newlineRange = buffer.firstRange(of: newlineData) {
-                    let line = buffer[..<newlineRange.lowerBound]
-                    if !line.isEmpty {
-                        body(Data(line))
+                let end = buffer.count
+                var i = lineStart
+                while i < end {
+                    if buffer[i] == 0x0A {
+                        if i > lineStart {
+                            body(buffer.subdata(in: lineStart..<i))
+                        }
+                        lineStart = i + 1
                     }
-                    buffer.removeSubrange(..<newlineRange.upperBound)
+                    i += 1
+                }
+                if lineStart > lineChunkSize {
+                    buffer.removeFirst(lineStart)
+                    lineStart = 0
                 }
             }
-            if !buffer.isEmpty {
-                body(buffer)
+            if lineStart < buffer.count {
+                let tail = buffer.subdata(in: lineStart..<buffer.count)
+                if !tail.isEmpty {
+                    body(tail)
+                }
             }
             return true
         } catch {

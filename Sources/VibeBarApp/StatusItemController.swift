@@ -51,20 +51,12 @@ final class StatusItemController {
         renderMenuBar()
         // Restore mini window if the user had it open last session.
         miniWindowController.restoreIfNeeded(environment: environment)
-        // Pre-build the popover hosting controllers at launch so the first
-        // click doesn't pay the SwiftUI initial-layout cost. Deferred onto
-        // the next runloop tick so app activation isn't delayed.
+        // Pre-build only the compact popover's SwiftUI tree at launch. The
+        // others build on first click (still fast in practice). Eagerly
+        // warming all four left N copies of TimelineView(.periodic(by: 30))
+        // running for popovers the user might never open.
         DispatchQueue.main.async { [weak self] in
-            self?.warmAllPopovers()
-        }
-    }
-
-    /// Force-instantiate every popover's SwiftUI tree once. Subsequent shows
-    /// reuse the same NSPopover/NSHostingController instances and feel
-    /// instantaneous instead of laggy on first click.
-    private func warmAllPopovers() {
-        for kind in MenuBarItemKind.allCases {
-            _ = popover(for: kind)
+            _ = self?.popover(for: .compact)
         }
     }
 
@@ -130,31 +122,30 @@ final class StatusItemController {
     }
 
     private func observeChanges() {
+        // Density changes invalidate cached popovers — keep that on its own
+        // settings sink so the work happens immediately, not after the
+        // throttle window.
         environment.settingsStore.$settings
             .receive(on: RunLoop.main)
             .sink { [weak self] settings in
                 self?.invalidatePopoversIfDensitiesChanged(Self.snapshotDensities(settings))
-                self?.renderMenuBar()
             }
             .store(in: &cancellables)
 
-        environment.quotaService.$lastSuccessByAccount
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.renderMenuBar() }
-            .store(in: &cancellables)
-
-        environment.quotaService.$lastErrorByAccount
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.renderMenuBar() }
-            .store(in: &cancellables)
-
-        environment.accountStore.$accounts
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.renderMenuBar() }
-            .store(in: &cancellables)
-
-        environment.serviceStatus.$snapshotByTool
-            .receive(on: RunLoop.main)
+        // Coalesce all five render triggers into one throttled pipeline.
+        // Five separate sinks each calling renderMenuBar() (which lockFocus's
+        // four NSImages) was the most expensive hot path on settings or
+        // quota updates that fire several @Published values in quick
+        // succession.
+        let renderTriggers: [AnyPublisher<Void, Never>] = [
+            environment.settingsStore.$settings.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$lastSuccessByAccount.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$lastErrorByAccount.map { _ in () }.eraseToAnyPublisher(),
+            environment.accountStore.$accounts.map { _ in () }.eraseToAnyPublisher(),
+            environment.serviceStatus.$snapshotByTool.map { _ in () }.eraseToAnyPublisher()
+        ]
+        Publishers.MergeMany(renderTriggers)
+            .throttle(for: .milliseconds(120), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.renderMenuBar() }
             .store(in: &cancellables)
     }

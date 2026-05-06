@@ -58,7 +58,7 @@ final class PrivacyPersistenceTests: XCTestCase {
     func testScanCacheStoresHashedPathKeys() throws {
         var cache = CostUsageScanCache()
         let mtime = Date(timeIntervalSince1970: 1_700_000_000)
-        let path = "/Users/example/.codex/sessions/secret-project/session.jsonl"
+        let path = "/Users/example/.codex/sessions/private-project/session.jsonl"
         let event = CostUsageScanCache.ParsedEvent(
             date: mtime,
             model: "gpt-5",
@@ -74,12 +74,12 @@ final class PrivacyPersistenceTests: XCTestCase {
         let key = try XCTUnwrap(cache.entries.keys.first)
         XCTAssertTrue(key.hasPrefix("path-v1-"))
         XCTAssertFalse(key.contains("/Users"))
-        XCTAssertFalse(key.contains("secret-project"))
+        XCTAssertFalse(key.contains("private-project"))
 
         let data = try JSONEncoder().encode(cache)
         let json = String(decoding: data, as: UTF8.self)
         XCTAssertFalse(json.contains("/Users/example"))
-        XCTAssertFalse(json.contains("secret-project"))
+        XCTAssertFalse(json.contains("private-project"))
         XCTAssertEqual(cache.reusable(for: path, mtime: mtime, size: 123)?.count, 1)
     }
 

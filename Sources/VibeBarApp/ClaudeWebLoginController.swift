@@ -225,6 +225,9 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         statusLabel?.stringValue = "Log in to claude.ai, then save cookies."
+        // Only probe page length on hosts in the allowlist. A mid-flight
+        // redirect to an unexpected origin must not run our JS there.
+        guard Self.isTrustedAuthHost(webView.url?.host) else { return }
         webView.evaluateJavaScript("document.body ? document.body.innerText.trim().length : 0") { [weak self, weak webView] result, _ in
             Task { @MainActor in
                 guard let self, webView === self.webView else { return }
@@ -313,8 +316,21 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
         guard navigationAction.targetFrame == nil else {
             return nil
         }
+        // Reject popups whose target origin isn't in our allowlist — never
+        // hand a fresh WKWebView to an arbitrary site that the page asks us
+        // to open.
+        guard Self.isTrustedAuthHost(navigationAction.request.url?.host) else {
+            if let url = navigationAction.request.url {
+                NSWorkspace.shared.open(url)
+            }
+            return nil
+        }
 
-        let popup = makeWebView(configuration: configuration)
+        // Use our own non-persistent configuration rather than reusing the
+        // page-supplied one. The parent webView's data store is already
+        // ephemeral; we want the popup to inherit that posture, not whatever
+        // the calling page wished for.
+        let popup = makeWebView(configuration: makeWebViewConfiguration())
         popup.allowsBackForwardNavigationGestures = true
 
         let popupWindow = NSWindow(

@@ -15,6 +15,11 @@ import Foundation
 /// is unparseable; callers can keep a placeholder bucket visible.
 public enum ClaudeRoutinesFetcher {
     private static let endpoint = URL(string: "https://claude.ai/v1/code/routines/run-budget")!
+    /// Most-recent successful budget probe. A single quota refresh cycle can
+    /// trigger several callers (CLI path + web path + ad-hoc retries); they
+    /// all see the same number anyway, so cache it briefly.
+    private static let cacheTTL: TimeInterval = 60
+    private static let cache = ResultCache()
 
     public struct Result: Sendable, Equatable {
         public let used: Int
@@ -31,12 +36,16 @@ public enum ClaudeRoutinesFetcher {
     }
 
     public static func fetch(session: URLSession = .shared) async -> Result? {
+        if let cached = await cache.value(maxAge: cacheTTL) {
+            return cached
+        }
         // Stay inside Vibe Bar's minimized cookie store. If the endpoint needs
         // more than sessionKey for a particular account, keep the placeholder
         // bucket visible instead of broadening stored cookies.
         let headers = ClaudeWebCookieStore.candidateCookieHeaders()
         for header in headers {
-            if let result = await fetch(cookieHeader: header, session: session) {
+            if let result = await fetchUncached(cookieHeader: header, session: session) {
+                await cache.store(result)
                 return result
             }
         }
@@ -44,6 +53,17 @@ public enum ClaudeRoutinesFetcher {
     }
 
     public static func fetch(cookieHeader: String, session: URLSession = .shared) async -> Result? {
+        if let cached = await cache.value(maxAge: cacheTTL) {
+            return cached
+        }
+        if let result = await fetchUncached(cookieHeader: cookieHeader, session: session) {
+            await cache.store(result)
+            return result
+        }
+        return nil
+    }
+
+    private static func fetchUncached(cookieHeader: String, session: URLSession) async -> Result? {
         let header = ClaudeWebCookieStore.normalizedCookieHeader(from: cookieHeader)
         guard !header.isEmpty else { return nil }
         var request = URLRequest(url: endpoint)
@@ -99,6 +119,19 @@ public enum ClaudeRoutinesFetcher {
         case let d as Double:   return Int(d)
         case let s as String:   return Int(s)
         default:                return nil
+        }
+    }
+
+    private actor ResultCache {
+        private var stored: (result: Result, at: Date)?
+
+        func value(maxAge: TimeInterval) -> Result? {
+            guard let stored, Date().timeIntervalSince(stored.at) < maxAge else { return nil }
+            return stored.result
+        }
+
+        func store(_ result: Result) {
+            stored = (result, Date())
         }
     }
 }

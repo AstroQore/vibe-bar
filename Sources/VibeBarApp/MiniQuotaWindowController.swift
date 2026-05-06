@@ -2,15 +2,26 @@ import AppKit
 import SwiftUI
 import VibeBarCore
 
+/// On-disk representation of the mini-window's saved screen position. Stored
+/// in its own JSON file (see `VibeBarLocalStore.miniWindowGeometryURL`) so
+/// dragging the panel doesn't touch the main `AppSettings` blob.
+private struct MiniWindowGeometry: Codable {
+    var originX: Double
+    var originY: Double
+    var pixelOriginX: Double?
+    var pixelOriginY: Double?
+    var screenScale: Double?
+}
+
 @MainActor
 final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private weak var environment: AppEnvironment?
     /// We watch `panel.frameAutosaveName` indirectly via this observer so we
-    /// can persist the user's drag-positioning back into Settings.
+    /// can persist the user's drag-positioning back into the geometry file.
     private var frameObserver: NSObjectProtocol?
     /// Debounce repeated didMove notifications so we don't write the JSON
-    /// settings file on every pixel during a drag.
+    /// geometry file on every pixel during a drag.
     private var originPersistWorkItem: DispatchWorkItem?
     private var isApplicationTerminating = false
 
@@ -127,8 +138,18 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
 
     private func applySavedPositionOrDefault(to panel: NSPanel, settings: AppSettings) {
         let size = panel.frame.size
-        if let x = settings.miniWindow.savedOriginX,
-           let y = settings.miniWindow.savedOriginY,
+        // Prefer the standalone geometry file; fall back to the legacy
+        // settings copy for users upgrading from <= 0.1 builds.
+        let savedX: Double?
+        let savedY: Double?
+        if let geometry = Self.loadGeometry() {
+            savedX = geometry.originX
+            savedY = geometry.originY
+        } else {
+            savedX = settings.miniWindow.savedOriginX
+            savedY = settings.miniWindow.savedOriginY
+        }
+        if let x = savedX, let y = savedY,
            Self.isOriginVisible(NSPoint(x: x, y: y), size: size) {
             panel.setFrameOrigin(NSPoint(x: x, y: y))
             return
@@ -140,6 +161,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
                 y: visibleFrame.maxY - size.height - 48
             )
         )
+    }
+
+    private static func loadGeometry() -> MiniWindowGeometry? {
+        try? VibeBarLocalStore.readJSON(MiniWindowGeometry.self, from: VibeBarLocalStore.miniWindowGeometryURL)
     }
 
     private static func isOriginVisible(_ origin: NSPoint, size: NSSize) -> Bool {
@@ -154,17 +179,21 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     }
 
     private func persistOrigin() {
-        guard let panel, let environment else { return }
+        guard let panel else { return }
         let origin = panel.frame.origin
         let scale = panel.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1
         let pixelOrigin = NSPoint(x: origin.x * scale, y: origin.y * scale)
-        var settings = environment.settingsStore.settings
-        settings.miniWindow.savedOriginX = Double(origin.x)
-        settings.miniWindow.savedOriginY = Double(origin.y)
-        settings.miniWindow.savedPixelOriginX = Double(pixelOrigin.x)
-        settings.miniWindow.savedPixelOriginY = Double(pixelOrigin.y)
-        settings.miniWindow.savedScreenScale = Double(scale)
-        environment.settingsStore.settings = settings
+        let geometry = MiniWindowGeometry(
+            originX: Double(origin.x),
+            originY: Double(origin.y),
+            pixelOriginX: Double(pixelOrigin.x),
+            pixelOriginY: Double(pixelOrigin.y),
+            screenScale: Double(scale)
+        )
+        // Standalone file: avoids rewriting the AppSettings JSON (and
+        // fanning out to every $settings subscriber + status-item rerender)
+        // on every drag-tick. See VibeBarLocalStore.miniWindowGeometryURL.
+        try? VibeBarLocalStore.writeJSON(geometry, to: VibeBarLocalStore.miniWindowGeometryURL)
     }
 
     private func toggleDisplayMode() {

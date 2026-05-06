@@ -36,6 +36,14 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("cost_history.json")
     }
 
+    /// Mini-window geometry is persisted out-of-band from `AppSettings` so a
+    /// drag-to-move (which fires didMove repeatedly) doesn't rewrite the
+    /// whole settings JSON or fan out through every Combine subscriber on
+    /// `SettingsStore.$settings`.
+    public static var miniWindowGeometryURL: URL {
+        baseDirectory.appendingPathComponent("mini_window_geometry.json")
+    }
+
     public static func readData(from url: URL) throws -> Data {
         try Data(contentsOf: url)
     }

@@ -133,3 +133,8 @@ For a release build:
 
 Vibe Bar is early public-release software. Expect fast iteration around
 provider APIs, model pricing, packaging, and macOS design details.
+
+## License
+
+Vibe Bar is licensed under the GNU Affero General Public License v3.0 only.
+See [LICENSE](LICENSE) for the full license text.

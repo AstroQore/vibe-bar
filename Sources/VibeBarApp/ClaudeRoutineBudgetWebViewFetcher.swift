@@ -86,14 +86,25 @@ private final class ClaudeRoutineBudgetWebViewFetchRunner: NSObject, WKNavigatio
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Only run JS if we ended up on the expected origin. Cookie-rejected
+        // redirects can drop us on an interstitial or a Cloudflare page; we
+        // shouldn't extract innerText from arbitrary hosts.
+        guard webView.url?.host == "claude.ai" else {
+            finish(nil)
+            return
+        }
         readBudgetBody(from: webView, attempt: 0)
     }
 
     private func readBudgetBody(from webView: WKWebView, attempt: Int) {
+        guard webView.url?.host == "claude.ai" else {
+            finish(nil)
+            return
+        }
         let script = "document.body ? document.body.innerText : ''"
         webView.evaluateJavaScript(script) { [weak self] value, _ in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, !self.isFinished else { return }
                 if
                     let body = value as? String,
                     let bodyData = body.data(using: .utf8),
@@ -102,12 +113,12 @@ private final class ClaudeRoutineBudgetWebViewFetchRunner: NSObject, WKNavigatio
                     self.finish(result)
                     return
                 }
-                guard attempt < 4, !self.isFinished else {
+                guard attempt < 4 else {
                     self.finish(nil)
                     return
                 }
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
-                guard let webView = self.webView else {
+                guard !self.isFinished, let webView = self.webView else {
                     self.finish(nil)
                     return
                 }
@@ -162,7 +173,7 @@ private final class ClaudeRoutineBudgetWebViewFetchRunner: NSObject, WKNavigatio
                     .path: "/",
                     .name: name,
                     .value: value,
-                    .secure: "TRUE"
+                    .secure: true
                 ])
             }
     }
