@@ -77,7 +77,15 @@ public final class CostUsageService: ObservableObject {
         var results: [ToolType: CostSnapshot] = [:]
         let home = homeDirectory
         for tool in ToolType.allCases where tool.supportsTokenCost {
-            if let scanned = await CostUsageScanner.scan(tool: tool, homeDirectory: home, now: now) {
+            // Scan on a detached utility task so JSONL parsing doesn't block
+            // the main actor. CostUsageService itself is `@MainActor`; without
+            // this hop, `nonisolated async` callees still run inline on the
+            // calling actor and can stutter the menu bar UI for hundreds of
+            // milliseconds when the user has accumulated many session files.
+            let scanned: CostSnapshot? = await Task.detached(priority: .utility) {
+                await CostUsageScanner.scan(tool: tool, homeDirectory: home, now: now)
+            }.value
+            if let scanned {
                 let merged = await CostHistoryStore.shared.mergeAndAugment(scanned)
                 results[tool] = merged
                 // Persist the post-merge snapshot so a future launch can show
