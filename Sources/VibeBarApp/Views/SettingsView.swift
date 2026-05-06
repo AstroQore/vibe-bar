@@ -134,13 +134,18 @@ struct SettingsView: View {
                         Text("Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Button {
+                            environment.refreshCostUsage()
+                        } label: {
+                            Label("Rescan cost logs", systemImage: "arrow.triangle.2.circlepath")
+                        }
                         Text("Pricing data: \(CostUsagePricing.pricingDataUpdatedAt)")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
 
                     settingsSection("Privacy") {
-                        Text("Tokens are read from local CLI credentials. Settings, quota cache, and Claude Web cookies are stored under ~/.vibebar.")
+                        Text("Tokens are read from local CLI credentials. Claude Web cookies are stored in Keychain. Settings, quota cache, and cost summaries are stored under ~/.vibebar.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

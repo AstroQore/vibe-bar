@@ -2,16 +2,13 @@ import Foundation
 
 /// Storage for Claude web session cookies.
 ///
-/// **Storage layout:** cookies are persisted as plain text at
-/// `~/.vibebar/cookies/claude-web.txt` (mode 0600, owner-only). The Keychain
-/// API surface here is read-only legacy: `readCookieHeader` falls back to a
-/// pre-existing Keychain entry, but `writeCookieHeader` always **deletes** any
-/// Keychain copy so the on-disk file is the only persisted form going forward.
-/// On a multi-user Mac the cookie file is still readable by `root`, but is not
-/// exposed to other local users.
+/// Cookies are stored in Keychain. Older builds wrote
+/// `~/.vibebar/cookies/claude-web.txt`; reads still migrate that legacy file
+/// into Keychain and then remove it.
 public enum ClaudeWebCookieStore {
     private static let service = "Vibe Bar Claude Web Cookies"
     private static let account = "claude.ai"
+    private static let organizationAccount = "claude.ai.organization"
 
     public static func readCookieHeader() throws -> String {
         if let header = candidateCookieHeaders().first {
@@ -22,16 +19,27 @@ public enum ClaudeWebCookieStore {
 
     public static func candidateCookieHeaders() -> [String] {
         var headers: [String] = []
-        appendCookieHeader(try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeCookieURL), to: &headers)
-        appendCookieHeader(try? KeychainStore.readString(service: service, account: account), to: &headers)
+        let keychainHeader = (try? KeychainStore.readString(service: service, account: account))
+            .map { normalizedCookieHeader(from: $0) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        appendCookieHeader(keychainHeader, to: &headers)
+        if let legacy = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeCookieURL) {
+            let legacyHeader = normalizedCookieHeader(from: legacy)
+            if keychainHeader == nil {
+                appendCookieHeader(legacyHeader, to: &headers)
+                try? writeCookieHeader(legacyHeader)
+            } else {
+                try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
+            }
+        }
         return unique(headers)
     }
 
     public static func writeCookieHeader(_ header: String) throws {
         let trimmed = normalizedCookieHeader(from: header)
         guard !trimmed.isEmpty else { throw QuotaError.noCredential }
-        try VibeBarLocalStore.writeString(trimmed, to: VibeBarLocalStore.claudeCookieURL)
-        try? KeychainStore.deleteItem(service: service, account: account)
+        try KeychainStore.writeString(service: service, account: account, value: trimmed)
+        try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
     }
 
     public static func hasCookieHeader() -> Bool {
@@ -42,20 +50,27 @@ public enum ClaudeWebCookieStore {
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
         try? KeychainStore.deleteItem(service: service, account: account)
+        try? KeychainStore.deleteItem(service: service, account: organizationAccount)
     }
 
     public static func readOrganizationID() -> String? {
-        guard let raw = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeOrganizationIDURL) else {
-            return nil
+        if let raw = try? KeychainStore.readString(service: service, account: organizationAccount),
+           let normalized = normalizedOrganizationID(raw) {
+            try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
+            return normalized
         }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        if let legacy = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeOrganizationIDURL),
+           let normalized = normalizedOrganizationID(legacy) {
+            try? writeOrganizationID(normalized)
+            return normalized
+        }
+        return nil
     }
 
     public static func writeOrganizationID(_ organizationID: String) throws {
-        let trimmed = organizationID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        try VibeBarLocalStore.writeString(trimmed, to: VibeBarLocalStore.claudeOrganizationIDURL)
+        guard let trimmed = normalizedOrganizationID(organizationID) else { return }
+        try KeychainStore.writeString(service: service, account: organizationAccount, value: trimmed)
+        try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
     }
 
     public static func sessionKeyHeader(from header: String) -> String? {
@@ -86,6 +101,11 @@ public enum ClaudeWebCookieStore {
             headers.append(sessionOnly)
         }
         headers.append(header)
+    }
+
+    private static func normalizedOrganizationID(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func cookiePairs(from header: String) -> [(name: String, value: String)] {

@@ -21,18 +21,18 @@ Runtime state is stored in the current user's home directory:
 ```text
 ~/.vibebar/
 ├── settings.json
-├── cookies/
-│   ├── claude-web.txt
-│   └── claude-organization-id.txt
 ├── quotas/
 ├── cost_snapshots/
+├── scan_cache/
+├── service_status.json
 └── cost_history.json
 ```
 
-Vibe Bar reads local CLI credentials and saved Claude web cookies. It does not
-write to the CLI credential files. Claude organization IDs are resolved from the
-Claude web organizations endpoint and cached locally after a Claude Web Login or
-the first successful Claude web quota refresh.
+Vibe Bar reads local CLI credentials and Claude/Codex session JSONL logs. It
+does not write to the CLI credential or session files. Claude web cookies and
+the resolved Claude organization ID are stored in Keychain; older plaintext
+cookie files under `~/.vibebar/cookies/` are migrated into Keychain and removed
+on first read.
 
 ## Development Notes
 

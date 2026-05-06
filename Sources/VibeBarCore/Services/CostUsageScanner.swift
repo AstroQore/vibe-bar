@@ -104,17 +104,13 @@ public enum CostUsageScanner {
     }
 
     private static func parseCodexFile(file: URL) -> [CodexEvent] {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return [] }
-        defer { try? handle.close() }
-        guard let data = try? handle.readToEnd() else { return [] }
-
         var events: [CodexEvent] = []
         var currentModel = "gpt-5"
-        for lineData in data.split(separator: 0x0A) {
-            guard !lineData.isEmpty else { continue }
+        let didRead = forEachJSONLLine(in: file) { lineData in
+            guard !lineData.isEmpty else { return }
             guard lineData.contains(asciiSequence: "token_count") ||
-                    lineData.contains(asciiSequence: "model") else { continue }
-            guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { continue }
+                    lineData.contains(asciiSequence: "model") else { return }
+            guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
 
             if let payload = obj["payload"] as? [String: Any] {
                 if let m = payload["model"] as? String { currentModel = m }
@@ -125,8 +121,8 @@ public enum CostUsageScanner {
                   let payload = obj["payload"] as? [String: Any],
                   payload["type"] as? String == "token_count",
                   let info = payload["info"] as? [String: Any]
-            else { continue }
-            guard let total = info["total_token_usage"] as? [String: Any] else { continue }
+            else { return }
+            guard let total = info["total_token_usage"] as? [String: Any] else { return }
             let totals = CodexEvent.Totals(
                 input: anyInt(total["input_tokens"]),
                 cached: anyInt(total["cached_input_tokens"] ?? total["cache_read_input_tokens"]),
@@ -135,7 +131,7 @@ public enum CostUsageScanner {
             let timestamp = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
             events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals))
         }
-        return events
+        return didRead ? events : []
     }
 
     // MARK: - Claude
@@ -157,25 +153,17 @@ public enum CostUsageScanner {
                 continue
             }
 
-            guard let handle = try? FileHandle(forReadingFrom: file),
-                  let data = try? handle.readToEnd()
-            else {
-                cache.store([], for: file.path, mtime: mtime, size: size)
-                continue
-            }
-            try? handle.close()
-
             var parsed: [CostUsageScanCache.ParsedEvent] = []
-            for lineData in data.split(separator: 0x0A) {
+            let didRead = forEachJSONLLine(in: file) { lineData in
                 guard !lineData.isEmpty,
                       lineData.contains(asciiSequence: "assistant"),
                       lineData.contains(asciiSequence: "usage")
-                else { continue }
+                else { return }
                 guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any],
                       obj["type"] as? String == "assistant",
                       let message = obj["message"] as? [String: Any],
                       let usage = message["usage"] as? [String: Any]
-                else { continue }
+                else { return }
 
                 let model = (message["model"] as? String) ?? "claude-sonnet-4-5"
                 let input = anyInt(usage["input_tokens"])
@@ -207,6 +195,10 @@ public enum CostUsageScanner {
                     cache: parsedEvent.cache,
                     costUSD: parsedEvent.costUSD
                 )
+            }
+            guard didRead else {
+                cache.store([], for: file.path, mtime: mtime, size: size)
+                continue
             }
             cache.store(parsed, for: file.path, mtime: mtime, size: size)
         }
@@ -378,6 +370,34 @@ public enum CostUsageScanner {
         let mtime = (attrs[.modificationDate] as? Date) ?? .distantPast
         let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
         return (mtime, size)
+    }
+
+    private static let lineChunkSize = 64 * 1024
+    private static let newlineData = Data([0x0A])
+
+    private static func forEachJSONLLine(in file: URL, _ body: (Data) -> Void) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
+        defer { try? handle.close() }
+
+        var buffer = Data()
+        do {
+            while let chunk = try handle.read(upToCount: lineChunkSize), !chunk.isEmpty {
+                buffer.append(chunk)
+                while let newlineRange = buffer.firstRange(of: newlineData) {
+                    let line = buffer[..<newlineRange.lowerBound]
+                    if !line.isEmpty {
+                        body(Data(line))
+                    }
+                    buffer.removeSubrange(..<newlineRange.upperBound)
+                }
+            }
+            if !buffer.isEmpty {
+                body(buffer)
+            }
+            return true
+        } catch {
+            return false
+        }
     }
 
     private static let isoWithFraction: ISO8601DateFormatter = {

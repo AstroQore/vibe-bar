@@ -91,8 +91,8 @@ final class AppEnvironment: ObservableObject {
         serviceStatus.start()
 
         // Kick off an initial cost scan in the background. Cost data updates
-        // slowly compared to live quota, so we re-scan only on user-triggered
-        // refresh or app relaunch.
+        // slowly compared to live quota, so we re-scan only on app relaunch,
+        // data-source settings changes, or the explicit Cost Data rescan button.
         Task { @MainActor in
             await costService.refreshAll()
         }
@@ -133,13 +133,16 @@ final class AppEnvironment: ObservableObject {
         lastRoutineBudgetAttemptByAccount.removeAll()
         scheduler.triggerRefresh()
         serviceStatus.refreshAll()
-        Task { @MainActor in
-            await costService.refreshAll()
-        }
     }
 
     func refreshAll() {
         reloadProviderCredentialsAndRefresh()
+    }
+
+    func refreshCostUsage() {
+        Task { @MainActor in
+            await costService.refreshAll()
+        }
     }
 
     func refresh(_ tool: ToolType) {
@@ -165,6 +168,7 @@ final class AppEnvironment: ObservableObject {
     @discardableResult
     func deleteClaudeWebCookies() -> Bool {
         do {
+            ClaudeWebLoginController.clearPersistentClaudeWebsiteData()
             try ClaudeWebCookieStore.deleteCookieHeader()
             hasClaudeWebCookies = false
             for account in accountStore.accounts(for: .claude) {

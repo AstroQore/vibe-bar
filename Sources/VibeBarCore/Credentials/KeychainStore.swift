@@ -1,12 +1,13 @@
 import Foundation
 import Security
 
-/// Generic-password Keychain wrapper used only for reading existing CLI
-/// keychain entries (service: "Codex Auth", "Claude Code-credentials").
+/// Generic-password Keychain wrapper used for existing CLI keychain entries
+/// and Vibe Bar-owned secrets.
 public enum KeychainStore {
     public enum KeychainError: Error, Equatable {
         case itemNotFound
         case interactionNotAllowed
+        case ambiguousItem(Int)
         case unhandledStatus(OSStatus)
     }
 
@@ -14,11 +15,13 @@ public enum KeychainStore {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecReturnData as String: true
         ]
         if let account {
             query[kSecAttrAccount as String] = account
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+        } else {
+            query[kSecMatchLimit as String] = kSecMatchLimitAll
         }
 
         var result: AnyObject?
@@ -26,6 +29,18 @@ public enum KeychainStore {
 
         switch status {
         case errSecSuccess:
+            if account == nil {
+                if let items = result as? [Data] {
+                    guard items.count == 1 else {
+                        throw items.isEmpty ? KeychainError.itemNotFound : KeychainError.ambiguousItem(items.count)
+                    }
+                    return items[0]
+                }
+                if let data = result as? Data {
+                    return data
+                }
+                throw KeychainError.itemNotFound
+            }
             guard let data = result as? Data else {
                 throw KeychainError.itemNotFound
             }

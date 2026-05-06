@@ -175,6 +175,18 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
         return configuration
     }
 
+    static func clearPersistentClaudeWebsiteData() {
+        let store = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        store.fetchDataRecords(ofTypes: types) { records in
+            let claudeRecords = records.filter { record in
+                record.displayName == "claude.ai" || record.displayName.hasSuffix(".claude.ai")
+            }
+            guard !claudeRecords.isEmpty else { return }
+            store.removeData(ofTypes: types, for: claudeRecords) {}
+        }
+    }
+
     private func makeWebView(configuration: WKWebViewConfiguration) -> WKWebView {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
