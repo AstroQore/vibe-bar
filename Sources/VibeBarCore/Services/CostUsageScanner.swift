@@ -436,22 +436,25 @@ public enum CostUsageScanner {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
         defer { try? handle.close() }
 
-        // Linear-time JSONL scan: walk a single moving cursor over the
-        // accumulated buffer and only compact when the consumed prefix
-        // exceeds one chunk. The previous `firstRange + removeSubrange`
-        // implementation was O(n²) per file because every newline shift
-        // copied the entire remaining buffer.
-        var buffer = Data()
+        // Linear-time JSONL scan via [UInt8]: walks a single moving cursor
+        // and only compacts when the consumed prefix exceeds one chunk. We
+        // intentionally avoid Data as the scratch buffer — Data.removeFirst
+        // can leave heap-backed storage with a non-zero startIndex, after
+        // which 0-based subscripting like `buffer[i]` trips a bounds
+        // precondition under release optimization. Array<UInt8>.removeFirst
+        // physically shifts bytes and keeps indices 0-based, so this loop
+        // is safe and still O(n).
+        var buffer: [UInt8] = []
         var lineStart = 0
         do {
             while let chunk = try handle.read(upToCount: lineChunkSize), !chunk.isEmpty {
-                buffer.append(chunk)
+                buffer.append(contentsOf: chunk)
                 let end = buffer.count
                 var i = lineStart
                 while i < end {
                     if buffer[i] == 0x0A {
                         if i > lineStart {
-                            body(buffer.subdata(in: lineStart..<i))
+                            body(Data(buffer[lineStart..<i]))
                         }
                         lineStart = i + 1
                     }
@@ -463,7 +466,7 @@ public enum CostUsageScanner {
                 }
             }
             if lineStart < buffer.count {
-                let tail = buffer.subdata(in: lineStart..<buffer.count)
+                let tail = Data(buffer[lineStart..<buffer.count])
                 if !tail.isEmpty {
                     body(tail)
                 }
