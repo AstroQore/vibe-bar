@@ -26,7 +26,7 @@ public final class CostUsageService: ObservableObject {
     private let costDataSettingsProvider: () -> CostDataSettings
 
     public init(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = RealHomeDirectory.path,
         mockProvider: @escaping () -> Bool = { false },
         costDataSettingsProvider: @escaping () -> CostDataSettings = { .default }
     ) {

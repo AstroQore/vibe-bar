@@ -59,7 +59,7 @@ public enum ClaudeCredentialReader {
     }
 
     private static func readFromCredentialsJSON() throws -> ClaudeCredential {
-        let url = FileManager.default.homeDirectoryForCurrentUser
+        let url = RealHomeDirectory.url
             .appendingPathComponent(".claude/.credentials.json")
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw QuotaError.noCredential
