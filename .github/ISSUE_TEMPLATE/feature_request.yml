@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest an improvement for Codex or Claude Code monitoring in Vibe Bar.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: workflow
+    attributes:
+      label: Target workflow
+      options:
+        - Codex/OpenAI
+        - Claude Code/Anthropic
+        - Both Codex and Claude Code
+        - General macOS app experience
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What are you trying to understand, monitor, or control?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the UI, data, or automation you want Vibe Bar to provide.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Preferred surface
+      options:
+        - Menu-bar item
+        - Popover overview
+        - Provider detail page
+        - Mini floating window
+        - Settings
+        - Local data/export
+        - No preference
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Screenshots, mockups, or links are welcome. Please remove secrets and private identifiers.

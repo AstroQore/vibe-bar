@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a problem with Vibe Bar's Codex or Claude Code monitoring.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a Vibe Bar bug. Please do not paste tokens, cookies, JWTs, real email addresses, organization IDs, account IDs, or full unsanitized session logs.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Codex/OpenAI quota or cost
+        - Claude Code/Anthropic quota or cost
+        - Menu-bar item
+        - Mini floating window
+        - Settings or privacy controls
+        - Build, signing, or packaging
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the visible problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Vibe Bar...
+        2. Refresh...
+        3. See...
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "Example: macOS 26.x"
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Vibe Bar version or commit
+      placeholder: "Example: v0.1.0 or git SHA"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Share only sanitized logs, screenshots, or error messages.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed tokens, cookies, JWTs, email addresses, organization IDs, account IDs, and private paths.
+          required: true

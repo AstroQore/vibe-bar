@@ -1,9 +1,10 @@
 # Vibe Bar
 
-Vibe Bar is a native macOS menu-bar app for keeping an eye on AI subscription
-usage, local token cost, service status, and compact floating-window summaries.
-It is built for people who use both OpenAI/Codex and Anthropic/Claude Code and
-want the important numbers visible without opening multiple dashboards.
+Vibe Bar is a native macOS menu-bar app for Codex and Claude Code users who
+want subscription quota, usage pace, local token cost, and service status in one
+quiet desktop surface. It is built for developers who run OpenAI/Codex and
+Anthropic/Claude Code side by side and want the important numbers visible
+without opening multiple dashboards.
 
 <p align="center">
   <img src="Resources/README/overview-dashboard.png" alt="Vibe Bar overview dashboard" width="760">
@@ -19,6 +20,17 @@ want the important numbers visible without opening multiple dashboards.
 - Local-first cost tracking from CLI session logs.
 - Privacy controls for retention, clearing derived cost data, and disabling
   cost history persistence.
+
+## Built For
+
+Vibe Bar focuses on the two coding-agent workflows this repository cares about:
+
+- Codex/OpenAI usage: subscription windows, reset timing, service status, and
+  local Codex session cost/token history.
+- Claude Code/Anthropic usage: quota/routine budget visibility, service status,
+  and local Claude Code session cost/token history.
+- Mixed daily work: compact menu-bar and mini-window views that let you compare
+  pace, remaining quota, and recent spend without switching provider dashboards.
 
 ## Screenshots
 

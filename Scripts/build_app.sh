@@ -20,6 +20,7 @@ if [[ ! -x "$EXEC_PATH" ]]; then
 fi
 
 APP_DIR="$ROOT/.build/Vibe Bar.app"
+ENTITLEMENTS="$ROOT/Resources/VibeBar.entitlements"
 echo "==> packaging $APP_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
@@ -34,8 +35,13 @@ fi
 PkgInfo="APPL????"
 printf '%s' "$PkgInfo" > "$APP_DIR/Contents/PkgInfo"
 
-echo "==> ad-hoc codesign"
-codesign --force --deep --sign - "$APP_DIR"
+if [[ ! -f "$ENTITLEMENTS" ]]; then
+    echo "Entitlements file not found at $ENTITLEMENTS" >&2
+    exit 1
+fi
+
+echo "==> ad-hoc codesign with entitlements"
+codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_DIR"
 
 echo "==> done: $APP_DIR"
 echo "Run with: open \"$APP_DIR\""
