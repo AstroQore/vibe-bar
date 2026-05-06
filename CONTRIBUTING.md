@@ -6,16 +6,18 @@ private, and fast.
 
 ## Commit Identity
 
-Direct commits in this repository must use the shared maintainer identity:
+Use your own git identity — there is no shared maintainer alias. If you want
+to keep your personal email out of the public log, configure GitHub's
+privacy email (`<id>+<login>@users.noreply.github.com`) for this repo:
 
 ```sh
-git config --local user.name  "Vibe Bar Maintainers"
-git config --local user.email "noreply@github.com"
+git config --local user.name  "Your GitHub Name"
+git config --local user.email "<id>+<login>@users.noreply.github.com"
 ```
 
-Use `Co-Authored-By:` trailers in commit messages if you want explicit personal
-attribution. Do not publish personal emails, machine hostnames, internal handles,
-or local user paths through commit metadata or fixtures.
+Do not commit personal emails, machine hostnames, internal handles, or
+`/Users/<name>` paths inside source files, fixtures, or logs — that's a
+source-content rule, not a commit-author rule.
 
 ## Development Setup
 
