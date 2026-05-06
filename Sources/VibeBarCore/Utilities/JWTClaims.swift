@@ -1,5 +1,10 @@
 import Foundation
 
+/// Display-only JWT payload parser. Decodes the base64 payload without verifying
+/// the signature — claims surfaced from this (email, account id, plan) are
+/// shown in the UI but **never used for security decisions**. The upstream
+/// service authenticates the access token on every request, so a forged JWT
+/// here can mislead the local UI but cannot escalate against a real account.
 enum JWTClaims {
     static func parse(_ token: String?) -> [String: Any]? {
         guard let token else { return nil }
