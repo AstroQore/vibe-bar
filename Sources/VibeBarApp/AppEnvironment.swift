@@ -50,7 +50,9 @@ final class AppEnvironment: ObservableObject {
         )
         self.scheduler = scheduler
 
-        // Re-schedule when interval changes; refresh when user toggles mock.
+        // Re-schedule + reload accounts when interval / mock / usage mode
+        // changes. Quota refresh is cheap (in-memory + a couple of HTTPS
+        // calls) so we always trigger it.
         settings.$settings
             .dropFirst()
             .removeDuplicates {
@@ -62,6 +64,23 @@ final class AppEnvironment: ObservableObject {
                 self?.accountStore.reload(claudeUsageMode: settings.claudeUsageMode)
                 self?.scheduler.reschedule()
                 self?.scheduler.triggerRefresh()
+            }
+            .store(in: &cancellables)
+
+        // Cost re-scan is the expensive path (full filesystem walk + JSONL
+        // parse). Only run it when the *data source* actually changes —
+        // mock mode or claude usage mode. The refresh-interval slider has no
+        // effect on what cost data we'd read, so a flurry of slider edits
+        // shouldn't kick off back-to-back full scans. Debounce smooths
+        // multi-step settings transitions too.
+        settings.$settings
+            .dropFirst()
+            .removeDuplicates {
+                $0.mockEnabled == $1.mockEnabled
+                    && $0.claudeUsageMode == $1.claudeUsageMode
+            }
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
                 Task { @MainActor in
                     await self?.costService.refreshAll()
                 }
@@ -108,6 +127,10 @@ final class AppEnvironment: ObservableObject {
     func reloadProviderCredentialsAndRefresh() {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
         accountStore.reload(claudeUsageMode: settingsStore.claudeUsageMode)
+        // Cookies may have changed (login / re-login) — drop any stale
+        // 1h failure cooldowns so the routine WebView probe gets a fresh
+        // chance on the very next quota refresh.
+        lastRoutineBudgetAttemptByAccount.removeAll()
         scheduler.triggerRefresh()
         serviceStatus.refreshAll()
         Task { @MainActor in
@@ -157,14 +180,28 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
+    /// Fallback Claude run-budget probe spins up a hidden WKWebView to scrape
+    /// `claude.ai/v1/code/routines/run-budget`. Loading a real browser engine
+    /// is expensive (~50–200 ms CPU plus memory) and the probe usually fails
+    /// in a predictable way (no cookies, or the endpoint is gated). After a
+    /// failure we hold off for an hour so we don't re-spin the WebView on
+    /// every 10-minute quota refresh; on success the bucket gets a "used /
+    /// limit" `shortLabel` containing "/", so this scheduler short-circuits
+    /// at the next refresh anyway.
+    private static let routineBudgetFailureCooldown: TimeInterval = 3600
+
     private func scheduleClaudeRoutineBudgetPatchIfNeeded(for quota: AccountQuota) {
         guard quota.tool == .claude, !settingsStore.mockEnabled else { return }
         guard let routine = quota.bucket(id: "daily_routines") else { return }
         guard !routine.shortLabel.contains("/") else { return }
         guard !routineBudgetInFlightAccountIds.contains(quota.accountId) else { return }
+        // No cookies → the WebView would just load the login page and the
+        // parser would never see a budget JSON. Spinning it up costs CPU
+        // for no chance of success.
+        guard !ClaudeWebCookieStore.candidateCookieHeaders().isEmpty else { return }
         let now = Date()
         if let last = lastRoutineBudgetAttemptByAccount[quota.accountId],
-           now.timeIntervalSince(last) < 120 {
+           now.timeIntervalSince(last) < Self.routineBudgetFailureCooldown {
             return
         }
         routineBudgetInFlightAccountIds.insert(quota.accountId)
@@ -175,6 +212,9 @@ final class AppEnvironment: ObservableObject {
             defer { self.routineBudgetInFlightAccountIds.remove(accountId) }
             guard let result = await ClaudeRoutineBudgetWebViewFetcher.fetch() else { return }
             self.quotaService.replaceBucket(self.routinesBucket(from: result), for: accountId)
+            // Success: clear the cooldown so a future cookie rotation can
+            // reach the WebView immediately if the bucket regresses.
+            self.lastRoutineBudgetAttemptByAccount.removeValue(forKey: accountId)
         }
     }
 
