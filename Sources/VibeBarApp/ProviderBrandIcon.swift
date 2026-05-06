@@ -177,6 +177,7 @@ enum ProviderBrandIcon {
 }
 
 struct ProviderBrandIconView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let kind: MenuBarItemKind
     var size: CGFloat = 16
 
@@ -185,7 +186,8 @@ struct ProviderBrandIconView: View {
             if let image = ProviderBrandIcon.image(
                 for: kind,
                 size: NSSize(width: size, height: size),
-                tint: NSColor.labelColor
+                tint: NSColor.labelColor,
+                appearance: nsAppearance(for: colorScheme)
             ) {
                 Image(nsImage: image)
                     .resizable()
@@ -199,6 +201,14 @@ struct ProviderBrandIconView: View {
         .frame(width: size, height: size)
         .foregroundStyle(.primary)
         .accessibilityHidden(true)
+    }
+
+    private func nsAppearance(for colorScheme: ColorScheme) -> NSAppearance? {
+        switch colorScheme {
+        case .dark:  return NSAppearance(named: .darkAqua)
+        case .light: return NSAppearance(named: .aqua)
+        @unknown default: return nil
+        }
     }
 }
 
