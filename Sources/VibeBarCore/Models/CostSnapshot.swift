@@ -99,6 +99,64 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         )
     }
 
+    /// Return a view-safe snapshot whose calendar-window totals are evaluated
+    /// against `now`, not against the day when the snapshot was originally
+    /// scanned and cached.
+    public func rebasedForCurrentDay(now: Date = Date(), calendar: Calendar = .current) -> CostSnapshot {
+        let today = calendar.startOfDay(for: now)
+        let weekCutoff = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        let monthCutoff = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+
+        var todayCost = 0.0, todayTokenCount = 0
+        var weekCost = 0.0, weekTokenCount = 0
+        var monthCost = 0.0, monthTokenCount = 0
+        var allCost = 0.0, allTokenCount = 0
+
+        for point in dailyHistory {
+            let day = calendar.startOfDay(for: point.date)
+            guard day <= today else { continue }
+            allCost += point.costUSD
+            allTokenCount += point.totalTokens
+            if calendar.isDate(day, inSameDayAs: now) {
+                todayCost += point.costUSD
+                todayTokenCount += point.totalTokens
+            }
+            if day >= weekCutoff {
+                weekCost += point.costUSD
+                weekTokenCount += point.totalTokens
+            }
+            if day >= monthCutoff {
+                monthCost += point.costUSD
+                monthTokenCount += point.totalTokens
+            }
+        }
+
+        let hasDailyHistory = !dailyHistory.isEmpty
+        let hourlyToday = todayHourlyHistory.filter {
+            calendar.isDate($0.date, inSameDayAs: now)
+        }
+
+        return CostSnapshot(
+            tool: tool,
+            todayCostUSD: hasDailyHistory ? todayCost : (calendar.isDate(updatedAt, inSameDayAs: now) ? todayCostUSD : 0),
+            last7DaysCostUSD: hasDailyHistory ? weekCost : last7DaysCostUSD,
+            last30DaysCostUSD: hasDailyHistory ? monthCost : last30DaysCostUSD,
+            allTimeCostUSD: hasDailyHistory ? allCost : allTimeCostUSD,
+            todayTokens: hasDailyHistory ? todayTokenCount : (calendar.isDate(updatedAt, inSameDayAs: now) ? todayTokens : 0),
+            last7DaysTokens: hasDailyHistory ? weekTokenCount : last7DaysTokens,
+            last30DaysTokens: hasDailyHistory ? monthTokenCount : last30DaysTokens,
+            allTimeTokens: hasDailyHistory ? allTokenCount : allTimeTokens,
+            dailyHistory: dailyHistory,
+            todayHourlyHistory: hourlyToday,
+            heatmap: heatmap,
+            modelBreakdowns: modelBreakdowns,
+            last7DaysModelBreakdowns: last7DaysModelBreakdowns,
+            dailyModelBreakdown: dailyModelBreakdown,
+            jsonlFilesFound: jsonlFilesFound,
+            updatedAt: updatedAt
+        )
+    }
+
     /// Top 3 models for a given day — used by the cost history chart tooltip.
     /// Returns empty when the day predates the live scan (only cost/token
     /// totals were preserved from CostHistoryStore).

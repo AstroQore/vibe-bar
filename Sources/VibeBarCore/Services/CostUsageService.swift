@@ -43,7 +43,7 @@ public final class CostUsageService: ObservableObject {
                 await self.eraseLocalCostData()
                 return
             }
-            let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays)
+            let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
             for (tool, snap) in cached where self.snapshots[tool] == nil {
                 self.snapshots[tool] = snap
             }
@@ -54,7 +54,7 @@ public final class CostUsageService: ObservableObject {
     }
 
     public func snapshot(for tool: ToolType) -> CostSnapshot? {
-        snapshots[tool]
+        snapshots[tool]?.rebasedForCurrentDay()
     }
 
     public func extras(for tool: ToolType) -> ProviderExtras? {
@@ -158,7 +158,7 @@ public final class CostUsageService: ObservableObject {
             return
         }
         await CostHistoryStore.shared.prune(retentionDays: costData.retentionDays)
-        let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays)
+        let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
         snapshots = cached
         lastRefreshedAt = cached.values.map(\.updatedAt).max()
     }

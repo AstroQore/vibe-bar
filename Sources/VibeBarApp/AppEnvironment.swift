@@ -30,11 +30,12 @@ final class AppEnvironment: ObservableObject {
         self.accountStore = accounts
         self.quotaService = service
         self.serviceStatus = ServiceStatusController()
-        self.costService = CostUsageService(mockProvider: { [weak settings] in
+        let costService = CostUsageService(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
         }, costDataSettingsProvider: { [weak settings] in
             settings?.settings.costData ?? .default
         })
+        self.costService = costService
         self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
 
         let scheduler = QuotaRefreshScheduler(
@@ -48,6 +49,11 @@ final class AppEnvironment: ObservableObject {
             },
             intervalProvider: { [weak settings] in
                 settings?.refreshIntervalSeconds ?? AppSettings.default.refreshIntervalSeconds
+            },
+            onRefreshTriggered: {
+                Task { @MainActor in
+                    await costService.refreshAll()
+                }
             }
         )
         self.scheduler = scheduler
@@ -171,9 +177,12 @@ final class AppEnvironment: ObservableObject {
     func refresh(_ tool: ToolType) {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
         accountStore.reload(claudeUsageMode: settingsStore.claudeUsageMode)
-        guard let account = account(for: tool) else { return }
+        let account = account(for: tool)
         Task { @MainActor in
-            _ = await quotaService.refresh(account)
+            if let account {
+                _ = await quotaService.refresh(account)
+            }
+            await costService.refreshAll()
         }
     }
 

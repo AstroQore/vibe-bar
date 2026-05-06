@@ -16,6 +16,7 @@ public final class QuotaRefreshScheduler {
     private let service: QuotaService
     private let accountsProvider: () -> [AccountIdentity]
     private let intervalProvider: () -> Int
+    private let onRefreshTriggered: @MainActor () -> Void
     private var timer: Timer?
     private var pathMonitor: NWPathMonitor?
     private var lastNetworkStatus: NWPath.Status = .satisfied
@@ -24,11 +25,13 @@ public final class QuotaRefreshScheduler {
     public init(
         service: QuotaService,
         accountsProvider: @escaping () -> [AccountIdentity],
-        intervalProvider: @escaping () -> Int
+        intervalProvider: @escaping () -> Int,
+        onRefreshTriggered: @escaping @MainActor () -> Void = {}
     ) {
         self.service = service
         self.accountsProvider = accountsProvider
         self.intervalProvider = intervalProvider
+        self.onRefreshTriggered = onRefreshTriggered
     }
 
     public func start() {
@@ -55,6 +58,7 @@ public final class QuotaRefreshScheduler {
     }
 
     public func triggerRefresh() {
+        onRefreshTriggered()
         let accounts = accountsProvider()
         guard !accounts.isEmpty else { return }
         Task { @MainActor in

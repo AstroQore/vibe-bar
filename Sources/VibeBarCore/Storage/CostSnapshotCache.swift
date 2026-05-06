@@ -54,7 +54,8 @@ public actor CostSnapshotCache {
 
     public func load(
         tool: ToolType,
-        retentionDays: Int = CostDataSettings.defaultRetentionDays
+        retentionDays: Int = CostDataSettings.defaultRetentionDays,
+        now: Date = Date()
     ) -> CostSnapshot? {
         let normalizedRetentionDays = CostDataSettings.normalizedRetentionDays(retentionDays)
         let url = fileURL(for: tool)
@@ -64,23 +65,24 @@ public actor CostSnapshotCache {
                 try? FileManager.default.removeItem(at: url)
                 return nil
             }
-            return stored.snapshot
+            return stored.snapshot.rebasedForCurrentDay(now: now)
         }
         if (normalizedRetentionDays == CostDataSettings.defaultRetentionDays
             || normalizedRetentionDays == CostDataSettings.maximumRetentionDays),
            let legacy = try? JSONDecoder().decode(CostSnapshot.self, from: data) {
-            return legacy
+            return legacy.rebasedForCurrentDay(now: now)
         }
         try? FileManager.default.removeItem(at: url)
         return nil
     }
 
     public func loadAll(
-        retentionDays: Int = CostDataSettings.defaultRetentionDays
+        retentionDays: Int = CostDataSettings.defaultRetentionDays,
+        now: Date = Date()
     ) -> [ToolType: CostSnapshot] {
         var out: [ToolType: CostSnapshot] = [:]
         for tool in ToolType.allCases where tool.supportsTokenCost {
-            if let snap = load(tool: tool, retentionDays: retentionDays) {
+            if let snap = load(tool: tool, retentionDays: retentionDays, now: now) {
                 out[tool] = snap
             }
         }

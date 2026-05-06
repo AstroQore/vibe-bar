@@ -140,10 +140,11 @@ public actor CostHistoryStore {
             if let cutoffKey, entry.date < cutoffKey { continue }
             guard let day = dateFormatter.date(from: entry.date) else { continue }
             let normalizedDay = calendar.startOfDay(for: day)
+            guard normalizedDay <= today else { continue }
             dailyPoints.append(DailyCostPoint(date: normalizedDay, costUSD: entry.costUSD, totalTokens: entry.totalTokens))
             allCost += entry.costUSD
             allTokens += entry.totalTokens
-            if normalizedDay >= today {
+            if calendar.isDate(normalizedDay, inSameDayAs: snapshot.updatedAt) {
                 todayCost += entry.costUSD
                 todayTokens += entry.totalTokens
             }
