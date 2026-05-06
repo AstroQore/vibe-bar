@@ -41,7 +41,10 @@ private final class ClaudeRoutineBudgetWebViewFetchRunner: NSObject, WKNavigatio
 
     func fetch() async -> ClaudeRoutinesFetcher.Result? {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
+        // Fresh in-memory store per attempt: cookies we seed for this fetch
+        // don't accumulate in the global WebKit data store, and the routine
+        // budget probe never sees stale state from a previous run.
+        configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)

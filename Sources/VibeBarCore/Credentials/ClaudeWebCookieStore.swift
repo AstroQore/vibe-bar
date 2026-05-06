@@ -1,5 +1,14 @@
 import Foundation
 
+/// Storage for Claude web session cookies.
+///
+/// **Storage layout:** cookies are persisted as plain text at
+/// `~/.vibebar/cookies/claude-web.txt` (mode 0600, owner-only). The Keychain
+/// API surface here is read-only legacy: `readCookieHeader` falls back to a
+/// pre-existing Keychain entry, but `writeCookieHeader` always **deletes** any
+/// Keychain copy so the on-disk file is the only persisted form going forward.
+/// On a multi-user Mac the cookie file is still readable by `root`, but is not
+/// exposed to other local users.
 public enum ClaudeWebCookieStore {
     private static let service = "Vibe Bar Claude Web Cookies"
     private static let account = "claude.ai"

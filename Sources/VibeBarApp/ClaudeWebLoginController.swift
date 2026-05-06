@@ -165,7 +165,11 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
 
     private func makeWebViewConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
+        // In-memory data store: cookies live only for this login window. They
+        // don't bleed into the system-wide WebKit cache, and closing the
+        // window evicts them — `deleteClaudeWebCookies()` doesn't have to
+        // chase down a persistent store.
+        configuration.websiteDataStore = .nonPersistent()
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         return configuration
@@ -237,14 +241,55 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        if let url = navigationAction.request.url,
-           let scheme = url.scheme?.lowercased(),
-           !["http", "https", "about"].contains(scheme) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        let scheme = url.scheme?.lowercased() ?? ""
+        if scheme == "about" {
+            decisionHandler(.allow)
+            return
+        }
+        if scheme != "http" && scheme != "https" {
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
             return
         }
-        decisionHandler(.allow)
+        if Self.isTrustedAuthHost(url.host) {
+            decisionHandler(.allow)
+            return
+        }
+        // Unknown host: hand off to the system browser instead of letting
+        // claude.ai redirect us into an arbitrary site inside the in-app
+        // browser, where the user might mistake it for a legitimate part of
+        // the login flow.
+        NSWorkspace.shared.open(url)
+        statusLabel?.stringValue = "Opened \(url.host ?? "external link") in your browser."
+        decisionHandler(.cancel)
+    }
+
+    /// Allowlist of hosts the in-app login window may navigate to. Covers
+    /// claude.ai, anthropic.com, and the standard SSO providers Anthropic
+    /// supports (Google, Apple, GitHub). Anything else is opened in the
+    /// system browser.
+    private static let trustedAuthHostSuffixes: [String] = [
+        "anthropic.com",
+        "claude.ai",
+        "google.com",
+        "googleusercontent.com",
+        "gstatic.com",
+        "apple.com",
+        "icloud.com",
+        "github.com",
+        "githubusercontent.com",
+        "githubassets.com"
+    ]
+
+    private static func isTrustedAuthHost(_ host: String?) -> Bool {
+        guard let host = host?.lowercased(), !host.isEmpty else { return false }
+        return trustedAuthHostSuffixes.contains { suffix in
+            host == suffix || host.hasSuffix("." + suffix)
+        }
     }
 
     func webView(

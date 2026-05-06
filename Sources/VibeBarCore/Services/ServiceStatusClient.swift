@@ -140,7 +140,7 @@ public actor ServiceStatusClient {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await HTTPResponseLimit.boundedData(from: session, for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let text = String(data: data, encoding: .utf8) else {
             throw ServiceStatusError.badResponse
@@ -152,7 +152,7 @@ public actor ServiceStatusClient {
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
         request.setValue("Vibe Bar/1", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await HTTPResponseLimit.boundedData(from: session, for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw ServiceStatusError.badResponse
         }
