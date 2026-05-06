@@ -1,5 +1,7 @@
 # Vibe Bar
 
+**Read this in:** **English** · [中文](README.zh-CN.md)
+
 Vibe Bar is a native macOS menu-bar app for Codex and Claude Code users who
 want subscription quota, usage pace, local token cost, and service status in one
 quiet desktop surface. It is built for developers who run OpenAI/Codex and
@@ -9,6 +11,20 @@ without opening multiple dashboards.
 <p align="center">
   <img src="Resources/README/overview-dashboard.png" alt="Vibe Bar overview dashboard" width="760">
 </p>
+
+> ### Working with an AI coding agent?
+>
+> Two zero-context guides are written for AI agents (Claude Code, Codex,
+> Cursor, Aider, …). Hand either one to your agent and it can take over
+> from there:
+>
+> - **[AGENT-DEPLOY.md](AGENT-DEPLOY.md)** — clone, build, package, smoke-test,
+>   and (with your confirmation) install into `/Applications`.
+> - **[AGENT-PR.md](AGENT-PR.md)** — branch, verify locally, and open a
+>   pull request that matches this repo's conventions.
+>
+> Both files are designed to be self-contained — an agent with no prior
+> knowledge of the project can follow them top-to-bottom.
 
 ## Highlights
 
