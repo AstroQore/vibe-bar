@@ -20,6 +20,17 @@ struct CostHistoryView: View {
     @State private var hoveredDay: Date?
 
     var body: some View {
+        // Hoist the timeframe-derived values once per body. These were
+        // previously computed properties that re-filtered & re-reduced the
+        // entire daily history every time SwiftUI accessed them — once for
+        // the chart, three times for the metric row, plus per-bar via
+        // `barColor`. With ~1000 daily points (3-year retention) and a
+        // periodic TimelineView upstream, that adds up.
+        let days = filteredDays
+        let total = days.reduce(0) { $0 + $1.costUSD }
+        let avg = days.isEmpty ? 0 : total / Double(days.count)
+        let peakValue = days.map(\.costUSD).max() ?? 0
+
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Cost history")
@@ -28,13 +39,13 @@ struct CostHistoryView: View {
                 CostTimeframeSelector(selection: $timeframe, density: density)
                     .frame(width: 220)
             }
-            chart
+            chart(points: days, average: avg)
             HStack(spacing: 16) {
-                metric(label: "Total", value: formatCost(filteredTotal))
-                metric(label: "Avg/day", value: formatCost(average))
-                metric(label: "Peak", value: formatCost(peak))
+                metric(label: "Total", value: formatCost(total))
+                metric(label: "Avg/day", value: formatCost(avg))
+                metric(label: "Peak", value: formatCost(peakValue))
                 Spacer()
-                Text(timeframeNote)
+                Text(timeframeNote(dayCount: days.count))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
@@ -51,8 +62,7 @@ struct CostHistoryView: View {
     }
 
     @ViewBuilder
-    private var chart: some View {
-        let points = filteredDays
+    private func chart(points: [DailyCostPoint], average: Double) -> some View {
         if points.isEmpty {
             VStack {
                 Text("Building history…")
@@ -71,7 +81,7 @@ struct CostHistoryView: View {
                         x: .value("Day", day.date, unit: .day),
                         y: .value("Cost", day.costUSD)
                     )
-                    .foregroundStyle(barColor(for: day))
+                    .foregroundStyle(barColor(for: day, average: average))
                     .cornerRadius(2)
                     .opacity(opacity(for: day))
                 }
@@ -240,19 +250,12 @@ struct CostHistoryView: View {
         return history.filter { $0.date >= cutoff }
     }
 
-    private var filteredTotal: Double { filteredDays.reduce(0) { $0 + $1.costUSD } }
-    private var average: Double {
-        guard !filteredDays.isEmpty else { return 0 }
-        return filteredTotal / Double(filteredDays.count)
-    }
-    private var peak: Double { filteredDays.map(\.costUSD).max() ?? 0 }
-
-    private var timeframeNote: String {
+    private func timeframeNote(dayCount: Int) -> String {
         switch timeframe {
         case .today: return "1 day"
         case .week:  return "7 days"
         case .month: return "30 days"
-        case .all:   return filteredDays.count == 0 ? "" : "\(filteredDays.count) days"
+        case .all:   return dayCount == 0 ? "" : "\(dayCount) days"
         }
     }
 
@@ -289,7 +292,7 @@ struct CostHistoryView: View {
         return formatter.string(from: date)
     }
 
-    private func barColor(for day: DailyCostPoint) -> Color {
+    private func barColor(for day: DailyCostPoint, average: Double) -> Color {
         if average > 0, day.costUSD > average * 1.5 {
             return Color(red: 0.97, green: 0.55, blue: 0.20)
         }

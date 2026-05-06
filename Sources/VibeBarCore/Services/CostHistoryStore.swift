@@ -33,6 +33,25 @@ public actor CostHistoryStore {
     /// (tool, day) stays small (<200 KB).
     private static let retentionDays = 365 * 3
 
+    /// In-memory copy of the last loaded/saved storage. Refresh paths can
+    /// merge against this without re-reading the file every time.
+    private var cachedStorage: Storage?
+    /// When we last persisted to disk. Used to throttle write-back so a
+    /// burst of `mergeSeries` calls (one per tool, one per refresh) doesn't
+    /// re-encode and rewrite ~200 KB of JSON for every call.
+    private var lastSavedAt: Date?
+    /// Coalesce throttled writes — pending edits are flushed via this task.
+    private var pendingFlushTask: Task<Void, Never>?
+    /// Pending edits to flush. Set whenever `save(_:)` is called inside the
+    /// throttle window.
+    private var pendingStorage: Storage?
+
+    /// Flush the cache to disk at most once per this interval. Refresh runs
+    /// fire roughly every 10 minutes (default `refreshIntervalSeconds`); 30
+    /// seconds is fast enough to recover unsaved data after a crash but slow
+    /// enough that a typical refresh round writes the file at most once.
+    private static let saveThrottleInterval: TimeInterval = 30
+
     init(fileURL: URL = CostHistoryStore.defaultFileURL()) {
         self.fileURL = fileURL
         let f = DateFormatter()
@@ -161,25 +180,85 @@ public actor CostHistoryStore {
     }
 
     public func eraseAll() {
+        cachedStorage = Storage(entries: [])
+        pendingStorage = nil
+        pendingFlushTask?.cancel()
+        pendingFlushTask = nil
+        lastSavedAt = nil
         try? FileManager.default.removeItem(at: fileURL)
     }
 
+    /// Block until any pending throttled writes have flushed. Useful from
+    /// shutdown paths or tests.
+    public func flushPendingWrites() async {
+        if let storage = pendingStorage {
+            persist(storage)
+            pendingStorage = nil
+            lastSavedAt = Date()
+        }
+        pendingFlushTask?.cancel()
+        pendingFlushTask = nil
+    }
+
+    private static let maxFileBytes = 16 * 1024 * 1024  // 16 MB safety cap; real file is < 200 KB
+
     private func load() -> Storage {
+        if let cached = cachedStorage { return cached }
+        // Defensive size check: an empty or pathological file should not OOM
+        // the JSONDecoder. The legitimate file is well under 1 MB even at
+        // 3-year retention.
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+           let size = (attrs[.size] as? NSNumber)?.intValue,
+           size > Self.maxFileBytes {
+            let empty = Storage(entries: [])
+            cachedStorage = empty
+            return empty
+        }
         guard let data = try? Data(contentsOf: fileURL),
               let storage = try? JSONDecoder().decode(Storage.self, from: data)
         else {
-            return Storage(entries: [])
+            let empty = Storage(entries: [])
+            cachedStorage = empty
+            return empty
         }
+        cachedStorage = storage
         return storage
     }
 
     private func save(_ storage: Storage) {
+        cachedStorage = storage
+        let now = Date()
+        if let last = lastSavedAt, now.timeIntervalSince(last) < Self.saveThrottleInterval {
+            // Inside the throttle window: defer the write. The pending flush
+            // task wakes after the remaining delay and persists the latest
+            // value, coalescing any further writes that arrive in between.
+            pendingStorage = storage
+            scheduleFlush(after: Self.saveThrottleInterval - now.timeIntervalSince(last))
+            return
+        }
+        persist(storage)
+        pendingStorage = nil
+        pendingFlushTask?.cancel()
+        pendingFlushTask = nil
+        lastSavedAt = now
+    }
+
+    private func persist(_ storage: Storage) {
         guard let data = try? JSONEncoder().encode(storage) else { return }
         try? data.write(to: fileURL, options: .atomic)
         try? FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o600))],
             ofItemAtPath: fileURL.path
         )
+    }
+
+    private func scheduleFlush(after delay: TimeInterval) {
+        if pendingFlushTask != nil { return }
+        let nanoseconds = UInt64(max(0.05, delay) * 1_000_000_000)
+        pendingFlushTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            await self?.flushPendingWrites()
+        }
     }
 
     private func prune(_ storage: inout Storage) {

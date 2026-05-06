@@ -17,8 +17,13 @@ struct YearlyContributionHeatmapView: View {
     @State private var measuredGridWidth: CGFloat = 0
 
     var body: some View {
+        // Compute these ONCE per body. `thresholds` does a sort on the year's
+        // non-zero days, and `cell(...)` is invoked ~365 times — without
+        // hoisting, we'd re-sort the entire history per cell on every redraw.
         let columns = makeColumns()
         let metrics = gridMetrics(columnCount: columns.count, measuredWidth: measuredGridWidth)
+        let cachedThresholds = thresholds
+        let cachedMonthMarkers = monthLabelPositions(columns: columns)
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
@@ -33,7 +38,7 @@ struct YearlyContributionHeatmapView: View {
             }
             GeometryReader { proxy in
                 let liveMetrics = gridMetrics(columnCount: columns.count, measuredWidth: proxy.size.width)
-                grid(columns: columns, metrics: liveMetrics)
+                grid(columns: columns, metrics: liveMetrics, thresholds: cachedThresholds, monthMarkers: cachedMonthMarkers)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .preference(key: YearlyGridWidthPreferenceKey.self, value: proxy.size.width)
             }
@@ -73,8 +78,12 @@ struct YearlyContributionHeatmapView: View {
         12 + cellSpacing + 7 * metrics.cellSize + 6 * cellSpacing
     }
 
-    private func grid(columns: [WeekColumn], metrics: YearlyGridMetrics) -> some View {
-        let monthMarkers = monthLabelPositions(columns: columns)
+    private func grid(
+        columns: [WeekColumn],
+        metrics: YearlyGridMetrics,
+        thresholds: (p25: Double, p50: Double, p75: Double),
+        monthMarkers: [MonthMarker]
+    ) -> some View {
         return VStack(alignment: .leading, spacing: cellSpacing) {
             // Month label row, aligned to the column where each month's first
             // visible day falls.
@@ -116,7 +125,7 @@ struct YearlyContributionHeatmapView: View {
                     ForEach(columns.indices, id: \.self) { columnIndex in
                         VStack(spacing: metrics.cellSpacing) {
                             ForEach(0..<7, id: \.self) { weekday in
-                                cell(at: weekday, columnEntry: columns[columnIndex], metrics: metrics)
+                                cell(at: weekday, columnEntry: columns[columnIndex], metrics: metrics, thresholds: thresholds)
                             }
                         }
                     }
@@ -126,10 +135,10 @@ struct YearlyContributionHeatmapView: View {
     }
 
     @ViewBuilder
-    private func cell(at weekday: Int, columnEntry: WeekColumn, metrics: YearlyGridMetrics) -> some View {
+    private func cell(at weekday: Int, columnEntry: WeekColumn, metrics: YearlyGridMetrics, thresholds: (p25: Double, p50: Double, p75: Double)) -> some View {
         let entry = columnEntry.days[weekday]
         let value = entry?.costUSD ?? 0
-        let level = level(for: value)
+        let level = Self.level(for: value, thresholds: thresholds)
         RoundedRectangle(cornerRadius: metrics.cellCornerRadius, style: .continuous)
             .fill(color(forLevel: level))
             .frame(width: metrics.cellSize, height: metrics.cellSize)
@@ -261,9 +270,8 @@ struct YearlyContributionHeatmapView: View {
     /// Discrete level 0…4. 0 = no usage, 1…4 increase in saturation.
     /// Picking levels by quartile means the grid always feels populated even
     /// for users with little history (no faint pale-blue washout).
-    private func level(for value: Double) -> Int {
+    private static func level(for value: Double, thresholds t: (p25: Double, p50: Double, p75: Double)) -> Int {
         guard value > 0 else { return 0 }
-        let t = thresholds
         if t.p75 == 0 { return 1 }                 // only one active day
         if value > t.p75 { return 4 }
         if value > t.p50 { return 3 }
