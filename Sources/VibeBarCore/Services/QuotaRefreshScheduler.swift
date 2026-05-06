@@ -67,11 +67,16 @@ public final class QuotaRefreshScheduler {
     private func scheduleTimer() {
         timer?.invalidate()
         let interval = TimeInterval(max(60, intervalProvider()))
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.triggerRefresh()
             }
         }
+        // Quota refreshes don't need to fire on the exact second — letting
+        // macOS coalesce them with other timers (10% slack, capped at 30s)
+        // saves measurable battery on laptops.
+        timer.tolerance = min(30, interval * 0.1)
+        self.timer = timer
     }
 
     private func installSystemObservers() {
