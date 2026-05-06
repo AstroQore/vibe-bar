@@ -35,12 +35,24 @@ public enum CostUsageScanner {
         ]
         let files = roots.flatMap { collectJSONL(under: $0) }
         var aggregator = CostAggregator(tool: .codex, now: now)
+        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .codex)
 
         for file in files {
-            let events = parseCodexFile(file: file)
+            let (mtime, size) = fileFingerprint(file)
+            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+                for event in cached {
+                    aggregator.add(at: event.date, model: event.model, input: event.input,
+                                   output: event.output, cache: event.cache, costUSD: event.costUSD)
+                }
+                continue
+            }
+
+            let raw = parseCodexFile(file: file)
             // Delta from one snapshot to the next is what was used in that interval.
             var previous: CodexEvent.Totals? = nil
-            for event in events {
+            var parsed: [CostUsageScanCache.ParsedEvent] = []
+            parsed.reserveCapacity(raw.count)
+            for event in raw {
                 let delta: CodexEvent.Totals
                 if let previous {
                     delta = CodexEvent.Totals(
@@ -59,16 +71,23 @@ public enum CostUsageScanner {
                     cachedInputTokens: delta.cached,
                     outputTokens: delta.output
                 ) ?? 0
-                aggregator.add(
-                    at: event.date,
+                let parsedEvent = CostUsageScanCache.ParsedEvent(
+                    date: event.date,
                     model: event.model,
                     input: max(0, delta.input - delta.cached),
                     output: delta.output,
                     cache: delta.cached,
                     costUSD: cost
                 )
+                parsed.append(parsedEvent)
+                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                               input: parsedEvent.input, output: parsedEvent.output,
+                               cache: parsedEvent.cache, costUSD: parsedEvent.costUSD)
             }
+            cache.store(parsed, for: file.path, mtime: mtime, size: size)
         }
+        cache.prune(known: Set(files.map(\.path)))
+        cache.save(homeDirectory: homeDirectory, tool: .codex)
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
@@ -126,13 +145,27 @@ public enum CostUsageScanner {
         let altRoot = URL(fileURLWithPath: homeDirectory).appendingPathComponent(".config/claude/projects")
         let files = collectJSONL(under: projectsRoot) + collectJSONL(under: altRoot)
         var aggregator = CostAggregator(tool: .claude, now: now)
+        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .claude)
 
         for file in files {
+            let (mtime, size) = fileFingerprint(file)
+            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+                for event in cached {
+                    aggregator.add(at: event.date, model: event.model, input: event.input,
+                                   output: event.output, cache: event.cache, costUSD: event.costUSD)
+                }
+                continue
+            }
+
             guard let handle = try? FileHandle(forReadingFrom: file),
                   let data = try? handle.readToEnd()
-            else { continue }
+            else {
+                cache.store([], for: file.path, mtime: mtime, size: size)
+                continue
+            }
             try? handle.close()
 
+            var parsed: [CostUsageScanCache.ParsedEvent] = []
             for lineData in data.split(separator: 0x0A) {
                 guard !lineData.isEmpty,
                       lineData.contains(asciiSequence: "assistant"),
@@ -157,16 +190,28 @@ public enum CostUsageScanner {
                     outputTokens: output
                 ) ?? 0
                 let date = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
-                aggregator.add(
-                    at: date,
+                let parsedEvent = CostUsageScanCache.ParsedEvent(
+                    date: date,
                     model: model,
                     input: input,
                     output: output,
                     cache: cacheRead + cacheCreation,
                     costUSD: cost
                 )
+                parsed.append(parsedEvent)
+                aggregator.add(
+                    at: parsedEvent.date,
+                    model: parsedEvent.model,
+                    input: parsedEvent.input,
+                    output: parsedEvent.output,
+                    cache: parsedEvent.cache,
+                    costUSD: parsedEvent.costUSD
+                )
             }
+            cache.store(parsed, for: file.path, mtime: mtime, size: size)
         }
+        cache.prune(known: Set(files.map(\.path)))
+        cache.save(homeDirectory: homeDirectory, tool: .claude)
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
@@ -302,11 +347,18 @@ public enum CostUsageScanner {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let enumerator = FileManager.default.enumerator(
             at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else { return [] }
         var out: [URL] = []
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+            // Skip symlinks. They could resolve outside `~/.claude` /
+            // `~/.codex` (e.g. an attacker with the user's UID seeding a link
+            // to a different cache directory) and we don't want the scanner
+            // to follow them silently.
+            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+            if values?.isSymbolicLink == true { continue }
+            if values?.isRegularFile == false { continue }
             out.append(url)
         }
         return out
@@ -314,6 +366,18 @@ public enum CostUsageScanner {
 
     private static func fileMTime(_ url: URL) -> Date? {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// (mtime, size) pair used as the per-file cache fingerprint. Falls back
+    /// to `(distantPast, 0)` so a missing-attribute case never hits the
+    /// cache, forcing a fresh parse rather than masking corruption.
+    private static func fileFingerprint(_ url: URL) -> (Date, Int64) {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return (.distantPast, 0)
+        }
+        let mtime = (attrs[.modificationDate] as? Date) ?? .distantPast
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        return (mtime, size)
     }
 
     private static let isoWithFraction: ISO8601DateFormatter = {
