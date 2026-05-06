@@ -4,10 +4,9 @@ import VibeBarCore
 
 /// Top-level popover content. Each menu bar item kind opens its own popover.
 ///
-/// - `.compact` → Overview: a wide two-column waterfall (Quotas left, Cost
-///   right). No tabs, no Pace — the user explicitly asked for a flat layout.
-/// - `.codex` / `.claude` → single-provider detail view with three tabs:
-///   Quota, Cost, Utilization.
+/// - `.compact` → Overview: a wide provider-column waterfall with a small
+///   page switcher for all-provider and single-provider views.
+/// - `.codex` / `.claude` → single-provider detail waterfall.
 /// - `.status` → service status only.
 struct PopoverRoot: View {
     let kind: MenuBarItemKind
@@ -36,6 +35,7 @@ struct PopoverRoot: View {
                     ? AnyView(OverviewPageSwitch(selection: $overviewPage, density: density))
                     : nil,
                 onRefresh: { environment.refreshAll() },
+                onToggleMiniWindow: onToggleMiniWindow,
                 onShowSettings: { environment.showSettingsWindow() }
             )
             Divider().opacity(0.3)
@@ -44,11 +44,6 @@ struct PopoverRoot: View {
                     .padding(.bottom, 4)
             }
             .frame(maxHeight: maxScrollHeight)
-            Divider().opacity(0.3)
-            ActionButtonRow(
-                onToggleMiniWindow: onToggleMiniWindow,
-                onShowSettings: { environment.showSettingsWindow() }
-            )
         }
         .padding(.horizontal, density.popoverPaddingH)
         .padding(.vertical, density.popoverPaddingV)
@@ -71,7 +66,7 @@ struct PopoverRoot: View {
 
     private var maxScrollHeight: CGFloat {
         let visible = NSScreen.main?.visibleFrame.height ?? 900
-        return max(360, visible - 220)
+        return max(360, visible - 150)
     }
 
     @ViewBuilder
@@ -151,6 +146,41 @@ struct PopoverRoot: View {
     }
 }
 
+private struct ProviderSectionTitle: View {
+    let tool: ToolType
+    let title: String
+    var subtitle: String?
+    let titleFontSize: CGFloat
+    let subtitleFontSize: CGFloat
+    var iconSize: CGFloat = 15
+    var badgeSize: CGFloat = 22
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            ProviderBrandBadge(
+                kind: tool.brandMenuBarKind,
+                iconSize: iconSize,
+                containerSize: badgeSize
+            )
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text(title)
+                    .font(.system(size: titleFontSize, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: subtitleFontSize))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+        }
+        .layoutPriority(1)
+    }
+}
+
 // MARK: - Overview (per-provider columns + totals header)
 
 private enum OverviewPage: String, CaseIterable, Identifiable {
@@ -188,22 +218,26 @@ private struct OverviewPageSwitch: View {
                 BorderlessRowButton(action: {
                     selection = page
                 }) {
-                    Text(page.label)
-                        .font(.system(size: max(9.5, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
-                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(width: 72, height: 24)
-                        .background {
-                            if isSelected {
-                                Capsule(style: .continuous)
-                                    .fill(Color.accentColor.opacity(0.20))
-                                    .overlay(
-                                        Capsule(style: .continuous)
-                                            .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
-                                    )
-                            }
+                    HStack(spacing: 5) {
+                        OverviewSwitchIcon(page: page, isSelected: isSelected)
+                        Text(page.label)
+                            .font(.system(size: max(9.5, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+                    .background {
+                        if isSelected {
+                            Capsule(style: .continuous)
+                                .fill(Color.accentColor.opacity(0.20))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
+                                )
                         }
+                    }
                 }
                 .help("Show \(page.label)")
             }
@@ -217,14 +251,23 @@ private struct OverviewPageSwitch: View {
                         .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
                 )
         )
-        .frame(width: 235, alignment: .center)
     }
 }
 
-/// Overview popover content. Three rows:
-///   1. Combined totals across both providers (cost, tokens, sessions).
-///   2. Quota cards side-by-side, one per provider.
-///   3. Cost cards side-by-side, one per provider, with full history chart.
+private struct OverviewSwitchIcon: View {
+    let page: OverviewPage
+    let isSelected: Bool
+
+    var body: some View {
+        ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 12 : 11)
+            .opacity(isSelected ? 1 : 0.72)
+            .frame(width: 16, height: 14, alignment: .center)
+    }
+}
+
+/// Overview popover content:
+///   1. A compact cost summary plus live service status.
+///   2. Two provider columns, each with quota followed by cost.
 ///
 /// The columns are per-provider so OpenAI's quota and OpenAI's cost align
 /// vertically — same for Claude on the right. No tabs, no sub-pages.
@@ -238,32 +281,26 @@ private struct OverviewWaterfall: View {
             CombinedTotalsRow(density: density)
             HStack(alignment: .top, spacing: density.interSectionSpacing) {
                 ForEach(ToolType.allCases, id: \.self) { tool in
-                    ProviderQuotaCard(tool: tool, density: density, compact: false)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-            }
-            HStack(alignment: .top, spacing: density.interSectionSpacing) {
-                ForEach(ToolType.allCases.filter(\.supportsTokenCost), id: \.self) { tool in
-                    OverviewCostCard(tool: tool, density: density)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                        ProviderQuotaCard(tool: tool, density: density, compact: false)
+                        if tool.supportsTokenCost {
+                            OverviewCostCard(tool: tool, density: density)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
     }
 }
 
-/// Sits above the per-provider columns. 8 metric cells laid out in two rows
-/// so they fill the wider Overview popover instead of leaving the right half
-/// empty:
-///
-/// ```
-/// TOTAL COST   TODAY        7-DAY        30-DAY
-/// TOTAL TOKENS TODAY TOK    7-DAY TOK    SESSIONS
-/// ```
+/// Sits above the per-provider columns: eight usage metrics in two rows on the
+/// left and current provider status on the right.
 private struct CombinedTotalsRow: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
+    private let summaryHeight: CGFloat = 112
 
     var body: some View {
         let snapshots = ToolType.allCases.compactMap { environment.costService.snapshot(for: $0) }
@@ -276,35 +313,41 @@ private struct CombinedTotalsRow: View {
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let totalFiles = snapshots.reduce(0) { $0 + $1.jsonlFilesFound }
 
-        VStack(spacing: 10) {
-            HStack(alignment: .top, spacing: 0) {
-                metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
-                divider
-                metric(label: "TODAY", value: formatCost(todayCost))
-                divider
-                metric(label: "7-DAY", value: formatCost(weekCost))
-                divider
-                metric(label: "30-DAY", value: formatCost(monthCost))
+        HStack(alignment: .top, spacing: density.interSectionSpacing) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 0) {
+                    metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
+                    divider
+                    metric(label: "TODAY", value: formatCost(todayCost))
+                    divider
+                    metric(label: "7-DAY", value: formatCost(weekCost))
+                    divider
+                    metric(label: "30-DAY", value: formatCost(monthCost))
+                }
+                HStack(alignment: .top, spacing: 0) {
+                    metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
+                    divider
+                    metric(label: "TODAY TOK", value: formatTokens(todayTokens))
+                    divider
+                    metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
+                    divider
+                    metric(label: "SESSIONS", value: "\(totalFiles)")
+                }
             }
-            HStack(alignment: .top, spacing: 0) {
-                metric(label: "TOTAL TOK", value: formatTokens(totalTokens))
-                divider
-                metric(label: "TODAY TOK", value: formatTokens(todayTokens))
-                divider
-                metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
-                divider
-                metric(label: "SESSIONS", value: "\(totalFiles)")
-            }
+            .padding(density.cardPadding)
+            .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .center)
+            .background(
+                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                    .fill(.background.tertiary.opacity(0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                    .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+            )
+
+            OverviewStatusSummaryCard(density: density)
+                .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .center)
         }
-        .padding(density.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-        )
     }
 
     private var divider: some View {
@@ -340,9 +383,172 @@ private struct CombinedTotalsRow: View {
     }
 
     private func formatTokens(_ tokens: Int) -> String {
-        if tokens < 1_000 { return "\(tokens)" }
-        if tokens < 1_000_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
-        return String(format: "%.2fM", Double(tokens) / 1_000_000)
+        if tokens >= 1_000_000 { return String(format: "%.2fM", Double(tokens) / 1_000_000) }
+        if tokens >= 1_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
+        return "\(tokens)"
+    }
+}
+
+private struct OverviewStatusSummaryCard: View {
+    let density: Theme.Density
+
+    @EnvironmentObject var serviceStatus: ServiceStatusController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("STATUS")
+                    .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .tracking(0.4)
+                Spacer()
+                if let lastFetched = serviceStatus.lastFetched {
+                    Text(ResetCountdownFormatter.updatedAgo(from: lastFetched, now: Date()))
+                        .font(.system(size: max(9, density.subtitleFontSize - 1)))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            HStack(spacing: 8) {
+                ForEach(ToolType.allCases, id: \.self) { tool in
+                    providerStatusTile(tool)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(density.cardPadding)
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .center)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    private func providerStatusTile(_ tool: ToolType) -> some View {
+        let state = statusState(for: tool)
+        let snapshot = serviceStatus.snapshotByTool[tool]
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: state.iconName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(state.color)
+                ProviderBrandIconView(kind: tool.brandMenuBarKind, size: 11)
+                    .opacity(0.85)
+                    .frame(width: 14, height: 14)
+                Text(tool.statusProviderName)
+                    .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(state.label)
+                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold, design: .rounded))
+                    .foregroundStyle(state.color)
+                    .lineLimit(1)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(statusDetail(for: tool, snapshot: snapshot, state: state))
+                    .font(.system(size: max(9, density.subtitleFontSize - 1)))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                if let snapshot, snapshot.aggregateUptimePercent > 0 {
+                    Text(String(format: "%.2f%%", snapshot.aggregateUptimePercent))
+                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minHeight: 54, alignment: .center)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(state.color.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(state.color.opacity(0.18), lineWidth: 0.6)
+        )
+    }
+
+    private func statusDetail(
+        for tool: ToolType,
+        snapshot: ServiceStatusSnapshot?,
+        state: OverviewStatusState
+    ) -> String {
+        if serviceStatus.inFlight.contains(tool) { return "Refreshing" }
+        if serviceStatus.errorByTool[tool] != nil { return "Fetch failed" }
+        if let incident = snapshot?.recentIncidents.first, !incident.isResolved {
+            return incident.name
+        }
+        return snapshot?.description ?? state.detail
+    }
+
+    private func statusState(for tool: ToolType) -> OverviewStatusState {
+        if serviceStatus.inFlight.contains(tool) {
+            return .checking
+        }
+        if serviceStatus.errorByTool[tool] != nil {
+            return .down
+        }
+        guard let indicator = serviceStatus.snapshotByTool[tool]?.indicator else {
+            return .checking
+        }
+        switch indicator {
+        case .none:
+            return .up
+        case .maintenance:
+            return .maintenance
+        case .minor, .major, .critical:
+            return .down
+        }
+    }
+}
+
+private enum OverviewStatusState {
+    case up
+    case down
+    case checking
+    case maintenance
+
+    var label: String {
+        switch self {
+        case .up:          return "Up"
+        case .down:        return "Down"
+        case .checking:    return "Checking"
+        case .maintenance: return "Maintenance"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .up:          return "checkmark.circle.fill"
+        case .down:        return "xmark.octagon.fill"
+        case .checking:    return "arrow.clockwise.circle.fill"
+        case .maintenance: return "wrench.and.screwdriver.fill"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .up:          return "Operational"
+        case .down:        return "Needs attention"
+        case .checking:    return "Checking"
+        case .maintenance: return "Maintenance"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .up:          return .green
+        case .down:        return .red
+        case .checking:    return .blue
+        case .maintenance: return .blue
+        }
     }
 }
 
@@ -359,9 +565,15 @@ private struct OverviewCostCard: View {
     var body: some View {
         let snapshot = environment.costService.snapshot(for: tool)
         VStack(alignment: .leading, spacing: density.cardSpacing) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(tool.menuTitle) cost")
-                    .font(.system(size: density.titleFontSize, weight: .semibold))
+            HStack(alignment: .center) {
+                ProviderSectionTitle(
+                    tool: tool,
+                    title: "\(tool.menuTitle) cost",
+                    titleFontSize: density.titleFontSize,
+                    subtitleFontSize: density.subtitleFontSize,
+                    iconSize: 15,
+                    badgeSize: 22
+                )
                 Spacer(minLength: 4)
                 if snapshot != nil {
                     Button {
@@ -425,9 +637,15 @@ private struct CostDetailPopoverContent: View {
         let snapshot = environment.costService.snapshot(for: tool)
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("\(tool.menuTitle) cost — full charts")
-                        .font(.system(size: density.titleFontSize, weight: .semibold))
+                HStack(alignment: .center) {
+                    ProviderSectionTitle(
+                        tool: tool,
+                        title: "\(tool.menuTitle) cost — full charts",
+                        titleFontSize: density.titleFontSize,
+                        subtitleFontSize: density.subtitleFontSize,
+                        iconSize: 15,
+                        badgeSize: 22
+                    )
                     Spacer()
                     if let updated = snapshot?.updatedAt {
                         Text(updated, style: .relative)
@@ -540,9 +758,15 @@ private struct CostHeaderCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(tool.menuTitle) cost")
-                    .font(.system(size: density.titleFontSize, weight: .semibold))
+            HStack(alignment: .center) {
+                ProviderSectionTitle(
+                    tool: tool,
+                    title: "\(tool.menuTitle) cost",
+                    titleFontSize: density.titleFontSize,
+                    subtitleFontSize: density.subtitleFontSize,
+                    iconSize: 15,
+                    badgeSize: 22
+                )
                 Spacer()
                 Text(snapshot.updatedAt, style: .relative)
                     .font(.system(size: density.subtitleFontSize))
@@ -613,30 +837,31 @@ struct ProviderQuotaCard: View {
         )
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(tool.menuTitle)
-                    .font(.system(size: density.titleFontSize, weight: .semibold))
-                    .foregroundStyle(.primary)
-                Text(tool.subtitle)
-                    .font(.system(size: density.subtitleFontSize))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 4)
-                PlanBadgeView(
-                    text: planBadge,
-                    width: 72,
-                    fontSize: max(9, density.subtitleFontSize - 1)
+            HStack(alignment: .center, spacing: 8) {
+                ProviderSectionTitle(
+                    tool: tool,
+                    title: tool.menuTitle,
+                    subtitle: tool.subtitle,
+                    titleFontSize: density.titleFontSize,
+                    subtitleFontSize: density.subtitleFontSize,
+                    iconSize: 16,
+                    badgeSize: 24
                 )
+                Spacer(minLength: 4)
+                if planBadge?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                    PlanBadgeView(
+                        text: planBadge,
+                        fontSize: max(9, density.subtitleFontSize - 1)
+                    )
+                }
                 BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                     environment.refresh(tool)
                 }
                 .disabled(isProviderRefreshing)
-                ZStack {
+                if isProviderRefreshing {
                     ProgressView().controlSize(.small)
-                        .opacity(isProviderRefreshing ? 1 : 0)
+                        .frame(width: 16, height: 16)
                 }
-                .frame(width: 16, height: 16)
             }
 
             if let quota, !quota.buckets.isEmpty {

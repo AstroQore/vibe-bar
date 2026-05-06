@@ -37,7 +37,7 @@ struct ServiceStatusCard: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: Theme.sectionCornerRadius, style: .continuous)
-                .fill(.background.tertiary)
+                .fill(.background.tertiary.opacity(0.6))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.sectionCornerRadius, style: .continuous)
@@ -64,8 +64,8 @@ private struct ServiceStatusRow: View {
         let error = serviceStatus.errorByTool[tool]
 
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                ProviderBrandIconView(kind: tool == .codex ? .codex : .claude, size: 13)
+            HStack(alignment: .center, spacing: 8) {
+                ProviderBrandBadge(kind: tool.brandMenuBarKind, iconSize: 15, containerSize: 22)
                 Text(tool.statusProviderName)
                     .font(.system(size: 13, weight: .semibold))
                 StatusPill(indicator: snapshot?.indicator, description: snapshot?.description)
@@ -115,22 +115,34 @@ private struct ServiceStatusRow: View {
             ComponentGroupBlock(
                 title: "Components",
                 components: snapshot.components,
-                defaultExpanded: tool == .claude
+                defaultExpanded: shouldExpandFlatComponents
             )
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 let ungrouped = snapshot.components(in: nil)
                 if !ungrouped.isEmpty {
-                    ComponentGroupBlock(title: "Other", components: ungrouped, defaultExpanded: tool == .claude)
+                    ComponentGroupBlock(title: "Other", components: ungrouped, defaultExpanded: false)
                 }
                 ForEach(snapshot.groups) { group in
                     let comps = snapshot.components(in: group)
                     if !comps.isEmpty {
-                        ComponentGroupBlock(title: group.name, components: comps, defaultExpanded: tool == .claude)
+                        ComponentGroupBlock(
+                            title: group.name,
+                            components: comps,
+                            defaultExpanded: shouldExpand(group)
+                        )
                     }
                 }
             }
         }
+    }
+
+    private var shouldExpandFlatComponents: Bool {
+        tool == .claude
+    }
+
+    private func shouldExpand(_ group: ServiceComponentGroup) -> Bool {
+        tool == .codex && group.name.localizedCaseInsensitiveContains("codex")
     }
 }
 

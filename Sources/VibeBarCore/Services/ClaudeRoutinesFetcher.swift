@@ -31,11 +31,10 @@ public enum ClaudeRoutinesFetcher {
     }
 
     public static func fetch(session: URLSession = .shared) async -> Result? {
-        // The run-budget endpoint is stricter than the usage endpoint on some
-        // accounts. Try fuller browser cookie headers before the sessionKey-only
-        // fallback while still staying inside Vibe Bar's own saved cookie store.
+        // Stay inside Vibe Bar's minimized cookie store. If the endpoint needs
+        // more than sessionKey for a particular account, keep the placeholder
+        // bucket visible instead of broadening stored cookies.
         let headers = ClaudeWebCookieStore.candidateCookieHeaders()
-            .sorted { $0.count > $1.count }
         for header in headers {
             if let result = await fetch(cookieHeader: header, session: session) {
                 return result

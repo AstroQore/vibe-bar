@@ -7,7 +7,9 @@ struct SettingsView: View {
     var dismiss: () -> Void
 
     private let intervalOptions: [Int] = [60, 180, 300, 600, 1800]
+    private let costRetentionOptions = CostDataSettings.retentionOptions
     @State private var claudeCookieDeleteFailed: Bool = false
+    @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
     @State private var launchAtLoginError: String?
 
@@ -134,10 +136,36 @@ struct SettingsView: View {
                         Text("Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Button {
-                            environment.refreshCostUsage()
-                        } label: {
-                            Label("Rescan cost logs", systemImage: "arrow.triangle.2.circlepath")
+                        Picker("Keep history", selection: $settingsStore.settings.costData.retentionDays) {
+                            ForEach(costRetentionOptions, id: \.self) { days in
+                                Text(costRetentionLabel(days)).tag(days)
+                            }
+                        }
+                        Toggle("Privacy mode", isOn: $settingsStore.settings.costData.privacyModeEnabled)
+                        HStack {
+                            Button {
+                                environment.refreshCostUsage()
+                                costDataClearStatus = nil
+                            } label: {
+                                Label("Rescan cost logs", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .disabled(settingsStore.settings.costData.privacyModeEnabled)
+                            Button(role: .destructive) {
+                                environment.clearCostData()
+                                costDataClearStatus = "Cost data cleared."
+                            } label: {
+                                Label("Clear cost data", systemImage: "trash")
+                            }
+                        }
+                        if settingsStore.settings.costData.privacyModeEnabled {
+                            Text("Privacy mode keeps cost data off disk and clears local cost history, snapshots, and scan cache.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let costDataClearStatus {
+                            Text(costDataClearStatus)
+                                .font(.caption2)
+                                .foregroundStyle(.green)
                         }
                         Text("Pricing data: \(CostUsagePricing.pricingDataUpdatedAt)")
                             .font(.caption2)
@@ -543,6 +571,17 @@ struct SettingsView: View {
         default:
             if seconds % 60 == 0 { return "\(seconds / 60) minutes" }
             return "\(seconds)s"
+        }
+    }
+
+    private func costRetentionLabel(_ days: Int) -> String {
+        switch days {
+        case CostDataSettings.unlimitedRetentionDays: return "Forever"
+        case 30: return "30 days"
+        case 90: return "90 days"
+        case 365: return "1 year"
+        case 365 * 3: return "3 years"
+        default: return "\(days) days"
         }
     }
 }

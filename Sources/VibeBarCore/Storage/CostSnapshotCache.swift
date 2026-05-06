@@ -13,6 +13,10 @@ public actor CostSnapshotCache {
     public static let shared = CostSnapshotCache()
 
     private let directory: URL
+    private struct StoredSnapshot: Codable {
+        let retentionDays: Int
+        let snapshot: CostSnapshot
+    }
 
     init(directory: URL = CostSnapshotCache.defaultDirectory()) {
         self.directory = directory
@@ -27,10 +31,17 @@ public actor CostSnapshotCache {
         directory.appendingPathComponent("\(tool.rawValue).json")
     }
 
-    public func save(_ snapshot: CostSnapshot) {
+    public func save(
+        _ snapshot: CostSnapshot,
+        retentionDays: Int = CostDataSettings.defaultRetentionDays
+    ) {
         let url = fileURL(for: snapshot.tool)
         do {
-            let data = try JSONEncoder().encode(snapshot)
+            let stored = StoredSnapshot(
+                retentionDays: CostDataSettings.normalizedRetentionDays(retentionDays),
+                snapshot: snapshot
+            )
+            let data = try JSONEncoder().encode(stored)
             try data.write(to: url, options: .atomic)
             try? FileManager.default.setAttributes(
                 [.posixPermissions: NSNumber(value: Int16(0o600))],
@@ -41,16 +52,35 @@ public actor CostSnapshotCache {
         }
     }
 
-    public func load(tool: ToolType) -> CostSnapshot? {
+    public func load(
+        tool: ToolType,
+        retentionDays: Int = CostDataSettings.defaultRetentionDays
+    ) -> CostSnapshot? {
+        let normalizedRetentionDays = CostDataSettings.normalizedRetentionDays(retentionDays)
         let url = fileURL(for: tool)
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(CostSnapshot.self, from: data)
+        if let stored = try? JSONDecoder().decode(StoredSnapshot.self, from: data) {
+            guard stored.retentionDays == normalizedRetentionDays else {
+                try? FileManager.default.removeItem(at: url)
+                return nil
+            }
+            return stored.snapshot
+        }
+        if (normalizedRetentionDays == CostDataSettings.defaultRetentionDays
+            || normalizedRetentionDays == CostDataSettings.maximumRetentionDays),
+           let legacy = try? JSONDecoder().decode(CostSnapshot.self, from: data) {
+            return legacy
+        }
+        try? FileManager.default.removeItem(at: url)
+        return nil
     }
 
-    public func loadAll() -> [ToolType: CostSnapshot] {
+    public func loadAll(
+        retentionDays: Int = CostDataSettings.defaultRetentionDays
+    ) -> [ToolType: CostSnapshot] {
         var out: [ToolType: CostSnapshot] = [:]
         for tool in ToolType.allCases where tool.supportsTokenCost {
-            if let snap = load(tool: tool) {
+            if let snap = load(tool: tool, retentionDays: retentionDays) {
                 out[tool] = snap
             }
         }

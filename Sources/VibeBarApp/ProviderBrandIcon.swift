@@ -90,14 +90,14 @@ enum ProviderBrandIcon {
             }
 
             let topBar = NSBezierPath(
-                roundedRect: scaledRect(x: 2.2, y: 13.2, width: 15.6, height: 4.0),
+                roundedRect: scaledRect(x: 2.4, y: 13.2, width: 15.2, height: 4.0),
                 xRadius: 2.0 * scale,
                 yRadius: 2.0 * scale
             )
             topBar.lineWidth = max(0.85, 1.05 * scale)
             topBar.stroke()
 
-            let dotXs: [CGFloat] = [4.4, 6.6, 8.8]
+            let dotXs: [CGFloat] = [4.5, 6.7, 8.9]
             for dotX in dotXs {
                 NSBezierPath(
                     ovalIn: scaledRect(x: dotX, y: 14.55, width: 1.0, height: 1.0)
@@ -105,16 +105,16 @@ enum ProviderBrandIcon {
             }
 
             NSBezierPath(
-                roundedRect: scaledRect(x: 13.9, y: 14.35, width: 2.8, height: 1.4),
+                roundedRect: scaledRect(x: 13.8, y: 14.35, width: 2.7, height: 1.4),
                 xRadius: 0.7 * scale,
                 yRadius: 0.7 * scale
             ).fill()
 
             let bars: [(x: CGFloat, height: CGFloat)] = [
-                (3.5, 8.5),
-                (7.7, 5.6),
-                (11.9, 7.1),
-                (16.1, 9.2)
+                (2.8, 8.5),
+                (6.9, 5.6),
+                (11.0, 7.1),
+                (15.1, 9.2)
             ]
             for bar in bars {
                 NSBezierPath(
@@ -199,5 +199,34 @@ struct ProviderBrandIconView: View {
         .frame(width: size, height: size)
         .foregroundStyle(.primary)
         .accessibilityHidden(true)
+    }
+}
+
+struct ProviderBrandBadge: View {
+    let kind: MenuBarItemKind
+    var iconSize: CGFloat = 15
+    var containerSize: CGFloat = 22
+
+    var body: some View {
+        ProviderBrandIconView(kind: kind, size: iconSize)
+            .frame(width: containerSize, height: containerSize)
+            .background(
+                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
+                    .fill(Color.primary.opacity(0.055))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
+                    .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
+extension ToolType {
+    var brandMenuBarKind: MenuBarItemKind {
+        switch self {
+        case .codex:  return .codex
+        case .claude: return .claude
+        }
     }
 }

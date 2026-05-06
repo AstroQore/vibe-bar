@@ -30,6 +30,9 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.miniWindow.compactSelectedFieldIds.contains("claude.weekly"))
         XCTAssertTrue(settings.miniWindow.selectedFieldIds.contains("claude.daily_routines"))
         XCTAssertNil(settings.miniWindow.customLabels["codex.five_hour"])
+        XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.defaultRetentionDays)
+        XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.unlimitedRetentionDays)
+        XCTAssertFalse(settings.costData.privacyModeEnabled)
     }
 
     func testMenuBarFieldLabelsRoundTrip() throws {
@@ -186,6 +189,17 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
         XCTAssertFalse(settings.mockEnabled)
+    }
+
+    func testCostDataSettingsRoundTripAndNormalizeRetention() throws {
+        var settings = AppSettings.default
+        settings.costData = CostDataSettings(retentionDays: 10_000, privacyModeEnabled: true)
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.costData.retentionDays, CostDataSettings.maximumRetentionDays)
+        XCTAssertTrue(decoded.costData.privacyModeEnabled)
     }
 
     func testOverviewMenuItemAndCompactLayoutDefaults() {

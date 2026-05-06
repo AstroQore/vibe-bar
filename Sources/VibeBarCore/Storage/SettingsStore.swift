@@ -129,4 +129,8 @@ public final class SettingsStore: ObservableObject {
         get { settings.launchAtLogin }
         set { settings.launchAtLogin = newValue }
     }
+    public var costData: CostDataSettings {
+        get { settings.costData }
+        set { settings.costData = newValue }
+    }
 }

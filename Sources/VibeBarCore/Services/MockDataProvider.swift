@@ -66,6 +66,25 @@ public enum MockDataProvider {
             if point.date >= weekCutoff { weekCost += point.costUSD; weekTokens += point.totalTokens }
             if point.date >= monthCutoff { monthCost += point.costUSD; monthTokens += point.totalTokens }
         }
+        let currentHour = calendar.component(.hour, from: now)
+        let hourWeights: [(Date, Double)] = (0...max(0, currentHour)).compactMap { offset in
+            guard let hour = calendar.date(byAdding: .hour, value: offset, to: today) else { return nil }
+            let hourOfDay = calendar.component(.hour, from: hour)
+            let workdayPulse = hourOfDay >= 9 && hourOfDay <= 21
+            let lunchDip = hourOfDay == 12 ? 0.45 : 1.0
+            let eveningLift = hourOfDay >= 17 && hourOfDay <= 20 ? 1.35 : 1.0
+            let weight = workdayPulse ? lunchDip * eveningLift * (0.7 + Double((hourOfDay * 5) % 7) / 10.0) : 0
+            return (hour, weight)
+        }
+        let totalHourWeight = hourWeights.map(\.1).reduce(0, +)
+        let hourlyToday: [HourlyCostPoint] = hourWeights.map { hour, weight in
+            let share = totalHourWeight > 0 ? weight / totalHourWeight : 0
+            return HourlyCostPoint(
+                date: hour,
+                costUSD: todayCost * share,
+                totalTokens: Int(Double(todayTokens) * share)
+            )
+        }
         // Synthetic heatmap with a clear "weekday afternoon" peak.
         var cells: [[Int]] = Array(repeating: Array(repeating: 0, count: 24), count: 7)
         for wd in 0..<7 {
@@ -118,6 +137,7 @@ public enum MockDataProvider {
             last30DaysTokens: monthTokens,
             allTimeTokens: allTokens,
             dailyHistory: history.days,
+            todayHourlyHistory: hourlyToday,
             heatmap: UsageHeatmap(tool: tool, cells: cells, totalTokens: cells.flatMap { $0 }.reduce(0, +)),
             modelBreakdowns: allTimeBreakdowns,
             last7DaysModelBreakdowns: weekBreakdowns,

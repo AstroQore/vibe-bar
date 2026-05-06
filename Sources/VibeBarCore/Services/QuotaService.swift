@@ -15,22 +15,27 @@ public final class QuotaService: ObservableObject {
 
     public init(
         adapters: [ToolType: any QuotaAdapter],
-        mockProvider: @escaping () -> Bool
+        mockProvider: @escaping () -> Bool,
+        initialAccountIds: [String] = []
     ) {
         self.adapters = adapters
         self.mockProvider = mockProvider
-        let cached = QuotaCacheStore.loadAll()
+        let cached = QuotaCacheStore.loadAll(accountIds: initialAccountIds)
         self.lastSuccessByAccount = cached
         self.lastUpdatedByAccount = cached.mapValues(\.queriedAt)
     }
 
-    public static func makeDefault(mockProvider: @escaping () -> Bool) -> QuotaService {
+    public static func makeDefault(
+        mockProvider: @escaping () -> Bool,
+        initialAccountIds: [String] = []
+    ) -> QuotaService {
         QuotaService(
             adapters: [
                 .codex: CodexQuotaAdapter(),
                 .claude: ClaudeQuotaAdapter()
             ],
-            mockProvider: mockProvider
+            mockProvider: mockProvider,
+            initialAccountIds: initialAccountIds
         )
     }
 

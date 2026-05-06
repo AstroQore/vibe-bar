@@ -16,31 +16,41 @@ public enum CostUsageScanner {
     public static func scan(
         tool: ToolType,
         homeDirectory: String = NSHomeDirectory(),
-        now: Date = Date()
+        now: Date = Date(),
+        retentionDays: Int? = nil
     ) async -> CostSnapshot? {
         switch tool {
         case .codex:
-            return await scanCodex(homeDirectory: homeDirectory, now: now)
+            return await scanCodex(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         case .claude:
-            return await scanClaude(homeDirectory: homeDirectory, now: now)
+            return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         }
     }
 
     // MARK: - Codex
 
-    private static func scanCodex(homeDirectory: String, now: Date) async -> CostSnapshot {
+    private static func scanCodex(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?
+    ) async -> CostSnapshot {
         let roots = [
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/sessions"),
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/archived_sessions")
         ]
         let files = roots.flatMap { collectJSONL(under: $0) }
         var aggregator = CostAggregator(tool: .codex, now: now)
-        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .codex)
+        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays)
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
         for file in files {
             let (mtime, size) = fileFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
-                for event in cached {
+                let retained = retainedEvents(cached, cutoff: cutoff)
+                if retained.count != cached.count {
+                    cache.store(retained, for: file.path, mtime: mtime, size: size)
+                }
+                for event in retained {
                     aggregator.add(at: event.date, model: event.model, input: event.input,
                                    output: event.output, cache: event.cache, costUSD: event.costUSD)
                 }
@@ -79,6 +89,7 @@ public enum CostUsageScanner {
                     cache: delta.cached,
                     costUSD: cost
                 )
+                guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
                 parsed.append(parsedEvent)
                 aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
                                input: parsedEvent.input, output: parsedEvent.output,
@@ -136,17 +147,26 @@ public enum CostUsageScanner {
 
     // MARK: - Claude
 
-    private static func scanClaude(homeDirectory: String, now: Date) async -> CostSnapshot {
+    private static func scanClaude(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?
+    ) async -> CostSnapshot {
         let projectsRoot = URL(fileURLWithPath: homeDirectory).appendingPathComponent(".claude/projects")
         let altRoot = URL(fileURLWithPath: homeDirectory).appendingPathComponent(".config/claude/projects")
         let files = collectJSONL(under: projectsRoot) + collectJSONL(under: altRoot)
         var aggregator = CostAggregator(tool: .claude, now: now)
-        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .claude)
+        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .claude, retentionDays: retentionDays)
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
         for file in files {
             let (mtime, size) = fileFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
-                for event in cached {
+                let retained = retainedEvents(cached, cutoff: cutoff)
+                if retained.count != cached.count {
+                    cache.store(retained, for: file.path, mtime: mtime, size: size)
+                }
+                for event in retained {
                     aggregator.add(at: event.date, model: event.model, input: event.input,
                                    output: event.output, cache: event.cache, costUSD: event.costUSD)
                 }
@@ -186,6 +206,7 @@ public enum CostUsageScanner {
                     cache: cacheRead + cacheCreation,
                     costUSD: cost
                 )
+                guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
                 parsed.append(parsedEvent)
                 aggregator.add(
                     at: parsedEvent.date,
@@ -207,6 +228,28 @@ public enum CostUsageScanner {
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
+    private static func retentionCutoff(now: Date, retentionDays: Int?) -> Date? {
+        guard let retentionDays else { return nil }
+        let normalized = CostDataSettings.normalizedRetentionDays(retentionDays)
+        guard normalized > 0 else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        return calendar.date(byAdding: .day, value: -(normalized - 1), to: today)
+    }
+
+    private static func isRetained(_ date: Date, cutoff: Date?) -> Bool {
+        guard let cutoff else { return true }
+        return date >= cutoff
+    }
+
+    private static func retainedEvents(
+        _ events: [CostUsageScanCache.ParsedEvent],
+        cutoff: Date?
+    ) -> [CostUsageScanCache.ParsedEvent] {
+        guard let cutoff else { return events }
+        return events.filter { $0.date >= cutoff }
+    }
+
     // MARK: - Aggregator
 
     private struct CostAggregator {
@@ -222,6 +265,7 @@ public enum CostUsageScanner {
         var weekCost: Double = 0, weekTokens: Int = 0
         var monthCost: Double = 0, monthTokens: Int = 0
         var byDay: [Date: (cost: Double, tokens: Int)] = [:]
+        var byHourToday: [Date: (cost: Double, tokens: Int)] = [:]
         var heatmap: [[Int]] = Array(repeating: Array(repeating: 0, count: 24), count: 7)
         /// Model ranking across every scanned session.
         var byModelAllTime: [String: (cost: Double, tokens: Int)] = [:]
@@ -249,6 +293,12 @@ public enum CostUsageScanner {
             if date >= startOfToday {
                 todayCost += costUSD
                 todayTokens += tokens
+                if let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
+                    var hourBucket = byHourToday[hourKey] ?? (0, 0)
+                    hourBucket.cost += costUSD
+                    hourBucket.tokens += tokens
+                    byHourToday[hourKey] = hourBucket
+                }
             }
             if date >= weekCutoff {
                 weekCost += costUSD
@@ -294,6 +344,12 @@ public enum CostUsageScanner {
             let sortedDays = byDay
                 .sorted { $0.key < $1.key }
                 .map { DailyCostPoint(date: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
+            let currentHour = calendar.component(.hour, from: now)
+            let hourlyToday = (0...max(0, currentHour)).compactMap { offset -> HourlyCostPoint? in
+                guard let hour = calendar.date(byAdding: .hour, value: offset, to: startOfToday) else { return nil }
+                let value = byHourToday[hour] ?? (0, 0)
+                return HourlyCostPoint(date: hour, costUSD: value.cost, totalTokens: value.tokens)
+            }
             let sevenDayBreakdowns = byModel7d
                 .sorted { $0.value.cost > $1.value.cost }
                 .prefix(20)
@@ -323,6 +379,7 @@ public enum CostUsageScanner {
                 last30DaysTokens: monthTokens,
                 allTimeTokens: totalTokens,
                 dailyHistory: sortedDays,
+                todayHourlyHistory: hourlyToday,
                 heatmap: UsageHeatmap(tool: tool, cells: heatmap, totalTokens: totalTokens),
                 modelBreakdowns: Array(allTimeBreakdowns),
                 last7DaysModelBreakdowns: Array(sevenDayBreakdowns),

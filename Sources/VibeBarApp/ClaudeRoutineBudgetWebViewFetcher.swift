@@ -64,7 +64,7 @@ private final class ClaudeRoutineBudgetWebViewFetchRunner: NSObject, WKNavigatio
         window.orderFrontRegardless()
         self.window = window
 
-        if let header = ClaudeWebCookieStore.candidateCookieHeaders().max(by: { $0.count < $1.count }) {
+        if let header = ClaudeWebCookieStore.candidateCookieHeaders().first {
             await setCookies(from: header, in: configuration.websiteDataStore.httpCookieStore)
         }
 

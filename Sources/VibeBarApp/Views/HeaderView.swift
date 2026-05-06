@@ -1,7 +1,7 @@
 import SwiftUI
 import VibeBarCore
 
-/// Single-line popover header: title left, plan badge + refresh button right.
+/// Single-line popover header: title left, optional plan badge + actions right.
 /// No email column; that information lives in Settings if needed.
 struct HeaderView: View {
     let title: String
@@ -13,6 +13,7 @@ struct HeaderView: View {
     let subtitleFontSize: CGFloat
     let accessory: AnyView?
     let onRefresh: () -> Void
+    let onToggleMiniWindow: () -> Void
     let onShowSettings: () -> Void
 
     @State private var rotation: Double = 0
@@ -35,16 +36,23 @@ struct HeaderView: View {
             .layoutPriority(2)
             Spacer(minLength: 6)
             if let accessory {
-                accessory
-                    .layoutPriority(1)
+                accessory.fixedSize(horizontal: true, vertical: false)
             }
-            PlanBadgeView(text: plan, width: 78, fontSize: max(9, subtitleFontSize - 1))
+            if plan?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                PlanBadgeView(text: plan, fontSize: max(9, subtitleFontSize - 1))
+            }
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
                 help: "Refresh",
                 rotation: rotation,
                 size: max(11, subtitleFontSize),
                 action: refreshTapped
+            )
+            BorderlessIconButton(
+                systemImage: "rectangle.on.rectangle",
+                help: "Mini",
+                size: max(11, subtitleFontSize),
+                action: onToggleMiniWindow
             )
             BorderlessIconButton(
                 systemImage: "gearshape",
@@ -76,21 +84,21 @@ struct HeaderView: View {
 
 struct PlanBadgeView: View {
     let text: String?
-    var width: CGFloat = 78
     var fontSize: CGFloat = 10
 
+    @ViewBuilder
     var body: some View {
         let label = text?.trimmingCharacters(in: .whitespacesAndNewlines)
-        Text(label?.isEmpty == false ? label! : " ")
-            .font(.system(size: fontSize, weight: .bold))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .frame(width: width)
-            .background(Capsule().fill(Color.accentColor.opacity(0.18)))
-            .foregroundStyle(Color.accentColor)
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .opacity(label?.isEmpty == false ? 1 : 0)
-            .accessibilityHidden(label?.isEmpty != false)
+        if let label, !label.isEmpty {
+            Text(label)
+                .font(.system(size: fontSize, weight: .bold))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .fixedSize(horizontal: true, vertical: false)
+        }
     }
 }

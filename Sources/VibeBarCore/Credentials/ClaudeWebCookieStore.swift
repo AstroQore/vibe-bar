@@ -1,6 +1,6 @@
 import Foundation
 
-/// Storage for Claude web session cookies.
+/// Storage for the minimum Claude web session cookie needed by Vibe Bar.
 ///
 /// Cookies are stored in Keychain. Older builds wrote
 /// `~/.vibebar/cookies/claude-web.txt`; reads still migrate that legacy file
@@ -19,26 +19,31 @@ public enum ClaudeWebCookieStore {
 
     public static func candidateCookieHeaders() -> [String] {
         var headers: [String] = []
-        let keychainHeader = (try? KeychainStore.readString(service: service, account: account))
+        let rawKeychainHeader = try? KeychainStore.readString(service: service, account: account)
+        let keychainHeader = rawKeychainHeader
             .map { normalizedCookieHeader(from: $0) }
             .flatMap { $0.isEmpty ? nil : $0 }
+            .flatMap { minimizedCookieHeader(from: $0) }
+        if let rawKeychainHeader,
+           let keychainHeader,
+           normalizedCookieHeader(from: rawKeychainHeader) != keychainHeader {
+            try? KeychainStore.writeString(service: service, account: account, value: keychainHeader)
+        }
         appendCookieHeader(keychainHeader, to: &headers)
         if let legacy = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeCookieURL) {
-            let legacyHeader = normalizedCookieHeader(from: legacy)
-            if keychainHeader == nil {
+            let legacyHeader = minimizedCookieHeader(from: legacy)
+            if keychainHeader == nil, let legacyHeader {
                 appendCookieHeader(legacyHeader, to: &headers)
                 try? writeCookieHeader(legacyHeader)
-            } else {
-                try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
             }
+            try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
         }
         return unique(headers)
     }
 
     public static func writeCookieHeader(_ header: String) throws {
-        let trimmed = normalizedCookieHeader(from: header)
-        guard !trimmed.isEmpty else { throw QuotaError.noCredential }
-        try KeychainStore.writeString(service: service, account: account, value: trimmed)
+        guard let minimized = minimizedCookieHeader(from: header) else { throw QuotaError.noCredential }
+        try KeychainStore.writeString(service: service, account: account, value: minimized)
         try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
     }
 
@@ -82,6 +87,10 @@ public enum ClaudeWebCookieStore {
         return nil
     }
 
+    public static func minimizedCookieHeader(from raw: String) -> String? {
+        sessionKeyHeader(from: raw)
+    }
+
     public static func normalizedCookieHeader(from raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
@@ -95,11 +104,7 @@ public enum ClaudeWebCookieStore {
 
     private static func appendCookieHeader(_ raw: String?, to headers: inout [String]) {
         guard let raw else { return }
-        let header = normalizedCookieHeader(from: raw)
-        guard !header.isEmpty else { return }
-        if let sessionOnly = sessionKeyHeader(from: header) {
-            headers.append(sessionOnly)
-        }
+        guard let header = minimizedCookieHeader(from: raw) else { return }
         headers.append(header)
     }
 

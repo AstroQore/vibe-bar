@@ -24,7 +24,7 @@ final class AppEnvironment: ObservableObject {
         let accounts = AccountStore(claudeUsageMode: settings.claudeUsageMode)
         let service = QuotaService.makeDefault(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
-        })
+        }, initialAccountIds: accounts.accounts.map(\.id))
 
         self.settingsStore = settings
         self.accountStore = accounts
@@ -32,6 +32,8 @@ final class AppEnvironment: ObservableObject {
         self.serviceStatus = ServiceStatusController()
         self.costService = CostUsageService(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
+        }, costDataSettingsProvider: { [weak settings] in
+            settings?.settings.costData ?? .default
         })
         self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
 
@@ -87,6 +89,20 @@ final class AppEnvironment: ObservableObject {
             }
             .store(in: &cancellables)
 
+        settings.$settings
+            .dropFirst()
+            .map(\.costData)
+            .removeDuplicates()
+            .sink { [weak self] costData in
+                Task { @MainActor in
+                    await self?.costService.applyCostDataSettings()
+                    if !costData.privacyModeEnabled {
+                        await self?.costService.refreshAll()
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
         scheduler.start()
         serviceStatus.start()
 
@@ -94,6 +110,7 @@ final class AppEnvironment: ObservableObject {
         // slowly compared to live quota, so we re-scan only on app relaunch,
         // data-source settings changes, or the explicit Cost Data rescan button.
         Task { @MainActor in
+            await costService.applyCostDataSettings()
             await costService.refreshAll()
         }
 
@@ -142,6 +159,12 @@ final class AppEnvironment: ObservableObject {
     func refreshCostUsage() {
         Task { @MainActor in
             await costService.refreshAll()
+        }
+    }
+
+    func clearCostData() {
+        Task { @MainActor in
+            await costService.eraseLocalCostData()
         }
     }
 

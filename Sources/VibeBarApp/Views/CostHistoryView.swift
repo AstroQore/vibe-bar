@@ -18,6 +18,7 @@ struct CostHistoryView: View {
     var chartHeight: CGFloat = 130
     @State private var timeframe: CostTimeframe = .month
     @State private var hoveredDay: Date?
+    @State private var hoveredHour: Date?
 
     var body: some View {
         // Hoist the timeframe-derived values once per body. These were
@@ -27,9 +28,12 @@ struct CostHistoryView: View {
         // `barColor`. With ~1000 daily points (3-year retention) and a
         // periodic TimelineView upstream, that adds up.
         let days = filteredDays
-        let total = days.reduce(0) { $0 + $1.costUSD }
-        let avg = days.isEmpty ? 0 : total / Double(days.count)
-        let peakValue = days.map(\.costUSD).max() ?? 0
+        let hourlyPoints = todayHourlyPoints
+        let hasHourlyDetail = timeframe == .today && (snapshot?.todayHourlyHistory.isEmpty == false)
+        let total = hasHourlyDetail ? hourlyPoints.reduce(0) { $0 + $1.costUSD } : days.reduce(0) { $0 + $1.costUSD }
+        let sampleCount = hasHourlyDetail ? hourlyPoints.count : days.count
+        let avg = sampleCount == 0 ? 0 : total / Double(sampleCount)
+        let peakValue = hasHourlyDetail ? (hourlyPoints.map(\.costUSD).max() ?? 0) : (days.map(\.costUSD).max() ?? 0)
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
@@ -37,15 +41,14 @@ struct CostHistoryView: View {
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 CostTimeframeSelector(selection: $timeframe, density: density)
-                    .frame(width: 220)
             }
-            chart(points: days, average: avg)
+            chart(points: days, hourlyPoints: hourlyPoints, hasHourlyDetail: hasHourlyDetail, average: avg)
             HStack(spacing: 16) {
                 metric(label: "Total", value: formatCost(total))
-                metric(label: "Avg/day", value: formatCost(avg))
-                metric(label: "Peak", value: formatCost(peakValue))
+                metric(label: timeframe == .today ? "Avg/hour" : "Avg/day", value: formatCost(avg))
+                metric(label: timeframe == .today ? "Peak hr" : "Peak", value: formatCost(peakValue))
                 Spacer()
-                Text(timeframeNote(dayCount: days.count))
+                Text(timeframeNote(sampleCount: sampleCount))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
@@ -62,8 +65,15 @@ struct CostHistoryView: View {
     }
 
     @ViewBuilder
-    private func chart(points: [DailyCostPoint], average: Double) -> some View {
-        if points.isEmpty {
+    private func chart(
+        points: [DailyCostPoint],
+        hourlyPoints: [HourlyCostPoint],
+        hasHourlyDetail: Bool,
+        average: Double
+    ) -> some View {
+        if timeframe == .today {
+            todayChart(points: hourlyPoints, hasHourlyDetail: hasHourlyDetail, average: average)
+        } else if points.isEmpty {
             VStack {
                 Text("Building history…")
                     .font(.system(size: density.subtitleFontSize))
@@ -131,6 +141,103 @@ struct CostHistoryView: View {
             // Tooltip is an overlay on top of the chart bars — no padding
             // reservation. It auto-clamps horizontally inside `tooltipX(...)`
             // and floats above the bar at the top of the chart area.
+        }
+    }
+
+    @ViewBuilder
+    private func todayChart(points: [HourlyCostPoint], hasHourlyDetail: Bool, average: Double) -> some View {
+        if !hasHourlyDetail {
+            VStack(spacing: 4) {
+                Text("Building hourly detail…")
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.tertiary)
+                Text("Hourly samples appear after the next local scan.")
+                    .font(.system(size: density.resetCountdownFontSize))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
+        } else {
+            Chart {
+                ForEach(points) { hour in
+                    AreaMark(
+                        x: .value("Hour", hour.date, unit: .hour),
+                        y: .value("Cost", hour.costUSD)
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color.accentColor.opacity(0.22),
+                                Color.accentColor.opacity(0.04)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                    LineMark(
+                        x: .value("Hour", hour.date, unit: .hour),
+                        y: .value("Cost", hour.costUSD)
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Color.accentColor)
+                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .opacity(hourlyOpacity(for: hour))
+
+                    if hour.costUSD > 0 {
+                        PointMark(
+                            x: .value("Hour", hour.date, unit: .hour),
+                            y: .value("Cost", hour.costUSD)
+                        )
+                        .symbolSize(24)
+                        .foregroundStyle(hour.costUSD > average * 1.5 ? Color.orange : Color.accentColor)
+                    }
+                }
+                if average > 0 {
+                    RuleMark(y: .value("Avg", average))
+                        .foregroundStyle(Color.accentColor.opacity(0.5))
+                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                        .annotation(position: .top, alignment: .trailing, spacing: 3) {
+                            Text("avg \(formatCost(average))")
+                                .font(.system(size: 9, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(.primary.opacity(0.82))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.92))
+                                )
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(.separator.opacity(0.35), lineWidth: 0.5)
+                                )
+                                .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
+                        }
+                }
+            }
+            .chartXScale(domain: todayDomain)
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                    AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
+                    AxisValueLabel {
+                        if let raw = value.as(Double.self) {
+                            Text(formatAxisCost(raw))
+                                .font(.system(size: 9, design: .rounded).monospacedDigit())
+                        }
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .hour, count: 4)) { value in
+                    AxisValueLabel(format: .dateTime.hour())
+                        .font(.system(size: 9))
+                }
+            }
+            .chartOverlay { proxy in
+                hourlyHoverOverlay(proxy: proxy, points: points)
+            }
+            .frame(height: chartHeight)
         }
     }
 
@@ -222,6 +329,71 @@ struct CostHistoryView: View {
         return points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })?.date
     }
 
+    private func hourlyHoverOverlay(proxy: ChartProxy, points: [HourlyCostPoint]) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            let plotMinX = proxy.plotFrame.map { geo[$0].minX } ?? 0
+                            if let date: Date = proxy.value(atX: location.x - plotMinX, as: Date.self) {
+                                hoveredHour = nearestHour(to: date, in: points)
+                            }
+                        case .ended:
+                            hoveredHour = nil
+                        }
+                    }
+                if let hour = hoveredHour,
+                   let point = points.first(where: { $0.date == hour }) {
+                    tooltipView(for: point)
+                        .offset(x: tooltipX(for: point.date, proxy: proxy, geo: geo, in: points))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tooltipView(for point: HourlyCostPoint) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(formatTooltipHour(point.date))
+                    .font(.system(size: 10, weight: .semibold))
+                Spacer(minLength: 8)
+                Text(formatCost(point.costUSD))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+            }
+            Text(formatTokens(point.totalTokens))
+                .font(.system(size: 9, design: .rounded).monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.black.opacity(0.85))
+        )
+        .foregroundStyle(.white)
+        .frame(width: tooltipWidth)
+        .allowsHitTesting(false)
+    }
+
+    private func tooltipX(for date: Date, proxy: ChartProxy, geo: GeometryProxy, in points: [HourlyCostPoint]) -> CGFloat {
+        guard let xValue = proxy.position(forX: date) else { return 0 }
+        let plotMinX = proxy.plotFrame.map { geo[$0].minX } ?? 0
+        let centerX = plotMinX + xValue
+        let halfWidth = tooltipWidth / 2
+        let clamped = min(max(centerX - halfWidth, 0), max(0, geo.size.width - tooltipWidth))
+        return clamped
+    }
+
+    private func nearestHour(to date: Date, in points: [HourlyCostPoint]) -> Date? {
+        guard !points.isEmpty else { return nil }
+        return points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })?.date
+    }
+
     private struct StrideSpec {
         let calendarComponent: Calendar.Component
         let count: Int
@@ -250,12 +422,31 @@ struct CostHistoryView: View {
         return history.filter { $0.date >= cutoff }
     }
 
-    private func timeframeNote(dayCount: Int) -> String {
+    private var todayHourlyPoints: [HourlyCostPoint] {
+        guard let snapshot else { return [] }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        let currentHour = calendar.component(.hour, from: Date())
+        let byHour = Dictionary(uniqueKeysWithValues: snapshot.todayHourlyHistory.map { ($0.date, $0) })
+        return (0...max(0, currentHour)).compactMap { offset -> HourlyCostPoint? in
+            guard let hour = calendar.date(byAdding: .hour, value: offset, to: start) else { return nil }
+            return byHour[hour] ?? HourlyCostPoint(date: hour, costUSD: 0, totalTokens: 0)
+        }
+    }
+
+    private var todayDomain: ClosedRange<Date> {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
+        return start...end
+    }
+
+    private func timeframeNote(sampleCount: Int) -> String {
         switch timeframe {
-        case .today: return "1 day"
+        case .today: return sampleCount > 0 ? "\(sampleCount) hours" : "today"
         case .week:  return "7 days"
         case .month: return "30 days"
-        case .all:   return dayCount == 0 ? "" : "\(dayCount) days"
+        case .all:   return sampleCount == 0 ? "" : "\(sampleCount) days"
         }
     }
 
@@ -291,6 +482,12 @@ struct CostHistoryView: View {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.string(from: date)
     }
+    private func formatTooltipHour(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:00"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.string(from: date)
+    }
 
     private func barColor(for day: DailyCostPoint, average: Double) -> Color {
         if average > 0, day.costUSD > average * 1.5 {
@@ -302,6 +499,10 @@ struct CostHistoryView: View {
     private func opacity(for day: DailyCostPoint) -> Double {
         guard let hovered = hoveredDay else { return 1.0 }
         return Calendar.current.isDate(day.date, inSameDayAs: hovered) ? 1.0 : 0.55
+    }
+    private func hourlyOpacity(for hour: HourlyCostPoint) -> Double {
+        guard let hovered = hoveredHour else { return 1.0 }
+        return hour.date == hovered ? 1.0 : 0.72
     }
 }
 
@@ -320,7 +521,8 @@ private struct CostTimeframeSelector: View {
                         .foregroundStyle(selection == timeframe ? .primary : .secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                        .frame(maxWidth: .infinity, minHeight: 22)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 22)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

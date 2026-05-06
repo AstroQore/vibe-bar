@@ -12,7 +12,8 @@ import Foundation
 ///   - If a scan returns a lower number (rotation removed entries), we keep
 ///     the saved one.
 ///
-/// File: `~/.vibebar/cost_history.json` (mode 0600). Retains ~3 years.
+/// File: `~/.vibebar/cost_history.json` (mode 0600). Retention is controlled
+/// by `AppSettings.costData.retentionDays`.
 public actor CostHistoryStore {
     public static let shared = CostHistoryStore()
 
@@ -23,15 +24,29 @@ public actor CostHistoryStore {
         var totalTokens: Int
     }
     private struct Storage: Codable {
+        var schemaVersion: Int
         var entries: [Entry]
+
+        init(schemaVersion: Int = CostHistoryStore.storageSchemaVersion, entries: [Entry]) {
+            self.schemaVersion = schemaVersion
+            self.entries = entries
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case schemaVersion, entries
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+            self.entries = try c.decode([Entry].self, forKey: .entries)
+        }
     }
 
     private let fileURL: URL
     private let dateFormatter: DateFormatter
-
-    /// 3 years — covers any "All time" lookback. Storage at one entry per
-    /// (tool, day) stays small (<200 KB).
-    private static let retentionDays = 365 * 3
+    private let legacyUTCDateFormatter: DateFormatter
+    private let calendar: Calendar
 
     /// In-memory copy of the last loaded/saved storage. Refresh paths can
     /// merge against this without re-reading the file every time.
@@ -51,14 +66,26 @@ public actor CostHistoryStore {
     /// seconds is fast enough to recover unsaved data after a crash but slow
     /// enough that a typical refresh round writes the file at most once.
     private static let saveThrottleInterval: TimeInterval = 30
+    private static let storageSchemaVersion = 2
 
     init(fileURL: URL = CostHistoryStore.defaultFileURL()) {
         self.fileURL = fileURL
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = Locale(identifier: "en_US_POSIX")
+        cal.timeZone = TimeZone.current
+        self.calendar = cal
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
+        f.calendar = cal
+        f.timeZone = cal.timeZone
         f.locale = Locale(identifier: "en_US_POSIX")
         self.dateFormatter = f
+        let legacy = DateFormatter()
+        legacy.dateFormat = "yyyy-MM-dd"
+        legacy.calendar = Calendar(identifier: .gregorian)
+        legacy.timeZone = TimeZone(identifier: "UTC")
+        legacy.locale = Locale(identifier: "en_US_POSIX")
+        self.legacyUTCDateFormatter = legacy
     }
 
     public static func defaultFileURL() -> URL {
@@ -68,11 +95,17 @@ public actor CostHistoryStore {
 
     /// Bulk merge a series of daily samples for one tool. Each sample is
     /// max-merged with what's saved for the same (tool, date) key.
-    public func mergeSeries(_ series: [DailyCostPoint], tool: ToolType) {
+    public func mergeSeries(
+        _ series: [DailyCostPoint],
+        tool: ToolType,
+        retentionDays: Int = CostDataSettings.defaultRetentionDays
+    ) {
         var storage = load()
         let toolKey = tool.rawValue
+        let cutoffKey = retentionCutoffKey(retentionDays: retentionDays)
         for point in series {
             let key = dateFormatter.string(from: point.date)
+            if let cutoffKey, key < cutoffKey { continue }
             if let idx = storage.entries.firstIndex(where: { $0.tool == toolKey && $0.date == key }) {
                 storage.entries[idx].costUSD = max(storage.entries[idx].costUSD, point.costUSD)
                 storage.entries[idx].totalTokens = max(storage.entries[idx].totalTokens, point.totalTokens)
@@ -80,17 +113,19 @@ public actor CostHistoryStore {
                 storage.entries.append(Entry(tool: toolKey, date: key, costUSD: point.costUSD, totalTokens: point.totalTokens))
             }
         }
-        prune(&storage)
+        prune(&storage, retentionDays: retentionDays)
         save(storage)
     }
 
     /// Merge a CostSnapshot's daily history with stored data and return a fresh
     /// snapshot whose totals reflect the max-merged daily series.
-    public func mergeAndAugment(_ snapshot: CostSnapshot) -> CostSnapshot {
-        mergeSeries(snapshot.dailyHistory, tool: snapshot.tool)
+    public func mergeAndAugment(
+        _ snapshot: CostSnapshot,
+        retentionDays: Int = CostDataSettings.defaultRetentionDays
+    ) -> CostSnapshot {
+        mergeSeries(snapshot.dailyHistory, tool: snapshot.tool, retentionDays: retentionDays)
         let storage = load()
         let toolKey = snapshot.tool.rawValue
-        let calendar = Calendar.current
         let today = calendar.startOfDay(for: snapshot.updatedAt)
         let weekCutoff = calendar.date(byAdding: .day, value: -6, to: today) ?? today
         let monthCutoff = calendar.date(byAdding: .day, value: -29, to: today) ?? today
@@ -100,7 +135,9 @@ public actor CostHistoryStore {
         var monthCost = 0.0, monthTokens = 0
         var allCost = 0.0, allTokens = 0
         var dailyPoints: [DailyCostPoint] = []
+        let cutoffKey = retentionCutoffKey(now: snapshot.updatedAt, retentionDays: retentionDays)
         for entry in storage.entries where entry.tool == toolKey {
+            if let cutoffKey, entry.date < cutoffKey { continue }
             guard let day = dateFormatter.date(from: entry.date) else { continue }
             let normalizedDay = calendar.startOfDay(for: day)
             dailyPoints.append(DailyCostPoint(date: normalizedDay, costUSD: entry.costUSD, totalTokens: entry.totalTokens))
@@ -121,29 +158,18 @@ public actor CostHistoryStore {
         }
         dailyPoints.sort { $0.date < $1.date }
 
-        // Use the max of (stored series total, fresh-scan total). Fresh scan
-        // already saw all data on disk; stored series may include older days
-        // that disk lost.
-        let mergedToday   = max(todayCost,   snapshot.todayCostUSD)
-        let mergedWeek    = max(weekCost,    snapshot.last7DaysCostUSD)
-        let mergedMonth   = max(monthCost,   snapshot.last30DaysCostUSD)
-        let mergedAll     = max(allCost,     snapshot.allTimeCostUSD)
-        let mergedTodayTk = max(todayTokens, snapshot.todayTokens)
-        let mergedWeekTk  = max(weekTokens,  snapshot.last7DaysTokens)
-        let mergedMonthTk = max(monthTokens, snapshot.last30DaysTokens)
-        let mergedAllTk   = max(allTokens,   snapshot.allTimeTokens)
-
         return CostSnapshot(
             tool: snapshot.tool,
-            todayCostUSD: mergedToday,
-            last7DaysCostUSD: mergedWeek,
-            last30DaysCostUSD: mergedMonth,
-            allTimeCostUSD: mergedAll,
-            todayTokens: mergedTodayTk,
-            last7DaysTokens: mergedWeekTk,
-            last30DaysTokens: mergedMonthTk,
-            allTimeTokens: mergedAllTk,
+            todayCostUSD: todayCost,
+            last7DaysCostUSD: weekCost,
+            last30DaysCostUSD: monthCost,
+            allTimeCostUSD: allCost,
+            todayTokens: todayTokens,
+            last7DaysTokens: weekTokens,
+            last30DaysTokens: monthTokens,
+            allTimeTokens: allTokens,
             dailyHistory: dailyPoints,
+            todayHourlyHistory: snapshot.todayHourlyHistory,
             heatmap: snapshot.heatmap,
             modelBreakdowns: snapshot.modelBreakdowns,
             last7DaysModelBreakdowns: snapshot.last7DaysModelBreakdowns,
@@ -155,17 +181,36 @@ public actor CostHistoryStore {
         )
     }
 
-    public func history(for tool: ToolType, days dayCount: Int? = nil, now: Date = Date()) -> CostHistory {
+    public func history(
+        for tool: ToolType,
+        days dayCount: Int? = nil,
+        now: Date = Date(),
+        retentionDays: Int = CostDataSettings.defaultRetentionDays
+    ) -> CostHistory {
         let storage = load()
         let toolKey = tool.rawValue
-        let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         var byDate: [String: Entry] = [:]
         for entry in storage.entries where entry.tool == toolKey {
             byDate[entry.date] = entry
         }
 
-        let count = dayCount ?? Self.retentionDays
+        if dayCount == nil, CostDataSettings.isUnlimitedRetention(retentionDays) {
+            let points = storage.entries
+                .filter { $0.tool == toolKey }
+                .compactMap { entry -> DailyCostPoint? in
+                    guard let day = dateFormatter.date(from: entry.date) else { return nil }
+                    return DailyCostPoint(
+                        date: calendar.startOfDay(for: day),
+                        costUSD: entry.costUSD,
+                        totalTokens: entry.totalTokens
+                    )
+                }
+                .sorted { $0.date < $1.date }
+            return CostHistory(tool: tool, days: points, updatedAt: now)
+        }
+
+        let count = dayCount ?? CostDataSettings.normalizedRetentionDays(retentionDays)
         var points: [DailyCostPoint] = []
         for offset in stride(from: count - 1, through: 0, by: -1) {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
@@ -177,6 +222,12 @@ public actor CostHistoryStore {
             }
         }
         return CostHistory(tool: tool, days: points, updatedAt: now)
+    }
+
+    public func prune(retentionDays: Int) {
+        var storage = load()
+        prune(&storage, retentionDays: retentionDays)
+        save(storage)
     }
 
     public func eraseAll() {
@@ -215,11 +266,14 @@ public actor CostHistoryStore {
             return empty
         }
         guard let data = try? Data(contentsOf: fileURL),
-              let storage = try? JSONDecoder().decode(Storage.self, from: data)
+              var storage = try? JSONDecoder().decode(Storage.self, from: data)
         else {
             let empty = Storage(entries: [])
             cachedStorage = empty
             return empty
+        }
+        if migrateLegacyStorageIfNeeded(&storage) {
+            persist(storage)
         }
         cachedStorage = storage
         return storage
@@ -261,9 +315,54 @@ public actor CostHistoryStore {
         }
     }
 
-    private func prune(_ storage: inout Storage) {
-        guard let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: Date()) else { return }
-        let cutoffKey = dateFormatter.string(from: cutoff)
+    private func prune(_ storage: inout Storage, retentionDays: Int) {
+        guard let cutoffKey = retentionCutoffKey(retentionDays: retentionDays) else { return }
         storage.entries.removeAll { $0.date < cutoffKey }
+    }
+
+    private func retentionCutoffKey(now: Date = Date(), retentionDays: Int) -> String? {
+        let normalized = CostDataSettings.normalizedRetentionDays(retentionDays)
+        guard normalized > 0 else { return nil }
+        let today = calendar.startOfDay(for: now)
+        guard let cutoff = calendar.date(byAdding: .day, value: -(normalized - 1), to: today) else { return nil }
+        let cutoffKey = dateFormatter.string(from: cutoff)
+        return cutoffKey
+    }
+
+    private func migrateLegacyStorageIfNeeded(_ storage: inout Storage) -> Bool {
+        guard storage.schemaVersion < Self.storageSchemaVersion else { return false }
+        var byKey: [String: Entry] = [:]
+        for entry in storage.entries {
+            let migratedDate = legacyLocalStartOfDay(for: entry.date)
+            let migratedKey = migratedDate.map { dateFormatter.string(from: $0) } ?? entry.date
+            let compoundKey = "\(entry.tool)\u{0}\(migratedKey)"
+            if var existing = byKey[compoundKey] {
+                existing.costUSD = max(existing.costUSD, entry.costUSD)
+                existing.totalTokens = max(existing.totalTokens, entry.totalTokens)
+                byKey[compoundKey] = existing
+            } else {
+                byKey[compoundKey] = Entry(
+                    tool: entry.tool,
+                    date: migratedKey,
+                    costUSD: entry.costUSD,
+                    totalTokens: entry.totalTokens
+                )
+            }
+        }
+        storage.entries = Array(byKey.values)
+        storage.schemaVersion = Self.storageSchemaVersion
+        return true
+    }
+
+    private func legacyLocalStartOfDay(for legacyKey: String) -> Date? {
+        guard let legacyDate = legacyUTCDateFormatter.date(from: legacyKey) else { return nil }
+        let base = calendar.startOfDay(for: legacyDate)
+        for offset in -1...1 {
+            guard let candidate = calendar.date(byAdding: .day, value: offset, to: base) else { continue }
+            if legacyUTCDateFormatter.string(from: candidate) == legacyKey {
+                return candidate
+            }
+        }
+        return base
     }
 }

@@ -37,7 +37,7 @@ struct SubscriptionUtilizationView: View {
         .padding(density.cardPadding)
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary)
+                .fill(.background.tertiary.opacity(0.6))
         )
         .overlay(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)

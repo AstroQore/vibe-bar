@@ -49,6 +49,21 @@ public struct DailyCostPoint: Sendable, Equatable, Codable, Identifiable {
     }
 }
 
+/// One hour in today's cost history.
+public struct HourlyCostPoint: Sendable, Equatable, Codable, Identifiable {
+    public let date: Date
+    public let costUSD: Double
+    public let totalTokens: Int
+
+    public var id: Date { date }
+
+    public init(date: Date, costUSD: Double, totalTokens: Int) {
+        self.date = date
+        self.costUSD = costUSD
+        self.totalTokens = totalTokens
+    }
+}
+
 public struct CostHistory: Sendable, Equatable {
     public let tool: ToolType
     public let days: [DailyCostPoint]

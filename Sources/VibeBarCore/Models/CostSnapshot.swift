@@ -20,6 +20,10 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
 
     /// Per-day series since `dayHistoryStart`, ordered ascending.
     public let dailyHistory: [DailyCostPoint]
+    /// Per-hour series for the current local day, ordered ascending. This is
+    /// derived from live JSONL events so the Today chart can show hourly shape
+    /// instead of rendering one whole-day bar.
+    public let todayHourlyHistory: [HourlyCostPoint]
     /// 7×24 cells: weekday (1-7, Sunday=1) × hour (0-23) → token total.
     public let heatmap: UsageHeatmap
     /// Top models in the all-time window.
@@ -58,6 +62,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         last30DaysTokens: Int,
         allTimeTokens: Int,
         dailyHistory: [DailyCostPoint],
+        todayHourlyHistory: [HourlyCostPoint] = [],
         heatmap: UsageHeatmap,
         modelBreakdowns: [ModelBreakdown],
         last7DaysModelBreakdowns: [ModelBreakdown] = [],
@@ -75,6 +80,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.last30DaysTokens = last30DaysTokens
         self.allTimeTokens = allTimeTokens
         self.dailyHistory = dailyHistory
+        self.todayHourlyHistory = todayHourlyHistory
         self.heatmap = heatmap
         self.modelBreakdowns = modelBreakdowns
         self.last7DaysModelBreakdowns = last7DaysModelBreakdowns
@@ -88,7 +94,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             tool: tool,
             todayCostUSD: 0, last7DaysCostUSD: 0, last30DaysCostUSD: 0, allTimeCostUSD: 0,
             todayTokens: 0, last7DaysTokens: 0, last30DaysTokens: 0, allTimeTokens: 0,
-            dailyHistory: [], heatmap: .empty(tool: tool),
+            dailyHistory: [], todayHourlyHistory: [], heatmap: .empty(tool: tool),
             modelBreakdowns: [], last7DaysModelBreakdowns: [], dailyModelBreakdown: [:], jsonlFilesFound: 0, updatedAt: now
         )
     }
@@ -111,7 +117,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case tool, todayCostUSD, last7DaysCostUSD, last30DaysCostUSD, allTimeCostUSD
         case todayTokens, last7DaysTokens, last30DaysTokens, allTimeTokens
-        case dailyHistory, heatmap, modelBreakdowns, last7DaysModelBreakdowns, dailyModelBreakdown
+        case dailyHistory, todayHourlyHistory, heatmap, modelBreakdowns, last7DaysModelBreakdowns, dailyModelBreakdown
         case jsonlFilesFound, updatedAt
     }
 
@@ -133,6 +139,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.last30DaysTokens = try c.decode(Int.self, forKey: .last30DaysTokens)
         self.allTimeTokens = try c.decode(Int.self, forKey: .allTimeTokens)
         self.dailyHistory = try c.decode([DailyCostPoint].self, forKey: .dailyHistory)
+        self.todayHourlyHistory = try c.decodeIfPresent([HourlyCostPoint].self, forKey: .todayHourlyHistory) ?? []
         self.heatmap = try c.decode(UsageHeatmap.self, forKey: .heatmap)
         self.modelBreakdowns = try c.decode([ModelBreakdown].self, forKey: .modelBreakdowns)
         self.last7DaysModelBreakdowns = try c.decodeIfPresent(
@@ -164,6 +171,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         try c.encode(last30DaysTokens, forKey: .last30DaysTokens)
         try c.encode(allTimeTokens, forKey: .allTimeTokens)
         try c.encode(dailyHistory, forKey: .dailyHistory)
+        try c.encode(todayHourlyHistory, forKey: .todayHourlyHistory)
         try c.encode(heatmap, forKey: .heatmap)
         try c.encode(modelBreakdowns, forKey: .modelBreakdowns)
         try c.encode(last7DaysModelBreakdowns, forKey: .last7DaysModelBreakdowns)

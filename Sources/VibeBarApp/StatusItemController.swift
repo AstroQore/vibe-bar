@@ -119,6 +119,7 @@ final class StatusItemController {
         guard let button = item.button else { return }
         button.action = #selector(togglePopover(_:))
         button.target = self
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.image = nil
         button.imagePosition = .noImage
         button.alignment = .center
@@ -161,6 +162,10 @@ final class StatusItemController {
     @objc private func togglePopover(_ sender: Any?) {
         guard let button = sender as? NSStatusBarButton else { return }
         let kind = kindForTag(button.tag)
+        if shouldShowContextMenu(for: NSApp.currentEvent) {
+            showContextMenu(for: kind, button: button)
+            return
+        }
         let popover = popover(for: kind)
         if popover.isShown {
             popover.performClose(sender)
@@ -244,6 +249,145 @@ final class StatusItemController {
 
     private func toggleMiniWindow() {
         miniWindowController.toggle(environment: environment)
+    }
+
+    private func shouldShowContextMenu(for event: NSEvent?) -> Bool {
+        guard let event else { return false }
+        return event.type == .rightMouseUp || (event.type == .leftMouseUp && event.modifierFlags.contains(.control))
+    }
+
+    private func showContextMenu(for kind: MenuBarItemKind, button: NSStatusBarButton) {
+        for popover in popovers.values where popover.isShown {
+            popover.performClose(nil)
+        }
+        let menu = contextMenu(for: kind)
+        if let event = NSApp.currentEvent {
+            NSMenu.popUpContextMenu(menu, with: event, for: button)
+        } else {
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 2), in: button)
+        }
+    }
+
+    private func contextMenu(for kind: MenuBarItemKind) -> NSMenu {
+        let menu = NSMenu(title: "Vibe Bar")
+        menu.autoenablesItems = false
+
+        menu.addItem(disabledMenuItem("Vibe Bar - \(kind.label)"))
+        if let updated = contextUpdatedLine(for: kind) {
+            menu.addItem(disabledMenuItem(updated))
+        }
+        menu.addItem(.separator())
+        menu.addItem(disabledMenuItem("Usage"))
+        for tool in ToolType.allCases {
+            for line in usageMenuLines(for: tool) {
+                menu.addItem(disabledMenuItem(line))
+            }
+        }
+        menu.addItem(.separator())
+        menu.addItem(disabledMenuItem("Service Status"))
+        for tool in ToolType.allCases {
+            menu.addItem(disabledMenuItem(statusSummaryLine(for: tool)))
+        }
+        menu.addItem(.separator())
+        menu.addItem(actionMenuItem("Refresh", action: #selector(refreshFromContextMenu(_:)), keyEquivalent: "r"))
+        menu.addItem(actionMenuItem("Open Mini Window", action: #selector(toggleMiniFromContextMenu(_:))))
+        menu.addItem(actionMenuItem("Open Settings", action: #selector(openSettingsFromContextMenu(_:)), keyEquivalent: ","))
+        menu.addItem(.separator())
+        menu.addItem(actionMenuItem("Quit", action: #selector(quitFromContextMenu(_:)), keyEquivalent: "q"))
+        return menu
+    }
+
+    private func contextTools(for kind: MenuBarItemKind) -> [ToolType] {
+        ToolType.allCases
+    }
+
+    private func contextUpdatedLine(for kind: MenuBarItemKind) -> String? {
+        let dates = contextTools(for: kind)
+            .compactMap { environment.account(for: $0) }
+            .compactMap { environment.quotaService.lastUpdatedByAccount[$0.id] }
+        guard let latest = dates.max() else { return nil }
+        return ResetCountdownFormatter.updatedAgo(from: latest, now: Date())
+    }
+
+    private func usageMenuLines(for tool: ToolType) -> [String] {
+        guard let quota = environment.quota(for: tool) else {
+            return ["\(tool.displayName): No quota data"]
+        }
+        guard !quota.buckets.isEmpty else {
+            return ["\(tool.displayName): No quota data"]
+        }
+        return quota.buckets.map { bucket in
+            let percent = Int(bucket.remainingPercent.rounded())
+            return "\(tool.displayName) - \(fullUsageName(for: bucket)): \(percent)% available"
+        }
+    }
+
+    private func fullUsageName(for bucket: QuotaBucket) -> String {
+        let title = bucket.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let group, !group.isEmpty else {
+            return title.isEmpty ? "Usage" : title
+        }
+        guard !title.isEmpty else {
+            return group
+        }
+        if title.localizedCaseInsensitiveContains(group) {
+            return title
+        }
+        return "\(group) \(title)"
+    }
+
+    private func statusSummaryLine(for tool: ToolType) -> String {
+        if environment.serviceStatus.inFlight.contains(tool) {
+            return "\(tool.statusProviderName) · Checking"
+        }
+        if environment.serviceStatus.errorByTool[tool] != nil {
+            return "\(tool.statusProviderName) · Down"
+        }
+        guard let snapshot = environment.serviceStatus.snapshotByTool[tool] else {
+            return "\(tool.statusProviderName) · Checking"
+        }
+        let label: String
+        switch snapshot.indicator {
+        case .none:        label = "Up"
+        case .maintenance: label = "Maintenance"
+        case .minor,
+             .major,
+             .critical:    label = "Down"
+        }
+        if snapshot.aggregateUptimePercent > 0 {
+            return "\(tool.statusProviderName) · \(label) · \(String(format: "%.2f%%", snapshot.aggregateUptimePercent))"
+        }
+        return "\(tool.statusProviderName) · \(label)"
+    }
+
+    private func disabledMenuItem(_ title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    private func actionMenuItem(_ title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.target = self
+        item.isEnabled = true
+        return item
+    }
+
+    @objc private func refreshFromContextMenu(_ sender: NSMenuItem) {
+        environment.refreshAll()
+    }
+
+    @objc private func toggleMiniFromContextMenu(_ sender: NSMenuItem) {
+        toggleMiniWindow()
+    }
+
+    @objc private func openSettingsFromContextMenu(_ sender: NSMenuItem) {
+        environment.showSettingsWindow()
+    }
+
+    @objc private func quitFromContextMenu(_ sender: NSMenuItem) {
+        NSApp.terminate(nil)
     }
 
     func applicationWillTerminate() {

@@ -14,6 +14,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var popoverDensities: [MenuBarItemKind: PopoverDensity]
     /// Optional user-visible plan badge overrides. Empty means "Auto".
     public var providerPlanLabels: [ToolType: String]
+    public var costData: CostDataSettings
 
     public static let `default` = AppSettings(
         displayMode: .remaining,
@@ -25,7 +26,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         menuBarItems: Self.defaultMenuBarItems,
         miniWindow: Self.defaultMiniWindow,
         popoverDensities: Self.defaultPopoverDensities,
-        providerPlanLabels: Self.defaultProviderPlanLabels
+        providerPlanLabels: Self.defaultProviderPlanLabels,
+        costData: .default
     )
 
     public static let defaultMenuBarItems: [MenuBarItemSettings] = [
@@ -92,7 +94,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         menuBarItems: [MenuBarItemSettings] = AppSettings.defaultMenuBarItems,
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
         popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
-        providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels
+        providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
+        costData: CostDataSettings = .default
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -104,6 +107,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miniWindow = miniWindow
         self.popoverDensities = popoverDensities
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
+        self.costData = costData
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -118,6 +122,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case popoverDensities
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
+        case costData
     }
 
     public init(from decoder: Decoder) throws {
@@ -161,6 +166,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         } else {
             self.providerPlanLabels = Self.defaultProviderPlanLabels
         }
+
+        self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -177,6 +184,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(stringKeyed, forKey: .popoverDensities)
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
         try c.encode(planLabels, forKey: .providerPlanLabels)
+        try c.encode(costData, forKey: .costData)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {
@@ -440,5 +448,50 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
         case .cliOnly: return "Use only local Claude Code OAuth credentials."
         case .webOnly: return "Use only saved claude.ai cookies."
         }
+    }
+}
+
+public struct CostDataSettings: Codable, Equatable, Sendable {
+    public static let unlimitedRetentionDays = 0
+    public static let defaultRetentionDays = unlimitedRetentionDays
+    public static let maximumRetentionDays = 365 * 3
+    public static let retentionOptions = [unlimitedRetentionDays, 30, 90, 365, 365 * 3]
+    public static let `default` = CostDataSettings()
+
+    public var retentionDays: Int
+    public var privacyModeEnabled: Bool
+
+    public init(
+        retentionDays: Int = Self.defaultRetentionDays,
+        privacyModeEnabled: Bool = false
+    ) {
+        self.retentionDays = Self.normalizedRetentionDays(retentionDays)
+        self.privacyModeEnabled = privacyModeEnabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case retentionDays, privacyModeEnabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let retentionDays = try c.decodeIfPresent(Int.self, forKey: .retentionDays) ?? Self.defaultRetentionDays
+        self.retentionDays = Self.normalizedRetentionDays(retentionDays)
+        self.privacyModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .privacyModeEnabled) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(Self.normalizedRetentionDays(retentionDays), forKey: .retentionDays)
+        try c.encode(privacyModeEnabled, forKey: .privacyModeEnabled)
+    }
+
+    public static func normalizedRetentionDays(_ raw: Int) -> Int {
+        if raw <= 0 { return unlimitedRetentionDays }
+        return min(max(1, raw), maximumRetentionDays)
+    }
+
+    public static func isUnlimitedRetention(_ days: Int) -> Bool {
+        normalizedRetentionDays(days) == unlimitedRetentionDays
     }
 }

@@ -2,8 +2,8 @@ import Foundation
 import Combine
 
 /// Owns per-tool CostSnapshot + ProviderExtras. Merges fresh JSONL scans with
-/// the persisted CostHistoryStore using max() per (tool, day), so old data
-/// rotated off disk by Codex/Claude is preserved across runs.
+/// the persisted CostHistoryStore using max() per retained (tool, day), so
+/// recent data survives CLI log rotation without keeping an unlimited profile.
 @MainActor
 public final class CostUsageService: ObservableObject {
     @Published public private(set) var snapshots: [ToolType: CostSnapshot] = [:]
@@ -13,25 +13,37 @@ public final class CostUsageService: ObservableObject {
     /// Set by callers (e.g. AppEnvironment) to surface Claude extras parsed
     /// from the OAuth response. Updated each time QuotaService refreshes.
     public func setLiveExtras(_ extras: ProviderExtras?, for tool: ToolType) {
+        guard !costDataSettingsProvider().privacyModeEnabled else {
+            extrasByTool.removeValue(forKey: tool)
+            return
+        }
         if let extras { extrasByTool[tool] = extras }
         else { extrasByTool.removeValue(forKey: tool) }
     }
 
     private let homeDirectory: String
     private let mockProvider: () -> Bool
+    private let costDataSettingsProvider: () -> CostDataSettings
 
     public init(
         homeDirectory: String = NSHomeDirectory(),
-        mockProvider: @escaping () -> Bool = { false }
+        mockProvider: @escaping () -> Bool = { false },
+        costDataSettingsProvider: @escaping () -> CostDataSettings = { .default }
     ) {
         self.homeDirectory = homeDirectory
         self.mockProvider = mockProvider
+        self.costDataSettingsProvider = costDataSettingsProvider
         // Surface the most recent persisted snapshot per tool immediately so
         // the popover doesn't render an empty Cost panel while the first
         // background scan is still running. The fresh scan replaces this when
         // it completes (typically within a second on modern hardware).
         Task { @MainActor in
-            let cached = await CostSnapshotCache.shared.loadAll()
+            let costData = self.costDataSettingsProvider()
+            guard !costData.privacyModeEnabled else {
+                await self.eraseLocalCostData()
+                return
+            }
+            let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays)
             for (tool, snap) in cached where self.snapshots[tool] == nil {
                 self.snapshots[tool] = snap
             }
@@ -55,6 +67,12 @@ public final class CostUsageService: ObservableObject {
         defer { isRefreshing = false }
 
         let now = Date()
+        let costData = costDataSettingsProvider()
+        guard !costData.privacyModeEnabled else {
+            await eraseLocalCostData()
+            return
+        }
+        let retentionDays = costData.retentionDays
         if mockProvider() {
             var results: [ToolType: CostSnapshot] = [:]
             for tool in ToolType.allCases where tool.supportsTokenCost {
@@ -83,14 +101,23 @@ public final class CostUsageService: ObservableObject {
             // calling actor and can stutter the menu bar UI for hundreds of
             // milliseconds when the user has accumulated many session files.
             let scanned: CostSnapshot? = await Task.detached(priority: .utility) {
-                await CostUsageScanner.scan(tool: tool, homeDirectory: home, now: now)
+                await CostUsageScanner.scan(
+                    tool: tool,
+                    homeDirectory: home,
+                    now: now,
+                    retentionDays: retentionDays
+                )
             }.value
             if let scanned {
-                let merged = await CostHistoryStore.shared.mergeAndAugment(scanned)
+                guard !costDataSettingsProvider().privacyModeEnabled else {
+                    await eraseLocalCostData()
+                    return
+                }
+                let merged = await CostHistoryStore.shared.mergeAndAugment(scanned, retentionDays: retentionDays)
                 results[tool] = merged
                 // Persist the post-merge snapshot so a future launch can show
                 // these numbers without waiting for a fresh scan.
-                await CostSnapshotCache.shared.save(merged)
+                await CostSnapshotCache.shared.save(merged, retentionDays: retentionDays)
             }
         }
         snapshots = results
@@ -103,6 +130,10 @@ public final class CostUsageService: ObservableObject {
     }
 
     public func costHistory(for tool: ToolType, timeframe: CostTimeframe) async -> CostHistory {
+        let costData = costDataSettingsProvider()
+        guard !costData.privacyModeEnabled else {
+            return CostHistory(tool: tool, days: [], updatedAt: Date())
+        }
         if mockProvider() {
             return MockDataProvider.sampleCostHistory(for: tool, timeframe: timeframe)
         }
@@ -113,6 +144,31 @@ public final class CostUsageService: ObservableObject {
         case .month: dayCount = 30
         case .all:   dayCount = nil
         }
-        return await CostHistoryStore.shared.history(for: tool, days: dayCount)
+        return await CostHistoryStore.shared.history(
+            for: tool,
+            days: dayCount,
+            retentionDays: costData.retentionDays
+        )
+    }
+
+    public func applyCostDataSettings() async {
+        let costData = costDataSettingsProvider()
+        guard !costData.privacyModeEnabled else {
+            await eraseLocalCostData()
+            return
+        }
+        await CostHistoryStore.shared.prune(retentionDays: costData.retentionDays)
+        let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays)
+        snapshots = cached
+        lastRefreshedAt = cached.values.map(\.updatedAt).max()
+    }
+
+    public func eraseLocalCostData() async {
+        await CostHistoryStore.shared.eraseAll()
+        await CostSnapshotCache.shared.eraseAll()
+        CostUsageScanCache.eraseAll(homeDirectory: homeDirectory)
+        snapshots = [:]
+        extrasByTool = [:]
+        lastRefreshedAt = nil
     }
 }

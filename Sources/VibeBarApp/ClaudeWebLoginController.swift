@@ -121,14 +121,14 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
             .map { "\($0.name)=\($0.value)" }
             .joined(separator: "; ")
 
-        guard !header.isEmpty else {
+        guard let minimizedHeader = ClaudeWebCookieStore.minimizedCookieHeader(from: header) else {
             showAlert(message: "No claude.ai cookies found yet. Finish login in this window first.")
             return
         }
 
         do {
-            try ClaudeWebCookieStore.writeCookieHeader(header)
-            cacheClaudeOrganizationID(from: header)
+            try ClaudeWebCookieStore.writeCookieHeader(minimizedHeader)
+            cacheClaudeOrganizationID(from: minimizedHeader)
             showAlert(message: "Claude cookies saved.")
             onSaved?()
         } catch {
