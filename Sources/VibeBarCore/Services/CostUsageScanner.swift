@@ -15,7 +15,7 @@ import Foundation
 public enum CostUsageScanner {
     public static func scan(
         tool: ToolType,
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = RealHomeDirectory.path,
         now: Date = Date(),
         retentionDays: Int? = nil
     ) async -> CostSnapshot? {

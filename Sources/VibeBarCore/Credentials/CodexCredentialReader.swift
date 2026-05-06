@@ -85,7 +85,7 @@ public enum CodexCredentialReader {
     }
 
     private static func readFromAuthJSON() throws -> CodexCredential {
-        let url = FileManager.default.homeDirectoryForCurrentUser
+        let url = RealHomeDirectory.url
             .appendingPathComponent(".codex/auth.json")
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw QuotaError.noCredential

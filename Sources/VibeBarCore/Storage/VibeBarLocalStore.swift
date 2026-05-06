@@ -4,7 +4,7 @@ public enum VibeBarLocalStore {
     public static let directoryName = ".vibebar"
 
     public static var baseDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        RealHomeDirectory.url
             .appendingPathComponent(directoryName, isDirectory: true)
     }
 
