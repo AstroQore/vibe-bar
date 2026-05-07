@@ -52,9 +52,28 @@ struct PopoverRoot: View {
         .readHeight(onContentHeightChange)
     }
 
-    private var activeDensity: Theme.Density {
-        let popDens = settingsStore.settings.popoverDensity(for: kind)
+    /// Resolves the "logical" menu bar kind for the current view. When the
+    /// overview popover sits on a sub-page (Claude / OpenAI), every kind-keyed
+    /// piece of state — density preference, header title/subtitle/plan,
+    /// `visibleTools` — is taken from the matching dedicated kind so the
+    /// rendering is byte-for-byte consistent with what the user would see if
+    /// they had opened that provider's menu bar item directly.
+    private var effectiveKind: MenuBarItemKind {
         switch kind {
+        case .compact:
+            switch overviewPage {
+            case .overview: return .compact
+            case .claude:   return .claude
+            case .openAI:   return .codex
+            }
+        default:
+            return kind
+        }
+    }
+
+    private var activeDensity: Theme.Density {
+        let popDens = settingsStore.settings.popoverDensity(for: effectiveKind)
+        switch effectiveKind {
         case .compact:
             return Theme.overviewDensity(for: popDens)
         case .codex, .claude:
@@ -91,7 +110,7 @@ struct PopoverRoot: View {
     }
 
     private var headerTitle: String {
-        switch kind {
+        switch effectiveKind {
         case .compact: return "Overview"
         case .codex:   return "OpenAI"
         case .claude:  return "Claude"
@@ -100,7 +119,7 @@ struct PopoverRoot: View {
     }
 
     private var headerSubtitle: String? {
-        switch kind {
+        switch effectiveKind {
         case .compact: return "All providers · quota & cost"
         case .codex:   return ToolType.codex.subtitle
         case .claude:  return ToolType.claude.subtitle
@@ -109,7 +128,7 @@ struct PopoverRoot: View {
     }
 
     private var headerPlan: String? {
-        switch kind {
+        switch effectiveKind {
         case .compact, .status: return nil
         case .codex:   return planBadgeLabel(for: .codex)
         case .claude:  return planBadgeLabel(for: .claude)
@@ -117,7 +136,7 @@ struct PopoverRoot: View {
     }
 
     private var visibleTools: [ToolType] {
-        switch kind {
+        switch effectiveKind {
         case .compact, .status: return ToolType.allCases
         case .codex:            return [.codex]
         case .claude:           return [.claude]
@@ -700,14 +719,19 @@ private struct CostDetailPopoverContent: View {
 // MARK: - Single-provider detail (two-column waterfall)
 
 /// Single-provider popover content. No tabs — laid out as a two-column
-/// waterfall to match the Overview popover:
-///   - Left column: Quota card (all buckets) + Subscription utilization
-///   - Right column: Cost summary + Top Model + Model Ranking + history chart
-///                  + yearly heatmap + weekday-hour heatmap + hourly burn
+/// waterfall:
+///   - Left column: Cost summary (header + history chart + model ranking),
+///                  THEN Quota card (all buckets) + Subscription utilization
+///                  + Service status. Cost lives above Usage so the spend
+///                  numbers are the first thing the user sees.
+///   - Right column: Yearly contribution heatmap + weekday-hour heatmap
+///                  + hourly burn rate. These visualizations need width and
+///                  read better on the wider side.
 ///
-/// The user explicitly asked for this — quota/utilization content is short,
-/// cost content is long, so vertically stacking them in two columns balances
-/// the popover height instead of forcing a tab switcher.
+/// AQ asked for this arrangement — the original layout had Quota on the left
+/// and the entire cost section on the right. The new ordering keeps cost
+/// above usage on the left while the wide-by-design heatmaps stay where they
+/// have room to breathe.
 private struct ProviderDetailView: View {
     let tool: ToolType
     let density: Theme.Density
@@ -717,8 +741,20 @@ private struct ProviderDetailView: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
+        let snapshot = environment.costService.snapshot(for: tool)
+        let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                if let snapshot, hasCostData {
+                    CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
+                    CostHistoryView(
+                        tool: tool,
+                        snapshot: snapshot,
+                        density: density,
+                        chartHeight: 160
+                    )
+                    ModelRankingList(snapshot: snapshot, density: density)
+                }
                 ProviderQuotaCard(tool: tool, density: density, compact: false)
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     SubscriptionUtilizationView(
@@ -739,16 +775,7 @@ private struct ProviderDetailView: View {
             )
 
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                let snapshot = environment.costService.snapshot(for: tool)
-                if let snapshot, snapshot.jsonlFilesFound > 0 {
-                    CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
-                    CostHistoryView(
-                        tool: tool,
-                        snapshot: snapshot,
-                        density: density,
-                        chartHeight: 160
-                    )
-                    ModelRankingList(snapshot: snapshot, density: density)
+                if let snapshot, hasCostData {
                     YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
                     UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
                     UsageRateView(heatmap: snapshot.heatmap, density: density)

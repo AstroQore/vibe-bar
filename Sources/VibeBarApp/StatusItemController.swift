@@ -61,14 +61,24 @@ final class StatusItemController {
     }
 
     private func currentPopoverWidth(for kind: MenuBarItemKind) -> CGFloat {
-        let density = environment.settingsStore.settings.popoverDensity(for: kind)
+        let settings = environment.settingsStore.settings
         switch kind {
         case .compact:
-            return Theme.overviewDensity(for: density).popoverWidth
+            // The compact popover hosts three pages (Overview / Claude / OpenAI)
+            // and the user expects every sub-page to render identically to the
+            // matching dedicated menu bar item. Size the container to whichever
+            // of those is widest so switching pages never reflows the popover
+            // and the Claude/OpenAI sub-pages get exactly the same width as
+            // their stand-alone counterparts.
+            return max(
+                Theme.overviewDensity(for: settings.popoverDensity(for: .compact)).popoverWidth,
+                Theme.detailDensity(for: settings.popoverDensity(for: .claude)).popoverWidth,
+                Theme.detailDensity(for: settings.popoverDensity(for: .codex)).popoverWidth
+            )
         case .codex, .claude:
-            return Theme.detailDensity(for: density).popoverWidth
+            return Theme.detailDensity(for: settings.popoverDensity(for: kind)).popoverWidth
         case .status:
-            return Theme.density(for: density).popoverWidth
+            return Theme.density(for: settings.popoverDensity(for: kind)).popoverWidth
         }
     }
 
@@ -193,7 +203,15 @@ final class StatusItemController {
         }
         guard !changed.isEmpty else { return }
         lastObservedDensities = newDensities
-        for kind in changed {
+        var toInvalidate = Set(changed)
+        // The compact popover renders Overview + Claude/OpenAI sub-pages and
+        // sizes itself to fit the widest of the three. A change to claude's
+        // or codex's density preference therefore needs to invalidate compact
+        // too, so the next open picks up the new max width.
+        if changed.contains(.claude) || changed.contains(.codex) {
+            toInvalidate.insert(.compact)
+        }
+        for kind in toInvalidate {
             if let popover = popovers[kind], popover.isShown {
                 popover.performClose(nil)
             }
