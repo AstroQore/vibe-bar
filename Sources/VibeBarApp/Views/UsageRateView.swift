@@ -12,7 +12,7 @@ struct UsageRateView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Hourly burn rate")
+                Text("Hourly Burn Rate")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let peak = peakHour {

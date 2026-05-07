@@ -37,7 +37,7 @@ struct CostHistoryView: View {
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Cost history")
+                Text("Cost History")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 CostTimeframeSelector(selection: $timeframe, density: density)

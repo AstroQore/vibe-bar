@@ -16,7 +16,7 @@ struct SubscriptionUtilizationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Subscription utilization")
+                Text("Subscription Utilization")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 Text(toolDisplayName)

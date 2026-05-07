@@ -12,7 +12,7 @@ struct ModelRankingList: View {
     let breakdowns: [CostSnapshot.ModelBreakdown]
     let density: Theme.Density
     var maxHeight: CGFloat = 180
-    /// Right-hand subtitle next to "Model ranking". Defaults to "All time"; the
+    /// Right-hand subtitle next to "Model Ranking". Defaults to "All time"; the
     /// Overview's combined card overrides to "All providers · all time" so the
     /// scope is unambiguous.
     var subtitle: String = "All time"
@@ -41,7 +41,7 @@ struct ModelRankingList: View {
         if !models.isEmpty {
             VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Model ranking")
+                    Text("Model Ranking")
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     Spacer()
                     Text(subtitle)

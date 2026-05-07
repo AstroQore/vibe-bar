@@ -39,7 +39,7 @@ struct PopoverRoot: View {
                 onShowSettings: { environment.showSettingsWindow() }
             )
             Divider().opacity(0.3)
-            ScrollView(.vertical, showsIndicators: true) {
+            ScrollView(.vertical, showsIndicators: false) {
                 content(density: density)
                     .padding(.bottom, 4)
             }
@@ -52,9 +52,28 @@ struct PopoverRoot: View {
         .readHeight(onContentHeightChange)
     }
 
-    private var activeDensity: Theme.Density {
-        let popDens = settingsStore.settings.popoverDensity(for: kind)
+    /// Resolves the "logical" menu bar kind for the current view. When the
+    /// overview popover sits on a sub-page (Claude / OpenAI), every kind-keyed
+    /// piece of state — density preference, header title/subtitle/plan,
+    /// `visibleTools` — is taken from the matching dedicated kind so the
+    /// rendering is byte-for-byte consistent with what the user would see if
+    /// they had opened that provider's menu bar item directly.
+    private var effectiveKind: MenuBarItemKind {
         switch kind {
+        case .compact:
+            switch overviewPage {
+            case .overview: return .compact
+            case .claude:   return .claude
+            case .openAI:   return .codex
+            }
+        default:
+            return kind
+        }
+    }
+
+    private var activeDensity: Theme.Density {
+        let popDens = settingsStore.settings.popoverDensity(for: effectiveKind)
+        switch effectiveKind {
         case .compact:
             return Theme.overviewDensity(for: popDens)
         case .codex, .claude:
@@ -91,7 +110,7 @@ struct PopoverRoot: View {
     }
 
     private var headerTitle: String {
-        switch kind {
+        switch effectiveKind {
         case .compact: return "Overview"
         case .codex:   return "OpenAI"
         case .claude:  return "Claude"
@@ -100,7 +119,7 @@ struct PopoverRoot: View {
     }
 
     private var headerSubtitle: String? {
-        switch kind {
+        switch effectiveKind {
         case .compact: return "All providers · quota & cost"
         case .codex:   return ToolType.codex.subtitle
         case .claude:  return ToolType.claude.subtitle
@@ -109,6 +128,12 @@ struct PopoverRoot: View {
     }
 
     private var headerPlan: String? {
+        // Always check `kind` here (not `effectiveKind`). The Overview popover
+        // sits between the page switcher and the refresh / settings buttons,
+        // so any extra accessory in that header band gets in the user's way
+        // when they're trying to switch tabs. AQ explicitly does not want a
+        // plan badge to appear in Overview, even when the active sub-page is
+        // Claude or OpenAI. Dedicated provider popovers still show it.
         switch kind {
         case .compact, .status: return nil
         case .codex:   return planBadgeLabel(for: .codex)
@@ -117,7 +142,7 @@ struct PopoverRoot: View {
     }
 
     private var visibleTools: [ToolType] {
-        switch kind {
+        switch effectiveKind {
         case .compact, .status: return ToolType.allCases
         case .codex:            return [.codex]
         case .claude:           return [.claude]
@@ -185,24 +210,24 @@ private struct ProviderSectionTitle: View {
 
 private enum OverviewPage: String, CaseIterable, Identifiable {
     case overview
-    case claude
     case openAI
+    case claude
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .overview: return "Overview"
-        case .claude:   return "Claude"
         case .openAI:   return "OpenAI"
+        case .claude:   return "Claude"
         }
     }
 
     var menuBarKind: MenuBarItemKind {
         switch self {
         case .overview: return .compact
-        case .claude:   return .claude
         case .openAI:   return .codex
+        case .claude:   return .claude
         }
     }
 }
@@ -328,12 +353,15 @@ private struct OverviewWaterfall: View {
 }
 
 /// Sits above the per-provider columns: eight usage metrics in two rows on the
-/// left and current provider status on the right.
+/// left and current provider status on the right. Both halves get their own
+/// refresh button so the user can pull just-this-card data without firing the
+/// global header refresh.
 private struct CombinedTotalsRow: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
-    private let summaryHeight: CGFloat = 112
+    @EnvironmentObject var costService: CostUsageService
+    private let summaryHeight: CGFloat = 134
 
     var body: some View {
         let snapshots = ToolType.allCases.compactMap { environment.costService.snapshot(for: $0) }
@@ -347,7 +375,26 @@ private struct CombinedTotalsRow: View {
         let totalFiles = snapshots.reduce(0) { $0 + $1.jsonlFilesFound }
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Cost")
+                        .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    Spacer()
+                    if let lastRefreshed = costService.lastRefreshedAt {
+                        Text(ResetCountdownFormatter.updatedAgo(from: lastRefreshed, now: Date()))
+                            .font(.system(size: max(9, density.subtitleFontSize - 1)))
+                            .foregroundStyle(.tertiary)
+                    }
+                    if costService.isRefreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 12, height: 12)
+                    }
+                    BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh cost data") {
+                        environment.refreshCostUsage()
+                    }
+                    .disabled(costService.isRefreshing)
+                }
                 HStack(alignment: .top, spacing: 0) {
                     metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
                     divider
@@ -368,7 +415,7 @@ private struct CombinedTotalsRow: View {
                 }
             }
             .padding(density.cardPadding)
-            .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                     .fill(.background.tertiary.opacity(0.6))
@@ -379,7 +426,7 @@ private struct CombinedTotalsRow: View {
             )
 
             OverviewStatusSummaryCard(density: density)
-                .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .center)
+                .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
         }
     }
 
@@ -428,18 +475,25 @@ private struct OverviewStatusSummaryCard: View {
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("STATUS")
-                    .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .tracking(0.4)
+                Text("Status")
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let lastFetched = serviceStatus.lastFetched {
                     Text(ResetCountdownFormatter.updatedAgo(from: lastFetched, now: Date()))
                         .font(.system(size: max(9, density.subtitleFontSize - 1)))
                         .foregroundStyle(.tertiary)
                 }
+                if !serviceStatus.inFlight.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
+                }
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh service status") {
+                    serviceStatus.refreshAll()
+                }
+                .disabled(!serviceStatus.inFlight.isEmpty)
             }
             HStack(spacing: 8) {
                 ForEach(ToolType.allCases, id: \.self) { tool in
@@ -449,7 +503,7 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: 112, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 134, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))
@@ -466,11 +520,11 @@ private struct OverviewStatusSummaryCard: View {
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: state.iconName)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(state.color)
-                ProviderBrandIconView(kind: tool.brandMenuBarKind, size: 11)
-                    .opacity(0.85)
-                    .frame(width: 14, height: 14)
+                ProviderBrandIconView(kind: tool.brandMenuBarKind, size: 15)
+                    .opacity(0.9)
+                    .frame(width: 18, height: 18)
                 Text(tool.statusProviderName)
                     .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
@@ -536,7 +590,13 @@ private struct OverviewStatusSummaryCard: View {
             return .up
         case .maintenance:
             return .maintenance
-        case .minor, .major, .critical:
+        case .minor, .major:
+            // Partial degradation should not look like a hard outage. AQ
+            // pointed out that an OpenAI page reporting a degraded sub-system
+            // was rendering as the same red X we use for "fully down", which
+            // overstated the severity. Reserve the red X for `.critical` only.
+            return .degraded
+        case .critical:
             return .down
         }
     }
@@ -544,6 +604,7 @@ private struct OverviewStatusSummaryCard: View {
 
 private enum OverviewStatusState {
     case up
+    case degraded
     case down
     case checking
     case maintenance
@@ -551,6 +612,7 @@ private enum OverviewStatusState {
     var label: String {
         switch self {
         case .up:          return "Up"
+        case .degraded:    return "Degraded"
         case .down:        return "Down"
         case .checking:    return "Checking"
         case .maintenance: return "Maintenance"
@@ -560,6 +622,7 @@ private enum OverviewStatusState {
     var iconName: String {
         switch self {
         case .up:          return "checkmark.circle.fill"
+        case .degraded:    return "exclamationmark.triangle.fill"
         case .down:        return "xmark.octagon.fill"
         case .checking:    return "arrow.clockwise.circle.fill"
         case .maintenance: return "wrench.and.screwdriver.fill"
@@ -569,6 +632,7 @@ private enum OverviewStatusState {
     var detail: String {
         switch self {
         case .up:          return "Operational"
+        case .degraded:    return "Partial outage"
         case .down:        return "Needs attention"
         case .checking:    return "Checking"
         case .maintenance: return "Maintenance"
@@ -578,6 +642,10 @@ private enum OverviewStatusState {
     var color: Color {
         switch self {
         case .up:          return .green
+        // Yellow-gold reads as "warning" without escalating to the red used
+        // for full outages. Same tone the pace marker uses for "slightly
+        // ahead" so the palette stays consistent.
+        case .degraded:    return Color(red: 0.96, green: 0.72, blue: 0.20)
         case .down:        return .red
         case .checking:    return .blue
         case .maintenance: return .blue
@@ -593,6 +661,7 @@ private struct OverviewCostCard: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var costService: CostUsageService
     @State private var detailPresented: Bool = false
 
     var body: some View {
@@ -601,13 +670,22 @@ private struct OverviewCostCard: View {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: "\(tool.menuTitle) cost",
+                    title: "\(tool.menuTitle) Cost",
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
                     badgeSize: 22
                 )
                 Spacer(minLength: 4)
+                if costService.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
+                }
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(tool.menuTitle) cost") {
+                    environment.refreshCostUsage()
+                }
+                .disabled(costService.isRefreshing)
                 if snapshot != nil {
                     Button {
                         detailPresented = true
@@ -673,7 +751,7 @@ private struct CostDetailPopoverContent: View {
                 HStack(alignment: .center) {
                     ProviderSectionTitle(
                         tool: tool,
-                        title: "\(tool.menuTitle) cost — full charts",
+                        title: "\(tool.menuTitle) Cost — Full Charts",
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 15,
@@ -699,15 +777,22 @@ private struct CostDetailPopoverContent: View {
 
 // MARK: - Single-provider detail (two-column waterfall)
 
-/// Single-provider popover content. No tabs — laid out as a two-column
-/// waterfall to match the Overview popover:
-///   - Left column: Quota card (all buckets) + Subscription utilization
-///   - Right column: Cost summary + Top Model + Model Ranking + history chart
-///                  + yearly heatmap + weekday-hour heatmap + hourly burn
+/// Single-provider popover content. Two-column layout — narrow left for the
+/// live subscription panels, wider right for cost charts and heatmaps. The
+/// two columns size independently and do NOT have to match in height.
 ///
-/// The user explicitly asked for this — quota/utilization content is short,
-/// cost content is long, so vertically stacking them in two columns balances
-/// the popover height instead of forcing a tab switcher.
+/// Left column (fixed order, narrow):
+///   1. Quota / Usage bar
+///   2. Subscription Utilization
+///   3. Service Status
+///
+/// Right column (wide): Cost summary card (TODAY / 7D / 30D / ALL + Top
+/// Model) → Cost History → Model Ranking → yearly contribution heatmap →
+/// weekday-hour heatmap → hourly burn rate.
+///
+/// AQ tried the cost summary on the left and decided it looked off there;
+/// the entire cost section now lives on the right with the rest of the
+/// charts, where the wider column suits its grid of metrics.
 private struct ProviderDetailView: View {
     let tool: ToolType
     let density: Theme.Density
@@ -717,6 +802,8 @@ private struct ProviderDetailView: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
+        let snapshot = environment.costService.snapshot(for: tool)
+        let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 ProviderQuotaCard(tool: tool, density: density, compact: false)
@@ -739,8 +826,7 @@ private struct ProviderDetailView: View {
             )
 
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                let snapshot = environment.costService.snapshot(for: tool)
-                if let snapshot, snapshot.jsonlFilesFound > 0 {
+                if let snapshot, hasCostData {
                     CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
                     CostHistoryView(
                         tool: tool,
@@ -789,12 +875,15 @@ private struct CostHeaderCard: View {
     let snapshot: CostSnapshot
     let density: Theme.Density
 
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var costService: CostUsageService
+
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: "\(tool.menuTitle) cost",
+                    title: "\(tool.menuTitle) Cost",
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
@@ -804,6 +893,15 @@ private struct CostHeaderCard: View {
                 Text(snapshot.updatedAt, style: .relative)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
+                if costService.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
+                }
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(tool.menuTitle) cost") {
+                    environment.refreshCostUsage()
+                }
+                .disabled(costService.isRefreshing)
             }
             CostSummaryRow(snapshot: snapshot, density: density)
             TopModelTile(snapshot: snapshot, density: density)
