@@ -27,7 +27,7 @@ struct YearlyContributionHeatmapView: View {
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("\(toolName) — past year")
+                Text("\(toolName) — Past Year")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let total = totalLabel {

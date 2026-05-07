@@ -113,6 +113,7 @@ final class StatusItemController {
                 .environmentObject(environment.settingsStore)
                 .environmentObject(environment.quotaService)
                 .environmentObject(environment.serviceStatus)
+                .environmentObject(environment.costService)
         )
         return popover
     }

@@ -7,6 +7,11 @@ struct MiniQuotaWindowView: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
+    /// Observe the QuotaService directly so the mini window re-renders the
+    /// instant a quota refresh lands. Without this the view only redraws on
+    /// a settings change or the inner TimelineView's 30 s tick, which made
+    /// timer- or button-driven refreshes feel laggy compared to the popover.
+    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         let contentByTool = miniContentByTool
@@ -958,6 +963,10 @@ private struct MiniVerticalQuotaBar: View {
     let color: Color
     let markerColor: Color
 
+    private static let wingWidth: CGFloat = 3.4
+    private static let wingHeight: CGFloat = 1.4
+    private static let wingGap: CGFloat = 1.6
+
     var body: some View {
         GeometryReader { proxy in
             let height = proxy.size.height
@@ -974,10 +983,22 @@ private struct MiniVerticalQuotaBar: View {
                     .frame(width: MiniCompactMetrics.barWidth, height: fillHeight)
                     .position(x: proxy.size.width / 2, y: height - fillHeight / 2)
                 if let markerY {
+                    // The original pace marker was a 14×1.1pt capsule cutting
+                    // straight across the 7pt bar — visually heavy, almost
+                    // double the bar's width. Two small "wings" flanking the
+                    // bar at the expected pace level read as a tick gauge
+                    // instead of a crossbar, and leave the bar fill itself
+                    // uncluttered.
+                    let halfBar = MiniCompactMetrics.barWidth / 2
+                    let wingCenterOffset = halfBar + Self.wingGap + Self.wingWidth / 2
                     Capsule()
-                        .fill(markerColor.opacity(0.76))
-                        .frame(width: 14, height: 1.1)
-                        .position(x: proxy.size.width / 2, y: markerY)
+                        .fill(markerColor.opacity(0.85))
+                        .frame(width: Self.wingWidth, height: Self.wingHeight)
+                        .position(x: proxy.size.width / 2 - wingCenterOffset, y: markerY)
+                    Capsule()
+                        .fill(markerColor.opacity(0.85))
+                        .frame(width: Self.wingWidth, height: Self.wingHeight)
+                        .position(x: proxy.size.width / 2 + wingCenterOffset, y: markerY)
                 }
             }
         }

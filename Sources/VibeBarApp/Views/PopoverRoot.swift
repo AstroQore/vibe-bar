@@ -347,12 +347,15 @@ private struct OverviewWaterfall: View {
 }
 
 /// Sits above the per-provider columns: eight usage metrics in two rows on the
-/// left and current provider status on the right.
+/// left and current provider status on the right. Both halves get their own
+/// refresh button so the user can pull just-this-card data without firing the
+/// global header refresh.
 private struct CombinedTotalsRow: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
-    private let summaryHeight: CGFloat = 112
+    @EnvironmentObject var costService: CostUsageService
+    private let summaryHeight: CGFloat = 134
 
     var body: some View {
         let snapshots = ToolType.allCases.compactMap { environment.costService.snapshot(for: $0) }
@@ -366,7 +369,26 @@ private struct CombinedTotalsRow: View {
         let totalFiles = snapshots.reduce(0) { $0 + $1.jsonlFilesFound }
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Cost")
+                        .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    Spacer()
+                    if let lastRefreshed = costService.lastRefreshedAt {
+                        Text(ResetCountdownFormatter.updatedAgo(from: lastRefreshed, now: Date()))
+                            .font(.system(size: max(9, density.subtitleFontSize - 1)))
+                            .foregroundStyle(.tertiary)
+                    }
+                    if costService.isRefreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 12, height: 12)
+                    }
+                    BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh cost data") {
+                        environment.refreshCostUsage()
+                    }
+                    .disabled(costService.isRefreshing)
+                }
                 HStack(alignment: .top, spacing: 0) {
                     metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
                     divider
@@ -447,18 +469,25 @@ private struct OverviewStatusSummaryCard: View {
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("STATUS")
-                    .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .tracking(0.4)
+                Text("Status")
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let lastFetched = serviceStatus.lastFetched {
                     Text(ResetCountdownFormatter.updatedAgo(from: lastFetched, now: Date()))
                         .font(.system(size: max(9, density.subtitleFontSize - 1)))
                         .foregroundStyle(.tertiary)
                 }
+                if !serviceStatus.inFlight.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
+                }
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh service status") {
+                    serviceStatus.refreshAll()
+                }
+                .disabled(!serviceStatus.inFlight.isEmpty)
             }
             HStack(spacing: 8) {
                 ForEach(ToolType.allCases, id: \.self) { tool in
@@ -468,7 +497,7 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: 112, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 134, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))
@@ -612,6 +641,7 @@ private struct OverviewCostCard: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var costService: CostUsageService
     @State private var detailPresented: Bool = false
 
     var body: some View {
@@ -620,13 +650,22 @@ private struct OverviewCostCard: View {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: "\(tool.menuTitle) cost",
+                    title: "\(tool.menuTitle) Cost",
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
                     badgeSize: 22
                 )
                 Spacer(minLength: 4)
+                if costService.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
+                }
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(tool.menuTitle) cost") {
+                    environment.refreshCostUsage()
+                }
+                .disabled(costService.isRefreshing)
                 if snapshot != nil {
                     Button {
                         detailPresented = true
@@ -692,7 +731,7 @@ private struct CostDetailPopoverContent: View {
                 HStack(alignment: .center) {
                     ProviderSectionTitle(
                         tool: tool,
-                        title: "\(tool.menuTitle) cost — full charts",
+                        title: "\(tool.menuTitle) Cost — Full Charts",
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 15,
@@ -720,18 +759,18 @@ private struct CostDetailPopoverContent: View {
 
 /// Single-provider popover content. No tabs — laid out as a two-column
 /// waterfall:
-///   - Left column: Cost summary (header + history chart + model ranking),
+///   - Left column: Cost header (TODAY/7D/30D/ALL summary + Top Model)
 ///                  THEN Quota card (all buckets) + Subscription utilization
-///                  + Service status. Cost lives above Usage so the spend
-///                  numbers are the first thing the user sees.
-///   - Right column: Yearly contribution heatmap + weekday-hour heatmap
-///                  + hourly burn rate. These visualizations need width and
-///                  read better on the wider side.
+///                  + Service status. The cost summary lives above Usage so
+///                  the spend numbers are the first thing the user sees.
+///   - Right column: Cost history chart + Model ranking + yearly contribution
+///                  heatmap + weekday-hour heatmap + hourly burn rate. The
+///                  detailed cost views and wide-by-design heatmaps stay
+///                  where they have room to breathe.
 ///
 /// AQ asked for this arrangement — the original layout had Quota on the left
-/// and the entire cost section on the right. The new ordering keeps cost
-/// above usage on the left while the wide-by-design heatmaps stay where they
-/// have room to breathe.
+/// and the entire cost section on the right. Only the small cost summary
+/// card moves to the left; the bigger cost detail views remain on the right.
 private struct ProviderDetailView: View {
     let tool: ToolType
     let density: Theme.Density
@@ -747,13 +786,6 @@ private struct ProviderDetailView: View {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 if let snapshot, hasCostData {
                     CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
-                    CostHistoryView(
-                        tool: tool,
-                        snapshot: snapshot,
-                        density: density,
-                        chartHeight: 160
-                    )
-                    ModelRankingList(snapshot: snapshot, density: density)
                 }
                 ProviderQuotaCard(tool: tool, density: density, compact: false)
                 TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -776,6 +808,13 @@ private struct ProviderDetailView: View {
 
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 if let snapshot, hasCostData {
+                    CostHistoryView(
+                        tool: tool,
+                        snapshot: snapshot,
+                        density: density,
+                        chartHeight: 160
+                    )
+                    ModelRankingList(snapshot: snapshot, density: density)
                     YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
                     UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
                     UsageRateView(heatmap: snapshot.heatmap, density: density)
@@ -816,12 +855,15 @@ private struct CostHeaderCard: View {
     let snapshot: CostSnapshot
     let density: Theme.Density
 
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var costService: CostUsageService
+
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: "\(tool.menuTitle) cost",
+                    title: "\(tool.menuTitle) Cost",
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
@@ -831,6 +873,15 @@ private struct CostHeaderCard: View {
                 Text(snapshot.updatedAt, style: .relative)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
+                if costService.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
+                }
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(tool.menuTitle) cost") {
+                    environment.refreshCostUsage()
+                }
+                .disabled(costService.isRefreshing)
             }
             CostSummaryRow(snapshot: snapshot, density: density)
             TopModelTile(snapshot: snapshot, density: density)
