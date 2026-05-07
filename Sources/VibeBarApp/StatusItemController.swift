@@ -19,10 +19,16 @@ private struct TwoRowMenuColumn {
 }
 
 @MainActor
-final class StatusItemController {
+final class StatusItemController: NSObject, NSPopoverDelegate {
     private static let initialPopoverHeight: CGFloat = 720
     private static let minimumPopoverHeight: CGFloat = 460
     private static let popoverHeightPadding: CGFloat = 12
+    /// How long after a popover closes we treat the next status-item click
+    /// as the click that *caused* the close. NSPopover with `.transient`
+    /// behavior auto-dismisses on outside clicks, and the status item button
+    /// counts as outside — so without this guard a second click on the same
+    /// item would close-then-reopen instead of just closing.
+    private static let popoverReopenSuppressionWindow: TimeInterval = 0.2
 
     private let compactStatusItem: NSStatusItem
     private let codexStatusItem: NSStatusItem
@@ -33,6 +39,9 @@ final class StatusItemController {
     private let miniWindowController: MiniQuotaWindowController
     private var cancellables: Set<AnyCancellable> = []
     private var lastObservedDensities: [MenuBarItemKind: PopoverDensity]
+    /// Records the time each kind's popover most recently started closing.
+    /// Used by `togglePopover` to ignore the click that triggered the close.
+    private var popoverCloseStamps: [MenuBarItemKind: Date] = [:]
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -42,6 +51,7 @@ final class StatusItemController {
         self.codexStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.claudeStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.statusStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        super.init()
 
         configureButton(for: .compact, item: compactStatusItem)
         configureButton(for: .codex, item: codexStatusItem)
@@ -99,6 +109,7 @@ final class StatusItemController {
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = false
+        popover.delegate = controller
         popover.contentSize = NSSize(width: width, height: initialPopoverHeight)
         popover.contentViewController = NSHostingController(
             rootView: PopoverRoot(
@@ -171,13 +182,33 @@ final class StatusItemController {
         let popover = popover(for: kind)
         if popover.isShown {
             popover.performClose(sender)
-        } else {
-            // close any other open popover first to keep behavior consistent
-            for (otherKind, other) in popovers where otherKind != kind && other.isShown {
-                other.performClose(nil)
+            return
+        }
+        // If this popover closed within the last few hundred ms, the click
+        // that just landed on the status item is the same click that
+        // triggered the transient close — skip the reopen so the user gets
+        // proper click-to-toggle behavior.
+        if let closedAt = popoverCloseStamps[kind],
+           Date().timeIntervalSince(closedAt) < Self.popoverReopenSuppressionWindow {
+            popoverCloseStamps.removeValue(forKey: kind)
+            return
+        }
+        // Close any other open popover first to keep behavior consistent.
+        for (otherKind, other) in popovers where otherKind != kind && other.isShown {
+            other.performClose(nil)
+        }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+    }
+
+    nonisolated func popoverWillClose(_ notification: Notification) {
+        guard let popover = notification.object as? NSPopover else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for (kind, candidate) in self.popovers where candidate === popover {
+                self.popoverCloseStamps[kind] = Date()
+                break
             }
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
         }
     }
 

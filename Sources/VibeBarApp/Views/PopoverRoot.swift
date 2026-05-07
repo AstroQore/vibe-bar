@@ -39,7 +39,7 @@ struct PopoverRoot: View {
                 onShowSettings: { environment.showSettingsWindow() }
             )
             Divider().opacity(0.3)
-            ScrollView(.vertical, showsIndicators: true) {
+            ScrollView(.vertical, showsIndicators: false) {
                 content(density: density)
                     .padding(.bottom, 4)
             }
@@ -128,7 +128,13 @@ struct PopoverRoot: View {
     }
 
     private var headerPlan: String? {
-        switch effectiveKind {
+        // Always check `kind` here (not `effectiveKind`). The Overview popover
+        // sits between the page switcher and the refresh / settings buttons,
+        // so any extra accessory in that header band gets in the user's way
+        // when they're trying to switch tabs. AQ explicitly does not want a
+        // plan badge to appear in Overview, even when the active sub-page is
+        // Claude or OpenAI. Dedicated provider popovers still show it.
+        switch kind {
         case .compact, .status: return nil
         case .codex:   return planBadgeLabel(for: .codex)
         case .claude:  return planBadgeLabel(for: .claude)
@@ -204,24 +210,24 @@ private struct ProviderSectionTitle: View {
 
 private enum OverviewPage: String, CaseIterable, Identifiable {
     case overview
-    case claude
     case openAI
+    case claude
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .overview: return "Overview"
-        case .claude:   return "Claude"
         case .openAI:   return "OpenAI"
+        case .claude:   return "Claude"
         }
     }
 
     var menuBarKind: MenuBarItemKind {
         switch self {
         case .overview: return .compact
-        case .claude:   return .claude
         case .openAI:   return .codex
+        case .claude:   return .claude
         }
     }
 }
@@ -409,7 +415,7 @@ private struct CombinedTotalsRow: View {
                 }
             }
             .padding(density.cardPadding)
-            .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                     .fill(.background.tertiary.opacity(0.6))
@@ -420,7 +426,7 @@ private struct CombinedTotalsRow: View {
             )
 
             OverviewStatusSummaryCard(density: density)
-                .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .center)
+                .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
         }
     }
 
@@ -497,7 +503,7 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: 134, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 134, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))
@@ -757,20 +763,19 @@ private struct CostDetailPopoverContent: View {
 
 // MARK: - Single-provider detail (two-column waterfall)
 
-/// Single-provider popover content. No tabs — laid out as a two-column
-/// waterfall:
-///   - Left column: Cost header (TODAY/7D/30D/ALL summary + Top Model)
-///                  THEN Quota card (all buckets) + Subscription utilization
-///                  + Service status. The cost summary lives above Usage so
-///                  the spend numbers are the first thing the user sees.
-///   - Right column: Cost history chart + Model ranking + yearly contribution
-///                  heatmap + weekday-hour heatmap + hourly burn rate. The
-///                  detailed cost views and wide-by-design heatmaps stay
-///                  where they have room to breathe.
+/// Single-provider popover content. Strict masonry — every card flows into
+/// whichever column is currently shorter, so the popover never feels like a
+/// rigid 2-column grid.
 ///
-/// AQ asked for this arrangement — the original layout had Quota on the left
-/// and the entire cost section on the right. Only the small cost summary
-/// card moves to the left; the bigger cost detail views remain on the right.
+/// Quota is anchored to column 0 so the live subscription Usage panel is
+/// always the first thing the user reads. Everything after that — Cost
+/// header, Subscription Utilization, Cost History chart, Model Ranking,
+/// yearly heatmap, weekday-hour heatmap, hourly burn rate, Service Status —
+/// flows naturally based on column heights.
+///
+/// AQ asked specifically for Usage to sit above Cost (previous revisions had
+/// the small cost summary anchored above Quota), and for the layout to feel
+/// fluid rather than gridded.
 private struct ProviderDetailView: View {
     let tool: ToolType
     let density: Theme.Density
@@ -782,68 +787,64 @@ private struct ProviderDetailView: View {
     var body: some View {
         let snapshot = environment.costService.snapshot(for: tool)
         let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
-        HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                if let snapshot, hasCostData {
-                    CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
-                }
-                ProviderQuotaCard(tool: tool, density: density, compact: false)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    SubscriptionUtilizationView(
-                        tool: tool,
-                        buckets: environment.quota(for: tool)?.buckets ?? [],
-                        mode: settingsStore.displayMode,
-                        density: density,
-                        now: context.date
-                    )
-                }
-                ServiceStatusCard(tools: [tool])
-            }
-            .frame(
-                minWidth: leftColumnMinWidth,
-                idealWidth: leftColumnIdealWidth,
-                maxWidth: leftColumnMaxWidth,
-                alignment: .topLeading
-            )
+        ColumnMasonryLayout(
+            columns: 2,
+            spacing: density.interSectionSpacing,
+            anchoredItems: 1
+        ) {
+            // Anchor: Usage at the very top of column 0.
+            ProviderQuotaCard(tool: tool, density: density, compact: false)
 
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                if let snapshot, hasCostData {
-                    CostHistoryView(
-                        tool: tool,
-                        snapshot: snapshot,
-                        density: density,
-                        chartHeight: 160
-                    )
-                    ModelRankingList(snapshot: snapshot, density: density)
-                    YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
-                    UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
-                    UsageRateView(heatmap: snapshot.heatmap, density: density)
-                } else {
-                    Text("No \(tool.menuTitle) CLI sessions found yet.")
-                        .font(.system(size: density.subtitleFontSize))
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 24)
-                        .frame(maxWidth: .infinity)
-                }
+            // Free-flowing cards — order matters because masonry places them
+            // into the shorter column in declaration order.
+            if let snapshot, hasCostData {
+                CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
             }
-            .frame(minWidth: rightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                SubscriptionUtilizationView(
+                    tool: tool,
+                    buckets: environment.quota(for: tool)?.buckets ?? [],
+                    mode: settingsStore.displayMode,
+                    density: density,
+                    now: context.date
+                )
+            }
+            if let snapshot, hasCostData {
+                CostHistoryView(
+                    tool: tool,
+                    snapshot: snapshot,
+                    density: density,
+                    chartHeight: 160
+                )
+                ModelRankingList(snapshot: snapshot, density: density)
+                YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
+                UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
+                UsageRateView(heatmap: snapshot.heatmap, density: density)
+            } else {
+                emptyCostCard
+            }
+            ServiceStatusCard(tools: [tool])
         }
     }
 
-    private var leftColumnMinWidth: CGFloat {
-        max(320, min(380, density.popoverWidth * 0.34))
-    }
-
-    private var leftColumnIdealWidth: CGFloat {
-        max(leftColumnMinWidth, min(410, density.popoverWidth * 0.38))
-    }
-
-    private var leftColumnMaxWidth: CGFloat {
-        max(leftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
-    }
-
-    private var rightColumnMinWidth: CGFloat {
-        500
+    private var emptyCostCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Cost")
+                .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+            Text("No \(tool.menuTitle) CLI sessions found yet.")
+                .font(.system(size: density.subtitleFontSize))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(density.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
     }
 }
 
