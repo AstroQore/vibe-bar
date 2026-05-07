@@ -243,6 +243,78 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
     }
 }
 
+/// Combine multiple `CostSnapshot`s into the aggregate inputs the Overview's
+/// "all providers" cards need (Model Ranking, Past Year heatmap, When You Use
+/// heatmap, Hourly Burn Rate). Lives in Core so the math is testable and the
+/// view layer just plumbs values through.
+///
+/// Notes
+/// - Daily history is summed by start-of-day in the supplied calendar so a
+///   Codex day and a Claude day at the same wall-clock date land in the same
+///   bucket.
+/// - The 7×24 heatmap is summed cell-by-cell. The returned heatmap's `tool`
+///   field is irrelevant for the combined view; callers should pass an
+///   explicit title to `UsageHeatmapView` instead of relying on it.
+/// - Models from different providers don't normally collide, but if they do
+///   we sum costs/tokens under the shared name. The output is sorted by cost
+///   desc to match the existing single-provider rendering.
+public enum CostSnapshotAggregator {
+    public static func combinedDailyHistory(
+        _ snapshots: [CostSnapshot],
+        calendar: Calendar = .current
+    ) -> [DailyCostPoint] {
+        var totals: [Date: (cost: Double, tokens: Int)] = [:]
+        for snapshot in snapshots {
+            for point in snapshot.dailyHistory {
+                let day = calendar.startOfDay(for: point.date)
+                let current = totals[day] ?? (0, 0)
+                totals[day] = (current.cost + point.costUSD, current.tokens + point.totalTokens)
+            }
+        }
+        return totals
+            .map { DailyCostPoint(date: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
+            .sorted { $0.date < $1.date }
+    }
+
+    public static func combinedHeatmap(_ snapshots: [CostSnapshot]) -> UsageHeatmap {
+        let zeroes = Array(repeating: Array(repeating: 0, count: 24), count: 7)
+        guard !snapshots.isEmpty else {
+            return UsageHeatmap(tool: .codex, cells: zeroes, totalTokens: 0)
+        }
+        var combined = zeroes
+        var total = 0
+        for snapshot in snapshots {
+            let cells = snapshot.heatmap.cells
+            for weekday in 0..<7 where weekday < cells.count {
+                let row = cells[weekday]
+                for hour in 0..<24 where hour < row.count {
+                    combined[weekday][hour] += row[hour]
+                }
+            }
+            total += snapshot.heatmap.totalTokens
+        }
+        return UsageHeatmap(tool: snapshots.first?.tool ?? .codex, cells: combined, totalTokens: total)
+    }
+
+    public static func combinedModelBreakdowns(
+        _ snapshots: [CostSnapshot]
+    ) -> [CostSnapshot.ModelBreakdown] {
+        var totals: [String: (cost: Double, tokens: Int)] = [:]
+        for snapshot in snapshots {
+            for breakdown in snapshot.modelBreakdowns {
+                let current = totals[breakdown.modelName] ?? (0, 0)
+                totals[breakdown.modelName] = (
+                    current.cost + breakdown.costUSD,
+                    current.tokens + breakdown.totalTokens
+                )
+            }
+        }
+        return totals
+            .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
+            .sorted { $0.costUSD > $1.costUSD }
+    }
+}
+
 public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     case today
     case week

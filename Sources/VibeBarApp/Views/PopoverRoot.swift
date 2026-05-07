@@ -265,29 +265,62 @@ private struct OverviewSwitchIcon: View {
     }
 }
 
-/// Overview popover content:
-///   1. A compact cost summary plus live service status.
-///   2. Two provider columns, each with quota followed by cost.
-///
-/// The columns are per-provider so OpenAI's quota and OpenAI's cost align
-/// vertically — same for Claude on the right. No tabs, no sub-pages.
+/// Overview popover content, top-to-bottom:
+///   1. `CombinedTotalsRow` — cost+token grid plus live service status.
+///   2. A `ColumnMasonryLayout` covering everything else. The first two
+///      subviews — OpenAI Quota and Claude Quota — are anchored to the top
+///      of columns 0 and 1 respectively (AQ wants the quota cards locked in
+///      place). Every subsequent card flows into whichever column is
+///      currently shorter, so the empty space below the shorter quota card
+///      gets filled by Cost / Model Ranking / heatmap cards instead of left
+///      blank. The cost and summary cards therefore drift between columns
+///      based on how the heights work out — this is intentional.
 private struct OverviewWaterfall: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
+        let snapshots = ToolType.allCases.compactMap { environment.costService.snapshot(for: $0) }
+        let combinedHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
+        let combinedHeatmap = CostSnapshotAggregator.combinedHeatmap(snapshots)
+        let combinedModels = CostSnapshotAggregator.combinedModelBreakdowns(snapshots)
+        let hasCostData = snapshots.contains { $0.jsonlFilesFound > 0 }
+
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             CombinedTotalsRow(density: density)
-            HStack(alignment: .top, spacing: density.interSectionSpacing) {
+            ColumnMasonryLayout(
+                columns: 2,
+                spacing: density.interSectionSpacing,
+                anchoredItems: 2
+            ) {
+                ProviderQuotaCard(tool: .codex, density: density, compact: false)
+                ProviderQuotaCard(tool: .claude, density: density, compact: false)
                 ForEach(ToolType.allCases, id: \.self) { tool in
-                    VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                        ProviderQuotaCard(tool: tool, density: density, compact: false)
-                        if tool.supportsTokenCost {
-                            OverviewCostCard(tool: tool, density: density)
-                        }
+                    if tool.supportsTokenCost {
+                        OverviewCostCard(tool: tool, density: density)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                if hasCostData {
+                    ModelRankingList(
+                        breakdowns: combinedModels,
+                        density: density,
+                        subtitle: "All providers · all time"
+                    )
+                    YearlyContributionHeatmapView(
+                        history: combinedHistory,
+                        density: density,
+                        toolName: "All providers"
+                    )
+                    UsageHeatmapView(
+                        heatmap: combinedHeatmap,
+                        density: density,
+                        titleOverride: "When you use everything"
+                    )
+                    UsageRateView(
+                        heatmap: combinedHeatmap,
+                        density: density
+                    )
                 }
             }
         }

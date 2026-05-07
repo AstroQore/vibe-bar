@@ -7,6 +7,10 @@ import VibeBarCore
 struct UsageHeatmapView: View {
     let heatmap: UsageHeatmap
     let density: Theme.Density
+    /// Optional title override. The Overview's "all providers" version of this
+    /// card needs "When you use everything" instead of the default
+    /// `When you use \(toolName)` derived from `heatmap.tool`.
+    var titleOverride: String? = nil
 
     private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     @State private var measuredGridWidth: CGFloat = 0
@@ -14,7 +18,7 @@ struct UsageHeatmapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("When you use \(toolName)")
+                Text(titleOverride ?? "When you use \(toolName)")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if heatmap.totalTokens > 0 {

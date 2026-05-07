@@ -9,42 +9,63 @@ import VibeBarCore
 /// Default shows 5 entries; the embedded ScrollView lets the user see more
 /// if the user has been across many models.
 struct ModelRankingList: View {
-    let snapshot: CostSnapshot?
+    let breakdowns: [CostSnapshot.ModelBreakdown]
     let density: Theme.Density
     var maxHeight: CGFloat = 180
+    /// Right-hand subtitle next to "Model ranking". Defaults to "All time"; the
+    /// Overview's combined card overrides to "All providers · all time" so the
+    /// scope is unambiguous.
+    var subtitle: String = "All time"
+
+    init(snapshot: CostSnapshot?, density: Theme.Density, maxHeight: CGFloat = 180, subtitle: String = "All time") {
+        self.breakdowns = snapshot?.modelBreakdowns ?? []
+        self.density = density
+        self.maxHeight = maxHeight
+        self.subtitle = subtitle
+    }
+
+    init(
+        breakdowns: [CostSnapshot.ModelBreakdown],
+        density: Theme.Density,
+        maxHeight: CGFloat = 180,
+        subtitle: String = "All time"
+    ) {
+        self.breakdowns = breakdowns
+        self.density = density
+        self.maxHeight = maxHeight
+        self.subtitle = subtitle
+    }
 
     var body: some View {
-        if let snapshot {
-            let models = filteredModels(snapshot.modelBreakdowns)
-            if !models.isEmpty {
-                VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Model ranking")
-                            .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                        Spacer()
-                        Text("All time")
-                            .font(.system(size: density.resetCountdownFontSize))
-                            .foregroundStyle(.tertiary)
-                    }
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
-                                row(rank: index + 1, model: model, total: total(models))
-                            }
+        let models = filteredModels(breakdowns)
+        if !models.isEmpty {
+            VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Model ranking")
+                        .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    Spacer()
+                    Text(subtitle)
+                        .font(.system(size: density.resetCountdownFontSize))
+                        .foregroundStyle(.tertiary)
+                }
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
+                            row(rank: index + 1, model: model, total: total(models))
                         }
                     }
-                    .frame(maxHeight: maxHeight)
                 }
-                .padding(density.cardPadding)
-                .background(
-                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                        .fill(.background.tertiary.opacity(0.6))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                        .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-                )
+                .frame(maxHeight: maxHeight)
             }
+            .padding(density.cardPadding)
+            .background(
+                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                    .fill(.background.tertiary.opacity(0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                    .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+            )
         }
     }
 
