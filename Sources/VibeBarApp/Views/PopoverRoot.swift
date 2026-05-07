@@ -763,19 +763,22 @@ private struct CostDetailPopoverContent: View {
 
 // MARK: - Single-provider detail (two-column waterfall)
 
-/// Single-provider popover content. Strict masonry — every card flows into
-/// whichever column is currently shorter, so the popover never feels like a
-/// rigid 2-column grid.
+/// Single-provider popover content. Two-column layout — narrow left for the
+/// live subscription panels, wider right for cost charts and heatmaps. The
+/// two columns size independently and do NOT have to match in height.
 ///
-/// Quota is anchored to column 0 so the live subscription Usage panel is
-/// always the first thing the user reads. Everything after that — Cost
-/// header, Subscription Utilization, Cost History chart, Model Ranking,
-/// yearly heatmap, weekday-hour heatmap, hourly burn rate, Service Status —
-/// flows naturally based on column heights.
+/// Left column (fixed order, narrow):
+///   1. Quota / Usage bar
+///   2. Cost summary card (TODAY / 7D / 30D / ALL + Top Model)
+///   3. Subscription Utilization
+///   4. Service Status
 ///
-/// AQ asked specifically for Usage to sit above Cost (previous revisions had
-/// the small cost summary anchored above Quota), and for the layout to feel
-/// fluid rather than gridded.
+/// Right column (wide): Cost History, Model Ranking, yearly contribution
+/// heatmap, weekday-hour heatmap, hourly burn rate.
+///
+/// AQ explicitly chose this fixed left-column order — putting masonry here
+/// caused the cost summary to drift around. The narrow/wide split is also a
+/// hard requirement; uniform-width columns made the heatmaps look squished.
 private struct ProviderDetailView: View {
     let tool: ToolType
     let density: Theme.Density
@@ -787,64 +790,68 @@ private struct ProviderDetailView: View {
     var body: some View {
         let snapshot = environment.costService.snapshot(for: tool)
         let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
-        ColumnMasonryLayout(
-            columns: 2,
-            spacing: density.interSectionSpacing,
-            anchoredItems: 1
-        ) {
-            // Anchor: Usage at the very top of column 0.
-            ProviderQuotaCard(tool: tool, density: density, compact: false)
+        HStack(alignment: .top, spacing: density.interSectionSpacing) {
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                ProviderQuotaCard(tool: tool, density: density, compact: false)
+                if let snapshot, hasCostData {
+                    CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
+                }
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    SubscriptionUtilizationView(
+                        tool: tool,
+                        buckets: environment.quota(for: tool)?.buckets ?? [],
+                        mode: settingsStore.displayMode,
+                        density: density,
+                        now: context.date
+                    )
+                }
+                ServiceStatusCard(tools: [tool])
+            }
+            .frame(
+                minWidth: leftColumnMinWidth,
+                idealWidth: leftColumnIdealWidth,
+                maxWidth: leftColumnMaxWidth,
+                alignment: .topLeading
+            )
 
-            // Free-flowing cards — order matters because masonry places them
-            // into the shorter column in declaration order.
-            if let snapshot, hasCostData {
-                CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                if let snapshot, hasCostData {
+                    CostHistoryView(
+                        tool: tool,
+                        snapshot: snapshot,
+                        density: density,
+                        chartHeight: 160
+                    )
+                    ModelRankingList(snapshot: snapshot, density: density)
+                    YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
+                    UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
+                    UsageRateView(heatmap: snapshot.heatmap, density: density)
+                } else {
+                    Text("No \(tool.menuTitle) CLI sessions found yet.")
+                        .font(.system(size: density.subtitleFontSize))
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 24)
+                        .frame(maxWidth: .infinity)
+                }
             }
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                SubscriptionUtilizationView(
-                    tool: tool,
-                    buckets: environment.quota(for: tool)?.buckets ?? [],
-                    mode: settingsStore.displayMode,
-                    density: density,
-                    now: context.date
-                )
-            }
-            if let snapshot, hasCostData {
-                CostHistoryView(
-                    tool: tool,
-                    snapshot: snapshot,
-                    density: density,
-                    chartHeight: 160
-                )
-                ModelRankingList(snapshot: snapshot, density: density)
-                YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
-                UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
-                UsageRateView(heatmap: snapshot.heatmap, density: density)
-            } else {
-                emptyCostCard
-            }
-            ServiceStatusCard(tools: [tool])
+            .frame(minWidth: rightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
-    private var emptyCostCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Cost")
-                .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-            Text("No \(tool.menuTitle) CLI sessions found yet.")
-                .font(.system(size: density.subtitleFontSize))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-        )
+    private var leftColumnMinWidth: CGFloat {
+        max(320, min(380, density.popoverWidth * 0.34))
+    }
+
+    private var leftColumnIdealWidth: CGFloat {
+        max(leftColumnMinWidth, min(410, density.popoverWidth * 0.38))
+    }
+
+    private var leftColumnMaxWidth: CGFloat {
+        max(leftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
+    }
+
+    private var rightColumnMinWidth: CGFloat {
+        500
     }
 }
 
