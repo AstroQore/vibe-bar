@@ -520,11 +520,11 @@ private struct OverviewStatusSummaryCard: View {
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: state.iconName)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(state.color)
-                ProviderBrandIconView(kind: tool.brandMenuBarKind, size: 11)
-                    .opacity(0.85)
-                    .frame(width: 14, height: 14)
+                ProviderBrandIconView(kind: tool.brandMenuBarKind, size: 15)
+                    .opacity(0.9)
+                    .frame(width: 18, height: 18)
                 Text(tool.statusProviderName)
                     .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
@@ -590,7 +590,13 @@ private struct OverviewStatusSummaryCard: View {
             return .up
         case .maintenance:
             return .maintenance
-        case .minor, .major, .critical:
+        case .minor, .major:
+            // Partial degradation should not look like a hard outage. AQ
+            // pointed out that an OpenAI page reporting a degraded sub-system
+            // was rendering as the same red X we use for "fully down", which
+            // overstated the severity. Reserve the red X for `.critical` only.
+            return .degraded
+        case .critical:
             return .down
         }
     }
@@ -598,6 +604,7 @@ private struct OverviewStatusSummaryCard: View {
 
 private enum OverviewStatusState {
     case up
+    case degraded
     case down
     case checking
     case maintenance
@@ -605,6 +612,7 @@ private enum OverviewStatusState {
     var label: String {
         switch self {
         case .up:          return "Up"
+        case .degraded:    return "Degraded"
         case .down:        return "Down"
         case .checking:    return "Checking"
         case .maintenance: return "Maintenance"
@@ -614,6 +622,7 @@ private enum OverviewStatusState {
     var iconName: String {
         switch self {
         case .up:          return "checkmark.circle.fill"
+        case .degraded:    return "exclamationmark.triangle.fill"
         case .down:        return "xmark.octagon.fill"
         case .checking:    return "arrow.clockwise.circle.fill"
         case .maintenance: return "wrench.and.screwdriver.fill"
@@ -623,6 +632,7 @@ private enum OverviewStatusState {
     var detail: String {
         switch self {
         case .up:          return "Operational"
+        case .degraded:    return "Partial outage"
         case .down:        return "Needs attention"
         case .checking:    return "Checking"
         case .maintenance: return "Maintenance"
@@ -632,6 +642,10 @@ private enum OverviewStatusState {
     var color: Color {
         switch self {
         case .up:          return .green
+        // Yellow-gold reads as "warning" without escalating to the red used
+        // for full outages. Same tone the pace marker uses for "slightly
+        // ahead" so the palette stays consistent.
+        case .degraded:    return Color(red: 0.96, green: 0.72, blue: 0.20)
         case .down:        return .red
         case .checking:    return .blue
         case .maintenance: return .blue
@@ -769,16 +783,16 @@ private struct CostDetailPopoverContent: View {
 ///
 /// Left column (fixed order, narrow):
 ///   1. Quota / Usage bar
-///   2. Cost summary card (TODAY / 7D / 30D / ALL + Top Model)
-///   3. Subscription Utilization
-///   4. Service Status
+///   2. Subscription Utilization
+///   3. Service Status
 ///
-/// Right column (wide): Cost History, Model Ranking, yearly contribution
-/// heatmap, weekday-hour heatmap, hourly burn rate.
+/// Right column (wide): Cost summary card (TODAY / 7D / 30D / ALL + Top
+/// Model) → Cost History → Model Ranking → yearly contribution heatmap →
+/// weekday-hour heatmap → hourly burn rate.
 ///
-/// AQ explicitly chose this fixed left-column order — putting masonry here
-/// caused the cost summary to drift around. The narrow/wide split is also a
-/// hard requirement; uniform-width columns made the heatmaps look squished.
+/// AQ tried the cost summary on the left and decided it looked off there;
+/// the entire cost section now lives on the right with the rest of the
+/// charts, where the wider column suits its grid of metrics.
 private struct ProviderDetailView: View {
     let tool: ToolType
     let density: Theme.Density
@@ -793,9 +807,6 @@ private struct ProviderDetailView: View {
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 ProviderQuotaCard(tool: tool, density: density, compact: false)
-                if let snapshot, hasCostData {
-                    CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
-                }
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     SubscriptionUtilizationView(
                         tool: tool,
@@ -816,6 +827,7 @@ private struct ProviderDetailView: View {
 
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 if let snapshot, hasCostData {
+                    CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
                     CostHistoryView(
                         tool: tool,
                         snapshot: snapshot,
