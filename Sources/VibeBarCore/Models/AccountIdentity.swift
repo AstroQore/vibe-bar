@@ -10,6 +10,7 @@ public struct AccountIdentity: Codable, Identifiable, Hashable, Sendable {
     public var source: CredentialSource
     public var allowsWebFallback: Bool
     public var allowsCLIFallback: Bool
+    public var allowsOAuthFallback: Bool
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -23,6 +24,7 @@ public struct AccountIdentity: Codable, Identifiable, Hashable, Sendable {
         source: CredentialSource,
         allowsWebFallback: Bool = false,
         allowsCLIFallback: Bool = false,
+        allowsOAuthFallback: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -35,6 +37,7 @@ public struct AccountIdentity: Codable, Identifiable, Hashable, Sendable {
         self.source = source
         self.allowsWebFallback = allowsWebFallback
         self.allowsCLIFallback = allowsCLIFallback
+        self.allowsOAuthFallback = allowsOAuthFallback
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -56,6 +59,7 @@ public struct AccountIdentity: Codable, Identifiable, Hashable, Sendable {
         case source
         case allowsWebFallback
         case allowsCLIFallback
+        case allowsOAuthFallback
         case createdAt
         case updatedAt
     }
@@ -71,6 +75,7 @@ public struct AccountIdentity: Codable, Identifiable, Hashable, Sendable {
         self.source = try c.decode(CredentialSource.self, forKey: .source)
         self.allowsWebFallback = try c.decodeIfPresent(Bool.self, forKey: .allowsWebFallback) ?? false
         self.allowsCLIFallback = try c.decodeIfPresent(Bool.self, forKey: .allowsCLIFallback) ?? false
+        self.allowsOAuthFallback = try c.decodeIfPresent(Bool.self, forKey: .allowsOAuthFallback) ?? false
         self.createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         self.updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }
@@ -86,6 +91,7 @@ public struct AccountIdentity: Codable, Identifiable, Hashable, Sendable {
         try c.encode(source, forKey: .source)
         try c.encode(allowsWebFallback, forKey: .allowsWebFallback)
         try c.encode(allowsCLIFallback, forKey: .allowsCLIFallback)
+        try c.encode(allowsOAuthFallback, forKey: .allowsOAuthFallback)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(updatedAt, forKey: .updatedAt)
     }

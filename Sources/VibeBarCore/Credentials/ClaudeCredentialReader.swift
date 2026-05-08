@@ -17,6 +17,16 @@ public enum ClaudeCredentialReader {
         return try readFromCredentialsJSON()
     }
 
+    public static func loadFromOAuth() throws -> ClaudeCredential {
+        if let fromFile = try? readFromCredentialsJSON(source: .oauthCLI) {
+            return fromFile
+        }
+        if let fromKeychain = try? readFromKeychain(source: .oauthCLI) {
+            return fromKeychain
+        }
+        throw QuotaError.noCredential
+    }
+
     public static func decode(jsonString: String, source: CredentialSource) throws -> ClaudeCredential {
         guard let data = jsonString.data(using: .utf8) else {
             throw QuotaError.parseFailure("credentials json is not utf8")
@@ -53,19 +63,19 @@ public enum ClaudeCredentialReader {
         )
     }
 
-    private static func readFromKeychain() throws -> ClaudeCredential {
+    private static func readFromKeychain(source: CredentialSource = .cliDetected) throws -> ClaudeCredential {
         let raw = try KeychainStore.readString(service: keychainService)
-        return try decode(jsonString: raw, source: .cliDetected)
+        return try decode(jsonString: raw, source: source)
     }
 
-    private static func readFromCredentialsJSON() throws -> ClaudeCredential {
+    private static func readFromCredentialsJSON(source: CredentialSource = .cliDetected) throws -> ClaudeCredential {
         let url = RealHomeDirectory.url
             .appendingPathComponent(".claude/.credentials.json")
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw QuotaError.noCredential
         }
         let data = try Data(contentsOf: url)
-        return try decode(data: data, source: .cliDetected)
+        return try decode(data: data, source: source)
     }
 
     private static func parseExpiresAt(_ any: Any?) -> Date? {

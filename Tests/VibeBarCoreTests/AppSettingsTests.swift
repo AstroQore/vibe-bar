@@ -15,7 +15,8 @@ final class AppSettingsTests: XCTestCase {
         """
 
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        XCTAssertEqual(settings.claudeUsageMode, .cliThenWeb)
+        XCTAssertEqual(settings.codexUsageMode, .auto)
+        XCTAssertEqual(settings.claudeUsageMode, .auto)
         XCTAssertEqual(settings.menuBarItems.count, MenuBarItemKind.allCases.count)
         XCTAssertEqual(settings.menuBarItem(.compact).layout, .iconOnly)
         XCTAssertFalse(settings.menuBarItem(.status).isVisible)

@@ -17,15 +17,21 @@ import Combine
 public final class AccountStore: ObservableObject {
     @Published public private(set) var accounts: [AccountIdentity] = []
 
-    public init(claudeUsageMode: ClaudeUsageMode = .cliThenWeb) {
-        reload(claudeUsageMode: claudeUsageMode)
+    public init(
+        codexUsageMode: CodexUsageMode = .auto,
+        claudeUsageMode: ClaudeUsageMode = .auto
+    ) {
+        reload(codexUsageMode: codexUsageMode, claudeUsageMode: claudeUsageMode)
     }
 
     /// Re-scan CLI keychain/files for auto-detected provider identities.
-    public func reload(claudeUsageMode: ClaudeUsageMode = .cliThenWeb) {
+    public func reload(
+        codexUsageMode: CodexUsageMode = .auto,
+        claudeUsageMode: ClaudeUsageMode = .auto
+    ) {
         var detected: [AccountIdentity] = []
 
-        if let codex = autoDetectCodex() {
+        if let codex = autoDetectCodex(mode: codexUsageMode) {
             detected.append(codex)
         }
         if let claude = autoDetectClaude(mode: claudeUsageMode) {
@@ -51,66 +57,111 @@ public final class AccountStore: ObservableObject {
 
     // MARK: - CLI auto detection
 
-    private func autoDetectCodex() -> AccountIdentity? {
-        guard let cred = try? CodexCredentialReader.loadFromCLI() else { return nil }
-        let id = cred.accountId ?? "cli-codex"
+    private func autoDetectCodex(mode: CodexUsageMode) -> AccountIdentity? {
+        let order = CodexSourcePlanner.resolve(mode: mode)
+        let lookupOrder = order + (CodexSourcePlanner.allowsWebFallback(mode: mode) ? [.webCookie] : [])
+        var selected: (source: CredentialSource, credential: CodexCredential?)?
+        for source in lookupOrder {
+            switch source {
+            case .oauthCLI:
+                if let credential = try? CodexCredentialReader.loadFromOAuth() {
+                    selected = (source, credential)
+                }
+            case .cliDetected:
+                if let credential = try? CodexCredentialReader.loadFromCLI() {
+                    selected = (source, credential)
+                }
+            case .webCookie:
+                if OpenAIWebCookieStore.hasCookieHeader() {
+                    selected = (source, nil)
+                }
+            case .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
+                break
+            }
+            if selected != nil { break }
+        }
+        guard let selected else { return nil }
+        let cred = selected.credential
+        let remaining = remainingSources(after: selected.source, in: order)
+        let id = cred?.accountId ?? (selected.source == .oauthCLI ? "oauth-codex" : selected.source == .webCookie ? "web-codex" : "cli-codex")
         return AccountIdentity(
             id: id,
             tool: .codex,
-            email: cred.email,
-            alias: "Codex CLI",
-            plan: cred.plan,
-            accountId: cred.accountId,
-            source: .cliDetected,
+            email: cred?.email,
+            alias: selected.source == .oauthCLI ? "Codex OAuth" : selected.source == .webCookie ? "OpenAI Web" : "Codex CLI",
+            plan: cred?.plan,
+            accountId: cred?.accountId,
+            source: selected.source,
+            allowsWebFallback: selected.source == .webCookie
+                ? false
+                : CodexSourcePlanner.allowsWebFallback(mode: mode) && OpenAIWebCookieStore.hasCookieHeader(),
+            allowsCLIFallback: remaining.contains(.cliDetected),
+            allowsOAuthFallback: remaining.contains(.oauthCLI),
             createdAt: Date(),
             updatedAt: Date()
         )
     }
 
     private func autoDetectClaude(mode: ClaudeUsageMode) -> AccountIdentity? {
-        switch mode {
-        case .cliThenWeb:
-            if let credential = try? ClaudeCredentialReader.loadFromCLI() {
-                return AccountIdentity(
-                    id: "cli-claude",
-                    tool: .claude,
-                    alias: "Claude Code",
-                    plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential.rateLimitTier),
-                    source: .cliDetected,
-                    allowsWebFallback: true,
-                    createdAt: Date(),
-                    updatedAt: Date()
-                )
+        let order = ClaudeSourcePlanner.resolve(mode: mode)
+        var selected: (source: CredentialSource, credential: ClaudeCredential?)?
+        for source in order {
+            switch source {
+            case .oauthCLI:
+                if let credential = try? ClaudeCredentialReader.loadFromOAuth() {
+                    selected = (source, credential)
+                }
+            case .cliDetected:
+                if let credential = try? ClaudeCredentialReader.loadFromCLI() {
+                    selected = (source, credential)
+                }
+            case .webCookie:
+                if ClaudeWebCookieStore.hasCookieHeader() {
+                    selected = (source, nil)
+                }
+            case .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
+                break
             }
-            return webClaudeAccount()
-        case .webThenCli:
-            if let web = webClaudeAccount(allowsCLIFallback: true) {
-                return web
-            }
-            guard let credential = try? ClaudeCredentialReader.loadFromCLI() else { return nil }
-            return AccountIdentity(
-                id: "cli-claude",
-                tool: .claude,
-                alias: "Claude Code",
-                plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential.rateLimitTier),
-                source: .cliDetected,
-                createdAt: Date(),
-                updatedAt: Date()
-            )
-        case .cliOnly:
-            guard let credential = try? ClaudeCredentialReader.loadFromCLI() else { return nil }
-            return AccountIdentity(
-                id: "cli-claude",
-                tool: .claude,
-                alias: "Claude Code",
-                plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential.rateLimitTier),
-                source: .cliDetected,
-                createdAt: Date(),
-                updatedAt: Date()
-            )
-        case .webOnly:
-            return webClaudeAccount()
+            if selected != nil { break }
         }
+        guard let selected else { return nil }
+        let credential = selected.credential
+        let id: String
+        let alias: String
+        switch selected.source {
+        case .oauthCLI:
+            id = "oauth-claude"
+            alias = "Claude OAuth"
+        case .cliDetected:
+            id = "cli-claude"
+            alias = "Claude Code"
+        case .webCookie:
+            id = "web-claude"
+            alias = "Claude Web"
+        case .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
+            id = "claude"
+            alias = "Claude"
+        }
+        let remaining = remainingSources(after: selected.source, in: order)
+        return AccountIdentity(
+            id: id,
+            tool: .claude,
+            alias: alias,
+            plan: ProviderPlanDisplay.claudeDisplayName(rateLimitTier: credential?.rateLimitTier),
+            source: selected.source,
+            allowsWebFallback: remaining.contains(.webCookie),
+            allowsCLIFallback: remaining.contains(.cliDetected),
+            allowsOAuthFallback: remaining.contains(.oauthCLI),
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    private func remainingSources(after source: CredentialSource, in order: [CredentialSource]) -> [CredentialSource] {
+        guard let index = order.firstIndex(of: source) else { return [] }
+        let next = order.index(after: index)
+        guard next < order.endIndex else { return [] }
+        return Array(order[next...])
     }
 
     private func webClaudeAccount(allowsCLIFallback: Bool = false) -> AccountIdentity? {

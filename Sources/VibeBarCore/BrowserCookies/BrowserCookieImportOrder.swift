@@ -23,7 +23,18 @@ extension Array where Element == Browser {
             }
             return detection.isCookieSourceAvailable(browser)
         }
-        guard !allowKeychainPrompt else { return candidates }
+        if allowKeychainPrompt {
+            // Manual imports may need the login-keychain password for
+            // Chromium's "Safe Storage" secret. Try non-Keychain browsers
+            // freely, but cap Chromium-style attempts at one browser per
+            // click so a single import cannot fan out into a stack of
+            // password prompts.
+            var scoped = candidates.filter { !$0.usesKeychainForCookieDecryption }
+            if let firstKeychainBrowser = candidates.first(where: \.usesKeychainForCookieDecryption) {
+                scoped.append(firstKeychainBrowser)
+            }
+            return scoped
+        }
         return candidates.filter { BrowserCookieAccessGate.shouldAttempt($0) }
     }
 

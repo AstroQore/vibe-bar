@@ -5,46 +5,39 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
 
     private let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let session: URLSession
-    private let credentialResolver: @Sendable (AccountIdentity) throws -> ClaudeCredential
+    private let credentialResolver: @Sendable (CredentialSource, AccountIdentity) throws -> ClaudeCredential
 
     public init(
         session: URLSession = .shared,
-        credentialResolver: (@Sendable (AccountIdentity) throws -> ClaudeCredential)? = nil
+        credentialResolver: (@Sendable (CredentialSource, AccountIdentity) throws -> ClaudeCredential)? = nil
     ) {
         self.session = session
         self.credentialResolver = credentialResolver ?? Self.defaultResolver
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        if account.source == .webCookie {
+        var firstError: Error?
+        for source in sourceOrder(for: account) {
             do {
-                return try await fetchWithWebCookies(for: account)
-            } catch let qe as QuotaError {
-                return try await fetchWithCLIOrThrow(original: qe, account: account)
+                switch source {
+                case .webCookie:
+                    return try await fetchWithWebCookies(for: account)
+                case .oauthCLI, .cliDetected:
+                    return try await fetchWithOAuthCredential(for: account, source: source)
+                case .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
+                    continue
+                }
             } catch {
-                return try await fetchWithCLIOrThrow(
-                    original: QuotaError.unknown(SafeLog.sanitize(error.localizedDescription)),
-                    account: account
-                )
+                if firstError == nil { firstError = error }
             }
         }
-
-        do {
-            return try await fetchWithCLI(for: account)
-        } catch let qe as QuotaError {
-            return try await fetchWithWebCookiesOrThrow(original: qe, account: account)
-        } catch {
-            return try await fetchWithWebCookiesOrThrow(
-                original: QuotaError.unknown(SafeLog.sanitize(error.localizedDescription)),
-                account: account
-            )
-        }
+        throw firstError ?? QuotaError.noCredential
     }
 
-    private func fetchWithCLI(for account: AccountIdentity) async throws -> AccountQuota {
+    private func fetchWithOAuthCredential(for account: AccountIdentity, source: CredentialSource) async throws -> AccountQuota {
         let credential: ClaudeCredential
         do {
-            credential = try credentialResolver(account)
+            credential = try credentialResolver(source, account)
         } catch let qe as QuotaError {
             throw qe
         } catch {
@@ -109,24 +102,6 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
             error: nil,
             providerExtras: extras
         )
-    }
-
-    private func fetchWithCLIOrThrow(original: QuotaError, account: AccountIdentity) async throws -> AccountQuota {
-        guard account.allowsCLIFallback else { throw original }
-        do {
-            return try await fetchWithCLI(for: account)
-        } catch {
-            throw original
-        }
-    }
-
-    private func fetchWithWebCookiesOrThrow(original: QuotaError, account: AccountIdentity) async throws -> AccountQuota {
-        guard account.allowsWebFallback else { throw original }
-        do {
-            return try await fetchWithWebCookies(for: account)
-        } catch {
-            throw original
-        }
     }
 
     /// Build a QuotaBucket from a Daily Routines budget snapshot. The slot is
@@ -305,9 +280,38 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
     }
 
     @Sendable
-    private static func defaultResolver(_ account: AccountIdentity) throws -> ClaudeCredential {
-        guard account.source == .cliDetected || account.allowsCLIFallback else { throw QuotaError.noCredential }
-        return try ClaudeCredentialReader.loadFromCLI()
+    private static func defaultResolver(_ source: CredentialSource, _ account: AccountIdentity) throws -> ClaudeCredential {
+        switch source {
+        case .oauthCLI:
+            return try ClaudeCredentialReader.loadFromOAuth()
+        case .cliDetected:
+            return try ClaudeCredentialReader.loadFromCLI()
+        case .webCookie, .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
+            guard account.source == .cliDetected || account.allowsCLIFallback else { throw QuotaError.noCredential }
+            return try ClaudeCredentialReader.loadFromCLI()
+        }
+    }
+
+    private func sourceOrder(for account: AccountIdentity) -> [CredentialSource] {
+        let raw: [CredentialSource]
+        switch account.source {
+        case .oauthCLI:
+            raw = [.oauthCLI]
+                + (account.allowsCLIFallback ? [.cliDetected] : [])
+                + (account.allowsWebFallback ? [.webCookie] : [])
+        case .cliDetected:
+            raw = [.cliDetected]
+                + (account.allowsWebFallback ? [.webCookie] : [])
+                + (account.allowsOAuthFallback ? [.oauthCLI] : [])
+        case .webCookie:
+            raw = [.webCookie]
+                + (account.allowsCLIFallback ? [.cliDetected] : [])
+                + (account.allowsOAuthFallback ? [.oauthCLI] : [])
+        case .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
+            raw = ClaudeSourcePlanner.resolve(mode: .auto)
+        }
+        var seen: Set<CredentialSource> = []
+        return raw.filter { seen.insert($0).inserted }
     }
 
     private static func nextRoutineResetDate(now: Date = Date()) -> Date? {

@@ -25,20 +25,27 @@ public actor CostHistoryStore {
     }
     private struct Storage: Codable {
         var schemaVersion: Int
+        var calculationVersion: Int?
         var entries: [Entry]
 
-        init(schemaVersion: Int = CostHistoryStore.storageSchemaVersion, entries: [Entry]) {
+        init(
+            schemaVersion: Int = CostHistoryStore.storageSchemaVersion,
+            calculationVersion: Int? = CostUsagePricing.calculationVersion,
+            entries: [Entry]
+        ) {
             self.schemaVersion = schemaVersion
+            self.calculationVersion = calculationVersion
             self.entries = entries
         }
 
         private enum CodingKeys: String, CodingKey {
-            case schemaVersion, entries
+            case schemaVersion, calculationVersion, entries
         }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+            self.calculationVersion = try c.decodeIfPresent(Int.self, forKey: .calculationVersion)
             self.entries = try c.decode([Entry].self, forKey: .entries)
         }
     }
@@ -273,6 +280,13 @@ public actor CostHistoryStore {
             cachedStorage = empty
             return empty
         }
+        if storage.schemaVersion >= Self.storageSchemaVersion,
+           storage.calculationVersion != CostUsagePricing.calculationVersion {
+            let empty = Storage(entries: [])
+            persist(empty)
+            cachedStorage = empty
+            return empty
+        }
         if migrateLegacyStorageIfNeeded(&storage) {
             persist(storage)
         }
@@ -352,6 +366,7 @@ public actor CostHistoryStore {
         }
         storage.entries = Array(byKey.values)
         storage.schemaVersion = Self.storageSchemaVersion
+        storage.calculationVersion = CostUsagePricing.calculationVersion
         return true
     }
 

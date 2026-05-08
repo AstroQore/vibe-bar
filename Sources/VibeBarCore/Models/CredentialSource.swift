@@ -10,8 +10,10 @@ import Foundation
 /// - `browserCookie` — auto-imported from Chrome / Edge / Brave / Arc /
 ///   Safari / Firefox via SweetCookieKit.
 /// - `manualCookie` — user pasted a `Cookie:` header in Settings.
-/// - `oauthCLI` — read from a sibling CLI's OAuth credential file
-///   (e.g. `~/.gemini/oauth_creds.json`).
+/// - `oauthCLI` — primary-provider OAuth credentials sourced from
+///   provider CLI auth material. For OpenAI this is Codex
+///   `auth.json`; for Claude/Gemini this is the provider's local
+///   OAuth credential file.
 /// - `localProbe` — discovered by probing a locally running process
 ///   (e.g. AntiGravity language server via `lsof`).
 /// - `notConfigured` — placeholder used by `AccountStore` so a misc
@@ -21,10 +23,10 @@ import Foundation
 public enum CredentialSource: String, Codable, Sendable {
     case cliDetected
     case webCookie
+    case oauthCLI
     case apiToken
     case browserCookie
     case manualCookie
-    case oauthCLI
     case localProbe
     case notConfigured
 }

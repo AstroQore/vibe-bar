@@ -2,13 +2,21 @@ import Foundation
 
 /// Storage for the minimum Claude web session cookie needed by Vibe Bar.
 ///
-/// Cookies are stored in Keychain. Older builds wrote
-/// `~/.vibebar/cookies/claude-web.txt`; reads still migrate that legacy file
-/// into Keychain and then remove it.
+/// Cookies are stored in the user's Keychain, split by source: one
+/// captured from Vibe Bar's WebView, one imported from browser cookies.
+/// Older plaintext files under `~/.vibebar/cookies` are migrated once and
+/// deleted immediately.
 public enum ClaudeWebCookieStore {
-    private static let service = "Vibe Bar Claude Web Cookies"
-    private static let account = "claude.ai"
-    private static let organizationAccount = "claude.ai.organization"
+    public enum CookieSource: Sendable {
+        case webView
+        case browser
+        case legacy
+    }
+
+    private static let legacyService = "Vibe Bar Claude Web Cookies"
+    private static let legacyAccount = "claude.ai"
+    private static let legacyOrganizationAccount = "claude.ai.organization"
+    private static let organizationAccount = "claude.organization-id"
 
     public static func readCookieHeader() throws -> String {
         if let header = candidateCookieHeaders().first {
@@ -17,34 +25,31 @@ public enum ClaudeWebCookieStore {
         throw QuotaError.noCredential
     }
 
+    public static func readCookieHeader(source: CookieSource) throws -> String {
+        migrateLegacyPlaintextCookiesIfNeeded()
+        if let header = storedCookieHeader(source: source) {
+            return header
+        }
+        throw QuotaError.noCredential
+    }
+
     public static func candidateCookieHeaders() -> [String] {
+        migrateLegacyPlaintextCookiesIfNeeded()
         var headers: [String] = []
-        let rawKeychainHeader = readKeychainStringWithLegacyMigration(account: account)
-        let keychainHeader = rawKeychainHeader
-            .map { normalizedCookieHeader(from: $0) }
-            .flatMap { $0.isEmpty ? nil : $0 }
-            .flatMap { minimizedCookieHeader(from: $0) }
-        if let rawKeychainHeader,
-           let keychainHeader,
-           normalizedCookieHeader(from: rawKeychainHeader) != keychainHeader {
-            try? KeychainStore.writeString(service: service, account: account, value: keychainHeader, useDataProtectionKeychain: true)
-        }
-        appendCookieHeader(keychainHeader, to: &headers)
-        if let legacy = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeCookieURL) {
-            let legacyHeader = minimizedCookieHeader(from: legacy)
-            if keychainHeader == nil, let legacyHeader {
-                appendCookieHeader(legacyHeader, to: &headers)
-                try? writeCookieHeader(legacyHeader)
-            }
-            try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
-        }
+        appendStoredCookieHeader(source: .browser, to: &headers)
+        appendStoredCookieHeader(source: .webView, to: &headers)
         return unique(headers)
     }
 
-    public static func writeCookieHeader(_ header: String) throws {
+    public static func writeCookieHeader(_ header: String, source: CookieSource = .legacy) throws {
         guard let minimized = minimizedCookieHeader(from: header) else { throw QuotaError.noCredential }
-        try KeychainStore.writeString(service: service, account: account, value: minimized, useDataProtectionKeychain: true)
+        try SecureCookieHeaderStore.store(
+            minimized,
+            provider: .claude,
+            source: secureSource(for: source)
+        )
         try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
+        try? VibeBarLocalStore.deleteFile(at: legacyURL(for: source))
     }
 
     public static func hasCookieHeader() -> Bool {
@@ -52,42 +57,60 @@ public enum ClaudeWebCookieStore {
     }
 
     public static func deleteCookieHeader() throws {
+        try SecureCookieHeaderStore.deleteAll(provider: .claude)
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
+        try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeWebViewCookieURL)
+        try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeBrowserCookieURL)
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
-        try? KeychainStore.deleteItem(service: service, account: account, useDataProtectionKeychain: true)
-        try? KeychainStore.deleteItem(service: service, account: organizationAccount, useDataProtectionKeychain: true)
+        try? KeychainStore.deleteItem(
+            service: SecureCookieHeaderStore.keychainService,
+            account: organizationAccount,
+            useDataProtectionKeychain: true
+        )
+        try? KeychainStore.deleteItem(service: legacyService, account: legacyAccount, useDataProtectionKeychain: true)
+        try? KeychainStore.deleteItem(service: legacyService, account: legacyOrganizationAccount, useDataProtectionKeychain: true)
     }
 
     public static func readOrganizationID() -> String? {
-        if let raw = readKeychainStringWithLegacyMigration(account: organizationAccount),
-           let normalized = normalizedOrganizationID(raw) {
-            try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
+        if let raw = try? KeychainStore.readString(
+            service: SecureCookieHeaderStore.keychainService,
+            account: organizationAccount,
+            useDataProtectionKeychain: true
+        ), let normalized = normalizedOrganizationID(raw) {
             return normalized
         }
-        if let legacy = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeOrganizationIDURL),
-           let normalized = normalizedOrganizationID(legacy) {
-            try? writeOrganizationID(normalized)
+
+        if let local = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeOrganizationIDURL),
+           let normalized = normalizedOrganizationID(local) {
+            try? KeychainStore.writeString(
+                service: SecureCookieHeaderStore.keychainService,
+                account: organizationAccount,
+                value: normalized,
+                useDataProtectionKeychain: true
+            )
+            try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
             return normalized
         }
         return nil
     }
 
-    /// Read the Codex Bar-style login-keychain item, with a
-    /// best-effort migration fallback for short-lived builds that
-    /// attempted to store Claude web state in the data-protection
-    /// keychain.
-    private static func readKeychainStringWithLegacyMigration(account: String) -> String? {
-        return try? KeychainStore.readString(
-            service: service,
-            account: account,
-            useDataProtectionKeychain: true
-        )
-    }
-
     public static func writeOrganizationID(_ organizationID: String) throws {
         guard let trimmed = normalizedOrganizationID(organizationID) else { return }
-        try KeychainStore.writeString(service: service, account: organizationAccount, value: trimmed, useDataProtectionKeychain: true)
+        try KeychainStore.writeString(
+            service: SecureCookieHeaderStore.keychainService,
+            account: organizationAccount,
+            value: trimmed,
+            useDataProtectionKeychain: true
+        )
         try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
+    }
+
+    public static func storageState(source: CookieSource) -> SecureCookieHeaderStore.LoadResult {
+        migrateLegacyPlaintextCookiesIfNeeded()
+        return SecureCookieHeaderStore.load(
+            provider: .claude,
+            source: secureSource(for: source)
+        )
     }
 
     public static func sessionKeyHeader(from header: String) -> String? {
@@ -118,6 +141,51 @@ public enum ClaudeWebCookieStore {
         guard let raw else { return }
         guard let header = minimizedCookieHeader(from: raw) else { return }
         headers.append(header)
+    }
+
+    private static func appendStoredCookieHeader(source: CookieSource, to headers: inout [String]) {
+        appendCookieHeader(storedCookieHeader(source: source), to: &headers)
+    }
+
+    private static func storedCookieHeader(source: CookieSource) -> String? {
+        switch SecureCookieHeaderStore.load(provider: .claude, source: secureSource(for: source)) {
+        case .found(let raw):
+            return minimizedCookieHeader(from: raw)
+        case .missing, .temporarilyUnavailable, .invalid:
+            return nil
+        }
+    }
+
+    private static func migrateLegacyPlaintextCookiesIfNeeded() {
+        migrateLegacyPlaintextCookieIfNeeded(from: VibeBarLocalStore.claudeBrowserCookieURL, source: .browser)
+        migrateLegacyPlaintextCookieIfNeeded(from: VibeBarLocalStore.claudeWebViewCookieURL, source: .webView)
+        migrateLegacyPlaintextCookieIfNeeded(from: VibeBarLocalStore.claudeCookieURL, source: .webView)
+    }
+
+    private static func migrateLegacyPlaintextCookieIfNeeded(from url: URL, source: CookieSource) {
+        guard let raw = try? VibeBarLocalStore.readString(from: url) else { return }
+        defer { try? VibeBarLocalStore.deleteFile(at: url) }
+        guard let header = minimizedCookieHeader(from: raw) else { return }
+        try? SecureCookieHeaderStore.store(
+            header,
+            provider: .claude,
+            source: secureSource(for: source)
+        )
+    }
+
+    private static func secureSource(for source: CookieSource) -> SecureCookieHeaderStore.Source {
+        switch source {
+        case .webView, .legacy: return .webView
+        case .browser: return .browser
+        }
+    }
+
+    private static func legacyURL(for source: CookieSource) -> URL {
+        switch source {
+        case .webView: return VibeBarLocalStore.claudeWebViewCookieURL
+        case .browser: return VibeBarLocalStore.claudeBrowserCookieURL
+        case .legacy: return VibeBarLocalStore.claudeCookieURL
+        }
     }
 
     private static func normalizedOrganizationID(_ raw: String) -> String? {

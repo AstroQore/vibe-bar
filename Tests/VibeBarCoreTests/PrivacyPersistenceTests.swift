@@ -14,6 +14,31 @@ final class PrivacyPersistenceTests: XCTestCase {
         XCTAssertNil(ClaudeWebCookieStore.minimizedCookieHeader(from: "sessionKey=not-claude"))
     }
 
+    func testClaudeStoredHeadersUseKeychainBackedSources() throws {
+        try SecureCookieHeaderStore.withInMemoryStoreForTesting {
+            try ClaudeWebCookieStore.writeCookieHeader(
+                "sessionKey=sk-ant-webview",
+                source: .webView
+            )
+            try ClaudeWebCookieStore.writeCookieHeader(
+                "sessionKey=sk-ant-browser",
+                source: .browser
+            )
+
+            XCTAssertEqual(
+                try ClaudeWebCookieStore.readCookieHeader(source: .browser),
+                "sessionKey=sk-ant-browser"
+            )
+            XCTAssertEqual(
+                ClaudeWebCookieStore.candidateCookieHeaders(),
+                [
+                    "sessionKey=sk-ant-browser",
+                    "sessionKey=sk-ant-webview"
+                ]
+            )
+        }
+    }
+
     func testQuotaStoredPayloadOmitsAccountIdentifiers() throws {
         let quota = AccountQuota(
             accountId: "acct_real_codex",
@@ -65,8 +90,7 @@ final class PrivacyPersistenceTests: XCTestCase {
             model: "gpt-5",
             input: 1,
             output: 2,
-            cache: 3,
-            costUSD: 0.04
+            cache: 3
         )
 
         cache.store([event], for: path, mtime: mtime, size: 123)

@@ -15,6 +15,7 @@ public actor CostSnapshotCache {
     private let directory: URL
     private struct StoredSnapshot: Codable {
         let retentionDays: Int
+        let calculationVersion: Int?
         let snapshot: CostSnapshot
     }
 
@@ -39,6 +40,7 @@ public actor CostSnapshotCache {
         do {
             let stored = StoredSnapshot(
                 retentionDays: CostDataSettings.normalizedRetentionDays(retentionDays),
+                calculationVersion: CostUsagePricing.calculationVersion,
                 snapshot: snapshot
             )
             let data = try JSONEncoder().encode(stored)
@@ -65,12 +67,15 @@ public actor CostSnapshotCache {
                 try? FileManager.default.removeItem(at: url)
                 return nil
             }
+            guard stored.calculationVersion == CostUsagePricing.calculationVersion else {
+                try? FileManager.default.removeItem(at: url)
+                return nil
+            }
             return stored.snapshot.rebasedForCurrentDay(now: now)
         }
-        if (normalizedRetentionDays == CostDataSettings.defaultRetentionDays
-            || normalizedRetentionDays == CostDataSettings.maximumRetentionDays),
-           let legacy = try? JSONDecoder().decode(CostSnapshot.self, from: data) {
-            return legacy.rebasedForCurrentDay(now: now)
+        if (try? JSONDecoder().decode(CostSnapshot.self, from: data)) != nil {
+            try? FileManager.default.removeItem(at: url)
+            return nil
         }
         try? FileManager.default.removeItem(at: url)
         return nil

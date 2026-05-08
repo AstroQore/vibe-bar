@@ -6,6 +6,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool
     public var menuBarTextEnabled: Bool
     public var mockEnabled: Bool
+    public var codexUsageMode: CodexUsageMode
     public var claudeUsageMode: ClaudeUsageMode
     public var menuBarItems: [MenuBarItemSettings]
     public var miniWindow: MiniWindowSettings
@@ -28,7 +29,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         launchAtLogin: false,
         menuBarTextEnabled: true,
         mockEnabled: false,
-        claudeUsageMode: .cliThenWeb,
+        codexUsageMode: .auto,
+        claudeUsageMode: .auto,
         menuBarItems: Self.defaultMenuBarItems,
         miniWindow: Self.defaultMiniWindow,
         popoverDensities: Self.defaultPopoverDensities,
@@ -109,7 +111,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         launchAtLogin: Bool,
         menuBarTextEnabled: Bool,
         mockEnabled: Bool,
-        claudeUsageMode: ClaudeUsageMode = .cliThenWeb,
+        codexUsageMode: CodexUsageMode = .auto,
+        claudeUsageMode: ClaudeUsageMode = .auto,
         menuBarItems: [MenuBarItemSettings] = AppSettings.defaultMenuBarItems,
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
         popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
@@ -122,6 +125,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.launchAtLogin = launchAtLogin
         self.menuBarTextEnabled = menuBarTextEnabled
         self.mockEnabled = false
+        self.codexUsageMode = codexUsageMode
         self.claudeUsageMode = claudeUsageMode
         self.menuBarItems = Self.normalizedMenuBarItems(menuBarItems)
         self.miniWindow = miniWindow
@@ -137,6 +141,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case launchAtLogin
         case menuBarTextEnabled
         case mockEnabled
+        case codexUsageMode
         case claudeUsageMode
         case menuBarItems
         case miniWindow
@@ -154,6 +159,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? Self.default.launchAtLogin
         self.menuBarTextEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarTextEnabled) ?? Self.default.menuBarTextEnabled
         self.mockEnabled = false
+        self.codexUsageMode = try c.decodeIfPresent(CodexUsageMode.self, forKey: .codexUsageMode) ?? Self.default.codexUsageMode
         self.claudeUsageMode = try c.decodeIfPresent(ClaudeUsageMode.self, forKey: .claudeUsageMode) ?? Self.default.claudeUsageMode
 
         // Gemini support was removed; old persisted configs may contain
@@ -214,6 +220,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(menuBarTextEnabled, forKey: .menuBarTextEnabled)
         try c.encode(mockEnabled, forKey: .mockEnabled)
+        try c.encode(codexUsageMode, forKey: .codexUsageMode)
         try c.encode(claudeUsageMode, forKey: .claudeUsageMode)
         try c.encode(menuBarItems, forKey: .menuBarItems)
         try c.encode(miniWindow, forKey: .miniWindow)
@@ -485,8 +492,11 @@ public enum PopoverDensity: String, Codable, CaseIterable, Identifiable, Sendabl
 }
 
 public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case auto
+    case oauthThenCliThenWeb
     case cliThenWeb
     case webThenCli
+    case oauthOnly
     case cliOnly
     case webOnly
 
@@ -494,8 +504,11 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var label: String {
         switch self {
+        case .auto: return "Auto"
+        case .oauthThenCliThenWeb: return "OAuth, then Claude Code, then Web"
         case .cliThenWeb: return "Claude Code, then Web"
         case .webThenCli: return "Claude Web, then Claude Code"
+        case .oauthOnly: return "OAuth only"
         case .cliOnly: return "Claude Code only"
         case .webOnly: return "Claude Web only"
         }
@@ -503,8 +516,11 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var detail: String {
         switch self {
+        case .auto: return "Use saved claude.ai cookies first; fall back to Claude OAuth and Claude Code."
+        case .oauthThenCliThenWeb: return "Use Claude OAuth first; fall back to Claude Code and saved claude.ai cookies."
         case .cliThenWeb: return "Use Claude Code first; fall back to saved claude.ai cookies."
-        case .webThenCli: return "Use saved claude.ai cookies first; fall back to local Claude Code credentials."
+        case .webThenCli: return "Use saved claude.ai cookies first; fall back to Claude Code and OAuth."
+        case .oauthOnly: return "Use only Claude OAuth credentials."
         case .cliOnly: return "Use only local Claude Code OAuth credentials."
         case .webOnly: return "Use only saved claude.ai cookies."
         }

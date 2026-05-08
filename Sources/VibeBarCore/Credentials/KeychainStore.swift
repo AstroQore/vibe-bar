@@ -89,6 +89,7 @@ public enum KeychainStore {
         } else {
             query[kSecMatchLimit as String] = kSecMatchLimitAll
         }
+        KeychainNoUIQuery.apply(to: &query)
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)

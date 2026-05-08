@@ -5,7 +5,11 @@ import Foundation
 // so users can see freshness in Settings.
 public enum CostUsagePricing {
     /// ISO date the pricing tables were last refreshed against upstream provider docs.
-    public static let pricingDataUpdatedAt: String = "2026-01-15"
+    public static let pricingDataUpdatedAt: String = "2026-05-09"
+
+    /// Bump when local cost parsing or pricing semantics change in a way that
+    /// makes persisted cost totals unsafe to max-merge with fresh scans.
+    public static let calculationVersion: Int = 3
 
     struct CodexPricing {
         let inputCostPerToken: Double
@@ -216,11 +220,11 @@ public enum CostUsagePricing {
             outputCostPerToken: 1.5e-5,
             cacheCreationInputCostPerToken: 3.75e-6,
             cacheReadInputCostPerToken: 3e-7,
-            thresholdTokens: 200_000,
-            inputCostPerTokenAboveThreshold: 6e-6,
-            outputCostPerTokenAboveThreshold: 2.25e-5,
-            cacheCreationInputCostPerTokenAboveThreshold: 7.5e-6,
-            cacheReadInputCostPerTokenAboveThreshold: 6e-7),
+            thresholdTokens: nil,
+            inputCostPerTokenAboveThreshold: nil,
+            outputCostPerTokenAboveThreshold: nil,
+            cacheCreationInputCostPerTokenAboveThreshold: nil,
+            cacheReadInputCostPerTokenAboveThreshold: nil),
         "claude-sonnet-4-5-20250929": ClaudePricing(
             inputCostPerToken: 3e-6,
             outputCostPerToken: 1.5e-5,

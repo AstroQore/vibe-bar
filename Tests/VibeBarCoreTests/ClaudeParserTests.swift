@@ -159,6 +159,19 @@ final class ClaudeParserTests: XCTestCase {
         )
     }
 
+    func testClaudeOrganizationIDPrefersChatCapableOrganization() throws {
+        let json = """
+        [
+          {"uuid":"org-api","name":"API","capabilities":["api"]},
+          {"uuid":"org-chat","name":"Claude","capabilities":["chat","api"]}
+        ]
+        """
+        XCTAssertEqual(
+            try ClaudeQuotaAdapter.parseOrganizationID(data: Data(json.utf8)),
+            "org-chat"
+        )
+    }
+
     func testClaudeOrganizationIDParsesNestedResponse() throws {
         let json = """
         {"organizations":[{"id":"org-456"}]}
