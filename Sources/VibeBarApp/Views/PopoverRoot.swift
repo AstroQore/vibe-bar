@@ -19,6 +19,7 @@ struct PopoverRoot: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var quotaService: QuotaService
     @State private var overviewPage: OverviewPage = .overview
+    @State private var autoRefreshedPageKeys: Set<String> = []
 
     var body: some View {
         let density = activeDensity
@@ -50,6 +51,10 @@ struct PopoverRoot: View {
         .frame(width: width)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
+        .onAppear(perform: refreshVisibleProvidersIfNeeded)
+        .onChange(of: overviewPage) { _, _ in
+            refreshVisibleProvidersIfNeeded()
+        }
     }
 
     /// Resolves the "logical" menu bar kind for the current view. When the
@@ -154,11 +159,12 @@ struct PopoverRoot: View {
 
     private var visibleTools: [ToolType] {
         // Header timestamps and refresh state aggregate the providers
-        // visible in the current popover. Overview and Status both
-        // currently surface only primary providers (the misc page is
-        // a sub-tab inside Overview, with its own refresh wiring once
-        // it lands). Restrict to primary providers so we don't include
-        // misc accounts the user can't see.
+        // visible in the current popover. The Misc subpage owns its
+        // eight usage-only integrations; the normal Overview and Status
+        // surfaces continue to aggregate just the primary providers.
+        if kind == .compact, overviewPage == .misc {
+            return ToolType.miscProviders
+        }
         switch effectiveKind {
         case .compact, .status: return ToolType.primaryProviders
         case .codex:            return [.codex]
@@ -186,6 +192,28 @@ struct PopoverRoot: View {
             accountPlan: environment.account(for: tool)?.plan
         )
     }
+
+    private var autoRefreshKey: String {
+        "\(kind.rawValue):\(overviewPage.rawValue)"
+    }
+
+    private func refreshVisibleProvidersIfNeeded() {
+        let key = autoRefreshKey
+        guard !autoRefreshedPageKeys.contains(key) else { return }
+        let accounts = visibleTools.compactMap { environment.account(for: $0) }
+        let missing = accounts.filter { account in
+            quotaService.cachedQuota(for: account.id) == nil
+                && quotaService.lastErrorByAccount[account.id] == nil
+                && !quotaService.inFlightAccountIds.contains(account.id)
+        }
+        guard !missing.isEmpty else { return }
+        autoRefreshedPageKeys.insert(key)
+        Task { @MainActor in
+            for account in missing {
+                _ = await quotaService.refresh(account)
+            }
+        }
+    }
 }
 
 private struct ProviderSectionTitle: View {
@@ -194,13 +222,13 @@ private struct ProviderSectionTitle: View {
     var subtitle: String?
     let titleFontSize: CGFloat
     let subtitleFontSize: CGFloat
-    var iconSize: CGFloat = 15
-    var badgeSize: CGFloat = 22
+    var iconSize: CGFloat = 17
+    var badgeSize: CGFloat = 24
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            ProviderBrandBadge(
-                kind: tool.brandMenuBarKind,
+            ToolBrandBadge(
+                tool: tool,
                 iconSize: iconSize,
                 containerSize: badgeSize
             )
@@ -312,11 +340,11 @@ private struct OverviewSwitchIcon: View {
                 Image(systemName: "square.grid.2x2")
                     .font(.system(size: 11, weight: .medium))
             } else {
-                ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 12 : 11)
+                ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 14 : 13)
             }
         }
         .opacity(isSelected ? 1 : 0.72)
-        .frame(width: 16, height: 14, alignment: .center)
+        .frame(width: 18, height: 16, alignment: .center)
     }
 }
 
@@ -552,7 +580,7 @@ private struct OverviewStatusSummaryCard: View {
                 Image(systemName: state.iconName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(state.color)
-                ProviderBrandIconView(kind: tool.brandMenuBarKind, size: 15)
+                ToolBrandIconView(tool: tool, size: 16)
                     .opacity(0.9)
                     .frame(width: 18, height: 18)
                 Text(tool.statusProviderName)
@@ -995,7 +1023,10 @@ struct ProviderQuotaCard: View {
     var body: some View {
         let account = environment.account(for: tool)
         let quota = environment.quota(for: tool)
-        let liveError = account.flatMap { quotaService.lastErrorByAccount[$0.id] }
+        let liveError = displayableError(
+            account.flatMap { quotaService.lastErrorByAccount[$0.id] },
+            with: quota
+        )
         let isProviderRefreshing = account.map { quotaService.inFlightAccountIds.contains($0.id) } == true
         let planBadge = settingsStore.settings.planBadgeLabel(
             for: tool,
@@ -1112,6 +1143,18 @@ struct ProviderQuotaCard: View {
             Spacer()
         }
         .padding(.vertical, 2)
+    }
+
+    private func displayableError(_ error: QuotaError?, with quota: AccountQuota?) -> QuotaError? {
+        guard let error else { return nil }
+        guard error.isCredentialState,
+              let quota,
+              !quota.buckets.isEmpty,
+              Date().timeIntervalSince(quota.queriedAt) < 30 * 60
+        else {
+            return error
+        }
+        return nil
     }
 }
 

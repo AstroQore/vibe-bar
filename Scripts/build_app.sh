@@ -31,6 +31,9 @@ cp "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
+if [[ -d "$ROOT/Resources/ProviderIcons" ]]; then
+    cp -R "$ROOT/Resources/ProviderIcons" "$APP_DIR/Contents/Resources/ProviderIcons"
+fi
 
 PkgInfo="APPL????"
 printf '%s' "$PkgInfo" > "$APP_DIR/Contents/PkgInfo"

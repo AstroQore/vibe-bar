@@ -4,13 +4,14 @@ import XCTest
 
 final class PrivacyPersistenceTests: XCTestCase {
     func testClaudeCookieMinimizationKeepsOnlySessionKey() {
-        let raw = "Cookie: other=value; sessionKey=test-session-key; analytics=abc"
+        let raw = "Cookie: other=value; sessionKey=sk-ant-test-session-key; analytics=abc"
 
         XCTAssertEqual(
             ClaudeWebCookieStore.minimizedCookieHeader(from: raw),
-            "sessionKey=test-session-key"
+            "sessionKey=sk-ant-test-session-key"
         )
         XCTAssertNil(ClaudeWebCookieStore.minimizedCookieHeader(from: "other=value"))
+        XCTAssertNil(ClaudeWebCookieStore.minimizedCookieHeader(from: "sessionKey=not-claude"))
     }
 
     func testQuotaStoredPayloadOmitsAccountIdentifiers() throws {

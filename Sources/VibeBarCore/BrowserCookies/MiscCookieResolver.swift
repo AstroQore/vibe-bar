@@ -7,12 +7,13 @@ import SweetCookieKit
 ///
 /// 1. **Cached** — Keychain entry from a prior successful import.
 ///    Returned immediately if present.
-/// 2. **Browser auto-import** (when `cookieSource ∈ [.auto, .browserOnly]`) —
+/// 2. **Browser auto-import** (when source mode permits browser cookies) —
 ///    SweetCookieKit reads cookies for the provider's domains from
-///    every browser in the configured order; the first non-empty
-///    match wins, gets minimised to the auth-cookie set, and is
-///    cached.
-/// 3. **Manual paste** (when `cookieSource ∈ [.auto, .manualOnly]`) —
+///    every browser in the configured order. Records from the same
+///    browser profile are merged across cookie stores before the
+///    auth-cookie set is minimized and cached, matching Codex Bar's
+///    Kimi/MiniMax/Cursor importers.
+/// 3. **Manual paste** (when source mode permits manual cookies) —
 ///    the value the user pasted in Settings, normalised through
 ///    `CookieHeaderNormalizer`.
 ///
@@ -57,20 +58,18 @@ public enum MiscCookieResolver {
     /// `noCredential` in that case.
     public static func resolve(for spec: Spec) -> Resolution? {
         let settings = currentSettings(for: spec.tool)
-        let cookieSource = settings.cookieSource
-
-        // Off — never try a cookie path.
-        if cookieSource == .off {
+        guard let plan = CookieSourcePlan(settings: settings) else {
             return nil
         }
 
         // 1. Cached header from a prior import or manual paste.
-        if let cached = CookieHeaderCache.load(for: spec.tool) {
+        if let cached = CookieHeaderCache.load(for: spec.tool),
+           plan.acceptsCached(cached) {
             return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
         }
 
         // 2. Browser auto-import (skipped in `.manual` mode).
-        if cookieSource != .manual,
+        if plan.allowsBrowser,
            let imported = importFromBrowsers(spec: spec, settings: settings) {
             CookieHeaderCache.store(
                 for: spec.tool,
@@ -81,11 +80,9 @@ public enum MiscCookieResolver {
         }
 
         // 3. Manual paste fallback.
-        if let manual = MiscCredentialStore.readString(tool: spec.tool, kind: .manualCookieHeader),
-           let normalised = CookieHeaderNormalizer.filteredHeader(
-               from: manual,
-               allowedNames: spec.requiredNames
-           ),
+        if plan.allowsManual,
+           let manual = MiscCredentialStore.readString(tool: spec.tool, kind: .manualCookieHeader),
+           let normalised = minimizedHeader(from: manual, allowedNames: spec.requiredNames),
            !normalised.isEmpty {
             CookieHeaderCache.store(
                 for: spec.tool,
@@ -104,7 +101,14 @@ public enum MiscCookieResolver {
     public static func forceBrowserImport(for spec: Spec) -> Resolution? {
         CookieHeaderCache.clear(for: spec.tool)
         let settings = currentSettings(for: spec.tool)
-        guard let imported = importFromBrowsers(spec: spec, settings: settings) else {
+        guard CookieSourcePlan(settings: settings)?.allowsBrowser == true else {
+            return nil
+        }
+        guard let imported = importFromBrowsers(
+            spec: spec,
+            settings: settings,
+            allowKeychainPrompt: true
+        ) else {
             return nil
         }
         CookieHeaderCache.store(
@@ -119,7 +123,8 @@ public enum MiscCookieResolver {
 
     private static func importFromBrowsers(
         spec: Spec,
-        settings: MiscProviderSettings
+        settings: MiscProviderSettings,
+        allowKeychainPrompt: Bool = false
     ) -> Resolution? {
         let detection = BrowserDetection()
         let preferred: [Browser]
@@ -128,45 +133,177 @@ public enum MiscCookieResolver {
         } else {
             preferred = spec.importOrder
         }
-        let candidates = preferred.cookieImportCandidates(using: detection)
+        let candidates = preferred.cookieImportCandidates(
+            using: detection,
+            allowKeychainPrompt: allowKeychainPrompt
+        )
         guard !candidates.isEmpty else { return nil }
 
-        let query = BrowserCookieQuery(
-            domains: spec.domains,
-            domainMatch: .suffix,
-            origin: .domainBased
-        )
+        let query = BrowserCookieQuery(domains: spec.domains)
 
         let client = BrowserCookieClient()
         for browser in candidates {
             let records: [BrowserCookieStoreRecords]
             do {
-                records = try client.vibeBarRecords(matching: query, in: browser, logger: nil)
+                records = try client.vibeBarRecords(
+                    matching: query,
+                    in: browser,
+                    allowKeychainPrompt: allowKeychainPrompt,
+                    logger: nil
+                )
             } catch {
                 BrowserCookieAccessGate.recordIfNeeded(error)
                 continue
             }
-            for storeRecords in records {
-                let cookies = storeRecords.records
+            for session in mergedSessions(from: records) {
+                let cookies = session.records
                 guard !cookies.isEmpty else { continue }
                 let pairs = cookies.compactMap { record -> String? in
-                    guard spec.requiredNames.contains(record.name) else { return nil }
+                    guard spec.requiredNames.isEmpty || spec.requiredNames.contains(record.name) else { return nil }
                     return "\(record.name)=\(record.value)"
                 }
-                guard !pairs.isEmpty else { continue }
+                guard spec.requiredNames.isEmpty || !pairs.isEmpty else { continue }
                 let header = pairs.joined(separator: "; ")
-                let label = "\(browser.displayName) (\(storeRecords.store.profile.name))"
-                return Resolution(header: header, sourceLabel: label)
+                guard !header.isEmpty else { continue }
+                return Resolution(header: header, sourceLabel: session.label)
             }
         }
         return nil
     }
 
+    private struct BrowserSession {
+        let label: String
+        let records: [BrowserCookieRecord]
+    }
+
+    private struct CookieSourcePlan {
+        let allowsBrowser: Bool
+        let allowsManual: Bool
+        let cachePolicy: CachePolicy
+
+        enum CachePolicy {
+            case any
+            case browserOnly
+            case manualOnly
+        }
+
+        init?(settings: MiscProviderSettings) {
+            switch settings.sourceMode {
+            case .off, .apiOnly:
+                return nil
+            case .browserOnly:
+                self.allowsBrowser = true
+                self.allowsManual = false
+                self.cachePolicy = .browserOnly
+                return
+            case .manualOnly:
+                self.allowsBrowser = false
+                self.allowsManual = true
+                self.cachePolicy = .manualOnly
+                return
+            case .auto:
+                switch settings.cookieSource {
+                case .off:
+                    return nil
+                case .manual:
+                    self.allowsBrowser = false
+                    self.allowsManual = true
+                    self.cachePolicy = .manualOnly
+                    return
+                case .auto:
+                    self.allowsBrowser = true
+                    self.allowsManual = true
+                    self.cachePolicy = .any
+                    return
+                }
+            }
+        }
+
+        func acceptsCached(_ entry: CookieHeaderCache.Entry) -> Bool {
+            let isManual = entry.sourceLabel == "Manual paste"
+            switch cachePolicy {
+            case .any:
+                return true
+            case .browserOnly:
+                return !isManual
+            case .manualOnly:
+                return isManual
+            }
+        }
+    }
+
+    private static func mergedSessions(from sources: [BrowserCookieStoreRecords]) -> [BrowserSession] {
+        let grouped = Dictionary(grouping: sources, by: { $0.store.profile.id })
+        return grouped.values
+            .sorted { lhs, rhs in mergedLabel(for: lhs) < mergedLabel(for: rhs) }
+            .map { group in
+                BrowserSession(label: mergedLabel(for: group), records: mergeRecords(group))
+            }
+    }
+
+    private static func mergedLabel(for sources: [BrowserCookieStoreRecords]) -> String {
+        guard let base = sources.map(\.label).min() else {
+            return "Unknown"
+        }
+        if base.hasSuffix(" (Network)") {
+            return String(base.dropLast(" (Network)".count))
+        }
+        return base
+    }
+
+    private static func mergeRecords(_ sources: [BrowserCookieStoreRecords]) -> [BrowserCookieRecord] {
+        let sortedSources = sources.sorted {
+            storePriority($0.store.kind) < storePriority($1.store.kind)
+        }
+        var mergedByKey: [String: BrowserCookieRecord] = [:]
+        for source in sortedSources {
+            for record in source.records {
+                let key = recordKey(record)
+                if let existing = mergedByKey[key] {
+                    if shouldReplace(existing: existing, candidate: record) {
+                        mergedByKey[key] = record
+                    }
+                } else {
+                    mergedByKey[key] = record
+                }
+            }
+        }
+        return Array(mergedByKey.values)
+    }
+
+    private static func storePriority(_ kind: BrowserCookieStoreKind) -> Int {
+        switch kind {
+        case .network: 0
+        case .primary: 1
+        case .safari: 2
+        }
+    }
+
+    private static func recordKey(_ record: BrowserCookieRecord) -> String {
+        "\(record.name)|\(record.domain)|\(record.path)"
+    }
+
+    private static func shouldReplace(existing: BrowserCookieRecord, candidate: BrowserCookieRecord) -> Bool {
+        switch (existing.expires, candidate.expires) {
+        case let (lhs?, rhs?):
+            rhs > lhs
+        case (nil, .some):
+            true
+        case (.some, nil):
+            false
+        case (nil, nil):
+            false
+        }
+    }
+
+    private static func minimizedHeader(from raw: String?, allowedNames: Set<String>) -> String? {
+        if allowedNames.isEmpty {
+            return CookieHeaderNormalizer.normalize(raw)
+        }
+        return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: allowedNames)
+    }
+
     private static func currentSettings(for tool: ToolType) -> MiscProviderSettings {
-        let appSettings = (try? VibeBarLocalStore.readJSON(
-            AppSettings.self,
-            from: VibeBarLocalStore.settingsURL
-        )) ?? .default
-        return appSettings.miscProvider(tool)
+        MiscProviderSettings.current(for: tool)
     }
 }

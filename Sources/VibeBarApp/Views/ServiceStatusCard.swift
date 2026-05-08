@@ -69,7 +69,7 @@ private struct ServiceStatusRow: View {
 
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
-                ProviderBrandBadge(kind: tool.brandMenuBarKind, iconSize: 15, containerSize: 22)
+                ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
                 Text(tool.statusProviderName)
                     .font(.system(size: 13, weight: .semibold))
                 StatusPill(indicator: snapshot?.indicator, description: snapshot?.description)

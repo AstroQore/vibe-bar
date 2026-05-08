@@ -105,6 +105,26 @@ final class ZaiParserTests: XCTestCase {
         )
     }
 
+    func testSettingsEnterpriseHostBuildsValidQuotaURL() {
+        let providerSettings = MiscProviderSettings(
+            enterpriseHost: URL(string: "https://zai-settings.example.com")!
+        )
+        let settings = ZaiSettings.resolve(environment: [:], providerSettings: providerSettings)
+        XCTAssertEqual(
+            settings.quotaURL.absoluteString,
+            "https://zai-settings.example.com/api/monitor/usage/quota/limit"
+        )
+    }
+
+    func testSettingsRegionCanSelectBigModelCN() {
+        let providerSettings = MiscProviderSettings(region: "bigmodel-cn")
+        let settings = ZaiSettings.resolve(environment: [:], providerSettings: providerSettings)
+        XCTAssertEqual(
+            settings.quotaURL.absoluteString,
+            "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
+        )
+    }
+
     func testQuotaURLEnvOverridePreemptsHostOverride() {
         let env = [
             "Z_AI_QUOTA_URL": "https://custom.example.com/v2/quota",

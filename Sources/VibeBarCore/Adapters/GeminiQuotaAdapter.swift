@@ -42,6 +42,10 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        guard MiscProviderSettings.current(for: .gemini).allowsAPIOrOAuthAccess else {
+            throw QuotaError.noCredential
+        }
+
         let credsURL = URL(fileURLWithPath: homeDirectory)
             .appendingPathComponent(".gemini/oauth_creds.json")
 

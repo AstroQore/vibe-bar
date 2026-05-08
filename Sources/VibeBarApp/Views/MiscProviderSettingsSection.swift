@@ -1,13 +1,13 @@
+import AppKit
 import SwiftUI
 import VibeBarCore
 
 /// Per-misc-provider Settings row.
 ///
-/// This is the skeleton landing in Phase 4 — every provider shows
-/// its name, an enable toggle backed by `MiscProviderSettings`, and
-/// a "Setup pending" placeholder. Each subsequent phase replaces
-/// the placeholder with the real controls (API key field, paste
-/// area, source-mode picker, etc.) for that provider's auth model.
+/// Each provider shows its name, source-mode picker, and the auth
+/// controls that match the provider's current integration path
+/// (API key, device login, local CLI/OAuth status, browser-cookie
+/// import, or local process probe).
 struct MiscProviderSettingsSection: View {
     let tool: ToolType
 
@@ -15,10 +15,8 @@ struct MiscProviderSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: tool.miscFallbackSymbol)
-                    .frame(width: 16)
-                    .foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 8) {
+                ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
                 Text(tool.menuTitle)
                     .font(.system(size: 13, weight: .semibold))
                 Text(tool.subtitle)
@@ -56,11 +54,7 @@ struct MiscProviderSettingsSection: View {
             ApiKeyField(tool: .zai, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
         case .copilot:
             VStack(alignment: .leading, spacing: 4) {
-                ApiKeyField(
-                    tool: .copilot,
-                    prompt: "Paste GitHub PAT (ghp_... or github_pat_...)",
-                    helpText: "Needs the read:user + copilot scopes. Stored in macOS Keychain. (Device-flow sign-in coming later.)"
-                )
+                CopilotDeviceLoginRow()
                 EnterpriseHostField(tool: .copilot, prompt: "GitHub Enterprise host (optional, e.g. github.example.com)")
             }
         case .gemini:
@@ -96,21 +90,6 @@ struct MiscProviderSettingsSection: View {
             AntigravityStatusRow()
         case .codex, .claude:
             EmptyView()
-        }
-    }
-
-    private var setupHint: String {
-        switch tool {
-        case .alibaba:     return "API key + optional browser cookie fallback (coming soon)."
-        case .gemini:      return "Reads ~/.gemini/oauth_creds.json (coming soon)."
-        case .antigravity: return "Local language-server probe (coming soon)."
-        case .copilot:     return "GitHub PAT (coming soon)."
-        case .zai:         return ""
-        case .minimax:     return "Browser cookie auto-import (coming soon)."
-        case .kimi:        return "Browser cookie auto-import (coming soon)."
-        case .cursor:      return "Browser cookie auto-import (coming soon)."
-        case .codex, .claude:
-            return ""
         }
     }
 
@@ -197,6 +176,128 @@ struct ApiKeyField: View {
 
     private func triggerRefresh() {
         guard let account = environment.account(for: tool) else { return }
+        Task { _ = await quotaService.refresh(account) }
+    }
+}
+
+/// GitHub Copilot sign-in via OAuth device flow. This replaces the
+/// old PAT-first setup while keeping legacy PATs readable in Core as
+/// a migration fallback.
+struct CopilotDeviceLoginRow: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    @State private var isSigningIn = false
+    @State private var hasStoredToken = false
+    @State private var status: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Label(
+                    hasStoredToken ? "GitHub device token saved in Keychain." : "Sign in with GitHub device flow.",
+                    systemImage: hasStoredToken ? "checkmark.circle.fill" : "person.crop.circle.badge.key"
+                )
+                .font(.caption)
+                .foregroundStyle(hasStoredToken ? Color.green : Color.secondary)
+
+                Spacer(minLength: 4)
+
+                Button(isSigningIn ? "Waiting..." : "Sign in") {
+                    startLogin()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isSigningIn)
+
+                if hasStoredToken {
+                    Button(role: .destructive, action: clearToken) {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove stored GitHub device token")
+                }
+            }
+
+            if let status {
+                Text(status)
+                    .font(.caption2)
+                    .foregroundStyle(status.hasPrefix("GitHub signed in") ? .green : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear(perform: reloadStoredToken)
+    }
+
+    private func startLogin() {
+        guard !isSigningIn else { return }
+        isSigningIn = true
+        status = "Requesting GitHub device code..."
+
+        Task { @MainActor in
+            defer {
+                isSigningIn = false
+                reloadStoredToken()
+            }
+
+            let host = settingsStore.settings.miscProvider(.copilot).enterpriseHost?.absoluteString
+            let flow = CopilotDeviceFlow(enterpriseHost: host)
+            do {
+                let code = try await flow.requestDeviceCode()
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(code.userCode, forType: .string)
+
+                status = "Code \(code.userCode) copied. Complete GitHub authorization in the browser."
+                if let url = URL(string: code.verificationURLToOpen) {
+                    NSWorkspace.shared.open(url)
+                }
+
+                let token = try await flow.pollForToken(
+                    deviceCode: code.deviceCode,
+                    interval: code.interval
+                )
+                guard MiscCredentialStore.writeString(
+                    token,
+                    tool: .copilot,
+                    kind: .oauthAccessToken
+                ) else {
+                    status = "GitHub login succeeded, but Vibe Bar could not save the token."
+                    return
+                }
+                guard MiscCredentialStore.hasValue(tool: .copilot, kind: .oauthAccessToken) else {
+                    status = "GitHub login succeeded, but saved token could not be read back."
+                    return
+                }
+
+                // Hide the old PAT path once device auth succeeds.
+                MiscCredentialStore.delete(tool: .copilot, kind: .apiKey)
+                status = "GitHub signed in."
+                triggerRefresh()
+            } catch is CancellationError {
+                status = "GitHub login cancelled."
+            } catch {
+                status = "GitHub login failed: \(SafeLog.sanitize(error.localizedDescription))"
+            }
+        }
+    }
+
+    private func clearToken() {
+        MiscCredentialStore.delete(tool: .copilot, kind: .oauthAccessToken)
+        MiscCredentialStore.delete(tool: .copilot, kind: .apiKey)
+        hasStoredToken = false
+        status = "GitHub token cleared."
+        triggerRefresh()
+    }
+
+    private func reloadStoredToken() {
+        hasStoredToken =
+            MiscCredentialStore.hasValue(tool: .copilot, kind: .oauthAccessToken) ||
+            MiscCredentialStore.hasValue(tool: .copilot, kind: .apiKey)
+    }
+
+    private func triggerRefresh() {
+        guard let account = environment.account(for: .copilot) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 }
@@ -427,11 +528,8 @@ struct CookieSourceControls: View {
     private func saveManual() {
         let trimmed = manualDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard let normalised = CookieHeaderNormalizer.filteredHeader(
-            from: trimmed,
-            allowedNames: spec.requiredNames
-        ), !normalised.isEmpty else {
-            importStatus = "No \(spec.requiredNames.joined(separator: ", ")) cookie found in pasted text."
+        guard let normalised = normalizedManualCookie(from: trimmed), !normalised.isEmpty else {
+            importStatus = missingCookieMessage
             return
         }
         MiscCredentialStore.writeString(normalised, tool: tool, kind: .manualCookieHeader)
@@ -446,6 +544,20 @@ struct CookieSourceControls: View {
         CookieHeaderCache.clear(for: tool)
         importStatus = "Manual cookie cleared."
         triggerRefresh()
+    }
+
+    private func normalizedManualCookie(from raw: String) -> String? {
+        if spec.requiredNames.isEmpty {
+            return CookieHeaderNormalizer.normalize(raw)
+        }
+        return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: spec.requiredNames)
+    }
+
+    private var missingCookieMessage: String {
+        if spec.requiredNames.isEmpty {
+            return "No usable cookie found in pasted text."
+        }
+        return "No \(spec.requiredNames.sorted().joined(separator: ", ")) cookie found in pasted text."
     }
 
     private func triggerRefresh() {

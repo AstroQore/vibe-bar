@@ -2,8 +2,9 @@ import Foundation
 
 /// GitHub Copilot usage adapter.
 ///
-/// Auth: GitHub Personal Access Token pasted in Settings (or the
-/// future device-flow output, which lands as a follow-up commit).
+/// Auth: GitHub OAuth device flow. Legacy pasted PATs are still read
+/// as a migration fallback, but Settings now writes the device-flow
+/// access token into Keychain.
 /// Endpoint: `GET https://api.github.com/copilot_internal/user`
 /// (or the configured GitHub Enterprise host).
 ///
@@ -29,12 +30,16 @@ public struct CopilotQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        let providerSettings = MiscProviderSettings.current(for: .copilot)
+        guard providerSettings.allowsAPIOrOAuthAccess else {
+            throw QuotaError.noCredential
+        }
         let token = resolveToken()
         guard let token, !token.isEmpty else {
             throw QuotaError.noCredential
         }
 
-        let enterpriseHost = enterpriseHostFromSettings()
+        let enterpriseHost = enterpriseHost(from: providerSettings)
         guard let url = CopilotEndpoint.usageURL(enterpriseHost: enterpriseHost) else {
             throw QuotaError.network("Copilot enterprise host invalid: \(enterpriseHost ?? "<nil>")")
         }
@@ -88,18 +93,22 @@ public struct CopilotQuotaAdapter: QuotaAdapter {
             .trimmingCharacters(in: .whitespacesAndNewlines), !env.isEmpty {
             return env
         }
+        if let deviceToken = MiscCredentialStore.readString(tool: .copilot, kind: .oauthAccessToken),
+           !deviceToken.isEmpty {
+            return deviceToken
+        }
         return MiscCredentialStore.readString(tool: .copilot, kind: .apiKey)
     }
 
-    private func enterpriseHostFromSettings() -> String? {
-        // Read settings.json directly so the adapter doesn't depend
-        // on the @MainActor-bound SettingsStore. VibeBarLocalStore
-        // is part of VibeBarCore and tolerates a missing file.
-        guard let settings = try? VibeBarLocalStore.readJSON(
-            AppSettings.self,
-            from: VibeBarLocalStore.settingsURL
-        ) else { return nil }
-        return settings.miscProvider(.copilot).enterpriseHost?.host
+    private func enterpriseHost(from settings: MiscProviderSettings) -> String? {
+        guard let url = settings.enterpriseHost,
+              let host = url.host else {
+            return nil
+        }
+        if let port = url.port {
+            return "\(host):\(port)"
+        }
+        return host
     }
 }
 
@@ -117,21 +126,11 @@ enum CopilotEndpoint {
 
     static func usageURL(enterpriseHost: String?) -> URL? {
         let host = apiHost(enterpriseHost: enterpriseHost)
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = host
-        components.path = "/copilot_internal/user"
-        return components.url
+        return CopilotDeviceFlow.makeRequestURL(host: host, path: "/copilot_internal/user")
     }
 
     static func normalizedHost(_ host: String?) -> String {
-        let trimmed = host?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "https://", with: "")
-            .replacingOccurrences(of: "http://", with: "")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let trimmed, !trimmed.isEmpty else { return defaultHost }
-        return trimmed
+        CopilotDeviceFlow.normalizedHost(host)
     }
 }
 
@@ -179,6 +178,9 @@ enum CopilotResponseParser {
            ) {
             buckets.append(bucket)
         }
+        guard !buckets.isEmpty else {
+            throw QuotaError.parseFailure("Copilot response had no usable quota snapshots.")
+        }
 
         let planLower = response.copilotPlan.lowercased()
         let planName: String?
@@ -201,24 +203,8 @@ enum CopilotResponseParser {
         from snapshot: CopilotAPISnapshot,
         resetAt: Date?
     ) -> QuotaBucket? {
-        // Skip placeholder rows (all-zero, no quota id).
-        if snapshot.entitlement == 0,
-           snapshot.remaining == 0,
-           (snapshot.percentRemaining ?? 0) == 0,
-           (snapshot.quotaId ?? "").isEmpty {
-            return nil
-        }
-
-        let percent: Double
-        if let pct = snapshot.percentRemaining {
-            percent = max(0, min(100, 100 - pct))
-        } else if snapshot.entitlement > 0 {
-            let remaining = max(0, snapshot.remaining)
-            let computed = (remaining / snapshot.entitlement) * 100
-            percent = max(0, min(100, 100 - computed))
-        } else {
-            return nil
-        }
+        guard !snapshot.isPlaceholder, snapshot.hasPercentRemaining else { return nil }
+        let percent = max(0, min(100, 100 - snapshot.percentRemaining))
 
         return QuotaBucket(
             id: id,
@@ -234,6 +220,21 @@ enum CopilotResponseParser {
 // MARK: - Wire types
 
 private struct CopilotAPIResponse: Decodable {
+    private struct AnyCodingKey: CodingKey {
+        let stringValue: String
+        let intValue: Int?
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+            self.intValue = nil
+        }
+
+        init?(intValue: Int) {
+            self.stringValue = String(intValue)
+            self.intValue = intValue
+        }
+    }
+
     let quotaSnapshots: CopilotAPISnapshots?
     let copilotPlan: String
     let quotaResetDate: String?
@@ -242,13 +243,69 @@ private struct CopilotAPIResponse: Decodable {
         case quotaSnapshots = "quota_snapshots"
         case copilotPlan = "copilot_plan"
         case quotaResetDate = "quota_reset_date"
+        case monthlyQuotas = "monthly_quotas"
+        case limitedUserQuotas = "limited_user_quotas"
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        quotaSnapshots = try c.decodeIfPresent(CopilotAPISnapshots.self, forKey: .quotaSnapshots)
+        let direct = try c.decodeIfPresent(CopilotAPISnapshots.self, forKey: .quotaSnapshots)
+        let monthly = try c.decodeIfPresent(CopilotQuotaCounts.self, forKey: .monthlyQuotas)
+        let limited = try c.decodeIfPresent(CopilotQuotaCounts.self, forKey: .limitedUserQuotas)
+        let monthlyLimited = Self.makeQuotaSnapshots(monthly: monthly, limited: limited)
+        let premium = Self.usableQuotaSnapshot(from: direct?.premiumInteractions)
+            ?? Self.usableQuotaSnapshot(from: monthlyLimited?.premiumInteractions)
+        let chat = Self.usableQuotaSnapshot(from: direct?.chat)
+            ?? Self.usableQuotaSnapshot(from: monthlyLimited?.chat)
+        if premium != nil || chat != nil {
+            quotaSnapshots = CopilotAPISnapshots(premiumInteractions: premium, chat: chat)
+        } else {
+            quotaSnapshots = direct ?? CopilotAPISnapshots(premiumInteractions: nil, chat: nil)
+        }
         copilotPlan = try c.decodeIfPresent(String.self, forKey: .copilotPlan) ?? "unknown"
         quotaResetDate = try c.decodeIfPresent(String.self, forKey: .quotaResetDate)
+    }
+
+    private static func makeQuotaSnapshots(
+        monthly: CopilotQuotaCounts?,
+        limited: CopilotQuotaCounts?
+    ) -> CopilotAPISnapshots? {
+        let premium = makeQuotaSnapshot(
+            monthly: monthly?.completions,
+            limited: limited?.completions,
+            quotaID: "completions"
+        )
+        let chat = makeQuotaSnapshot(
+            monthly: monthly?.chat,
+            limited: limited?.chat,
+            quotaID: "chat"
+        )
+        guard premium != nil || chat != nil else { return nil }
+        return CopilotAPISnapshots(premiumInteractions: premium, chat: chat)
+    }
+
+    private static func makeQuotaSnapshot(
+        monthly: Double?,
+        limited: Double?,
+        quotaID: String
+    ) -> CopilotAPISnapshot? {
+        guard let monthly, let limited else { return nil }
+        let entitlement = max(0, monthly)
+        guard entitlement > 0 else { return nil }
+        let remaining = max(0, limited)
+        let percentRemaining = max(0, min(100, (remaining / entitlement) * 100))
+        return CopilotAPISnapshot(
+            entitlement: entitlement,
+            remaining: remaining,
+            percentRemaining: percentRemaining,
+            quotaId: quotaID,
+            hasPercentRemaining: true
+        )
+    }
+
+    private static func usableQuotaSnapshot(from snapshot: CopilotAPISnapshot?) -> CopilotAPISnapshot? {
+        guard let snapshot, !snapshot.isPlaceholder, snapshot.hasPercentRemaining else { return nil }
+        return snapshot
     }
 }
 
@@ -260,13 +317,113 @@ private struct CopilotAPISnapshots: Decodable {
         case premiumInteractions = "premium_interactions"
         case chat
     }
+
+    init(premiumInteractions: CopilotAPISnapshot?, chat: CopilotAPISnapshot?) {
+        self.premiumInteractions = premiumInteractions
+        self.chat = chat
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var premium = try c.decodeIfPresent(CopilotAPISnapshot.self, forKey: .premiumInteractions)
+        var chat = try c.decodeIfPresent(CopilotAPISnapshot.self, forKey: .chat)
+        if premium?.isPlaceholder == true { premium = nil }
+        if chat?.isPlaceholder == true { chat = nil }
+
+        if premium == nil || chat == nil {
+            let dynamic = try decoder.container(keyedBy: CopilotAnyCodingKey.self)
+            var fallbackPremium: CopilotAPISnapshot?
+            var fallbackChat: CopilotAPISnapshot?
+            var firstUsable: CopilotAPISnapshot?
+
+            for key in dynamic.allKeys {
+                guard let decoded = try? dynamic.decodeIfPresent(CopilotAPISnapshot.self, forKey: key),
+                      !decoded.isPlaceholder,
+                      decoded.hasPercentRemaining else {
+                    continue
+                }
+
+                let name = key.stringValue.lowercased()
+                if firstUsable == nil { firstUsable = decoded }
+                if fallbackChat == nil, name.contains("chat") {
+                    fallbackChat = decoded
+                    continue
+                }
+                if fallbackPremium == nil,
+                   name.contains("premium") || name.contains("completion") || name.contains("code") {
+                    fallbackPremium = decoded
+                }
+            }
+
+            if premium == nil { premium = fallbackPremium }
+            if chat == nil { chat = fallbackChat }
+            if premium == nil, chat == nil {
+                chat = firstUsable
+            }
+        }
+
+        self.premiumInteractions = premium
+        self.chat = chat
+    }
+}
+
+private struct CopilotAnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+private struct CopilotQuotaCounts: Decodable {
+    let chat: Double?
+    let completions: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case chat
+        case completions
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        chat = Self.decodeNumberIfPresent(container: c, key: .chat)
+        completions = Self.decodeNumberIfPresent(container: c, key: .completions)
+    }
+
+    private static func decodeNumberIfPresent(
+        container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> Double? {
+        if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
+            return Double(value)
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: key) {
+            return Double(value)
+        }
+        return nil
+    }
 }
 
 struct CopilotAPISnapshot: Decodable {
     let entitlement: Double
     let remaining: Double
-    let percentRemaining: Double?
-    let quotaId: String?
+    let percentRemaining: Double
+    let quotaId: String
+    let hasPercentRemaining: Bool
+
+    var isPlaceholder: Bool {
+        entitlement == 0 && remaining == 0 && percentRemaining == 0 && quotaId.isEmpty
+    }
 
     enum CodingKeys: String, CodingKey {
         case entitlement
@@ -275,12 +432,56 @@ struct CopilotAPISnapshot: Decodable {
         case quotaId = "quota_id"
     }
 
+    init(
+        entitlement: Double,
+        remaining: Double,
+        percentRemaining: Double,
+        quotaId: String,
+        hasPercentRemaining: Bool
+    ) {
+        self.entitlement = entitlement
+        self.remaining = remaining
+        self.percentRemaining = percentRemaining
+        self.quotaId = quotaId
+        self.hasPercentRemaining = hasPercentRemaining
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        entitlement = (try? c.decodeIfPresent(Double.self, forKey: .entitlement)) ?? 0
-        remaining = (try? c.decodeIfPresent(Double.self, forKey: .remaining)) ?? 0
-        percentRemaining = try? c.decodeIfPresent(Double.self, forKey: .percentRemaining)
-        quotaId = try? c.decodeIfPresent(String.self, forKey: .quotaId)
+        let decodedEntitlement = Self.decodeNumberIfPresent(container: c, key: .entitlement)
+        let decodedRemaining = Self.decodeNumberIfPresent(container: c, key: .remaining)
+        entitlement = decodedEntitlement ?? 0
+        remaining = decodedRemaining ?? 0
+        let decodedPercent = Self.decodeNumberIfPresent(container: c, key: .percentRemaining)
+        if let decodedPercent {
+            percentRemaining = max(0, min(100, decodedPercent))
+            hasPercentRemaining = true
+        } else if let entitlement = decodedEntitlement,
+                  entitlement > 0,
+                  let remaining = decodedRemaining {
+            percentRemaining = max(0, min(100, (remaining / entitlement) * 100))
+            hasPercentRemaining = true
+        } else {
+            percentRemaining = 0
+            hasPercentRemaining = false
+        }
+        quotaId = (try? c.decodeIfPresent(String.self, forKey: .quotaId)) ?? ""
+    }
+
+    private static func decodeNumberIfPresent(
+        container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> Double? {
+        if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
+            return Double(value)
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: key) {
+            return Double(value)
+        }
+        return nil
     }
 }
 

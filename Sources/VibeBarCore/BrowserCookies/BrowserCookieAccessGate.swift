@@ -134,9 +134,10 @@ extension BrowserCookieClient {
     public func vibeBarRecords(
         matching query: BrowserCookieQuery,
         in browser: Browser,
+        allowKeychainPrompt: Bool = false,
         logger: ((String) -> Void)? = nil
     ) throws -> [BrowserCookieStoreRecords] {
-        guard BrowserCookieAccessGate.shouldAttempt(browser) else { return [] }
+        guard allowKeychainPrompt || BrowserCookieAccessGate.shouldAttempt(browser) else { return [] }
         do {
             return try records(matching: query, in: browser, logger: logger)
         } catch {

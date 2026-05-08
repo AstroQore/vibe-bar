@@ -37,11 +37,12 @@ enum ProviderBrandIcon {
             let image = NSImage(size: size)
             image.lockFocus()
             let rect = NSRect(origin: .zero, size: size)
+            let sourceRect = sourceDrawRect(for: tool, in: rect)
             NSColor.clear.setFill()
             rect.fill()
             tint.setFill()
             rect.fill()
-            source.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
+            source.draw(in: sourceRect, from: .zero, operation: .destinationIn, fraction: 1)
             image.unlockFocus()
             image.isTemplate = false
             return image
@@ -54,6 +55,15 @@ enum ProviderBrandIcon {
         case .codex:   return "sparkle.magnifyingglass"
         case .claude:  return "sparkles"
         case .status:  return "chart.bar.xaxis"
+        }
+    }
+
+    static func fallbackSystemImage(for tool: ToolType) -> String {
+        switch tool {
+        case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
+        case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            return tool.miscFallbackSymbol
         }
     }
 
@@ -143,8 +153,12 @@ enum ProviderBrandIcon {
     }
 
     private static func sourceImage(for tool: ToolType, size: NSSize) -> NSImage? {
-        // Brand SVGs only exist for primary providers today. Misc
-        // providers use SF Symbol fallbacks; see `fallbackSystemImage`.
+        if let url = providerIconURL(for: tool),
+           let image = NSImage(contentsOf: url) {
+            image.size = size
+            return image
+        }
+
         let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
@@ -154,6 +168,45 @@ enum ProviderBrandIcon {
         guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
         image.size = size
         return image
+    }
+
+    private static func providerIconURL(for tool: ToolType) -> URL? {
+        let name = tool.providerIconResourceName
+        if let url = Bundle.main.url(
+            forResource: name,
+            withExtension: "svg",
+            subdirectory: "ProviderIcons"
+        ) {
+            return url
+        }
+
+        let localURL = repoRootURL()
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("ProviderIcons", isDirectory: true)
+            .appendingPathComponent("\(name).svg")
+        if FileManager.default.fileExists(atPath: localURL.path) {
+            return localURL
+        }
+        return nil
+    }
+
+    private static func sourceDrawRect(for tool: ToolType, in rect: NSRect) -> NSRect {
+        let scale = tool.providerIconDrawScale
+        let width = rect.width * scale
+        let height = rect.height * scale
+        return NSRect(
+            x: rect.midX - width / 2,
+            y: rect.midY - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
+    private static func repoRootURL() -> URL {
+        var url = URL(fileURLWithPath: #filePath)
+        url.deleteLastPathComponent()
+        url.deleteLastPathComponent()
+        return url.deletingLastPathComponent()
     }
 
     private static func drawWithAppearance(_ appearance: NSAppearance?, _ body: () -> NSImage) -> NSImage {
@@ -218,12 +271,12 @@ struct ProviderBrandIconView: View {
 
 struct ProviderBrandBadge: View {
     let kind: MenuBarItemKind
-    var iconSize: CGFloat = 15
-    var containerSize: CGFloat = 22
+    var iconSize: CGFloat = 17
+    var containerSize: CGFloat = 24
 
     var body: some View {
-        ProviderBrandIconView(kind: kind, size: iconSize)
-            .frame(width: containerSize, height: containerSize)
+        ProviderBrandIconView(kind: kind, size: effectiveIconSize)
+            .frame(width: containerSize, height: containerSize, alignment: .center)
             .background(
                 RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
                     .fill(Color.primary.opacity(0.055))
@@ -234,19 +287,98 @@ struct ProviderBrandBadge: View {
             )
             .accessibilityHidden(true)
     }
+
+    private var effectiveIconSize: CGFloat {
+        min(containerSize - 3, max(iconSize, containerSize * 0.78))
+    }
+}
+
+struct ToolBrandIconView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let tool: ToolType
+    var size: CGFloat = 16
+
+    var body: some View {
+        Group {
+            if let image = ProviderBrandIcon.image(
+                for: tool,
+                size: NSSize(width: size, height: size),
+                tint: NSColor.labelColor,
+                appearance: nsAppearance(for: colorScheme)
+            ) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: ProviderBrandIcon.fallbackSystemImage(for: tool))
+                    .resizable()
+                    .scaledToFit()
+            }
+        }
+        .frame(width: size, height: size)
+        .foregroundStyle(.primary)
+        .accessibilityHidden(true)
+    }
+
+    private func nsAppearance(for colorScheme: ColorScheme) -> NSAppearance? {
+        switch colorScheme {
+        case .dark:  return NSAppearance(named: .darkAqua)
+        case .light: return NSAppearance(named: .aqua)
+        @unknown default: return nil
+        }
+    }
+}
+
+struct ToolBrandBadge: View {
+    let tool: ToolType
+    var iconSize: CGFloat = 17
+    var containerSize: CGFloat = 24
+
+    var body: some View {
+        ToolBrandIconView(tool: tool, size: effectiveIconSize)
+            .frame(width: containerSize, height: containerSize, alignment: .center)
+            .background(
+                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
+                    .fill(Color.primary.opacity(0.055))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
+                    .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
+            )
+            .accessibilityHidden(true)
+    }
+
+    private var effectiveIconSize: CGFloat {
+        min(containerSize - 3, max(iconSize, containerSize * 0.78))
+    }
 }
 
 extension ToolType {
-    /// Maps a tool to the menu-bar item kind that owns its brand
-    /// chrome. Misc providers don't have dedicated tray icons, so
-    /// they fall back to `.compact` (Overview) — every misc card
-    /// rendered there inherits the Overview branding.
-    var brandMenuBarKind: MenuBarItemKind {
+    var providerIconResourceName: String {
         switch self {
-        case .codex:  return .codex
-        case .claude: return .claude
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
-            return .compact
+        case .codex:       return "ProviderIcon-codex"
+        case .claude:      return "ProviderIcon-claude"
+        case .alibaba:     return "ProviderIcon-alibaba"
+        case .gemini:      return "ProviderIcon-gemini"
+        case .antigravity: return "ProviderIcon-antigravity"
+        case .copilot:     return "ProviderIcon-copilot"
+        case .zai:         return "ProviderIcon-zai"
+        case .minimax:     return "ProviderIcon-minimax"
+        case .kimi:        return "ProviderIcon-kimi"
+        case .cursor:      return "ProviderIcon-cursor"
+        }
+    }
+
+    var providerIconDrawScale: CGFloat {
+        switch self {
+        case .codex, .claude:
+            return 1.0
+        case .gemini, .antigravity, .copilot, .cursor:
+            return 1.25
+        case .alibaba, .minimax, .kimi:
+            return 1.36
+        case .zai:
+            return 1.5
         }
     }
 

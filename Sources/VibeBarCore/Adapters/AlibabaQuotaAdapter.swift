@@ -33,16 +33,15 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        let settings = MiscProviderSettings.current(for: .alibaba)
+        guard settings.allowsAPIOrOAuthAccess else {
+            throw QuotaError.noCredential
+        }
         guard let apiKey = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
               !apiKey.isEmpty
         else {
             throw QuotaError.noCredential
         }
-
-        let settings = (try? VibeBarLocalStore.readJSON(
-            AppSettings.self,
-            from: VibeBarLocalStore.settingsURL
-        ))?.miscProvider(.alibaba) ?? .default
 
         let preferred: [AlibabaRegion]
         switch settings.region {

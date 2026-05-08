@@ -30,41 +30,14 @@ public enum MiscCredentialStore {
     public static func readString(tool: ToolType, kind: Kind) -> String? {
         guard tool.isMisc else { return nil }
         let account = keychainAccount(tool: tool, kind: kind)
-        // Try data-protection keychain first (the new home).
-        if let value = try? KeychainStore.readString(
+        // Login keychain is the durable home. Passing `true` keeps
+        // the legacy data-protection migration path alive for users
+        // who saved credentials with a short-lived older build.
+        return try? KeychainStore.readString(
             service: keychainService,
             account: account,
             useDataProtectionKeychain: true
-        ) {
-            return value
-        }
-        // Migration fallback: if the user pasted their key when we
-        // were still using the legacy login keychain (before the
-        // ad-hoc-cdhash prompt fix), read from there once. The next
-        // successful save through `writeString` re-homes the value
-        // into data-protection automatically.
-        if let legacy = try? KeychainStore.readString(
-            service: keychainService,
-            account: account,
-            useDataProtectionKeychain: false
-        ) {
-            // Migrate silently. Best-effort — if the rewrite fails
-            // we still return the legacy value so the user can keep
-            // working.
-            _ = try? KeychainStore.writeString(
-                service: keychainService,
-                account: account,
-                value: legacy,
-                useDataProtectionKeychain: true
-            )
-            try? KeychainStore.deleteItem(
-                service: keychainService,
-                account: account,
-                useDataProtectionKeychain: false
-            )
-            return legacy
-        }
-        return nil
+        )
     }
 
     @discardableResult

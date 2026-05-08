@@ -50,6 +50,10 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         "/exa.language_server_pb.LanguageServerService/GetUserStatus"
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        guard MiscProviderSettings.current(for: .antigravity).allowsLocalProbeAccess else {
+            throw QuotaError.noCredential
+        }
+
         let process = try await detectProcessInfo()
         let ports = try await listeningPorts(pid: process.pid)
         let endpoints = endpointCandidates(for: process, ports: ports)

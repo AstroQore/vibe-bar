@@ -127,6 +127,33 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         try c.encodeIfPresent(enabledOverride, forKey: .enabledOverride)
     }
 
+    public static func current(for tool: ToolType) -> MiscProviderSettings {
+        guard tool.isMisc else { return .default }
+        let appSettings = (try? VibeBarLocalStore.readJSON(
+            AppSettings.self,
+            from: VibeBarLocalStore.settingsURL
+        )) ?? .default
+        return appSettings.miscProvider(tool)
+    }
+
+    public var allowsAPIOrOAuthAccess: Bool {
+        switch sourceMode {
+        case .auto, .manualOnly, .apiOnly:
+            return true
+        case .browserOnly, .off:
+            return false
+        }
+    }
+
+    public var allowsLocalProbeAccess: Bool {
+        switch sourceMode {
+        case .auto, .apiOnly:
+            return true
+        case .browserOnly, .manualOnly, .off:
+            return false
+        }
+    }
+
     /// Returns `true` if `rawKey` looks like it might be carrying a
     /// secret. Used by `AppSettings`' lossy decoder to strip such keys
     /// from the misc-providers map before they reach `MiscProviderSettings`.

@@ -32,7 +32,14 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let settings = ZaiSettings.resolve(environment: environment)
+        let providerSettings = MiscProviderSettings.current(for: .zai)
+        guard providerSettings.allowsAPIOrOAuthAccess else {
+            throw QuotaError.noCredential
+        }
+        let settings = ZaiSettings.resolve(
+            environment: environment,
+            providerSettings: providerSettings
+        )
 
         guard let apiKey = MiscCredentialStore.readString(tool: .zai, kind: .apiKey),
               !apiKey.isEmpty
@@ -87,7 +94,10 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
 struct ZaiSettings {
     let quotaURL: URL
 
-    static func resolve(environment: [String: String]) -> ZaiSettings {
+    static func resolve(
+        environment: [String: String],
+        providerSettings: MiscProviderSettings = .default
+    ) -> ZaiSettings {
         if let raw = environment["Z_AI_QUOTA_URL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty,
@@ -103,6 +113,18 @@ struct ZaiSettings {
            let url = quotaURL(fromHost: host)
         {
             return ZaiSettings(quotaURL: url)
+        }
+
+        if let host = providerSettings.enterpriseHost?.absoluteString,
+           let url = quotaURL(fromHost: host) {
+            return ZaiSettings(quotaURL: url)
+        }
+
+        if let rawRegion = providerSettings.region?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           let region = ZaiRegion(rawValue: rawRegion) {
+            return ZaiSettings(quotaURL: region.quotaURL)
         }
 
         return ZaiSettings(quotaURL: ZaiRegion.global.quotaURL)

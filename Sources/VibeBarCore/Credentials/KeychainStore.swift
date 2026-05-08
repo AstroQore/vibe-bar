@@ -8,22 +8,22 @@ import Security
 ///
 /// - **Legacy login keychain** (default). Used to read items written by
 ///   external CLIs we don't control — Codex CLI's keychain entry,
-///   Claude CLI's `Claude Code-credentials`, etc.
-/// - **Data-protection keychain** (opt-in via
-///   `useDataProtectionKeychain: true`). Used for vibe-bar-owned
-///   items. The legacy keychain ties access ACLs to the binary's
-///   cdhash, which means every ad-hoc rebuild of `Vibe Bar.app`
-///   produces a new "stranger" identity and macOS prompts the user
-///   for the login password to grant access. The data-protection
-///   keychain doesn't have those legacy ACL prompts — items are
-///   scoped to the app's code-signing identity, and the prompt
-///   loop disappears.
+///   Claude CLI's `Claude Code-credentials`, etc. Vibe Bar-owned items
+///   are also written here so source-built, ad-hoc-signed app bundles
+///   keep the same persistence behaviour as Codex Bar.
+/// - **Data-protection keychain** (legacy migration only). Older
+///   builds attempted to put Vibe Bar-owned items there. Reads for
+///   those callers still probe it if the login keychain has no item,
+///   then copy the item back to the login keychain and remove the
+///   legacy copy best-effort.
 ///
 /// Adapters that read CLI-written items leave the parameter at its
-/// default `false`. Adapters that own their own items
-/// (`MiscCredentialStore`, `CookieHeaderCache`, `ClaudeWebCookieStore`,
-/// the misc provider settings UI) pass `true`.
+/// default `false`. Adapters that own their own items pass `true` so
+/// old data-protection items can be migrated, but writes still land in
+/// the regular login keychain.
 public enum KeychainStore {
+    private static let missingEntitlementStatus: OSStatus = -34018
+
     public enum KeychainError: Error, Equatable {
         case itemNotFound
         case interactionNotAllowed
@@ -35,6 +35,45 @@ public enum KeychainStore {
         service: String,
         account: String? = nil,
         useDataProtectionKeychain: Bool = false
+    ) throws -> Data {
+        do {
+            return try readDataOnce(
+                service: service,
+                account: account,
+                useDataProtectionKeychain: false
+            )
+        } catch KeychainError.itemNotFound where useDataProtectionKeychain {
+            let migrated: Data
+            do {
+                migrated = try readDataOnce(
+                    service: service,
+                    account: account,
+                    useDataProtectionKeychain: true
+                )
+            } catch KeychainError.unhandledStatus(let status) where status == missingEntitlementStatus {
+                throw KeychainError.itemNotFound
+            }
+            if let account {
+                try? writeDataOnce(
+                    service: service,
+                    account: account,
+                    data: migrated,
+                    useDataProtectionKeychain: false
+                )
+                try? deleteItemOnce(
+                    service: service,
+                    account: account,
+                    useDataProtectionKeychain: true
+                )
+            }
+            return migrated
+        }
+    }
+
+    private static func readDataOnce(
+        service: String,
+        account: String?,
+        useDataProtectionKeychain: Bool
     ) throws -> Data {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -103,6 +142,27 @@ public enum KeychainStore {
         data: Data,
         useDataProtectionKeychain: Bool = false
     ) throws {
+        try writeDataOnce(
+            service: service,
+            account: account,
+            data: data,
+            useDataProtectionKeychain: false
+        )
+        if useDataProtectionKeychain {
+            try? deleteItemOnce(
+                service: service,
+                account: account,
+                useDataProtectionKeychain: true
+            )
+        }
+    }
+
+    private static func writeDataOnce(
+        service: String,
+        account: String,
+        data: Data,
+        useDataProtectionKeychain: Bool
+    ) throws {
         var baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -116,17 +176,25 @@ public enum KeychainStore {
         addQuery[kSecValueData as String] = data
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        if status == errSecDuplicateItem {
-            let updateAttrs: [String: Any] = [kSecValueData as String: data]
-            let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updateAttrs as CFDictionary)
-            if updateStatus != errSecSuccess {
-                throw KeychainError.unhandledStatus(updateStatus)
+        let updateAttrs: [String: Any] = [kSecValueData as String: data]
+        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updateAttrs as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return
+        }
+        if updateStatus != errSecItemNotFound {
+            throw KeychainError.unhandledStatus(updateStatus)
+        }
+
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        if addStatus == errSecDuplicateItem {
+            let retryStatus = SecItemUpdate(baseQuery as CFDictionary, updateAttrs as CFDictionary)
+            if retryStatus != errSecSuccess {
+                throw KeychainError.unhandledStatus(retryStatus)
             }
             return
         }
-        if status != errSecSuccess {
-            throw KeychainError.unhandledStatus(status)
+        if addStatus != errSecSuccess {
+            throw KeychainError.unhandledStatus(addStatus)
         }
     }
 
@@ -151,6 +219,25 @@ public enum KeychainStore {
         service: String,
         account: String,
         useDataProtectionKeychain: Bool = false
+    ) throws {
+        try deleteItemOnce(
+            service: service,
+            account: account,
+            useDataProtectionKeychain: false
+        )
+        if useDataProtectionKeychain {
+            try? deleteItemOnce(
+                service: service,
+                account: account,
+                useDataProtectionKeychain: true
+            )
+        }
+    }
+
+    private static func deleteItemOnce(
+        service: String,
+        account: String,
+        useDataProtectionKeychain: Bool
     ) throws {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

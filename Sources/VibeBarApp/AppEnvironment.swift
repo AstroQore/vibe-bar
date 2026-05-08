@@ -12,12 +12,16 @@ final class AppEnvironment: ObservableObject {
     let costService: CostUsageService
 
     @Published private(set) var hasClaudeWebCookies: Bool
+    @Published private(set) var isImportingClaudeBrowserCookies = false
+    @Published private(set) var claudeBrowserCookieImportStatus: String?
 
     private let claudeWebLoginController = ClaudeWebLoginController()
     private let settingsWindowController = SettingsWindowController()
     private var cancellables: Set<AnyCancellable> = []
     private var routineBudgetInFlightAccountIds: Set<String> = []
     private var lastRoutineBudgetAttemptByAccount: [String: Date] = [:]
+    private var persistentClaudeCookieImportInFlight = false
+    private var browserClaudeCookieImportInFlight = false
 
     init() {
         let settings = SettingsStore()
@@ -119,6 +123,8 @@ final class AppEnvironment: ObservableObject {
             await costService.applyCostDataSettings()
             await costService.refreshAll()
         }
+        importPersistentClaudeCookiesAndRefreshIfNeeded()
+        importClaudeBrowserCookiesAndRefreshIfNeeded()
 
         // Push Claude/Codex extras parsed by adapters into CostUsageService.
         service.$lastSuccessByAccount
@@ -149,6 +155,8 @@ final class AppEnvironment: ObservableObject {
 
     func reloadProviderCredentialsAndRefresh() {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+        importPersistentClaudeCookiesAndRefreshIfNeeded()
+        importClaudeBrowserCookiesAndRefreshIfNeeded()
         accountStore.reload(claudeUsageMode: settingsStore.claudeUsageMode)
         // Cookies may have changed (login / re-login) — drop any stale
         // 1h failure cooldowns so the routine WebView probe gets a fresh
@@ -176,6 +184,10 @@ final class AppEnvironment: ObservableObject {
 
     func refresh(_ tool: ToolType) {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+        if tool == .claude {
+            importPersistentClaudeCookiesAndRefreshIfNeeded()
+            importClaudeBrowserCookiesAndRefreshIfNeeded()
+        }
         accountStore.reload(claudeUsageMode: settingsStore.claudeUsageMode)
         let account = account(for: tool)
         Task { @MainActor in
@@ -197,11 +209,76 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
+    func importClaudeBrowserCookies() {
+        importClaudeBrowserCookiesAndRefreshIfNeeded(
+            allowKeychainPrompt: true,
+            userInitiated: true
+        )
+    }
+
+    private func importPersistentClaudeCookiesAndRefreshIfNeeded() {
+        guard !persistentClaudeCookieImportInFlight else { return }
+        persistentClaudeCookieImportInFlight = true
+        let hadCookies = hasClaudeWebCookies
+        ClaudeWebLoginController.importPersistentClaudeCookiesIfAvailable { [weak self] didImport in
+            guard let self else { return }
+            self.persistentClaudeCookieImportInFlight = false
+            self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            guard didImport, !hadCookies else { return }
+            self.accountStore.reload(claudeUsageMode: self.settingsStore.claudeUsageMode)
+            self.lastRoutineBudgetAttemptByAccount.removeAll()
+            self.scheduler.triggerRefresh()
+        }
+    }
+
+    private func importClaudeBrowserCookiesAndRefreshIfNeeded(
+        allowKeychainPrompt: Bool = false,
+        userInitiated: Bool = false
+    ) {
+        if !allowKeychainPrompt, ClaudeWebCookieStore.hasCookieHeader() {
+            return
+        }
+        guard !browserClaudeCookieImportInFlight else { return }
+        browserClaudeCookieImportInFlight = true
+        if userInitiated {
+            isImportingClaudeBrowserCookies = true
+            claudeBrowserCookieImportStatus = "Importing from browser..."
+        }
+
+        let importTask = Task.detached(priority: userInitiated ? .userInitiated : .utility) {
+            try? ClaudeBrowserCookieImporter.importAndStoreFromBrowsers(
+                allowKeychainPrompt: allowKeychainPrompt
+            )
+        }
+        Task { @MainActor [weak self] in
+            let result = await importTask.value
+            guard let self else { return }
+            self.browserClaudeCookieImportInFlight = false
+            if userInitiated {
+                self.isImportingClaudeBrowserCookies = false
+            }
+            self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            guard let result else {
+                if userInitiated {
+                    self.claudeBrowserCookieImportStatus = "No Claude sessionKey found in readable browser cookies."
+                }
+                return
+            }
+            if userInitiated {
+                self.claudeBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
+            }
+            self.accountStore.reload(claudeUsageMode: self.settingsStore.claudeUsageMode)
+            self.lastRoutineBudgetAttemptByAccount.removeAll()
+            self.scheduler.triggerRefresh()
+        }
+    }
+
     @discardableResult
     func deleteClaudeWebCookies() -> Bool {
         do {
             ClaudeWebLoginController.clearPersistentClaudeWebsiteData()
             try ClaudeWebCookieStore.deleteCookieHeader()
+            claudeBrowserCookieImportStatus = nil
             hasClaudeWebCookies = false
             for account in accountStore.accounts(for: .claude) {
                 quotaService.clear(accountId: account.id)

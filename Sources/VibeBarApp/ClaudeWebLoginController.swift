@@ -12,6 +12,8 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
     private var popupWebView: WKWebView?
     private var statusLabel: NSTextField?
     private var onSaved: (() -> Void)?
+    private var didSaveCookiesForCurrentWindow = false
+    private let loginWebsiteDataStore = WKWebsiteDataStore.default()
 
     func open(onSaved: @escaping () -> Void) {
         self.onSaved = onSaved
@@ -26,6 +28,7 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
         webView.allowsBackForwardNavigationGestures = true
         webView.translatesAutoresizingMaskIntoConstraints = false
         self.webView = webView
+        loginWebsiteDataStore.httpCookieStore.add(self)
 
         let browserButton = NSButton(
             title: "Open in Browser",
@@ -102,8 +105,8 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
     }
 
     @objc private func saveCookies(_ sender: Any?) {
-        guard let webView else { return }
-        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+        guard webView != nil else { return }
+        loginWebsiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
             Task { @MainActor in
                 self?.persistClaudeCookies(cookies)
             }
@@ -111,6 +114,53 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
     }
 
     private func persistClaudeCookies(_ cookies: [HTTPCookie]) {
+        guard Self.persistClaudeCookiesToKeychain(cookies) else {
+            showAlert(message: "No claude.ai cookies found yet. Finish login in this window first.")
+            return
+        }
+
+        didSaveCookiesForCurrentWindow = true
+        showAlert(message: "Claude cookies saved.")
+        onSaved?()
+    }
+
+    static func importPersistentClaudeCookiesIfAvailable(completion: @escaping @MainActor (Bool) -> Void) {
+        WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+            let didImport = Self.persistClaudeCookiesToKeychain(cookies)
+            Task { @MainActor in
+                completion(didImport)
+            }
+        }
+    }
+
+    private func persistClaudeCookiesSilentlyIfAvailable() {
+        guard !didSaveCookiesForCurrentWindow else { return }
+        loginWebsiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+            guard Self.persistClaudeCookiesToKeychain(cookies) else { return }
+            Task { @MainActor in
+                guard let self, !self.didSaveCookiesForCurrentWindow else { return }
+                self.didSaveCookiesForCurrentWindow = true
+                self.statusLabel?.stringValue = "Claude cookies saved."
+                self.onSaved?()
+            }
+        }
+    }
+
+    private static func persistClaudeCookiesToKeychain(_ cookies: [HTTPCookie]) -> Bool {
+        guard let minimizedHeader = minimizedClaudeCookieHeader(from: cookies) else {
+            return false
+        }
+        do {
+            try ClaudeWebCookieStore.writeCookieHeader(minimizedHeader)
+            cacheClaudeOrganizationID(from: minimizedHeader)
+            return true
+        } catch {
+            SafeLog.warn("Saving Claude web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
+            return false
+        }
+    }
+
+    private static func minimizedClaudeCookieHeader(from cookies: [HTTPCookie]) -> String? {
         let claudeCookies = cookies
             .filter { cookie in
                 cookie.domain == "claude.ai" || cookie.domain.hasSuffix(".claude.ai")
@@ -121,22 +171,10 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
             .map { "\($0.name)=\($0.value)" }
             .joined(separator: "; ")
 
-        guard let minimizedHeader = ClaudeWebCookieStore.minimizedCookieHeader(from: header) else {
-            showAlert(message: "No claude.ai cookies found yet. Finish login in this window first.")
-            return
-        }
-
-        do {
-            try ClaudeWebCookieStore.writeCookieHeader(minimizedHeader)
-            cacheClaudeOrganizationID(from: minimizedHeader)
-            showAlert(message: "Claude cookies saved.")
-            onSaved?()
-        } catch {
-            showAlert(message: "Could not save Claude cookies: \(error.localizedDescription)")
-        }
+        return ClaudeWebCookieStore.minimizedCookieHeader(from: header)
     }
 
-    private func cacheClaudeOrganizationID(from cookieHeader: String) {
+    private static func cacheClaudeOrganizationID(from cookieHeader: String) {
         Task.detached {
             _ = try? await ClaudeOrganizationIDFetcher.fetch(cookieHeader: cookieHeader)
         }
@@ -165,11 +203,11 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
 
     private func makeWebViewConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
-        // In-memory data store: cookies live only for this login window. They
-        // don't bleed into the system-wide WebKit cache, and closing the
-        // window evicts them — `deleteClaudeWebCookies()` doesn't have to
-        // chase down a persistent store.
-        configuration.websiteDataStore = .nonPersistent()
+        // Use the app's own persistent WebKit store for Claude login. This is
+        // intentionally not Chrome/Safari import: it restores the older
+        // "Vibe Bar WebView owns the claude.ai session" path, while still
+        // mirroring only the minimal sessionKey into Keychain for quota calls.
+        configuration.websiteDataStore = loginWebsiteDataStore
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         return configuration
@@ -213,6 +251,7 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
         webView?.stopLoading()
         webView?.navigationDelegate = nil
         webView?.uiDelegate = nil
+        loginWebsiteDataStore.httpCookieStore.remove(self)
         webView = nil
         statusLabel = nil
         window = nil
@@ -236,6 +275,7 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
                 }
             }
         }
+        persistClaudeCookiesSilentlyIfAvailable()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -326,10 +366,8 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
             return nil
         }
 
-        // Use our own non-persistent configuration rather than reusing the
-        // page-supplied one. The parent webView's data store is already
-        // ephemeral; we want the popup to inherit that posture, not whatever
-        // the calling page wished for.
+        // Use our own configuration rather than reusing the page-supplied
+        // one, so popups share Vibe Bar's Claude WebView cookie store.
         let popup = makeWebView(configuration: makeWebViewConfiguration())
         popup.allowsBackForwardNavigationGestures = true
 
@@ -355,5 +393,11 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
         if webView === popupWebView {
             popupWindow?.close()
         }
+    }
+}
+
+extension ClaudeWebLoginController: WKHTTPCookieStoreObserver {
+    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+        persistClaudeCookiesSilentlyIfAvailable()
     }
 }

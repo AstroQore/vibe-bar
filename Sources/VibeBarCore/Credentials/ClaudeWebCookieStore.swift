@@ -72,40 +72,16 @@ public enum ClaudeWebCookieStore {
         return nil
     }
 
-    /// Read from the data-protection keychain first; on miss, try the
-    /// legacy login keychain for the same `service` / `account` pair
-    /// and migrate the value into data-protection so the next read
-    /// hits cleanly. Mirrors `MiscCredentialStore.readString`'s
-    /// migration. Without this, switching the cookie store to
-    /// data-protection in one commit silently invalidated existing
-    /// Claude sessions written by older builds.
+    /// Read the Codex Bar-style login-keychain item, with a
+    /// best-effort migration fallback for short-lived builds that
+    /// attempted to store Claude web state in the data-protection
+    /// keychain.
     private static func readKeychainStringWithLegacyMigration(account: String) -> String? {
-        if let value = try? KeychainStore.readString(
+        return try? KeychainStore.readString(
             service: service,
             account: account,
             useDataProtectionKeychain: true
-        ) {
-            return value
-        }
-        guard let legacy = try? KeychainStore.readString(
-            service: service,
-            account: account,
-            useDataProtectionKeychain: false
-        ) else {
-            return nil
-        }
-        _ = try? KeychainStore.writeString(
-            service: service,
-            account: account,
-            value: legacy,
-            useDataProtectionKeychain: true
         )
-        try? KeychainStore.deleteItem(
-            service: service,
-            account: account,
-            useDataProtectionKeychain: false
-        )
-        return legacy
     }
 
     public static func writeOrganizationID(_ organizationID: String) throws {
@@ -117,7 +93,7 @@ public enum ClaudeWebCookieStore {
     public static func sessionKeyHeader(from header: String) -> String? {
         for pair in cookiePairs(from: header) where pair.name == "sessionKey" {
             let value = pair.value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty else { continue }
+            guard value.hasPrefix("sk-ant-") else { continue }
             return "sessionKey=\(value)"
         }
         return nil

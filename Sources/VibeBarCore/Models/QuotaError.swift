@@ -20,4 +20,13 @@ public enum QuotaError: Error, Equatable, Hashable, Sendable {
         case .unknown(let m):  return "Error\(m.isEmpty ? "" : ": \(m)")"
         }
     }
+
+    public var isCredentialState: Bool {
+        switch self {
+        case .noCredential, .needsLogin:
+            return true
+        case .network, .rateLimited, .parseFailure, .notImplemented, .unknown:
+            return false
+        }
+    }
 }

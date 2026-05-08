@@ -102,9 +102,15 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                         HStack {
                             Button {
+                                environment.importClaudeBrowserCookies()
+                            } label: {
+                                Label("Import from browser", systemImage: "safari")
+                            }
+                            .disabled(environment.isImportingClaudeBrowserCookies)
+                            Button {
                                 environment.openClaudeWebLogin()
                             } label: {
-                                Label("Open claude.ai login", systemImage: "person.crop.circle.badge.key")
+                                Label("Open WebView login", systemImage: "person.crop.circle.badge.key")
                             }
                             Button(role: .destructive) {
                                 claudeCookieDeleteFailed = !environment.deleteClaudeWebCookies()
@@ -116,6 +122,11 @@ struct SettingsView: View {
                         if environment.hasClaudeWebCookies {
                             Text("Cookies saved.")
                                 .font(.caption2).foregroundStyle(.green)
+                        }
+                        if let status = environment.claudeBrowserCookieImportStatus {
+                            Text(status)
+                                .font(.caption2)
+                                .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
                         }
                         if claudeCookieDeleteFailed {
                             Text("Could not delete saved cookies.")
@@ -257,7 +268,7 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 8) {
                 if settingsStore.settings.menuBarItem(kind).layout.showsMenuBarIcon {
-                    ProviderBrandIconView(kind: kind, size: 15)
+                    ProviderBrandIconView(kind: kind, size: 16)
                 }
                 Text(kind.label)
                     .font(.system(size: 13, weight: .semibold))
@@ -344,7 +355,8 @@ struct SettingsView: View {
 
     private func providerBadgeRow(_ tool: ToolType) -> some View {
         HStack(spacing: 10) {
-            ProviderBrandIconView(kind: menuBarKind(for: tool), size: 14)
+            ToolBrandIconView(tool: tool, size: 16)
+                .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(tool.menuTitle)
                     .font(.system(size: 12, weight: .medium))
@@ -566,19 +578,6 @@ struct SettingsView: View {
             accountPlan: environment.account(for: tool)?.plan
         )
         return label.map { "Auto: \($0)" } ?? "Auto: hidden until detected"
-    }
-
-    private func menuBarKind(for tool: ToolType) -> MenuBarItemKind {
-        switch tool {
-        case .codex:  return .codex
-        case .claude: return .claude
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
-            // Misc providers don't have a dedicated menu-bar item kind;
-            // they live exclusively on the Misc tab inside the compact
-            // popover. Fall back to `.compact` so any UI that asks for
-            // a kind for a misc tool routes through Overview.
-            return .compact
-        }
     }
 
     private func intervalLabel(_ seconds: Int) -> String {

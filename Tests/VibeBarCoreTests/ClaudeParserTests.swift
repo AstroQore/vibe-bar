@@ -138,14 +138,14 @@ final class ClaudeParserTests: XCTestCase {
     }
 
     func testClaudeCookieStoreNormalizesCookieHeader() {
-        let raw = "Cookie: sessionKey=test-session-key; other=value"
+        let raw = "Cookie: sessionKey=sk-ant-test-session-key; other=value"
         XCTAssertEqual(
             ClaudeWebCookieStore.normalizedCookieHeader(from: raw),
-            "sessionKey=test-session-key; other=value"
+            "sessionKey=sk-ant-test-session-key; other=value"
         )
         XCTAssertEqual(
             ClaudeWebCookieStore.sessionKeyHeader(from: raw),
-            "sessionKey=test-session-key"
+            "sessionKey=sk-ant-test-session-key"
         )
     }
 

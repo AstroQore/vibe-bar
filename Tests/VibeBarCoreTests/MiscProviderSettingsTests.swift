@@ -113,6 +113,20 @@ final class MiscProviderSettingsTests: XCTestCase {
         XCTAssertFalse(raw.contains("apiKey"))
         XCTAssertFalse(raw.contains("sk-evil"))
     }
+
+    func testSourceModeAccessGatesCredentialTypes() {
+        XCTAssertTrue(MiscProviderSettings(sourceMode: .auto).allowsAPIOrOAuthAccess)
+        XCTAssertTrue(MiscProviderSettings(sourceMode: .manualOnly).allowsAPIOrOAuthAccess)
+        XCTAssertTrue(MiscProviderSettings(sourceMode: .apiOnly).allowsAPIOrOAuthAccess)
+        XCTAssertFalse(MiscProviderSettings(sourceMode: .browserOnly).allowsAPIOrOAuthAccess)
+        XCTAssertFalse(MiscProviderSettings(sourceMode: .off).allowsAPIOrOAuthAccess)
+
+        XCTAssertTrue(MiscProviderSettings(sourceMode: .auto).allowsLocalProbeAccess)
+        XCTAssertTrue(MiscProviderSettings(sourceMode: .apiOnly).allowsLocalProbeAccess)
+        XCTAssertFalse(MiscProviderSettings(sourceMode: .manualOnly).allowsLocalProbeAccess)
+        XCTAssertFalse(MiscProviderSettings(sourceMode: .browserOnly).allowsLocalProbeAccess)
+        XCTAssertFalse(MiscProviderSettings(sourceMode: .off).allowsLocalProbeAccess)
+    }
 }
 
 final class AppSettingsMiscProviderTests: XCTestCase {

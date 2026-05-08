@@ -11,13 +11,19 @@ extension Array where Element == Browser {
     /// Filter to browsers that are worth attempting a cookie read
     /// against right now — installed, with profile data on disk, and
     /// not in `BrowserCookieAccessGate`'s cooldown window.
-    public func cookieImportCandidates(using detection: BrowserDetection) -> [Browser] {
+    public func cookieImportCandidates(
+        using detection: BrowserDetection,
+        allowKeychainPrompt: Bool = false
+    ) -> [Browser] {
         let candidates = filter { browser in
-            if KeychainAccessGate.isDisabled, browser.usesKeychainForCookieDecryption {
+            if !allowKeychainPrompt,
+               KeychainAccessGate.isDisabled,
+               browser.usesKeychainForCookieDecryption {
                 return false
             }
             return detection.isCookieSourceAvailable(browser)
         }
+        guard !allowKeychainPrompt else { return candidates }
         return candidates.filter { BrowserCookieAccessGate.shouldAttempt($0) }
     }
 

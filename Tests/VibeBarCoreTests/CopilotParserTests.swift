@@ -80,6 +80,50 @@ final class CopilotParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[0].usedPercent, 75.0, accuracy: 0.01)
     }
 
+    func testDerivesBucketsFromMonthlyAndLimitedQuotaCounts() throws {
+        let json = """
+        {
+          "copilot_plan": "pro",
+          "monthly_quotas": {
+            "completions": "300",
+            "chat": 1000
+          },
+          "limited_user_quotas": {
+            "completions": "132",
+            "chat": 750
+          }
+        }
+        """
+        let snap = try CopilotResponseParser.parse(data: Data(json.utf8), now: now)
+
+        XCTAssertEqual(snap.planName, "Pro")
+        XCTAssertEqual(snap.buckets.count, 2)
+        XCTAssertEqual(snap.buckets[0].title, "Premium")
+        XCTAssertEqual(snap.buckets[0].usedPercent, 56.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[1].title, "Chat")
+        XCTAssertEqual(snap.buckets[1].usedPercent, 25.0, accuracy: 0.01)
+    }
+
+    func testDynamicQuotaSnapshotKeysStillExposeUsableBucket() throws {
+        let json = """
+        {
+          "copilot_plan": "business",
+          "quota_snapshots": {
+            "chat_custom": {
+              "entitlement": "500",
+              "remaining": "125",
+              "quota_id": "chat-custom"
+            }
+          }
+        }
+        """
+        let snap = try CopilotResponseParser.parse(data: Data(json.utf8), now: now)
+
+        XCTAssertEqual(snap.buckets.count, 1)
+        XCTAssertEqual(snap.buckets[0].title, "Chat")
+        XCTAssertEqual(snap.buckets[0].usedPercent, 75.0, accuracy: 0.01)
+    }
+
     func testUnknownPlanFallsBackToCapitalized() throws {
         let json = """
         {

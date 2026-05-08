@@ -60,11 +60,12 @@ struct MiscProviderCard: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: tool.miscFallbackSymbol)
-                .font(.system(size: density.bucketTitleFontSize, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, alignment: .leading)
+        HStack(alignment: .center, spacing: 10) {
+            ToolBrandBadge(
+                tool: tool,
+                iconSize: max(17, density.bucketTitleFontSize + 1),
+                containerSize: 26
+            )
             VStack(alignment: .leading, spacing: 2) {
                 Text(tool.menuTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
@@ -98,9 +99,8 @@ struct MiscProviderCard: View {
 
     @ViewBuilder
     private var content: some View {
-        if let error = quota?.error {
-            errorState(error)
-        } else if let buckets = quota?.buckets, !buckets.isEmpty {
+        let liveError = displayableError(quotaService.lastErrorByAccount[accountId], with: quota)
+        if let buckets = quota?.buckets, !buckets.isEmpty {
             VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
                 ForEach(buckets) { bucket in
                     miscBucketRow(bucket)
@@ -110,10 +110,27 @@ struct MiscProviderCard: View {
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                 }
+                if let liveError {
+                    compactErrorText("Update failed: \(liveError.userFacingMessage)")
+                }
             }
+        } else if let liveError, liveError != .noCredential {
+            errorState(liveError)
         } else {
             setupState
         }
+    }
+
+    private func displayableError(_ error: QuotaError?, with quota: AccountQuota?) -> QuotaError? {
+        guard let error else { return nil }
+        guard error.isCredentialState,
+              let quota,
+              !quota.buckets.isEmpty,
+              Date().timeIntervalSince(quota.queriedAt) < 30 * 60
+        else {
+            return error
+        }
+        return nil
     }
 
     private func miscBucketRow(_ bucket: QuotaBucket) -> some View {
@@ -194,6 +211,16 @@ struct MiscProviderCard: View {
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
         }
+    }
+
+    private func compactErrorText(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text(text)
+                .lineLimit(2)
+        }
+        .font(.system(size: density.resetCountdownFontSize))
+        .foregroundStyle(.orange)
     }
 
     // MARK: - State helpers
