@@ -13,6 +13,11 @@ import Foundation
 /// The cache is stored at `<homeDirectory>/.vibebar/scan_cache/<tool>.json`,
 /// so tests pointing the scanner at a temp directory get an isolated cache.
 public struct CostUsageScanCache: Codable, Sendable {
+    public enum PathRole: String, Codable, Sendable {
+        case parent
+        case subagent
+    }
+
     /// One scanned event, ready to feed straight into the aggregator.
     /// For Codex this is a delta-resolved record; for Claude it's a per
     /// assistant-message usage line.
@@ -22,7 +27,41 @@ public struct CostUsageScanCache: Codable, Sendable {
         public let input: Int
         public let output: Int
         public let cache: Int
-        public let costUSD: Double
+        public let cacheCreation: Int?
+        public let sessionId: String?
+        public let messageId: String?
+        public let requestId: String?
+        public let isSidechain: Bool?
+        public let pathRole: PathRole?
+        public let sourceKey: String?
+
+        public init(
+            date: Date,
+            model: String,
+            input: Int,
+            output: Int,
+            cache: Int,
+            cacheCreation: Int? = nil,
+            sessionId: String? = nil,
+            messageId: String? = nil,
+            requestId: String? = nil,
+            isSidechain: Bool? = nil,
+            pathRole: PathRole? = nil,
+            sourceKey: String? = nil
+        ) {
+            self.date = date
+            self.model = model
+            self.input = input
+            self.output = output
+            self.cache = cache
+            self.cacheCreation = cacheCreation
+            self.sessionId = sessionId
+            self.messageId = messageId
+            self.requestId = requestId
+            self.isSidechain = isSidechain
+            self.pathRole = pathRole
+            self.sourceKey = sourceKey
+        }
     }
 
     public struct FileEntry: Codable, Sendable {
@@ -31,12 +70,25 @@ public struct CostUsageScanCache: Codable, Sendable {
         public let events: [ParsedEvent]
     }
 
+    public var schemaVersion: Int
     public var retentionDays: Int?
     public var entries: [String: FileEntry]
 
-    public init(entries: [String: FileEntry] = [:], retentionDays: Int? = nil) {
+    public init(entries: [String: FileEntry] = [:], retentionDays: Int? = nil, schemaVersion: Int = Self.currentSchemaVersion) {
+        self.schemaVersion = schemaVersion
         self.retentionDays = retentionDays.map(CostDataSettings.normalizedRetentionDays)
         self.entries = entries
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, retentionDays, entries
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        self.retentionDays = try c.decodeIfPresent(Int.self, forKey: .retentionDays)
+        self.entries = try c.decode([String: FileEntry].self, forKey: .entries)
     }
 
     /// Returns cached events if the on-disk fingerprint still matches; nil
@@ -76,6 +128,7 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// 64 MB safety cap. The cache for a heavy user with several years of
     /// Codex / Claude history is usually under 10 MB.
     private static let maxFileBytes: Int = 64 * 1024 * 1024
+    public static let currentSchemaVersion = 2
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)
@@ -99,6 +152,10 @@ public struct CostUsageScanCache: Codable, Sendable {
         guard let data = try? Data(contentsOf: url),
               let cache = try? JSONDecoder().decode(CostUsageScanCache.self, from: data)
         else {
+            return CostUsageScanCache(retentionDays: normalizedRetentionDays)
+        }
+        guard cache.schemaVersion == currentSchemaVersion else {
+            try? FileManager.default.removeItem(at: url)
             return CostUsageScanCache(retentionDays: normalizedRetentionDays)
         }
         guard cache.retentionDays == normalizedRetentionDays else {

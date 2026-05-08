@@ -151,7 +151,7 @@ final class ClaudeWebLoginController: NSObject, NSWindowDelegate, WKNavigationDe
             return false
         }
         do {
-            try ClaudeWebCookieStore.writeCookieHeader(minimizedHeader)
+            try ClaudeWebCookieStore.writeCookieHeader(minimizedHeader, source: .webView)
             cacheClaudeOrganizationID(from: minimizedHeader)
             return true
         } catch {

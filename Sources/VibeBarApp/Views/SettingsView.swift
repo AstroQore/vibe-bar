@@ -8,6 +8,7 @@ struct SettingsView: View {
 
     private let intervalOptions: [Int] = [60, 180, 300, 600, 1800]
     private let costRetentionOptions = CostDataSettings.retentionOptions
+    @State private var openAICookieDeleteFailed: Bool = false
     @State private var claudeCookieDeleteFailed: Bool = false
     @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
@@ -91,6 +92,57 @@ struct SettingsView: View {
                         }
                     }
 
+                    settingsSection("OpenAI Account") {
+                        Picker("Usage source", selection: $settingsStore.settings.codexUsageMode) {
+                            ForEach(CodexUsageMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        Text(settingsStore.settings.codexUsageMode.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            Button {
+                                environment.importOpenAIBrowserCookies()
+                            } label: {
+                                Label("Import from browser", systemImage: "safari")
+                            }
+                            .disabled(environment.isImportingOpenAIBrowserCookies)
+                            Button {
+                                environment.openOpenAIWebLogin()
+                            } label: {
+                                Label("Open WebView login", systemImage: "person.crop.circle.badge.key")
+                            }
+                            Button(role: .destructive) {
+                                openAICookieDeleteFailed = !environment.deleteOpenAIWebCookies()
+                            } label: {
+                                Label("Delete cookies", systemImage: "trash")
+                            }
+                            .disabled(!environment.hasOpenAIWebCookies)
+                        }
+                        if environment.hasOpenAIWebCookies {
+                            Text("Cookies saved.")
+                                .font(.caption2).foregroundStyle(.green)
+                        }
+                        if let status = environment.openAIBrowserCookieImportStatus {
+                            Text(status)
+                                .font(.caption2)
+                                .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
+                        }
+                        if openAICookieDeleteFailed {
+                            Text("Could not delete saved cookies.")
+                                .font(.caption2).foregroundStyle(.orange)
+                        }
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .codex)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .codex)
+                        } label: {
+                            Label("Check connections", systemImage: "checkmark.circle")
+                        }
+                    }
+
                     settingsSection("Claude Account") {
                         Picker("Usage source", selection: $settingsStore.settings.claudeUsageMode) {
                             ForEach(ClaudeUsageMode.allCases) { mode in
@@ -131,6 +183,14 @@ struct SettingsView: View {
                         if claudeCookieDeleteFailed {
                             Text("Could not delete saved cookies.")
                                 .font(.caption2).foregroundStyle(.orange)
+                        }
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .claude)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .claude)
+                        } label: {
+                            Label("Check connections", systemImage: "checkmark.circle")
                         }
                     }
 
@@ -198,7 +258,7 @@ struct SettingsView: View {
                     }
 
                     settingsSection("Privacy") {
-                        Text("Tokens are read from local CLI credentials. Claude Web cookies are stored in Keychain. Settings, quota cache, and cost summaries are stored under ~/.vibebar.")
+                        Text("Tokens are read from local CLI credentials. Saved OpenAI and Claude Web cookies are stored in macOS Keychain, split by browser and WebView source. Legacy plaintext cookie files under ~/.vibebar/cookies are migrated once and deleted. Settings, quota cache, and cost summaries stay under ~/.vibebar.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -231,6 +291,45 @@ struct SettingsView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
             )
+        }
+    }
+
+    private func connectionHealthRows(provider: ToolType) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Connection health")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(PrimaryProviderRoute.routes(for: provider)) { route in
+                let health = environment.routeHealth[route]
+                    ?? PrimaryProviderRouteHealth(
+                        route: route,
+                        status: .missing,
+                        detail: "Not checked"
+                    )
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(healthColor(health.status))
+                        .frame(width: 8, height: 8)
+                    Text(route.label)
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                    Spacer(minLength: 12)
+                    Text(health.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(health.checkedAt, style: .time)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    private func healthColor(_ status: PrimaryProviderRouteHealthStatus) -> Color {
+        switch status {
+        case .ok: return .green
+        case .missing: return .red
+        case .blocked, .failed: return .orange
         }
     }
 

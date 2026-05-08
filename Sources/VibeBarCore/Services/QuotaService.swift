@@ -120,12 +120,22 @@ public final class QuotaService: ObservableObject {
     }
 
     private func store(error: QuotaError, for account: AccountIdentity) {
+        if error.isCredentialState,
+           let cached = lastSuccessByAccount[account.id],
+           !cached.buckets.isEmpty {
+            lastErrorByAccount.removeValue(forKey: account.id)
+            return
+        }
         lastErrorByAccount[account.id] = error
         lastUpdatedByAccount[account.id] = Date()
     }
 
     private func cachedOrEmpty(for account: AccountIdentity, error: QuotaError) -> AccountQuota {
         if var cached = lastSuccessByAccount[account.id] {
+            if error.isCredentialState, !cached.buckets.isEmpty {
+                cached.error = nil
+                return cached
+            }
             cached.error = error
             return cached
         }

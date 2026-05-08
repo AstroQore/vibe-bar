@@ -84,6 +84,18 @@ final class CostUsagePricingTests: XCTestCase {
         XCTAssertEqual(cost ?? -1, 1.2, accuracy: 0.01)
     }
 
+    func testClaudeSonnet46UsesStandardPricingAcrossLongContext() {
+        let cost = CostUsagePricing.claudeCostUSD(
+            model: "claude-sonnet-4-6",
+            inputTokens: 300_000,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            outputTokens: 0
+        )
+
+        XCTAssertEqual(cost ?? -1, 0.9, accuracy: 0.01)
+    }
+
     func testClaudeNormalizesAnthropicPrefix() {
         let cost = CostUsagePricing.claudeCostUSD(
             model: "anthropic.claude-opus-4-1",

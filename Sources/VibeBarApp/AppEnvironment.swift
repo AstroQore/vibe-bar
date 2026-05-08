@@ -12,9 +12,14 @@ final class AppEnvironment: ObservableObject {
     let costService: CostUsageService
 
     @Published private(set) var hasClaudeWebCookies: Bool
+    @Published private(set) var hasOpenAIWebCookies: Bool
+    @Published private(set) var isImportingOpenAIBrowserCookies = false
     @Published private(set) var isImportingClaudeBrowserCookies = false
+    @Published private(set) var openAIBrowserCookieImportStatus: String?
     @Published private(set) var claudeBrowserCookieImportStatus: String?
+    @Published private(set) var routeHealth: [PrimaryProviderRoute: PrimaryProviderRouteHealth]
 
+    private let openAIWebLoginController = OpenAIWebLoginController()
     private let claudeWebLoginController = ClaudeWebLoginController()
     private let settingsWindowController = SettingsWindowController()
     private var cancellables: Set<AnyCancellable> = []
@@ -22,10 +27,15 @@ final class AppEnvironment: ObservableObject {
     private var lastRoutineBudgetAttemptByAccount: [String: Date] = [:]
     private var persistentClaudeCookieImportInFlight = false
     private var browserClaudeCookieImportInFlight = false
+    private var persistentOpenAICookieImportInFlight = false
+    private var browserOpenAICookieImportInFlight = false
 
     init() {
         let settings = SettingsStore()
-        let accounts = AccountStore(claudeUsageMode: settings.claudeUsageMode)
+        let accounts = AccountStore(
+            codexUsageMode: settings.codexUsageMode,
+            claudeUsageMode: settings.claudeUsageMode
+        )
         let service = QuotaService.makeDefault(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
         }, initialAccountIds: accounts.accounts.map(\.id))
@@ -41,6 +51,8 @@ final class AppEnvironment: ObservableObject {
         })
         self.costService = costService
         self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+        self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+        self.routeHealth = PrimaryProviderRouteHealthChecker.checkAll()
 
         let scheduler = QuotaRefreshScheduler(
             service: service,
@@ -70,10 +82,15 @@ final class AppEnvironment: ObservableObject {
             .removeDuplicates {
                 $0.refreshIntervalSeconds == $1.refreshIntervalSeconds
                     && $0.mockEnabled == $1.mockEnabled
+                    && $0.codexUsageMode == $1.codexUsageMode
                     && $0.claudeUsageMode == $1.claudeUsageMode
             }
             .sink { [weak self] settings in
-                self?.accountStore.reload(claudeUsageMode: settings.claudeUsageMode)
+                self?.accountStore.reload(
+                    codexUsageMode: settings.codexUsageMode,
+                    claudeUsageMode: settings.claudeUsageMode
+                )
+                self?.recheckPrimaryRouteHealth()
                 self?.scheduler.reschedule()
                 self?.scheduler.triggerRefresh()
             }
@@ -90,6 +107,7 @@ final class AppEnvironment: ObservableObject {
             .removeDuplicates {
                 $0.mockEnabled == $1.mockEnabled
                     && $0.claudeUsageMode == $1.claudeUsageMode
+                    && $0.codexUsageMode == $1.codexUsageMode
             }
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] _ in
@@ -125,6 +143,8 @@ final class AppEnvironment: ObservableObject {
         }
         importPersistentClaudeCookiesAndRefreshIfNeeded()
         importClaudeBrowserCookiesAndRefreshIfNeeded()
+        importPersistentOpenAICookiesAndRefreshIfNeeded()
+        importOpenAIBrowserCookiesAndRefreshIfNeeded()
 
         // Push Claude/Codex extras parsed by adapters into CostUsageService.
         service.$lastSuccessByAccount
@@ -155,9 +175,16 @@ final class AppEnvironment: ObservableObject {
 
     func reloadProviderCredentialsAndRefresh() {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+        hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+        recheckPrimaryRouteHealth()
+        importPersistentOpenAICookiesAndRefreshIfNeeded()
+        importOpenAIBrowserCookiesAndRefreshIfNeeded()
         importPersistentClaudeCookiesAndRefreshIfNeeded()
         importClaudeBrowserCookiesAndRefreshIfNeeded()
-        accountStore.reload(claudeUsageMode: settingsStore.claudeUsageMode)
+        accountStore.reload(
+            codexUsageMode: settingsStore.settings.codexUsageMode,
+            claudeUsageMode: settingsStore.claudeUsageMode
+        )
         // Cookies may have changed (login / re-login) — drop any stale
         // 1h failure cooldowns so the routine WebView probe gets a fresh
         // chance on the very next quota refresh.
@@ -184,18 +211,28 @@ final class AppEnvironment: ObservableObject {
 
     func refresh(_ tool: ToolType) {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
-        if tool == .claude {
-            importPersistentClaudeCookiesAndRefreshIfNeeded()
-            importClaudeBrowserCookiesAndRefreshIfNeeded()
-        }
-        accountStore.reload(claudeUsageMode: settingsStore.claudeUsageMode)
+        hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+        recheckPrimaryRouteHealth(provider: tool)
+        accountStore.reload(
+            codexUsageMode: settingsStore.settings.codexUsageMode,
+            claudeUsageMode: settingsStore.claudeUsageMode
+        )
         let account = account(for: tool)
         Task { @MainActor in
             if let account {
                 _ = await quotaService.refresh(account)
             }
-            await costService.refreshAll()
         }
+    }
+
+    func recheckPrimaryRouteHealth(provider: ToolType? = nil) {
+        let routes = provider.map(PrimaryProviderRoute.routes(for:)) ?? PrimaryProviderRoute.allCases
+        var next = routeHealth
+        let now = Date()
+        for route in routes {
+            next[route] = PrimaryProviderRouteHealthChecker.check(route, now: now)
+        }
+        routeHealth = next
     }
 
     func showSettingsWindow() {
@@ -207,6 +244,20 @@ final class AppEnvironment: ObservableObject {
             self?.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
             self?.reloadProviderCredentialsAndRefresh()
         }
+    }
+
+    func openOpenAIWebLogin() {
+        openAIWebLoginController.open { [weak self] in
+            self?.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            self?.reloadProviderCredentialsAndRefresh()
+        }
+    }
+
+    func importOpenAIBrowserCookies() {
+        importOpenAIBrowserCookiesAndRefreshIfNeeded(
+            allowKeychainPrompt: true,
+            userInitiated: true
+        )
     }
 
     func importClaudeBrowserCookies() {
@@ -224,8 +275,12 @@ final class AppEnvironment: ObservableObject {
             guard let self else { return }
             self.persistentClaudeCookieImportInFlight = false
             self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            self.recheckPrimaryRouteHealth(provider: .claude)
             guard didImport, !hadCookies else { return }
-            self.accountStore.reload(claudeUsageMode: self.settingsStore.claudeUsageMode)
+            self.accountStore.reload(
+                codexUsageMode: self.settingsStore.settings.codexUsageMode,
+                claudeUsageMode: self.settingsStore.claudeUsageMode
+            )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
             self.scheduler.triggerRefresh()
         }
@@ -258,6 +313,7 @@ final class AppEnvironment: ObservableObject {
                 self.isImportingClaudeBrowserCookies = false
             }
             self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            self.recheckPrimaryRouteHealth(provider: .claude)
             guard let result else {
                 if userInitiated {
                     self.claudeBrowserCookieImportStatus = "No Claude sessionKey found in readable browser cookies."
@@ -267,8 +323,74 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.claudeBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(claudeUsageMode: self.settingsStore.claudeUsageMode)
+            self.accountStore.reload(
+                codexUsageMode: self.settingsStore.settings.codexUsageMode,
+                claudeUsageMode: self.settingsStore.claudeUsageMode
+            )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
+            self.scheduler.triggerRefresh()
+        }
+    }
+
+    private func importPersistentOpenAICookiesAndRefreshIfNeeded() {
+        guard !persistentOpenAICookieImportInFlight else { return }
+        persistentOpenAICookieImportInFlight = true
+        let hadCookies = hasOpenAIWebCookies
+        OpenAIWebLoginController.importPersistentOpenAICookiesIfAvailable { [weak self] didImport in
+            guard let self else { return }
+            self.persistentOpenAICookieImportInFlight = false
+            self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            self.recheckPrimaryRouteHealth(provider: .codex)
+            guard didImport, !hadCookies else { return }
+            self.accountStore.reload(
+                codexUsageMode: self.settingsStore.settings.codexUsageMode,
+                claudeUsageMode: self.settingsStore.claudeUsageMode
+            )
+            self.scheduler.triggerRefresh()
+        }
+    }
+
+    private func importOpenAIBrowserCookiesAndRefreshIfNeeded(
+        allowKeychainPrompt: Bool = false,
+        userInitiated: Bool = false
+    ) {
+        if !allowKeychainPrompt, OpenAIWebCookieStore.hasCookieHeader() {
+            return
+        }
+        guard !browserOpenAICookieImportInFlight else { return }
+        browserOpenAICookieImportInFlight = true
+        if userInitiated {
+            isImportingOpenAIBrowserCookies = true
+            openAIBrowserCookieImportStatus = "Importing from browser..."
+        }
+
+        let importTask = Task.detached(priority: userInitiated ? .userInitiated : .utility) {
+            try? OpenAIBrowserCookieImporter.importAndStoreFromBrowsers(
+                allowKeychainPrompt: allowKeychainPrompt
+            )
+        }
+        Task { @MainActor [weak self] in
+            let result = await importTask.value
+            guard let self else { return }
+            self.browserOpenAICookieImportInFlight = false
+            if userInitiated {
+                self.isImportingOpenAIBrowserCookies = false
+            }
+            self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            self.recheckPrimaryRouteHealth(provider: .codex)
+            guard let result else {
+                if userInitiated {
+                    self.openAIBrowserCookieImportStatus = "No ChatGPT session cookies found in readable browser cookies."
+                }
+                return
+            }
+            if userInitiated {
+                self.openAIBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
+            }
+            self.accountStore.reload(
+                codexUsageMode: self.settingsStore.settings.codexUsageMode,
+                claudeUsageMode: self.settingsStore.claudeUsageMode
+            )
             self.scheduler.triggerRefresh()
         }
     }
@@ -280,15 +402,43 @@ final class AppEnvironment: ObservableObject {
             try ClaudeWebCookieStore.deleteCookieHeader()
             claudeBrowserCookieImportStatus = nil
             hasClaudeWebCookies = false
+            recheckPrimaryRouteHealth(provider: .claude)
             for account in accountStore.accounts(for: .claude) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(claudeUsageMode: settingsStore.claudeUsageMode)
+            accountStore.reload(
+                codexUsageMode: settingsStore.settings.codexUsageMode,
+                claudeUsageMode: settingsStore.claudeUsageMode
+            )
             scheduler.triggerRefresh()
             return true
         } catch {
             SafeLog.warn("Deleting Claude web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
             hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteOpenAIWebCookies() -> Bool {
+        do {
+            OpenAIWebLoginController.clearPersistentOpenAIWebsiteData()
+            try OpenAIWebCookieStore.deleteCookieHeader()
+            openAIBrowserCookieImportStatus = nil
+            hasOpenAIWebCookies = false
+            recheckPrimaryRouteHealth(provider: .codex)
+            for account in accountStore.accounts(for: .codex) {
+                quotaService.clear(accountId: account.id)
+            }
+            accountStore.reload(
+                codexUsageMode: settingsStore.settings.codexUsageMode,
+                claudeUsageMode: settingsStore.claudeUsageMode
+            )
+            scheduler.triggerRefresh()
+            return true
+        } catch {
+            SafeLog.warn("Deleting OpenAI web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
+            hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
             return false
         }
     }

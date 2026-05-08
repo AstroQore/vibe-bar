@@ -292,10 +292,13 @@ Vibe Bar persists derived data under the user's **real** home directory:
 If you are debugging odd behavior, that directory is the place to look.
 Deleting it resets the app to first-run state.
 
-Keychain stores Claude session cookies and the resolved Claude
-organization ID — those are not in `~/.vibebar/`. The app reads (never
-writes) Codex and Claude CLI credential files and their session JSONL
-logs. Treat those as read-only inputs.
+Keychain stores Vibe Bar-owned OpenAI / Claude Web cookies, split by
+source (`browser` vs `WebView`), plus the resolved Claude organization
+ID — those are not in `~/.vibebar/`. Legacy plaintext cookie files under
+`~/.vibebar/cookies/` may be read once for migration and must be deleted
+immediately afterward. The app reads (never writes) Codex and Claude CLI
+credential files and their session JSONL logs. Treat those as read-only
+inputs.
 
 ## 6. Home Directory (and why we no longer sandbox)
 
@@ -329,7 +332,10 @@ plist. The trade-offs:
   today and was never on MAS, so this is a no-op.
 - **Wider local file access.** Vibe Bar can technically read anything
   the user can read. The privacy rules (§ 8) and `SafeLog` /
-  `EmailMasker` discipline still apply — *don't* abuse this.
+  `EmailMasker` discipline still apply — *don't* abuse this. Browser
+  cookies imported for OpenAI / Claude must be minimized to the smallest
+  useful header and stored only in Keychain, never as new plaintext files
+  in `~/.vibebar/`.
 - **Re-enabling the sandbox is a one-PR change.** If a future
   requirement (e.g. someone wants a sandboxed fork for MAS) makes
   this worthwhile, restore the sandbox key + the four
@@ -437,6 +443,9 @@ What is **not** allowed in any commit:
   output. Use `/Users/example/...` and synthetic JWTs.
 - Logging raw credentials or email addresses. Route through
   `SafeLog.sanitize` and `EmailMasker`.
+- Persisting OpenAI / Claude Web cookies, session keys, or resolved
+  organization IDs in plaintext. Use the Vibe Bar-owned Keychain service;
+  `~/.vibebar/cookies/` is migration-only.
 - Re-enabling the app sandbox in `Resources/VibeBar.entitlements`
   *without coordinating the misc-providers feature first*. Vibe Bar is
   unsandboxed on purpose (see § 6) so the browser-cookie importer and

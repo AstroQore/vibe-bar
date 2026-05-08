@@ -12,10 +12,37 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("settings.json")
     }
 
+    // Legacy plaintext cookie paths from short-lived builds. Current code
+    // migrates these into Keychain and deletes them; do not write new cookies
+    // here.
     public static var claudeCookieURL: URL {
         baseDirectory
             .appendingPathComponent("cookies", isDirectory: true)
             .appendingPathComponent("claude-web.txt")
+    }
+
+    public static var claudeWebViewCookieURL: URL {
+        baseDirectory
+            .appendingPathComponent("cookies", isDirectory: true)
+            .appendingPathComponent("claude-webview.txt")
+    }
+
+    public static var claudeBrowserCookieURL: URL {
+        baseDirectory
+            .appendingPathComponent("cookies", isDirectory: true)
+            .appendingPathComponent("claude-browser.txt")
+    }
+
+    public static var openAIWebViewCookieURL: URL {
+        baseDirectory
+            .appendingPathComponent("cookies", isDirectory: true)
+            .appendingPathComponent("openai-webview.txt")
+    }
+
+    public static var openAIBrowserCookieURL: URL {
+        baseDirectory
+            .appendingPathComponent("cookies", isDirectory: true)
+            .appendingPathComponent("openai-browser.txt")
     }
 
     public static var claudeOrganizationIDURL: URL {

@@ -121,6 +121,10 @@ public final class SettingsStore: ObservableObject {
         get { settings.mockEnabled }
         set { settings.mockEnabled = false }
     }
+    public var codexUsageMode: CodexUsageMode {
+        get { settings.codexUsageMode }
+        set { settings.codexUsageMode = newValue }
+    }
     public var claudeUsageMode: ClaudeUsageMode {
         get { settings.claudeUsageMode }
         set { settings.claudeUsageMode = newValue }

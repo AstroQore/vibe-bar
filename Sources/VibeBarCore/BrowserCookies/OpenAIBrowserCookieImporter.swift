@@ -1,18 +1,14 @@
 import Foundation
 import SweetCookieKit
 
-/// Imports the minimum Claude web session cookie from the user's
-/// installed browsers. This is the reliable fallback for the Claude
-/// card when the in-app WebView login flow hits SSO / blank-page
-/// trouble.
-public enum ClaudeBrowserCookieImporter {
+public enum OpenAIBrowserCookieImporter {
     public struct Result: Sendable {
         public let header: String
         public let sourceLabel: String
         public let cookieCount: Int
     }
 
-    public static let cookieDomains = ["claude.ai"]
+    public static let cookieDomains = ["chatgpt.com", "chat.openai.com", "openai.com"]
 
     public static func importAndStoreFromBrowsers(
         allowKeychainPrompt: Bool = false,
@@ -30,7 +26,7 @@ public enum ClaudeBrowserCookieImporter {
         ) else {
             return nil
         }
-        try ClaudeWebCookieStore.writeCookieHeader(result.header, source: .browser)
+        try OpenAIWebCookieStore.writeCookieHeader(result.header, source: .browser)
         return result
     }
 
@@ -60,7 +56,7 @@ public enum ClaudeBrowserCookieImporter {
                 )
             } catch {
                 BrowserCookieAccessGate.recordIfNeeded(error)
-                logger?("\(browser.displayName) Claude cookie import failed: \(SafeLog.sanitize(error.localizedDescription))")
+                logger?("\(browser.displayName) OpenAI cookie import failed: \(SafeLog.sanitize(error.localizedDescription))")
                 continue
             }
 
@@ -68,25 +64,12 @@ public enum ClaudeBrowserCookieImporter {
                 let pairs = store.records.map { record in
                     (name: record.name, value: record.value)
                 }
-                guard let header = sessionHeader(from: pairs) else { continue }
+                guard let header = OpenAIWebCookieStore.cookieHeader(from: pairs) else { continue }
                 let label = "\(browser.displayName) (\(store.store.profile.name))"
-                return Result(
-                    header: header,
-                    sourceLabel: label,
-                    cookieCount: store.records.count
-                )
+                return Result(header: header, sourceLabel: label, cookieCount: store.records.count)
             }
         }
 
-        return nil
-    }
-
-    public static func sessionHeader(from cookies: [(name: String, value: String)]) -> String? {
-        for cookie in cookies where cookie.name == "sessionKey" {
-            let value = cookie.value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard value.hasPrefix("sk-ant-") else { continue }
-            return ClaudeWebCookieStore.minimizedCookieHeader(from: "sessionKey=\(value)")
-        }
         return nil
     }
 }

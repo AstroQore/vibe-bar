@@ -58,8 +58,9 @@ public enum CostUsageScanner {
                     cache.store(retained, for: file.path, mtime: mtime, size: size)
                 }
                 for event in retained {
+                    let cost = costUSD(tool: .codex, event: event)
                     aggregator.add(at: event.date, model: event.model, input: event.input,
-                                   output: event.output, cache: event.cache, costUSD: event.costUSD)
+                                   output: event.output, cache: event.cache, costUSD: cost)
                 }
                 continue
             }
@@ -93,14 +94,13 @@ public enum CostUsageScanner {
                     model: event.model,
                     input: max(0, delta.input - delta.cached),
                     output: delta.output,
-                    cache: delta.cached,
-                    costUSD: cost
+                    cache: delta.cached
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
                 parsed.append(parsedEvent)
                 aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
                                input: parsedEvent.input, output: parsedEvent.output,
-                               cache: parsedEvent.cache, costUSD: parsedEvent.costUSD)
+                               cache: parsedEvent.cache, costUSD: cost)
             }
             cache.store(parsed, for: file.path, mtime: mtime, size: size)
         }
@@ -124,6 +124,7 @@ public enum CostUsageScanner {
     private static func parseCodexFile(file: URL) -> [CodexEvent] {
         var events: [CodexEvent] = []
         var currentModel = "gpt-5"
+        var runningTotals = CodexEvent.Totals(input: 0, cached: 0, output: 0)
         let didRead = forEachJSONLLine(in: file) { lineData in
             guard !lineData.isEmpty else { return }
             guard lineData.contains(asciiSequence: "token_count") ||
@@ -132,6 +133,10 @@ public enum CostUsageScanner {
 
             if let payload = obj["payload"] as? [String: Any] {
                 if let m = payload["model"] as? String { currentModel = m }
+                if let info = payload["info"] as? [String: Any],
+                   let m = info["model"] as? String ?? info["model_name"] as? String {
+                    currentModel = m
+                }
             }
             if let m = obj["model"] as? String { currentModel = m }
 
@@ -140,12 +145,24 @@ public enum CostUsageScanner {
                   payload["type"] as? String == "token_count",
                   let info = payload["info"] as? [String: Any]
             else { return }
-            guard let total = info["total_token_usage"] as? [String: Any] else { return }
-            let totals = CodexEvent.Totals(
-                input: anyInt(total["input_tokens"]),
-                cached: anyInt(total["cached_input_tokens"] ?? total["cache_read_input_tokens"]),
-                output: anyInt(total["output_tokens"])
-            )
+            let totals: CodexEvent.Totals
+            if let total = info["total_token_usage"] as? [String: Any] {
+                totals = CodexEvent.Totals(
+                    input: anyInt(total["input_tokens"]),
+                    cached: anyInt(total["cached_input_tokens"] ?? total["cache_read_input_tokens"]),
+                    output: anyInt(total["output_tokens"])
+                )
+                runningTotals = totals
+            } else if let last = info["last_token_usage"] as? [String: Any] {
+                runningTotals = CodexEvent.Totals(
+                    input: runningTotals.input + max(0, anyInt(last["input_tokens"])),
+                    cached: runningTotals.cached + max(0, anyInt(last["cached_input_tokens"] ?? last["cache_read_input_tokens"])),
+                    output: runningTotals.output + max(0, anyInt(last["output_tokens"]))
+                )
+                totals = runningTotals
+            } else {
+                return
+            }
             let timestamp = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
             events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals))
         }
@@ -165,6 +182,7 @@ public enum CostUsageScanner {
         var aggregator = CostAggregator(tool: .claude, now: now)
         var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .claude, retentionDays: retentionDays)
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+        var allEvents: [CostUsageScanCache.ParsedEvent] = []
 
         for file in files {
             let (mtime, size) = fileFingerprint(file)
@@ -173,14 +191,14 @@ public enum CostUsageScanner {
                 if retained.count != cached.count {
                     cache.store(retained, for: file.path, mtime: mtime, size: size)
                 }
-                for event in retained {
-                    aggregator.add(at: event.date, model: event.model, input: event.input,
-                                   output: event.output, cache: event.cache, costUSD: event.costUSD)
-                }
+                allEvents.append(contentsOf: retained)
                 continue
             }
 
-            var parsed: [CostUsageScanCache.ParsedEvent] = []
+            let sourceKey = CostUsageScanCache.entryKey(for: file.path)
+            let pathRole = claudePathRole(file: file)
+            var keyedRows: [String: CostUsageScanCache.ParsedEvent] = [:]
+            var unkeyedRows: [CostUsageScanCache.ParsedEvent] = []
             let didRead = forEachJSONLLine(in: file) { lineData in
                 guard !lineData.isEmpty,
                       lineData.contains(asciiSequence: "assistant"),
@@ -197,41 +215,57 @@ public enum CostUsageScanner {
                 let cacheRead = anyInt(usage["cache_read_input_tokens"])
                 let cacheCreation = anyInt(usage["cache_creation_input_tokens"])
                 let output = anyInt(usage["output_tokens"])
-                let cost = CostUsagePricing.claudeCostUSD(
-                    model: model,
-                    inputTokens: input,
-                    cacheReadInputTokens: cacheRead,
-                    cacheCreationInputTokens: cacheCreation,
-                    outputTokens: output
-                ) ?? 0
+                if input == 0, cacheRead == 0, cacheCreation == 0, output == 0 { return }
                 let date = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
+                let messageId = message["id"] as? String
+                let requestId = obj["requestId"] as? String
+                let sessionId = obj["sessionId"] as? String
+                    ?? obj["session_id"] as? String
+                    ?? (obj["metadata"] as? [String: Any])?["sessionId"] as? String
+                    ?? (message["metadata"] as? [String: Any])?["sessionId"] as? String
                 let parsedEvent = CostUsageScanCache.ParsedEvent(
                     date: date,
                     model: model,
                     input: input,
                     output: output,
                     cache: cacheRead + cacheCreation,
-                    costUSD: cost
+                    cacheCreation: cacheCreation,
+                    sessionId: sessionId,
+                    messageId: messageId,
+                    requestId: requestId,
+                    isSidechain: anyBool(obj["isSidechain"]),
+                    pathRole: pathRole,
+                    sourceKey: sourceKey
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
-                parsed.append(parsedEvent)
-                aggregator.add(
-                    at: parsedEvent.date,
-                    model: parsedEvent.model,
-                    input: parsedEvent.input,
-                    output: parsedEvent.output,
-                    cache: parsedEvent.cache,
-                    costUSD: parsedEvent.costUSD
-                )
+                if let messageId, let requestId {
+                    keyedRows["\(messageId)\u{0}\(requestId)"] = parsedEvent
+                } else {
+                    unkeyedRows.append(parsedEvent)
+                }
             }
             guard didRead else {
                 cache.store([], for: file.path, mtime: mtime, size: size)
                 continue
             }
+            let parsed = keyedRows.keys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
             cache.store(parsed, for: file.path, mtime: mtime, size: size)
+            allEvents.append(contentsOf: parsed)
         }
         cache.prune(known: Set(files.map(\.path)))
         cache.save(homeDirectory: homeDirectory, tool: .claude)
+        let deduped = deduplicateClaudeEvents(allEvents)
+        for event in deduped {
+            let cost = costUSD(tool: .claude, event: event)
+            aggregator.add(
+                at: event.date,
+                model: event.model,
+                input: event.input,
+                output: event.output,
+                cache: event.cache,
+                costUSD: cost
+            )
+        }
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
@@ -255,6 +289,80 @@ public enum CostUsageScanner {
     ) -> [CostUsageScanCache.ParsedEvent] {
         guard let cutoff else { return events }
         return events.filter { $0.date >= cutoff }
+    }
+
+    private static func costUSD(tool: ToolType, event: CostUsageScanCache.ParsedEvent) -> Double {
+        switch tool {
+        case .codex:
+            return CostUsagePricing.codexCostUSD(
+                model: event.model,
+                inputTokens: event.input + event.cache,
+                cachedInputTokens: event.cache,
+                outputTokens: event.output
+            ) ?? 0
+        case .claude:
+            let cacheCreation = max(0, event.cacheCreation ?? 0)
+            let cacheRead = max(0, event.cache - cacheCreation)
+            return CostUsagePricing.claudeCostUSD(
+                model: event.model,
+                inputTokens: event.input,
+                cacheReadInputTokens: cacheRead,
+                cacheCreationInputTokens: cacheCreation,
+                outputTokens: event.output
+            ) ?? 0
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            return 0
+        }
+    }
+
+    private static func claudePathRole(file: URL) -> CostUsageScanCache.PathRole {
+        file.path.contains("/subagents/") ? .subagent : .parent
+    }
+
+    private static func deduplicateClaudeEvents(
+        _ events: [CostUsageScanCache.ParsedEvent]
+    ) -> [CostUsageScanCache.ParsedEvent] {
+        var keyed: [String: CostUsageScanCache.ParsedEvent] = [:]
+        var unkeyed: [CostUsageScanCache.ParsedEvent] = []
+
+        for event in events {
+            guard let sessionId = event.sessionId,
+                  let messageId = event.messageId,
+                  let requestId = event.requestId
+            else {
+                unkeyed.append(event)
+                continue
+            }
+            let key = "\(sessionId)\u{0}\(messageId)\u{0}\(requestId)"
+            if let existing = keyed[key] {
+                if claudeEventWins(candidate: event, existing: existing) {
+                    keyed[key] = event
+                }
+            } else {
+                keyed[key] = event
+            }
+        }
+
+        return keyed.keys.sorted().compactMap { keyed[$0] } + unkeyed
+    }
+
+    private static func claudeEventWins(
+        candidate: CostUsageScanCache.ParsedEvent,
+        existing: CostUsageScanCache.ParsedEvent
+    ) -> Bool {
+        let candidateSidechain = candidate.isSidechain ?? false
+        let existingSidechain = existing.isSidechain ?? false
+        if candidateSidechain != existingSidechain {
+            return !candidateSidechain
+        }
+
+        let candidateRole = candidate.pathRole ?? .parent
+        let existingRole = existing.pathRole ?? .parent
+        if candidateRole != existingRole {
+            return candidateRole == .parent
+        }
+
+        return (candidate.sourceKey ?? "") < (existing.sourceKey ?? "")
     }
 
     // MARK: - Aggregator
@@ -503,6 +611,12 @@ public enum CostUsageScanner {
         if let n = value as? NSNumber { return n.intValue }
         if let i = value as? Int { return i }
         return 0
+    }
+
+    private static func anyBool(_ value: Any?) -> Bool {
+        if let b = value as? Bool { return b }
+        if let n = value as? NSNumber { return n.boolValue }
+        return false
     }
 }
 

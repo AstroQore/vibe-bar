@@ -61,25 +61,60 @@ public enum ClaudeOrganizationIDFetcher {
     }
 
     private static func organizationID(from object: Any?) -> String? {
+        let candidates = organizationCandidates(from: object)
+        return candidates.first(where: \.hasChatCapability)?.id
+            ?? candidates.first(where: { !$0.isApiOnly })?.id
+            ?? candidates.first?.id
+    }
+
+    private struct OrganizationCandidate {
+        let id: String
+        let capabilities: Set<String>
+
+        var hasChatCapability: Bool {
+            capabilities.contains("chat")
+        }
+
+        var isApiOnly: Bool {
+            !capabilities.isEmpty && capabilities == ["api"]
+        }
+    }
+
+    private static func organizationCandidates(from object: Any?) -> [OrganizationCandidate] {
         if let dict = object as? [String: Any] {
+            var candidates: [OrganizationCandidate] = []
             for key in ["uuid", "id", "organization_uuid", "organizationId"] {
                 if let raw = dict[key] as? String {
                     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty { return trimmed }
+                    if !trimmed.isEmpty {
+                        candidates.append(OrganizationCandidate(
+                            id: trimmed,
+                            capabilities: capabilities(from: dict["capabilities"])
+                        ))
+                        break
+                    }
                 }
             }
             for key in ["organization", "current_organization"] {
-                if let id = organizationID(from: dict[key]) { return id }
+                candidates.append(contentsOf: organizationCandidates(from: dict[key]))
             }
             for key in ["organizations", "data", "results"] {
-                if let id = organizationID(from: dict[key]) { return id }
+                candidates.append(contentsOf: organizationCandidates(from: dict[key]))
             }
+            return candidates
         }
         if let array = object as? [Any] {
-            for entry in array {
-                if let id = organizationID(from: entry) { return id }
-            }
+            return array.flatMap { organizationCandidates(from: $0) }
         }
-        return nil
+        return []
+    }
+
+    private static func capabilities(from object: Any?) -> Set<String> {
+        guard let values = object as? [Any] else { return [] }
+        return Set(values.compactMap { raw in
+            guard let string = raw as? String else { return nil }
+            let normalized = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return normalized.isEmpty ? nil : normalized
+        })
     }
 }
