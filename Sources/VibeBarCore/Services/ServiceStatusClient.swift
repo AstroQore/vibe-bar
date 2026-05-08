@@ -19,6 +19,23 @@ public actor ServiceStatusClient {
         switch tool {
         case .codex:  return try await fetchOpenAI(dayCount: dayCount, now: now)
         case .claude: return try await fetchClaude(dayCount: dayCount, now: now)
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            // Misc providers don't expose Atlassian-style status APIs.
+            // `tool.supportsStatusPage` is `false` for all of them, and
+            // upstream callers should already be filtering to primary
+            // tools via `tool.supportsStatusPage` before reaching here.
+            // We return an empty `none`-indicator snapshot rather than
+            // throwing so any straggler call site fails closed instead
+            // of crashing.
+            return ServiceStatusSnapshot(
+                tool: tool,
+                indicator: .none,
+                description: "Status page polling is not supported for this provider.",
+                updatedAt: now,
+                groups: [],
+                components: [],
+                recentIncidents: []
+            )
         }
     }
 

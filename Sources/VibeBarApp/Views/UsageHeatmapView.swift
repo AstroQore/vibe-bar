@@ -55,9 +55,14 @@ struct UsageHeatmapView: View {
     }
 
     private var toolName: String {
+        // Heatmap is only rendered for primary providers (those with
+        // local cost data); misc providers don't reach this view. Use
+        // `menuTitle` as a defensive fallback.
         switch heatmap.tool {
         case .codex:  return "Codex"
         case .claude: return "Claude"
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            return heatmap.tool.menuTitle
         }
     }
 

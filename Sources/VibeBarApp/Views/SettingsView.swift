@@ -558,6 +558,12 @@ struct SettingsView: View {
         switch tool {
         case .codex:  return .codex
         case .claude: return .claude
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            // Misc providers don't have a dedicated menu-bar item kind;
+            // they live exclusively on the Misc tab inside the compact
+            // popover. Fall back to `.compact` so any UI that asks for
+            // a kind for a misc tool routes through Overview.
+            return .compact
         }
     }
 

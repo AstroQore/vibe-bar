@@ -14,6 +14,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var popoverDensities: [MenuBarItemKind: PopoverDensity]
     /// Optional user-visible plan badge overrides. Empty means "Auto".
     public var providerPlanLabels: [ToolType: String]
+    /// Per-misc-provider non-sensitive config (source mode, region,
+    /// enterprise host, etc.). Sensitive credentials live in Keychain
+    /// (service `com.astroqore.VibeBar.misc`), never in this map. The
+    /// lossy `init(from:)` strips any sensitive-looking keys on
+    /// decode — see `MiscProviderSettings.sanitize`.
+    public var miscProviders: [ToolType: MiscProviderSettings]
     public var costData: CostDataSettings
 
     public static let `default` = AppSettings(
@@ -27,6 +33,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miniWindow: Self.defaultMiniWindow,
         popoverDensities: Self.defaultPopoverDensities,
         providerPlanLabels: Self.defaultProviderPlanLabels,
+        miscProviders: Self.defaultMiscProviders,
         costData: .default
     )
 
@@ -84,6 +91,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let defaultProviderPlanLabels: [ToolType: String] = [:]
 
+    /// Default `MiscProviderSettings` for every misc provider — they
+    /// all start at `auto` source mode, no region override, no
+    /// enterprise host. The card renders as soon as a credential is
+    /// configured.
+    public static var defaultMiscProviders: [ToolType: MiscProviderSettings] {
+        var out: [ToolType: MiscProviderSettings] = [:]
+        for tool in ToolType.miscProviders {
+            out[tool] = .default
+        }
+        return out
+    }
+
     public init(
         displayMode: DisplayMode,
         refreshIntervalSeconds: Int,
@@ -95,6 +114,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
         popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
         providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
+        miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
         costData: CostDataSettings = .default
     ) {
         self.displayMode = displayMode
@@ -107,6 +127,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miniWindow = miniWindow
         self.popoverDensities = popoverDensities
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
+        self.miscProviders = Self.normalizedMiscProviders(miscProviders)
         self.costData = costData
     }
 
@@ -122,6 +143,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case popoverDensities
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
+        case miscProviders
         case costData
     }
 
@@ -167,6 +189,21 @@ public struct AppSettings: Codable, Equatable, Sendable {
             self.providerPlanLabels = Self.defaultProviderPlanLabels
         }
 
+        // Misc providers: lossy decode keyed by ToolType raw value.
+        // Unknown ToolType keys (typo, removed provider) are silently
+        // dropped. `MiscProviderSettings`' own decoder rejects fields
+        // whose names look like secrets — together they keep
+        // settings.json minimal and credential-free.
+        if let raw = try c.decodeIfPresent([String: MiscProviderSettings].self, forKey: .miscProviders) {
+            var map: [ToolType: MiscProviderSettings] = [:]
+            for (key, value) in raw {
+                if let tool = ToolType(rawValue: key), tool.isMisc { map[tool] = value }
+            }
+            self.miscProviders = Self.normalizedMiscProviders(map)
+        } else {
+            self.miscProviders = Self.defaultMiscProviders
+        }
+
         self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
     }
 
@@ -184,6 +221,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(stringKeyed, forKey: .popoverDensities)
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
         try c.encode(planLabels, forKey: .providerPlanLabels)
+        let miscRaw = Dictionary(uniqueKeysWithValues: miscProviders.map { ($0.key.rawValue, $0.value) })
+        try c.encode(miscRaw, forKey: .miscProviders)
         try c.encode(costData, forKey: .costData)
     }
 
@@ -255,6 +294,27 @@ public struct AppSettings: Codable, Equatable, Sendable {
             if !trimmed.isEmpty { out[tool] = trimmed }
         }
         return out
+    }
+
+    /// Fill in defaults for any misc provider missing from the
+    /// incoming map, and drop entries for non-misc tools.
+    private static func normalizedMiscProviders(_ map: [ToolType: MiscProviderSettings]) -> [ToolType: MiscProviderSettings] {
+        var out: [ToolType: MiscProviderSettings] = [:]
+        for tool in ToolType.miscProviders {
+            out[tool] = map[tool] ?? .default
+        }
+        return out
+    }
+
+    public func miscProvider(_ tool: ToolType) -> MiscProviderSettings {
+        precondition(tool.isMisc, "miscProvider lookup requested for primary tool: \(tool)")
+        return miscProviders[tool] ?? .default
+    }
+
+    public mutating func setMiscProvider(_ settings: MiscProviderSettings, for tool: ToolType) {
+        precondition(tool.isMisc, "setMiscProvider lookup requested for primary tool: \(tool)")
+        miscProviders[tool] = settings
+        miscProviders = Self.normalizedMiscProviders(miscProviders)
     }
 
     private static func migratedMenuBarItem(_ item: MenuBarItemSettings) -> MenuBarItemSettings {

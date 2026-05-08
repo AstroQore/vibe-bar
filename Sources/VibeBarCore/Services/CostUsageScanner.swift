@@ -24,6 +24,13 @@ public enum CostUsageScanner {
             return await scanCodex(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         case .claude:
             return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            // Misc providers don't expose token-level cost data; the
+            // cost-history pipeline is gated by `tool.supportsTokenCost`
+            // upstream. Returning `nil` here is a defensive belt:
+            // anything that does call us by accident gets an empty
+            // snapshot, not a crash.
+            return nil
         }
     }
 

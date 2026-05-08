@@ -143,11 +143,15 @@ enum ProviderBrandIcon {
     }
 
     private static func sourceImage(for tool: ToolType, size: NSSize) -> NSImage? {
-        let svg = switch tool {
+        // Brand SVGs only exist for primary providers today. Misc
+        // providers use SF Symbol fallbacks; see `fallbackSystemImage`.
+        let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            nil
         }
-        guard let image = NSImage(data: Data(svg.utf8)) else { return nil }
+        guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
         image.size = size
         return image
     }
@@ -233,10 +237,35 @@ struct ProviderBrandBadge: View {
 }
 
 extension ToolType {
+    /// Maps a tool to the menu-bar item kind that owns its brand
+    /// chrome. Misc providers don't have dedicated tray icons, so
+    /// they fall back to `.compact` (Overview) — every misc card
+    /// rendered there inherits the Overview branding.
     var brandMenuBarKind: MenuBarItemKind {
         switch self {
         case .codex:  return .codex
         case .claude: return .claude
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            return .compact
+        }
+    }
+
+    /// SF Symbol used as the misc-card icon when the provider doesn't
+    /// have a brand SVG bundled. Picked for visual variety + a hint
+    /// of the provider's identity. Easy to swap once we have brand
+    /// assets on disk.
+    var miscFallbackSymbol: String {
+        switch self {
+        case .codex, .claude:
+            return "sparkles"
+        case .alibaba:     return "cube.transparent"
+        case .gemini:      return "sparkle"
+        case .antigravity: return "arrow.up.forward.app"
+        case .copilot:     return "chevron.left.forward.slash.chevron.right"
+        case .zai:         return "z.circle"
+        case .minimax:     return "function"
+        case .kimi:        return "moon.stars"
+        case .cursor:      return "cursorarrow.rays"
         }
     }
 }

@@ -7,6 +7,11 @@ public enum ProviderPlanDisplay {
             return codexDisplayName(rawPlan)
         case .claude:
             return claudeDisplayName(rawPlan)
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+            // Misc providers feed `plan` straight through. Each adapter
+            // is responsible for normalizing the raw API response
+            // (e.g. `Pro Coding` → `Pro`) before it reaches this map.
+            return codexDisplayName(rawPlan)
         }
     }
 

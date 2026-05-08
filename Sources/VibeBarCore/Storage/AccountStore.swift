@@ -3,6 +3,16 @@ import Combine
 
 /// Holds the provider identities auto-detected from local CLI credentials.
 /// VibeBar only reads official CLI credentials already present on this Mac.
+///
+/// Primary providers (Codex, Claude) are detected on demand — if no
+/// credential is found, no account is registered, and the popover shows
+/// a "logged out" placeholder for that tool.
+///
+/// Misc providers (`ToolType.miscProviders`) follow the opposite rule:
+/// every misc provider always has a stable account id of the form
+/// `"misc-<rawValue>"`, even when no credential is configured. The
+/// resulting card shows a "Set up" call-to-action; once a credential
+/// lands the same id is reused so cached snapshots survive.
 @MainActor
 public final class AccountStore: ObservableObject {
     @Published public private(set) var accounts: [AccountIdentity] = []
@@ -22,11 +32,21 @@ public final class AccountStore: ObservableObject {
             detected.append(claude)
         }
 
+        // Misc providers always present, regardless of credentials.
+        for tool in ToolType.miscProviders {
+            detected.append(miscPlaceholder(for: tool))
+        }
+
         self.accounts = detected
     }
 
     public func accounts(for tool: ToolType) -> [AccountIdentity] {
         accounts.filter { $0.tool == tool }
+    }
+
+    public static func miscAccountId(for tool: ToolType) -> String {
+        precondition(tool.isMisc, "miscAccountId requested for primary tool: \(tool)")
+        return "misc-\(tool.rawValue)"
     }
 
     // MARK: - CLI auto detection
@@ -101,6 +121,22 @@ public final class AccountStore: ObservableObject {
             alias: "Claude Web",
             source: .webCookie,
             allowsCLIFallback: allowsCLIFallback,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Stable placeholder for misc providers regardless of credential
+    /// presence. The `source` defaults to `.notConfigured`; once an
+    /// adapter actually fetches successfully, `QuotaService` updates
+    /// the snapshot's metadata — the placeholder identity is mainly a
+    /// hook for the UI to render a card and route to Settings.
+    private func miscPlaceholder(for tool: ToolType) -> AccountIdentity {
+        AccountIdentity(
+            id: AccountStore.miscAccountId(for: tool),
+            tool: tool,
+            alias: tool.menuTitle,
+            source: .notConfigured,
             createdAt: Date(),
             updatedAt: Date()
         )

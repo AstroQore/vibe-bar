@@ -262,15 +262,31 @@ private struct MiniBranchCell: Identifiable {
 
 private func providerAccent(for tool: ToolType) -> Color {
     switch tool {
-    case .codex:  return Color(red: 0.30, green: 0.78, blue: 0.74)  // teal
-    case .claude: return Color(red: 0.93, green: 0.40, blue: 0.40)  // coral
+    case .codex:       return Color(red: 0.30, green: 0.78, blue: 0.74)  // teal
+    case .claude:      return Color(red: 0.93, green: 0.40, blue: 0.40)  // coral
+    case .alibaba:     return Color(red: 1.00, green: 0.62, blue: 0.20)  // amber
+    case .gemini:      return Color(red: 0.34, green: 0.62, blue: 0.96)  // google blue
+    case .antigravity: return Color(red: 0.55, green: 0.40, blue: 0.92)  // violet
+    case .copilot:     return Color(red: 0.46, green: 0.46, blue: 0.46)  // graphite
+    case .zai:         return Color(red: 0.26, green: 0.74, blue: 0.55)  // emerald
+    case .minimax:     return Color(red: 0.97, green: 0.30, blue: 0.45)  // pink
+    case .kimi:        return Color(red: 0.20, green: 0.20, blue: 0.20)  // ink
+    case .cursor:      return Color(red: 0.55, green: 0.55, blue: 0.96)  // periwinkle
     }
 }
 
 private func providerTitle(for tool: ToolType) -> String {
     switch tool {
-    case .codex:  return "CODEX"
-    case .claude: return "CLAUDE"
+    case .codex:       return "CODEX"
+    case .claude:      return "CLAUDE"
+    case .alibaba:     return "QWEN"
+    case .gemini:      return "GEMINI"
+    case .antigravity: return "ANTIGRAVITY"
+    case .copilot:     return "COPILOT"
+    case .zai:         return "Z.AI"
+    case .minimax:     return "MINIMAX"
+    case .kimi:        return "KIMI"
+    case .cursor:      return "CURSOR"
     }
 }
 
