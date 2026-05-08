@@ -197,6 +197,29 @@ enum AlibabaResponseParser {
             throw QuotaError.network("Alibaba: \(msg)")
         }
 
+        // String-code envelope. The bailian / modelstudio console
+        // endpoint returns `{"code":"ConsoleNeedLogin","message":"请登录"}`
+        // when the request lacks a console session — even when an
+        // API key is attached. Map the login-required variants to
+        // needsLogin so the misc card shows a sign-in hint instead
+        // of a generic "Response format changed" parser error.
+        if let codeText = findFirstString(["code", "status", "statusCode"], in: dict) {
+            let lower = codeText.lowercased()
+            if lower.contains("needlogin") ||
+               lower.contains("notlogin") ||
+               lower.contains("unauthenticated") ||
+               lower == "login" {
+                throw QuotaError.needsLogin
+            }
+            // Some failures encode "successResponse: false" alongside
+            // a non-success string code — propagate the message.
+            if let success = dict["successResponse"] as? Bool, !success {
+                let msg = findFirstString(["message", "msg"], in: dict)
+                    ?? "Alibaba code \(codeText)"
+                throw QuotaError.network("Alibaba: \(msg)")
+            }
+        }
+
         // Find the dict carrying the per-5h / per-week / per-month
         // counters. May live under `codingPlanQuotaInfo` directly or
         // be nested under `codingPlanInstanceInfos[].codingPlanQuotaInfo`.

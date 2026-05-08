@@ -97,6 +97,42 @@ final class AlibabaParserTests: XCTestCase {
         }
     }
 
+    func testConsoleNeedLoginStringCodeThrowsNeedsLogin() {
+        // Real shape returned by bailian.console.aliyun.com when
+        // the request lacks a console session, even with an API
+        // key attached. We must classify this as needsLogin so the
+        // misc card surfaces a sign-in hint.
+        let json = """
+        {"code":"ConsoleNeedLogin","message":"请登录","successResponse":false}
+        """
+        XCTAssertThrowsError(try AlibabaResponseParser.parse(data: Data(json.utf8), now: now)) { error in
+            guard let qe = error as? QuotaError, case .needsLogin = qe else {
+                XCTFail("Expected QuotaError.needsLogin, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testNotLoginStringCodeAlsoMapsToNeedsLogin() {
+        let json = #"{"code":"NotLogin","message":"login required"}"#
+        XCTAssertThrowsError(try AlibabaResponseParser.parse(data: Data(json.utf8), now: now)) { error in
+            guard let qe = error as? QuotaError, case .needsLogin = qe else {
+                XCTFail("Expected QuotaError.needsLogin, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testSuccessFalseWithUnknownCodeMapsToNetwork() {
+        let json = #"{"code":"InvalidParameter","message":"bad input","successResponse":false}"#
+        XCTAssertThrowsError(try AlibabaResponseParser.parse(data: Data(json.utf8), now: now)) { error in
+            guard let qe = error as? QuotaError, case .network = qe else {
+                XCTFail("Expected QuotaError.network, got \(error)")
+                return
+            }
+        }
+    }
+
     func testEmptyBodyThrowsParseFailure() {
         XCTAssertThrowsError(try AlibabaResponseParser.parse(data: Data(), now: now))
     }

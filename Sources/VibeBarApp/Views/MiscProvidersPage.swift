@@ -117,20 +117,25 @@ struct MiscProviderCard: View {
     }
 
     private func miscBucketRow(_ bucket: QuotaBucket) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // Honour the user's `displayMode` (used vs remaining) the same
+        // way the primary `ProviderBucketRow` does. With the default
+        // `.remaining` setting, "92%" means "92% remaining" and the
+        // bar fills toward "full". Without this conversion the misc
+        // cards always rendered used%, which read inverted next to
+        // the OpenAI / Claude cards.
+        let mode = settingsStore.settings.displayMode
+        let percent = bucket.displayPercent(mode)
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
                     .font(.system(size: density.bucketTitleFontSize - 1, weight: .medium))
                 Spacer()
-                Text("\(Int(bucket.usedPercent.rounded()))%")
+                Text("\(Int(percent.rounded()))%")
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.barColor(percent: bucket.usedPercent, mode: settingsStore.settings.displayMode))
+                    .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
             }
-            ProgressView(value: min(max(bucket.usedPercent, 0), 100), total: 100)
-                .progressViewStyle(.linear)
-                .tint(Theme.barColor(percent: bucket.usedPercent, mode: settingsStore.settings.displayMode))
-                .frame(height: density.bucketBarHeight)
+            QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
             // groupTitle is used by Cursor's on-demand bucket and
             // similar adapters to surface a short dollar / count
             // summary alongside the percent bar.

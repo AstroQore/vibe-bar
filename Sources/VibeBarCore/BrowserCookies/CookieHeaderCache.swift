@@ -46,7 +46,11 @@ public enum CookieHeaderCache {
         guard tool.isMisc else { return nil }
         let account = keychainAccount(for: tool)
         do {
-            let data = try KeychainStore.readData(service: keychainService, account: account)
+            let data = try KeychainStore.readData(
+                service: keychainService,
+                account: account,
+                useDataProtectionKeychain: true
+            )
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             return try decoder.decode(Entry.self, from: data)
@@ -79,7 +83,8 @@ public enum CookieHeaderCache {
             try KeychainStore.writeData(
                 service: keychainService,
                 account: keychainAccount(for: tool),
-                data: data
+                data: data,
+                useDataProtectionKeychain: true
             )
             return true
         } catch {
@@ -94,7 +99,8 @@ public enum CookieHeaderCache {
         do {
             try KeychainStore.deleteItem(
                 service: keychainService,
-                account: keychainAccount(for: tool)
+                account: keychainAccount(for: tool),
+                useDataProtectionKeychain: true
             )
             return true
         } catch KeychainStore.KeychainError.itemNotFound {

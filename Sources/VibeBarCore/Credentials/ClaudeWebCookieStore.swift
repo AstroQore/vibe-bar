@@ -19,7 +19,7 @@ public enum ClaudeWebCookieStore {
 
     public static func candidateCookieHeaders() -> [String] {
         var headers: [String] = []
-        let rawKeychainHeader = try? KeychainStore.readString(service: service, account: account)
+        let rawKeychainHeader = try? KeychainStore.readString(service: service, account: account, useDataProtectionKeychain: true)
         let keychainHeader = rawKeychainHeader
             .map { normalizedCookieHeader(from: $0) }
             .flatMap { $0.isEmpty ? nil : $0 }
@@ -27,7 +27,7 @@ public enum ClaudeWebCookieStore {
         if let rawKeychainHeader,
            let keychainHeader,
            normalizedCookieHeader(from: rawKeychainHeader) != keychainHeader {
-            try? KeychainStore.writeString(service: service, account: account, value: keychainHeader)
+            try? KeychainStore.writeString(service: service, account: account, value: keychainHeader, useDataProtectionKeychain: true)
         }
         appendCookieHeader(keychainHeader, to: &headers)
         if let legacy = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeCookieURL) {
@@ -43,7 +43,7 @@ public enum ClaudeWebCookieStore {
 
     public static func writeCookieHeader(_ header: String) throws {
         guard let minimized = minimizedCookieHeader(from: header) else { throw QuotaError.noCredential }
-        try KeychainStore.writeString(service: service, account: account, value: minimized)
+        try KeychainStore.writeString(service: service, account: account, value: minimized, useDataProtectionKeychain: true)
         try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
     }
 
@@ -54,12 +54,12 @@ public enum ClaudeWebCookieStore {
     public static func deleteCookieHeader() throws {
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeCookieURL)
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
-        try? KeychainStore.deleteItem(service: service, account: account)
-        try? KeychainStore.deleteItem(service: service, account: organizationAccount)
+        try? KeychainStore.deleteItem(service: service, account: account, useDataProtectionKeychain: true)
+        try? KeychainStore.deleteItem(service: service, account: organizationAccount, useDataProtectionKeychain: true)
     }
 
     public static func readOrganizationID() -> String? {
-        if let raw = try? KeychainStore.readString(service: service, account: organizationAccount),
+        if let raw = try? KeychainStore.readString(service: service, account: organizationAccount, useDataProtectionKeychain: true),
            let normalized = normalizedOrganizationID(raw) {
             try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
             return normalized
@@ -74,7 +74,7 @@ public enum ClaudeWebCookieStore {
 
     public static func writeOrganizationID(_ organizationID: String) throws {
         guard let trimmed = normalizedOrganizationID(organizationID) else { return }
-        try KeychainStore.writeString(service: service, account: organizationAccount, value: trimmed)
+        try KeychainStore.writeString(service: service, account: organizationAccount, value: trimmed, useDataProtectionKeychain: true)
         try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
     }
 

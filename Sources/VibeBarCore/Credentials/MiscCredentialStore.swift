@@ -29,17 +29,42 @@ public enum MiscCredentialStore {
 
     public static func readString(tool: ToolType, kind: Kind) -> String? {
         guard tool.isMisc else { return nil }
-        do {
-            return try KeychainStore.readString(
-                service: keychainService,
-                account: keychainAccount(tool: tool, kind: kind)
-            )
-        } catch KeychainStore.KeychainError.itemNotFound {
-            return nil
-        } catch {
-            SafeLog.warn("Misc keychain read failed for \(tool.rawValue).\(kind.rawValue): \(error)")
-            return nil
+        let account = keychainAccount(tool: tool, kind: kind)
+        // Try data-protection keychain first (the new home).
+        if let value = try? KeychainStore.readString(
+            service: keychainService,
+            account: account,
+            useDataProtectionKeychain: true
+        ) {
+            return value
         }
+        // Migration fallback: if the user pasted their key when we
+        // were still using the legacy login keychain (before the
+        // ad-hoc-cdhash prompt fix), read from there once. The next
+        // successful save through `writeString` re-homes the value
+        // into data-protection automatically.
+        if let legacy = try? KeychainStore.readString(
+            service: keychainService,
+            account: account,
+            useDataProtectionKeychain: false
+        ) {
+            // Migrate silently. Best-effort — if the rewrite fails
+            // we still return the legacy value so the user can keep
+            // working.
+            _ = try? KeychainStore.writeString(
+                service: keychainService,
+                account: account,
+                value: legacy,
+                useDataProtectionKeychain: true
+            )
+            try? KeychainStore.deleteItem(
+                service: keychainService,
+                account: account,
+                useDataProtectionKeychain: false
+            )
+            return legacy
+        }
+        return nil
     }
 
     @discardableResult
@@ -53,7 +78,8 @@ public enum MiscCredentialStore {
             try KeychainStore.writeString(
                 service: keychainService,
                 account: keychainAccount(tool: tool, kind: kind),
-                value: trimmed
+                value: trimmed,
+                useDataProtectionKeychain: true
             )
             return true
         } catch {
@@ -68,7 +94,8 @@ public enum MiscCredentialStore {
         do {
             try KeychainStore.deleteItem(
                 service: keychainService,
-                account: keychainAccount(tool: tool, kind: kind)
+                account: keychainAccount(tool: tool, kind: kind),
+                useDataProtectionKeychain: true
             )
             return true
         } catch KeychainStore.KeychainError.itemNotFound {
