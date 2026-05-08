@@ -86,7 +86,13 @@ struct MiscProviderSettingsSection: View {
                 spec: KimiQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste www.kimi.com Cookie header (kimi-auth=eyJ...)"
             )
-        case .antigravity, .cursor:
+        case .cursor:
+            CookieSourceControls(
+                tool: .cursor,
+                spec: CursorQuotaAdapter.cookieSpec,
+                manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
+            )
+        case .antigravity:
             // Each one gets its own controls as the matching adapter
             // lands on this branch. For now, render the same hint
             // string the user already saw in Phase 4.

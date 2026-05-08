@@ -131,6 +131,14 @@ struct MiscProviderCard: View {
                 .progressViewStyle(.linear)
                 .tint(Theme.barColor(percent: bucket.usedPercent, mode: settingsStore.settings.displayMode))
                 .frame(height: density.bucketBarHeight)
+            // groupTitle is used by Cursor's on-demand bucket and
+            // similar adapters to surface a short dollar / count
+            // summary alongside the percent bar.
+            if let group = bucket.groupTitle, !group.isEmpty, group != bucket.title {
+                Text(group)
+                    .font(.system(size: density.resetCountdownFontSize))
+                    .foregroundStyle(.tertiary)
+            }
             if let countdown = ResetCountdownFormatter.string(from: bucket.resetAt) {
                 Text("Resets \(countdown)")
                     .font(.system(size: density.resetCountdownFontSize))
