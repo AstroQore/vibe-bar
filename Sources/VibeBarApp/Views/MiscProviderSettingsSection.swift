@@ -74,7 +74,19 @@ struct MiscProviderSettingsSection: View {
                 )
                 AlibabaRegionPicker()
             }
-        case .antigravity, .minimax, .kimi, .cursor:
+        case .minimax:
+            CookieSourceControls(
+                tool: .minimax,
+                spec: MiniMaxQuotaAdapter.cookieSpec,
+                manualPrompt: "Paste platform.minimax.io Cookie header (HERTZ-SESSION=...)"
+            )
+        case .kimi:
+            CookieSourceControls(
+                tool: .kimi,
+                spec: KimiQuotaAdapter.cookieSpec,
+                manualPrompt: "Paste www.kimi.com Cookie header (kimi-auth=eyJ...)"
+            )
+        case .antigravity, .cursor:
             // Each one gets its own controls as the matching adapter
             // lands on this branch. For now, render the same hint
             // string the user already saw in Phase 4.
@@ -280,6 +292,135 @@ struct GeminiCredentialStatusRow: View {
             return "\(abs / 3600)h \(abs / 60 % 60)m"
         }
         return "\(abs / 60)m"
+    }
+}
+
+/// Cookie-source picker + Import / Manual paste controls for the
+/// browser-cookie misc providers (MiniMax, Kimi). Wraps three
+/// concerns:
+///
+/// 1. `MiscProviderSettings.cookieSource` — auto / manual / off
+/// 2. "Import from browser now" button — re-runs the cookie pipeline
+///    immediately, useful after the user signs in to the provider
+///    in their browser.
+/// 3. Manual paste field — for users who prefer copying the
+///    `Cookie:` header by hand or whose browser cookie store is
+///    locked.
+struct CookieSourceControls: View {
+    let tool: ToolType
+    let spec: MiscCookieResolver.Spec
+    let manualPrompt: String
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    @State private var manualDraft: String = ""
+    @State private var importStatus: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Picker("Cookie source", selection: cookieSourceBinding) {
+                    ForEach(ProviderCookieSource.allCases, id: \.self) { mode in
+                        Text(modeLabel(mode)).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .frame(maxWidth: 280)
+
+                Button("Import now", action: importNow)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(cookieSourceBinding.wrappedValue == .off ||
+                              cookieSourceBinding.wrappedValue == .manual)
+            }
+            HStack(spacing: 6) {
+                SecureField(manualPrompt, text: $manualDraft)
+                    .textFieldStyle(.roundedBorder)
+                Button("Save", action: saveManual)
+                    .disabled(manualDraft.isEmpty)
+                if hasManualValue {
+                    Button(role: .destructive, action: clearManual) {
+                        Image(systemName: "trash")
+                    }
+                    .help("Remove pasted cookie")
+                }
+            }
+            if let importStatus {
+                Text(importStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var hasManualValue: Bool {
+        MiscCredentialStore.hasValue(tool: tool, kind: .manualCookieHeader)
+    }
+
+    private var cookieSourceBinding: Binding<ProviderCookieSource> {
+        Binding(
+            get: { settingsStore.settings.miscProvider(tool).cookieSource },
+            set: { newValue in
+                var current = settingsStore.settings.miscProvider(tool)
+                current.cookieSource = newValue
+                settingsStore.settings.setMiscProvider(current, for: tool)
+            }
+        )
+    }
+
+    private func modeLabel(_ mode: ProviderCookieSource) -> String {
+        switch mode {
+        case .auto:   return "Auto"
+        case .manual: return "Manual"
+        case .off:    return "Off"
+        }
+    }
+
+    private func importNow() {
+        importStatus = "Importing…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = MiscCookieResolver.forceBrowserImport(for: spec)
+            DispatchQueue.main.async {
+                if let result {
+                    importStatus = "Imported from \(result.sourceLabel)."
+                    triggerRefresh()
+                } else {
+                    importStatus = "No cookies found. Sign in at the provider in your browser, then retry."
+                }
+            }
+        }
+    }
+
+    private func saveManual() {
+        let trimmed = manualDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let normalised = CookieHeaderNormalizer.filteredHeader(
+            from: trimmed,
+            allowedNames: spec.requiredNames
+        ), !normalised.isEmpty else {
+            importStatus = "No \(spec.requiredNames.joined(separator: ", ")) cookie found in pasted text."
+            return
+        }
+        MiscCredentialStore.writeString(normalised, tool: tool, kind: .manualCookieHeader)
+        CookieHeaderCache.clear(for: tool)
+        importStatus = "Manual cookie saved."
+        manualDraft = ""
+        triggerRefresh()
+    }
+
+    private func clearManual() {
+        MiscCredentialStore.delete(tool: tool, kind: .manualCookieHeader)
+        CookieHeaderCache.clear(for: tool)
+        importStatus = "Manual cookie cleared."
+        triggerRefresh()
+    }
+
+    private func triggerRefresh() {
+        guard let account = environment.account(for: tool) else { return }
+        Task { _ = await quotaService.refresh(account) }
     }
 }
 

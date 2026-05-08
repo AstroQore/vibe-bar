@@ -36,7 +36,9 @@ public final class QuotaService: ObservableObject {
                 .zai: ZaiQuotaAdapter(),
                 .copilot: CopilotQuotaAdapter(),
                 .gemini: GeminiQuotaAdapter(),
-                .alibaba: AlibabaQuotaAdapter()
+                .alibaba: AlibabaQuotaAdapter(),
+                .minimax: MiniMaxQuotaAdapter(),
+                .kimi: KimiQuotaAdapter()
             ],
             mockProvider: mockProvider,
             initialAccountIds: initialAccountIds
