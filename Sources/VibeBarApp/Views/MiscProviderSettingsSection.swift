@@ -63,7 +63,9 @@ struct MiscProviderSettingsSection: View {
                 )
                 EnterpriseHostField(tool: .copilot, prompt: "GitHub Enterprise host (optional, e.g. github.example.com)")
             }
-        case .alibaba, .gemini, .antigravity, .minimax, .kimi, .cursor:
+        case .gemini:
+            GeminiCredentialStatusRow()
+        case .alibaba, .antigravity, .minimax, .kimi, .cursor:
             // Each one gets its own controls as the matching adapter
             // lands on this branch. For now, render the same hint
             // string the user already saw in Phase 4.
@@ -174,6 +176,101 @@ struct ApiKeyField: View {
     private func triggerRefresh() {
         guard let account = environment.account(for: tool) else { return }
         Task { _ = await quotaService.refresh(account) }
+    }
+}
+
+/// Read-only status row for Gemini.
+///
+/// The user authenticates via the `gemini` CLI itself, which writes
+/// `~/.gemini/oauth_creds.json`. Vibe Bar reads that file and pings
+/// `cloudcode-pa.googleapis.com` — there's no value to enter here,
+/// just a status indicator and a "re-check" button.
+struct GeminiCredentialStatusRow: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+    @State private var status: Status = .unknown
+
+    enum Status: Equatable {
+        case unknown
+        case missing
+        case expired
+        case fresh(email: String?, expiresIn: TimeInterval)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            statusBadge
+            Spacer(minLength: 4)
+            Button("Recheck", action: refresh)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .onAppear { reload() }
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch status {
+        case .unknown:
+            Label("Reading ~/.gemini/oauth_creds.json…",
+                  systemImage: "ellipsis.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .missing:
+            Label("Run `gemini` once to sign in. Vibe Bar reads ~/.gemini/oauth_creds.json.",
+                  systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        case .expired:
+            Label("Token expired — run any `gemini` command to refresh.",
+                  systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        case let .fresh(email, expiresIn):
+            VStack(alignment: .leading, spacing: 2) {
+                Label(email ?? "Token loaded.", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Text("Token expires in \(formatRemaining(expiresIn)).")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func reload() {
+        let url = URL(fileURLWithPath: RealHomeDirectory.path)
+            .appendingPathComponent(".gemini/oauth_creds.json")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            status = .missing
+            return
+        }
+        guard let creds = try? GeminiCredentials.load(from: url),
+              let token = creds.accessToken, !token.isEmpty else {
+            status = .missing
+            return
+        }
+        let now = Date()
+        if let expiry = creds.expiry, expiry < now {
+            status = .expired
+            return
+        }
+        let remaining = creds.expiry.map { $0.timeIntervalSince(now) } ?? 0
+        status = .fresh(email: GeminiCredentials.email(from: creds.idToken), expiresIn: remaining)
+    }
+
+    private func refresh() {
+        reload()
+        guard let account = environment.account(for: .gemini) else { return }
+        Task { _ = await quotaService.refresh(account) }
+    }
+
+    private func formatRemaining(_ seconds: TimeInterval) -> String {
+        let abs = max(0, Int(seconds))
+        if abs >= 3600 {
+            return "\(abs / 3600)h \(abs / 60 % 60)m"
+        }
+        return "\(abs / 60)m"
     }
 }
 

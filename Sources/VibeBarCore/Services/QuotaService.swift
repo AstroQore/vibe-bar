@@ -34,7 +34,8 @@ public final class QuotaService: ObservableObject {
                 .codex: CodexQuotaAdapter(),
                 .claude: ClaudeQuotaAdapter(),
                 .zai: ZaiQuotaAdapter(),
-                .copilot: CopilotQuotaAdapter()
+                .copilot: CopilotQuotaAdapter(),
+                .gemini: GeminiQuotaAdapter()
             ],
             mockProvider: mockProvider,
             initialAccountIds: initialAccountIds
