@@ -81,14 +81,25 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
     /// flagged for the caller. The intent is "settings.json must never
     /// hold a secret"; even an honest mistake gets stripped on the way
     /// back in.
+    ///
+    /// Patterns are deliberately specific — substring-matching on
+    /// `cookie` alone would also flag the benign `cookieSource` mode
+    /// field, so we match compound names that strongly imply secret
+    /// payloads (`cookieHeader`, `accessToken`, etc.) instead.
     public static let sensitiveKeyMarkers: [String] = [
         "apikey", "api_key",
-        "cookie",
-        "token",
-        "password",
-        "secret",
-        "session",
-        "auth"
+        "cookieheader", "cookie_header",
+        "manualcookie", "manual_cookie",
+        "importedcookie", "imported_cookie",
+        "accesstoken", "access_token",
+        "refreshtoken", "refresh_token",
+        "bearertoken", "bearer_token",
+        "personalaccesstoken", "personal_access_token",
+        "patkey", "pat_token",
+        "sessionkey", "session_key",
+        "sessiontoken", "session_token",
+        "password", "passwd",
+        "clientsecret", "client_secret"
     ]
 
     public init(from decoder: Decoder) throws {
