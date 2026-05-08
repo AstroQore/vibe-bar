@@ -51,13 +51,19 @@ struct MiscProviderSettingsSection: View {
 
     @ViewBuilder
     private var placeholderRow: some View {
-        // Every provider gets per-auth controls in a follow-up
-        // phase; this row is a clear "not yet implemented" hint
-        // so users can tell the slot is wired even before adapters
-        // land.
-        Text(setupHint)
-            .font(.caption)
-            .foregroundStyle(.tertiary)
+        switch tool {
+        case .zai:
+            ApiKeyField(tool: .zai, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
+        case .alibaba, .gemini, .antigravity, .copilot, .minimax, .kimi, .cursor:
+            // Each one gets its own controls as the matching adapter
+            // lands on this branch. For now, render the same hint
+            // string the user already saw in Phase 4.
+            Text(setupHint)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        case .codex, .claude:
+            EmptyView()
+        }
     }
 
     private var setupHint: String {
@@ -66,7 +72,7 @@ struct MiscProviderSettingsSection: View {
         case .gemini:      return "Reads ~/.gemini/oauth_creds.json (coming soon)."
         case .antigravity: return "Local language-server probe (coming soon)."
         case .copilot:     return "GitHub PAT (coming soon)."
-        case .zai:         return "Z.ai API key (coming soon)."
+        case .zai:         return ""
         case .minimax:     return "Browser cookie auto-import (coming soon)."
         case .kimi:        return "Browser cookie auto-import (coming soon)."
         case .cursor:      return "Browser cookie auto-import (coming soon)."
@@ -84,5 +90,80 @@ struct MiscProviderSettingsSection: View {
                 settingsStore.settings.setMiscProvider(current, for: tool)
             }
         )
+    }
+}
+
+/// Secure-text input for misc-provider API keys / PATs.
+///
+/// Reads/writes through `MiscCredentialStore` (Keychain) — the
+/// pasted value never lands in `~/.vibebar/settings.json`.
+/// On save we trigger a one-shot refresh of the underlying tool so
+/// the misc card flips out of "Set up" state immediately.
+struct ApiKeyField: View {
+    let tool: ToolType
+    let prompt: String
+    let helpText: String
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+    @State private var draft: String = ""
+    @State private var hasStored: Bool = false
+    @State private var saveError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                SecureField(prompt, text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(save)
+                Button("Save", action: save)
+                    .disabled(draft.isEmpty)
+                if hasStored {
+                    Button(role: .destructive, action: clear) {
+                        Image(systemName: "trash")
+                    }
+                    .help("Remove stored \(tool.menuTitle) API key")
+                }
+            }
+            HStack(spacing: 4) {
+                Image(systemName: hasStored ? "checkmark.circle.fill" : "info.circle")
+                    .foregroundStyle(hasStored ? Color.green : Color.secondary)
+                    .font(.caption)
+                Text(hasStored ? "API key saved in Keychain." : helpText)
+                    .font(.caption)
+                    .foregroundStyle(hasStored ? .secondary : .tertiary)
+            }
+            if let saveError {
+                Text(saveError)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .onAppear { hasStored = MiscCredentialStore.hasValue(tool: tool, kind: .apiKey) }
+    }
+
+    private func save() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let ok = MiscCredentialStore.writeString(trimmed, tool: tool, kind: .apiKey)
+        if ok {
+            saveError = nil
+            hasStored = true
+            draft = ""
+            triggerRefresh()
+        } else {
+            saveError = "Could not save to Keychain."
+        }
+    }
+
+    private func clear() {
+        MiscCredentialStore.delete(tool: tool, kind: .apiKey)
+        hasStored = false
+        triggerRefresh()
+    }
+
+    private func triggerRefresh() {
+        guard let account = environment.account(for: tool) else { return }
+        Task { _ = await quotaService.refresh(account) }
     }
 }
