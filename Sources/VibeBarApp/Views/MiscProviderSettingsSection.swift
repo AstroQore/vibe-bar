@@ -54,7 +54,16 @@ struct MiscProviderSettingsSection: View {
         switch tool {
         case .zai:
             ApiKeyField(tool: .zai, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
-        case .alibaba, .gemini, .antigravity, .copilot, .minimax, .kimi, .cursor:
+        case .copilot:
+            VStack(alignment: .leading, spacing: 4) {
+                ApiKeyField(
+                    tool: .copilot,
+                    prompt: "Paste GitHub PAT (ghp_... or github_pat_...)",
+                    helpText: "Needs the read:user + copilot scopes. Stored in macOS Keychain. (Device-flow sign-in coming later.)"
+                )
+                EnterpriseHostField(tool: .copilot, prompt: "GitHub Enterprise host (optional, e.g. github.example.com)")
+            }
+        case .alibaba, .gemini, .antigravity, .minimax, .kimi, .cursor:
             // Each one gets its own controls as the matching adapter
             // lands on this branch. For now, render the same hint
             // string the user already saw in Phase 4.
@@ -165,5 +174,44 @@ struct ApiKeyField: View {
     private func triggerRefresh() {
         guard let account = environment.account(for: tool) else { return }
         Task { _ = await quotaService.refresh(account) }
+    }
+}
+
+/// Plain-text input for `MiscProviderSettings.enterpriseHost`.
+/// Lives in `~/.vibebar/settings.json`; adapters that support a
+/// self-hosted endpoint (Copilot Enterprise, Z.ai self-host) read
+/// it through `AppSettings.miscProvider(...).enterpriseHost`.
+struct EnterpriseHostField: View {
+    let tool: ToolType
+    let prompt: String
+
+    @EnvironmentObject var settingsStore: SettingsStore
+    @State private var draft: String = ""
+
+    var body: some View {
+        HStack(spacing: 6) {
+            TextField(prompt, text: $draft, onCommit: save)
+                .textFieldStyle(.roundedBorder)
+            Button("Save", action: save)
+                .disabled(draft == currentRaw)
+        }
+        .onAppear { draft = currentRaw }
+    }
+
+    private var currentRaw: String {
+        settingsStore.settings.miscProvider(tool).enterpriseHost?.absoluteString ?? ""
+    }
+
+    private func save() {
+        var current = settingsStore.settings.miscProvider(tool)
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            current.enterpriseHost = nil
+        } else if let url = URL(string: trimmed.contains("://") ? trimmed : "https://\(trimmed)") {
+            current.enterpriseHost = url
+        } else {
+            return
+        }
+        settingsStore.settings.setMiscProvider(current, for: tool)
     }
 }
