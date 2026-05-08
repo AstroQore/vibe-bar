@@ -65,6 +65,7 @@ struct PopoverRoot: View {
             case .overview: return .compact
             case .claude:   return .claude
             case .openAI:   return .codex
+            case .misc:     return .compact
             }
         default:
             return kind
@@ -99,6 +100,8 @@ struct PopoverRoot: View {
                 ProviderDetailView(tool: .claude, density: density)
             case .openAI:
                 ProviderDetailView(tool: .codex, density: density)
+            case .misc:
+                MiscProvidersPage(density: density)
             }
         case .codex:
             ProviderDetailView(tool: .codex, density: density)
@@ -112,6 +115,9 @@ struct PopoverRoot: View {
     }
 
     private var headerTitle: String {
+        if kind == .compact, overviewPage == .misc {
+            return "Misc Providers"
+        }
         switch effectiveKind {
         case .compact: return "Overview"
         case .codex:   return "OpenAI"
@@ -121,6 +127,9 @@ struct PopoverRoot: View {
     }
 
     private var headerSubtitle: String? {
+        if kind == .compact, overviewPage == .misc {
+            return "Usage-only · sign in or paste a key"
+        }
         switch effectiveKind {
         case .compact: return "All providers · quota & cost"
         case .codex:   return ToolType.codex.subtitle
@@ -220,6 +229,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
     case overview
     case openAI
     case claude
+    case misc
 
     var id: String { rawValue }
 
@@ -228,6 +238,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .overview: return "Overview"
         case .openAI:   return "OpenAI"
         case .claude:   return "Claude"
+        case .misc:     return "Misc"
         }
     }
 
@@ -236,6 +247,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .overview: return .compact
         case .openAI:   return .codex
         case .claude:   return .claude
+        case .misc:     return .compact
         }
     }
 }
@@ -292,9 +304,19 @@ private struct OverviewSwitchIcon: View {
     let isSelected: Bool
 
     var body: some View {
-        ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 12 : 11)
-            .opacity(isSelected ? 1 : 0.72)
-            .frame(width: 16, height: 14, alignment: .center)
+        Group {
+            if page == .misc {
+                // Misc gets a generic "more" glyph — the misc tab
+                // covers eight providers so no single brand icon is
+                // a fair representative.
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 11, weight: .medium))
+            } else {
+                ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 12 : 11)
+            }
+        }
+        .opacity(isSelected ? 1 : 0.72)
+        .frame(width: 16, height: 14, alignment: .center)
     }
 }
 

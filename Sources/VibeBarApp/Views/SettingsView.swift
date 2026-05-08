@@ -123,6 +123,17 @@ struct SettingsView: View {
                         }
                     }
 
+                    settingsSection("Misc Providers") {
+                        Text("Usage-only integrations. Each provider stays in setup mode until a credential is configured below.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(ToolType.miscProviders, id: \.self) { tool in
+                                MiscProviderSettingsSection(tool: tool)
+                            }
+                        }
+                    }
+
                     settingsSection("System") {
                         Toggle("Launch at login", isOn: launchAtLoginBinding())
                         Text(launchAtLoginStatusText)
