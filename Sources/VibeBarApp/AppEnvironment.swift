@@ -120,15 +120,6 @@ final class AppEnvironment: ObservableObject {
             await costService.refreshAll()
         }
 
-        // First-launch quota refresh. The scheduler's timer doesn't
-        // fire for ~10 minutes after start(), which leaves every misc
-        // card stuck on "Set up" even when credentials ARE present.
-        // Kick the scheduler once at init so the first refresh happens
-        // immediately. Primary providers already had cached snapshots
-        // on disk, so they were unaffected; misc providers don't until
-        // the first successful fetch lands.
-        scheduler.triggerRefresh()
-
         // Push Claude/Codex extras parsed by adapters into CostUsageService.
         service.$lastSuccessByAccount
             .receive(on: RunLoop.main)
