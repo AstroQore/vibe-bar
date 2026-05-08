@@ -14,6 +14,7 @@ struct UsageHeatmapView: View {
 
     private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     @State private var measuredGridWidth: CGFloat = 0
+    @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
@@ -26,6 +27,10 @@ struct UsageHeatmapView: View {
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
                 }
+                SectionRefreshButton(isRefreshing: false) {
+                    environment.refreshCostUsage()
+                }
+                .padding(.leading, 4)
             }
             grid
             HStack(spacing: 6) {

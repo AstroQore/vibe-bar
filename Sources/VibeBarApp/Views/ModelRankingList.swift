@@ -17,6 +17,8 @@ struct ModelRankingList: View {
     /// scope is unambiguous.
     var subtitle: String = "All time"
 
+    @EnvironmentObject var environment: AppEnvironment
+
     init(snapshot: CostSnapshot?, density: Theme.Density, maxHeight: CGFloat = 180, subtitle: String = "All time") {
         self.breakdowns = snapshot?.modelBreakdowns ?? []
         self.density = density
@@ -47,6 +49,10 @@ struct ModelRankingList: View {
                     Text(subtitle)
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
+                    SectionRefreshButton(isRefreshing: false) {
+                        environment.refreshCostUsage()
+                    }
+                    .padding(.leading, 4)
                 }
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 4) {

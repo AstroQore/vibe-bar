@@ -19,7 +19,7 @@ public enum ClaudeWebCookieStore {
 
     public static func candidateCookieHeaders() -> [String] {
         var headers: [String] = []
-        let rawKeychainHeader = try? KeychainStore.readString(service: service, account: account, useDataProtectionKeychain: true)
+        let rawKeychainHeader = readKeychainStringWithLegacyMigration(account: account)
         let keychainHeader = rawKeychainHeader
             .map { normalizedCookieHeader(from: $0) }
             .flatMap { $0.isEmpty ? nil : $0 }
@@ -59,7 +59,7 @@ public enum ClaudeWebCookieStore {
     }
 
     public static func readOrganizationID() -> String? {
-        if let raw = try? KeychainStore.readString(service: service, account: organizationAccount, useDataProtectionKeychain: true),
+        if let raw = readKeychainStringWithLegacyMigration(account: organizationAccount),
            let normalized = normalizedOrganizationID(raw) {
             try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
             return normalized
@@ -70,6 +70,42 @@ public enum ClaudeWebCookieStore {
             return normalized
         }
         return nil
+    }
+
+    /// Read from the data-protection keychain first; on miss, try the
+    /// legacy login keychain for the same `service` / `account` pair
+    /// and migrate the value into data-protection so the next read
+    /// hits cleanly. Mirrors `MiscCredentialStore.readString`'s
+    /// migration. Without this, switching the cookie store to
+    /// data-protection in one commit silently invalidated existing
+    /// Claude sessions written by older builds.
+    private static func readKeychainStringWithLegacyMigration(account: String) -> String? {
+        if let value = try? KeychainStore.readString(
+            service: service,
+            account: account,
+            useDataProtectionKeychain: true
+        ) {
+            return value
+        }
+        guard let legacy = try? KeychainStore.readString(
+            service: service,
+            account: account,
+            useDataProtectionKeychain: false
+        ) else {
+            return nil
+        }
+        _ = try? KeychainStore.writeString(
+            service: service,
+            account: account,
+            value: legacy,
+            useDataProtectionKeychain: true
+        )
+        try? KeychainStore.deleteItem(
+            service: service,
+            account: account,
+            useDataProtectionKeychain: false
+        )
+        return legacy
     }
 
     public static func writeOrganizationID(_ organizationID: String) throws {

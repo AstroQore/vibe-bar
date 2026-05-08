@@ -15,6 +15,7 @@ struct YearlyContributionHeatmapView: View {
     private let cellSpacing: CGFloat = 2
     private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     @State private var measuredGridWidth: CGFloat = 0
+    @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
         // Compute these ONCE per body. `thresholds` does a sort on the year's
@@ -35,6 +36,10 @@ struct YearlyContributionHeatmapView: View {
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
                 }
+                SectionRefreshButton(isRefreshing: false) {
+                    environment.refreshCostUsage()
+                }
+                .padding(.leading, 4)
             }
             GeometryReader { proxy in
                 let liveMetrics = gridMetrics(columnCount: columns.count, measuredWidth: proxy.size.width)

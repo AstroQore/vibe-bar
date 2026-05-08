@@ -13,6 +13,9 @@ struct SubscriptionUtilizationView: View {
     let density: Theme.Density
     let now: Date
 
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
@@ -22,6 +25,9 @@ struct SubscriptionUtilizationView: View {
                 Text(toolDisplayName)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
+                SectionRefreshButton(isRefreshing: isRefreshing) {
+                    environment.refresh(tool)
+                }
             }
             if relevantBuckets.isEmpty {
                 Text("No utilization data — try refreshing.")
@@ -48,6 +54,11 @@ struct SubscriptionUtilizationView: View {
     /// Pick the headline buckets only (no per-model groups).
     private var relevantBuckets: [QuotaBucket] {
         buckets.filter { $0.groupTitle == nil }
+    }
+
+    private var isRefreshing: Bool {
+        guard let id = environment.account(for: tool)?.id else { return false }
+        return quotaService.inFlightAccountIds.contains(id)
     }
 
     @ViewBuilder

@@ -20,6 +20,8 @@ struct CostHistoryView: View {
     @State private var hoveredDay: Date?
     @State private var hoveredHour: Date?
 
+    @EnvironmentObject var environment: AppEnvironment
+
     var body: some View {
         // Hoist the timeframe-derived values once per body. These were
         // previously computed properties that re-filtered & re-reduced the
@@ -41,6 +43,10 @@ struct CostHistoryView: View {
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 CostTimeframeSelector(selection: $timeframe, density: density)
+                SectionRefreshButton(isRefreshing: false) {
+                    environment.refreshCostUsage()
+                }
+                .padding(.leading, 4)
             }
             chart(points: days, hourlyPoints: hourlyPoints, hasHourlyDetail: hasHourlyDetail, average: avg)
             HStack(spacing: 16) {

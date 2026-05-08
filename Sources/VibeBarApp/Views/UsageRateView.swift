@@ -9,6 +9,8 @@ struct UsageRateView: View {
     let heatmap: UsageHeatmap
     let density: Theme.Density
 
+    @EnvironmentObject var environment: AppEnvironment
+
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
@@ -20,6 +22,10 @@ struct UsageRateView: View {
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
                 }
+                SectionRefreshButton(isRefreshing: false) {
+                    environment.refreshCostUsage()
+                }
+                .padding(.leading, 4)
             }
             chart
             Text("Aggregated across all weekdays")
