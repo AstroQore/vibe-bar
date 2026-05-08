@@ -28,4 +28,8 @@ branch first, and release artifacts should be rebuilt from the fixed source.
 - Secrets should stay in Keychain or existing provider credential stores.
 - Derived usage and cost history should stay under `~/.vibebar/`.
 - Logs and diagnostics should be sanitized before they are shared.
-- The macOS app sandbox should remain enabled.
+- Vibe Bar runs without the macOS app sandbox so it can read other
+  browsers' cookies and probe local language servers. This is a
+  conscious trade-off — the project's privacy / least-access
+  expectations still apply: read only what you need, write only under
+  `~/.vibebar/`, and never log raw secrets. See `AGENTS.md` § 6.

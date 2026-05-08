@@ -3,8 +3,7 @@
 This file is the single source of truth for AI coding agents (Claude Code,
 Codex, Cursor, Aider, etc.) working on Vibe Bar. It is **self-contained**:
 an agent with no prior knowledge of this project should be able to read
-it top-to-bottom and end with a working build, a clean PR, and no
-sandbox-related regressions.
+it top-to-bottom and end with a working build and a clean PR.
 
 Humans are welcome here too. The shorter, human-focused version is
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -13,7 +12,7 @@ Humans are welcome here too. The shorter, human-focused version is
 
 | File | Audience | Purpose |
 | --- | --- | --- |
-| [AGENTS.md](AGENTS.md) (this file) | AI agents (and curious humans) | Comprehensive operating manual: orientation, build, conventions, sandbox rule, PR, release. |
+| [AGENTS.md](AGENTS.md) (this file) | AI agents (and curious humans) | Comprehensive operating manual: orientation, build, conventions, home-directory rule, PR, release. |
 | [AGENT-DEPLOY.md](AGENT-DEPLOY.md) | AI agents | Focused "clone → build → smoke-test → optional install" walkthrough. |
 | [AGENT-PR.md](AGENT-PR.md) | AI agents | Focused "branch → verify → push → open PR" walkthrough. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Humans | Short version of this file's project rules. |
@@ -80,7 +79,7 @@ Single SwiftPM package, two product targets and one test target:
 │   └── VibeBarCoreTests/          # `swift test` target (~90 tests)
 ├── Resources/
 │   ├── Info.plist                 # Bundle ID, version, LSUIElement
-│   ├── VibeBar.entitlements       # Sandbox + network + home-relative paths
+│   ├── VibeBar.entitlements       # Empty plist — vibe-bar runs unsandboxed (see § 6)
 │   ├── AppIcon.icns / AppIcon.png
 │   └── README/                    # Screenshots used by README.md
 ├── Scripts/
@@ -195,18 +194,14 @@ codesign -d --entitlements - ".build/Vibe Bar.app"
 codesign --verify --deep --strict ".build/Vibe Bar.app"
 ```
 
-The entitlement output **must** include all of:
-
-- `com.apple.security.app-sandbox`
-- `com.apple.security.network.client`
-- `com.apple.security.temporary-exception.files.home-relative-path.read-only`
-  with at least `/.codex/`, `/.claude/`, `/.config/claude/`.
-- `com.apple.security.temporary-exception.files.home-relative-path.read-write`
-  with at least `/.vibebar/`.
-
-If anything is missing, something in `Resources/VibeBar.entitlements` or
-`Scripts/build_app.sh` has regressed. Stop and surface the regression
-rather than shipping a broken bundle.
+Vibe Bar runs **unsandboxed**. The entitlement output should be an
+empty `<dict/>` plist (see `Resources/VibeBar.entitlements`). It must
+**not** contain `com.apple.security.app-sandbox`. If
+`app-sandbox` reappears in the output, something in
+`Resources/VibeBar.entitlements` or `Scripts/build_app.sh` has
+regressed — stop and surface the regression rather than shipping a
+sandboxed bundle (the misc-providers integration depends on
+non-sandboxed file/process access — see § 6).
 
 ### 4.6 Smoke-test the bundle
 
@@ -217,19 +212,30 @@ open ".build/Vibe Bar.app"
 A menu-bar item should appear on the right of the macOS menu bar. If
 macOS reports the bundle as damaged, see **§ 10. Common Build/Run Failures**.
 
-After it launches, confirm no shadow state tree appeared in the sandbox
-container:
+After it launches, confirm the sandbox container is **not** being
+created:
 
 ```sh
-ls ~/Library/Containers/com.astroqore.VibeBar/Data/
+ls ~/Library/Containers/com.astroqore.VibeBar/Data/ 2>&1
 ```
 
-The container should contain only `Library/`, `tmp/`, `SystemData/`, and
-the standard `Desktop` / `Documents` / `Downloads` / `Movies` / `Music`
-/ `Pictures` symlinks. Anything else (e.g. a parallel `.codex/`,
-`.claude/`, or `.vibebar/` inside the container) means a call site is
-still using a sandbox-rewritten home API. See **§ 6. Sandbox & Home
-Directory**.
+This should error with `No such file or directory` because the app
+runs unsandboxed. If the directory does exist and contains any
+real-home contents (e.g. a parallel `.codex/`, `.claude/`, or
+`.vibebar/`), a previous sandboxed build left it behind — delete it:
+
+```sh
+rm -rf ~/Library/Containers/com.astroqore.VibeBar/
+```
+
+Confirm the real persistence root is healthy:
+
+```sh
+ls -la ~/.vibebar/
+```
+
+The directory should hold the regular `settings.json`, `quotas/`,
+`cost_history.json`, etc. See **§ 6. Home Directory** for the rationale.
 
 ### 4.7 Offer to install into `/Applications`
 
@@ -291,68 +297,78 @@ organization ID — those are not in `~/.vibebar/`. The app reads (never
 writes) Codex and Claude CLI credential files and their session JSONL
 logs. Treat those as read-only inputs.
 
-## 6. Sandbox & Home Directory (CRITICAL — this has bitten us three times now)
+## 6. Home Directory (and why we no longer sandbox)
 
-Vibe Bar is a sandboxed app, and sandboxed macOS apps have **two
-different "home directories"**. Confusing them is how the app silently
-turns into a fresh-install lookalike — Codex and Claude show as logged
-out, the cost/usage panels go blank, mini-window geometry and settings
-roll back to defaults, all while the real `~/.codex/`, `~/.claude/`,
-and `~/.vibebar/` are right there on disk and untouched.
+Vibe Bar runs **unsandboxed**. Every Foundation home API returns the
+real `/Users/<you>` directly. The earlier sandboxed builds had a
+silent failure mode — `NSHomeDirectory()` and friends returned the
+container path, the app would write to a shadow tree, and Codex /
+Claude would show as logged out — that no longer applies once the
+sandbox is off.
 
-**Almost every Foundation home API returns the container path when
-the app is sandboxed. Apple's docs do not make this clear — assume
-nothing, measure.** The probe `AppDelegate` ran on macOS 26 (Tahoe)
-inside this exact bundle reported:
+### 6.1 Why the sandbox is off
 
-| API                                                | Returned in our sandbox                                           |
-| -------------------------------------------------- | ----------------------------------------------------------------- |
-| `NSHomeDirectory()`                                | `~/Library/Containers/com.astroqore.VibeBar/Data` (container)     |
-| `FileManager.default.homeDirectoryForCurrentUser`  | container                                                         |
-| `URL.homeDirectory` (macOS 13+)                    | container                                                         |
-| `NSHomeDirectoryForUser(NSUserName())`             | container *(despite Apple docs implying real home)*               |
-| `ProcessInfo.processInfo.environment["HOME"]`      | container                                                         |
-| `getpwuid(getuid()).pointee.pw_dir`                | `/Users/<you>` (the **real** home) ✓                              |
+The misc-providers feature (see § 12 below) needs:
 
-Only `getpwuid` survives the redirect, because passwd lookups go
-through an XPC service that doesn't apply the sandbox `HOME` rewrite.
-This is what `Sources/VibeBarCore/Utilities/RealHomeDirectory.swift`
-uses. **Do not "simplify" it to `NSHomeDirectoryForUser` — that breaks
-the app silently.** If you doubt it, run the probe again: the snippet
-in the AppDelegate git history (`git log -p -- Sources/VibeBarApp/AppDelegate.swift`)
-writes a one-shot diagnostic to `NSTemporaryDirectory()/vibebar_probe.log`.
+- to read other browsers' cookie SQLite databases from
+  `~/Library/Application Support/...` and decrypt them via the
+  Keychain "Chrome Safe Storage" entry;
+- to spawn `lsof -p <pid>` and parse another process's command line,
+  so we can find the AntiGravity language-server port and CSRF token.
 
-The temp-exception entitlements in `Resources/VibeBar.entitlements`
-(`/.codex/`, `/.claude/`, `/.config/claude/`, `/.vibebar/`) grant
-**permission** to read/write the real-home paths. They are not a path
-redirect. If the code asks for `homeDirectoryForCurrentUser/.codex/...`,
-sandbox happily resolves that to `~/Library/Containers/.../Data/.codex/`,
-which doesn't exist, and you get "no credential found." The entitlement
-does not save you.
+Both capabilities are blocked by `com.apple.security.app-sandbox`
+even with file-access exceptions; the Keychain is identity-scoped and
+the process introspection requires entitlements Apple does not
+publicly grant. Codexbar (the reference project) explicitly drops the
+sandbox for the same reasons. Vibe Bar follows suit.
 
-### 6.1 How to recognize the regression
+`Resources/VibeBar.entitlements` is therefore an empty `<dict/>`
+plist. The trade-offs:
 
-- Codex card says logged out / blank quota even though
-  `~/.codex/auth.json` is on disk.
-- Claude card behaves the same way despite `~/.claude/.credentials.json`.
-- Cost / token totals are zero; "0 sessions found"; heatmaps are empty.
-- Mini-window position, settings, and recent-data feel reset.
-- Smoking gun: both `~/.vibebar/` and
-  `~/Library/Containers/com.astroqore.VibeBar/Data/.vibebar/` exist, and
-  the container copy is the small/empty one — the app is reading and
-  writing the container while ignoring the real home.
+- **No Mac App Store distribution.** Vibe Bar is source-distributed
+  today and was never on MAS, so this is a no-op.
+- **Wider local file access.** Vibe Bar can technically read anything
+  the user can read. The privacy rules (§ 8) and `SafeLog` /
+  `EmailMasker` discipline still apply — *don't* abuse this.
+- **Re-enabling the sandbox is a one-PR change.** If a future
+  requirement (e.g. someone wants a sandboxed fork for MAS) makes
+  this worthwhile, restore the sandbox key + the four
+  home-relative-path exceptions to `VibeBar.entitlements`, drop the
+  misc-providers' browser-cookie and AntiGravity-probe paths, and
+  re-introduce the regression checks below.
 
-### 6.2 The rule
+### 6.2 Why `RealHomeDirectory` still exists
 
-- Any path under the **real** user home — `~/.codex/`, `~/.claude/`,
-  `~/.config/claude/`, and `~/.vibebar/` itself — must resolve home
-  through `RealHomeDirectory` (which calls
-  `getpwuid(getuid()).pointee.pw_dir` internally). Never
-  `NSHomeDirectory()`, `FileManager.default.homeDirectoryForCurrentUser`,
-  `NSHomeDirectoryForUser`, `URL.homeDirectory`, or `getenv("HOME")` —
-  every one of those is rewritten by the sandbox.
-- The helper lives at `Sources/VibeBarCore/Utilities/RealHomeDirectory.swift`.
-  One helper is the only way to keep the next refactor honest.
+`Sources/VibeBarCore/Utilities/RealHomeDirectory.swift` is the
+canonical entry point for any path under the real user home —
+`~/.codex/`, `~/.claude/`, `~/.config/claude/`, `~/.vibebar/`,
+`~/.gemini/`. Without the sandbox it is functionally equivalent to
+`NSHomeDirectory()`, but keeping every call site routed through one
+helper means re-enabling the sandbox later (or porting to a sandboxed
+fork) does not require auditing every credential read again.
+
+The empirical probe table that justified the helper originally is
+preserved in case the sandbox returns:
+
+| API                                                | Returned (sandboxed) | Returned (unsandboxed) |
+| -------------------------------------------------- | -------------------- | ---------------------- |
+| `NSHomeDirectory()`                                | container            | `/Users/<you>`         |
+| `FileManager.default.homeDirectoryForCurrentUser`  | container            | `/Users/<you>`         |
+| `URL.homeDirectory` (macOS 13+)                    | container            | `/Users/<you>`         |
+| `NSHomeDirectoryForUser(NSUserName())`             | container            | `/Users/<you>`         |
+| `ProcessInfo.processInfo.environment["HOME"]`      | container            | `/Users/<you>`         |
+| `getpwuid(getuid()).pointee.pw_dir`                | `/Users/<you>` ✓     | `/Users/<you>` ✓       |
+
+Only `getpwuid` was correct in both regimes; that is what
+`RealHomeDirectory` uses. Do not "simplify" it to one of the others.
+
+### 6.3 The rule
+
+- Any path under the user's real home goes through
+  `RealHomeDirectory`. Don't reach for `NSHomeDirectory()`,
+  `FileManager.default.homeDirectoryForCurrentUser`,
+  `NSHomeDirectoryForUser`, `URL.homeDirectory`, or
+  `getenv("HOME")` in product code.
 - Before you commit, grep:
 
   ```sh
@@ -360,48 +376,26 @@ does not save you.
   ```
 
   Every hit must either be inside `RealHomeDirectory` itself, an
-  explicit "scratch lives in the sandbox" call site (e.g.
-  `NSTemporaryDirectory()` for sandboxed scratch is fine), or a
-  `homeDirectory:` test parameter. New hits in product code are bugs.
+  explicit "scratch lives in tmp" call site
+  (`NSTemporaryDirectory()` is fine), or a `homeDirectory:` test
+  parameter.
 - After `./Scripts/build_app.sh release` and a real run, confirm the
-  app did not silently create a parallel state tree:
+  sandbox container is not being created:
 
   ```sh
-  ls ~/Library/Containers/com.astroqore.VibeBar/Data/
+  ls ~/Library/Containers/com.astroqore.VibeBar/Data/ 2>&1
   ```
 
-  Anything other than `Library/`, `tmp/`, `SystemData/`, and the
-  symlinks for Desktop/Documents/Downloads/Movies/Music/Pictures means
-  some call site is still using the container-home API. Fix it; do not
-  ship.
-
-### 6.3 Adding a new path under real home
-
-1. Add the path (with leading slash, e.g. `/.foo/`) to the matching
-   `temporary-exception.files.home-relative-path.read-only` or
-   `…read-write` array in `Resources/VibeBar.entitlements`.
-2. Use the real-home helper to construct the URL.
-3. `./Scripts/build_app.sh release`, then `codesign -d --entitlements -`
-   on the bundle to confirm the new path made it in.
-4. Run the app; check no shadow directory appeared inside
-   `~/Library/Containers/com.astroqore.VibeBar/Data/`.
+  This should error with `No such file or directory`. If it exists,
+  a previous sandboxed build left it behind — delete with
+  `rm -rf ~/Library/Containers/com.astroqore.VibeBar/`.
 
 ### 6.4 `homeDirectory:` parameters in `CostUsageService` / `CostUsageScanner` / `CostUsageScanCache`
 
 These exist for **test isolation only** — tests pass a synthetic
-temp directory so fixtures land somewhere disposable. The default value
-(`= NSHomeDirectory()`) is exactly the bug surface above. Do not delete
-the parameter; replace the default with the real-home helper. Tests
-keep working because they pass an explicit value.
-
-### 6.5 Why this keeps coming back
-
-The entitlement file looks "right" (it lists every path the app needs)
-and a casual review of the code looks "right" too (it asks for
-`~/.foo`). Both halves are individually reasonable; only the
-combination is wrong, and the failure mode is silent — the app runs,
-the popover renders, just with empty data. That's why this needs a
-written rule with a grep recipe, not vibes.
+temp directory so fixtures land somewhere disposable. The default
+value should still be the real-home helper, not `NSHomeDirectory()`.
+Tests keep working because they pass an explicit value.
 
 ## 7. Code Conventions
 
@@ -415,9 +409,11 @@ written rule with a grep recipe, not vibes.
   through `VibeBarLocalStore` and live under `~/.vibebar/`.
 - **Privacy logging.** Never `print` raw tokens, cookies, JWT payloads,
   or email addresses. Use `SafeLog.sanitize` and `EmailMasker`. The app
-  is sandboxed (`Resources/VibeBar.entitlements`) — keep it that way; if
-  you need a new file path, add it to the temporary-exception list,
-  don't drop the sandbox.
+  runs unsandboxed (see § 6) — that is *not* a license to read or write
+  anything you feel like. Treat the user's filesystem with the same
+  discipline a sandboxed app would: read only the credential / cookie /
+  config files you actually need, never write outside `~/.vibebar/`,
+  and never log raw secrets.
 - **Performance.** Avoid `TimelineView(.periodic(...))` in deep view
   trees that may be eagerly instantiated; prefer scoping to the visible
   surface. The mini window's screen position is persisted to its own
@@ -441,8 +437,12 @@ What is **not** allowed in any commit:
   output. Use `/Users/example/...` and synthetic JWTs.
 - Logging raw credentials or email addresses. Route through
   `SafeLog.sanitize` and `EmailMasker`.
-- Dropping the app sandbox in `Resources/VibeBar.entitlements`. If you
-  need new file access, add a narrow temporary exception.
+- Re-enabling the app sandbox in `Resources/VibeBar.entitlements`
+  *without coordinating the misc-providers feature first*. Vibe Bar is
+  unsandboxed on purpose (see § 6) so the browser-cookie importer and
+  AntiGravity local probe can work. If you genuinely need the sandbox
+  back (e.g. for a MAS fork), pair the entitlement change with a
+  documented deprecation of those features.
 
 That is a source-content rule. It applies to what you commit, not to
 who you commit as.
@@ -515,7 +515,7 @@ EOF
 | `swift build`                                                 | Compiles cleanly under Swift 6.2 / macOS 26.                  |
 | `swift test`                                                  | Core logic regressions are blocked.                           |
 | `./Scripts/build_app.sh release`                              | The user-facing bundle still assembles.                       |
-| `codesign -d --entitlements - ".build/Vibe Bar.app"`          | Sandbox + network + home-relative entitlements still present. |
+| `codesign -d --entitlements - ".build/Vibe Bar.app"`          | Entitlements plist is empty (no `app-sandbox`) — see § 6.    |
 
 If you cannot run one of these (no macOS host, no Xcode, etc.), say so
 explicitly in the PR description instead of skipping the checkbox.
@@ -566,10 +566,13 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
   `Tests/VibeBarCoreTests/Fixtures/`. They use `/Users/example/...`
   paths on purpose; do not "fix" them to your own home path.
 - **The `.app` launches but Codex/Claude show as logged out and all
-  numbers are zero** — the build is reading from the sandbox container
-  home instead of the real user home. See **§ 6. Sandbox & Home
-  Directory** for the rule and the grep recipe to find the offending
-  call site.
+  numbers are zero** — usually a leftover sandbox container from an
+  older build is intercepting reads. Confirm with
+  `ls ~/Library/Containers/com.astroqore.VibeBar/Data/ 2>&1`; if the
+  directory exists, `rm -rf ~/Library/Containers/com.astroqore.VibeBar/`
+  and relaunch. If the symptom persists, see **§ 6. Home Directory**
+  for the grep recipe to confirm every call site uses
+  `RealHomeDirectory`.
 
 ## 11. Implementation Rules That Have Bitten
 
@@ -593,7 +596,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
   `CFBundleShortVersionString` and `CFBundleVersion` in
   `Resources/Info.plist` for a new release.
 - Confirm `Resources/VibeBar.entitlements` still matches the rule in
-  **§ 4.5** (sandbox + network.client + home-relative paths).
+  **§ 4.5** — empty `<dict/>`, no `app-sandbox` key.
 - Run **§ 4.3 – § 4.6** before tagging or announcing a release.
 - The license is AGPL-3.0-only; don't relicense without an explicit
   board decision.
@@ -605,9 +608,10 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 - The license. AGPL-3.0-only is a board decision, not a code style
   choice.
 - The bundle ID `com.astroqore.VibeBar`.
-- The sandbox state in `Resources/VibeBar.entitlements`. If a file path
-  needs new access, add a narrow temporary exception, do not drop the
-  sandbox.
+- The sandbox state in `Resources/VibeBar.entitlements`. The plist is
+  intentionally empty (see § 6) so the misc-providers feature can read
+  browser cookies and probe AntiGravity. Don't re-add
+  `app-sandbox` without first coordinating those features.
 - The persistence root `~/.vibebar/`. New persistent state goes through
   `VibeBarLocalStore`.
 

@@ -119,18 +119,13 @@ space).
 codesign -d --entitlements - ".build/Vibe Bar.app"
 ```
 
-The output must include all of:
-
-- `com.apple.security.app-sandbox`
-- `com.apple.security.network.client`
-- `com.apple.security.temporary-exception.files.home-relative-path.read-only`
-  with at least `/.codex/`, `/.claude/`, `/.config/claude/`.
-- `com.apple.security.temporary-exception.files.home-relative-path.read-write`
-  with at least `/.vibebar/`.
-
-If anything is missing, something in `Resources/VibeBar.entitlements` or
-`Scripts/build_app.sh` has regressed. Stop and surface the regression
-rather than shipping a broken bundle.
+Vibe Bar runs **unsandboxed**. The output should be an empty
+`<dict/>` plist (see `Resources/VibeBar.entitlements`) and must **not**
+contain `com.apple.security.app-sandbox`. If `app-sandbox` reappears,
+something in `Resources/VibeBar.entitlements` or `Scripts/build_app.sh`
+has regressed — stop and surface the regression rather than shipping
+a sandboxed bundle (the misc-providers integration depends on
+non-sandboxed file/process access).
 
 ### 6. Launch the app for a smoke test
 
@@ -244,19 +239,22 @@ their session JSONL logs. Treat those as read-only inputs.
   `Tests/VibeBarCoreTests/Fixtures/`. They use `/Users/example/...`
   paths on purpose; do not "fix" them to your own home path.
 - **The `.app` launches but Codex/Claude show as logged out and all
-  numbers are zero** — the build is reading from the sandbox container
-  home instead of the real user home. See `AGENTS.md` →
-  "Sandbox & home directory" for the rule and the grep recipe to find
-  the offending call site.
+  numbers are zero** — usually a leftover sandbox container from an
+  older build is intercepting reads. Confirm with
+  `ls ~/Library/Containers/com.astroqore.VibeBar/Data/ 2>&1`; if the
+  directory exists, `rm -rf ~/Library/Containers/com.astroqore.VibeBar/`
+  and relaunch. See `AGENTS.md` → "Home Directory" for the grep
+  recipe.
 
 ## What you should not change without explicit instruction
 
 - The license. AGPL-3.0-only is a board decision, not a code style
   choice.
 - The bundle ID `com.astroqore.VibeBar`.
-- The sandbox state in `Resources/VibeBar.entitlements`. If a file path
-  needs new access, add a narrow temporary exception, do not drop the
-  sandbox.
+- The sandbox state in `Resources/VibeBar.entitlements`. The plist is
+  intentionally empty so the misc-providers feature can read browser
+  cookies and probe AntiGravity. Don't re-add `app-sandbox` without
+  coordinating those features.
 - The persistence root `~/.vibebar/`. New persistent state goes through
   `VibeBarLocalStore`.
 

@@ -35,8 +35,10 @@ swift test
 codesign -d --entitlements - ".build/Vibe Bar.app"
 ```
 
-The codesign output should still include the app sandbox, network client access,
-and home-relative-path entitlements used by the app.
+Vibe Bar runs **unsandboxed** so the misc-providers feature can read
+browser cookies and probe AntiGravity. The codesign output should be
+an empty `<dict/>` plist with no `com.apple.security.app-sandbox` key.
+See `AGENTS.md` § 6 for the full reasoning.
 
 ## Privacy Rules
 
@@ -48,8 +50,10 @@ and home-relative-path entitlements used by the app.
   `EmailMasker`.
 - New persistent state should go through `VibeBarLocalStore` and live under
   `~/.vibebar/`.
-- Keep the app sandboxed. Add narrow temporary exceptions only when they are
-  required for a specific file access path.
+- Vibe Bar runs unsandboxed by design (see `AGENTS.md` § 6), but treat
+  the user's filesystem with the same discipline a sandboxed app would:
+  read only the credential / cookie / config files you actually need,
+  never write outside `~/.vibebar/`, and never log raw secrets.
 
 ## Implementation Notes
 

@@ -97,7 +97,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 | `swift build`                                                 | Compiles cleanly under Swift 6.2 / macOS 26.      |
 | `swift test`                                                  | Core logic regressions are blocked.               |
 | `./Scripts/build_app.sh release`                              | The user-facing bundle still assembles.           |
-| `codesign -d --entitlements - ".build/Vibe Bar.app"`          | Sandbox + network + home-relative entitlements still present. |
+| `codesign -d --entitlements - ".build/Vibe Bar.app"`          | Entitlements plist is empty — vibe-bar runs unsandboxed.       |
 
 If you cannot run one of these (no macOS host, no Xcode, etc.), say so
 explicitly in the PR description instead of skipping the checkbox.
@@ -114,8 +114,10 @@ as.
   output. Use `/Users/example/...` and synthetic JWTs.
 - Logging raw credentials or email addresses. Route through
   `SafeLog.sanitize` and `EmailMasker`.
-- Dropping the app sandbox in `Resources/VibeBar.entitlements`. If you
-  need new file access, add a narrow temporary exception.
+- Re-enabling the app sandbox in `Resources/VibeBar.entitlements`
+  without first coordinating the misc-providers feature. Vibe Bar is
+  unsandboxed on purpose so the browser-cookie importer and
+  AntiGravity local probe can work — see `AGENTS.md` § 6.
 - Folding `mini_window_geometry.json` back into `AppSettings`. The split
   is intentional — every settings write fans out to every Combine
   subscriber.

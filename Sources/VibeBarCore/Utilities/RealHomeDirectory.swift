@@ -1,26 +1,21 @@
 import Darwin
 import Foundation
 
-/// Resolves the *real* user home directory, even when the app is sandboxed.
+/// Resolves the user's real home directory.
 ///
-/// Inside the macOS app sandbox, every Foundation "home" API returns the
-/// container path (`~/Library/Containers/<bundle-id>/Data`):
-/// `NSHomeDirectory()`, `FileManager.default.homeDirectoryForCurrentUser`,
-/// and — despite Apple's docs implying otherwise — `NSHomeDirectoryForUser`.
-/// The `HOME` environment variable is also rewritten to the container.
-/// Only `getpwuid(getuid()).pw_dir` is left untouched, because passwd
-/// lookups go through an XPC service that does not honor the sandbox
-/// home redirect.
+/// Vibe Bar runs unsandboxed today (see AGENTS.md § 6), so every
+/// Foundation "home" API returns `/Users/<you>` directly. This helper
+/// is therefore functionally equivalent to `NSHomeDirectory()` in the
+/// current build — but it is kept as the canonical entry point for
+/// every real-home read so re-enabling the sandbox later (or porting
+/// to a sandboxed fork) does not require auditing every credential
+/// path again.
 ///
-/// The temp-exception `home-relative-path` entitlements in
-/// `Resources/VibeBar.entitlements` grant *permission* to read/write
-/// real-home subpaths like `~/.codex/`, `~/.claude/`, `~/.config/claude/`,
-/// and `~/.vibebar/`. They do not redirect path resolution — the code
-/// has to pass the real absolute path to Foundation. This helper is the
-/// single place that knows how.
-///
-/// See AGENTS.md → "Sandbox & home directory" for the full rule and the
-/// diagnostic for spotting the regression.
+/// The implementation uses `getpwuid(getuid()).pw_dir`, which is the
+/// only Foundation-adjacent API that returned the real home even in
+/// the previous sandboxed builds. The empirical probe table that
+/// justified the choice is preserved in AGENTS.md § 6.2 in case the
+/// sandbox returns.
 public enum RealHomeDirectory {
     public static var path: String {
         if let pw = getpwuid(getuid()) {
