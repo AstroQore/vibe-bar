@@ -53,7 +53,12 @@ final class ServiceStatusController: ObservableObject {
         refreshTask = Task { [weak self] in
             guard let self else { return }
             await withTaskGroup(of: Void.self) { group in
-                for tool in ToolType.allCases {
+                // Misc providers don't expose Atlassian-style status
+                // feeds — `tool.supportsStatusPage` is false for all
+                // of them, and the underlying `ServiceStatusClient.fetch`
+                // returns an empty placeholder rather than hitting a
+                // URL. Skip them up-front to avoid wasted task creation.
+                for tool in ToolType.allCases where tool.supportsStatusPage {
                     group.addTask { @MainActor [weak self] in
                         await self?.refresh(tool)
                     }

@@ -47,7 +47,10 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(ToolType.allCases, id: \.self) { tool in
+                            // Plan badges only meaningful for primary
+                            // providers (Codex, Claude). Misc providers
+                            // expose their plan inline on the misc card.
+                            ForEach(ToolType.primaryProviders, id: \.self) { tool in
                                 providerBadgeRow(tool)
                             }
                         }

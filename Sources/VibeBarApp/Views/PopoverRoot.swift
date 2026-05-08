@@ -105,7 +105,9 @@ struct PopoverRoot: View {
         case .claude:
             ProviderDetailView(tool: .claude, density: density)
         case .status:
-            ServiceStatusCard(tools: ToolType.allCases)
+            // Status card only renders providers that actually publish
+            // an Atlassian-style status feed — misc providers don't.
+            ServiceStatusCard(tools: ToolType.primaryProviders)
         }
     }
 
@@ -142,8 +144,14 @@ struct PopoverRoot: View {
     }
 
     private var visibleTools: [ToolType] {
+        // Header timestamps and refresh state aggregate the providers
+        // visible in the current popover. Overview and Status both
+        // currently surface only primary providers (the misc page is
+        // a sub-tab inside Overview, with its own refresh wiring once
+        // it lands). Restrict to primary providers so we don't include
+        // misc accounts the user can't see.
         switch effectiveKind {
-        case .compact, .status: return ToolType.allCases
+        case .compact, .status: return ToolType.primaryProviders
         case .codex:            return [.codex]
         case .claude:           return [.claude]
         }
@@ -306,7 +314,7 @@ private struct OverviewWaterfall: View {
     @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
-        let snapshots = ToolType.allCases.compactMap { environment.costService.snapshot(for: $0) }
+        let snapshots = ToolType.primaryProviders.compactMap { environment.costService.snapshot(for: $0) }
         let combinedHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let combinedHeatmap = CostSnapshotAggregator.combinedHeatmap(snapshots)
         let combinedModels = CostSnapshotAggregator.combinedModelBreakdowns(snapshots)
@@ -321,10 +329,8 @@ private struct OverviewWaterfall: View {
             ) {
                 ProviderQuotaCard(tool: .codex, density: density, compact: false)
                 ProviderQuotaCard(tool: .claude, density: density, compact: false)
-                ForEach(ToolType.allCases, id: \.self) { tool in
-                    if tool.supportsTokenCost {
-                        OverviewCostCard(tool: tool, density: density)
-                    }
+                ForEach(ToolType.primaryProviders, id: \.self) { tool in
+                    OverviewCostCard(tool: tool, density: density)
                 }
                 if hasCostData {
                     ModelRankingList(
@@ -364,7 +370,7 @@ private struct CombinedTotalsRow: View {
     private let summaryHeight: CGFloat = 134
 
     var body: some View {
-        let snapshots = ToolType.allCases.compactMap { environment.costService.snapshot(for: $0) }
+        let snapshots = ToolType.primaryProviders.compactMap { environment.costService.snapshot(for: $0) }
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
         let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
         let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
@@ -496,7 +502,9 @@ private struct OverviewStatusSummaryCard: View {
                 .disabled(!serviceStatus.inFlight.isEmpty)
             }
             HStack(spacing: 8) {
-                ForEach(ToolType.allCases, id: \.self) { tool in
+                // Only providers with an Atlassian-style status feed
+                // belong here — misc providers don't publish one.
+                ForEach(ToolType.primaryProviders, id: \.self) { tool in
                     providerStatusTile(tool)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

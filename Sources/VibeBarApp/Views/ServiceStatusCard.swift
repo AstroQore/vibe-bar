@@ -8,8 +8,12 @@ struct ServiceStatusCard: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
-    init(tools: [ToolType] = ToolType.allCases) {
-        self.tools = tools
+    init(tools: [ToolType] = ToolType.allCases.filter(\.supportsStatusPage)) {
+        // Misc providers don't expose Atlassian-style status pages, so
+        // they never belong in this card. Default to the providers
+        // that actually publish a status feed; callers can still pass
+        // an explicit subset (e.g. just `.codex` or `.claude`).
+        self.tools = tools.filter(\.supportsStatusPage)
     }
 
     var body: some View {

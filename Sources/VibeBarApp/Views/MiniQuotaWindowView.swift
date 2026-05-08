@@ -15,7 +15,10 @@ struct MiniQuotaWindowView: View {
 
     var body: some View {
         let contentByTool = miniContentByTool
-        let visibleTools = ToolType.allCases.filter { tool in
+        // Mini window only surfaces primary providers — misc cards
+        // live on the Misc tab inside the Overview popover, not in
+        // this floating panel.
+        let visibleTools = ToolType.primaryProviders.filter { tool in
             contentByTool[tool]?.isEmpty == false
         }
         let displayMode = settingsStore.settings.miniWindow.displayMode
@@ -51,7 +54,7 @@ struct MiniQuotaWindowView: View {
         let selected = mini.fieldIds(for: mini.displayMode)
         let selectedFieldIds = Set(selected)
         var contentByTool: [ToolType: MiniToolContent] = [:]
-        for tool in ToolType.allCases {
+        for tool in ToolType.primaryProviders {
             var cells: [MiniCell] = []
             for fieldId in selected {
                 guard
