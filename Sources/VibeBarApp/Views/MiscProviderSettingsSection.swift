@@ -93,12 +93,7 @@ struct MiscProviderSettingsSection: View {
                 manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
             )
         case .antigravity:
-            // Each one gets its own controls as the matching adapter
-            // lands on this branch. For now, render the same hint
-            // string the user already saw in Phase 4.
-            Text(setupHint)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            AntigravityStatusRow()
         case .codex, .claude:
             EmptyView()
         }
@@ -298,6 +293,35 @@ struct GeminiCredentialStatusRow: View {
             return "\(abs / 3600)h \(abs / 60 % 60)m"
         }
         return "\(abs / 60)m"
+    }
+}
+
+/// AntiGravity has no remote credential — it talks to a locally
+/// running language server. The settings row is a tiny status
+/// indicator + manual refresh; the real action happens on the misc
+/// card itself.
+struct AntigravityStatusRow: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+            Text("Reads the locally running language_server_macos process. Open AntiGravity, then refresh.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 4)
+            Button("Probe", action: probe)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+    }
+
+    private func probe() {
+        guard let account = environment.account(for: .antigravity) else { return }
+        Task { _ = await quotaService.refresh(account) }
     }
 }
 
