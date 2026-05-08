@@ -65,7 +65,16 @@ struct MiscProviderSettingsSection: View {
             }
         case .gemini:
             GeminiCredentialStatusRow()
-        case .alibaba, .antigravity, .minimax, .kimi, .cursor:
+        case .alibaba:
+            VStack(alignment: .leading, spacing: 4) {
+                ApiKeyField(
+                    tool: .alibaba,
+                    prompt: "Paste DashScope API key (sk-...)",
+                    helpText: "Find it at bailian.console.aliyun.com → API-KEY. Stored in macOS Keychain. (Console-cookie fallback coming later.)"
+                )
+                AlibabaRegionPicker()
+            }
+        case .antigravity, .minimax, .kimi, .cursor:
             // Each one gets its own controls as the matching adapter
             // lands on this branch. For now, render the same hint
             // string the user already saw in Phase 4.
@@ -271,6 +280,51 @@ struct GeminiCredentialStatusRow: View {
             return "\(abs / 3600)h \(abs / 60 % 60)m"
         }
         return "\(abs / 60)m"
+    }
+}
+
+/// Region picker for Alibaba — international (ap-southeast-1) vs.
+/// china-mainland (cn-beijing). "Auto" lets the adapter try both
+/// in order on each refresh.
+struct AlibabaRegionPicker: View {
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    enum Choice: String, CaseIterable, Identifiable {
+        case auto = ""
+        case international = "ap-southeast-1"
+        case chinaMainland = "cn-beijing"
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .auto:           return "Auto (try both)"
+            case .international:  return "International (ap-southeast-1)"
+            case .chinaMainland:  return "China mainland (cn-beijing)"
+            }
+        }
+    }
+
+    var body: some View {
+        Picker("Region", selection: choiceBinding) {
+            ForEach(Choice.allCases) { choice in
+                Text(choice.label).tag(choice)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var choiceBinding: Binding<Choice> {
+        Binding(
+            get: {
+                let raw = settingsStore.settings.miscProvider(.alibaba).region ?? ""
+                return Choice(rawValue: raw) ?? .auto
+            },
+            set: { newValue in
+                var current = settingsStore.settings.miscProvider(.alibaba)
+                current.region = newValue == .auto ? nil : newValue.rawValue
+                settingsStore.settings.setMiscProvider(current, for: .alibaba)
+            }
+        )
     }
 }
 
