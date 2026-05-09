@@ -75,6 +75,17 @@ public enum KeychainStore {
         account: String?,
         useDataProtectionKeychain: Bool
     ) throws -> Data {
+        if !useDataProtectionKeychain {
+            let state = try existingLoginKeychainItemState(
+                service: service,
+                account: account,
+                useDataProtectionKeychain: false
+            )
+            if state == .missing {
+                throw KeychainError.itemNotFound
+            }
+        }
+
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -89,7 +100,7 @@ public enum KeychainStore {
         } else {
             query[kSecMatchLimit as String] = kSecMatchLimitAll
         }
-        KeychainNoUIQuery.apply(to: &query)
+        KeychainNoUIQuery.apply(to: &query, uiPolicy: .skip)
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -137,6 +148,35 @@ public enum KeychainStore {
         return s
     }
 
+    public static func readDataFromDataProtectionKeychainOnly(
+        service: String,
+        account: String? = nil
+    ) throws -> Data {
+        do {
+            return try readDataOnce(
+                service: service,
+                account: account,
+                useDataProtectionKeychain: true
+            )
+        } catch KeychainError.unhandledStatus(let status) where status == missingEntitlementStatus {
+            throw KeychainError.itemNotFound
+        }
+    }
+
+    public static func readStringFromDataProtectionKeychainOnly(
+        service: String,
+        account: String? = nil
+    ) throws -> String {
+        let data = try readDataFromDataProtectionKeychainOnly(
+            service: service,
+            account: account
+        )
+        guard let s = String(data: data, encoding: .utf8) else {
+            throw KeychainError.itemNotFound
+        }
+        return s
+    }
+
     public static func writeData(
         service: String,
         account: String,
@@ -164,6 +204,12 @@ public enum KeychainStore {
         data: Data,
         useDataProtectionKeychain: Bool
     ) throws {
+        let existingLoginItemState = try existingLoginKeychainItemState(
+            service: service,
+            account: account,
+            useDataProtectionKeychain: useDataProtectionKeychain
+        )
+
         var baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -173,22 +219,27 @@ public enum KeychainStore {
             baseQuery[kSecUseDataProtectionKeychain as String] = true
         }
 
+        var updateQuery = baseQuery
+        KeychainNoUIQuery.apply(to: &updateQuery)
+
         var addQuery = baseQuery
         addQuery[kSecValueData as String] = data
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         let updateAttrs: [String: Any] = [kSecValueData as String: data]
-        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updateAttrs as CFDictionary)
-        if updateStatus == errSecSuccess {
-            return
-        }
-        if updateStatus != errSecItemNotFound {
-            throw KeychainError.unhandledStatus(updateStatus)
+        if existingLoginItemState != .missing {
+            let updateStatus = SecItemUpdate(updateQuery as CFDictionary, updateAttrs as CFDictionary)
+            if updateStatus == errSecSuccess {
+                return
+            }
+            if updateStatus != errSecItemNotFound {
+                throw KeychainError.unhandledStatus(updateStatus)
+            }
         }
 
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         if addStatus == errSecDuplicateItem {
-            let retryStatus = SecItemUpdate(baseQuery as CFDictionary, updateAttrs as CFDictionary)
+            let retryStatus = SecItemUpdate(updateQuery as CFDictionary, updateAttrs as CFDictionary)
             if retryStatus != errSecSuccess {
                 throw KeychainError.unhandledStatus(retryStatus)
             }
@@ -235,11 +286,30 @@ public enum KeychainStore {
         }
     }
 
+    public static func deleteItemFromDataProtectionKeychainOnly(
+        service: String,
+        account: String
+    ) throws {
+        do {
+            try deleteItemOnce(
+                service: service,
+                account: account,
+                useDataProtectionKeychain: true
+            )
+        } catch KeychainError.unhandledStatus(let status) where status == missingEntitlementStatus {
+            return
+        }
+    }
+
     private static func deleteItemOnce(
         service: String,
         account: String,
         useDataProtectionKeychain: Bool
     ) throws {
+        if !useDataProtectionKeychain {
+            try preflightLoginKeychainAccess(service: service, account: account)
+        }
+
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -248,12 +318,51 @@ public enum KeychainStore {
         if useDataProtectionKeychain {
             query[kSecUseDataProtectionKeychain as String] = true
         }
+        KeychainNoUIQuery.apply(to: &query)
         let status = SecItemDelete(query as CFDictionary)
         switch status {
         case errSecSuccess, errSecItemNotFound:
             return
         default:
             throw KeychainError.unhandledStatus(status)
+        }
+    }
+
+    private enum LoginKeychainItemState {
+        case available
+        case missing
+    }
+
+    private static func existingLoginKeychainItemState(
+        service: String,
+        account: String?,
+        useDataProtectionKeychain: Bool
+    ) throws -> LoginKeychainItemState {
+        guard !useDataProtectionKeychain else { return .available }
+        switch KeychainAccessPreflight.checkGenericPassword(
+            service: service,
+            account: account,
+            skipItemsRequiringUI: true
+        ) {
+        case .allowed:
+            return .available
+        case .notFound:
+            return .missing
+        case .interactionRequired:
+            throw KeychainError.interactionNotAllowed
+        case .failure(let status):
+            throw KeychainError.unhandledStatus(OSStatus(status))
+        }
+    }
+
+    private static func preflightLoginKeychainAccess(service: String, account: String?) throws {
+        let state = try existingLoginKeychainItemState(
+            service: service,
+            account: account,
+            useDataProtectionKeychain: false
+        )
+        if state == .missing {
+            throw KeychainError.itemNotFound
         }
     }
 }

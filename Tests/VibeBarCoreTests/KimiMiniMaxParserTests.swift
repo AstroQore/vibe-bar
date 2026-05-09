@@ -106,10 +106,57 @@ final class MiniMaxParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 800_000)
     }
 
-    func testInvalidCookieMapsToNeedsLogin() {
+    func testParsesRootLevelModelRemainsResponse() throws {
         let json = """
         {
-          "base_resp": {"status_code": 1004, "status_msg": "Cookie expired, please log in"}
+          "model_remains": [
+            {
+              "start_time": 1771588800000,
+              "end_time": 1771603200000,
+              "remains_time": 5925660,
+              "current_interval_total_count": 1500,
+              "current_interval_usage_count": 1437,
+              "model_name": "MiniMax-M2"
+            }
+          ],
+          "base_resp": {
+            "status_code": 0,
+            "status_msg": "success"
+          }
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(snap.buckets.count, 1)
+        XCTAssertEqual(snap.buckets[0].usedPercent, 4.2, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 14_400)
+    }
+
+    func testPrefersChatModelRemainsOverMediaRows() throws {
+        let json = """
+        {
+          "model_remains": [
+            {
+              "current_interval_total_count": 0,
+              "current_interval_usage_count": 0,
+              "model_name": "speech-2.8-hd"
+            },
+            {
+              "current_interval_total_count": 1500,
+              "current_interval_usage_count": 1200,
+              "model_name": "MiniMax-M2.7"
+            }
+          ],
+          "base_resp": {"status_code": 0}
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(snap.buckets[0].usedPercent, 20.0, accuracy: 0.01)
+    }
+
+    func testAuthenticationErrorMapsToNeedsLogin() {
+        let json = """
+        {
+          "base_resp": {"status_code": 1004, "status_msg": "login fail: invalid API key"}
         }
         """
         XCTAssertThrowsError(try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)) { error in
@@ -118,6 +165,42 @@ final class MiniMaxParserTests: XCTestCase {
                 return
             }
         }
+    }
+
+    func testChinaMainlandRemainsRequestUsesOfficialTokenPlanEndpoint() {
+        let region = MiniMaxRegion.chinaMainland
+
+        XCTAssertEqual(
+            region.remainsURLs.first?.absoluteString,
+            "https://www.minimaxi.com/v1/token_plan/remains"
+        )
+        XCTAssertEqual(region.apiHost.absoluteString, "https://www.minimaxi.com")
+        XCTAssertEqual(
+            region.remainsURLs.last?.absoluteString,
+            "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+        )
+    }
+
+    func testGlobalRemainsRequestUsesOfficialTokenPlanEndpoint() {
+        let endpoints = MiniMaxRegion.global.remainsURLs.map(\.absoluteString)
+
+        XCTAssertEqual(endpoints.first, "https://www.minimax.io/v1/token_plan/remains")
+        XCTAssertTrue(endpoints.contains("https://www.minimax.io/v1/api/openplatform/coding_plan/remains"))
+    }
+
+    func testRegionSettingSelectsMiniMaxPreferredRegion() {
+        XCTAssertEqual(
+            MiniMaxRegion.resolve(settings: MiscProviderSettings(region: "cn")),
+            [.chinaMainland, .global]
+        )
+        XCTAssertEqual(
+            MiniMaxRegion.resolve(settings: MiscProviderSettings(region: "global")),
+            [.global, .chinaMainland]
+        )
+        XCTAssertEqual(
+            MiniMaxRegion.resolve(settings: MiscProviderSettings(region: "www.minimaxi.com")),
+            [.chinaMainland, .global]
+        )
     }
 
     func testMissingModelRemainsThrowsParseFailure() {

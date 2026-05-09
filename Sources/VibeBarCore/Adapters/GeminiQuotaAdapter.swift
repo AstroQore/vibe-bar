@@ -53,12 +53,19 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             throw QuotaError.noCredential
         }
 
-        let credentials: GeminiCredentials
+        var credentials: GeminiCredentials
         do {
             credentials = try GeminiCredentials.load(from: credsURL)
         } catch {
             throw QuotaError.parseFailure("Could not parse \(credsURL.path): \(error.localizedDescription)")
         }
+
+        credentials = await GeminiTokenRefreshHelper.refreshedCredentialsIfNeeded(
+            credentials,
+            credentialsURL: credsURL,
+            homeDirectory: homeDirectory,
+            now: now()
+        )
 
         guard let accessToken = credentials.accessToken, !accessToken.isEmpty else {
             throw QuotaError.noCredential
@@ -269,4 +276,139 @@ private struct GeminiAPIBucket: Decodable {
     let resetTime: String?
     let modelId: String?
     let tokenType: String?
+}
+
+public enum GeminiTokenRefreshHelper {
+    public static let refreshLeadTime: TimeInterval = 10 * 60
+    private static let attemptCooldown: TimeInterval = 5 * 60
+    private static let lock = NSLock()
+    private nonisolated(unsafe) static var lastAttemptAt: Date?
+
+    public static func refreshedCredentialsIfNeeded(
+        _ credentials: GeminiCredentials,
+        credentialsURL: URL,
+        homeDirectory: String = RealHomeDirectory.path,
+        now: Date = Date()
+    ) async -> GeminiCredentials {
+        guard shouldRefresh(expiry: credentials.expiry, now: now, leadTime: refreshLeadTime) else {
+            return credentials
+        }
+        guard claimAttempt(now: now) else {
+            return credentials
+        }
+        guard let binary = resolveGeminiBinary(homeDirectory: homeDirectory) else {
+            SafeLog.warn("Gemini token refresh skipped: gemini CLI not found")
+            return credentials
+        }
+
+        do {
+            let result = try await ProcessRunner.run(
+                binary: binary,
+                arguments: [
+                    "--prompt",
+                    "Vibe Bar token refresh keepalive. Do not use tools. Reply OK.",
+                    "--output-format",
+                    "json",
+                    "--skip-trust"
+                ],
+                timeout: 90,
+                label: "gemini token refresh",
+                environment: refreshEnvironment(binary: binary, homeDirectory: homeDirectory)
+            )
+            guard result.terminationStatus == 0 else {
+                SafeLog.warn("Gemini token refresh exited \(result.terminationStatus)")
+                return credentials
+            }
+            return (try? GeminiCredentials.load(from: credentialsURL)) ?? credentials
+        } catch {
+            SafeLog.warn("Gemini token refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
+            return credentials
+        }
+    }
+
+    public static func shouldRefresh(expiry: Date?, now: Date, leadTime: TimeInterval) -> Bool {
+        guard let expiry else { return false }
+        return expiry <= now.addingTimeInterval(leadTime)
+    }
+
+    public static func resolveGeminiBinary(
+        homeDirectory: String = RealHomeDirectory.path,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        for candidate in geminiBinaryCandidates(homeDirectory: homeDirectory, environment: environment) {
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func claimAttempt(now: Date) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let lastAttemptAt, now.timeIntervalSince(lastAttemptAt) < attemptCooldown {
+            return false
+        }
+        lastAttemptAt = now
+        return true
+    }
+
+    private static func refreshEnvironment(binary: String, homeDirectory: String) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env["HOME"] = homeDirectory
+        let binaryDir = URL(fileURLWithPath: binary).deletingLastPathComponent().path
+        let existing = env["PATH"]?.split(separator: ":").map(String.init) ?? []
+        let path = unique([
+            binaryDir,
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ] + existing)
+        env["PATH"] = path.joined(separator: ":")
+        return env
+    }
+
+    private static func geminiBinaryCandidates(
+        homeDirectory: String,
+        environment: [String: String]
+    ) -> [String] {
+        var candidates: [String] = []
+        if let path = environment["PATH"] {
+            candidates.append(contentsOf: path.split(separator: ":").map { "\($0)/gemini" })
+        }
+        candidates.append(contentsOf: [
+            "\(homeDirectory)/.npm-global/bin/gemini",
+            "\(homeDirectory)/.bun/bin/gemini",
+            "/opt/homebrew/bin/gemini",
+            "/usr/local/bin/gemini"
+        ])
+
+        let nvmRoot = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent(".nvm/versions/node")
+        if let versions = try? FileManager.default.contentsOfDirectory(
+            at: nvmRoot,
+            includingPropertiesForKeys: nil
+        ) {
+            let sorted = versions.sorted {
+                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending
+            }
+            candidates.append(contentsOf: sorted.map {
+                $0.appendingPathComponent("bin/gemini").path
+            })
+        }
+
+        return unique(candidates)
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        var out: [String] = []
+        for value in values where seen.insert(value).inserted {
+            out.append(value)
+        }
+        return out
+    }
 }

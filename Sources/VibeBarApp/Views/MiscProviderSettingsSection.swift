@@ -4,14 +4,11 @@ import VibeBarCore
 
 /// Per-misc-provider Settings row.
 ///
-/// Each provider shows its name, source-mode picker, and the auth
-/// controls that match the provider's current integration path
-/// (API key, device login, local CLI/OAuth status, browser-cookie
-/// import, or local process probe).
+/// Each provider shows its name and the auth controls that match the
+/// provider's current integration path (API key, device login, local
+/// CLI/OAuth status, browser-cookie import, or local process probe).
 struct MiscProviderSettingsSection: View {
     let tool: ToolType
-
-    @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -23,7 +20,6 @@ struct MiscProviderSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
-                sourceModePicker
             }
             placeholderRow
         }
@@ -36,22 +32,13 @@ struct MiscProviderSettingsSection: View {
     }
 
     @ViewBuilder
-    private var sourceModePicker: some View {
-        Picker("", selection: sourceModeBinding) {
-            ForEach(MiscProviderSettings.SourceMode.allCases, id: \.self) { mode in
-                Text(mode.label).tag(mode)
-            }
-        }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .frame(maxWidth: 140)
-    }
-
-    @ViewBuilder
     private var placeholderRow: some View {
         switch tool {
         case .zai:
-            ApiKeyField(tool: .zai, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
+            VStack(alignment: .leading, spacing: 4) {
+                ApiKeyField(tool: .zai, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
+                ZaiRegionPicker()
+            }
         case .copilot:
             VStack(alignment: .leading, spacing: 4) {
                 CopilotDeviceLoginRow()
@@ -69,11 +56,14 @@ struct MiscProviderSettingsSection: View {
                 AlibabaRegionPicker()
             }
         case .minimax:
-            CookieSourceControls(
-                tool: .minimax,
-                spec: MiniMaxQuotaAdapter.cookieSpec,
-                manualPrompt: "Paste platform.minimax.io Cookie header (HERTZ-SESSION=...)"
-            )
+            VStack(alignment: .leading, spacing: 4) {
+                ApiKeyField(
+                    tool: .minimax,
+                    prompt: "Paste MiniMax Token Plan API key (sk-cp-...)",
+                    helpText: "Find it under Billing → Token Plan. Stored in macOS Keychain."
+                )
+                MiniMaxRegionPicker()
+            }
         case .kimi:
             CookieSourceControls(
                 tool: .kimi,
@@ -93,16 +83,6 @@ struct MiscProviderSettingsSection: View {
         }
     }
 
-    private var sourceModeBinding: Binding<MiscProviderSettings.SourceMode> {
-        Binding(
-            get: { settingsStore.settings.miscProvider(tool).sourceMode },
-            set: { newValue in
-                var current = settingsStore.settings.miscProvider(tool)
-                current.sourceMode = newValue
-                settingsStore.settings.setMiscProvider(current, for: tool)
-            }
-        )
-    }
 }
 
 /// Secure-text input for misc-provider API keys / PATs.
@@ -345,7 +325,7 @@ struct GeminiCredentialStatusRow: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         case .expired:
-            Label("Token expired — run any `gemini` command to refresh.",
+            Label("Token expired — Vibe Bar will try a headless `gemini` keepalive on refresh.",
                   systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.orange)
@@ -426,17 +406,8 @@ struct AntigravityStatusRow: View {
     }
 }
 
-/// Cookie-source picker + Import / Manual paste controls for the
-/// browser-cookie misc providers (MiniMax, Kimi). Wraps three
-/// concerns:
-///
-/// 1. `MiscProviderSettings.cookieSource` — auto / manual / off
-/// 2. "Import from browser now" button — re-runs the cookie pipeline
-///    immediately, useful after the user signs in to the provider
-///    in their browser.
-/// 3. Manual paste field — for users who prefer copying the
-///    `Cookie:` header by hand or whose browser cookie store is
-///    locked.
+/// Browser-cookie controls for the misc providers. Import/manual source
+/// selection is automatic; the UI only exposes recovery actions.
 struct CookieSourceControls: View {
     let tool: ToolType
     let spec: MiscCookieResolver.Spec
@@ -444,7 +415,6 @@ struct CookieSourceControls: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
-    @EnvironmentObject var settingsStore: SettingsStore
 
     @State private var manualDraft: String = ""
     @State private var importStatus: String?
@@ -452,20 +422,12 @@ struct CookieSourceControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Picker("Cookie source", selection: cookieSourceBinding) {
-                    ForEach(ProviderCookieSource.allCases, id: \.self) { mode in
-                        Text(modeLabel(mode)).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .frame(maxWidth: 280)
-
                 Button("Import now", action: importNow)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(cookieSourceBinding.wrappedValue == .off ||
-                              cookieSourceBinding.wrappedValue == .manual)
+                Text("Vibe Bar tries cached, browser, then pasted cookies automatically.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
@@ -489,25 +451,6 @@ struct CookieSourceControls: View {
 
     private var hasManualValue: Bool {
         MiscCredentialStore.hasValue(tool: tool, kind: .manualCookieHeader)
-    }
-
-    private var cookieSourceBinding: Binding<ProviderCookieSource> {
-        Binding(
-            get: { settingsStore.settings.miscProvider(tool).cookieSource },
-            set: { newValue in
-                var current = settingsStore.settings.miscProvider(tool)
-                current.cookieSource = newValue
-                settingsStore.settings.setMiscProvider(current, for: tool)
-            }
-        )
-    }
-
-    private func modeLabel(_ mode: ProviderCookieSource) -> String {
-        switch mode {
-        case .auto:   return "Auto"
-        case .manual: return "Manual"
-        case .off:    return "Off"
-        }
     }
 
     private func importNow() {
@@ -606,6 +549,90 @@ struct AlibabaRegionPicker: View {
                 var current = settingsStore.settings.miscProvider(.alibaba)
                 current.region = newValue == .auto ? nil : newValue.rawValue
                 settingsStore.settings.setMiscProvider(current, for: .alibaba)
+            }
+        )
+    }
+}
+
+/// Z.ai has separate international and mainland China quota hosts.
+struct ZaiRegionPicker: View {
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    enum Choice: String, CaseIterable, Identifiable {
+        case global
+        case bigmodelCN = "bigmodel-cn"
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .global:     return "Global (api.z.ai)"
+            case .bigmodelCN: return "China mainland (open.bigmodel.cn)"
+            }
+        }
+    }
+
+    var body: some View {
+        Picker("Region", selection: choiceBinding) {
+            ForEach(Choice.allCases) { choice in
+                Text(choice.label).tag(choice)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var choiceBinding: Binding<Choice> {
+        Binding(
+            get: {
+                let raw = settingsStore.settings.miscProvider(.zai).region ?? Choice.global.rawValue
+                return Choice(rawValue: raw) ?? .global
+            },
+            set: { newValue in
+                var current = settingsStore.settings.miscProvider(.zai)
+                current.region = newValue.rawValue
+                settingsStore.settings.setMiscProvider(current, for: .zai)
+            }
+        )
+    }
+}
+
+/// MiniMax has separate minimax.io and minimaxi.com Token Plan hosts.
+/// The adapter still falls back across both, but this picker controls
+/// the preferred region tried first.
+struct MiniMaxRegionPicker: View {
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    enum Choice: String, CaseIterable, Identifiable {
+        case global
+        case chinaMainland = "cn"
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .global:        return "Global (minimax.io)"
+            case .chinaMainland: return "China mainland (minimaxi.com)"
+            }
+        }
+    }
+
+    var body: some View {
+        Picker("Region", selection: choiceBinding) {
+            ForEach(Choice.allCases) { choice in
+                Text(choice.label).tag(choice)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var choiceBinding: Binding<Choice> {
+        Binding(
+            get: {
+                let raw = settingsStore.settings.miscProvider(.minimax).region ?? Choice.global.rawValue
+                return Choice(rawValue: raw) ?? .global
+            },
+            set: { newValue in
+                var current = settingsStore.settings.miscProvider(.minimax)
+                current.region = newValue.rawValue
+                settingsStore.settings.setMiscProvider(current, for: .minimax)
             }
         )
     }

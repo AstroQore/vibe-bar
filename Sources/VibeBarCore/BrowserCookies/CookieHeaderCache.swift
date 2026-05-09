@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The header itself is the secret — it carries the user's session
 /// JWT or auth-ticket — so this lives in Keychain (service
-/// `com.astroqore.VibeBar.misc`, account
-/// `cookie.<tool.rawValue>`) rather than `~/.vibebar/`.
+/// `com.astroqore.VibeBar.web-cookies`, account
+/// `misc.<tool.rawValue>.cookie`) rather than `~/.vibebar/`.
 ///
 /// Adapter flow:
 /// 1. On refresh, call `load(for:)`. If a cached header exists, use
@@ -35,31 +35,50 @@ public enum CookieHeaderCache {
         }
     }
 
-    public static let keychainService = "com.astroqore.VibeBar.misc"
+    public static let keychainService = SecureCookieHeaderStore.keychainService
+    private static let legacyKeychainService = "com.astroqore.VibeBar.misc"
 
     public static func keychainAccount(for tool: ToolType) -> String {
+        precondition(tool.isMisc, "CookieHeaderCache requested for primary tool: \(tool)")
+        return "misc.\(tool.rawValue).cookie"
+    }
+
+    private static func legacyKeychainAccount(for tool: ToolType) -> String {
         precondition(tool.isMisc, "CookieHeaderCache requested for primary tool: \(tool)")
         return "cookie.\(tool.rawValue)"
     }
 
     public static func load(for tool: ToolType) -> Entry? {
         guard tool.isMisc else { return nil }
-        let account = keychainAccount(for: tool)
-        do {
-            let data = try KeychainStore.readData(
-                service: keychainService,
-                account: account,
-                useDataProtectionKeychain: true
-            )
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(Entry.self, from: data)
-        } catch KeychainStore.KeychainError.itemNotFound {
-            return nil
-        } catch {
-            SafeLog.warn("Cookie cache load failed for \(tool.rawValue): \(error)")
+        if let entry = loadEntry(
+            tool: tool,
+            service: keychainService,
+            account: keychainAccount(for: tool),
+            dataProtectionOnly: false
+        ) {
+            return entry
+        }
+
+        guard let legacy = loadEntry(
+            tool: tool,
+            service: legacyKeychainService,
+            account: legacyKeychainAccount(for: tool),
+            dataProtectionOnly: true
+        ) else {
             return nil
         }
+
+        _ = store(
+            for: tool,
+            cookieHeader: legacy.cookieHeader,
+            sourceLabel: legacy.sourceLabel,
+            now: legacy.storedAt
+        )
+        try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(
+            service: legacyKeychainService,
+            account: legacyKeychainAccount(for: tool)
+        )
+        return legacy
     }
 
     @discardableResult
@@ -102,8 +121,16 @@ public enum CookieHeaderCache {
                 account: keychainAccount(for: tool),
                 useDataProtectionKeychain: true
             )
+            try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(
+                service: legacyKeychainService,
+                account: legacyKeychainAccount(for: tool)
+            )
             return true
         } catch KeychainStore.KeychainError.itemNotFound {
+            try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(
+                service: legacyKeychainService,
+                account: legacyKeychainAccount(for: tool)
+            )
             return false
         } catch {
             SafeLog.warn("Cookie cache clear failed for \(tool.rawValue): \(error)")
@@ -120,5 +147,36 @@ public enum CookieHeaderCache {
             cleared += 1
         }
         return cleared
+    }
+
+    private static func loadEntry(
+        tool: ToolType,
+        service: String,
+        account: String,
+        dataProtectionOnly: Bool
+    ) -> Entry? {
+        do {
+            let data = dataProtectionOnly
+                ? try KeychainStore.readDataFromDataProtectionKeychainOnly(
+                    service: service,
+                    account: account
+                )
+                : try KeychainStore.readData(
+                    service: service,
+                    account: account,
+                    useDataProtectionKeychain: true
+                )
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(Entry.self, from: data)
+        } catch KeychainStore.KeychainError.itemNotFound {
+            return nil
+        } catch KeychainStore.KeychainError.interactionNotAllowed {
+            SafeLog.info("Cookie cache temporarily unavailable for \(tool.rawValue)")
+            return nil
+        } catch {
+            SafeLog.warn("Cookie cache load failed for \(tool.rawValue): \(error)")
+            return nil
+        }
     }
 }

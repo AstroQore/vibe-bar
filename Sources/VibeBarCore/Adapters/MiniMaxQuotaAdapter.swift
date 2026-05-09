@@ -1,43 +1,23 @@
 import Foundation
 
-/// MiniMax Coding Plan usage adapter.
+/// MiniMax Token Plan usage adapter.
 ///
-/// Auth: the `HERTZ-SESSION` cookie issued by MiniMax's web console.
-/// Source resolution flows through `MiscCookieResolver` so users can
-/// pick auto-import, manual paste, or off.
+/// Auth: the Token Plan API key issued by MiniMax. This is separate
+/// from regular pay-as-you-go API keys and is stored in
+/// `MiscCredentialStore` under the API-key kind.
 ///
 /// Endpoint:
-/// `GET https://openplatform.minimax.io/v1/api/openplatform/coding_plan/remains`
-/// returns the JSON shape codexbar's parser handles. Codexbar also
-/// supports an HTML scraping fallback against the
-/// `platform.minimax.io/user-center/payment/coding-plan` Next.js
-/// page; this v1 port skips it because the JSON endpoint covers
-/// the common case.
+/// `GET https://www.minimax.io/v1/token_plan/remains`
+/// or the mainland China equivalent
+/// `GET https://www.minimaxi.com/v1/token_plan/remains`.
 ///
 /// Output: a single QuotaBucket carrying the prompts-used / total
-/// from the first `model_remains` entry.
+/// from the preferred `model_remains` entry.
 public struct MiniMaxQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .minimax
 
     private let session: URLSession
     private let now: @Sendable () -> Date
-
-    public static let cookieSpec = MiscCookieResolver.Spec(
-        tool: .minimax,
-        domains: [
-            "platform.minimax.io",
-            "openplatform.minimax.io",
-            "minimax.io",
-            "platform.minimaxi.com",
-            "openplatform.minimaxi.com",
-            "minimaxi.com"
-        ],
-        requiredNames: ["HERTZ-SESSION"]
-    )
-
-    private static let endpoint = URL(string:
-        "https://openplatform.minimax.io/v1/api/openplatform/coding_plan/remains"
-    )!
 
     public init(
         session: URLSession = .shared,
@@ -48,22 +28,65 @@ public struct MiniMaxQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard let resolution = MiscCookieResolver.resolve(for: MiniMaxQuotaAdapter.cookieSpec) else {
+        let settings = MiscProviderSettings.current(for: .minimax)
+        var lastError: QuotaError?
+        let regions = MiniMaxRegion.resolve(settings: settings)
+
+        guard let apiKey = MiscCredentialStore.readString(tool: .minimax, kind: .apiKey),
+              !apiKey.isEmpty else {
             throw QuotaError.noCredential
         }
 
-        var request = URLRequest(url: MiniMaxQuotaAdapter.endpoint)
-        request.httpMethod = "GET"
-        request.setValue(resolution.header, forHTTPHeaderField: "Cookie")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("https://platform.minimax.io", forHTTPHeaderField: "Origin")
-        request.setValue("https://platform.minimax.io/user-center/payment/coding-plan",
-                         forHTTPHeaderField: "Referer")
-        request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-            forHTTPHeaderField: "User-Agent"
-        )
+        for region in regions {
+            do {
+                let snapshot = try await fetchSnapshot(apiKey: apiKey, region: region)
+                return AccountQuota(
+                    accountId: account.id,
+                    tool: .minimax,
+                    buckets: snapshot.buckets,
+                    plan: snapshot.planName,
+                    email: account.email,
+                    queriedAt: now(),
+                    error: nil
+                )
+            } catch let error as QuotaError {
+                if case .rateLimited = error { throw error }
+                lastError = error
+                continue
+            } catch {
+                lastError = .network("MiniMax network error: \(error.localizedDescription)")
+                continue
+            }
+        }
 
+        throw lastError ?? QuotaError.noCredential
+    }
+
+    private func fetchSnapshot(apiKey: String, region: MiniMaxRegion) async throws -> MiniMaxResponseParser.Snapshot {
+        var lastError: QuotaError?
+        for url in region.remainsURLs {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+                forHTTPHeaderField: "User-Agent"
+            )
+            do {
+                return try await execute(request)
+            } catch let error as QuotaError {
+                if case .rateLimited = error { throw error }
+                lastError = error
+            } catch {
+                lastError = .network("MiniMax network error: \(error.localizedDescription)")
+            }
+        }
+        throw lastError ?? QuotaError.noCredential
+    }
+
+    private func execute(_ request: URLRequest) async throws -> MiniMaxResponseParser.Snapshot {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await self.session.data(for: request)
@@ -75,7 +98,6 @@ public struct MiniMaxQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                CookieHeaderCache.clear(for: .minimax)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
@@ -84,16 +106,39 @@ public struct MiniMaxQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("MiniMax returned HTTP \(http.statusCode).")
         }
 
-        let snapshot = try MiniMaxResponseParser.parse(data: data, now: now())
-        return AccountQuota(
-            accountId: account.id,
-            tool: .minimax,
-            buckets: snapshot.buckets,
-            plan: snapshot.planName,
-            email: account.email,
-            queriedAt: now(),
-            error: nil
-        )
+        return try MiniMaxResponseParser.parse(data: data, now: now())
+    }
+}
+
+enum MiniMaxRegion: String, CaseIterable {
+    case global
+    case chinaMainland = "cn"
+
+    static func resolve(settings: MiscProviderSettings) -> [MiniMaxRegion] {
+        switch settings.region?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "global", "minimax", "platform.minimax.io", "www.minimax.io":
+            return [.global, .chinaMainland]
+        case "cn", "china", "china-mainland", "cn-beijing", "minimaxi", "platform.minimaxi.com", "www.minimaxi.com":
+            return [.chinaMainland, .global]
+        default:
+            return [.global, .chinaMainland]
+        }
+    }
+
+    var apiHost: URL {
+        switch self {
+        case .global:
+            return URL(string: "https://www.minimax.io")!
+        case .chinaMainland:
+            return URL(string: "https://www.minimaxi.com")!
+        }
+    }
+
+    var remainsURLs: [URL] {
+        [
+            apiHost.appendingPathComponent("v1/token_plan/remains"),
+            apiHost.appendingPathComponent("v1/api/openplatform/coding_plan/remains")
+        ]
     }
 }
 
@@ -127,8 +172,8 @@ enum MiniMaxResponseParser {
             throw QuotaError.network("MiniMax: \(message)")
         }
 
-        guard let dataField = response.data,
-              let first = dataField.modelRemains?.first else {
+        guard let dataField = response.payload,
+              let first = preferredModelRemains(from: dataField.modelRemains) else {
             throw QuotaError.parseFailure("MiniMax response had no model_remains rows.")
         }
 
@@ -182,6 +227,17 @@ enum MiniMaxResponseParser {
         return Snapshot(buckets: [bucket], planName: plan)
     }
 
+    private static func preferredModelRemains(from rows: [MiniMaxModelRemains]?) -> MiniMaxModelRemains? {
+        guard let rows, !rows.isEmpty else { return nil }
+        if let chat = rows.first(where: { row in
+            let name = row.modelName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            return name.hasPrefix("minimax-m") && (row.currentIntervalTotalCount ?? 0) > 0
+        }) {
+            return chat
+        }
+        return rows.first { ($0.currentIntervalTotalCount ?? 0) > 0 } ?? rows.first
+    }
+
     private static func epochSeconds(_ raw: Int?) -> TimeInterval? {
         guard let raw, raw > 0 else { return nil }
         if raw > 1_000_000_000_000 {
@@ -199,10 +255,43 @@ enum MiniMaxResponseParser {
 private struct MiniMaxAPIResponse: Decodable {
     let baseResp: MiniMaxBaseResp?
     let data: MiniMaxDataField?
+    let currentSubscribeTitle: String?
+    let planName: String?
+    let comboTitle: String?
+    let currentPlanTitle: String?
+    let currentComboCard: MiniMaxComboCard?
+    let modelRemains: [MiniMaxModelRemains]?
 
     enum CodingKeys: String, CodingKey {
         case baseResp = "base_resp"
         case data
+        case currentSubscribeTitle = "current_subscribe_title"
+        case planName = "plan_name"
+        case comboTitle = "combo_title"
+        case currentPlanTitle = "current_plan_title"
+        case currentComboCard = "current_combo_card"
+        case modelRemains = "model_remains"
+    }
+
+    var payload: MiniMaxDataField? {
+        if let data { return data }
+        guard modelRemains != nil ||
+              currentSubscribeTitle != nil ||
+              planName != nil ||
+              comboTitle != nil ||
+              currentPlanTitle != nil ||
+              currentComboCard != nil else {
+            return nil
+        }
+        return MiniMaxDataField(
+            baseResp: baseResp,
+            currentSubscribeTitle: currentSubscribeTitle,
+            planName: planName,
+            comboTitle: comboTitle,
+            currentPlanTitle: currentPlanTitle,
+            currentComboCard: currentComboCard,
+            modelRemains: modelRemains
+        )
     }
 }
 
@@ -232,6 +321,24 @@ private struct MiniMaxDataField: Decodable {
     let currentComboCard: MiniMaxComboCard?
     let modelRemains: [MiniMaxModelRemains]?
 
+    init(
+        baseResp: MiniMaxBaseResp?,
+        currentSubscribeTitle: String?,
+        planName: String?,
+        comboTitle: String?,
+        currentPlanTitle: String?,
+        currentComboCard: MiniMaxComboCard?,
+        modelRemains: [MiniMaxModelRemains]?
+    ) {
+        self.baseResp = baseResp
+        self.currentSubscribeTitle = currentSubscribeTitle
+        self.planName = planName
+        self.comboTitle = comboTitle
+        self.currentPlanTitle = currentPlanTitle
+        self.currentComboCard = currentComboCard
+        self.modelRemains = modelRemains
+    }
+
     enum CodingKeys: String, CodingKey {
         case baseResp = "base_resp"
         case currentSubscribeTitle = "current_subscribe_title"
@@ -248,6 +355,7 @@ private struct MiniMaxComboCard: Decodable {
 }
 
 private struct MiniMaxModelRemains: Decodable {
+    let modelName: String?
     let currentIntervalTotalCount: Int?
     let currentIntervalUsageCount: Int?
     let startTime: Int?
@@ -255,6 +363,7 @@ private struct MiniMaxModelRemains: Decodable {
     let remainsTime: Int?
 
     enum CodingKeys: String, CodingKey {
+        case modelName = "model_name"
         case currentIntervalTotalCount = "current_interval_total_count"
         case currentIntervalUsageCount = "current_interval_usage_count"
         case startTime = "start_time"
@@ -264,6 +373,7 @@ private struct MiniMaxModelRemains: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        modelName = try? c.decodeIfPresent(String.self, forKey: .modelName)
         currentIntervalTotalCount = MiniMaxQuotaDecoding.int(c, forKey: .currentIntervalTotalCount)
         currentIntervalUsageCount = MiniMaxQuotaDecoding.int(c, forKey: .currentIntervalUsageCount)
         startTime = MiniMaxQuotaDecoding.int(c, forKey: .startTime)

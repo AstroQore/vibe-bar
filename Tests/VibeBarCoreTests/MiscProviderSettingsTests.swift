@@ -164,10 +164,31 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         }
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        XCTAssertEqual(settings.miscProviders[.alibaba]?.sourceMode, .browserOnly)
+        XCTAssertEqual(settings.miscProviders[.alibaba]?.sourceMode, .auto)
         // Every other misc tool falls back to default.
         for tool in ToolType.miscProviders where tool != .alibaba {
             XCTAssertEqual(settings.miscProviders[tool], .default, "expected default for \(tool)")
         }
+    }
+
+    func testLegacySourceSelectorsNormalizeToAutomatic() throws {
+        let json = """
+        {
+          "miscProviders": {
+            "minimax": {
+              "sourceMode": "off",
+              "cookieSource": "manual",
+              "preferredBrowser": "chrome",
+              "region": "cn"
+            }
+          }
+        }
+        """
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        let minimax = settings.miscProvider(.minimax)
+        XCTAssertEqual(minimax.sourceMode, .auto)
+        XCTAssertEqual(minimax.cookieSource, .auto)
+        XCTAssertNil(minimax.preferredBrowser)
+        XCTAssertEqual(minimax.region, "cn")
     }
 }

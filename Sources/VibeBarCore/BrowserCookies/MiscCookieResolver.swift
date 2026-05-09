@@ -31,6 +31,11 @@ public enum MiscCookieResolver {
         /// Anything not in this set is dropped — analytics, A/B,
         /// session-flag cookies don't survive into the cached header.
         public let requiredNames: Set<String>
+        /// Cookie names that prove the header is actually authenticated.
+        /// This is stricter than `requiredNames`: MiniMax, for example,
+        /// has non-auth `_gc_*` cookies on the same domains, and caching
+        /// those alone causes every refresh to look like "re-login".
+        public let credentialNames: Set<String>
         /// Default browser-import order if the user hasn't picked
         /// `MiscProviderSettings.preferredBrowser`.
         public let importOrder: BrowserCookieImportOrder
@@ -39,12 +44,33 @@ public enum MiscCookieResolver {
             tool: ToolType,
             domains: [String],
             requiredNames: Set<String>,
+            credentialNames: Set<String> = [],
             importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder
         ) {
             self.tool = tool
             self.domains = domains
             self.requiredNames = requiredNames
+            self.credentialNames = credentialNames
             self.importOrder = importOrder
+        }
+
+        public func minimizedHeader(from raw: String?) -> String? {
+            let normalized: String?
+            if requiredNames.isEmpty {
+                normalized = CookieHeaderNormalizer.normalize(raw)
+            } else {
+                normalized = CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: requiredNames)
+            }
+            guard let normalized, hasRequiredCredential(in: normalized) else {
+                return nil
+            }
+            return normalized
+        }
+
+        public func hasRequiredCredential(in cookieHeader: String) -> Bool {
+            guard !credentialNames.isEmpty else { return true }
+            return CookieHeaderNormalizer.pairs(from: cookieHeader)
+                .contains { credentialNames.contains($0.name) }
         }
     }
 
@@ -65,7 +91,10 @@ public enum MiscCookieResolver {
         // 1. Cached header from a prior import or manual paste.
         if let cached = CookieHeaderCache.load(for: spec.tool),
            plan.acceptsCached(cached) {
-            return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
+            if spec.hasRequiredCredential(in: cached.cookieHeader) {
+                return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
+            }
+            CookieHeaderCache.clear(for: spec.tool)
         }
 
         // 2. Browser auto-import (skipped in `.manual` mode).
@@ -82,7 +111,7 @@ public enum MiscCookieResolver {
         // 3. Manual paste fallback.
         if plan.allowsManual,
            let manual = MiscCredentialStore.readString(tool: spec.tool, kind: .manualCookieHeader),
-           let normalised = minimizedHeader(from: manual, allowedNames: spec.requiredNames),
+           let normalised = spec.minimizedHeader(from: manual),
            !normalised.isEmpty {
             CookieHeaderCache.store(
                 for: spec.tool,
@@ -164,7 +193,7 @@ public enum MiscCookieResolver {
                 }
                 guard spec.requiredNames.isEmpty || !pairs.isEmpty else { continue }
                 let header = pairs.joined(separator: "; ")
-                guard !header.isEmpty else { continue }
+                guard !header.isEmpty, spec.hasRequiredCredential(in: header) else { continue }
                 return Resolution(header: header, sourceLabel: session.label)
             }
         }
@@ -294,13 +323,6 @@ public enum MiscCookieResolver {
         case (nil, nil):
             false
         }
-    }
-
-    private static func minimizedHeader(from raw: String?, allowedNames: Set<String>) -> String? {
-        if allowedNames.isEmpty {
-            return CookieHeaderNormalizer.normalize(raw)
-        }
-        return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: allowedNames)
     }
 
     private static func currentSettings(for tool: ToolType) -> MiscProviderSettings {

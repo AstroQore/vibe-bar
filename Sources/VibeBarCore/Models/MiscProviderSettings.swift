@@ -2,8 +2,8 @@ import Foundation
 
 /// Non-sensitive per-misc-provider configuration that lives in
 /// `~/.vibebar/settings.json`. Sensitive values (API keys, cookie
-/// headers, OAuth tokens) live in Keychain — see the misc Keychain
-/// service `com.astroqore.VibeBar.misc`.
+/// headers, OAuth tokens) live in Keychain — see
+/// `MiscCredentialStore` and `CookieHeaderCache`.
 ///
 /// The Codable round-trip rejects any field whose name contains a
 /// secret-looking key (`apiKey`, `cookie`, `token`, `password`, etc.).
@@ -71,6 +71,14 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         self.enabledOverride = enabledOverride
     }
 
+    public var automaticSourceSelection: MiscProviderSettings {
+        var copy = self
+        copy.sourceMode = .auto
+        copy.cookieSource = .auto
+        copy.preferredBrowser = nil
+        return copy
+    }
+
     private enum CodingKeys: String, CodingKey {
         case sourceMode, cookieSource, region, enterpriseHost
         case preferredBrowser, enabledOverride
@@ -133,7 +141,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
             AppSettings.self,
             from: VibeBarLocalStore.settingsURL
         )) ?? .default
-        return appSettings.miscProvider(tool)
+        return appSettings.miscProvider(tool).automaticSourceSelection
     }
 
     public var allowsAPIOrOAuthAccess: Bool {

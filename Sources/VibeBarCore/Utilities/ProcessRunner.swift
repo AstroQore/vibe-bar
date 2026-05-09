@@ -2,13 +2,11 @@ import Foundation
 
 /// Lightweight async wrapper around `Process`.
 ///
-/// Used by adapters that need to shell out — currently only the
-/// AntiGravity local probe (`/bin/ps` to find the language-server
-/// PID, `/usr/sbin/lsof` to enumerate listening ports). The
-/// implementation is intentionally minimal compared to codexbar's
-/// SubprocessRunner: no process-group escalation, no PATH munging.
-/// Both binaries we invoke live at fixed system paths and exit
-/// quickly.
+/// Used by adapters/helpers that need to shell out: the AntiGravity
+/// local probe (`/bin/ps`, `/usr/sbin/lsof`) and the Gemini keepalive
+/// helper. The implementation is intentionally minimal compared to
+/// codexbar's SubprocessRunner: no process-group escalation and only
+/// caller-supplied environment overrides.
 public enum ProcessRunner {
     public struct Result: Sendable {
         public let stdout: String
@@ -38,7 +36,8 @@ public enum ProcessRunner {
         binary: String,
         arguments: [String],
         timeout: TimeInterval = 5,
-        label: String = "process"
+        label: String = "process",
+        environment: [String: String]? = nil
     ) async throws -> Result {
         guard FileManager.default.isExecutableFile(atPath: binary) else {
             throw Error.binaryNotFound(binary)
@@ -47,6 +46,7 @@ public enum ProcessRunner {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = arguments
+        process.environment = environment
 
         let stdout = Pipe()
         let stderr = Pipe()

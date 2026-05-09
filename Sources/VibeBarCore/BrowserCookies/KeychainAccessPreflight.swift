@@ -27,9 +27,17 @@ public enum KeychainAccessPreflight {
         case failure(Int)
     }
 
-    public static func checkGenericPassword(service: String, account: String?) -> Outcome {
+    public static func checkGenericPassword(
+        service: String,
+        account: String?,
+        skipItemsRequiringUI: Bool = false
+    ) -> Outcome {
         guard !KeychainAccessGate.isDisabled else { return .notFound }
-        let query = makeGenericPasswordPreflightQuery(service: service, account: account)
+        let query = makeGenericPasswordPreflightQuery(
+            service: service,
+            account: account,
+            skipItemsRequiringUI: skipItemsRequiringUI
+        )
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -46,7 +54,11 @@ public enum KeychainAccessPreflight {
         }
     }
 
-    static func makeGenericPasswordPreflightQuery(service: String, account: String?) -> [String: Any] {
+    static func makeGenericPasswordPreflightQuery(
+        service: String,
+        account: String?,
+        skipItemsRequiringUI: Bool = false
+    ) -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -57,7 +69,10 @@ public enum KeychainAccessPreflight {
             // unless the query is strictly non-interactive.
             kSecReturnAttributes as String: true
         ]
-        KeychainNoUIQuery.apply(to: &query)
+        KeychainNoUIQuery.apply(
+            to: &query,
+            uiPolicy: skipItemsRequiringUI ? .skip : .fail
+        )
         if let account {
             query[kSecAttrAccount as String] = account
         }

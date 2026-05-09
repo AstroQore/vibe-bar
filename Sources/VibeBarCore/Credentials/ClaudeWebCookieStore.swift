@@ -67,8 +67,8 @@ public enum ClaudeWebCookieStore {
             account: organizationAccount,
             useDataProtectionKeychain: true
         )
-        try? KeychainStore.deleteItem(service: legacyService, account: legacyAccount, useDataProtectionKeychain: true)
-        try? KeychainStore.deleteItem(service: legacyService, account: legacyOrganizationAccount, useDataProtectionKeychain: true)
+        try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(service: legacyService, account: legacyAccount)
+        try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(service: legacyService, account: legacyOrganizationAccount)
     }
 
     public static func readOrganizationID() -> String? {
