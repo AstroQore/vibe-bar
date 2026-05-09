@@ -17,8 +17,9 @@ import Foundation
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Misc** (`.alibaba`, `.gemini`, `.antigravity`, `.copilot`, `.zai`,
-///   `.minimax`, `.kimi`, `.cursor`) — usage-only cards on the Misc tab.
-///   No token-cost scanning, no Atlassian-style status polling.
+///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
+///   `.tencentHunyuan`, `.volcengine`) — usage-only cards on the Misc
+///   tab. No token-cost scanning, no Atlassian-style status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
 /// scanner and the status-page poller for misc providers; most other
@@ -36,13 +37,17 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case minimax
     case kimi
     case cursor
+    case mimo
+    case iflytek
+    case tencentHunyuan
+    case volcengine
 
     // MARK: - Tier helpers
 
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
             return false
         }
     }
@@ -79,6 +84,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "MiniMax"
         case .kimi:        return "Moonshot - Kimi"
         case .cursor:      return "Cursor"
+        case .mimo:        return "Xiaomi - MiMo"
+        case .iflytek:     return "iFlytek - Spark"
+        case .tencentHunyuan: return "Tencent - Hunyuan"
+        case .volcengine:  return "Volcengine - Doubao"
         }
     }
 
@@ -94,6 +103,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "Coding Plan"
         case .kimi:        return "Kimi"
         case .cursor:      return "Cursor"
+        case .mimo:        return "Token Plan"
+        case .iflytek:     return "Coding Plan"
+        case .tencentHunyuan: return "Coding Plan"
+        case .volcengine:  return "Coding Plan"
         }
     }
 
@@ -109,6 +122,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "MiniMax"
         case .kimi:        return "Kimi"
         case .cursor:      return "Cursor"
+        case .mimo:        return "MiMo"
+        case .iflytek:     return "Spark"
+        case .tencentHunyuan: return "Hunyuan"
+        case .volcengine:  return "Doubao"
         }
     }
 
@@ -124,6 +141,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "MiniMax"
         case .kimi:        return "Moonshot"
         case .cursor:      return "Cursor"
+        case .mimo:        return "Xiaomi"
+        case .iflytek:     return "iFlytek"
+        case .tencentHunyuan: return "Tencent"
+        case .volcengine:  return "Volcengine"
         }
     }
 
@@ -142,6 +163,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return URL(string: "https://platform.minimax.io/")!
         case .kimi:        return URL(string: "https://www.kimi.com/")!
         case .cursor:      return URL(string: "https://status.cursor.com/")!
+        case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
+        case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
+        case .tencentHunyuan: return URL(string: "https://hunyuan.cloud.tencent.com/")!
+        case .volcengine:  return URL(string: "https://console.volcengine.com/ark")!
         }
     }
 
