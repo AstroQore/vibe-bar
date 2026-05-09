@@ -21,7 +21,8 @@ final class ProviderIconResourcesTests: XCTestCase {
             "cursor",
             "mimo",
             "iflytek",
-            "tencentHunyuan"
+            "tencentHunyuan",
+            "volcengine"
         ]
 
         for slug in slugs {

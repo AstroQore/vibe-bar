@@ -171,7 +171,7 @@ public enum MockDataProvider {
                 extraUsageEnabled: true,
                 updatedAt: now
             )
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
             // Misc providers don't carry credits / overage extras in the
             // mock. The Cursor card surfaces on-demand budget through a
             // different field on `AccountQuota`, not `ProviderExtras`.
@@ -215,7 +215,7 @@ public enum MockDataProvider {
                 QuotaBucket(id: "weekly_opus", title: "Weekly", shortLabel: "Opus wk",
                             usedPercent: 18, resetAt: weeklyReset, rawWindowSeconds: 604_800, groupTitle: "Opus")
             ]
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
             // Misc providers' mock data lands in subsequent phases as
             // each adapter is wired up. For now return a single
             // illustrative bucket so the card renders something during

@@ -62,7 +62,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
         case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
             return tool.miscFallbackSymbol
         }
     }
@@ -162,7 +162,7 @@ enum ProviderBrandIcon {
         let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
             nil
         }
         guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -369,6 +369,7 @@ extension ToolType {
         case .mimo:        return "ProviderIcon-mimo"
         case .iflytek:     return "ProviderIcon-iflytek"
         case .tencentHunyuan: return "ProviderIcon-tencentHunyuan"
+        case .volcengine:  return "ProviderIcon-volcengine"
         }
     }
 
@@ -378,7 +379,7 @@ extension ToolType {
             return 1.0
         case .gemini, .antigravity, .copilot, .cursor:
             return 1.25
-        case .alibaba, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan:
+        case .alibaba, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .volcengine:
             return 1.36
         case .zai:
             return 1.5
@@ -404,6 +405,7 @@ extension ToolType {
         case .mimo:        return "m.square.fill"
         case .iflytek:     return "waveform"
         case .tencentHunyuan: return "globe.asia.australia"
+        case .volcengine:  return "flame.fill"
         }
     }
 }

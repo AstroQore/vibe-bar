@@ -100,6 +100,8 @@ struct MiscProviderSettingsSection: View {
             )
         case .tencentHunyuan:
             TencentSubAccountLoginRow()
+        case .volcengine:
+            VolcengineSubAccountLoginRow()
         case .antigravity:
             AntigravityStatusRow()
         case .codex, .claude:
@@ -788,5 +790,115 @@ struct TencentSubAccountLoginRow: View {
         let main = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
         guard !user.isEmpty, !main.isEmpty else { return nil }
         return ParsedLogin(subUsername: user, mainAccountId: main)
+    }
+}
+
+/// Sub-account password login form for Volcengine / Doubao.
+///
+/// Volcengine's IAM uses a numeric main account UID and a sub-user
+/// name; the user types both plus the password. Vibe Bar runs the
+/// `encCerts` → RSA-encrypt → `mixtureLogin` flow on demand and
+/// caches the resulting session cookies in
+/// `VolcengineSessionManager`. Keychain stores the three Kind values
+/// (`mainAccountId`, `subUsername`, `subPassword`); settings.json
+/// never sees the password.
+struct VolcengineSubAccountLoginRow: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+
+    @State private var mainIdDraft: String = ""
+    @State private var usernameDraft: String = ""
+    @State private var passwordDraft: String = ""
+    @State private var hasStored: Bool = false
+    @State private var status: String?
+    @State private var isSaving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                TextField("Main account UID", text: $mainIdDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 130)
+                    .disableAutocorrection(true)
+                TextField("Sub-user name", text: $usernameDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .disableAutocorrection(true)
+                SecureField("Password", text: $passwordDraft)
+                    .textFieldStyle(.roundedBorder)
+                Button(isSaving ? "Saving…" : "Save", action: save)
+                    .disabled(mainIdDraft.isEmpty || usernameDraft.isEmpty || passwordDraft.isEmpty || isSaving)
+                if hasStored {
+                    Button(role: .destructive, action: clear) {
+                        Image(systemName: "trash")
+                    }
+                    .help("Remove stored Volcengine sub-account credentials")
+                }
+            }
+            HStack(spacing: 4) {
+                Image(systemName: hasStored ? "checkmark.circle.fill" : "info.circle")
+                    .foregroundStyle(hasStored ? Color.green : Color.secondary)
+                    .font(.caption)
+                Text(hasStored
+                     ? "Sub-account credentials saved in Keychain."
+                     : "Create a CAM sub-user with read-only Doubao access. Password is RSA-encrypted before transit; only the encrypted blob hits Volcengine's API.")
+                    .font(.caption)
+                    .foregroundStyle(hasStored ? .secondary : .tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let status {
+                Text(status)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .onAppear { reloadStoredFlag() }
+    }
+
+    private func save() {
+        let trimmedMainId = mainIdDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUser = usernameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPass = passwordDraft  // intentionally not trimmed
+        guard !trimmedMainId.isEmpty, !trimmedUser.isEmpty, !trimmedPass.isEmpty else { return }
+        guard trimmedMainId.allSatisfy(\.isNumber) else {
+            status = "Main account UID must be all digits."
+            return
+        }
+
+        isSaving = true
+        defer { isSaving = false }
+        let okMain = MiscCredentialStore.writeString(trimmedMainId, tool: .volcengine, kind: .mainAccountId)
+        let okUser = MiscCredentialStore.writeString(trimmedUser, tool: .volcengine, kind: .subUsername)
+        let okPass = MiscCredentialStore.writeString(trimmedPass, tool: .volcengine, kind: .subPassword)
+        guard okMain, okUser, okPass else {
+            status = "Could not save credentials to Keychain."
+            return
+        }
+        status = nil
+        passwordDraft = ""
+        hasStored = true
+        Task {
+            await VolcengineSessionManager.shared.wipeSession()
+            triggerRefresh()
+        }
+    }
+
+    private func clear() {
+        MiscCredentialStore.delete(tool: .volcengine, kind: .mainAccountId)
+        MiscCredentialStore.delete(tool: .volcengine, kind: .subUsername)
+        MiscCredentialStore.delete(tool: .volcengine, kind: .subPassword)
+        Task { await VolcengineSessionManager.shared.wipeSession() }
+        hasStored = false
+        status = "Credentials cleared."
+    }
+
+    private func reloadStoredFlag() {
+        hasStored = MiscCredentialStore.hasValue(tool: .volcengine, kind: .mainAccountId)
+            && MiscCredentialStore.hasValue(tool: .volcengine, kind: .subUsername)
+            && MiscCredentialStore.hasValue(tool: .volcengine, kind: .subPassword)
+    }
+
+    private func triggerRefresh() {
+        guard let account = environment.account(for: .volcengine) else { return }
+        Task { _ = await quotaService.refresh(account) }
     }
 }

@@ -18,8 +18,8 @@ import Foundation
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Misc** (`.alibaba`, `.gemini`, `.antigravity`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
-///   `.tencentHunyuan`) — usage-only cards on the Misc tab. No
-///   token-cost scanning, no Atlassian-style status polling.
+///   `.tencentHunyuan`, `.volcengine`) — usage-only cards on the Misc
+///   tab. No token-cost scanning, no Atlassian-style status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
 /// scanner and the status-page poller for misc providers; most other
@@ -40,13 +40,14 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case mimo
     case iflytek
     case tencentHunyuan
+    case volcengine
 
     // MARK: - Tier helpers
 
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
             return false
         }
     }
@@ -86,6 +87,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .mimo:        return "Xiaomi - MiMo"
         case .iflytek:     return "iFlytek - Spark"
         case .tencentHunyuan: return "Tencent - Hunyuan"
+        case .volcengine:  return "Volcengine - Doubao"
         }
     }
 
@@ -104,6 +106,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .mimo:        return "Token Plan"
         case .iflytek:     return "Coding Plan"
         case .tencentHunyuan: return "Coding Plan"
+        case .volcengine:  return "Coding Plan"
         }
     }
 
@@ -122,6 +125,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .mimo:        return "MiMo"
         case .iflytek:     return "Spark"
         case .tencentHunyuan: return "Hunyuan"
+        case .volcengine:  return "Doubao"
         }
     }
 
@@ -140,6 +144,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .mimo:        return "Xiaomi"
         case .iflytek:     return "iFlytek"
         case .tencentHunyuan: return "Tencent"
+        case .volcengine:  return "Volcengine"
         }
     }
 
@@ -161,6 +166,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
         case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
         case .tencentHunyuan: return URL(string: "https://hunyuan.cloud.tencent.com/")!
+        case .volcengine:  return URL(string: "https://console.volcengine.com/ark")!
         }
     }
 

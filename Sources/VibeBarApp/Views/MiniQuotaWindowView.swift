@@ -278,6 +278,7 @@ private func providerAccent(for tool: ToolType) -> Color {
     case .mimo:        return Color(red: 0.97, green: 0.50, blue: 0.20)  // xiaomi orange
     case .iflytek:     return Color(red: 0.10, green: 0.37, blue: 0.75)  // iflytek blue
     case .tencentHunyuan: return Color(red: 0.00, green: 0.49, blue: 0.91)  // tencent blue
+    case .volcengine:  return Color(red: 0.92, green: 0.30, blue: 0.30)  // doubao red
     }
 }
 
@@ -296,6 +297,7 @@ private func providerTitle(for tool: ToolType) -> String {
     case .mimo:        return "MIMO"
     case .iflytek:     return "SPARK"
     case .tencentHunyuan: return "HUNYUAN"
+    case .volcengine:  return "DOUBAO"
     }
 }
 

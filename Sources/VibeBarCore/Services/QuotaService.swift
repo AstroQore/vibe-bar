@@ -43,7 +43,8 @@ public final class QuotaService: ObservableObject {
                 .antigravity: AntigravityQuotaAdapter(),
                 .mimo: MimoQuotaAdapter(),
                 .iflytek: IFlyTekQuotaAdapter(),
-                .tencentHunyuan: TencentHunyuanQuotaAdapter()
+                .tencentHunyuan: TencentHunyuanQuotaAdapter(),
+                .volcengine: VolcengineQuotaAdapter()
             ],
             mockProvider: mockProvider,
             initialAccountIds: initialAccountIds
