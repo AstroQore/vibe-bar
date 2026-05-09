@@ -160,14 +160,9 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         // "VibeBar/diag".
         let cookiesByName = Dictionary(grouping: cookies, by: { $0.name }).mapValues(\.count)
         let matching = cookies.filter { config.requiredCookieNames.contains($0.name) }
-        NSLog("VibeBar/diag persistCookies tool=%@ manual=%d totalCookies=%d cookieNames=%@ matchingRequired=%d",
-              config.tool.rawValue,
-              manual ? 1 : 0,
-              cookies.count,
-              String(describing: cookiesByName.keys.sorted()),
-              matching.count)
+        SafeLog.warn("diag persistCookies tool=\(config.tool.rawValue) manual=\(manual ? 1 : 0) totalCookies=\(cookies.count) cookieNames=\(String(describing: cookiesByName.keys.sorted())) matchingRequired=\(matching.count)")
         guard let header = minimizedCookieHeader(from: cookies) else {
-            NSLog("VibeBar/diag persistCookies tool=%@ → header empty after filter (returning)", config.tool.rawValue)
+            SafeLog.warn("diag persistCookies tool=\(config.tool.rawValue) → header empty after filter (returning)")
             if manual {
                 showAlert(message: "No \(config.tool.menuTitle) cookies found yet. Finish login in this window first.")
             }
@@ -178,7 +173,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
             cookieHeader: header,
             sourceLabel: "WebView login"
         )
-        NSLog("VibeBar/diag persistCookies tool=%@ store→%d headerLen=%d", config.tool.rawValue, stored ? 1 : 0, header.count)
+        SafeLog.warn("diag persistCookies tool=\(config.tool.rawValue) store→\(stored ? 1 : 0) headerLen=\(header.count)")
         guard stored else {
             if manual {
                 showAlert(message: "Could not save \(config.tool.menuTitle) cookies to Keychain.")

@@ -85,10 +85,9 @@ public enum MiscCookieResolver {
     public static func resolve(for spec: Spec) -> Resolution? {
         let settings = currentSettings(for: spec.tool)
         guard let plan = CookieSourcePlan(settings: settings) else {
-            NSLog("VibeBar/diag resolve tool=%@ → CookieSourcePlan nil (mode=%@/%@) returning nil",
-                  spec.tool.rawValue,
-                  String(describing: settings.sourceMode),
-                  String(describing: settings.cookieSource))
+            let mode = String(describing: settings.sourceMode)
+            let src = String(describing: settings.cookieSource)
+            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → CookieSourcePlan nil (mode=\(mode)/\(src)) returning nil")
             return nil
         }
 
@@ -96,16 +95,15 @@ public enum MiscCookieResolver {
         let cached = CookieHeaderCache.load(for: spec.tool)
         if let cached, plan.acceptsCached(cached) {
             if spec.hasRequiredCredential(in: cached.cookieHeader) {
-                NSLog("VibeBar/diag resolve tool=%@ → cache hit src=%@ headerLen=%d",
-                      spec.tool.rawValue, cached.sourceLabel, cached.cookieHeader.count)
+                SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → cache hit src=\(cached.sourceLabel) headerLen=\(cached.cookieHeader.count)")
                 return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
             }
-            NSLog("VibeBar/diag resolve tool=%@ → cache CLEARED, hasRequiredCredential=false (credentialNames=%@)",
-                  spec.tool.rawValue, String(describing: spec.credentialNames.sorted()))
+            let creds = String(describing: spec.credentialNames.sorted())
+            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → cache CLEARED, hasRequiredCredential=false (credentialNames=\(creds))")
             CookieHeaderCache.clear(for: spec.tool)
         } else {
-            NSLog("VibeBar/diag resolve tool=%@ → cache miss (cached=%@)",
-                  spec.tool.rawValue, cached == nil ? "nil" : "src=\(cached!.sourceLabel) accepts=\(plan.acceptsCached(cached!))")
+            let info = cached.map { "src=\($0.sourceLabel) accepts=\(plan.acceptsCached($0))" } ?? "nil"
+            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → cache miss (\(info))")
         }
 
         // 2. Browser auto-import (skipped in `.manual` mode).
@@ -116,7 +114,7 @@ public enum MiscCookieResolver {
                 cookieHeader: imported.header,
                 sourceLabel: imported.sourceLabel
             )
-            NSLog("VibeBar/diag resolve tool=%@ → browser import success src=%@", spec.tool.rawValue, imported.sourceLabel)
+            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → browser import success src=\(imported.sourceLabel)")
             return imported
         }
 
@@ -130,10 +128,10 @@ public enum MiscCookieResolver {
                 cookieHeader: normalised,
                 sourceLabel: "Manual paste"
             )
-            NSLog("VibeBar/diag resolve tool=%@ → manual paste hit", spec.tool.rawValue)
+            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → manual paste hit")
             return Resolution(header: normalised, sourceLabel: "Manual paste")
         }
-        NSLog("VibeBar/diag resolve tool=%@ → all sources empty, returning nil", spec.tool.rawValue)
+        SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → all sources empty, returning nil")
         return nil
     }
 

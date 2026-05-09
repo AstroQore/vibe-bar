@@ -45,13 +45,12 @@ public struct MimoQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        NSLog("VibeBar/diag MimoQuotaAdapter.fetch START account=%@", account.id)
+        SafeLog.warn("diag MimoQuotaAdapter.fetch START account=\(account.id)")
         guard let resolution = MiscCookieResolver.resolve(for: MimoQuotaAdapter.cookieSpec) else {
-            NSLog("VibeBar/diag MimoQuotaAdapter.fetch → resolution nil, throwing noCredential")
+            SafeLog.warn("diag MimoQuotaAdapter.fetch → resolution nil, throwing noCredential")
             throw QuotaError.noCredential
         }
-        NSLog("VibeBar/diag MimoQuotaAdapter.fetch → resolution headerLen=%d src=%@",
-              resolution.header.count, resolution.sourceLabel)
+        SafeLog.warn("diag MimoQuotaAdapter.fetch → resolution headerLen=\(resolution.header.count) src=\(resolution.sourceLabel)")
 
         var request = URLRequest(url: MimoQuotaAdapter.endpoint)
         request.httpMethod = "GET"
@@ -74,6 +73,8 @@ public struct MimoQuotaAdapter: QuotaAdapter {
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("MiMo: invalid response object")
         }
+        let bodySnippet = String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>"
+        SafeLog.warn("diag MimoQuotaAdapter.fetch → status=\(http.statusCode) bodyLen=\(data.count) bodySnippet=\(bodySnippet)")
         guard http.statusCode == 200 else {
             // Removing any one of the three required cookies returns HTTP 401
             // with body `{"code":401,...}`. Drop the cached header so the next

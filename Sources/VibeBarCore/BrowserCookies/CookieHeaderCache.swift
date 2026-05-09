@@ -56,12 +56,11 @@ public enum CookieHeaderCache {
             account: keychainAccount(for: tool),
             dataProtectionOnly: false
         ) {
-            NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → primary HIT headerLen=%d src=%@",
-                  tool.rawValue, entry.cookieHeader.count, entry.sourceLabel)
+            SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → primary HIT headerLen=\(entry.cookieHeader.count) src=\(entry.sourceLabel)")
             return entry
         }
-        NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → primary MISS svc=%@ acct=%@",
-              tool.rawValue, keychainService, keychainAccount(for: tool))
+        let acct = keychainAccount(for: tool)
+        SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → primary MISS svc=\(keychainService) acct=\(acct)")
 
         guard let legacy = loadEntry(
             tool: tool,
@@ -69,10 +68,10 @@ public enum CookieHeaderCache {
             account: legacyKeychainAccount(for: tool),
             dataProtectionOnly: true
         ) else {
-            NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → legacy MISS too, returning nil", tool.rawValue)
+            SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → legacy MISS too, returning nil")
             return nil
         }
-        NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → legacy HIT, migrating", tool.rawValue)
+        SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → legacy HIT, migrating")
 
         _ = store(
             for: tool,
@@ -97,7 +96,7 @@ public enum CookieHeaderCache {
         guard tool.isMisc else { return false }
         guard let normalized = CookieHeaderNormalizer.normalize(cookieHeader),
               !normalized.isEmpty else {
-            NSLog("VibeBar/diag CookieHeaderCache.store tool=%@ → normalize empty, clearing", tool.rawValue)
+            SafeLog.warn("diag CookieHeaderCache.store tool=\(tool.rawValue) → normalize empty, clearing")
             clear(for: tool)
             return false
         }
@@ -112,11 +111,12 @@ public enum CookieHeaderCache {
                 data: data,
                 useDataProtectionKeychain: true
             )
-            NSLog("VibeBar/diag CookieHeaderCache.store tool=%@ → WROTE svc=%@ acct=%@ headerLen=%d src=%@",
-                  tool.rawValue, keychainService, keychainAccount(for: tool), normalized.count, sourceLabel)
+            let acct = keychainAccount(for: tool)
+            SafeLog.warn("diag CookieHeaderCache.store tool=\(tool.rawValue) → WROTE svc=\(keychainService) acct=\(acct) headerLen=\(normalized.count) src=\(sourceLabel)")
             return true
         } catch {
-            NSLog("VibeBar/diag CookieHeaderCache.store tool=%@ → ERROR %@", tool.rawValue, String(describing: error))
+            let errStr = String(describing: error)
+            SafeLog.warn("diag CookieHeaderCache.store tool=\(tool.rawValue) → ERROR \(errStr)")
             SafeLog.error("Cookie cache store failed for \(tool.rawValue): \(error)")
             return false
         }
