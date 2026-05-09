@@ -17,8 +17,8 @@ import Foundation
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Misc** (`.alibaba`, `.gemini`, `.antigravity`, `.copilot`, `.zai`,
-///   `.minimax`, `.kimi`, `.cursor`) — usage-only cards on the Misc tab.
-///   No token-cost scanning, no Atlassian-style status polling.
+///   `.minimax`, `.kimi`, `.cursor`, `.mimo`) — usage-only cards on the
+///   Misc tab. No token-cost scanning, no Atlassian-style status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
 /// scanner and the status-page poller for misc providers; most other
@@ -36,13 +36,14 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case minimax
     case kimi
     case cursor
+    case mimo
 
     // MARK: - Tier helpers
 
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo:
             return false
         }
     }
@@ -79,6 +80,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "MiniMax"
         case .kimi:        return "Moonshot - Kimi"
         case .cursor:      return "Cursor"
+        case .mimo:        return "Xiaomi - MiMo"
         }
     }
 
@@ -94,6 +96,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "Coding Plan"
         case .kimi:        return "Kimi"
         case .cursor:      return "Cursor"
+        case .mimo:        return "Token Plan"
         }
     }
 
@@ -109,6 +112,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "MiniMax"
         case .kimi:        return "Kimi"
         case .cursor:      return "Cursor"
+        case .mimo:        return "MiMo"
         }
     }
 
@@ -124,6 +128,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return "MiniMax"
         case .kimi:        return "Moonshot"
         case .cursor:      return "Cursor"
+        case .mimo:        return "Xiaomi"
         }
     }
 
@@ -142,6 +147,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return URL(string: "https://platform.minimax.io/")!
         case .kimi:        return URL(string: "https://www.kimi.com/")!
         case .cursor:      return URL(string: "https://status.cursor.com/")!
+        case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
         }
     }
 

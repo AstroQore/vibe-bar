@@ -62,7 +62,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
         case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo:
             return tool.miscFallbackSymbol
         }
     }
@@ -162,7 +162,7 @@ enum ProviderBrandIcon {
         let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo:
             nil
         }
         guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -366,6 +366,7 @@ extension ToolType {
         case .minimax:     return "ProviderIcon-minimax"
         case .kimi:        return "ProviderIcon-kimi"
         case .cursor:      return "ProviderIcon-cursor"
+        case .mimo:        return "ProviderIcon-mimo"
         }
     }
 
@@ -375,7 +376,7 @@ extension ToolType {
             return 1.0
         case .gemini, .antigravity, .copilot, .cursor:
             return 1.25
-        case .alibaba, .minimax, .kimi:
+        case .alibaba, .minimax, .kimi, .mimo:
             return 1.36
         case .zai:
             return 1.5
@@ -398,6 +399,7 @@ extension ToolType {
         case .minimax:     return "function"
         case .kimi:        return "moon.stars"
         case .cursor:      return "cursorarrow.rays"
+        case .mimo:        return "m.square.fill"
         }
     }
 }

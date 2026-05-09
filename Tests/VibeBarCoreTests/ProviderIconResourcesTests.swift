@@ -18,7 +18,8 @@ final class ProviderIconResourcesTests: XCTestCase {
             "zai",
             "minimax",
             "kimi",
-            "cursor"
+            "cursor",
+            "mimo"
         ]
 
         for slug in slugs {

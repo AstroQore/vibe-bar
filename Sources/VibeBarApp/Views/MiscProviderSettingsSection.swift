@@ -86,6 +86,12 @@ struct MiscProviderSettingsSection: View {
                 spec: CursorQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
             )
+        case .mimo:
+            CookieSourceControls(
+                tool: .mimo,
+                spec: MimoQuotaAdapter.cookieSpec,
+                manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...)"
+            )
         case .antigravity:
             AntigravityStatusRow()
         case .codex, .claude:
