@@ -99,8 +99,8 @@ final class MiniMaxParserTests: XCTestCase {
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
         XCTAssertEqual(snap.planName, "MiniMax Coding Plan Pro")
         XCTAssertEqual(snap.buckets.count, 1)
-        // total=1000, remaining=234 → used=766 → 76.6%
-        XCTAssertEqual(snap.buckets[0].usedPercent, 76.6, accuracy: 0.01)
+        // total=1000, used=234 → 23.4%
+        XCTAssertEqual(snap.buckets[0].usedPercent, 23.4, accuracy: 0.01)
         XCTAssertEqual(snap.buckets[0].title, "Prompts")
         XCTAssertNotNil(snap.buckets[0].resetAt)
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 800_000)
@@ -127,7 +127,8 @@ final class MiniMaxParserTests: XCTestCase {
         """
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
         XCTAssertEqual(snap.buckets.count, 1)
-        XCTAssertEqual(snap.buckets[0].usedPercent, 4.2, accuracy: 0.01)
+        // total=1500, used=1437 → 95.8%
+        XCTAssertEqual(snap.buckets[0].usedPercent, 95.8, accuracy: 0.01)
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 14_400)
     }
 
@@ -150,7 +151,8 @@ final class MiniMaxParserTests: XCTestCase {
         }
         """
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
-        XCTAssertEqual(snap.buckets[0].usedPercent, 20.0, accuracy: 0.01)
+        // total=1500, used=1200 → 80%
+        XCTAssertEqual(snap.buckets[0].usedPercent, 80.0, accuracy: 0.01)
     }
 
     func testAuthenticationErrorMapsToNeedsLogin() {
@@ -236,7 +238,8 @@ final class MiniMaxParserTests: XCTestCase {
         }
         """
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
-        XCTAssertEqual(snap.buckets[0].usedPercent, 90.0, accuracy: 0.01)
+        // total=100, used=10 → 10%
+        XCTAssertEqual(snap.buckets[0].usedPercent, 10.0, accuracy: 0.01)
         let reset = snap.buckets[0].resetAt
         XCTAssertNotNil(reset)
         XCTAssertEqual(reset?.timeIntervalSince1970, 1_715_200_000)

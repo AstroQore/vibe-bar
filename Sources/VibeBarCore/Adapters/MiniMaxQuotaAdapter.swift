@@ -177,9 +177,12 @@ enum MiniMaxResponseParser {
             throw QuotaError.parseFailure("MiniMax response had no model_remains rows.")
         }
 
+        // `current_interval_usage_count` is the number of prompts the
+        // user has consumed in the current interval — NOT the number
+        // remaining. The earlier port read it inverted, which made a
+        // freshly-paid user (0 used) look 100 % consumed.
         let total = first.currentIntervalTotalCount ?? 0
-        let remaining = first.currentIntervalUsageCount ?? 0
-        let used = max(0, total - remaining)
+        let used = max(0, first.currentIntervalUsageCount ?? 0)
         let percent: Double
         if total > 0 {
             percent = max(0, min(100, Double(used) / Double(total) * 100))

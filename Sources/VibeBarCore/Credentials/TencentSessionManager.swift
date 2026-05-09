@@ -105,9 +105,9 @@ public actor TencentSessionManager {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, response): (Data, URLResponse)
+        let (data, response): (Data, URLResponse)
         do {
-            (_, response) = try await urlSession.data(for: request)
+            (data, response) = try await urlSession.data(for: request)
         } catch {
             throw QuotaError.network("Tencent login network error: \(error.localizedDescription)")
         }
@@ -122,18 +122,45 @@ public actor TencentSessionManager {
             throw QuotaError.network("Tencent login returned HTTP \(http.statusCode).")
         }
 
-        // The login envelope itself is opaque — Tencent serves a JSON
-        // body whose shape varies by login type. The reliable success
-        // signal is "did the response set a usable `skey` cookie?"
-        // because `URLSession` populates `cookieStorage` during `data`
-        // before this `await` returns.
-        guard hasUsableSession() else {
-            // Wrong password / account locked / risk-controlled — flip
-            // to needsLogin so the user re-enters credentials in
-            // Settings. Don't `unknown`, since this state is recoverable
-            // and the misc card already has a "Sign in" affordance.
+        // Tencent's login endpoint returns 200 even for hard failures
+        // (wrong password, MFA required, blocked sub-user, etc.) —
+        // either as `{"code": <non-zero>, "msg": "..."}` or a richer
+        // envelope. The reliable success signal is "did the response
+        // set a usable `skey` cookie?" because `URLSession` populates
+        // `cookieStorage` during `data` before this `await` returns.
+        if hasUsableSession() {
+            return
+        }
+        try Self.surfaceLoginError(data: data)
+        throw QuotaError.needsLogin
+    }
+
+    /// Best-effort decode of the login envelope. If we can extract a
+    /// machine-readable error code or human message, throw a network
+    /// error carrying it so the misc card surfaces something
+    /// actionable instead of the generic "Needs re-login". Auth /
+    /// session-related codes still flip to `needsLogin`.
+    nonisolated private static func surfaceLoginError(data: Data) throws {
+        guard !data.isEmpty,
+              let envelope = try? JSONDecoder().decode(TencentLoginEnvelope.self, from: data) else {
+            return
+        }
+        let code = envelope.code ?? 0
+        let message = (envelope.msg ?? envelope.message)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard code != 0 || !message.isEmpty else { return }
+
+        let lowered = message.lowercased()
+        if code == 401 || code == 403 ||
+            lowered.contains("password") ||
+            message.contains("密码") ||
+            lowered.contains("mfa") ||
+            lowered.contains("authfailure") ||
+            lowered.contains("login") {
             throw QuotaError.needsLogin
         }
+        let detail = message.isEmpty ? "code \(code)" : "\(message) (code \(code))"
+        throw QuotaError.network("Tencent login: \(detail)")
     }
 
     // MARK: - Internals
@@ -168,6 +195,15 @@ public actor TencentSessionManager {
     private static func epochMillis() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
     }
+}
+
+/// Loose decoder for Tencent's `auth-api/login/submit` JSON envelope.
+/// The body shape varies by login type so we tolerate any combination
+/// of `code` / `msg` / `message` and ignore everything else.
+private struct TencentLoginEnvelope: Decodable {
+    let code: Int?
+    let msg: String?
+    let message: String?
 }
 
 private struct TencentSubAccountCredentials {
