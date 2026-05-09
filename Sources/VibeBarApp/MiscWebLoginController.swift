@@ -153,17 +153,33 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
     }
 
     private func persistCookies(_ cookies: [HTTPCookie], manual: Bool) {
+        // Diagnostic: this whole misc-card "Not configured" loop is one
+        // of those cases where there's no good single point to inspect
+        // the world from, so we leave NSLog breadcrumbs on the entire
+        // save → cache → resolver → adapter path. Search Console for
+        // "VibeBar/diag".
+        let cookiesByName = Dictionary(grouping: cookies, by: { $0.name }).mapValues(\.count)
+        let matching = cookies.filter { config.requiredCookieNames.contains($0.name) }
+        NSLog("VibeBar/diag persistCookies tool=%@ manual=%d totalCookies=%d cookieNames=%@ matchingRequired=%d",
+              config.tool.rawValue,
+              manual ? 1 : 0,
+              cookies.count,
+              String(describing: cookiesByName.keys.sorted()),
+              matching.count)
         guard let header = minimizedCookieHeader(from: cookies) else {
+            NSLog("VibeBar/diag persistCookies tool=%@ → header empty after filter (returning)", config.tool.rawValue)
             if manual {
                 showAlert(message: "No \(config.tool.menuTitle) cookies found yet. Finish login in this window first.")
             }
             return
         }
-        guard CookieHeaderCache.store(
+        let stored = CookieHeaderCache.store(
             for: config.tool,
             cookieHeader: header,
             sourceLabel: "WebView login"
-        ) else {
+        )
+        NSLog("VibeBar/diag persistCookies tool=%@ store→%d headerLen=%d", config.tool.rawValue, stored ? 1 : 0, header.count)
+        guard stored else {
             if manual {
                 showAlert(message: "Could not save \(config.tool.menuTitle) cookies to Keychain.")
             }

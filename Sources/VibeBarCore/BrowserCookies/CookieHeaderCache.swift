@@ -56,8 +56,12 @@ public enum CookieHeaderCache {
             account: keychainAccount(for: tool),
             dataProtectionOnly: false
         ) {
+            NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → primary HIT headerLen=%d src=%@",
+                  tool.rawValue, entry.cookieHeader.count, entry.sourceLabel)
             return entry
         }
+        NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → primary MISS svc=%@ acct=%@",
+              tool.rawValue, keychainService, keychainAccount(for: tool))
 
         guard let legacy = loadEntry(
             tool: tool,
@@ -65,8 +69,10 @@ public enum CookieHeaderCache {
             account: legacyKeychainAccount(for: tool),
             dataProtectionOnly: true
         ) else {
+            NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → legacy MISS too, returning nil", tool.rawValue)
             return nil
         }
+        NSLog("VibeBar/diag CookieHeaderCache.load tool=%@ → legacy HIT, migrating", tool.rawValue)
 
         _ = store(
             for: tool,
@@ -91,6 +97,7 @@ public enum CookieHeaderCache {
         guard tool.isMisc else { return false }
         guard let normalized = CookieHeaderNormalizer.normalize(cookieHeader),
               !normalized.isEmpty else {
+            NSLog("VibeBar/diag CookieHeaderCache.store tool=%@ → normalize empty, clearing", tool.rawValue)
             clear(for: tool)
             return false
         }
@@ -105,8 +112,11 @@ public enum CookieHeaderCache {
                 data: data,
                 useDataProtectionKeychain: true
             )
+            NSLog("VibeBar/diag CookieHeaderCache.store tool=%@ → WROTE svc=%@ acct=%@ headerLen=%d src=%@",
+                  tool.rawValue, keychainService, keychainAccount(for: tool), normalized.count, sourceLabel)
             return true
         } catch {
+            NSLog("VibeBar/diag CookieHeaderCache.store tool=%@ → ERROR %@", tool.rawValue, String(describing: error))
             SafeLog.error("Cookie cache store failed for \(tool.rawValue): \(error)")
             return false
         }

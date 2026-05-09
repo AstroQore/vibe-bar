@@ -45,9 +45,13 @@ public struct MimoQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        NSLog("VibeBar/diag MimoQuotaAdapter.fetch START account=%@", account.id)
         guard let resolution = MiscCookieResolver.resolve(for: MimoQuotaAdapter.cookieSpec) else {
+            NSLog("VibeBar/diag MimoQuotaAdapter.fetch → resolution nil, throwing noCredential")
             throw QuotaError.noCredential
         }
+        NSLog("VibeBar/diag MimoQuotaAdapter.fetch → resolution headerLen=%d src=%@",
+              resolution.header.count, resolution.sourceLabel)
 
         var request = URLRequest(url: MimoQuotaAdapter.endpoint)
         request.httpMethod = "GET"

@@ -85,16 +85,27 @@ public enum MiscCookieResolver {
     public static func resolve(for spec: Spec) -> Resolution? {
         let settings = currentSettings(for: spec.tool)
         guard let plan = CookieSourcePlan(settings: settings) else {
+            NSLog("VibeBar/diag resolve tool=%@ → CookieSourcePlan nil (mode=%@/%@) returning nil",
+                  spec.tool.rawValue,
+                  String(describing: settings.sourceMode),
+                  String(describing: settings.cookieSource))
             return nil
         }
 
         // 1. Cached header from a prior import or manual paste.
-        if let cached = CookieHeaderCache.load(for: spec.tool),
-           plan.acceptsCached(cached) {
+        let cached = CookieHeaderCache.load(for: spec.tool)
+        if let cached, plan.acceptsCached(cached) {
             if spec.hasRequiredCredential(in: cached.cookieHeader) {
+                NSLog("VibeBar/diag resolve tool=%@ → cache hit src=%@ headerLen=%d",
+                      spec.tool.rawValue, cached.sourceLabel, cached.cookieHeader.count)
                 return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
             }
+            NSLog("VibeBar/diag resolve tool=%@ → cache CLEARED, hasRequiredCredential=false (credentialNames=%@)",
+                  spec.tool.rawValue, String(describing: spec.credentialNames.sorted()))
             CookieHeaderCache.clear(for: spec.tool)
+        } else {
+            NSLog("VibeBar/diag resolve tool=%@ → cache miss (cached=%@)",
+                  spec.tool.rawValue, cached == nil ? "nil" : "src=\(cached!.sourceLabel) accepts=\(plan.acceptsCached(cached!))")
         }
 
         // 2. Browser auto-import (skipped in `.manual` mode).
@@ -105,6 +116,7 @@ public enum MiscCookieResolver {
                 cookieHeader: imported.header,
                 sourceLabel: imported.sourceLabel
             )
+            NSLog("VibeBar/diag resolve tool=%@ → browser import success src=%@", spec.tool.rawValue, imported.sourceLabel)
             return imported
         }
 
@@ -118,9 +130,10 @@ public enum MiscCookieResolver {
                 cookieHeader: normalised,
                 sourceLabel: "Manual paste"
             )
+            NSLog("VibeBar/diag resolve tool=%@ → manual paste hit", spec.tool.rawValue)
             return Resolution(header: normalised, sourceLabel: "Manual paste")
         }
-
+        NSLog("VibeBar/diag resolve tool=%@ → all sources empty, returning nil", spec.tool.rawValue)
         return nil
     }
 
