@@ -77,11 +77,17 @@ struct MiscProviderSettingsSection: View {
                 manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
             )
         case .mimo:
-            CookieSourceControls(
-                tool: .mimo,
-                spec: MimoQuotaAdapter.cookieSpec,
-                manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...)"
-            )
+            VStack(alignment: .leading, spacing: 4) {
+                CookieSourceControls(
+                    tool: .mimo,
+                    spec: MimoQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...)"
+                )
+                MiscWebLoginRow(
+                    tool: .mimo,
+                    helpText: "Chrome's newer cookie encryption blocks the browser-import path on macOS. Sign in via the in-app webview to capture cookies cleanly."
+                )
+            }
         case .iflytek:
             CookieSourceControls(
                 tool: .iflytek,
@@ -927,5 +933,38 @@ struct VolcengineSubAccountLoginRow: View {
     private func triggerRefresh() {
         guard let account = environment.account(for: .volcengine) else { return }
         Task { _ = await quotaService.refresh(account) }
+    }
+}
+
+/// "Sign in via Web" affordance for cookie-based misc providers whose
+/// auto-import path is unreliable on the user's browser. Currently
+/// renders for any tool that `MiscWebLoginRegistry` knows how to drive.
+struct MiscWebLoginRow: View {
+    let tool: ToolType
+    let helpText: String
+
+    @EnvironmentObject var environment: AppEnvironment
+
+    var body: some View {
+        guard MiscWebLoginRegistry.isSupported(for: tool) else {
+            return AnyView(EmptyView())
+        }
+        return AnyView(
+            HStack(spacing: 6) {
+                Image(systemName: "safari")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                Text(helpText)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Button("Sign in via Web") {
+                    environment.openMiscWebLogin(for: tool)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        )
     }
 }

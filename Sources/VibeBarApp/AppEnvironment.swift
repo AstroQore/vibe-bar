@@ -21,6 +21,7 @@ final class AppEnvironment: ObservableObject {
 
     private let openAIWebLoginController = OpenAIWebLoginController()
     private let claudeWebLoginController = ClaudeWebLoginController()
+    private let miscWebLoginRegistry = MiscWebLoginRegistry()
     private let settingsWindowController = SettingsWindowController()
     private var cancellables: Set<AnyCancellable> = []
     private var routineBudgetInFlightAccountIds: Set<String> = []
@@ -250,6 +251,19 @@ final class AppEnvironment: ObservableObject {
         openAIWebLoginController.open { [weak self] in
             self?.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
             self?.reloadProviderCredentialsAndRefresh()
+        }
+    }
+
+    /// Open the in-app WebView login flow for a misc provider whose
+    /// cookies can't be auto-imported from the user's main browser
+    /// (typically because of Chrome v11/app-bound cookie encryption,
+    /// which SweetCookieKit doesn't read). After save, kicks a one-shot
+    /// quota refresh so the misc card flips out of "Set up" state.
+    func openMiscWebLogin(for tool: ToolType) {
+        guard let account = account(for: tool) else { return }
+        miscWebLoginRegistry.openLogin(for: tool) { [weak self] in
+            guard let self else { return }
+            Task { _ = await self.quotaService.refresh(account) }
         }
     }
 
