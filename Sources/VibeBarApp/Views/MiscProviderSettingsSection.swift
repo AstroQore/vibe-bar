@@ -92,6 +92,12 @@ struct MiscProviderSettingsSection: View {
                 spec: MimoQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...)"
             )
+        case .iflytek:
+            CookieSourceControls(
+                tool: .iflytek,
+                spec: IFlyTekQuotaAdapter.cookieSpec,
+                manualPrompt: "Paste maas.xfyun.cn Cookie header (atp-auth-token=...)"
+            )
         case .antigravity:
             AntigravityStatusRow()
         case .codex, .claude:

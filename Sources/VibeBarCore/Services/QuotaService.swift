@@ -41,7 +41,8 @@ public final class QuotaService: ObservableObject {
                 .kimi: KimiQuotaAdapter(),
                 .cursor: CursorQuotaAdapter(),
                 .antigravity: AntigravityQuotaAdapter(),
-                .mimo: MimoQuotaAdapter()
+                .mimo: MimoQuotaAdapter(),
+                .iflytek: IFlyTekQuotaAdapter()
             ],
             mockProvider: mockProvider,
             initialAccountIds: initialAccountIds

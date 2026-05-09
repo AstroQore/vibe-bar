@@ -17,8 +17,9 @@ import Foundation
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Misc** (`.alibaba`, `.gemini`, `.antigravity`, `.copilot`, `.zai`,
-///   `.minimax`, `.kimi`, `.cursor`, `.mimo`) — usage-only cards on the
-///   Misc tab. No token-cost scanning, no Atlassian-style status polling.
+///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`) — usage-only
+///   cards on the Misc tab. No token-cost scanning, no Atlassian-style
+///   status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
 /// scanner and the status-page poller for misc providers; most other
@@ -37,13 +38,14 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case kimi
     case cursor
     case mimo
+    case iflytek
 
     // MARK: - Tier helpers
 
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek:
             return false
         }
     }
@@ -81,6 +83,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kimi:        return "Moonshot - Kimi"
         case .cursor:      return "Cursor"
         case .mimo:        return "Xiaomi - MiMo"
+        case .iflytek:     return "iFlytek - Spark"
         }
     }
 
@@ -97,6 +100,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kimi:        return "Kimi"
         case .cursor:      return "Cursor"
         case .mimo:        return "Token Plan"
+        case .iflytek:     return "Coding Plan"
         }
     }
 
@@ -113,6 +117,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kimi:        return "Kimi"
         case .cursor:      return "Cursor"
         case .mimo:        return "MiMo"
+        case .iflytek:     return "Spark"
         }
     }
 
@@ -129,6 +134,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kimi:        return "Moonshot"
         case .cursor:      return "Cursor"
         case .mimo:        return "Xiaomi"
+        case .iflytek:     return "iFlytek"
         }
     }
 
@@ -148,6 +154,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kimi:        return URL(string: "https://www.kimi.com/")!
         case .cursor:      return URL(string: "https://status.cursor.com/")!
         case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
+        case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
         }
     }
 

@@ -66,7 +66,7 @@ struct UsageHeatmapView: View {
         switch heatmap.tool {
         case .codex:  return "Codex"
         case .claude: return "Claude"
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek:
             return heatmap.tool.menuTitle
         }
     }
