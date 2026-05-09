@@ -13,6 +13,10 @@ struct SettingsView: View {
     @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
     @State private var launchAtLoginError: String?
+    @State private var keychainPassword: String = ""
+    @State private var isAuthorizingKeychain: Bool = false
+    @State private var keychainAuthorizationStatus: String?
+    @State private var keychainAuthorizationSucceeded: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -257,6 +261,10 @@ struct SettingsView: View {
                             .foregroundStyle(.tertiary)
                     }
 
+                    settingsSection("Keychain Access") {
+                        keychainAuthorizationControls
+                    }
+
                     settingsSection("Privacy") {
                         Text("Tokens are read from local CLI credentials. Saved OpenAI and Claude Web cookies are stored in macOS Keychain, split by browser and WebView source. Legacy plaintext cookie files under ~/.vibebar/cookies are migrated once and deleted. Settings, quota cache, and cost summaries stay under ~/.vibebar.")
                             .font(.caption)
@@ -321,6 +329,38 @@ struct SettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+            }
+        }
+    }
+
+    private var keychainAuthorizationControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("If macOS repeatedly asks for Vibe Bar's Keychain items after a rebuild, enter the login keychain password once to re-authorize Vibe Bar-owned cookies and misc-provider secrets. The password is used only for this operation.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                SecureField("Login keychain password", text: $keychainPassword)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(authorizeKeychainAccess)
+                    .disabled(isAuthorizingKeychain)
+                Button {
+                    authorizeKeychainAccess()
+                } label: {
+                    Label(
+                        isAuthorizingKeychain ? "Authorizing..." : "Authorize",
+                        systemImage: "key.fill"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(keychainPassword.isEmpty || isAuthorizingKeychain)
+            }
+            if let keychainAuthorizationStatus {
+                Text(keychainAuthorizationStatus)
+                    .font(.caption2)
+                    .foregroundStyle(keychainAuthorizationSucceeded ? .green : .orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -677,6 +717,60 @@ struct SettingsView: View {
             accountPlan: environment.account(for: tool)?.plan
         )
         return label.map { "Auto: \($0)" } ?? "Auto: hidden until detected"
+    }
+
+    private func authorizeKeychainAccess() {
+        guard !isAuthorizingKeychain, !keychainPassword.isEmpty else { return }
+        let password = keychainPassword
+        keychainPassword = ""
+        keychainAuthorizationSucceeded = false
+        keychainAuthorizationStatus = "Authorizing Keychain access..."
+        isAuthorizingKeychain = true
+
+        Task.detached {
+            do {
+                let report = try VibeBarKeychainAccessAuthorizer.authorizeExistingOwnedItems(
+                    loginKeychainPassword: password
+                )
+                await MainActor.run {
+                    isAuthorizingKeychain = false
+                    keychainAuthorizationSucceeded = report.failureCount == 0
+                    keychainAuthorizationStatus = keychainAuthorizationMessage(for: report)
+                }
+            } catch {
+                await MainActor.run {
+                    isAuthorizingKeychain = false
+                    keychainAuthorizationSucceeded = false
+                    keychainAuthorizationStatus = keychainAuthorizationFailureMessage(error)
+                }
+            }
+        }
+    }
+
+    private func keychainAuthorizationMessage(
+        for report: VibeBarKeychainAccessAuthorizer.Report
+    ) -> String {
+        if report.failureCount == 0 {
+            return "Authorized \(report.authorizedCount) existing Keychain item(s). \(report.missingCount) item(s) have not been created yet."
+        }
+        let firstStatus = report.failures.first.map { String($0.status) } ?? "unknown"
+        return "Partially authorized \(report.authorizedCount) item(s); \(report.failureCount) failed with OSStatus \(firstStatus)."
+    }
+
+    private func keychainAuthorizationFailureMessage(_ error: Error) -> String {
+        if let authError = error as? VibeBarKeychainAccessAuthorizer.AuthorizationError {
+            switch authError {
+            case .emptyPassword:
+                return "Enter the login keychain password first."
+            case .unlockFailed(let status):
+                return "Could not unlock the login keychain. OSStatus \(status)."
+            case .trustedApplicationFailed(let status):
+                return "Could not identify the current Vibe Bar app for Keychain access. OSStatus \(status)."
+            case .accessCreateFailed(let status):
+                return "Could not create the Keychain access rule. OSStatus \(status)."
+            }
+        }
+        return "Could not authorize Keychain access: \(error)"
     }
 
     private func intervalLabel(_ seconds: Int) -> String {

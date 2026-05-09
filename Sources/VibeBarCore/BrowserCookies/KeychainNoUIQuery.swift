@@ -11,18 +11,29 @@ import Security
 /// Ported from codexbar `KeychainNoUIQuery.swift` (vibe-bar is
 /// macOS-only, so the cross-platform `#if` is dropped).
 enum KeychainNoUIQuery {
+    enum UIPolicy {
+        case fail
+        case skip
+    }
+
     private static let uiFailPolicy = KeychainNoUIQuery.resolveUIFailPolicy()
 
-    static func apply(to query: inout [String: Any]) {
+    static func apply(to query: inout [String: Any], uiPolicy: UIPolicy = .fail) {
         let context = LAContext()
         context.interactionNotAllowed = true
         query[kSecUseAuthenticationContext as String] = context
+        query[kSecUseNoAuthenticationUI as String] = kCFBooleanTrue
 
         // Some macOS versions still surface an Allow/Deny prompt with
         // `interactionNotAllowed` alone. Pinning the "fail" UI policy
         // closes that gap at the cost of resolving a soft-deprecated
         // Security symbol at runtime instead of compile time.
-        query[kSecUseAuthenticationUI as String] = uiFailPolicy as CFString
+        switch uiPolicy {
+        case .fail:
+            query[kSecUseAuthenticationUI as String] = uiFailPolicy as CFString
+        case .skip:
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUISkip
+        }
     }
 
     private static func resolveUIFailPolicy() -> String {

@@ -76,6 +76,31 @@ final class GeminiParserTests: XCTestCase {
         XCTAssertEqual(creds.expiry?.timeIntervalSince1970, 1_715_000_000)
     }
 
+    func testGeminiTokenRefreshDecisionUsesLeadTime() {
+        let leadTime: TimeInterval = 10 * 60
+
+        XCTAssertTrue(GeminiTokenRefreshHelper.shouldRefresh(
+            expiry: now.addingTimeInterval(5 * 60),
+            now: now,
+            leadTime: leadTime
+        ))
+        XCTAssertTrue(GeminiTokenRefreshHelper.shouldRefresh(
+            expiry: now.addingTimeInterval(-60),
+            now: now,
+            leadTime: leadTime
+        ))
+        XCTAssertFalse(GeminiTokenRefreshHelper.shouldRefresh(
+            expiry: now.addingTimeInterval(30 * 60),
+            now: now,
+            leadTime: leadTime
+        ))
+        XCTAssertFalse(GeminiTokenRefreshHelper.shouldRefresh(
+            expiry: nil,
+            now: now,
+            leadTime: leadTime
+        ))
+    }
+
     func testEmailExtractionFromJWT() {
         // Synthetic JWT with payload {"email":"alice@example.com","hd":"example.com"}.
         // Header and signature are not validated here — base64url payload only.

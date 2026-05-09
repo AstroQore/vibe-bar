@@ -17,7 +17,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var providerPlanLabels: [ToolType: String]
     /// Per-misc-provider non-sensitive config (source mode, region,
     /// enterprise host, etc.). Sensitive credentials live in Keychain
-    /// (service `com.astroqore.VibeBar.misc`), never in this map. The
+    /// (`MiscCredentialStore` / `CookieHeaderCache`), never in this map. The
     /// lossy `init(from:)` strips any sensitive-looking keys on
     /// decode — see `MiscProviderSettings.sanitize`.
     public var miscProviders: [ToolType: MiscProviderSettings]
@@ -93,10 +93,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let defaultProviderPlanLabels: [ToolType: String] = [:]
 
-    /// Default `MiscProviderSettings` for every misc provider — they
-    /// all start at `auto` source mode, no region override, no
-    /// enterprise host. The card renders as soon as a credential is
-    /// configured.
+    /// Default `MiscProviderSettings` for every misc provider. Source
+    /// selection is intentionally automatic and not exposed in the UI;
+    /// region / enterprise host remain as provider-specific knobs.
     public static var defaultMiscProviders: [ToolType: MiscProviderSettings] {
         var out: [ToolType: MiscProviderSettings] = [:]
         for tool in ToolType.miscProviders {
@@ -308,7 +307,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private static func normalizedMiscProviders(_ map: [ToolType: MiscProviderSettings]) -> [ToolType: MiscProviderSettings] {
         var out: [ToolType: MiscProviderSettings] = [:]
         for tool in ToolType.miscProviders {
-            out[tool] = map[tool] ?? .default
+            out[tool] = (map[tool] ?? .default).automaticSourceSelection
         }
         return out
     }
