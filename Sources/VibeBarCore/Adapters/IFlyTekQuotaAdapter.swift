@@ -34,7 +34,20 @@ public struct IFlyTekQuotaAdapter: QuotaAdapter {
             "xfyun.cn",
             ".xfyun.cn"
         ],
-        requiredNames: ["atp-auth-token"]
+        // Live `coding-plan/list` rejects requests carrying only
+        // `atp-auth-token` with `{"code":4001,"message":"用户未登录"}`,
+        // even though that token alone authenticates against
+        // `account.xfyun.cn` itself. The console JS sends the full
+        // session cookie set; the backend stitches identity from
+        // `atp-auth-token` (HttpOnly auth ticket) + `account_id`
+        // (numeric uid) + `ssoSessionId` (passport handshake echo) +
+        // `tenantToken` (org context).
+        requiredNames: [
+            "atp-auth-token",
+            "account_id",
+            "ssoSessionId",
+            "tenantToken"
+        ]
     )
 
     private static let endpoint = URL(string:

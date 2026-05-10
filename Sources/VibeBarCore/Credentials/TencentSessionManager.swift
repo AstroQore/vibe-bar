@@ -115,6 +115,8 @@ public actor TencentSessionManager {
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("Tencent login: invalid response object")
         }
+        let bodySnippet = String(data: data.prefix(300), encoding: .utf8) ?? "<non-utf8>"
+        SafeLog.warn("diag TencentSessionManager.performLogin → status=\(http.statusCode) bodyLen=\(data.count) bodySnippet=\(bodySnippet)")
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
                 throw QuotaError.needsLogin

@@ -195,7 +195,10 @@ final class IFlyTekParserTests: XCTestCase {
     func testCookieSpecRequiresAtpAuthToken() {
         let spec = IFlyTekQuotaAdapter.cookieSpec
         XCTAssertEqual(spec.tool, .iflytek)
-        XCTAssertEqual(spec.requiredNames, ["atp-auth-token"])
+        XCTAssertEqual(
+            spec.requiredNames,
+            ["atp-auth-token", "account_id", "ssoSessionId", "tenantToken"]
+        )
         XCTAssertTrue(spec.domains.contains("maas.xfyun.cn"))
         XCTAssertTrue(spec.domains.contains(".xfyun.cn"))
     }

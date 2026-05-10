@@ -92,7 +92,7 @@ struct MiscProviderSettingsSection: View {
             CookieSourceControls(
                 tool: .iflytek,
                 spec: IFlyTekQuotaAdapter.cookieSpec,
-                manualPrompt: "Paste maas.xfyun.cn Cookie header (atp-auth-token=...)"
+                manualPrompt: "Paste maas.xfyun.cn Cookie header (atp-auth-token=…; account_id=…; ssoSessionId=…; tenantToken=…)"
             )
         case .tencentHunyuan:
             TencentSubAccountLoginRow()
