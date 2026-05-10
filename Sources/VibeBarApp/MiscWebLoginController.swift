@@ -190,19 +190,23 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
 
     private func minimizedCookieHeader(from cookies: [HTTPCookie]) -> String? {
         // Filter to cookies whose domain matches one of the spec's
-        // suffix patterns AND whose name is in the required set. Sort
-        // for stability so identical sessions produce identical
-        // headers in Keychain.
+        // suffix patterns. If `requiredCookieNames` is non-empty, also
+        // restrict to those names; an empty set means "ship the full
+        // jar" (used for Tencent/Volcengine, whose HttpOnly session
+        // helpers can't be enumerated up front). Sort for stability so
+        // identical sessions produce identical headers in Keychain.
         let kept = cookies
             .filter { cookie in
-                guard config.requiredCookieNames.contains(cookie.name) else { return false }
                 let domain = cookie.domain.lowercased()
                 let stripped = domain.hasPrefix(".") ? String(domain.dropFirst()) : domain
-                return config.cookieDomainSuffixes.contains { suffix in
+                let domainOK = config.cookieDomainSuffixes.contains { suffix in
                     let lowered = suffix.lowercased()
                     let normalized = lowered.hasPrefix(".") ? String(lowered.dropFirst()) : lowered
                     return stripped == normalized || stripped.hasSuffix("." + normalized)
                 }
+                guard domainOK else { return false }
+                if config.requiredCookieNames.isEmpty { return true }
+                return config.requiredCookieNames.contains(cookie.name)
             }
             .sorted { $0.name < $1.name }
 
@@ -476,6 +480,26 @@ final class MiscWebLoginRegistry {
                 windowTitle: "Tencent Hunyuan Login",
                 savedConfirmation: "Hunyuan cookies saved.",
                 setupHint: "Sign in to Tencent Cloud (sub-user works), then click Save Cookies."
+            )
+        case .alibaba:
+            return MiscWebLoginController.Config(
+                tool: .alibaba,
+                loginURL: URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan")!,
+                cookieDomainSuffixes: ["aliyun.com", "alibabacloud.com"],
+                requiredCookieNames: [],  // ship full jar (HttpOnly login tickets)
+                trustedAuthHostSuffixes: [
+                    "aliyun.com",
+                    "alibabacloud.com",
+                    "alibaba.com",
+                    "alibaba-inc.com",
+                    "alicdn.com",
+                    "alipay.com",
+                    "taobao.com",
+                    "alibabausercontent.com"
+                ],
+                windowTitle: "Alibaba Bailian / ModelStudio Login",
+                savedConfirmation: "Alibaba console cookies saved.",
+                setupHint: "Sign in to Bailian (CN) or ModelStudio (Intl); use the same console where your Coding Plan lives. Then click Save Cookies."
             )
         default:
             return nil

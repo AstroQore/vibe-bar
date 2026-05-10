@@ -2,17 +2,22 @@ import Foundation
 
 /// Alibaba Qwen / Bailian Coding Plan usage adapter.
 ///
-/// Auth: API key (DashScope key) pasted in Settings. The user picks
-/// a region — international (`ap-southeast-1`, dashscope-intl) or
-/// china-mainland (`cn-beijing`, dashscope) — or leaves it blank
-/// for auto-failover.
+/// Two auth paths, tried in order:
+/// 1. **API key** (DashScope `sk-…`) — pasted in Settings, hits the
+///    public gateway directly. Cleanest path; only Coding Plan users
+///    who explicitly minted an API key have this.
+/// 2. **Console cookie** — the `*.aliyun.com` / `*.alibabacloud.com`
+///    session jar. Adapter scrapes `SEC_TOKEN` from the dashboard
+///    HTML, then POSTs the console RPC with `sec_token` + a
+///    `cornerstoneParam` blob the same way the Bailian / ModelStudio
+///    page does in the browser. This is what most Coding Plan
+///    customers end up using, since they signed up via the console
+///    rather than DashScope.
 ///
-/// Cookie fallback (codexbar's web-session path with sec_token /
-/// x-csrf-token / x-xsrf-token header dance) is **deliberately
-/// dropped** in this v1 port. It's ~600 lines of console-RPC-shape
-/// reverse engineering and depends on a live SweetCookieKit import
-/// chain. Users who only have a console session, no API key, see a
-/// "paste an API key" hint until that path lands as a follow-up.
+/// The user picks a region — international (`ap-southeast-1`,
+/// modelstudio.console.alibabacloud.com) or china-mainland
+/// (`cn-beijing`, bailian.console.aliyun.com) — or leaves it blank
+/// for auto-failover.
 ///
 /// Output: up to three `QuotaBucket`s — 5-hour (primary), weekly
 /// (secondary), monthly (tertiary). Each is built from used / total
@@ -24,6 +29,22 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
     private let session: URLSession
     private let now: @Sendable () -> Date
 
+    public static let cookieSpec = MiscCookieResolver.Spec(
+        tool: .alibaba,
+        domains: [
+            "bailian.console.aliyun.com",
+            "modelstudio.console.alibabacloud.com",
+            ".aliyun.com",
+            ".alibabacloud.com"
+        ],
+        // Empty `requiredNames` ships the entire jar — Alibaba's
+        // console identity stitches together `login_aliyunid_csrf`,
+        // `cna`, plus a handful of HttpOnly login tickets we can't
+        // enumerate from JS. Same approach as the iFlytek / Tencent
+        // / Volcengine adapters.
+        requiredNames: []
+    )
+
     public init(
         session: URLSession = .shared,
         now: @escaping @Sendable () -> Date = { Date() }
@@ -34,14 +55,6 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
         let settings = MiscProviderSettings.current(for: .alibaba)
-        guard settings.allowsAPIOrOAuthAccess else {
-            throw QuotaError.noCredential
-        }
-        guard let apiKey = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
-              !apiKey.isEmpty
-        else {
-            throw QuotaError.noCredential
-        }
 
         let preferred: [AlibabaRegion]
         switch settings.region {
@@ -53,8 +66,46 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
             preferred = [.international, .chinaMainland]
         }
 
+        let hasAPIKey = settings.allowsAPIOrOAuthAccess && {
+            guard let key = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
+                  !key.isEmpty else { return false }
+            return true
+        }()
+        let cookieResolution = MiscCookieResolver.resolve(for: AlibabaQuotaAdapter.cookieSpec)
+
+        // Path 1: API key (preferred when present — fewer round-trips,
+        // no SEC_TOKEN scrape). Fall through to the cookie path on
+        // auth-style failures so a stale `sk-…` doesn't permanently
+        // black-hole users who also have a console session.
+        if hasAPIKey,
+           let apiKey = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
+           !apiKey.isEmpty {
+            do {
+                return try await fetchViaAPIKey(apiKey: apiKey, regions: preferred, account: account)
+            } catch let qe as QuotaError {
+                switch qe {
+                case .needsLogin, .noCredential:
+                    if cookieResolution == nil { throw qe }
+                    // else fall through to cookie path
+                default:
+                    throw qe
+                }
+            }
+        }
+
+        // Path 2: console cookie.
+        if let resolution = cookieResolution {
+            return try await fetchViaCookie(header: resolution.header, regions: preferred, account: account)
+        }
+
+        throw QuotaError.noCredential
+    }
+
+    private func fetchViaAPIKey(apiKey: String,
+                                regions: [AlibabaRegion],
+                                account: AccountIdentity) async throws -> AccountQuota {
         var lastError: QuotaError?
-        for region in preferred {
+        for region in regions {
             do {
                 let snapshot = try await fetchOnce(apiKey: apiKey, region: region)
                 return AccountQuota(
@@ -72,6 +123,40 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
                 // "log in"). Real network failures shouldn't roll
                 // through to the next region — they're more useful as
                 // a single error message.
+                switch qe {
+                case .needsLogin, .noCredential:
+                    continue
+                default:
+                    throw qe
+                }
+            }
+        }
+        throw lastError ?? QuotaError.unknown("Alibaba: no usable region.")
+    }
+
+    private func fetchViaCookie(header: String,
+                                regions: [AlibabaRegion],
+                                account: AccountIdentity) async throws -> AccountQuota {
+        var lastError: QuotaError?
+        for region in regions {
+            do {
+                let secToken = try await resolveSECToken(cookieHeader: header, region: region)
+                let snapshot = try await fetchConsoleOnce(
+                    cookieHeader: header,
+                    secToken: secToken,
+                    region: region
+                )
+                return AccountQuota(
+                    accountId: account.id,
+                    tool: .alibaba,
+                    buckets: snapshot.buckets,
+                    plan: snapshot.planName,
+                    email: account.email,
+                    queriedAt: now(),
+                    error: nil
+                )
+            } catch let qe as QuotaError {
+                lastError = qe
                 switch qe {
                 case .needsLogin, .noCredential:
                     continue
@@ -122,6 +207,174 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
 
         return try AlibabaResponseParser.parse(data: data, now: now())
     }
+
+    // MARK: Console-cookie path
+
+    /// GET the dashboard HTML and pull out the inline `SEC_TOKEN` JS
+    /// constant that the console RPC requires alongside the cookie
+    /// header. Falls back to a `sec_token` cookie if the page didn't
+    /// embed one.
+    private func resolveSECToken(cookieHeader: String,
+                                 region: AlibabaRegion) async throws -> String {
+        var request = URLRequest(url: region.dashboardURL)
+        request.httpMethod = "GET"
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
+        request.setValue(
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            forHTTPHeaderField: "Accept"
+        )
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw QuotaError.network("Alibaba dashboard fetch error: \(error.localizedDescription)")
+        }
+
+        if let http = response as? HTTPURLResponse,
+           http.statusCode == 200,
+           let html = String(data: data, encoding: .utf8) {
+            let patterns = [
+                #"SEC_TOKEN\s*:\s*\"([^\"]+)\""#,
+                #"SEC_TOKEN\s*:\s*'([^']+)'"#,
+                #"secToken\s*:\s*\"([^\"]+)\""#,
+                #"sec_token\s*:\s*\"([^\"]+)\""#,
+                #"\"SEC_TOKEN\"\s*:\s*\"([^\"]+)\""#,
+                #"\"sec_token\"\s*:\s*\"([^\"]+)\""#
+            ]
+            for pattern in patterns {
+                if let token = Self.matchFirstGroup(pattern: pattern, in: html), !token.isEmpty {
+                    return token
+                }
+            }
+        }
+
+        if let cookieToken = Self.extractCookieValue(name: "sec_token", from: cookieHeader),
+           !cookieToken.isEmpty {
+            return cookieToken
+        }
+
+        throw QuotaError.needsLogin
+    }
+
+    /// POST the form-urlencoded console RPC body the Bailian /
+    /// ModelStudio dashboard fires from the browser. Body shape:
+    /// `params=<json>&region=<id>&sec_token=<sec>`. Headers carry
+    /// the cookie + `x-csrf-token` / `x-xsrf-token` lifted from the
+    /// `login_aliyunid_csrf` (or `csrf`) cookie value.
+    private func fetchConsoleOnce(cookieHeader: String,
+                                  secToken: String,
+                                  region: AlibabaRegion) async throws -> AlibabaResponseParser.Snapshot {
+        let traceID = UUID().uuidString.lowercased()
+        var cornerstone: [String: Any] = [
+            "feTraceId": traceID,
+            "feURL": region.dashboardURL.absoluteString,
+            "protocol": "V2",
+            "console": "ONE_CONSOLE",
+            "productCode": "p_efm",
+            "domain": region.consoleDomain,
+            "consoleSite": region.consoleSite,
+            "userNickName": "",
+            "userPrincipalName": "",
+            "xsp_lang": "en-US"
+        ]
+        if let cna = Self.extractCookieValue(name: "cna", from: cookieHeader), !cna.isEmpty {
+            cornerstone["X-Anonymous-Id"] = cna
+        }
+
+        let paramsObject: [String: Any] = [
+            "Api": region.consoleQuotaAPIName,
+            "V": "1.0",
+            "Data": [
+                "queryCodingPlanInstanceInfoRequest": [
+                    "commodityCode": region.commodityCode,
+                    "onlyLatestOne": true
+                ],
+                "cornerstoneParam": cornerstone
+            ]
+        ]
+
+        guard let paramsData = try? JSONSerialization.data(withJSONObject: paramsObject),
+              let paramsString = String(data: paramsData, encoding: .utf8) else {
+            throw QuotaError.parseFailure("Alibaba: failed to encode console params")
+        }
+
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "params", value: paramsString),
+            URLQueryItem(name: "region", value: region.currentRegionID),
+            URLQueryItem(name: "sec_token", value: secToken)
+        ]
+        let body = (components.percentEncodedQuery ?? "").data(using: .utf8) ?? Data()
+
+        var request = URLRequest(url: region.consoleRPCURL)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        if let csrf = Self.extractCookieValue(name: "login_aliyunid_csrf", from: cookieHeader)
+            ?? Self.extractCookieValue(name: "csrf", from: cookieHeader) {
+            request.setValue(csrf, forHTTPHeaderField: "x-xsrf-token")
+            request.setValue(csrf, forHTTPHeaderField: "x-csrf-token")
+        }
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
+        request.setValue(region.gatewayBaseURL.absoluteString, forHTTPHeaderField: "Origin")
+        request.setValue(region.consoleRefererURL.absoluteString, forHTTPHeaderField: "Referer")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw QuotaError.network("Alibaba console error: \(error.localizedDescription)")
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw QuotaError.network("Alibaba console: invalid response object")
+        }
+        guard http.statusCode == 200 else {
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw QuotaError.needsLogin
+            }
+            if http.statusCode == 429 {
+                throw QuotaError.rateLimited
+            }
+            throw QuotaError.network("Alibaba console returned HTTP \(http.statusCode).")
+        }
+
+        return try AlibabaResponseParser.parse(data: data, now: now())
+    }
+
+    // MARK: Helpers
+
+    nonisolated private static var safariUA: String {
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+    }
+
+    nonisolated private static func matchFirstGroup(pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1,
+              let valueRange = Range(match.range(at: 1), in: text) else { return nil }
+        let value = String(text[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    nonisolated private static func extractCookieValue(name: String, from header: String) -> String? {
+        for segment in header.split(separator: ";") {
+            let part = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let eq = part.firstIndex(of: "=") else { continue }
+            let key = String(part[..<eq]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard key == name else { continue }
+            let value = String(part[part.index(after: eq)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }
+        return nil
+    }
 }
 
 // MARK: - Region
@@ -162,6 +415,73 @@ enum AlibabaRegion: String {
             URLQueryItem(name: "currentRegionId", value: currentRegionID)
         ]
         return components.url!
+    }
+
+    // MARK: Console-cookie path
+
+    var dashboardURL: URL {
+        switch self {
+        case .international:
+            return URL(string: "https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=coding-plan#/efm/detail")!
+        case .chinaMainland:
+            return URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan")!
+        }
+    }
+
+    var consoleRefererURL: URL {
+        switch self {
+        case .international:
+            return URL(string: "https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=coding-plan")!
+        case .chinaMainland:
+            return URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=model")!
+        }
+    }
+
+    var consoleDomain: String {
+        switch self {
+        case .international: return "modelstudio.console.alibabacloud.com"
+        case .chinaMainland: return "bailian.console.aliyun.com"
+        }
+    }
+
+    var consoleSite: String {
+        switch self {
+        case .international: return "MODELSTUDIO_ALIBABACLOUD"
+        case .chinaMainland: return "BAILIAN_ALIYUN"
+        }
+    }
+
+    var consoleRPCBaseURL: URL {
+        switch self {
+        case .international: return URL(string: "https://bailian-singapore-cs.alibabacloud.com")!
+        case .chinaMainland: return URL(string: "https://bailian-cs.console.aliyun.com")!
+        }
+    }
+
+    /// Console BFF endpoint used by the cookie path. Matches what the
+    /// Bailian / ModelStudio dashboard issues from the browser when
+    /// loading the coding-plan widget.
+    var consoleRPCURL: URL {
+        var components = URLComponents(url: consoleRPCBaseURL, resolvingAgainstBaseURL: false)!
+        components.path = "/data/api.json"
+        components.queryItems = [
+            URLQueryItem(name: "action", value: consoleRPCAction),
+            URLQueryItem(name: "product", value: "sfm_bailian"),
+            URLQueryItem(name: "api", value: consoleQuotaAPIName),
+            URLQueryItem(name: "_v", value: "undefined")
+        ]
+        return components.url!
+    }
+
+    var consoleRPCAction: String {
+        switch self {
+        case .international: return "IntlBroadScopeAspnGateway"
+        case .chinaMainland: return "BroadScopeAspnGateway"
+        }
+    }
+
+    var consoleQuotaAPIName: String {
+        "zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2"
     }
 }
 

@@ -50,10 +50,19 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 ApiKeyField(
                     tool: .alibaba,
-                    prompt: "Paste DashScope API key (sk-...)",
-                    helpText: "Find it at bailian.console.aliyun.com → API-KEY. Stored in macOS Keychain. (Console-cookie fallback coming later.)"
+                    prompt: "Paste DashScope API key (sk-...) — optional",
+                    helpText: "If you have a DashScope key, paste it here. Otherwise sign in via Web below to use console cookies. Stored in macOS Keychain."
                 )
                 AlibabaRegionPicker()
+                CookieSourceControls(
+                    tool: .alibaba,
+                    spec: AlibabaQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste console.aliyun.com Cookie header (login_aliyunid_csrf=…; cna=…; …)"
+                )
+                MiscWebLoginRow(
+                    tool: .alibaba,
+                    helpText: "No DashScope key? Sign in to bailian.console.aliyun.com or modelstudio.console.alibabacloud.com once via Web; Vibe Bar refreshes the console session in the background after that."
+                )
             }
         case .minimax:
             VStack(alignment: .leading, spacing: 4) {
