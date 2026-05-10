@@ -140,28 +140,31 @@ public actor TencentSessionManager {
     /// Best-effort decode of the login envelope. If we can extract a
     /// machine-readable error code or human message, throw a network
     /// error carrying it so the misc card surfaces something
-    /// actionable instead of the generic "Needs re-login". Auth /
-    /// session-related codes still flip to `needsLogin`.
+    /// actionable instead of the generic "Needs re-login". Session-
+    /// expiry codes still flip to `needsLogin` so the retry-once
+    /// path can recover.
     nonisolated private static func surfaceLoginError(data: Data) throws {
         guard !data.isEmpty,
               let envelope = try? JSONDecoder().decode(TencentLoginEnvelope.self, from: data) else {
             return
         }
-        let code = envelope.code ?? 0
+        let codeRaw = envelope.codeString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let codeLower = codeRaw.lowercased()
         let message = (envelope.msg ?? envelope.message)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard code != 0 || !message.isEmpty else { return }
+        guard !codeRaw.isEmpty || !message.isEmpty else { return }
 
-        let lowered = message.lowercased()
-        if code == 401 || code == 403 ||
-            lowered.contains("password") ||
-            message.contains("密码") ||
-            lowered.contains("mfa") ||
-            lowered.contains("authfailure") ||
-            lowered.contains("login") {
+        // Recoverable session-expiry: retry-once path will pick this up.
+        if codeLower.contains("authfailure") ||
+            codeLower.contains("session") ||
+            codeRaw == "401" || codeRaw == "403" {
             throw QuotaError.needsLogin
         }
-        let detail = message.isEmpty ? "code \(code)" : "\(message) (code \(code))"
+        // Everything else (wrong password, account locked, MFA required,
+        // risk control, …) — surface the server's own message verbatim
+        // so the misc card tells the user WHY login failed rather than
+        // just "Needs re-login".
+        let detail = message.isEmpty ? "code \(codeRaw)" : message
         throw QuotaError.network("Tencent login: \(detail)")
     }
 
@@ -200,12 +203,32 @@ public actor TencentSessionManager {
 }
 
 /// Loose decoder for Tencent's `auth-api/login/submit` JSON envelope.
-/// The body shape varies by login type so we tolerate any combination
-/// of `code` / `msg` / `message` and ignore everything else.
+/// `code` can arrive as either an integer (`{"code":1234,...}`) or a
+/// stringly-typed identifier (`{"code":"FailedOperation.LoginFailed"}`)
+/// depending on which branch of the login flow rejected the request,
+/// so we normalise both into `codeString` and let the caller match on
+/// substrings.
 private struct TencentLoginEnvelope: Decodable {
-    let code: Int?
+    let codeString: String
     let msg: String?
     let message: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case code, msg, message
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let s = (try? c.decodeIfPresent(String.self, forKey: .code)) ?? nil {
+            codeString = s
+        } else if let n = (try? c.decodeIfPresent(Int.self, forKey: .code)) ?? nil {
+            codeString = String(n)
+        } else {
+            codeString = ""
+        }
+        msg = try c.decodeIfPresent(String.self, forKey: .msg)
+        message = try c.decodeIfPresent(String.self, forKey: .message)
+    }
 }
 
 private struct TencentSubAccountCredentials {
