@@ -95,7 +95,17 @@ struct MiscProviderSettingsSection: View {
                 manualPrompt: "Paste maas.xfyun.cn Cookie header (atp-auth-token=…; account_id=…; ssoSessionId=…; tenantToken=…)"
             )
         case .tencentHunyuan:
-            TencentSubAccountLoginRow()
+            VStack(alignment: .leading, spacing: 4) {
+                CookieSourceControls(
+                    tool: .tencentHunyuan,
+                    spec: TencentHunyuanQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste cloud.tencent.com Cookie header (skey=…; uin=…; …)"
+                )
+                MiscWebLoginRow(
+                    tool: .tencentHunyuan,
+                    helpText: "Tencent's `skey` cookie expires within hours. When the card flips to \"Needs re-login\", click here to refresh the session."
+                )
+            }
         case .volcengine:
             VolcengineSubAccountLoginRow()
         case .antigravity:

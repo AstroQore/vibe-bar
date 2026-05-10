@@ -2,14 +2,19 @@ import Foundation
 
 /// Tencent Cloud Hunyuan Coding Plan usage adapter.
 ///
-/// Auth: a permission-restricted CAM **sub-user** under the user's main
-/// Tencent Cloud account. The adapter logs in with username + password
-/// over HTTPS to obtain the short-lived `skey` session cookie via
-/// `TencentSessionManager`, then derives the per-request `csrfCode`
-/// URL parameter locally with `TencentCsrfCode`. `skey` typically
-/// expires within a day; on 401/403/"Session Invalid" the adapter
-/// wipes the cookie store and surfaces `needsLogin` so the next
-/// refresh re-runs the login.
+/// Auth: cookies captured from a Tencent Cloud console login. The user
+/// signs in once via `MiscWebLoginController` (or pastes a Cookie
+/// header in Settings); we ship the full `*.cloud.tencent.com` jar to
+/// `console-hc.cloud.tencent.com` and derive the per-request
+/// `csrfCode` URL parameter locally from the `skey` cookie via
+/// `TencentCsrfCode`.
+///
+/// We previously ran a sub-account password login via
+/// `TencentSessionManager`, but Tencent's `auth-api/login/submit` now
+/// returns `FailedOperation.LoginFailed` for password POSTs that
+/// don't include captcha / risk-control fields the console JS
+/// generates. The cookie path mirrors what MiMo / Kimi / Cursor do
+/// and avoids the captcha treadmill.
 ///
 /// Endpoint: `POST https://console-hc.cloud.tencent.com/_api/hunyuan/DescribePkg`
 /// with the standard Tencent console BFF envelope. Returns the
@@ -17,14 +22,32 @@ import Foundation
 public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .tencentHunyuan
 
-    private let sessionManager: TencentSessionManager
+    private let session: URLSession
     private let now: @Sendable () -> Date
 
+    public static let cookieSpec = MiscCookieResolver.Spec(
+        tool: .tencentHunyuan,
+        domains: [
+            "console.cloud.tencent.com",
+            "console-hc.cloud.tencent.com",
+            "hunyuan.cloud.tencent.com",
+            "cloud.tencent.com",
+            ".cloud.tencent.com"
+        ],
+        // Empty `requiredNames` ships the entire `*.cloud.tencent.com`
+        // jar — Tencent's BFF stitches identity from `skey` (HttpOnly
+        // session) + `uin` (sub-account UID) + a couple of other
+        // session keys, and enumerating only those names omits HttpOnly
+        // helpers we can't see from JS. Same approach as the iFlytek
+        // adapter for the same reason.
+        requiredNames: []
+    )
+
     public init(
-        sessionManager: TencentSessionManager = .shared,
+        session: URLSession = .shared,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.sessionManager = sessionManager
+        self.session = session
         self.now = now
     }
 
@@ -42,23 +65,32 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
     }
 
     private func fetchSnapshot() async throws -> TencentHunyuanResponseParser.Snapshot {
-        do {
-            return try await fetchOnce()
-        } catch QuotaError.needsLogin {
-            // Single retry: drop the stale cookies and try one fresh
-            // login + DescribePkg cycle. If THAT also says "needsLogin",
-            // surface it so the misc card shows a Sign-in CTA.
-            await sessionManager.wipeSession()
-            return try await fetchOnce()
+        guard let resolution = MiscCookieResolver.resolve(for: TencentHunyuanQuotaAdapter.cookieSpec) else {
+            throw QuotaError.noCredential
         }
-    }
-
-    private func fetchOnce() async throws -> TencentHunyuanResponseParser.Snapshot {
-        let session = try await sessionManager.authedSession()
-        guard let skey = await sessionManager.currentSkey(),
-              let uin = await sessionManager.currentSubUin() else {
+        let pairs = CookieHeaderNormalizer.pairs(from: resolution.header)
+        guard let skey = pairs.first(where: { $0.name == "skey" })?.value, !skey.isEmpty else {
+            // No `skey` means the user signed in to Tencent at the
+            // domain level (`tencent.com`) but never opened the Cloud
+            // console — that's the cookie that proves a console
+            // session. Tell them to retry.
+            CookieHeaderCache.clear(for: .tencentHunyuan)
             throw QuotaError.needsLogin
         }
+        guard let rawUin = pairs.first(where: { $0.name == "uin" })?.value, !rawUin.isEmpty else {
+            CookieHeaderCache.clear(for: .tencentHunyuan)
+            throw QuotaError.needsLogin
+        }
+        // Tencent's `uin` cookie value comes prefixed with `o`
+        // (`o100048723526` etc.) but the BFF URL parameter wants the
+        // bare numeric form. Captured live: stripping the 'o' flips
+        // the BFF response from `Code 21 登录态冲突` to a normal 200.
+        let uin = String(rawUin.drop(while: { !$0.isNumber }))
+        guard !uin.isEmpty else {
+            CookieHeaderCache.clear(for: .tencentHunyuan)
+            throw QuotaError.needsLogin
+        }
+
         let csrfCode = TencentCsrfCode.compute(from: skey)
         let urlString = "https://console-hc.cloud.tencent.com/_api/hunyuan/DescribePkg" +
             "?t=\(Self.epochMillis())&uin=\(uin)&csrfCode=\(csrfCode)"
@@ -69,6 +101,7 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(resolution.header, forHTTPHeaderField: "Cookie")
         request.setValue("https://hunyuan.cloud.tencent.com", forHTTPHeaderField: "Origin")
         request.setValue("https://hunyuan.cloud.tencent.com/", forHTTPHeaderField: "Referer")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
@@ -88,15 +121,18 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await self.session.data(for: request)
         } catch {
             throw QuotaError.network("Tencent Hunyuan network error: \(error.localizedDescription)")
         }
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("Tencent Hunyuan: invalid response object")
         }
+        let bodySnippet = String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>"
+        SafeLog.warn("diag TencentHunyuanQuotaAdapter.fetch → status=\(http.statusCode) bodyLen=\(data.count) bodySnippet=\(bodySnippet)")
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
+                CookieHeaderCache.clear(for: .tencentHunyuan)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {

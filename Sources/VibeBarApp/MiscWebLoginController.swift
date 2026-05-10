@@ -444,6 +444,32 @@ final class MiscWebLoginRegistry {
                 savedConfirmation: "MiMo cookies saved.",
                 setupHint: "Sign in to Xiaomi MiMo, then click Save Cookies."
             )
+        case .tencentHunyuan:
+            return MiscWebLoginController.Config(
+                tool: .tencentHunyuan,
+                loginURL: URL(string: "https://hunyuan.cloud.tencent.com/")!,
+                cookieDomainSuffixes: ["cloud.tencent.com", "tencent.com"],
+                // Empty set tells the controller to ship every cookie
+                // for the matching domains, mirroring the adapter's
+                // `cookieSpec.requiredNames = []`. Tencent stitches
+                // identity from a handful of HttpOnly helpers we can't
+                // enumerate from JS.
+                requiredCookieNames: [],
+                trustedAuthHostSuffixes: [
+                    // Tencent Cloud console + Hunyuan console.
+                    "cloud.tencent.com",
+                    "tencent.com",
+                    "qq.com",                     // QQ login + assets
+                    "qcloud.com",                 // legacy Tencent Cloud
+                    "tencent-cloud.com",          // public CDN
+                    "wx.qq.com",                  // WeChat scan login
+                    "captcha.qcloud.com",         // Tencent captcha
+                    "captcha.gtimg.com"           // captcha assets
+                ],
+                windowTitle: "Tencent Hunyuan Login",
+                savedConfirmation: "Hunyuan cookies saved.",
+                setupHint: "Sign in to Tencent Cloud (sub-user works), then click Save Cookies."
+            )
         default:
             return nil
         }
