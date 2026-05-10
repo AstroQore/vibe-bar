@@ -107,9 +107,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         "sessionkey", "session_key",
         "sessiontoken", "session_token",
         "password", "passwd",
-        "clientsecret", "client_secret",
-        "subusername", "sub_username",
-        "subpassword", "sub_password"
+        "clientsecret", "client_secret"
     ]
 
     public init(from decoder: Decoder) throws {

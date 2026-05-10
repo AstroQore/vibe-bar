@@ -128,8 +128,6 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("Tencent Hunyuan: invalid response object")
         }
-        let bodySnippet = String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>"
-        SafeLog.warn("diag TencentHunyuanQuotaAdapter.fetch → status=\(http.statusCode) bodyLen=\(data.count) bodySnippet=\(bodySnippet)")
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
                 CookieHeaderCache.clear(for: .tencentHunyuan)

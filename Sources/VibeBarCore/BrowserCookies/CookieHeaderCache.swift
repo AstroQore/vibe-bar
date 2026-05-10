@@ -56,11 +56,8 @@ public enum CookieHeaderCache {
             account: keychainAccount(for: tool),
             dataProtectionOnly: false
         ) {
-            SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → primary HIT headerLen=\(entry.cookieHeader.count) src=\(entry.sourceLabel)")
             return entry
         }
-        let acct = keychainAccount(for: tool)
-        SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → primary MISS svc=\(keychainService) acct=\(acct)")
 
         guard let legacy = loadEntry(
             tool: tool,
@@ -68,10 +65,8 @@ public enum CookieHeaderCache {
             account: legacyKeychainAccount(for: tool),
             dataProtectionOnly: true
         ) else {
-            SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → legacy MISS too, returning nil")
             return nil
         }
-        SafeLog.warn("diag CookieHeaderCache.load tool=\(tool.rawValue) → legacy HIT, migrating")
 
         _ = store(
             for: tool,
@@ -96,7 +91,6 @@ public enum CookieHeaderCache {
         guard tool.isMisc else { return false }
         guard let normalized = CookieHeaderNormalizer.normalize(cookieHeader),
               !normalized.isEmpty else {
-            SafeLog.warn("diag CookieHeaderCache.store tool=\(tool.rawValue) → normalize empty, clearing")
             clear(for: tool)
             return false
         }
@@ -111,12 +105,8 @@ public enum CookieHeaderCache {
                 data: data,
                 useDataProtectionKeychain: true
             )
-            let acct = keychainAccount(for: tool)
-            SafeLog.warn("diag CookieHeaderCache.store tool=\(tool.rawValue) → WROTE svc=\(keychainService) acct=\(acct) headerLen=\(normalized.count) src=\(sourceLabel)")
             return true
         } catch {
-            let errStr = String(describing: error)
-            SafeLog.warn("diag CookieHeaderCache.store tool=\(tool.rawValue) → ERROR \(errStr)")
             SafeLog.error("Cookie cache store failed for \(tool.rawValue): \(error)")
             return false
         }

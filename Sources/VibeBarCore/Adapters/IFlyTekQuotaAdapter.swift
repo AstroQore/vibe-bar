@@ -84,8 +84,6 @@ public struct IFlyTekQuotaAdapter: QuotaAdapter {
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("iFlytek: invalid response object")
         }
-        let bodySnippet = String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>"
-        SafeLog.warn("diag IFlyTekQuotaAdapter.fetch → status=\(http.statusCode) bodyLen=\(data.count) bodySnippet=\(bodySnippet)")
         guard http.statusCode == 200 else {
             // iFlytek normally returns 200 even for auth failures (see parser),
             // but a non-200 still happens on infrastructure errors.

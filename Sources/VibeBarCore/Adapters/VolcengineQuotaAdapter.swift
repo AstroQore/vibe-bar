@@ -140,8 +140,6 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("Volcengine: invalid response object")
         }
-        let bodySnippet = String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>"
-        SafeLog.warn("diag VolcengineQuotaAdapter.callBFF → status=\(http.statusCode) bodyLen=\(data.count) bodySnippet=\(bodySnippet)")
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
                 CookieHeaderCache.clear(for: .volcengine)
@@ -292,6 +290,22 @@ private struct VolcengineUsageEnvelope: Decodable {
     enum CodingKeys: String, CodingKey {
         case responseMetadata = "ResponseMetadata"
         case result = "Result"
+    }
+}
+
+private struct VolcengineResponseMetadata: Decodable {
+    let error: VolcengineMetadataError?
+
+    enum CodingKeys: String, CodingKey { case error = "Error" }
+}
+
+private struct VolcengineMetadataError: Decodable {
+    let code: String?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case code = "Code"
+        case message = "Message"
     }
 }
 

@@ -21,10 +21,6 @@ public enum MiscCredentialStore {
         case oauthAccessToken
         case oauthRefreshToken
         case oauthExpiry
-        // Sub-account password login (Tencent Cloud, Volcengine).
-        case mainAccountId
-        case subUsername
-        case subPassword
     }
 
     public static func keychainAccount(tool: ToolType, kind: Kind) -> String {

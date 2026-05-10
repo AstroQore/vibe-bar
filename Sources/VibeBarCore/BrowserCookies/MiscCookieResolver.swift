@@ -85,9 +85,6 @@ public enum MiscCookieResolver {
     public static func resolve(for spec: Spec) -> Resolution? {
         let settings = currentSettings(for: spec.tool)
         guard let plan = CookieSourcePlan(settings: settings) else {
-            let mode = String(describing: settings.sourceMode)
-            let src = String(describing: settings.cookieSource)
-            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → CookieSourcePlan nil (mode=\(mode)/\(src)) returning nil")
             return nil
         }
 
@@ -95,15 +92,9 @@ public enum MiscCookieResolver {
         let cached = CookieHeaderCache.load(for: spec.tool)
         if let cached, plan.acceptsCached(cached) {
             if spec.hasRequiredCredential(in: cached.cookieHeader) {
-                SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → cache hit src=\(cached.sourceLabel) headerLen=\(cached.cookieHeader.count)")
                 return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
             }
-            let creds = String(describing: spec.credentialNames.sorted())
-            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → cache CLEARED, hasRequiredCredential=false (credentialNames=\(creds))")
             CookieHeaderCache.clear(for: spec.tool)
-        } else {
-            let info = cached.map { "src=\($0.sourceLabel) accepts=\(plan.acceptsCached($0))" } ?? "nil"
-            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → cache miss (\(info))")
         }
 
         // 2. Browser auto-import (skipped in `.manual` mode).
@@ -114,7 +105,6 @@ public enum MiscCookieResolver {
                 cookieHeader: imported.header,
                 sourceLabel: imported.sourceLabel
             )
-            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → browser import success src=\(imported.sourceLabel)")
             return imported
         }
 
@@ -128,10 +118,8 @@ public enum MiscCookieResolver {
                 cookieHeader: normalised,
                 sourceLabel: "Manual paste"
             )
-            SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → manual paste hit")
             return Resolution(header: normalised, sourceLabel: "Manual paste")
         }
-        SafeLog.warn("diag resolve tool=\(spec.tool.rawValue) → all sources empty, returning nil")
         return nil
     }
 
