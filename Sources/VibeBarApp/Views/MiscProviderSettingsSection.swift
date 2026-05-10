@@ -107,7 +107,17 @@ struct MiscProviderSettingsSection: View {
                 )
             }
         case .volcengine:
-            VolcengineSubAccountLoginRow()
+            VStack(alignment: .leading, spacing: 4) {
+                CookieSourceControls(
+                    tool: .volcengine,
+                    spec: VolcengineQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste console.volcengine.com Cookie header (csrfToken=…; AccountID=…; …)"
+                )
+                MiscWebLoginRow(
+                    tool: .volcengine,
+                    helpText: "Volcengine console session cookies expire after a few hours. When the card flips to \"Needs re-login\", click here to refresh."
+                )
+            }
         case .antigravity:
             AntigravityStatusRow()
         case .codex, .claude:

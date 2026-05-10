@@ -444,6 +444,23 @@ final class MiscWebLoginRegistry {
                 savedConfirmation: "MiMo cookies saved.",
                 setupHint: "Sign in to Xiaomi MiMo, then click Save Cookies."
             )
+        case .volcengine:
+            return MiscWebLoginController.Config(
+                tool: .volcengine,
+                loginURL: URL(string: "https://console.volcengine.com/ark")!,
+                cookieDomainSuffixes: ["volcengine.com"],
+                requiredCookieNames: [],  // ship full jar
+                trustedAuthHostSuffixes: [
+                    "volcengine.com",
+                    "volccdn.com",
+                    "zijieapi.com",       // Bytedance internal monitoring CDN
+                    "douyincdn.com",
+                    "bytedance.com"
+                ],
+                windowTitle: "Volcengine Doubao Login",
+                savedConfirmation: "Doubao cookies saved.",
+                setupHint: "Sign in to Volcengine console (sub-user works), then click Save Cookies."
+            )
         case .tencentHunyuan:
             return MiscWebLoginController.Config(
                 tool: .tencentHunyuan,
