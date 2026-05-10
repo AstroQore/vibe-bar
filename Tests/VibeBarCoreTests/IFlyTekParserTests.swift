@@ -195,7 +195,10 @@ final class IFlyTekParserTests: XCTestCase {
     func testCookieSpecRequiresAtpAuthToken() {
         let spec = IFlyTekQuotaAdapter.cookieSpec
         XCTAssertEqual(spec.tool, .iflytek)
-        XCTAssertEqual(spec.requiredNames, ["atp-auth-token"])
+        // Empty requiredNames intentional: iFlytek's BFF needs more
+        // session cookies than we can enumerate (HttpOnly), so we ship
+        // the entire maas.xfyun.cn jar.
+        XCTAssertEqual(spec.requiredNames, [])
         XCTAssertTrue(spec.domains.contains("maas.xfyun.cn"))
         XCTAssertTrue(spec.domains.contains(".xfyun.cn"))
     }

@@ -2,10 +2,20 @@ import Foundation
 
 /// Volcengine / Doubao Coding Plan usage adapter.
 ///
-/// Auth: a CAM sub-user (`<sub-user>` under main account `<mainUID>`)
-/// password-logs in via `VolcengineSessionManager`. Sessions expire
-/// within hours; on `needsLogin` the adapter wipes the cookie jar and
-/// re-runs the login once before surfacing.
+/// Auth: cookies captured from a Volcengine console login. The user
+/// signs in once via `MiscWebLoginController` (or pastes a Cookie
+/// header in Settings); we ship the full `*.volcengine.com` jar to
+/// `console.volcengine.com` and mirror the `csrfToken` cookie value
+/// into `X-Csrf-Token` (classic double-submit CSRF).
+///
+/// We previously ran a sub-account password login via
+/// `VolcengineLoginClient` (encCerts → RSA → mixtureLogin). Volcengine
+/// added an additional `LoginCredentialId` field to the request the
+/// console JS now generates, and absent fields make
+/// `mixtureLogin` reject with `指定的参数[LoginCredentialId]不合法`.
+/// Live-testing showed the cookie path is the simpler, sturdier
+/// alternative — the Doubao BFF accepts a fully cookied session
+/// regardless of how the user obtained it.
 ///
 /// Endpoint:
 /// `POST https://console.volcengine.com/api/top/ark/cn-beijing/2024-01-01/GetCodingPlanUsage`
@@ -20,14 +30,28 @@ import Foundation
 public struct VolcengineQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .volcengine
 
-    private let sessionManager: VolcengineSessionManager
+    private let session: URLSession
     private let now: @Sendable () -> Date
 
+    public static let cookieSpec = MiscCookieResolver.Spec(
+        tool: .volcengine,
+        domains: [
+            "console.volcengine.com",
+            "volcengine.com",
+            ".volcengine.com"
+        ],
+        // Empty `requiredNames` ships the entire `*.volcengine.com`
+        // jar — Volcengine's BFF stitches identity from a handful of
+        // HttpOnly session keys we can't enumerate from JS. Same
+        // approach as the iFlytek and Tencent adapters.
+        requiredNames: []
+    )
+
     public init(
-        sessionManager: VolcengineSessionManager = .shared,
+        session: URLSession = .shared,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.sessionManager = sessionManager
+        self.session = session
         self.now = now
     }
 
@@ -45,22 +69,21 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
     }
 
     private func fetchSnapshot() async throws -> VolcengineQuotaSnapshot {
-        do {
-            return try await fetchOnce()
-        } catch QuotaError.needsLogin {
-            await sessionManager.wipeSession()
-            return try await fetchOnce()
+        guard let resolution = MiscCookieResolver.resolve(for: VolcengineQuotaAdapter.cookieSpec) else {
+            throw QuotaError.noCredential
         }
-    }
-
-    private func fetchOnce() async throws -> VolcengineQuotaSnapshot {
-        let session = try await sessionManager.authedSession()
-        guard let csrfToken = await sessionManager.currentCsrfToken() else {
+        let pairs = CookieHeaderNormalizer.pairs(from: resolution.header)
+        guard let csrfToken = pairs.first(where: { $0.name == "csrfToken" })?.value, !csrfToken.isEmpty else {
+            // No `csrfToken` means the user signed in to volcengine.com
+            // at the public-website level but never opened the console
+            // — the cookie is set by the first console request after
+            // login.
+            CookieHeaderCache.clear(for: .volcengine)
             throw QuotaError.needsLogin
         }
 
         let usageData = try await callBFF(
-            session: session,
+            cookieHeader: resolution.header,
             csrfToken: csrfToken,
             url: Self.getCodingPlanUsageURL,
             body: [:]
@@ -72,7 +95,7 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
         // visible error on a card whose buckets were fetched fine.
         var planName: String? = nil
         if let tradeData = try? await callBFF(
-            session: session,
+            cookieHeader: resolution.header,
             csrfToken: csrfToken,
             url: Self.listSubscribeTradeURL,
             body: [
@@ -88,7 +111,7 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
     }
 
     private func callBFF(
-        session: URLSession,
+        cookieHeader: String,
         csrfToken: String,
         url: URL,
         body: [String: Any]
@@ -98,6 +121,7 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue(csrfToken, forHTTPHeaderField: "X-Csrf-Token")
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
         request.setValue("zh", forHTTPHeaderField: "Accept-Language")
         request.setValue("https://console.volcengine.com", forHTTPHeaderField: "Origin")
         request.setValue("https://console.volcengine.com/", forHTTPHeaderField: "Referer")
@@ -109,7 +133,7 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await self.session.data(for: request)
         } catch {
             throw QuotaError.network("Volcengine network error: \(error.localizedDescription)")
         }
@@ -118,6 +142,7 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
+                CookieHeaderCache.clear(for: .volcengine)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
@@ -265,6 +290,22 @@ private struct VolcengineUsageEnvelope: Decodable {
     enum CodingKeys: String, CodingKey {
         case responseMetadata = "ResponseMetadata"
         case result = "Result"
+    }
+}
+
+private struct VolcengineResponseMetadata: Decodable {
+    let error: VolcengineMetadataError?
+
+    enum CodingKeys: String, CodingKey { case error = "Error" }
+}
+
+private struct VolcengineMetadataError: Decodable {
+    let code: String?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case code = "Code"
+        case message = "Message"
     }
 }
 

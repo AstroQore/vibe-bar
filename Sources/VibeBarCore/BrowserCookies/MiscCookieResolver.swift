@@ -89,8 +89,8 @@ public enum MiscCookieResolver {
         }
 
         // 1. Cached header from a prior import or manual paste.
-        if let cached = CookieHeaderCache.load(for: spec.tool),
-           plan.acceptsCached(cached) {
+        let cached = CookieHeaderCache.load(for: spec.tool)
+        if let cached, plan.acceptsCached(cached) {
             if spec.hasRequiredCredential(in: cached.cookieHeader) {
                 return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
             }
@@ -120,7 +120,6 @@ public enum MiscCookieResolver {
             )
             return Resolution(header: normalised, sourceLabel: "Manual paste")
         }
-
         return nil
     }
 

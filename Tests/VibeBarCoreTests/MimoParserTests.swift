@@ -156,7 +156,8 @@ final class MimoParserTests: XCTestCase {
         XCTAssertTrue(spec.requiredNames.contains("userId"))
         XCTAssertTrue(spec.requiredNames.contains("api-platform_slh"))
         XCTAssertTrue(spec.requiredNames.contains("api-platform_ph"))
-        XCTAssertEqual(spec.requiredNames.count, 3)
+        XCTAssertTrue(spec.requiredNames.contains("api-platform_serviceToken"))
+        XCTAssertEqual(spec.requiredNames.count, 4)
         XCTAssertTrue(spec.domains.contains("platform.xiaomimimo.com"))
     }
 }
