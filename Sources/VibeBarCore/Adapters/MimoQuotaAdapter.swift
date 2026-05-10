@@ -29,7 +29,16 @@ public struct MimoQuotaAdapter: QuotaAdapter {
             ".xiaomimimo.com",
             "xiaomimimo.com"
         ],
-        requiredNames: ["userId", "api-platform_slh", "api-platform_ph"]
+        // Four cookies, not three. The provider research doc spelled out
+        // `userId` + `api-platform_slh` + `api-platform_ph` as the only
+        // names needed, but live MiMo also rejects requests that omit
+        // `api-platform_serviceToken` (set by `/sts` alongside the others)
+        // — verified against status=401 + JSON body redirecting to the
+        // Xiaomi SSO loginUrl when the token is missing. Browsers send
+        // it implicitly with `credentials: 'include'` because it's
+        // HttpOnly; we have to list it so our minimised header doesn't
+        // drop it.
+        requiredNames: ["userId", "api-platform_slh", "api-platform_ph", "api-platform_serviceToken"]
     )
 
     private static let endpoint = URL(string:

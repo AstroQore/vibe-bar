@@ -81,7 +81,7 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .mimo,
                     spec: MimoQuotaAdapter.cookieSpec,
-                    manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...)"
+                    manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...; api-platform_serviceToken=...)"
                 )
                 MiscWebLoginRow(
                     tool: .mimo,
