@@ -19,12 +19,12 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         groupTitle: String? = nil
     ) {
         self.id = id
-        self.title = title
-        self.shortLabel = shortLabel
+        self.title = VisibleSecretRedactor.redact(title) ?? ""
+        self.shortLabel = VisibleSecretRedactor.redact(shortLabel) ?? ""
         self.usedPercent = max(0.0, min(100.0, usedPercent))
         self.resetAt = resetAt
         self.rawWindowSeconds = rawWindowSeconds
-        self.groupTitle = groupTitle
+        self.groupTitle = VisibleSecretRedactor.redact(groupTitle)
     }
 
     public var remainingPercent: Double {

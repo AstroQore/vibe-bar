@@ -160,10 +160,10 @@ struct PopoverRoot: View {
     private var visibleTools: [ToolType] {
         // Header timestamps and refresh state aggregate the providers
         // visible in the current popover. The Misc subpage owns its
-        // eight usage-only integrations; the normal Overview and Status
+        // usage-only integrations; the normal Overview and Status
         // surfaces continue to aggregate just the primary providers.
         if kind == .compact, overviewPage == .misc {
-            return ToolType.miscProviders
+            return settingsStore.settings.visibleMiscProviderList
         }
         switch effectiveKind {
         case .compact, .status: return ToolType.primaryProviders
@@ -789,7 +789,7 @@ private struct OverviewCostCard: View {
         switch tool {
         case .codex:  return "No Codex CLI sessions found yet."
         case .claude: return "No Claude CLI sessions found yet."
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
             // `tool.supportsTokenCost`), but render a graceful
@@ -1125,7 +1125,7 @@ struct ProviderQuotaCard: View {
         switch tool {
         case .codex:  return "Run codex login, then refresh."
         case .claude: return "Run claude login, then refresh."
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from
             // a primary-provider detail view, but cover misc cases

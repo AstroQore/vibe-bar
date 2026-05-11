@@ -44,7 +44,12 @@ public final class QuotaService: ObservableObject {
                 .mimo: MimoQuotaAdapter(),
                 .iflytek: IFlyTekQuotaAdapter(),
                 .tencentHunyuan: TencentHunyuanQuotaAdapter(),
-                .volcengine: VolcengineQuotaAdapter()
+                .volcengine: VolcengineQuotaAdapter(),
+                .openCodeGo: OpenCodeGoQuotaAdapter(),
+                .kilo: KiloQuotaAdapter(),
+                .kiro: KiroQuotaAdapter(),
+                .ollama: OllamaQuotaAdapter(),
+                .openRouter: OpenRouterQuotaAdapter()
             ],
             mockProvider: mockProvider,
             initialAccountIds: initialAccountIds

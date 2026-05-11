@@ -39,6 +39,10 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
     /// Self-hosted endpoint override (e.g. GitHub Enterprise for
     /// Copilot, Z.ai self-hosted for Z.ai).
     public var enterpriseHost: URL?
+    /// Optional provider-specific workspace/project identifier. Used
+    /// by web dashboards such as OpenCode Go that scope usage under a
+    /// workspace path.
+    public var workspaceID: String?
     /// Override the browser auto-import order for this provider.
     public var preferredBrowser: BrowserKind?
     /// Force the misc card on (`true`), force off (`false`), or auto
@@ -51,6 +55,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         cookieSource: .auto,
         region: nil,
         enterpriseHost: nil,
+        workspaceID: nil,
         preferredBrowser: nil,
         enabledOverride: nil
     )
@@ -60,6 +65,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         cookieSource: ProviderCookieSource = .auto,
         region: String? = nil,
         enterpriseHost: URL? = nil,
+        workspaceID: String? = nil,
         preferredBrowser: BrowserKind? = nil,
         enabledOverride: Bool? = nil
     ) {
@@ -67,6 +73,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         self.cookieSource = cookieSource
         self.region = region
         self.enterpriseHost = enterpriseHost
+        self.workspaceID = workspaceID
         self.preferredBrowser = preferredBrowser
         self.enabledOverride = enabledOverride
     }
@@ -80,7 +87,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sourceMode, cookieSource, region, enterpriseHost
+        case sourceMode, cookieSource, region, enterpriseHost, workspaceID
         case preferredBrowser, enabledOverride
     }
 
@@ -116,6 +123,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         self.cookieSource = try c.decodeIfPresent(ProviderCookieSource.self, forKey: .cookieSource) ?? .auto
         self.region = try c.decodeIfPresent(String.self, forKey: .region)
         self.enterpriseHost = try c.decodeIfPresent(URL.self, forKey: .enterpriseHost)
+        self.workspaceID = try c.decodeIfPresent(String.self, forKey: .workspaceID)
         self.preferredBrowser = try c.decodeIfPresent(BrowserKind.self, forKey: .preferredBrowser)
         self.enabledOverride = try c.decodeIfPresent(Bool.self, forKey: .enabledOverride)
         // Note: `MiscProviderSettings.sanitize(rawJSON:)` is the entry
@@ -131,6 +139,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         try c.encode(cookieSource, forKey: .cookieSource)
         try c.encodeIfPresent(region, forKey: .region)
         try c.encodeIfPresent(enterpriseHost, forKey: .enterpriseHost)
+        try c.encodeIfPresent(workspaceID, forKey: .workspaceID)
         try c.encodeIfPresent(preferredBrowser, forKey: .preferredBrowser)
         try c.encodeIfPresent(enabledOverride, forKey: .enabledOverride)
     }

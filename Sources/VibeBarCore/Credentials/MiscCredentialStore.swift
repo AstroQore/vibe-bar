@@ -2,7 +2,7 @@ import Foundation
 
 /// Keychain-backed store for misc-provider secrets.
 ///
-/// All sensitive values for the eight misc providers live under one
+/// All sensitive values for misc providers live under one
 /// Keychain service (`com.astroqore.VibeBar.misc-secrets`); the account
 /// names follow `<provider-rawValue>.<kind>`. The matching
 /// non-sensitive fields (region, source mode, enterprise host) live

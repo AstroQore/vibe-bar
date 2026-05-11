@@ -199,11 +199,11 @@ struct SettingsView: View {
                     }
 
                     settingsSection("Misc Providers") {
-                        Text("Usage-only integrations. Each provider stays in setup mode until a credential is configured below.")
+                        Text("Usage-only integrations. Check providers to show them on the Misc page; hidden providers keep their saved setup.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 10) {
-                            ForEach(ToolType.miscProviders, id: \.self) { tool in
+                            ForEach(settingsStore.settings.miscProviderOrder, id: \.self) { tool in
                                 MiscProviderSettingsSection(tool: tool)
                             }
                         }

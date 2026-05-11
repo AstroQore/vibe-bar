@@ -99,11 +99,14 @@ final class MiniMaxParserTests: XCTestCase {
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
         XCTAssertEqual(snap.planName, "MiniMax Coding Plan Pro")
         XCTAssertEqual(snap.buckets.count, 1)
-        // total=1000, used=234 → 23.4%
+        // MiniMax reports current_interval_usage_count as used:
+        // used=234, remaining=766.
         XCTAssertEqual(snap.buckets[0].usedPercent, 23.4, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[0].title, "Prompts")
+        XCTAssertEqual(snap.buckets[0].title, "5 Hours")
+        XCTAssertEqual(snap.buckets[0].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[0].groupTitle, "766/1000 · 222 hours")
         XCTAssertNotNil(snap.buckets[0].resetAt)
-        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 800_000)
+        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
     }
 
     func testParsesRootLevelModelRemainsResponse() throws {
@@ -127,9 +130,11 @@ final class MiniMaxParserTests: XCTestCase {
         """
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
         XCTAssertEqual(snap.buckets.count, 1)
-        // total=1500, used=1437 → 95.8%
+        // used=1437, remaining=63.
         XCTAssertEqual(snap.buckets[0].usedPercent, 95.8, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 14_400)
+        XCTAssertEqual(snap.buckets[0].title, "Text Generation")
+        XCTAssertEqual(snap.buckets[0].groupTitle, "63/1500 · 5 hours")
+        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
     }
 
     func testPrefersChatModelRemainsOverMediaRows() throws {
@@ -151,8 +156,9 @@ final class MiniMaxParserTests: XCTestCase {
         }
         """
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
-        // total=1500, used=1200 → 80%
+        // used=1200, remaining=300.
         XCTAssertEqual(snap.buckets[0].usedPercent, 80.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[0].title, "Text Generation")
     }
 
     func testAuthenticationErrorMapsToNeedsLogin() {
@@ -187,7 +193,19 @@ final class MiniMaxParserTests: XCTestCase {
         let endpoints = MiniMaxRegion.global.remainsURLs.map(\.absoluteString)
 
         XCTAssertEqual(endpoints.first, "https://www.minimax.io/v1/token_plan/remains")
+        XCTAssertTrue(endpoints.contains("https://api.minimax.io/v1/api/openplatform/coding_plan/remains"))
         XCTAssertTrue(endpoints.contains("https://www.minimax.io/v1/api/openplatform/coding_plan/remains"))
+    }
+
+    func testEnvironmentOverridesPrependMiniMaxRemainsURLs() {
+        let endpoints = MiniMaxRegion.global.remainsURLs(environment: [
+            "MINIMAX_REMAINS_URL": "https://minimax.example/remains",
+            "MINIMAX_HOST": "minimax-host.example"
+        ]).map(\.absoluteString)
+
+        XCTAssertEqual(endpoints[0], "https://minimax.example/remains")
+        XCTAssertEqual(endpoints[1], "https://minimax-host.example/v1/api/openplatform/coding_plan/remains")
+        XCTAssertTrue(endpoints.contains("https://www.minimax.io/v1/token_plan/remains"))
     }
 
     func testRegionSettingSelectsMiniMaxPreferredRegion() {
@@ -238,10 +256,152 @@ final class MiniMaxParserTests: XCTestCase {
         }
         """
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
-        // total=100, used=10 → 10%
+        // used=10, remaining=90.
         XCTAssertEqual(snap.buckets[0].usedPercent, 10.0, accuracy: 0.01)
         let reset = snap.buckets[0].resetAt
         XCTAssertNotNil(reset)
         XCTAssertEqual(reset?.timeIntervalSince1970, 1_715_200_000)
+    }
+
+    func testParsesWeeklyWindowFromModelRemains() throws {
+        let json = """
+        {
+          "data": {
+            "base_resp": {"status_code": 0},
+            "model_remains": [
+              {
+                "current_interval_total_count": 100,
+                "current_interval_usage_count": 10,
+                "current_weekly_total_count": 1000,
+                "current_weekly_usage_count": 250,
+                "weekly_end_time": 1715600000
+              }
+            ]
+          }
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(snap.buckets.count, 2)
+        XCTAssertEqual(snap.buckets[1].id, "minimax.weekly")
+        XCTAssertEqual(snap.buckets[1].usedPercent, 25.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[1].groupTitle, "750/1000 · Weekly")
+    }
+
+    func testMapsEveryMiniMaxModelRemainServiceShownByCodexBar() throws {
+        let json = """
+        {
+          "model_remains": [
+            {
+              "current_interval_total_count": 450,
+              "current_interval_usage_count": 1,
+              "model_name": "MiniMax-M2",
+              "start_time": 1771588800000,
+              "end_time": 1771603200000
+            },
+            {
+              "current_interval_total_count": 19000,
+              "current_interval_usage_count": 0,
+              "model_name": "speech-02-hd"
+            },
+            {
+              "current_interval_total_count": 3,
+              "current_interval_usage_count": 0,
+              "model_name": "hailuo-02-fast"
+            },
+            {
+              "current_interval_total_count": 3,
+              "current_interval_usage_count": 0,
+              "model_name": "hailuo-02"
+            },
+            {
+              "current_interval_total_count": 7,
+              "current_interval_usage_count": 0,
+              "model_name": "music-01"
+            },
+            {
+              "current_interval_total_count": 100,
+              "current_interval_usage_count": 0,
+              "model_name": "lyrics_generation"
+            },
+            {
+              "current_interval_total_count": 200,
+              "current_interval_usage_count": 0,
+              "model_name": "image-01"
+            },
+            {
+              "current_interval_total_count": 450,
+              "current_interval_usage_count": 0,
+              "model_name": "coding-plan-search"
+            }
+          ],
+          "base_resp": {"status_code": 0}
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(
+            snap.buckets.map(\.title),
+            [
+                "Text Generation",
+                "Text to Speech",
+                "Image to Video",
+                "Text to Video",
+                "Music Generation",
+                "Lyrics Generation",
+                "Image Generation",
+                "Coding Plan Search"
+            ]
+        )
+        XCTAssertEqual(snap.buckets.map(\.shortLabel), Array(repeating: "5h", count: 8))
+        XCTAssertEqual(snap.buckets.first?.usedPercent ?? -1, 0.222, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets.first?.groupTitle, "449/450 · 5 hours")
+    }
+
+    func testParsesMiniMaxServiceUsageShape() throws {
+        let json = """
+        {
+          "data": {
+            "base_resp": {"status_code": 0},
+            "current_subscribe_title": "MiniMax Coding Plan Pro",
+            "services": [
+              {
+                "service_type": "coding",
+                "window_type": "weekly",
+                "usage": 25,
+                "limit": 100,
+                "reset_in_seconds": 3600
+              }
+            ]
+          }
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(snap.planName, "MiniMax Coding Plan Pro")
+        XCTAssertEqual(snap.buckets.count, 1)
+        XCTAssertEqual(snap.buckets[0].id, "minimax.weekly")
+        XCTAssertEqual(snap.buckets[0].usedPercent, 25.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 7 * 86_400)
+    }
+
+    func testMiniMaxServiceUsageHourBucketIsFiveHours() throws {
+        let json = """
+        {
+          "data": {
+            "base_resp": {"status_code": 0},
+            "services": [
+              {
+                "service_type": "coding",
+                "window_type": "hourly",
+                "usage": 25,
+                "limit": 100,
+                "reset_in_seconds": 3600
+              }
+            ]
+          }
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(snap.buckets[0].title, "5 Hours")
+        XCTAssertEqual(snap.buckets[0].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
     }
 }

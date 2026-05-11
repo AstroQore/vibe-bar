@@ -18,8 +18,9 @@ import Foundation
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Misc** (`.alibaba`, `.gemini`, `.antigravity`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
-///   `.tencentHunyuan`, `.volcengine`) — usage-only cards on the Misc
-///   tab. No token-cost scanning, no Atlassian-style status polling.
+///   `.tencentHunyuan`, `.volcengine`, `.openCodeGo`, `.kilo`, `.kiro`,
+///   `.ollama`, `.openRouter`) — usage-only cards on the Misc tab.
+///   No token-cost scanning, no Atlassian-style status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
 /// scanner and the status-page poller for misc providers; most other
@@ -41,13 +42,18 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case iflytek
     case tencentHunyuan
     case volcengine
+    case openCodeGo
+    case kilo
+    case kiro
+    case ollama
+    case openRouter
 
     // MARK: - Tier helpers
 
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
             return false
         }
     }
@@ -76,18 +82,23 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch self {
         case .codex:       return "OpenAI - ChatGPT"
         case .claude:      return "Anthropic - Claude"
-        case .alibaba:     return "Alibaba - Qwen"
-        case .gemini:      return "Google - Gemini"
+        case .alibaba:     return "Alibaba Qwen"
+        case .gemini:      return "Gemini"
         case .antigravity: return "Google - Antigravity"
         case .copilot:     return "GitHub - Copilot"
         case .zai:         return "Z.ai - GLM"
         case .minimax:     return "MiniMax"
-        case .kimi:        return "Moonshot - Kimi"
+        case .kimi:        return "Moonshot Kimi"
         case .cursor:      return "Cursor"
         case .mimo:        return "Xiaomi - MiMo"
         case .iflytek:     return "iFlytek - Spark"
-        case .tencentHunyuan: return "Tencent - Hunyuan"
-        case .volcengine:  return "Volcengine - Doubao"
+        case .tencentHunyuan: return "Tencent Hunyuan"
+        case .volcengine:  return "Volcengine"
+        case .openCodeGo:  return "OpenCode Go"
+        case .kilo:        return "Kilo"
+        case .kiro:        return "Kiro"
+        case .ollama:      return "Ollama"
+        case .openRouter:  return "OpenRouter"
         }
     }
 
@@ -96,17 +107,22 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .codex:       return "CodeX"
         case .claude:      return "Claude Code"
         case .alibaba:     return "Coding Plan"
-        case .gemini:      return "Code Assist"
+        case .gemini:      return "Usage"
         case .antigravity: return "Local LSP"
         case .copilot:     return "GitHub Copilot"
-        case .zai:         return "BigModel"
-        case .minimax:     return "Coding Plan"
-        case .kimi:        return "Kimi"
+        case .zai:         return "Coding Plan"
+        case .minimax:     return "Token Plan"
+        case .kimi:        return "Kimi for coding"
         case .cursor:      return "Cursor"
         case .mimo:        return "Token Plan"
         case .iflytek:     return "Coding Plan"
         case .tencentHunyuan: return "Coding Plan"
         case .volcengine:  return "Coding Plan"
+        case .openCodeGo:  return "Workspace"
+        case .kilo:        return "Credits"
+        case .kiro:        return "CLI Usage"
+        case .ollama:      return "Cloud"
+        case .openRouter:  return "Credits"
         }
     }
 
@@ -114,7 +130,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch self {
         case .codex:       return "OpenAI"
         case .claude:      return "Claude"
-        case .alibaba:     return "Qwen"
+        case .alibaba:     return "Alibaba Qwen"
         case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
         case .copilot:     return "Copilot"
@@ -124,8 +140,13 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return "Cursor"
         case .mimo:        return "MiMo"
         case .iflytek:     return "Spark"
-        case .tencentHunyuan: return "Hunyuan"
-        case .volcengine:  return "Doubao"
+        case .tencentHunyuan: return "Tencent Hunyuan"
+        case .volcengine:  return "Volcengine"
+        case .openCodeGo:  return "OpenCode Go"
+        case .kilo:        return "Kilo"
+        case .kiro:        return "Kiro"
+        case .ollama:      return "Ollama"
+        case .openRouter:  return "OpenRouter"
         }
     }
 
@@ -133,8 +154,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch self {
         case .codex:       return "OpenAI"
         case .claude:      return "Anthropic"
-        case .alibaba:     return "Alibaba"
-        case .gemini:      return "Google"
+        case .alibaba:     return "Alibaba Qwen"
+        case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
         case .copilot:     return "GitHub"
         case .zai:         return "Z.ai"
@@ -143,8 +164,13 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return "Cursor"
         case .mimo:        return "Xiaomi"
         case .iflytek:     return "iFlytek"
-        case .tencentHunyuan: return "Tencent"
+        case .tencentHunyuan: return "Tencent Hunyuan"
         case .volcengine:  return "Volcengine"
+        case .openCodeGo:  return "OpenCode"
+        case .kilo:        return "Kilo"
+        case .kiro:        return "Kiro"
+        case .ollama:      return "Ollama"
+        case .openRouter:  return "OpenRouter"
         }
     }
 
@@ -167,6 +193,11 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
         case .tencentHunyuan: return URL(string: "https://hunyuan.cloud.tencent.com/")!
         case .volcengine:  return URL(string: "https://console.volcengine.com/ark")!
+        case .openCodeGo:  return URL(string: "https://opencode.ai/")!
+        case .kilo:        return URL(string: "https://app.kilo.ai/")!
+        case .kiro:        return URL(string: "https://kiro.dev/")!
+        case .ollama:      return URL(string: "https://ollama.com/")!
+        case .openRouter:  return URL(string: "https://openrouter.ai/")!
         }
     }
 

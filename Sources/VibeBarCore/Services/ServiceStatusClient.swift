@@ -19,7 +19,7 @@ public actor ServiceStatusClient {
         switch tool {
         case .codex:  return try await fetchOpenAI(dayCount: dayCount, now: now)
         case .claude: return try await fetchClaude(dayCount: dayCount, now: now)
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
             // Misc providers don't expose Atlassian-style status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
             // upstream callers should already be filtering to primary

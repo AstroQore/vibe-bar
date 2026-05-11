@@ -21,6 +21,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// lossy `init(from:)` strips any sensitive-looking keys on
     /// decode — see `MiscProviderSettings.sanitize`.
     public var miscProviders: [ToolType: MiscProviderSettings]
+    /// Misc providers checked in Settings and therefore shown on the Misc
+    /// tab. Credentials/config stay saved when a provider is hidden.
+    public var visibleMiscProviders: Set<ToolType>
+    /// User-controlled display order for misc providers. The same order is
+    /// used by Settings and the Misc page; missing providers are appended so
+    /// older settings files pick up new integrations automatically.
+    public var miscProviderOrder: [ToolType]
     public var costData: CostDataSettings
 
     public static let `default` = AppSettings(
@@ -36,6 +43,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         popoverDensities: Self.defaultPopoverDensities,
         providerPlanLabels: Self.defaultProviderPlanLabels,
         miscProviders: Self.defaultMiscProviders,
+        visibleMiscProviders: Self.defaultVisibleMiscProviders,
+        miscProviderOrder: Self.defaultMiscProviderOrder,
         costData: .default
     )
 
@@ -104,6 +113,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return out
     }
 
+    public static var defaultVisibleMiscProviders: Set<ToolType> {
+        Set(ToolType.miscProviders)
+    }
+
+    public static var defaultMiscProviderOrder: [ToolType] {
+        ToolType.miscProviders
+    }
+
     public init(
         displayMode: DisplayMode,
         refreshIntervalSeconds: Int,
@@ -117,6 +134,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
         providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
         miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
+        visibleMiscProviders: Set<ToolType> = AppSettings.defaultVisibleMiscProviders,
+        miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
         costData: CostDataSettings = .default
     ) {
         self.displayMode = displayMode
@@ -131,6 +150,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.popoverDensities = popoverDensities
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
         self.miscProviders = Self.normalizedMiscProviders(miscProviders)
+        self.visibleMiscProviders = Self.normalizedVisibleMiscProviders(visibleMiscProviders)
+        self.miscProviderOrder = Self.normalizedMiscProviderOrder(miscProviderOrder)
         self.costData = costData
     }
 
@@ -148,6 +169,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
         case miscProviders
+        case visibleMiscProviders
+        case miscProviderOrder
         case costData
     }
 
@@ -209,6 +232,26 @@ public struct AppSettings: Codable, Equatable, Sendable {
             self.miscProviders = Self.defaultMiscProviders
         }
 
+        if let rawVisible = try c.decodeIfPresent([String].self, forKey: .visibleMiscProviders) {
+            var set: Set<ToolType> = []
+            for raw in rawVisible {
+                if let tool = ToolType(rawValue: raw), tool.isMisc { set.insert(tool) }
+            }
+            self.visibleMiscProviders = Self.normalizedVisibleMiscProviders(set)
+        } else {
+            self.visibleMiscProviders = Self.defaultVisibleMiscProviders
+        }
+
+        if let rawOrder = try c.decodeIfPresent([String].self, forKey: .miscProviderOrder) {
+            let order = rawOrder.compactMap { raw -> ToolType? in
+                guard let tool = ToolType(rawValue: raw), tool.isMisc else { return nil }
+                return tool
+            }
+            self.miscProviderOrder = Self.normalizedMiscProviderOrder(order)
+        } else {
+            self.miscProviderOrder = Self.defaultMiscProviderOrder
+        }
+
         self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
     }
 
@@ -229,6 +272,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(planLabels, forKey: .providerPlanLabels)
         let miscRaw = Dictionary(uniqueKeysWithValues: miscProviders.map { ($0.key.rawValue, $0.value) })
         try c.encode(miscRaw, forKey: .miscProviders)
+        let visibleRaw = ToolType.miscProviders
+            .filter { visibleMiscProviders.contains($0) }
+            .map(\.rawValue)
+        try c.encode(visibleRaw, forKey: .visibleMiscProviders)
+        try c.encode(miscProviderOrder.map(\.rawValue), forKey: .miscProviderOrder)
         try c.encode(costData, forKey: .costData)
     }
 
@@ -297,7 +345,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         var out: [ToolType: String] = [:]
         for (tool, label) in labels {
             let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { out[tool] = trimmed }
+            if let cleaned = VisibleSecretRedactor.dropIfSensitive(trimmed) {
+                out[tool] = cleaned
+            }
         }
         return out
     }
@@ -312,6 +362,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return out
     }
 
+    private static func normalizedVisibleMiscProviders(_ providers: Set<ToolType>) -> Set<ToolType> {
+        Set(providers.filter(\.isMisc))
+    }
+
+    private static func normalizedMiscProviderOrder(_ order: [ToolType]) -> [ToolType] {
+        var seen: Set<ToolType> = []
+        var out: [ToolType] = []
+        for tool in order where tool.isMisc && seen.insert(tool).inserted {
+            out.append(tool)
+        }
+        for tool in ToolType.miscProviders where seen.insert(tool).inserted {
+            out.append(tool)
+        }
+        return out
+    }
+
     public func miscProvider(_ tool: ToolType) -> MiscProviderSettings {
         precondition(tool.isMisc, "miscProvider lookup requested for primary tool: \(tool)")
         return miscProviders[tool] ?? .default
@@ -321,6 +387,41 @@ public struct AppSettings: Codable, Equatable, Sendable {
         precondition(tool.isMisc, "setMiscProvider lookup requested for primary tool: \(tool)")
         miscProviders[tool] = settings
         miscProviders = Self.normalizedMiscProviders(miscProviders)
+    }
+
+    public func isMiscProviderVisible(_ tool: ToolType) -> Bool {
+        precondition(tool.isMisc, "visibility lookup requested for primary tool: \(tool)")
+        return Self.normalizedVisibleMiscProviders(visibleMiscProviders).contains(tool)
+    }
+
+    public var visibleMiscProviderList: [ToolType] {
+        Self.normalizedMiscProviderOrder(miscProviderOrder).filter { isMiscProviderVisible($0) }
+    }
+
+    public mutating func setMiscProviderVisible(_ visible: Bool, for tool: ToolType) {
+        precondition(tool.isMisc, "visibility update requested for primary tool: \(tool)")
+        if visible {
+            visibleMiscProviders.insert(tool)
+        } else {
+            visibleMiscProviders.remove(tool)
+        }
+        visibleMiscProviders = Self.normalizedVisibleMiscProviders(visibleMiscProviders)
+    }
+
+    public func miscProviderOrderIndex(_ tool: ToolType) -> Int? {
+        precondition(tool.isMisc, "order lookup requested for primary tool: \(tool)")
+        return Self.normalizedMiscProviderOrder(miscProviderOrder).firstIndex(of: tool)
+    }
+
+    public mutating func moveMiscProvider(_ tool: ToolType, offset: Int) {
+        precondition(tool.isMisc, "order update requested for primary tool: \(tool)")
+        var order = Self.normalizedMiscProviderOrder(miscProviderOrder)
+        guard let from = order.firstIndex(of: tool) else { return }
+        let to = max(0, min(order.count - 1, from + offset))
+        guard from != to else { return }
+        let item = order.remove(at: from)
+        order.insert(item, at: to)
+        miscProviderOrder = Self.normalizedMiscProviderOrder(order)
     }
 
     private static func migratedMenuBarItem(_ item: MenuBarItemSettings) -> MenuBarItemSettings {
