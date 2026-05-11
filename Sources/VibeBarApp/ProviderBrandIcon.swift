@@ -62,7 +62,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
         case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
             return tool.miscFallbackSymbol
         }
     }
@@ -162,7 +162,7 @@ enum ProviderBrandIcon {
         let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
             nil
         }
         guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -370,6 +370,11 @@ extension ToolType {
         case .iflytek:     return "ProviderIcon-iflytek"
         case .tencentHunyuan: return "ProviderIcon-tencentHunyuan"
         case .volcengine:  return "ProviderIcon-volcengine"
+        case .openCodeGo:  return "ProviderIcon-opencodego"
+        case .kilo:        return "ProviderIcon-kilo"
+        case .kiro:        return "ProviderIcon-kiro"
+        case .ollama:      return "ProviderIcon-ollama"
+        case .openRouter:  return "ProviderIcon-openrouter"
         }
     }
 
@@ -379,7 +384,7 @@ extension ToolType {
             return 1.0
         case .gemini, .antigravity, .copilot, .cursor:
             return 1.25
-        case .alibaba, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .volcengine:
+        case .alibaba, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
             return 1.36
         case .zai:
             return 1.5
@@ -406,6 +411,11 @@ extension ToolType {
         case .iflytek:     return "waveform"
         case .tencentHunyuan: return "globe.asia.australia"
         case .volcengine:  return "flame.fill"
+        case .openCodeGo:  return "terminal"
+        case .kilo:        return "k.circle.fill"
+        case .kiro:        return "command"
+        case .ollama:      return "cloud"
+        case .openRouter:  return "point.3.connected.trianglepath.dotted"
         }
     }
 }

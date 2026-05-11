@@ -10,9 +10,17 @@ import VibeBarCore
 struct MiscProviderSettingsSection: View {
     let tool: ToolType
 
+    @EnvironmentObject var settingsStore: SettingsStore
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
+                Toggle(isOn: visibilityBinding) {
+                    EmptyView()
+                }
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .help("Show \(tool.menuTitle) on the Misc page")
                 ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
                 Text(tool.menuTitle)
                     .font(.system(size: 13, weight: .semibold))
@@ -20,6 +28,22 @@ struct MiscProviderSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
+                BorderlessIconButton(
+                    systemImage: "chevron.up",
+                    help: "Move \(tool.menuTitle) up",
+                    size: 10
+                ) {
+                    settingsStore.settings.moveMiscProvider(tool, offset: -1)
+                }
+                .disabled(isFirst)
+                BorderlessIconButton(
+                    systemImage: "chevron.down",
+                    help: "Move \(tool.menuTitle) down",
+                    size: 10
+                ) {
+                    settingsStore.settings.moveMiscProvider(tool, offset: 1)
+                }
+                .disabled(isLast)
             }
             placeholderRow
         }
@@ -29,6 +53,28 @@ struct MiscProviderSettingsSection: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
         )
+    }
+
+    private var visibilityBinding: Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.isMiscProviderVisible(tool) },
+            set: { value in
+                settingsStore.settings.setMiscProviderVisible(value, for: tool)
+            }
+        )
+    }
+
+    private var orderIndex: Int? {
+        settingsStore.settings.miscProviderOrderIndex(tool)
+    }
+
+    private var isFirst: Bool {
+        orderIndex == 0
+    }
+
+    private var isLast: Bool {
+        guard let orderIndex else { return true }
+        return orderIndex >= settingsStore.settings.miscProviderOrder.count - 1
     }
 
     @ViewBuilder
@@ -68,8 +114,8 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 ApiKeyField(
                     tool: .minimax,
-                    prompt: "Paste MiniMax Token Plan API key (sk-cp-...)",
-                    helpText: "Find it under Billing → Token Plan. Stored in macOS Keychain."
+                    prompt: "Paste MiniMax Token Plan API key (sk-cp-... or MINIMAX_CODING_API_KEY)",
+                    helpText: "Find it under Billing → Token Plan. Stored in macOS Keychain. Env fallback: MINIMAX_CODING_API_KEY, then MINIMAX_API_KEY."
                 )
                 MiniMaxRegionPicker()
             }
@@ -126,6 +172,41 @@ struct MiscProviderSettingsSection: View {
                     tool: .volcengine,
                     helpText: "Volcengine console session cookies expire after a few hours. When the card flips to \"Needs re-login\", click here to refresh."
                 )
+            }
+        case .openCodeGo:
+            VStack(alignment: .leading, spacing: 4) {
+                CookieSourceControls(
+                    tool: .openCodeGo,
+                    spec: OpenCodeGoQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste opencode.ai Cookie header (__Host-auth=... or auth=...)"
+                )
+                WorkspaceIDField(
+                    tool: .openCodeGo,
+                    prompt: "Workspace ID or URL (optional, wrk_... or /workspace/wrk_.../go)"
+                )
+            }
+        case .kilo:
+            ApiKeyField(
+                tool: .kilo,
+                prompt: "Paste Kilo API key (optional)",
+                helpText: "Optional. Vibe Bar also reads ~/.local/share/kilo/auth.json after `kilo login`. Env fallback: KILO_API_KEY."
+            )
+        case .kiro:
+            KiroStatusRow()
+        case .ollama:
+            CookieSourceControls(
+                tool: .ollama,
+                spec: OllamaQuotaAdapter.cookieSpec,
+                manualPrompt: "Paste ollama.com Cookie header (session=... or next-auth.session-token=...)"
+            )
+        case .openRouter:
+            VStack(alignment: .leading, spacing: 4) {
+                ApiKeyField(
+                    tool: .openRouter,
+                    prompt: "Paste OpenRouter API key (sk-or-v1-...)",
+                    helpText: "Stored in macOS Keychain. Env fallback: OPENROUTER_API_KEY."
+                )
+                EnterpriseHostField(tool: .openRouter, prompt: "OpenRouter API URL (optional, defaults to https://openrouter.ai/api/v1)")
             }
         case .antigravity:
             AntigravityStatusRow()
@@ -457,6 +538,34 @@ struct AntigravityStatusRow: View {
     }
 }
 
+/// Kiro is local-CLI only. The row mirrors AntiGravity's probe style
+/// but points users at the login command that creates the usable
+/// session.
+struct KiroStatusRow: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "terminal")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+            Text("Run `kiro-cli login`, then Vibe Bar probes `kiro-cli chat --no-interactive /usage`.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 4)
+            Button("Probe", action: probe)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+    }
+
+    private func probe() {
+        guard let account = environment.account(for: .kiro) else { return }
+        Task { _ = await quotaService.refresh(account) }
+    }
+}
+
 /// Browser-cookie controls for the misc providers. Import/manual source
 /// selection is automatic; the UI only exposes recovery actions.
 struct CookieSourceControls: View {
@@ -725,6 +834,58 @@ struct EnterpriseHostField: View {
             return
         }
         settingsStore.settings.setMiscProvider(current, for: tool)
+    }
+}
+
+/// Plain-text workspace/project id stored in non-sensitive misc
+/// settings. OpenCode Go accepts either `wrk_...` or the full dashboard
+/// URL; the adapter normalizes it at fetch time.
+struct WorkspaceIDField: View {
+    let tool: ToolType
+    let prompt: String
+
+    @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+    @State private var draft: String = ""
+
+    var body: some View {
+        HStack(spacing: 6) {
+            TextField(prompt, text: $draft, onCommit: save)
+                .textFieldStyle(.roundedBorder)
+            Button("Save", action: save)
+                .disabled(draft == currentRaw)
+            if !currentRaw.isEmpty {
+                Button(role: .destructive, action: clear) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .help("Clear saved workspace")
+            }
+        }
+        .onAppear { draft = currentRaw }
+    }
+
+    private var currentRaw: String {
+        settingsStore.settings.miscProvider(tool).workspaceID ?? ""
+    }
+
+    private func save() {
+        var current = settingsStore.settings.miscProvider(tool)
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        current.workspaceID = trimmed.isEmpty ? nil : trimmed
+        settingsStore.settings.setMiscProvider(current, for: tool)
+        triggerRefresh()
+    }
+
+    private func clear() {
+        draft = ""
+        save()
+    }
+
+    private func triggerRefresh() {
+        guard let account = environment.account(for: tool) else { return }
+        Task { _ = await quotaService.refresh(account) }
     }
 }
 

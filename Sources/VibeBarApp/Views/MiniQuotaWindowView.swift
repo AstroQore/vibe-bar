@@ -279,6 +279,11 @@ private func providerAccent(for tool: ToolType) -> Color {
     case .iflytek:     return Color(red: 0.10, green: 0.37, blue: 0.75)  // iflytek blue
     case .tencentHunyuan: return Color(red: 0.00, green: 0.49, blue: 0.91)  // tencent blue
     case .volcengine:  return Color(red: 0.92, green: 0.30, blue: 0.30)  // doubao red
+    case .openCodeGo:  return Color(red: 0.22, green: 0.66, blue: 0.50)  // green
+    case .kilo:        return Color(red: 0.47, green: 0.37, blue: 0.93)  // purple
+    case .kiro:        return Color(red: 0.24, green: 0.48, blue: 0.94)  // blue
+    case .ollama:      return Color(red: 0.18, green: 0.18, blue: 0.18)  // graphite
+    case .openRouter:  return Color(red: 0.98, green: 0.62, blue: 0.16)  // orange
     }
 }
 
@@ -298,6 +303,11 @@ private func providerTitle(for tool: ToolType) -> String {
     case .iflytek:     return "SPARK"
     case .tencentHunyuan: return "HUNYUAN"
     case .volcengine:  return "DOUBAO"
+    case .openCodeGo:  return "OPENCODE"
+    case .kilo:        return "KILO"
+    case .kiro:        return "KIRO"
+    case .ollama:      return "OLLAMA"
+    case .openRouter:  return "OPENROUTER"
     }
 }
 

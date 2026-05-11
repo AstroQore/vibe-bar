@@ -17,6 +17,7 @@ final class MiscProviderSettingsTests: XCTestCase {
             cookieSource: .manual,
             region: "cn-beijing",
             enterpriseHost: URL(string: "https://copilot.example.com/")!,
+            workspaceID: "wrk_demo",
             preferredBrowser: .brave,
             enabledOverride: true
         )
@@ -34,6 +35,7 @@ final class MiscProviderSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.cookieSource, .auto)
         XCTAssertNil(decoded.region)
         XCTAssertNil(decoded.enterpriseHost)
+        XCTAssertNil(decoded.workspaceID)
         XCTAssertNil(decoded.preferredBrowser)
         XCTAssertNil(decoded.enabledOverride)
     }
@@ -66,6 +68,7 @@ final class MiscProviderSettingsTests: XCTestCase {
         XCTAssertFalse(MiscProviderSettings.looksSensitive("cookieSource"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("region"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("enterpriseHost"))
+        XCTAssertFalse(MiscProviderSettings.looksSensitive("workspaceID"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("preferredBrowser"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("enabledOverride"))
     }
@@ -135,6 +138,7 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         for tool in ToolType.miscProviders {
             XCTAssertNotNil(settings.miscProviders[tool], "default settings missing entry for \(tool)")
             XCTAssertEqual(settings.miscProviders[tool], .default)
+            XCTAssertTrue(settings.isMiscProviderVisible(tool), "default settings should show \(tool)")
         }
     }
 
@@ -152,6 +156,52 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
         XCTAssertEqual(settings.miscProviders.count, ToolType.miscProviders.count)
+        XCTAssertEqual(settings.visibleMiscProviders, AppSettings.defaultVisibleMiscProviders)
+    }
+
+    func testVisibleMiscProvidersRoundTripAndDropsUnknowns() throws {
+        let json = """
+        {
+          "visibleMiscProviders": ["minimax", "openRouter", "removedProvider", "codex"]
+        }
+        """
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.visibleMiscProviders, [.minimax, .openRouter])
+        XCTAssertTrue(settings.isMiscProviderVisible(.minimax))
+        XCTAssertFalse(settings.isMiscProviderVisible(.kilo))
+
+        var mutable = settings
+        mutable.setMiscProviderVisible(true, for: .kilo)
+        mutable.setMiscProviderVisible(false, for: .minimax)
+        XCTAssertEqual(mutable.visibleMiscProviderList, [.kilo, .openRouter])
+
+        let encoded = try JSONEncoder().encode(mutable)
+        let raw = String(data: encoded, encoding: .utf8)!
+        XCTAssertTrue(raw.contains("visibleMiscProviders"))
+        let object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        let visibleRaw = object?["visibleMiscProviders"] as? [String]
+        XCTAssertEqual(visibleRaw, ["kilo", "openRouter"])
+    }
+
+    func testMiscProviderOrderRoundTripAndDrivesVisibilityOrder() throws {
+        let json = """
+        {
+          "visibleMiscProviders": ["minimax", "openRouter", "kilo"],
+          "miscProviderOrder": ["openRouter", "removedProvider", "codex", "minimax"]
+        }
+        """
+        var settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.miscProviderOrder.prefix(2), [.openRouter, .minimax])
+        XCTAssertEqual(settings.visibleMiscProviderList, [.openRouter, .minimax, .kilo])
+
+        settings.moveMiscProvider(.kilo, offset: -20)
+        XCTAssertEqual(settings.miscProviderOrder.first, .kilo)
+        XCTAssertEqual(settings.visibleMiscProviderList, [.kilo, .openRouter, .minimax])
+
+        let encoded = try JSONEncoder().encode(settings)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["miscProviderOrder"] as? [String], settings.miscProviderOrder.map(\.rawValue))
     }
 
     func testUnknownMiscProviderKeysAreDropped() throws {

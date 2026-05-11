@@ -62,7 +62,10 @@ final class AppEnvironment: ObservableObject {
                 if settings.mockEnabled {
                     return MockDataProvider.sampleAccounts()
                 }
-                return ToolType.allCases.compactMap { accounts.accounts(for: $0).first }
+                let visibleTools = ToolType.allCases.filter { tool in
+                    tool.isPrimary || settings.settings.visibleMiscProviders.contains(tool)
+                }
+                return visibleTools.compactMap { accounts.accounts(for: $0).first }
             },
             intervalProvider: { [weak settings] in
                 settings?.refreshIntervalSeconds ?? AppSettings.default.refreshIntervalSeconds
@@ -85,6 +88,7 @@ final class AppEnvironment: ObservableObject {
                     && $0.mockEnabled == $1.mockEnabled
                     && $0.codexUsageMode == $1.codexUsageMode
                     && $0.claudeUsageMode == $1.claudeUsageMode
+                    && $0.visibleMiscProviders == $1.visibleMiscProviders
             }
             .sink { [weak self] settings in
                 self?.accountStore.reload(

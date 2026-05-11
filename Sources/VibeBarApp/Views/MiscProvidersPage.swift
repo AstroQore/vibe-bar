@@ -3,23 +3,21 @@ import AppKit
 import VibeBarCore
 
 /// The Misc tab inside the Overview popover. Renders a card for each
-/// provider in `ToolType.miscProviders`, regardless of credential
-/// presence. Adapters land in subsequent commits; for now every card
-/// shows a "Set up" placeholder that opens the matching Settings
-/// section.
+/// provider checked in Misc settings. Hidden providers keep their
+/// credentials/config but don't render cards.
 struct MiscProvidersPage: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
-        // Two columns at regular / spacious density, single column
-        // at compact. Mirrors the Overview waterfall but without the
-        // anchored quota cards (every misc card is interchangeable).
-        let columns = density.popoverWidth >= 460 ? 2 : 1
-        ColumnMasonryLayout(columns: columns, spacing: density.interSectionSpacing, anchoredItems: 0) {
-            ForEach(ToolType.miscProviders, id: \.self) { tool in
+        // The Misc page is intentionally denser than the primary
+        // overview: every card is reorderable and receives the same
+        // third-width column treatment.
+        ColumnMasonryLayout(columns: 3, spacing: density.interSectionSpacing, anchoredItems: 0) {
+            ForEach(settingsStore.settings.visibleMiscProviderList, id: \.self) { tool in
                 MiscProviderCard(tool: tool, density: density)
             }
         }
@@ -106,7 +104,7 @@ struct MiscProviderCard: View {
                     miscBucketRow(bucket)
                 }
                 if let updated = quotaService.lastUpdatedByAccount[accountId] {
-                    Text("Updated \(ResetCountdownFormatter.updatedAgo(from: updated, now: Date()))")
+                    Text(ResetCountdownFormatter.updatedAgo(from: updated, now: Date()))
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                 }

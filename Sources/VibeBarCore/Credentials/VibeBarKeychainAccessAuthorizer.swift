@@ -65,13 +65,17 @@ public enum VibeBarKeychainAccessAuthorizer {
     private static let legacyClaudeCookieAccount = "claude.ai"
     private static let legacyClaudeOrganizationAccount = "claude.ai.organization"
     private static let claudeOrganizationAccount = "claude.organization-id"
-    private static let currentCookieBackedMiscTools: [ToolType] = [.kimi, .cursor]
+    private static let currentCookieBackedMiscTools: [ToolType] = [.kimi, .cursor, .openCodeGo, .ollama]
     private static let currentSecretKindsByTool: [ToolType: [MiscCredentialStore.Kind]] = [
         .alibaba: [.apiKey],
         .copilot: [.apiKey, .oauthAccessToken, .oauthRefreshToken, .oauthExpiry],
         .cursor: [.manualCookieHeader],
         .kimi: [.manualCookieHeader],
+        .kilo: [.apiKey],
         .minimax: [.apiKey],
+        .ollama: [.manualCookieHeader],
+        .openCodeGo: [.manualCookieHeader],
+        .openRouter: [.apiKey],
         .zai: [.apiKey]
     ]
 

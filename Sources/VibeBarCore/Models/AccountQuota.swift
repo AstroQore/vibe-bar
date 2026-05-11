@@ -23,7 +23,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         self.accountId = accountId
         self.tool = tool
         self.buckets = buckets
-        self.plan = plan
+        self.plan = VisibleSecretRedactor.dropIfSensitive(plan)
         self.email = email
         self.queriedAt = queriedAt
         self.error = error
@@ -51,7 +51,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         accountId = try c.decode(String.self, forKey: .accountId)
         tool = try c.decode(ToolType.self, forKey: .tool)
         buckets = try c.decode([QuotaBucket].self, forKey: .buckets)
-        plan = try c.decodeIfPresent(String.self, forKey: .plan)
+        plan = VisibleSecretRedactor.dropIfSensitive(try c.decodeIfPresent(String.self, forKey: .plan))
         email = try c.decodeIfPresent(String.self, forKey: .email)
         queriedAt = try c.decode(Date.self, forKey: .queriedAt)
         providerExtras = try c.decodeIfPresent(ProviderExtras.self, forKey: .providerExtras)

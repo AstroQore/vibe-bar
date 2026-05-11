@@ -273,4 +273,11 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(decoded.planBadgeLabel(for: .codex, quotaPlan: "pro"), "Founder")
     }
+
+    func testProviderPlanLabelOverrideDropsCredentialLikeValues() {
+        var settings = AppSettings.default
+        settings.setProviderPlanLabel("sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789", for: .codex)
+
+        XCTAssertNil(settings.planBadgeLabel(for: .codex))
+    }
 }
