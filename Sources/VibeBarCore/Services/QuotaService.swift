@@ -49,7 +49,8 @@ public final class QuotaService: ObservableObject {
                 .kilo: KiloQuotaAdapter(),
                 .kiro: KiroQuotaAdapter(),
                 .ollama: OllamaQuotaAdapter(),
-                .openRouter: OpenRouterQuotaAdapter()
+                .openRouter: OpenRouterQuotaAdapter(),
+                .warp: WarpQuotaAdapter()
             ],
             mockProvider: mockProvider,
             initialAccountIds: initialAccountIds

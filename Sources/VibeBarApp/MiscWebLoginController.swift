@@ -48,6 +48,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
     private var onSaved: (() -> Void)?
     private var didSaveCookiesForCurrentWindow = false
     private let websiteDataStore = WKWebsiteDataStore.default()
+    private var autofillBridges: [MiscWebLoginAutofillBridge] = []
 
     init(config: Config) {
         self.config = config
@@ -249,8 +250,178 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         configuration.websiteDataStore = websiteDataStore
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+
+        let userContent = WKUserContentController()
+        userContent.addUserScript(WKUserScript(
+            source: MiscWebLoginController.formAutofillScript,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        ))
+        let bridge = MiscWebLoginAutofillBridge(controller: self)
+        userContent.add(bridge, name: MiscWebLoginController.formAutofillMessageName)
+        configuration.userContentController = userContent
+        autofillBridges.append(bridge)
         return configuration
     }
+
+    fileprivate static let formAutofillMessageName = "vibebarFormAutofill"
+
+    fileprivate func handleAutofillMessage(
+        type: String,
+        host: String,
+        username: String,
+        password: String
+    ) {
+        let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty else { return }
+
+        switch type {
+        case "capture":
+            let credential = WebFormCredential(host: host, username: username, password: password)
+            guard credential.isUsable else { return }
+            let saved = WebFormCredentialStore.save(credential, for: config.tool)
+            if saved {
+                statusLabel?.stringValue = "Saved \(host) credentials to Keychain."
+            }
+        case "request":
+            guard let credential = WebFormCredentialStore.bestMatch(for: host, tool: config.tool) else {
+                return
+            }
+            let payload: [String: String] = [
+                "username": credential.username,
+                "password": credential.password
+            ]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let json = String(data: data, encoding: .utf8) else {
+                return
+            }
+            let js = "window.__vibebarFormAutofill && window.__vibebarFormAutofill.fill(\(json));"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+            popupWebView?.evaluateJavaScript(js, completionHandler: nil)
+        default:
+            break
+        }
+    }
+
+    private static let formAutofillScript: String = """
+    (function() {
+        if (window.__vibebarFormAutofillInstalled) { return; }
+        window.__vibebarFormAutofillInstalled = true;
+
+        function host() {
+            try { return (window.location.host || window.location.hostname || '').toString(); }
+            catch (_) { return ''; }
+        }
+
+        function isVisible(el) {
+            if (!el) { return false; }
+            if (el.disabled || el.readOnly) { return false; }
+            if (el.type === 'hidden') { return false; }
+            if (el.offsetParent === null && el !== document.activeElement) {
+                var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+                if (!rect || (rect.width === 0 && rect.height === 0)) { return false; }
+            }
+            return true;
+        }
+
+        function locateFields() {
+            var passwords = Array.prototype.slice.call(
+                document.querySelectorAll('input[type="password"]')
+            ).filter(isVisible);
+            if (!passwords.length) { return null; }
+            var password = passwords[0];
+            var inputs = Array.prototype.slice.call(document.querySelectorAll('input'));
+            var passwordIdx = inputs.indexOf(password);
+            var username = null;
+            var allowedTypes = { 'text': 1, 'email': 1, 'tel': 1, 'search': 1, 'number': 1 };
+            for (var i = passwordIdx - 1; i >= 0; i--) {
+                var candidate = inputs[i];
+                var t = (candidate.type || 'text').toLowerCase();
+                if (allowedTypes[t] && isVisible(candidate)) {
+                    username = candidate;
+                    break;
+                }
+            }
+            return { username: username, password: password };
+        }
+
+        function post(payload) {
+            try {
+                window.webkit.messageHandlers.vibebarFormAutofill.postMessage(payload);
+            } catch (_) { /* swallow */ }
+        }
+
+        function attach(form, fields) {
+            if (!form || form.__vibebarAttached) { return; }
+            form.__vibebarAttached = true;
+            form.addEventListener('submit', function() {
+                var uName = fields.username ? (fields.username.value || '').trim() : '';
+                var pWord = fields.password ? (fields.password.value || '') : '';
+                if (uName && pWord) {
+                    post({ type: 'capture', host: host(), username: uName, password: pWord });
+                }
+            }, true);
+        }
+
+        function bind() {
+            var fields = locateFields();
+            if (!fields || !fields.password) { return false; }
+            var form = fields.password.form;
+            if (!form) {
+                form = fields.password.closest ? fields.password.closest('form') : null;
+            }
+            if (!form) { form = document.querySelector('form'); }
+            attach(form, fields);
+            return true;
+        }
+
+        function setNativeValue(el, value) {
+            try {
+                var proto = Object.getPrototypeOf(el);
+                var descriptor = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
+                var setter = descriptor && descriptor.set;
+                if (setter) { setter.call(el, value); } else { el.value = value; }
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (_) { el.value = value; }
+        }
+
+        function fill(payload) {
+            try {
+                if (!payload || typeof payload !== 'object') { return; }
+                var fields = locateFields();
+                if (!fields || !fields.password) { return; }
+                if (fields.username && !fields.username.value && payload.username) {
+                    setNativeValue(fields.username, String(payload.username));
+                }
+                if (fields.password && !fields.password.value && payload.password) {
+                    setNativeValue(fields.password, String(payload.password));
+                }
+            } catch (_) { /* swallow */ }
+        }
+
+        window.__vibebarFormAutofill = { fill: fill };
+
+        function bootstrap() {
+            bind();
+            post({ type: 'request', host: host() });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+        } else {
+            bootstrap();
+        }
+
+        try {
+            var observer = new MutationObserver(function() { bind(); });
+            observer.observe(document.documentElement || document.body || document, {
+                childList: true,
+                subtree: true
+            });
+        } catch (_) { /* swallow */ }
+    })();
+    """
 
     private func makeWebView(configuration: WKWebViewConfiguration) -> WKWebView {
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -292,6 +463,10 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         window = nil
         onSaved = nil
         didSaveCookiesForCurrentWindow = false
+        for bridge in autofillBridges {
+            bridge.detach()
+        }
+        autofillBridges.removeAll()
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -392,6 +567,46 @@ extension MiscWebLoginController: WKHTTPCookieStoreObserver {
         Task { @MainActor in
             self.persistCookiesSilentlyIfAvailable()
         }
+    }
+}
+
+/// Lightweight WKScriptMessageHandler bridge holding a weak ref back
+/// to `MiscWebLoginController` so the user-content controller can
+/// outlive the controller without leaking.
+@MainActor
+final class MiscWebLoginAutofillBridge: NSObject, WKScriptMessageHandler {
+    private weak var controller: MiscWebLoginController?
+
+    init(controller: MiscWebLoginController) {
+        self.controller = controller
+        super.init()
+    }
+
+    nonisolated func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        // WebKit invokes script-message handlers on the main thread,
+        // but the protocol surface is `nonisolated`, so we assume the
+        // MainActor context to read the (also `@MainActor`-annotated)
+        // `body` property without bouncing through a `Task`.
+        MainActor.assumeIsolated {
+            let dict = message.body as? [String: Any] ?? [:]
+            let type = (dict["type"] as? String) ?? ""
+            let host = (dict["host"] as? String) ?? ""
+            let username = (dict["username"] as? String) ?? ""
+            let password = (dict["password"] as? String) ?? ""
+            controller?.handleAutofillMessage(
+                type: type,
+                host: host,
+                username: username,
+                password: password
+            )
+        }
+    }
+
+    func detach() {
+        controller = nil
     }
 }
 

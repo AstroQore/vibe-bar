@@ -62,7 +62,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
         case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return tool.miscFallbackSymbol
         }
     }
@@ -162,7 +162,7 @@ enum ProviderBrandIcon {
         let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             nil
         }
         guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -375,6 +375,7 @@ extension ToolType {
         case .kiro:        return "ProviderIcon-kiro"
         case .ollama:      return "ProviderIcon-ollama"
         case .openRouter:  return "ProviderIcon-openrouter"
+        case .warp:        return "ProviderIcon-warp"
         }
     }
 
@@ -384,7 +385,7 @@ extension ToolType {
             return 1.0
         case .gemini, .antigravity, .copilot, .cursor:
             return 1.25
-        case .alibaba, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
+        case .alibaba, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 1.36
         case .zai:
             return 1.5
@@ -416,6 +417,7 @@ extension ToolType {
         case .kiro:        return "command"
         case .ollama:      return "cloud"
         case .openRouter:  return "point.3.connected.trianglepath.dotted"
+        case .warp:        return "terminal.fill"
         }
     }
 }

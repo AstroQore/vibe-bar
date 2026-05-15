@@ -284,6 +284,7 @@ private func providerAccent(for tool: ToolType) -> Color {
     case .kiro:        return Color(red: 0.24, green: 0.48, blue: 0.94)  // blue
     case .ollama:      return Color(red: 0.18, green: 0.18, blue: 0.18)  // graphite
     case .openRouter:  return Color(red: 0.98, green: 0.62, blue: 0.16)  // orange
+    case .warp:        return Color(red: 0.58, green: 0.55, blue: 0.71)  // warp violet-grey
     }
 }
 
@@ -308,6 +309,7 @@ private func providerTitle(for tool: ToolType) -> String {
     case .kiro:        return "KIRO"
     case .ollama:      return "OLLAMA"
     case .openRouter:  return "OPENROUTER"
+    case .warp:        return "WARP"
     }
 }
 
