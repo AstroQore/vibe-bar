@@ -19,7 +19,7 @@ import Foundation
 /// - **Misc** (`.alibaba`, `.gemini`, `.antigravity`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
 ///   `.tencentHunyuan`, `.volcengine`, `.openCodeGo`, `.kilo`, `.kiro`,
-///   `.ollama`, `.openRouter`) — usage-only cards on the Misc tab.
+///   `.ollama`, `.openRouter`, `.warp`) — usage-only cards on the Misc tab.
 ///   No token-cost scanning, no Atlassian-style status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
@@ -47,13 +47,14 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case kiro
     case ollama
     case openRouter
+    case warp
 
     // MARK: - Tier helpers
 
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -99,6 +100,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kiro:        return "Kiro"
         case .ollama:      return "Ollama"
         case .openRouter:  return "OpenRouter"
+        case .warp:        return "Warp"
         }
     }
 
@@ -123,6 +125,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kiro:        return "CLI Usage"
         case .ollama:      return "Cloud"
         case .openRouter:  return "Credits"
+        case .warp:        return "Warp AI Credits"
         }
     }
 
@@ -147,6 +150,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kiro:        return "Kiro"
         case .ollama:      return "Ollama"
         case .openRouter:  return "OpenRouter"
+        case .warp:        return "Warp"
         }
     }
 
@@ -171,6 +175,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kiro:        return "Kiro"
         case .ollama:      return "Ollama"
         case .openRouter:  return "OpenRouter"
+        case .warp:        return "Warp"
         }
     }
 
@@ -198,6 +203,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kiro:        return URL(string: "https://kiro.dev/")!
         case .ollama:      return URL(string: "https://ollama.com/")!
         case .openRouter:  return URL(string: "https://openrouter.ai/")!
+        case .warp:        return URL(string: "https://app.warp.dev/")!
         }
     }
 

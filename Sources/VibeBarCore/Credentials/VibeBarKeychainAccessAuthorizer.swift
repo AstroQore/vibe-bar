@@ -66,6 +66,13 @@ public enum VibeBarKeychainAccessAuthorizer {
     private static let legacyClaudeOrganizationAccount = "claude.ai.organization"
     private static let claudeOrganizationAccount = "claude.organization-id"
     private static let currentCookieBackedMiscTools: [ToolType] = [.kimi, .cursor, .openCodeGo, .ollama]
+    /// Misc tools with an in-app WKWebView login flow where
+    /// `WebFormCredentialStore` may persist a username/password pair.
+    /// Keeping the list explicit lets the preflight pre-authorize the
+    /// Keychain accounts so users don't see a prompt on first save.
+    private static let currentWebFormBackedMiscTools: [ToolType] = [
+        .mimo, .volcengine, .tencentHunyuan, .alibaba
+    ]
     private static let currentSecretKindsByTool: [ToolType: [MiscCredentialStore.Kind]] = [
         .alibaba: [.apiKey],
         .copilot: [.apiKey, .oauthAccessToken, .oauthRefreshToken, .oauthExpiry],
@@ -76,6 +83,7 @@ public enum VibeBarKeychainAccessAuthorizer {
         .ollama: [.manualCookieHeader],
         .openCodeGo: [.manualCookieHeader],
         .openRouter: [.apiKey],
+        .warp: [.apiKey],
         .zai: [.apiKey]
     ]
 
@@ -121,6 +129,15 @@ public enum VibeBarKeychainAccessAuthorizer {
                     )
                 )
             }
+        }
+
+        for tool in currentWebFormBackedMiscTools {
+            targets.append(
+                Target(
+                    service: WebFormCredentialStore.keychainService,
+                    account: WebFormCredentialStore.keychainAccount(tool: tool)
+                )
+            )
         }
 
         return uniqueSortedTargets(targets)

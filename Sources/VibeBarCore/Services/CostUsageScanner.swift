@@ -24,7 +24,7 @@ public enum CostUsageScanner {
             return await scanCodex(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         case .claude:
             return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose token-level cost data; the
             // cost-history pipeline is gated by `tool.supportsTokenCost`
             // upstream. Returning `nil` here is a defensive belt:
@@ -310,7 +310,7 @@ public enum CostUsageScanner {
                 cacheCreationInputTokens: cacheCreation,
                 outputTokens: event.output
             ) ?? 0
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter:
+        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 0
         }
     }
