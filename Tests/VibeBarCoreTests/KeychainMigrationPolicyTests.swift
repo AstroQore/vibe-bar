@@ -24,13 +24,25 @@ final class KeychainMigrationPolicyTests: XCTestCase {
             service: "com.astroqore.VibeBar.web-cookies",
             account: "claude.organization-id"
         )))
+        // Cookie-backed misc providers now stack their sessions through
+        // `MiscCookieSlotStore` (one Keychain entry per tool, holding a
+        // JSON-encoded list of slots). The authorizer needs to cover
+        // every cookie-backed tool's slot list.
         XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.web-cookies",
-            account: "misc.kimi.cookie"
+            service: "com.astroqore.VibeBar.misc-secrets",
+            account: "kimi.cookieSlots"
         )))
         XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.web-cookies",
-            account: "misc.cursor.cookie"
+            service: "com.astroqore.VibeBar.misc-secrets",
+            account: "cursor.cookieSlots"
+        )))
+        XCTAssertTrue(targets.contains(.init(
+            service: "com.astroqore.VibeBar.misc-secrets",
+            account: "volcengine.cookieSlots"
+        )))
+        XCTAssertTrue(targets.contains(.init(
+            service: "com.astroqore.VibeBar.misc-secrets",
+            account: "alibaba.cookieSlots"
         )))
         XCTAssertTrue(targets.contains(.init(
             service: "com.astroqore.VibeBar.misc-secrets",
@@ -44,9 +56,16 @@ final class KeychainMigrationPolicyTests: XCTestCase {
             service: "com.astroqore.VibeBar.misc-secrets",
             account: "minimax.apiKey"
         )))
+        // The single-cookie `CookieHeaderCache` entries are no longer the
+        // authoritative storage (their contents migrate into slots on
+        // first read) and should not appear in the current target list.
         XCTAssertFalse(targets.contains(.init(
             service: CookieHeaderCache.keychainService,
             account: CookieHeaderCache.keychainAccount(for: .minimax)
+        )))
+        XCTAssertFalse(targets.contains(.init(
+            service: "com.astroqore.VibeBar.web-cookies",
+            account: "misc.kimi.cookie"
         )))
     }
 

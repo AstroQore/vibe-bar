@@ -66,26 +66,33 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
             preferred = [.international, .chinaMainland]
         }
 
+        let queriedAt = now()
         let hasAPIKey = settings.allowsAPIOrOAuthAccess && {
             guard let key = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
                   !key.isEmpty else { return false }
             return true
         }()
-        let cookieResolution = MiscCookieResolver.resolve(for: AlibabaQuotaAdapter.cookieSpec)
+        let cookieResolutions = MiscCookieResolver.resolveAll(for: AlibabaQuotaAdapter.cookieSpec)
 
         // Path 1: API key (preferred when present — fewer round-trips,
         // no SEC_TOKEN scrape). Fall through to the cookie path on
         // auth-style failures so a stale `sk-…` doesn't permanently
-        // black-hole users who also have a console session.
+        // black-hole users who also have a console session. The API
+        // key returns a single account; aggregation is a no-op there.
         if hasAPIKey,
            let apiKey = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
            !apiKey.isEmpty {
             do {
-                return try await fetchViaAPIKey(apiKey: apiKey, regions: preferred, account: account)
+                return try await fetchViaAPIKey(
+                    apiKey: apiKey,
+                    regions: preferred,
+                    account: account,
+                    queriedAt: queriedAt
+                )
             } catch let qe as QuotaError {
                 switch qe {
                 case .needsLogin, .noCredential:
-                    if cookieResolution == nil { throw qe }
+                    if cookieResolutions.isEmpty { throw qe }
                     // else fall through to cookie path
                 default:
                     throw qe
@@ -93,28 +100,42 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
             }
         }
 
-        // Path 2: console cookie.
-        if let resolution = cookieResolution {
-            return try await fetchViaCookie(header: resolution.header, regions: preferred, account: account)
+        // Path 2: console cookies. Average buckets across every
+        // imported cookie slot.
+        guard !cookieResolutions.isEmpty else {
+            throw QuotaError.noCredential
         }
-
-        throw QuotaError.noCredential
+        let results = await MiscQuotaAggregator.gatherSlotResults(cookieResolutions) { resolution in
+            try await self.fetchViaCookieSlot(
+                resolution: resolution,
+                regions: preferred,
+                account: account,
+                queriedAt: queriedAt
+            )
+        }
+        return MiscQuotaAggregator.aggregate(
+            tool: .alibaba,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
     }
 
     private func fetchViaAPIKey(apiKey: String,
                                 regions: [AlibabaRegion],
-                                account: AccountIdentity) async throws -> AccountQuota {
+                                account: AccountIdentity,
+                                queriedAt: Date) async throws -> AccountQuota {
         var lastError: QuotaError?
         for region in regions {
             do {
-                let snapshot = try await fetchOnce(apiKey: apiKey, region: region)
+                let snapshot = try await fetchOnce(apiKey: apiKey, region: region, now: queriedAt)
                 return AccountQuota(
                     accountId: account.id,
                     tool: .alibaba,
                     buckets: snapshot.buckets,
                     plan: snapshot.planName,
                     email: account.email,
-                    queriedAt: now(),
+                    queriedAt: queriedAt,
                     error: nil
                 )
             } catch let qe as QuotaError {
@@ -134,17 +155,19 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
         throw lastError ?? QuotaError.unknown("Alibaba: no usable region.")
     }
 
-    private func fetchViaCookie(header: String,
-                                regions: [AlibabaRegion],
-                                account: AccountIdentity) async throws -> AccountQuota {
+    private func fetchViaCookieSlot(resolution: MiscCookieResolver.Resolution,
+                                    regions: [AlibabaRegion],
+                                    account: AccountIdentity,
+                                    queriedAt: Date) async throws -> AccountQuota {
         var lastError: QuotaError?
         for region in regions {
             do {
-                let secToken = try await resolveSECToken(cookieHeader: header, region: region)
+                let secToken = try await resolveSECToken(cookieHeader: resolution.header, region: region)
                 let snapshot = try await fetchConsoleOnce(
-                    cookieHeader: header,
+                    cookieHeader: resolution.header,
                     secToken: secToken,
-                    region: region
+                    region: region,
+                    now: queriedAt
                 )
                 return AccountQuota(
                     accountId: account.id,
@@ -152,7 +175,7 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
                     buckets: snapshot.buckets,
                     plan: snapshot.planName,
                     email: account.email,
-                    queriedAt: now(),
+                    queriedAt: queriedAt,
                     error: nil
                 )
             } catch let qe as QuotaError {
@@ -168,7 +191,7 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
         throw lastError ?? QuotaError.unknown("Alibaba: no usable region.")
     }
 
-    private func fetchOnce(apiKey: String, region: AlibabaRegion) async throws -> AlibabaResponseParser.Snapshot {
+    private func fetchOnce(apiKey: String, region: AlibabaRegion, now referenceTime: Date) async throws -> AlibabaResponseParser.Snapshot {
         var request = URLRequest(url: region.apiKeyQuotaURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -205,7 +228,7 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("Alibaba returned HTTP \(http.statusCode).")
         }
 
-        return try AlibabaResponseParser.parse(data: data, now: now())
+        return try AlibabaResponseParser.parse(data: data, now: referenceTime)
     }
 
     // MARK: Console-cookie path
@@ -266,7 +289,8 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
     /// `login_aliyunid_csrf` (or `csrf`) cookie value.
     private func fetchConsoleOnce(cookieHeader: String,
                                   secToken: String,
-                                  region: AlibabaRegion) async throws -> AlibabaResponseParser.Snapshot {
+                                  region: AlibabaRegion,
+                                  now referenceTime: Date) async throws -> AlibabaResponseParser.Snapshot {
         let traceID = UUID().uuidString.lowercased()
         var cornerstone: [String: Any] = [
             "feTraceId": traceID,
@@ -345,7 +369,7 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("Alibaba console returned HTTP \(http.statusCode).")
         }
 
-        return try AlibabaResponseParser.parse(data: data, now: now())
+        return try AlibabaResponseParser.parse(data: data, now: referenceTime)
     }
 
     // MARK: Helpers

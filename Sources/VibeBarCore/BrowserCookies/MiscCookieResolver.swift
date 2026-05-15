@@ -1,25 +1,19 @@
 import Foundation
 import SweetCookieKit
 
-/// Picks a `Cookie:` header for a misc-provider adapter at fetch time.
+/// Picks `Cookie:` headers for a misc-provider adapter at fetch time.
 ///
-/// Resolution order (skipped per `MiscProviderSettings.cookieSource`):
+/// Vibe Bar lets the user stack multiple cookie sessions per provider
+/// (work + personal + trial accounts) and aggregates their quotas. The
+/// resolver returns every slot the user has imported for `spec.tool`,
+/// filtered by the current `MiscProviderSettings` source mode and the
+/// spec's required-credential gate. Adapters fan out a quota query per
+/// slot and average the buckets via `MiscQuotaAggregator`.
 ///
-/// 1. **Cached** — Keychain entry from a prior successful import.
-///    Returned immediately if present.
-/// 2. **Browser auto-import** (when source mode permits browser cookies) —
-///    SweetCookieKit reads cookies for the provider's domains from
-///    every browser in the configured order. Records from the same
-///    browser profile are merged across cookie stores before the
-///    auth-cookie set is minimized and cached, matching Codex Bar's
-///    Kimi/MiniMax/Cursor importers.
-/// 3. **Manual paste** (when source mode permits manual cookies) —
-///    the value the user pasted in Settings, normalised through
-///    `CookieHeaderNormalizer`.
-///
-/// Adapters call `resolve(for:)` and translate "no header" into a
-/// `QuotaError.noCredential` that surfaces a "Sign in" CTA on the
-/// misc card.
+/// Slots live in `MiscCookieSlotStore` (Keychain). The resolver no
+/// longer keeps a separate `CookieHeaderCache` layer — slots *are* the
+/// cache. The legacy single-cookie state is migrated into slots on
+/// first read; see `LegacyCookieMigration`.
 public enum MiscCookieResolver {
     /// Per-provider description of which cookies matter and where
     /// to look for them. Adapters declare this as a constant.
@@ -75,63 +69,92 @@ public enum MiscCookieResolver {
     }
 
     public struct Resolution {
+        public let slotID: UUID?
         public let header: String
         public let sourceLabel: String
+
+        public init(slotID: UUID?, header: String, sourceLabel: String) {
+            self.slotID = slotID
+            self.header = header
+            self.sourceLabel = sourceLabel
+        }
     }
 
-    /// Resolve a cookie header for `spec.tool`. Returns `nil` if the
-    /// configured sources all came up empty — adapters surface
-    /// `noCredential` in that case.
-    public static func resolve(for spec: Spec) -> Resolution? {
-        let settings = currentSettings(for: spec.tool)
-        guard let plan = CookieSourcePlan(settings: settings) else {
-            return nil
-        }
+    /// Slot filter derived from the user's source-mode settings.
+    enum SlotFilter: Equatable {
+        case all
+        case browserOnly
+        case manualOnly
+        case none
 
-        // 1. Cached header from a prior import or manual paste.
-        let cached = CookieHeaderCache.load(for: spec.tool)
-        if let cached, plan.acceptsCached(cached) {
-            if spec.hasRequiredCredential(in: cached.cookieHeader) {
-                return Resolution(header: cached.cookieHeader, sourceLabel: cached.sourceLabel)
+        init(settings: MiscProviderSettings) {
+            switch settings.sourceMode {
+            case .off, .apiOnly:
+                self = .none
+            case .browserOnly:
+                self = .browserOnly
+            case .manualOnly:
+                self = .manualOnly
+            case .auto:
+                switch settings.cookieSource {
+                case .off:
+                    self = .none
+                case .manual:
+                    self = .manualOnly
+                case .auto:
+                    self = .all
+                }
             }
-            CookieHeaderCache.clear(for: spec.tool)
         }
 
-        // 2. Browser auto-import (skipped in `.manual` mode).
-        if plan.allowsBrowser,
-           let imported = importFromBrowsers(spec: spec, settings: settings) {
-            CookieHeaderCache.store(
-                for: spec.tool,
-                cookieHeader: imported.header,
-                sourceLabel: imported.sourceLabel
-            )
-            return imported
+        func allows(_ slot: MiscCookieSlot) -> Bool {
+            switch self {
+            case .all:
+                return true
+            case .browserOnly:
+                return slot.origin != .manual
+            case .manualOnly:
+                return slot.origin == .manual
+            case .none:
+                return false
+            }
         }
-
-        // 3. Manual paste fallback.
-        if plan.allowsManual,
-           let manual = MiscCredentialStore.readString(tool: spec.tool, kind: .manualCookieHeader),
-           let normalised = spec.minimizedHeader(from: manual),
-           !normalised.isEmpty {
-            CookieHeaderCache.store(
-                for: spec.tool,
-                cookieHeader: normalised,
-                sourceLabel: "Manual paste"
-            )
-            return Resolution(header: normalised, sourceLabel: "Manual paste")
-        }
-        return nil
     }
 
-    /// Force a fresh browser import, ignoring the cache. Settings UI
-    /// uses this for the "Import now" button so the user can recover
-    /// without waiting for a stale cache to expire.
-    public static func forceBrowserImport(for spec: Spec) -> Resolution? {
-        CookieHeaderCache.clear(for: spec.tool)
+    /// Resolve every cookie slot that's eligible for `spec.tool`.
+    /// Returns slots in insertion order. Empty when the user has no
+    /// slots, or when the source mode bans cookies entirely
+    /// (`apiOnly` / `off`).
+    public static func resolveAll(for spec: Spec) -> [Resolution] {
         let settings = currentSettings(for: spec.tool)
-        guard CookieSourcePlan(settings: settings)?.allowsBrowser == true else {
-            return nil
+        let filter = SlotFilter(settings: settings)
+        guard filter != .none else { return [] }
+
+        return MiscCookieSlotStore.slots(for: spec.tool).compactMap { slot in
+            guard filter.allows(slot) else { return nil }
+            guard let header = spec.minimizedHeader(from: slot.cookieHeader),
+                  !header.isEmpty else { return nil }
+            return Resolution(
+                slotID: slot.id,
+                header: header,
+                sourceLabel: slot.sourceLabel
+            )
         }
+    }
+
+    /// Resolve the first eligible slot. Kept for callers that haven't
+    /// migrated to `resolveAll` yet.
+    public static func resolve(for spec: Spec) -> Resolution? {
+        resolveAll(for: spec).first
+    }
+
+    /// Run the SweetCookieKit browser-import dance and append the
+    /// captured header as a new slot. Returns the appended slot's
+    /// Resolution on success, or `nil` if no browser session was
+    /// found (or the source mode bans cookies).
+    public static func appendBrowserImport(for spec: Spec) -> Resolution? {
+        let settings = currentSettings(for: spec.tool)
+        guard SlotFilter(settings: settings) != .none else { return nil }
         guard let imported = importFromBrowsers(
             spec: spec,
             settings: settings,
@@ -139,21 +162,39 @@ public enum MiscCookieResolver {
         ) else {
             return nil
         }
-        CookieHeaderCache.store(
-            for: spec.tool,
+        let slot = MiscCookieSlot(
             cookieHeader: imported.header,
+            sourceLabel: imported.sourceLabel,
+            importedAt: Date(),
+            origin: .browserImport
+        )
+        guard MiscCookieSlotStore.append(slot, for: spec.tool) else { return nil }
+        return Resolution(
+            slotID: slot.id,
+            header: imported.header,
             sourceLabel: imported.sourceLabel
         )
-        return imported
+    }
+
+    /// Legacy alias for callers that haven't migrated to
+    /// `appendBrowserImport`. Slot semantics are identical — every
+    /// invocation appends a new slot rather than replacing one.
+    public static func forceBrowserImport(for spec: Spec) -> Resolution? {
+        appendBrowserImport(for: spec)
     }
 
     // MARK: - Internals
+
+    private struct BrowserImportResult {
+        let header: String
+        let sourceLabel: String
+    }
 
     private static func importFromBrowsers(
         spec: Spec,
         settings: MiscProviderSettings,
         allowKeychainPrompt: Bool = false
-    ) -> Resolution? {
+    ) -> BrowserImportResult? {
         let detection = BrowserDetection()
         let preferred: [Browser]
         if let kind = settings.preferredBrowser {
@@ -193,7 +234,7 @@ public enum MiscCookieResolver {
                 guard spec.requiredNames.isEmpty || !pairs.isEmpty else { continue }
                 let header = pairs.joined(separator: "; ")
                 guard !header.isEmpty, spec.hasRequiredCredential(in: header) else { continue }
-                return Resolution(header: header, sourceLabel: session.label)
+                return BrowserImportResult(header: header, sourceLabel: session.label)
             }
         }
         return nil
@@ -202,62 +243,6 @@ public enum MiscCookieResolver {
     private struct BrowserSession {
         let label: String
         let records: [BrowserCookieRecord]
-    }
-
-    private struct CookieSourcePlan {
-        let allowsBrowser: Bool
-        let allowsManual: Bool
-        let cachePolicy: CachePolicy
-
-        enum CachePolicy {
-            case any
-            case browserOnly
-            case manualOnly
-        }
-
-        init?(settings: MiscProviderSettings) {
-            switch settings.sourceMode {
-            case .off, .apiOnly:
-                return nil
-            case .browserOnly:
-                self.allowsBrowser = true
-                self.allowsManual = false
-                self.cachePolicy = .browserOnly
-                return
-            case .manualOnly:
-                self.allowsBrowser = false
-                self.allowsManual = true
-                self.cachePolicy = .manualOnly
-                return
-            case .auto:
-                switch settings.cookieSource {
-                case .off:
-                    return nil
-                case .manual:
-                    self.allowsBrowser = false
-                    self.allowsManual = true
-                    self.cachePolicy = .manualOnly
-                    return
-                case .auto:
-                    self.allowsBrowser = true
-                    self.allowsManual = true
-                    self.cachePolicy = .any
-                    return
-                }
-            }
-        }
-
-        func acceptsCached(_ entry: CookieHeaderCache.Entry) -> Bool {
-            let isManual = entry.sourceLabel == "Manual paste"
-            switch cachePolicy {
-            case .any:
-                return true
-            case .browserOnly:
-                return !isManual
-            case .manualOnly:
-                return isManual
-            }
-        }
     }
 
     private static func mergedSessions(from sources: [BrowserCookieStoreRecords]) -> [BrowserSession] {

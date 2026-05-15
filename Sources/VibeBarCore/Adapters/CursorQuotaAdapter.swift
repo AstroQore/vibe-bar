@@ -61,10 +61,26 @@ public struct CursorQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard let resolution = MiscCookieResolver.resolve(for: CursorQuotaAdapter.cookieSpec) else {
-            throw QuotaError.noCredential
-        }
+        let resolutions = MiscCookieResolver.resolveAll(for: CursorQuotaAdapter.cookieSpec)
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
+        let queriedAt = now()
+        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
+        }
+        return MiscQuotaAggregator.aggregate(
+            tool: .cursor,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
         let summaryData = try await get(path: "/api/usage-summary", cookieHeader: resolution.header)
         let summary = try CursorResponseParser.decodeUsageSummary(data: summaryData)
 
@@ -84,7 +100,7 @@ public struct CursorQuotaAdapter: QuotaAdapter {
             summary: summary,
             userInfo: userInfo,
             requestUsage: requestUsage,
-            now: now()
+            now: queriedAt
         )
 
         return AccountQuota(
@@ -92,8 +108,8 @@ public struct CursorQuotaAdapter: QuotaAdapter {
             tool: .cursor,
             buckets: snapshot.buckets,
             plan: snapshot.planName,
-            email: userInfo?.email,
-            queriedAt: now(),
+            email: userInfo?.email ?? account.email,
+            queriedAt: queriedAt,
             error: nil
         )
     }
@@ -119,7 +135,6 @@ public struct CursorQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                CookieHeaderCache.clear(for: .cursor)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
