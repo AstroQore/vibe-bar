@@ -52,33 +52,48 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let snapshot = try await fetchSnapshot()
+        let resolutions = MiscCookieResolver.resolveAll(for: TencentHunyuanQuotaAdapter.cookieSpec)
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
+
+        let queriedAt = now()
+        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
+        }
+        return MiscQuotaAggregator.aggregate(
+            tool: .tencentHunyuan,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
+        let snapshot = try await fetchSnapshot(using: resolution)
         return AccountQuota(
             accountId: account.id,
             tool: .tencentHunyuan,
             buckets: snapshot.buckets,
             plan: snapshot.planName,
             email: account.email,
-            queriedAt: now(),
+            queriedAt: queriedAt,
             error: nil
         )
     }
 
-    private func fetchSnapshot() async throws -> TencentHunyuanResponseParser.Snapshot {
-        guard let resolution = MiscCookieResolver.resolve(for: TencentHunyuanQuotaAdapter.cookieSpec) else {
-            throw QuotaError.noCredential
-        }
+    private func fetchSnapshot(using resolution: MiscCookieResolver.Resolution) async throws -> TencentHunyuanResponseParser.Snapshot {
         let pairs = CookieHeaderNormalizer.pairs(from: resolution.header)
         guard let skey = pairs.first(where: { $0.name == "skey" })?.value, !skey.isEmpty else {
             // No `skey` means the user signed in to Tencent at the
             // domain level (`tencent.com`) but never opened the Cloud
             // console — that's the cookie that proves a console
             // session. Tell them to retry.
-            CookieHeaderCache.clear(for: .tencentHunyuan)
             throw QuotaError.needsLogin
         }
         guard let rawUin = pairs.first(where: { $0.name == "uin" })?.value, !rawUin.isEmpty else {
-            CookieHeaderCache.clear(for: .tencentHunyuan)
             throw QuotaError.needsLogin
         }
         // Tencent's `uin` cookie value comes prefixed with `o`
@@ -87,7 +102,6 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
         // the BFF response from `Code 21 登录态冲突` to a normal 200.
         let uin = String(rawUin.drop(while: { !$0.isNumber }))
         guard !uin.isEmpty else {
-            CookieHeaderCache.clear(for: .tencentHunyuan)
             throw QuotaError.needsLogin
         }
 
@@ -130,7 +144,6 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                CookieHeaderCache.clear(for: .tencentHunyuan)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {

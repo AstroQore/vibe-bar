@@ -65,7 +65,13 @@ public enum VibeBarKeychainAccessAuthorizer {
     private static let legacyClaudeCookieAccount = "claude.ai"
     private static let legacyClaudeOrganizationAccount = "claude.ai.organization"
     private static let claudeOrganizationAccount = "claude.organization-id"
-    private static let currentCookieBackedMiscTools: [ToolType] = [.kimi, .cursor, .openCodeGo, .ollama]
+    /// Misc providers that stack their cookie sessions through
+    /// `MiscCookieSlotStore`. The list mirrors every cookie-only adapter
+    /// plus Alibaba (cookie path is one of two auth modes).
+    private static let currentCookieBackedMiscTools: [ToolType] = [
+        .alibaba, .kimi, .cursor, .mimo, .iflytek,
+        .tencentHunyuan, .volcengine, .openCodeGo, .ollama
+    ]
     /// Misc tools with an in-app WKWebView login flow where
     /// `WebFormCredentialStore` may persist a username/password pair.
     /// Keeping the list explicit lets the preflight pre-authorize the
@@ -76,12 +82,8 @@ public enum VibeBarKeychainAccessAuthorizer {
     private static let currentSecretKindsByTool: [ToolType: [MiscCredentialStore.Kind]] = [
         .alibaba: [.apiKey],
         .copilot: [.apiKey, .oauthAccessToken, .oauthRefreshToken, .oauthExpiry],
-        .cursor: [.manualCookieHeader],
-        .kimi: [.manualCookieHeader],
         .kilo: [.apiKey],
         .minimax: [.apiKey],
-        .ollama: [.manualCookieHeader],
-        .openCodeGo: [.manualCookieHeader],
         .openRouter: [.apiKey],
         .warp: [.apiKey],
         .zai: [.apiKey]
@@ -114,8 +116,8 @@ public enum VibeBarKeychainAccessAuthorizer {
         for tool in currentCookieBackedMiscTools {
             targets.append(
                 Target(
-                    service: CookieHeaderCache.keychainService,
-                    account: CookieHeaderCache.keychainAccount(for: tool)
+                    service: MiscCookieSlotStore.keychainService,
+                    account: MiscCookieSlotStore.keychainAccount(for: tool)
                 )
             )
         }

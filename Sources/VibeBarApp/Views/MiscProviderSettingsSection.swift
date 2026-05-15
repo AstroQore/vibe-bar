@@ -572,8 +572,14 @@ struct KiroStatusRow: View {
     }
 }
 
-/// Browser-cookie controls for the misc providers. Import/manual source
-/// selection is automatic; the UI only exposes recovery actions.
+/// Browser-cookie controls for the misc providers.
+///
+/// Each provider can stack multiple cookie sessions — one per account.
+/// The section shows the current list of imported slots (with source
+/// label, import time, and a delete button) plus two additive entry
+/// points: "Import from browser" and a manual paste field. Quota
+/// queries fan out across every slot and the bucket percentages are
+/// averaged; see `MiscQuotaAggregator`.
 struct CookieSourceControls: View {
     let tool: ToolType
     let spec: MiscCookieResolver.Spec
@@ -582,30 +588,36 @@ struct CookieSourceControls: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
 
+    @State private var slots: [MiscCookieSlot] = []
     @State private var manualDraft: String = ""
     @State private var importStatus: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if slots.isEmpty {
+                Text("No cookies imported yet — import from your browser or paste below.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(slots) { slot in
+                        CookieSlotRow(slot: slot) { deleteSlot(slot) }
+                    }
+                }
+            }
             HStack(spacing: 6) {
-                Button("Import now", action: importNow)
+                Button("Import from browser", action: importNow)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                Text("Vibe Bar tries cached, browser, then pasted cookies automatically.")
+                Text("Adds a new slot. Existing cookies stay; quotas are averaged across all slots.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
                     .textFieldStyle(.roundedBorder)
-                Button("Save", action: saveManual)
+                Button("Add", action: saveManual)
                     .disabled(manualDraft.isEmpty)
-                if hasManualValue {
-                    Button(role: .destructive, action: clearManual) {
-                        Image(systemName: "trash")
-                    }
-                    .help("Remove pasted cookie")
-                }
             }
             if let importStatus {
                 Text(importStatus)
@@ -613,19 +625,29 @@ struct CookieSourceControls: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .onAppear(perform: reloadSlots)
+        .onReceive(NotificationCenter.default.publisher(
+            for: MiscCookieSlotStore.didChangeNotification
+        )) { note in
+            guard let raw = note.userInfo?["tool"] as? String,
+                  raw == tool.rawValue else { return }
+            reloadSlots()
+        }
     }
 
-    private var hasManualValue: Bool {
-        MiscCredentialStore.hasValue(tool: tool, kind: .manualCookieHeader)
+    private func reloadSlots() {
+        slots = MiscCookieSlotStore.slots(for: tool)
     }
 
     private func importNow() {
         importStatus = "Importing…"
+        let snapshotSpec = spec
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = MiscCookieResolver.forceBrowserImport(for: spec)
+            let result = MiscCookieResolver.appendBrowserImport(for: snapshotSpec)
             DispatchQueue.main.async {
                 if let result {
                     importStatus = "Imported from \(result.sourceLabel)."
+                    reloadSlots()
                     triggerRefresh()
                 } else {
                     importStatus = "No cookies found. Sign in at the provider in your browser, then retry."
@@ -641,17 +663,26 @@ struct CookieSourceControls: View {
             importStatus = missingCookieMessage
             return
         }
-        MiscCredentialStore.writeString(normalised, tool: tool, kind: .manualCookieHeader)
-        CookieHeaderCache.clear(for: tool)
-        importStatus = "Manual cookie saved."
+        let slot = MiscCookieSlot(
+            cookieHeader: normalised,
+            sourceLabel: "Manual paste",
+            importedAt: Date(),
+            origin: .manual
+        )
+        guard MiscCookieSlotStore.append(slot, for: tool) else {
+            importStatus = "Could not save to Keychain."
+            return
+        }
+        importStatus = "Pasted cookie saved."
         manualDraft = ""
+        reloadSlots()
         triggerRefresh()
     }
 
-    private func clearManual() {
-        MiscCredentialStore.delete(tool: tool, kind: .manualCookieHeader)
-        CookieHeaderCache.clear(for: tool)
-        importStatus = "Manual cookie cleared."
+    private func deleteSlot(_ slot: MiscCookieSlot) {
+        guard MiscCookieSlotStore.delete(slotID: slot.id, for: tool) else { return }
+        importStatus = "Removed \(slot.sourceLabel)."
+        reloadSlots()
         triggerRefresh()
     }
 
@@ -673,6 +704,55 @@ struct CookieSourceControls: View {
         guard let account = environment.account(for: tool) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
+}
+
+/// One row in the cookie slot list. Shows the source label + import
+/// time and a trash button.
+private struct CookieSlotRow: View {
+    let slot: MiscCookieSlot
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(.secondary)
+                .font(.caption)
+                .frame(width: 14)
+            Text(slot.sourceLabel)
+                .font(.caption)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 4)
+            Text(Self.dateFormatter.string(from: slot.importedAt))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Remove this cookie slot")
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+    }
+
+    private var icon: String {
+        switch slot.origin {
+        case .manual:         return "doc.on.clipboard"
+        case .browserImport:  return "safari"
+        case .autoRefresh:    return "arrow.clockwise.circle"
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
 }
 
 /// Region picker for Alibaba — international (ap-southeast-1) vs.
