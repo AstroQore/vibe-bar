@@ -12,8 +12,8 @@ import VibeBarCore
 ///    login URL.
 /// 2. Let the user sign in (handles password + SSO + popup flows).
 /// 3. Watch the cookie store; once the spec's required cookies are
-///    present, minimise them to `name=value; …` form and persist via
-///    `CookieHeaderCache.store(for:cookieHeader:sourceLabel:)`.
+///    present, minimise them to `name=value; …` form and append a new
+///    slot to `MiscCookieSlotStore`.
 /// 4. Fire the `onSaved` callback so the caller can kick a refresh.
 ///
 /// Generic on `ToolType` via `Config` — one instance per tool. Use
@@ -29,7 +29,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         /// `xiaomimimo.com` and `platform.xiaomimimo.com`).
         let cookieDomainSuffixes: [String]
         /// Cookie names to retain from the WebView store. Anything not
-        /// in this set is dropped before `CookieHeaderCache.store`.
+        /// in this set is dropped before the slot is persisted.
         let requiredCookieNames: Set<String>
         /// Hosts the in-app browser is allowed to navigate to. Anything
         /// outside this allowlist opens in the system browser instead.
@@ -159,11 +159,13 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
             }
             return
         }
-        let stored = CookieHeaderCache.store(
-            for: config.tool,
+        let slot = MiscCookieSlot(
             cookieHeader: header,
-            sourceLabel: "WebView login"
+            sourceLabel: "WebView login",
+            importedAt: Date(),
+            origin: .browserImport
         )
+        let stored = MiscCookieSlotStore.append(slot, for: config.tool)
         guard stored else {
             if manual {
                 showAlert(message: "Could not save \(config.tool.menuTitle) cookies to Keychain.")

@@ -54,10 +54,26 @@ public struct MimoQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard let resolution = MiscCookieResolver.resolve(for: MimoQuotaAdapter.cookieSpec) else {
-            throw QuotaError.noCredential
-        }
+        let resolutions = MiscCookieResolver.resolveAll(for: MimoQuotaAdapter.cookieSpec)
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
+        let queriedAt = now()
+        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
+        }
+        return MiscQuotaAggregator.aggregate(
+            tool: .mimo,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
         var request = URLRequest(url: MimoQuotaAdapter.endpoint)
         request.httpMethod = "GET"
         request.setValue(resolution.header, forHTTPHeaderField: "Cookie")
@@ -80,11 +96,7 @@ public struct MimoQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("MiMo: invalid response object")
         }
         guard http.statusCode == 200 else {
-            // Removing any one of the three required cookies returns HTTP 401
-            // with body `{"code":401,...}`. Drop the cached header so the next
-            // refresh re-imports rather than retrying with the stale cookies.
             if http.statusCode == 401 || http.statusCode == 403 {
-                CookieHeaderCache.clear(for: .mimo)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
@@ -93,14 +105,14 @@ public struct MimoQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("MiMo returned HTTP \(http.statusCode).")
         }
 
-        let snapshot = try MimoResponseParser.parse(data: data, now: now())
+        let snapshot = try MimoResponseParser.parse(data: data, now: queriedAt)
         return AccountQuota(
             accountId: account.id,
             tool: .mimo,
             buckets: snapshot.buckets,
             plan: snapshot.planName,
             email: account.email,
-            queriedAt: now(),
+            queriedAt: queriedAt,
             error: nil
         )
     }

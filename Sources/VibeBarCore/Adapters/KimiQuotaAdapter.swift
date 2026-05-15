@@ -41,10 +41,26 @@ public struct KimiQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard let resolution = MiscCookieResolver.resolve(for: KimiQuotaAdapter.cookieSpec) else {
-            throw QuotaError.noCredential
-        }
+        let resolutions = MiscCookieResolver.resolveAll(for: KimiQuotaAdapter.cookieSpec)
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
+        let queriedAt = now()
+        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
+        }
+        return MiscQuotaAggregator.aggregate(
+            tool: .kimi,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
         // Pull the kimi-auth cookie value out of the resolved header.
         let pairs = CookieHeaderNormalizer.pairs(from: resolution.header)
         guard let authToken = pairs.first(where: { $0.name == "kimi-auth" })?.value,
@@ -91,10 +107,6 @@ public struct KimiQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                // Stale cookie: clear cache so the next refresh
-                // re-imports rather than retrying with the same
-                // bad token.
-                CookieHeaderCache.clear(for: .kimi)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
@@ -103,14 +115,14 @@ public struct KimiQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("Kimi returned HTTP \(http.statusCode).")
         }
 
-        let snapshot = try KimiResponseParser.parse(data: data, now: now())
+        let snapshot = try KimiResponseParser.parse(data: data, now: queriedAt)
         return AccountQuota(
             accountId: account.id,
             tool: .kimi,
             buckets: snapshot.buckets,
             plan: nil,
             email: account.email,
-            queriedAt: now(),
+            queriedAt: queriedAt,
             error: nil
         )
     }

@@ -90,13 +90,16 @@ final class HiddenCookieRefresher {
         static let supportedTools: [ToolType] = [.tencentHunyuan, .volcengine, .alibaba]
     }
 
-    private let websiteDataStore = WKWebsiteDataStore.default()
     private var inflight: [ToolType: Task<Bool, Never>] = [:]
     private var pinnedDelegates: [ObjectIdentifier: NavDelegate] = [:]
     private var pinnedWebViews: [ObjectIdentifier: WKWebView] = [:]
+    private var pinnedDataStores: [ObjectIdentifier: WKWebsiteDataStore] = [:]
 
-    /// Trigger a silent refresh for `tool`. Returns true if the
-    /// captured header changed (i.e. cookies were freshened).
+    /// Trigger a silent refresh for `tool`. Iterates the user's
+    /// browser-origin cookie slots and refreshes each one. Manual
+    /// slots are skipped — auto-refresh only re-runs a session the
+    /// user originally captured via browser import or the in-app web
+    /// login. Returns true if at least one slot's header changed.
     /// Concurrent refreshes for the same tool are coalesced.
     @discardableResult
     func refresh(_ tool: ToolType) async -> Bool {
@@ -113,21 +116,49 @@ final class HiddenCookieRefresher {
     }
 
     private func performRefresh(_ config: Config) async -> Bool {
-        let beforeHeader = CookieHeaderCache.load(for: config.tool)?.cookieHeader ?? ""
-        let beforeFingerprint = headerFingerprint(beforeHeader)
-        SafeLog.info("HiddenCookieRefresher start tool=\(config.tool.rawValue) beforeLen=\(beforeHeader.count) fp=\(beforeFingerprint)")
+        let slots = MiscCookieSlotStore.slots(for: config.tool)
+            .filter { $0.origin != .manual }
+        guard !slots.isEmpty else {
+            SafeLog.info("HiddenCookieRefresher skip tool=\(config.tool.rawValue) — no browser-origin slots")
+            return false
+        }
 
-        // Inject any cached header into the WebView cookie store so a
-        // user who arrived via SweetCookieKit auto-import (i.e. their
-        // cookies live in Keychain but have never touched WKWebView)
-        // can still bootstrap a refresh.
+        var anyChanged = false
+        for slot in slots {
+            if await performRefreshForSlot(config, slot: slot) {
+                anyChanged = true
+            }
+        }
+        if anyChanged {
+            NotificationCenter.default.post(
+                name: .cookiesRefreshed,
+                object: nil,
+                userInfo: ["tool": config.tool.rawValue]
+            )
+        }
+        return anyChanged
+    }
+
+    private func performRefreshForSlot(_ config: Config, slot: MiscCookieSlot) async -> Bool {
+        let beforeHeader = slot.cookieHeader
+        let beforeFingerprint = headerFingerprint(beforeHeader)
+        SafeLog.info(
+            "HiddenCookieRefresher start tool=\(config.tool.rawValue) slot=\(slot.id.uuidString.prefix(8)) beforeLen=\(beforeHeader.count) fp=\(beforeFingerprint)"
+        )
+
+        // Fresh ephemeral data store per slot so cookies from one
+        // session can't leak into another. The default
+        // `WKWebsiteDataStore` is process-shared, which is the wrong
+        // shape once we have multiple stacked sessions per provider.
+        let dataStore = WKWebsiteDataStore.nonPersistent()
+
         if !beforeHeader.isEmpty {
-            await injectCookies(beforeHeader, into: websiteDataStore.httpCookieStore, config: config)
+            await injectCookies(beforeHeader, into: dataStore.httpCookieStore, config: config)
         }
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let webViewConfig = WKWebViewConfiguration()
-            webViewConfig.websiteDataStore = self.websiteDataStore
+            webViewConfig.websiteDataStore = dataStore
             webViewConfig.preferences.javaScriptCanOpenWindowsAutomatically = false
             webViewConfig.defaultWebpagePreferences.allowsContentJavaScript = true
 
@@ -145,6 +176,7 @@ final class HiddenCookieRefresher {
                     defer {
                         self.pinnedDelegates.removeValue(forKey: key)
                         self.pinnedWebViews.removeValue(forKey: key)
+                        self.pinnedDataStores.removeValue(forKey: key)
                     }
                     switch result {
                     case .finished:
@@ -152,14 +184,17 @@ final class HiddenCookieRefresher {
                         // continuation; the inflight task keeps the
                         // WebView retained until we're done.
                         try? await Task.sleep(nanoseconds: UInt64(config.postLoadWait * 1_000_000_000))
-                        let captured = await self.captureAndStore(
+                        let captured = await self.captureAndUpdateSlot(
                             config,
-                            store: self.websiteDataStore.httpCookieStore,
+                            slot: slot,
+                            store: dataStore.httpCookieStore,
                             beforeFingerprint: beforeFingerprint
                         )
                         continuation.resume(returning: captured)
                     case .failed(let err):
-                        SafeLog.warn("HiddenCookieRefresher load-failed tool=\(config.tool.rawValue) err=\(err.localizedDescription)")
+                        SafeLog.warn(
+                            "HiddenCookieRefresher load-failed tool=\(config.tool.rawValue) slot=\(slot.id.uuidString.prefix(8)) err=\(err.localizedDescription)"
+                        )
                         continuation.resume(returning: false)
                     }
                 }
@@ -167,6 +202,7 @@ final class HiddenCookieRefresher {
             webView.navigationDelegate = delegate
             self.pinnedDelegates[key] = delegate
             self.pinnedWebViews[key] = webView
+            self.pinnedDataStores[key] = dataStore
 
             var request = URLRequest(url: config.refreshURL)
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -174,34 +210,35 @@ final class HiddenCookieRefresher {
         }
     }
 
-    private func captureAndStore(_ config: Config,
-                                 store: WKHTTPCookieStore,
-                                 beforeFingerprint: String) async -> Bool {
+    private func captureAndUpdateSlot(_ config: Config,
+                                      slot: MiscCookieSlot,
+                                      store: WKHTTPCookieStore,
+                                      beforeFingerprint: String) async -> Bool {
         let cookies: [HTTPCookie] = await withCheckedContinuation { cont in
             store.getAllCookies { cont.resume(returning: $0) }
         }
 
         let header = minimizedHeader(cookies: cookies, config: config)
         guard !header.isEmpty else {
-            SafeLog.warn("HiddenCookieRefresher no-cookies tool=\(config.tool.rawValue) — page likely redirected to login")
+            SafeLog.warn(
+                "HiddenCookieRefresher no-cookies tool=\(config.tool.rawValue) slot=\(slot.id.uuidString.prefix(8)) — page likely redirected to login"
+            )
             return false
         }
         let afterFingerprint = headerFingerprint(header)
         let changed = afterFingerprint != beforeFingerprint
-        SafeLog.info("HiddenCookieRefresher done tool=\(config.tool.rawValue) afterLen=\(header.count) fp=\(afterFingerprint) changed=\(changed)")
+        SafeLog.info(
+            "HiddenCookieRefresher done tool=\(config.tool.rawValue) slot=\(slot.id.uuidString.prefix(8)) afterLen=\(header.count) fp=\(afterFingerprint) changed=\(changed)"
+        )
         guard changed else { return false }
 
-        CookieHeaderCache.store(
+        return MiscCookieSlotStore.updateHeader(
+            slotID: slot.id,
             for: config.tool,
-            cookieHeader: header,
-            sourceLabel: "Auto-refresh"
+            header: header,
+            sourceLabel: "Auto-refresh",
+            origin: .autoRefresh
         )
-        NotificationCenter.default.post(
-            name: .cookiesRefreshed,
-            object: nil,
-            userInfo: ["tool": config.tool.rawValue]
-        )
-        return true
     }
 
     private func minimizedHeader(cookies: [HTTPCookie], config: Config) -> String {

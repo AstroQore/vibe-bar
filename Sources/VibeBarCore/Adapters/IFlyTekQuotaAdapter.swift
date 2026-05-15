@@ -59,10 +59,26 @@ public struct IFlyTekQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard let resolution = MiscCookieResolver.resolve(for: IFlyTekQuotaAdapter.cookieSpec) else {
-            throw QuotaError.noCredential
-        }
+        let resolutions = MiscCookieResolver.resolveAll(for: IFlyTekQuotaAdapter.cookieSpec)
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
+        let queriedAt = now()
+        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
+        }
+        return MiscQuotaAggregator.aggregate(
+            tool: .iflytek,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
         var request = URLRequest(url: IFlyTekQuotaAdapter.endpoint)
         request.httpMethod = "GET"
         request.setValue(resolution.header, forHTTPHeaderField: "Cookie")
@@ -88,7 +104,6 @@ public struct IFlyTekQuotaAdapter: QuotaAdapter {
             // iFlytek normally returns 200 even for auth failures (see parser),
             // but a non-200 still happens on infrastructure errors.
             if http.statusCode == 401 || http.statusCode == 403 {
-                CookieHeaderCache.clear(for: .iflytek)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
@@ -97,22 +112,14 @@ public struct IFlyTekQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("iFlytek returned HTTP \(http.statusCode).")
         }
 
-        let snapshot: IFlyTekResponseParser.Snapshot
-        do {
-            snapshot = try IFlyTekResponseParser.parse(data: data, now: now())
-        } catch let qe as QuotaError {
-            if case .needsLogin = qe {
-                CookieHeaderCache.clear(for: .iflytek)
-            }
-            throw qe
-        }
+        let snapshot = try IFlyTekResponseParser.parse(data: data, now: queriedAt)
         return AccountQuota(
             accountId: account.id,
             tool: .iflytek,
             buckets: snapshot.buckets,
             plan: snapshot.planName,
             email: account.email,
-            queriedAt: now(),
+            queriedAt: queriedAt,
             error: nil
         )
     }

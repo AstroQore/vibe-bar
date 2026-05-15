@@ -26,11 +26,27 @@ public struct OllamaQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard let resolution = MiscCookieResolver.resolve(for: Self.cookieSpec),
-              Self.hasRecognizedSessionCookie(resolution.header) else {
-            throw QuotaError.noCredential
-        }
+        let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec)
+            .filter { Self.hasRecognizedSessionCookie($0.header) }
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
+        let queriedAt = now()
+        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
+        }
+        return MiscQuotaAggregator.aggregate(
+            tool: .ollama,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
         var request = URLRequest(url: URL(string: "https://ollama.com/settings")!)
         request.httpMethod = "GET"
         request.timeoutInterval = 15
@@ -53,7 +69,6 @@ public struct OllamaQuotaAdapter: QuotaAdapter {
         let text = String(data: data, encoding: .utf8) ?? ""
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                CookieHeaderCache.clear(for: .ollama)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
@@ -62,18 +77,17 @@ public struct OllamaQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("Ollama returned HTTP \(http.statusCode).")
         }
         if OllamaResponseParser.looksSignedOut(text) {
-            CookieHeaderCache.clear(for: .ollama)
             throw QuotaError.needsLogin
         }
 
-        let snapshot = try OllamaResponseParser.parse(html: text, now: now())
+        let snapshot = try OllamaResponseParser.parse(html: text, now: queriedAt)
         return AccountQuota(
             accountId: account.id,
             tool: .ollama,
             buckets: snapshot.buckets,
             plan: snapshot.planName,
             email: snapshot.email ?? account.email,
-            queriedAt: now(),
+            queriedAt: queriedAt,
             error: nil
         )
     }

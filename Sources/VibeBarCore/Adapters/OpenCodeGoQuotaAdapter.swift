@@ -31,9 +31,26 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard let resolution = MiscCookieResolver.resolve(for: Self.cookieSpec) else {
-            throw QuotaError.noCredential
+        let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec)
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
+
+        let queriedAt = now()
+        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
         }
+        return MiscQuotaAggregator.aggregate(
+            tool: .openCodeGo,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
         let settings = MiscProviderSettings.current(for: .openCodeGo)
         let workspaceID = try await resolveWorkspaceID(
             cookieHeader: resolution.header,
@@ -44,17 +61,16 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
             cookieHeader: resolution.header
         )
         if OpenCodeGoResponseParser.looksSignedOut(text) {
-            CookieHeaderCache.clear(for: .openCodeGo)
             throw QuotaError.needsLogin
         }
-        let snapshot = try OpenCodeGoResponseParser.parse(text: text, now: now())
+        let snapshot = try OpenCodeGoResponseParser.parse(text: text, now: queriedAt)
         return AccountQuota(
             accountId: account.id,
             tool: .openCodeGo,
             buckets: snapshot.buckets,
             plan: nil,
             email: account.email,
-            queriedAt: now(),
+            queriedAt: queriedAt,
             error: nil
         )
     }
@@ -70,7 +86,6 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
             args: nil
         )
         if OpenCodeGoResponseParser.looksSignedOut(getText) {
-            CookieHeaderCache.clear(for: .openCodeGo)
             throw QuotaError.needsLogin
         }
         if let id = OpenCodeGoResponseParser.workspaceIDs(from: getText).first {
@@ -83,7 +98,6 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
             args: "[]"
         )
         if OpenCodeGoResponseParser.looksSignedOut(postText) {
-            CookieHeaderCache.clear(for: .openCodeGo)
             throw QuotaError.needsLogin
         }
         if let id = OpenCodeGoResponseParser.workspaceIDs(from: postText).first {
@@ -144,7 +158,6 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
         let text = String(data: data, encoding: .utf8) ?? ""
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 || OpenCodeGoResponseParser.looksSignedOut(text) {
-                CookieHeaderCache.clear(for: .openCodeGo)
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
