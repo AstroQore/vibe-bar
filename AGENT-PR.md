@@ -12,13 +12,47 @@ human-facing version of the same rules.
 - Default branch: `main`.
 - License: AGPL-3.0-only. Any contribution is licensed under AGPL-3.0.
 
+## Branch and worktree rules
+
+Start every change from a current `main`, then create a topic branch.
+Do not commit directly on `main`, and do not push directly to `main`
+unless AQ explicitly asks for an emergency direct push.
+
+Use short, descriptive branch names with conventional prefixes:
+
+- `feat/<short-topic>` for new user-facing behavior.
+- `fix/<short-topic>` for bug fixes.
+- `docs/<short-topic>` for documentation-only changes.
+- `test/<short-topic>` for test-only changes.
+- `refactor/<short-topic>` for behavior-preserving restructuring.
+- `release/<version-or-topic>` for release-prep branches.
+
+These prefixes are for branch names only. Commit subjects still match
+the repo style below: imperative, plain-English, and no `feat:` / `fix:`
+/ `chore:` prefix.
+
+Because multiple local AI agents may work in this checkout at once,
+prefer a separate Git worktree for non-trivial changes:
+
+```sh
+git checkout main
+git pull --ff-only origin main
+git worktree add ../vibe-bar-<short-topic> -b <prefix>/<short-topic> main
+cd ../vibe-bar-<short-topic>
+```
+
+If the user did not explicitly mention worktrees, do not stop just to
+ask. Pick the safer path and keep moving: use a worktree for parallel
+work, dirty checkouts, or longer-running branches; use an in-place topic
+branch only when the current checkout is clean and the change is small.
+
 ## End-to-end PR workflow
 
 ```sh
 # 1. Branch from main
 git checkout main
-git pull --ff-only
-git checkout -b <short-topic-branch-name>
+git pull --ff-only origin main
+git checkout -b <prefix>/<short-topic>
 
 # 2. Make your change. Keep edits scoped to the topic.
 
@@ -33,7 +67,7 @@ git add <files>
 git commit -m "<imperative subject line>"
 
 # 5. Push the branch.
-git push -u origin <short-topic-branch-name>
+git push -u origin <prefix>/<short-topic>
 
 # 6. Open the PR.
 gh pr create --base main \
@@ -50,6 +84,9 @@ gh pr create --base main \
 EOF
 )"
 ```
+
+The default publishing path is always a PR against `main`, not a direct
+push to `main`.
 
 ## Commit identity
 

@@ -38,7 +38,7 @@ default to.
 
 ## Critical rules for Claude
 
-These five rules cause silent failures or public-repo accidents if
+These rules cause silent failures or public-repo accidents if
 ignored. The full reasoning and grep recipes live in `AGENTS.md`.
 
 1. **Real-home routing.** Any path under the user's real home
@@ -86,13 +86,24 @@ ignored. The full reasoning and grep recipes live in `AGENTS.md`.
    config is already set; do not overwrite it with a personal mailbox.
    Match the existing log style: imperative subject ≤ 70 chars, no
    `feat:`/`fix:`/`chore:` prefixes, optional `Co-Authored-By:`
-   trailer. Never force-push `main`.
+   trailer. Put conventional prefixes such as `feat/`, `fix/`, or
+   `docs/` on branch names, not commit subjects. Never force-push
+   `main`.
+
+6. **Branch first, PR always.** Start from current `main`, create a
+   topic branch, and submit changes through a PR against `main`. Do not
+   push directly to `main` unless AQ explicitly asks for an emergency
+   direct push. Because multiple local agents may work here at once,
+   prefer a separate Git worktree for non-trivial changes; if the user
+   did not mention worktrees, decide and proceed instead of stopping to
+   ask.
 
 ## Heavy lifting
 
-For maintenance flows that AQ owns on his Mac (sync → change → build →
-test → sign → smoke-test → optional install → commit → push to
-`AstroQore/vibe-bar`), there is a dedicated maintainer skill
-`vibe-bar-maintainer`. Invoke it whenever the work is "AQ asked me to
-maintain Vibe Bar." For one-off contributor work (e.g. a guest agent
-opening a PR), `AGENTS.md` plus this file are sufficient.
+For maintenance flows that AQ owns on his Mac (sync → branch/worktree →
+change → build → test → sign → smoke-test → optional install → commit →
+push branch → open PR against `AstroQore/vibe-bar`), there is a
+dedicated maintainer skill `vibe-bar-maintainer`. Invoke it whenever
+the work is "AQ asked me to maintain Vibe Bar." For one-off contributor
+work (e.g. a guest agent opening a PR), `AGENTS.md` plus this file are
+sufficient.
