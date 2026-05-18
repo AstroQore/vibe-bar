@@ -132,14 +132,14 @@ enum OllamaResponseParser {
         )?.trimmed
 
         var buckets: [QuotaBucket] = []
-        if let hourly = parseWindow(labels: ["Session usage", "Hourly usage"], html: html, now: now) {
+        if let fiveHour = parseWindow(labels: ["Session usage", "Hourly usage"], html: html, now: now) {
             buckets.append(QuotaBucket(
-                id: "ollama.hourly",
-                title: hourly.title,
-                shortLabel: hourly.shortLabel,
-                usedPercent: hourly.percent,
-                resetAt: hourly.resetAt,
-                rawWindowSeconds: 3600
+                id: "ollama.fiveHour",
+                title: "5 Hours",
+                shortLabel: "5h",
+                usedPercent: fiveHour.percent,
+                resetAt: fiveHour.resetAt,
+                rawWindowSeconds: 5 * 3600
             ))
         }
         if let weekly = parseWindow(labels: ["Weekly usage"], html: html, now: now) {
@@ -179,9 +179,8 @@ enum OllamaResponseParser {
             guard let percent = extractPercent(from: chunk) else { continue }
             let reset = extractFirst(patterns: [#"data-time=["']([^"']+)["']"#], text: chunk)
                 .flatMap(parseDate)
-            let title = label.lowercased().contains("weekly") ? "Weekly" :
-                (label.lowercased().contains("hourly") ? "Hourly" : "Session")
-            let short = title == "Weekly" ? "Wk" : "Hr"
+            let title = label.lowercased().contains("weekly") ? "Weekly" : "5 Hours"
+            let short = title == "Weekly" ? "Wk" : "5h"
             return (title, short, percent, reset)
         }
         return nil
@@ -198,7 +197,7 @@ enum OllamaResponseParser {
             options: [.caseInsensitive]
         )
         guard let value = raw.flatMap(Double.init) else { return nil }
-        return max(0, min(100, value <= 1 ? value * 100 : value))
+        return max(0, min(100, value))
     }
 
     private static func extractFirst(

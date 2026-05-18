@@ -59,6 +59,32 @@ final class ProviderPlanDisplayTests: XCTestCase {
         XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: credential.rateLimitTier), "Max")
     }
 
+    func testMiscProviderDisplayNamesUseNormalizedPlanNames() {
+        XCTAssertEqual(ToolType.kimi.displayName, "Kimi Coding Plan")
+        XCTAssertEqual(ToolType.alibaba.displayName, "Alibaba Bailian Coding Plan")
+        XCTAssertEqual(ToolType.alibabaTokenPlan.displayName, "Alibaba Bailian Token Plan")
+        XCTAssertEqual(ToolType.tencentHunyuan.displayName, "Tencent Hunyuan Coding Plan")
+        XCTAssertEqual(ToolType.tencentTokenPlan.displayName, "Tencent Hunyuan Token Plan")
+        XCTAssertEqual(ToolType.volcengine.displayName, "Volcengine Coding Plan")
+        XCTAssertEqual(ToolType.mimo.displayName, "Xiaomi MiMo Token Plan")
+        XCTAssertEqual(ToolType.minimax.displayName, "MiniMax Token Plan")
+        XCTAssertEqual(ToolType.zai.displayName, "Zhipu GLM Coding Plan")
+        XCTAssertEqual(ToolType.iflytek.displayName, "iFlytek Spark Coding Plan")
+        XCTAssertEqual(ToolType.baiduQianfan.displayName, "Baidu Qianfan Coding Plan")
+    }
+
+    func testMiscProviderMenuTitleAndSubtitleComposeNormalizedPlanNames() {
+        let tools: [ToolType] = [
+            .kimi, .alibaba, .alibabaTokenPlan, .tencentHunyuan,
+            .tencentTokenPlan, .volcengine, .mimo, .minimax,
+            .zai, .iflytek, .baiduQianfan
+        ]
+
+        for tool in tools {
+            XCTAssertEqual("\(tool.menuTitle) \(tool.subtitle)", tool.displayName)
+        }
+    }
+
     private func makeJWT(payload: [String: Any]) throws -> String {
         let headerData = try JSONSerialization.data(withJSONObject: ["alg": "none"])
         let payloadData = try JSONSerialization.data(withJSONObject: payload)

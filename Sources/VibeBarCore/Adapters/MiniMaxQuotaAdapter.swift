@@ -332,7 +332,7 @@ enum MiniMaxResponseParser {
             remainsTime: row.weeklyRemainsTime,
             windowSeconds: 7 * 86_400,
             now: now,
-            groupTitle: "\(remaining)/\(total) · Weekly"
+            groupTitle: "\(remaining)/\(total) · weekly"
         )
     }
 
