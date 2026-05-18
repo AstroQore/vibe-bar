@@ -35,7 +35,8 @@ final class AppEnvironment: ObservableObject {
         let settings = SettingsStore()
         let accounts = AccountStore(
             codexUsageMode: settings.codexUsageMode,
-            claudeUsageMode: settings.claudeUsageMode
+            claudeUsageMode: settings.claudeUsageMode,
+            miscProviderInstances: settings.settings.miscProviderInstances
         )
         let service = QuotaService.makeDefault(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
@@ -62,10 +63,18 @@ final class AppEnvironment: ObservableObject {
                 if settings.mockEnabled {
                     return MockDataProvider.sampleAccounts()
                 }
-                let visibleTools = ToolType.allCases.filter { tool in
-                    tool.isPrimary || settings.settings.visibleMiscProviders.contains(tool)
+                var visibleAccounts: [AccountIdentity] = []
+                for tool in ToolType.primaryProviders {
+                    if let account = accounts.accounts(for: tool).first {
+                        visibleAccounts.append(account)
+                    }
                 }
-                return visibleTools.compactMap { accounts.accounts(for: $0).first }
+                for instance in settings.settings.visibleMiscProviderInstances {
+                    if let account = accounts.account(forMiscProviderInstanceID: instance.id) {
+                        visibleAccounts.append(account)
+                    }
+                }
+                return visibleAccounts
             },
             intervalProvider: { [weak settings] in
                 settings?.refreshIntervalSeconds ?? AppSettings.default.refreshIntervalSeconds
@@ -88,12 +97,13 @@ final class AppEnvironment: ObservableObject {
                     && $0.mockEnabled == $1.mockEnabled
                     && $0.codexUsageMode == $1.codexUsageMode
                     && $0.claudeUsageMode == $1.claudeUsageMode
-                    && $0.visibleMiscProviders == $1.visibleMiscProviders
+                    && $0.miscProviderInstances == $1.miscProviderInstances
             }
             .sink { [weak self] settings in
                 self?.accountStore.reload(
                     codexUsageMode: settings.codexUsageMode,
-                    claudeUsageMode: settings.claudeUsageMode
+                    claudeUsageMode: settings.claudeUsageMode,
+                    miscProviderInstances: settings.miscProviderInstances
                 )
                 self?.recheckPrimaryRouteHealth()
                 self?.scheduler.reschedule()
@@ -173,8 +183,20 @@ final class AppEnvironment: ObservableObject {
         return accountStore.accounts(for: tool).first
     }
 
+    func account(for instance: MiscProviderInstance) -> AccountIdentity? {
+        if settingsStore.mockEnabled {
+            return MockDataProvider.sampleAccounts().first { $0.tool == instance.tool }
+        }
+        return accountStore.account(forMiscProviderInstanceID: instance.id)
+    }
+
     func quota(for tool: ToolType) -> AccountQuota? {
         guard let account = account(for: tool) else { return nil }
+        return quotaService.cachedQuota(for: account.id)
+    }
+
+    func quota(for instance: MiscProviderInstance) -> AccountQuota? {
+        guard let account = account(for: instance) else { return nil }
         return quotaService.cachedQuota(for: account.id)
     }
 
@@ -188,7 +210,8 @@ final class AppEnvironment: ObservableObject {
         importClaudeBrowserCookiesAndRefreshIfNeeded()
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
-            claudeUsageMode: settingsStore.claudeUsageMode
+            claudeUsageMode: settingsStore.claudeUsageMode,
+            miscProviderInstances: settingsStore.settings.miscProviderInstances
         )
         // Cookies may have changed (login / re-login) — drop any stale
         // 1h failure cooldowns so the routine WebView probe gets a fresh
@@ -220,13 +243,21 @@ final class AppEnvironment: ObservableObject {
         recheckPrimaryRouteHealth(provider: tool)
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
-            claudeUsageMode: settingsStore.claudeUsageMode
+            claudeUsageMode: settingsStore.claudeUsageMode,
+            miscProviderInstances: settingsStore.settings.miscProviderInstances
         )
         let account = account(for: tool)
         Task { @MainActor in
             if let account {
                 _ = await quotaService.refresh(account)
             }
+        }
+    }
+
+    func refresh(_ instance: MiscProviderInstance) {
+        guard let account = account(for: instance) else { return }
+        Task { @MainActor in
+            _ = await quotaService.refresh(account)
         }
     }
 
@@ -264,8 +295,12 @@ final class AppEnvironment: ObservableObject {
     /// which SweetCookieKit doesn't read). After save, kicks a one-shot
     /// quota refresh so the misc card flips out of "Set up" state.
     func openMiscWebLogin(for tool: ToolType) {
-        guard let account = account(for: tool) else { return }
-        miscWebLoginRegistry.openLogin(for: tool) { [weak self] in
+        openMiscWebLogin(for: tool, instanceID: tool.rawValue)
+    }
+
+    func openMiscWebLogin(for tool: ToolType, instanceID: String) {
+        guard let account = accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
+        miscWebLoginRegistry.openLogin(for: tool, instanceID: instanceID) { [weak self] in
             guard let self else { return }
             Task { _ = await self.quotaService.refresh(account) }
         }
@@ -297,7 +332,8 @@ final class AppEnvironment: ObservableObject {
             guard didImport, !hadCookies else { return }
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode
+                claudeUsageMode: self.settingsStore.claudeUsageMode,
+                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
             self.scheduler.triggerRefresh()
@@ -343,7 +379,8 @@ final class AppEnvironment: ObservableObject {
             }
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode
+                claudeUsageMode: self.settingsStore.claudeUsageMode,
+                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
             self.scheduler.triggerRefresh()
@@ -362,7 +399,8 @@ final class AppEnvironment: ObservableObject {
             guard didImport, !hadCookies else { return }
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode
+                claudeUsageMode: self.settingsStore.claudeUsageMode,
+                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.scheduler.triggerRefresh()
         }
@@ -407,7 +445,8 @@ final class AppEnvironment: ObservableObject {
             }
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode
+                claudeUsageMode: self.settingsStore.claudeUsageMode,
+                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.scheduler.triggerRefresh()
         }
@@ -426,7 +465,8 @@ final class AppEnvironment: ObservableObject {
             }
             accountStore.reload(
                 codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode
+                claudeUsageMode: settingsStore.claudeUsageMode,
+                miscProviderInstances: settingsStore.settings.miscProviderInstances
             )
             scheduler.triggerRefresh()
             return true
@@ -450,7 +490,8 @@ final class AppEnvironment: ObservableObject {
             }
             accountStore.reload(
                 codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode
+                claudeUsageMode: settingsStore.claudeUsageMode,
+                miscProviderInstances: settingsStore.settings.miscProviderInstances
             )
             scheduler.triggerRefresh()
             return true

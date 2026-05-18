@@ -42,7 +42,8 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard MiscProviderSettings.current(for: .gemini).allowsAPIOrOAuthAccess else {
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .gemini)
+        guard MiscProviderSettings.current(for: .gemini, instanceID: instanceID).allowsAPIOrOAuthAccess else {
             throw QuotaError.noCredential
         }
 

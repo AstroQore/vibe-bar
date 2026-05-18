@@ -24,13 +24,24 @@ public enum MiscCredentialStore {
     }
 
     public static func keychainAccount(tool: ToolType, kind: Kind) -> String {
+        keychainAccount(tool: tool, kind: kind, instanceID: tool.rawValue)
+    }
+
+    public static func keychainAccount(tool: ToolType, kind: Kind, instanceID: String) -> String {
         precondition(tool.isMisc, "MiscCredentialStore is misc-only; got \(tool)")
-        return "\(tool.rawValue).\(kind.rawValue)"
+        if instanceID == tool.rawValue {
+            return "\(tool.rawValue).\(kind.rawValue)"
+        }
+        return "\(instanceID).\(kind.rawValue)"
     }
 
     public static func readString(tool: ToolType, kind: Kind) -> String? {
+        readString(tool: tool, kind: kind, instanceID: tool.rawValue)
+    }
+
+    public static func readString(tool: ToolType, kind: Kind, instanceID: String) -> String? {
         guard tool.isMisc else { return nil }
-        let account = keychainAccount(tool: tool, kind: kind)
+        let account = keychainAccount(tool: tool, kind: kind, instanceID: instanceID)
         if let value = try? KeychainStore.readString(
             service: keychainService,
             account: account,
@@ -39,20 +50,26 @@ public enum MiscCredentialStore {
             return value
         }
 
+        guard instanceID == tool.rawValue else { return nil }
         return readLegacyString(tool: tool, kind: kind, account: account)
     }
 
     @discardableResult
     public static func writeString(_ value: String, tool: ToolType, kind: Kind) -> Bool {
+        writeString(value, tool: tool, kind: kind, instanceID: tool.rawValue)
+    }
+
+    @discardableResult
+    public static func writeString(_ value: String, tool: ToolType, kind: Kind, instanceID: String) -> Bool {
         guard tool.isMisc else { return false }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return delete(tool: tool, kind: kind)
+            return delete(tool: tool, kind: kind, instanceID: instanceID)
         }
         do {
             try KeychainStore.writeString(
                 service: keychainService,
-                account: keychainAccount(tool: tool, kind: kind),
+                account: keychainAccount(tool: tool, kind: kind, instanceID: instanceID),
                 value: trimmed,
                 useDataProtectionKeychain: true
             )
@@ -65,17 +82,26 @@ public enum MiscCredentialStore {
 
     @discardableResult
     public static func delete(tool: ToolType, kind: Kind) -> Bool {
+        delete(tool: tool, kind: kind, instanceID: tool.rawValue)
+    }
+
+    @discardableResult
+    public static func delete(tool: ToolType, kind: Kind, instanceID: String) -> Bool {
         guard tool.isMisc else { return false }
         do {
             try KeychainStore.deleteItem(
                 service: keychainService,
-                account: keychainAccount(tool: tool, kind: kind),
+                account: keychainAccount(tool: tool, kind: kind, instanceID: instanceID),
                 useDataProtectionKeychain: true
             )
-            deleteLegacyMigratedValue(tool: tool, kind: kind)
+            if instanceID == tool.rawValue {
+                deleteLegacyMigratedValue(tool: tool, kind: kind)
+            }
             return true
         } catch KeychainStore.KeychainError.itemNotFound {
-            deleteLegacyMigratedValue(tool: tool, kind: kind)
+            if instanceID == tool.rawValue {
+                deleteLegacyMigratedValue(tool: tool, kind: kind)
+            }
             return false
         } catch {
             SafeLog.warn("Misc keychain delete failed for \(tool.rawValue).\(kind.rawValue): \(error)")
@@ -87,12 +113,20 @@ public enum MiscCredentialStore {
         readString(tool: tool, kind: kind) != nil
     }
 
+    public static func hasValue(tool: ToolType, kind: Kind, instanceID: String) -> Bool {
+        readString(tool: tool, kind: kind, instanceID: instanceID) != nil
+    }
+
     /// Wipe every Keychain entry vibe-bar holds for one misc tool.
     /// Used by Settings → "Clear stored credentials".
     public static func clearAll(for tool: ToolType) {
+        clearAll(for: tool, instanceID: tool.rawValue)
+    }
+
+    public static func clearAll(for tool: ToolType, instanceID: String) {
         guard tool.isMisc else { return }
         for kind in Kind.allCases {
-            delete(tool: tool, kind: kind)
+            delete(tool: tool, kind: kind, instanceID: instanceID)
         }
     }
 

@@ -27,12 +27,14 @@ public struct KiloQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let settings = MiscProviderSettings.current(for: .kilo)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .kilo)
+        let settings = MiscProviderSettings.current(for: .kilo, instanceID: instanceID)
         guard settings.allowsAPIOrOAuthAccess,
               let token = Self.resolveAuthToken(
                 environment: environment,
                 homeDirectory: homeDirectory,
-                allowCLI: settings.allowsLocalProbeAccess
+                allowCLI: settings.allowsLocalProbeAccess,
+                instanceID: instanceID
               ) else {
             throw QuotaError.noCredential
         }
@@ -90,9 +92,10 @@ public struct KiloQuotaAdapter: QuotaAdapter {
     private static func resolveAuthToken(
         environment: [String: String],
         homeDirectory: String,
-        allowCLI: Bool
+        allowCLI: Bool,
+        instanceID: String
     ) -> String? {
-        if let stored = MiscCredentialStore.readString(tool: .kilo, kind: .apiKey),
+        if let stored = MiscCredentialStore.readString(tool: .kilo, kind: .apiKey, instanceID: instanceID),
            !stored.isEmpty {
             return stored
         }

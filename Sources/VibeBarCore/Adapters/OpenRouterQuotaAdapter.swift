@@ -24,9 +24,10 @@ public struct OpenRouterQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let settings = MiscProviderSettings.current(for: .openRouter)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .openRouter)
+        let settings = MiscProviderSettings.current(for: .openRouter, instanceID: instanceID)
         guard settings.allowsAPIOrOAuthAccess,
-              let apiKey = Self.resolveAPIKey(environment: environment) else {
+              let apiKey = Self.resolveAPIKey(environment: environment, instanceID: instanceID) else {
             throw QuotaError.noCredential
         }
 
@@ -107,8 +108,8 @@ public struct OpenRouterQuotaAdapter: QuotaAdapter {
         return data
     }
 
-    private static func resolveAPIKey(environment: [String: String]) -> String? {
-        if let stored = MiscCredentialStore.readString(tool: .openRouter, kind: .apiKey),
+    private static func resolveAPIKey(environment: [String: String], instanceID: String) -> String? {
+        if let stored = MiscCredentialStore.readString(tool: .openRouter, kind: .apiKey, instanceID: instanceID),
            !stored.isEmpty {
             return stored
         }

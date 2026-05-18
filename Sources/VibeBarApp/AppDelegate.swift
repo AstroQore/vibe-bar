@@ -30,11 +30,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak environment] notification in
-            guard let environment,
-                  let raw = notification.userInfo?["tool"] as? String,
-                  let tool = ToolType(rawValue: raw),
-                  let account = environment.account(for: tool) else { return }
-            Task { _ = await environment.quotaService.refresh(account) }
+            Task { @MainActor [weak environment] in
+                guard let environment,
+                      let raw = notification.userInfo?["tool"] as? String,
+                      let tool = ToolType(rawValue: raw)
+                else { return }
+
+                if let instanceID = notification.userInfo?["instanceID"] as? String,
+                   let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) {
+                    _ = await environment.quotaService.refresh(account)
+                } else if let account = environment.account(for: tool) {
+                    _ = await environment.quotaService.refresh(account)
+                }
+            }
         }
     }
 

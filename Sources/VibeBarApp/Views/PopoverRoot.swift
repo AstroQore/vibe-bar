@@ -173,16 +173,22 @@ struct PopoverRoot: View {
     }
 
     private var latestUpdated: Date? {
-        visibleTools
-            .compactMap { environment.account(for: $0) }
+        visibleAccounts
             .compactMap { quotaService.lastUpdatedByAccount[$0.id] }
             .max()
     }
 
     private var isRefreshing: Bool {
-        let ids = visibleTools
-            .compactMap { environment.account(for: $0)?.id }
+        let ids = visibleAccounts.map(\.id)
         return ids.contains { quotaService.inFlightAccountIds.contains($0) }
+    }
+
+    private var visibleAccounts: [AccountIdentity] {
+        if kind == .compact, overviewPage == .misc {
+            return settingsStore.settings.visibleMiscProviderInstances
+                .compactMap { environment.account(for: $0) }
+        }
+        return visibleTools.compactMap { environment.account(for: $0) }
     }
 
     private func planBadgeLabel(for tool: ToolType) -> String? {
@@ -200,7 +206,7 @@ struct PopoverRoot: View {
     private func refreshVisibleProvidersIfNeeded() {
         let key = autoRefreshKey
         guard !autoRefreshedPageKeys.contains(key) else { return }
-        let accounts = visibleTools.compactMap { environment.account(for: $0) }
+        let accounts = visibleAccounts
         let missing = accounts.filter { account in
             quotaService.cachedQuota(for: account.id) == nil
                 && quotaService.lastErrorByAccount[account.id] == nil

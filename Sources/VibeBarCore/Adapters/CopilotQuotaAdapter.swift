@@ -30,11 +30,12 @@ public struct CopilotQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let providerSettings = MiscProviderSettings.current(for: .copilot)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .copilot)
+        let providerSettings = MiscProviderSettings.current(for: .copilot, instanceID: instanceID)
         guard providerSettings.allowsAPIOrOAuthAccess else {
             throw QuotaError.noCredential
         }
-        let token = resolveToken()
+        let token = resolveToken(instanceID: instanceID)
         guard let token, !token.isEmpty else {
             throw QuotaError.noCredential
         }
@@ -88,16 +89,16 @@ public struct CopilotQuotaAdapter: QuotaAdapter {
         )
     }
 
-    private func resolveToken() -> String? {
+    private func resolveToken(instanceID: String) -> String? {
         if let env = environment["COPILOT_TOKEN"]?
             .trimmingCharacters(in: .whitespacesAndNewlines), !env.isEmpty {
             return env
         }
-        if let deviceToken = MiscCredentialStore.readString(tool: .copilot, kind: .oauthAccessToken),
+        if let deviceToken = MiscCredentialStore.readString(tool: .copilot, kind: .oauthAccessToken, instanceID: instanceID),
            !deviceToken.isEmpty {
             return deviceToken
         }
-        return MiscCredentialStore.readString(tool: .copilot, kind: .apiKey)
+        return MiscCredentialStore.readString(tool: .copilot, kind: .apiKey, instanceID: instanceID)
     }
 
     private func enterpriseHost(from settings: MiscProviderSettings) -> String? {

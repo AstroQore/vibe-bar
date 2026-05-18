@@ -50,7 +50,8 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         "/exa.language_server_pb.LanguageServerService/GetUserStatus"
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        guard MiscProviderSettings.current(for: .antigravity).allowsLocalProbeAccess else {
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .antigravity)
+        guard MiscProviderSettings.current(for: .antigravity, instanceID: instanceID).allowsLocalProbeAccess else {
             throw QuotaError.noCredential
         }
 

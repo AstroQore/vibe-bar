@@ -31,7 +31,7 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec)
+        let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec, account: account)
         guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
         let queriedAt = now()
@@ -51,7 +51,8 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
         account: AccountIdentity,
         queriedAt: Date
     ) async throws -> AccountQuota {
-        let settings = MiscProviderSettings.current(for: .openCodeGo)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .openCodeGo)
+        let settings = MiscProviderSettings.current(for: .openCodeGo, instanceID: instanceID)
         let workspaceID = try await resolveWorkspaceID(
             cookieHeader: resolution.header,
             configured: settings.workspaceID ?? environment["CODEXBAR_OPENCODEGO_WORKSPACE_ID"]

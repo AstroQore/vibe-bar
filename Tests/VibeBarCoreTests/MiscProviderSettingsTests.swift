@@ -204,6 +204,97 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         XCTAssertEqual(object["miscProviderOrder"] as? [String], settings.miscProviderOrder.map(\.rawValue))
     }
 
+    func testClonedMiscProviderInstancesAreIndependentAndReorderable() {
+        var settings = AppSettings.default
+        let originalID = ToolType.volcengine.rawValue
+
+        guard let clone = settings.cloneMiscProviderInstance(id: originalID) else {
+            return XCTFail("expected Volcengine clone")
+        }
+
+        XCTAssertNotEqual(clone.id, originalID)
+        XCTAssertEqual(clone.tool, .volcengine)
+        XCTAssertEqual(settings.visibleMiscProviderInstances.filter { $0.tool == .volcengine }.count, 2)
+
+        var cloneSettings = settings.miscProviderInstance(id: clone.id)?.settings ?? .default
+        cloneSettings.region = "cn-beijing"
+        settings.setMiscProviderInstanceSettings(cloneSettings, forID: clone.id)
+
+        XCTAssertNil(settings.miscProviderInstance(id: originalID)?.settings.region)
+        XCTAssertEqual(settings.miscProviderInstance(id: clone.id)?.settings.region, "cn-beijing")
+
+        settings.moveMiscProviderInstance(id: clone.id, before: originalID)
+        let ids = settings.miscProviderInstances.map(\.id)
+        XCTAssertLessThan(
+            try XCTUnwrap(ids.firstIndex(of: clone.id)),
+            try XCTUnwrap(ids.firstIndex(of: originalID))
+        )
+        settings.moveMiscProviderInstanceToEnd(id: clone.id)
+        XCTAssertEqual(settings.miscProviderInstances.last?.id, clone.id)
+
+        settings.setMiscProviderInstanceVisible(false, forID: clone.id)
+        XCTAssertEqual(settings.visibleMiscProviderInstances.filter { $0.tool == .volcengine }.map(\.id), [originalID])
+    }
+
+    func testMiscProviderInstanceDisplayNamesAreIndependentAndRoundTrip() throws {
+        var settings = AppSettings.default
+        let originalID = ToolType.volcengine.rawValue
+
+        guard let clone = settings.cloneMiscProviderInstance(id: originalID) else {
+            return XCTFail("expected Volcengine clone")
+        }
+
+        settings.setMiscProviderInstanceDisplayName("  Work account  ", forID: clone.id)
+
+        XCTAssertNil(settings.miscProviderInstance(id: originalID)?.displayName)
+        XCTAssertEqual(settings.miscProviderInstance(id: clone.id)?.displayName, "Work account")
+
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertEqual(decoded.miscProviderInstance(id: clone.id)?.displayName, "Work account")
+
+        var mutable = decoded
+        mutable.setMiscProviderInstanceDisplayName("   ", forID: clone.id)
+        XCTAssertNil(mutable.miscProviderInstance(id: clone.id)?.displayName)
+    }
+
+    func testLegacyMiscProviderFieldsMigrateToDefaultInstances() throws {
+        let json = """
+        {
+          "visibleMiscProviders": ["openRouter", "minimax"],
+          "miscProviderOrder": ["openRouter", "removedProvider", "codex", "minimax"],
+          "miscProviders": {
+            "minimax": { "region": "global" }
+          }
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.miscProviderInstances.prefix(2).map(\.tool), [.openRouter, .minimax])
+        XCTAssertEqual(settings.visibleMiscProviderInstances.map(\.tool), [.openRouter, .minimax])
+        XCTAssertEqual(settings.miscProviderInstance(id: ToolType.minimax.rawValue)?.settings.region, "global")
+    }
+
+    @MainActor
+    func testAccountStoreCreatesSeparateAccountsForMiscProviderInstances() {
+        var settings = AppSettings.default
+        guard let clone = settings.cloneMiscProviderInstance(id: ToolType.volcengine.rawValue) else {
+            return XCTFail("expected Volcengine clone")
+        }
+
+        let accounts = AccountStore(miscProviderInstances: settings.miscProviderInstances)
+        let volcengineAccounts = accounts.accounts(for: .volcengine)
+
+        XCTAssertEqual(volcengineAccounts.map(\.id), [
+            AccountStore.miscAccountId(forInstanceID: ToolType.volcengine.rawValue),
+            AccountStore.miscAccountId(forInstanceID: clone.id)
+        ])
+        XCTAssertEqual(Set(volcengineAccounts.map(\.id)).count, 2)
+    }
+
     func testUnknownMiscProviderKeysAreDropped() throws {
         let json = """
         {
