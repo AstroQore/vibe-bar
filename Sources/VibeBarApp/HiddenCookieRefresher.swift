@@ -96,12 +96,27 @@ final class HiddenCookieRefresher {
                     requiredCookieNames: [],
                     postLoadWait: 10
                 )
+            case .baiduQianfan:
+                // The Qianfan dashboard SPA pings
+                // `/api/qianfan/charge/user/info` + a handful of IAM
+                // endpoints on bring-up; that's enough for BCE to
+                // refresh the rolling Passport session ticket
+                // alongside the `__bid_n` / `BCE-*` console cookies.
+                // The subscription page itself is the cheapest URL
+                // since it only loads the Coding Plan widget tree.
+                return Config(
+                    tool: .baiduQianfan,
+                    refreshURL: URL(string: "https://console.bce.baidu.com/qianfan/resource/subscribe")!,
+                    cookieDomainSuffixes: ["baidu.com", "bce.baidu.com", "baidubce.com"],
+                    requiredCookieNames: [],
+                    postLoadWait: 10
+                )
             default:
                 return nil
             }
         }
 
-        static let supportedTools: [ToolType] = [.tencentHunyuan, .volcengine, .alibaba, .alibabaTokenPlan]
+        static let supportedTools: [ToolType] = [.tencentHunyuan, .volcengine, .alibaba, .alibabaTokenPlan, .baiduQianfan]
     }
 
     private var inflight: [ToolType: Task<Bool, Never>] = [:]

@@ -70,14 +70,14 @@ public enum VibeBarKeychainAccessAuthorizer {
     /// plus Alibaba (cookie path is one of two auth modes).
     private static let currentCookieBackedMiscTools: [ToolType] = [
         .alibaba, .alibabaTokenPlan, .kimi, .cursor, .mimo, .iflytek,
-        .tencentHunyuan, .volcengine, .openCodeGo, .ollama
+        .tencentHunyuan, .volcengine, .baiduQianfan, .openCodeGo, .ollama
     ]
     /// Misc tools with an in-app WKWebView login flow where
     /// `WebFormCredentialStore` may persist a username/password pair.
     /// Keeping the list explicit lets the preflight pre-authorize the
     /// Keychain accounts so users don't see a prompt on first save.
     private static let currentWebFormBackedMiscTools: [ToolType] = [
-        .mimo, .volcengine, .tencentHunyuan, .alibaba, .alibabaTokenPlan
+        .mimo, .volcengine, .tencentHunyuan, .alibaba, .alibabaTokenPlan, .baiduQianfan
     ]
     private static let currentSecretKindsByTool: [ToolType: [MiscCredentialStore.Kind]] = [
         .alibaba: [.apiKey],
