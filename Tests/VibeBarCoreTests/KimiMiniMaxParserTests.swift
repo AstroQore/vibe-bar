@@ -342,13 +342,13 @@ final class MiniMaxParserTests: XCTestCase {
             snap.buckets.map(\.title),
             [
                 "Text Generation",
-                "Text to Speech",
-                "Image to Video",
-                "Text to Video",
+                "Text to Speech HD",
+                "Video Generation Fast",
+                "Video Generation Standard",
                 "Music Generation",
                 "Lyrics Generation",
                 "Image Generation",
-                "Coding Plan Search"
+                "Web Search"
             ]
         )
         XCTAssertEqual(snap.buckets.map(\.shortLabel), Array(repeating: "5h", count: 8))
@@ -403,5 +403,41 @@ final class MiniMaxParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[0].title, "5 Hours")
         XCTAssertEqual(snap.buckets[0].shortLabel, "5h")
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
+    }
+
+    func testMiniMaxModelRemainNamesMatchTokenPlanDashboard() throws {
+        let json = """
+        {
+          "model_remains": [
+            {"current_interval_total_count": 19000, "current_interval_usage_count": 0, "model_name": "speech-hd", "display_name": "语音合成 · HD（高保真）"},
+            {"current_interval_total_count": 3, "current_interval_usage_count": 0, "model_name": "minimax-hailuo-2.3-fast-6s-768p", "display_name": "视频生成 · 高速版（768P / 6s）"},
+            {"current_interval_total_count": 3, "current_interval_usage_count": 0, "model_name": "minimax-hailuo-2.3-6s-768p", "display_name": "视频生成 · 标准版（768P / 6s）"},
+            {"current_interval_total_count": 7, "current_interval_usage_count": 0, "model_name": "music-2.5", "display_name": "音乐生成 · v2.5"},
+            {"current_interval_total_count": 100, "current_interval_usage_count": 0, "model_name": "music-2.6", "display_name": "音乐生成 · v2.6"},
+            {"current_interval_total_count": 100, "current_interval_usage_count": 0, "model_name": "music-cover", "display_name": "音乐翻唱"},
+            {"current_interval_total_count": 100, "current_interval_usage_count": 0, "model_name": "lyrics-generation", "display_name": "歌词生成"},
+            {"current_interval_total_count": 200, "current_interval_usage_count": 0, "model_name": "image-01", "display_name": "图像生成"},
+            {"current_interval_total_count": 450, "current_interval_usage_count": 0, "model_name": "coding-plan-vlm", "display_name": "图片理解"},
+            {"current_interval_total_count": 450, "current_interval_usage_count": 0, "model_name": "coding-plan-search", "display_name": "网络搜索"}
+          ],
+          "base_resp": {"status_code": 0}
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(
+            snap.buckets.map(\.title),
+            [
+                "Text to Speech HD",
+                "Video Generation Fast",
+                "Video Generation Standard",
+                "Music Generation v2.5",
+                "Music Generation v2.6",
+                "Music Cover",
+                "Lyrics Generation",
+                "Image Generation",
+                "Image Understanding",
+                "Web Search"
+            ]
+        )
     }
 }

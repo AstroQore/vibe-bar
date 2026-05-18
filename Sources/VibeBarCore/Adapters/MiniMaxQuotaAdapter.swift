@@ -298,7 +298,7 @@ enum MiniMaxResponseParser {
         let used = max(0, row.currentIntervalUsageCount ?? 0)
         let remaining = max(0, total - used)
         let windowLabel = windowLabel(startTime: row.startTime, endTime: row.endTime) ?? "5 hours"
-        let title = serviceTitle(for: row.modelName) ?? "5 Hours"
+        let title = serviceTitle(displayName: row.displayName, modelName: row.modelName) ?? "5 Hours"
         return quotaBucket(
             id: "minimax.coding.\(index).\(slug(row.modelName ?? title))",
             title: title,
@@ -449,19 +449,94 @@ enum MiniMaxResponseParser {
         return hours > 0 ? "\(hours) hours" : nil
     }
 
-    private static func serviceTitle(for modelName: String?) -> String? {
+    private static func serviceTitle(displayName: String?, modelName: String?) -> String? {
+        if let displayTitle = englishServiceTitle(fromDisplayName: displayName, modelName: modelName) {
+            return displayTitle
+        }
+        if let displayName = displayName?.trimmed, displayName.isMostlyASCII {
+            return formattedDisplayName(displayName)
+        }
         guard let modelName = modelName?.trimmingCharacters(in: .whitespacesAndNewlines),
               !modelName.isEmpty else {
             return nil
         }
         let lower = modelName.lowercased()
         if lower.contains("minimax-m") { return "Text Generation" }
+        if lower.contains("speech"), lower.contains("hd") { return "Text to Speech HD" }
         if lower.contains("speech") { return "Text to Speech" }
-        if lower.contains("hailuo"), lower.contains("fast") { return "Image to Video" }
-        if lower.contains("hailuo") { return "Text to Video" }
+        if lower.contains("hailuo"), lower.contains("fast") { return "Video Generation Fast" }
+        if lower.contains("hailuo") { return "Video Generation Standard" }
+        if lower == "music-cover" { return "Music Cover" }
+        if lower.hasPrefix("music-") {
+            return musicGenerationTitle(suffix: formattedVersionSuffix(from: modelName))
+        }
+        if lower.contains("lyrics") { return "Lyrics Generation" }
         if lower.hasPrefix("image-") { return "Image Generation" }
-        if lower.contains("music") { return "Music Generation" }
+        if lower == "coding-plan-vlm" { return "Image Understanding" }
+        if lower == "coding-plan-search" { return "Web Search" }
         return formattedModelName(modelName)
+    }
+
+    private static func englishServiceTitle(fromDisplayName displayName: String?, modelName: String?) -> String? {
+        guard let raw = displayName?.trimmed else { return nil }
+        let lower = raw.lowercased()
+        let normalized = raw
+            .replacingOccurrences(of: "（", with: "(")
+            .replacingOccurrences(of: "）", with: ")")
+        let model = modelName?.lowercased() ?? ""
+        if normalized.contains("文本生成") { return "Text Generation" }
+        if normalized.contains("语音合成") {
+            if normalized.localizedCaseInsensitiveContains("HD") || normalized.contains("高保真") {
+                return "Text to Speech HD"
+            }
+            return "Text to Speech"
+        }
+        if normalized.contains("视频生成") {
+            if normalized.contains("高速版") || lower.contains("fast") || model.contains("fast") {
+                return "Video Generation Fast"
+            }
+            if normalized.contains("标准版") || model.contains("hailuo") {
+                return "Video Generation Standard"
+            }
+            return "Video Generation"
+        }
+        if normalized.contains("音乐生成") {
+            let suffix = versionSuffix(from: normalized) ?? formattedVersionSuffix(from: modelName)
+            return musicGenerationTitle(suffix: suffix)
+        }
+        if normalized.contains("音乐翻唱") { return "Music Cover" }
+        if normalized.contains("歌词生成") { return "Lyrics Generation" }
+        if normalized.contains("图像生成") { return "Image Generation" }
+        if normalized.contains("图片理解") { return "Image Understanding" }
+        if normalized.contains("网络搜索") { return "Web Search" }
+        return nil
+    }
+
+    private static func formattedVersionSuffix(from modelName: String?) -> String {
+        guard let raw = modelName?.trimmed,
+              let suffix = versionSuffix(from: raw) else {
+            return ""
+        }
+        return suffix
+    }
+
+    private static func musicGenerationTitle(suffix: String) -> String {
+        suffix.isEmpty ? "Music Generation" : "Music Generation \(suffix)"
+    }
+
+    private static func versionSuffix(from raw: String) -> String? {
+        if let match = raw.range(of: #"[vV]?\d+(?:\.\d+)+"#, options: .regularExpression) {
+            let value = String(raw[match])
+            return value.lowercased().hasPrefix("v") ? value : "v\(value)"
+        }
+        return nil
+    }
+
+    private static func formattedDisplayName(_ displayName: String) -> String {
+        let cleaned = displayName
+            .replacingOccurrences(of: "·", with: " ")
+            .replacingOccurrences(of: #"[\(\)]"#, with: " ", options: .regularExpression)
+        return formattedModelName(cleaned)
     }
 
     private static func formattedModelName(_ modelName: String) -> String {
@@ -600,6 +675,7 @@ private struct MiniMaxComboCard: Decodable {
 
 private struct MiniMaxModelRemains: Decodable {
     let modelName: String?
+    let displayName: String?
     let currentIntervalTotalCount: Int?
     let currentIntervalUsageCount: Int?
     let startTime: Int?
@@ -613,6 +689,12 @@ private struct MiniMaxModelRemains: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case modelName = "model_name"
+        case displayName = "display_name"
+        case displayTitle = "display_title"
+        case resourceName = "resource_name"
+        case serviceName = "service_name"
+        case name
+        case title
         case currentIntervalTotalCount = "current_interval_total_count"
         case currentIntervalUsageCount = "current_interval_usage_count"
         case startTime = "start_time"
@@ -628,6 +710,15 @@ private struct MiniMaxModelRemains: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         modelName = try? c.decodeIfPresent(String.self, forKey: .modelName)
+        let displayCandidates: [String?] = [
+            (try? c.decodeIfPresent(String.self, forKey: .displayName)) ?? nil,
+            (try? c.decodeIfPresent(String.self, forKey: .displayTitle)) ?? nil,
+            (try? c.decodeIfPresent(String.self, forKey: .resourceName)) ?? nil,
+            (try? c.decodeIfPresent(String.self, forKey: .serviceName)) ?? nil,
+            (try? c.decodeIfPresent(String.self, forKey: .name)) ?? nil,
+            (try? c.decodeIfPresent(String.self, forKey: .title)) ?? nil
+        ]
+        displayName = displayCandidates.compactMap(\.self).compactMap { $0.trimmed }.first
         currentIntervalTotalCount = MiniMaxQuotaDecoding.int(c, forKey: .currentIntervalTotalCount)
         currentIntervalUsageCount = MiniMaxQuotaDecoding.int(c, forKey: .currentIntervalUsageCount)
         startTime = MiniMaxQuotaDecoding.int(c, forKey: .startTime)
@@ -728,5 +819,12 @@ private extension String {
     var trimmed: String? {
         let t = trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
+    }
+
+    var isMostlyASCII: Bool {
+        let scalars = unicodeScalars.filter { !$0.properties.isWhitespace }
+        guard !scalars.isEmpty else { return false }
+        let asciiCount = scalars.filter { $0.isASCII }.count
+        return Double(asciiCount) / Double(scalars.count) >= 0.8
     }
 }

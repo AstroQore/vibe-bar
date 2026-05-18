@@ -84,6 +84,31 @@ final class ZaiParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets.last?.rawWindowSeconds, 30 * 86_400)
     }
 
+    func testMCPMonthlyLimitUsesMonthUnit() throws {
+        let json = """
+        {
+          "code": 200,
+          "msg": "OK",
+          "success": true,
+          "data": {
+            "limits": [
+              {"type": "TOKENS_LIMIT", "unit": 6, "number": 1, "usage": 100, "remaining": 80, "currentValue": 20, "percentage": 20, "nextResetTime": 801108004990},
+              {"type": "TOKENS_LIMIT", "unit": 3, "number": 5, "usage": 100, "remaining": 97, "currentValue": 3, "percentage": 3, "nextResetTime": 800818660450},
+              {"type": "TIME_LIMIT", "unit": 5, "number": 1, "usage": 100, "remaining": 100, "currentValue": 0, "percentage": 0, "nextResetTime": 803181604993}
+            ]
+          }
+        }
+        """
+        let snap = try ZaiResponseParser.parse(data: Data(json.utf8), now: now)
+        XCTAssertEqual(snap.buckets.count, 3)
+        let mcp = snap.buckets[2]
+        XCTAssertEqual(mcp.id, "zai.time")
+        XCTAssertEqual(mcp.title, "MCP Monthly")
+        XCTAssertEqual(mcp.shortLabel, "Month")
+        XCTAssertEqual(mcp.rawWindowSeconds, 30 * 86_400)
+        XCTAssertEqual(mcp.usedPercent, 0.0, accuracy: 0.01)
+    }
+
     func testNonSuccessThrowsNetwork() {
         let json = """
         { "code": 500, "msg": "internal error", "success": false }
