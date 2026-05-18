@@ -264,7 +264,7 @@ private struct ZaiRawLimit: Decodable {
         switch unit {
         case 1: return number * 86_400        // days
         case 3: return number * 3_600         // hours
-        case 5: return number * 60            // minutes
+        case 5: return number * 30 * 86_400   // months
         case 6: return number * 7 * 86_400    // weeks
         default: return nil
         }
@@ -283,8 +283,12 @@ private struct ZaiRawLimit: Decodable {
             title = "\(number) Hour\(number == 1 ? "" : "s")"
             shortLabel = "\(number)h"
         case 5:
-            title = "\(number) Minute\(number == 1 ? "" : "s")"
-            shortLabel = "\(number)m"
+            if type == "TIME_LIMIT" {
+                title = number == 1 ? "MCP Monthly" : "MCP \(number) Months"
+            } else {
+                title = number == 1 ? "Monthly" : "\(number) Months"
+            }
+            shortLabel = number == 1 ? "Month" : "\(number)mo"
         case 6:
             title = number == 1 ? "Weekly" : "\(number) Weeks"
             shortLabel = number == 1 ? "Wk" : "\(number)w"
