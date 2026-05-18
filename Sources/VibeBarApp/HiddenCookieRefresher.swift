@@ -96,6 +96,21 @@ final class HiddenCookieRefresher {
                     requiredCookieNames: [],
                     postLoadWait: 10
                 )
+            case .tencentTokenPlan:
+                // Same Tencent Cloud session jar as the Coding Plan
+                // (`skey` / `uin` / HttpOnly login tickets are issued
+                // for `*.cloud.tencent.com` regardless of which
+                // TokenHub sub-product the user is viewing). Refresh
+                // through the Token Plan dashboard URL so the SPA's
+                // own keepalive touches the BFF routes the Token Plan
+                // adapter cares about.
+                return Config(
+                    tool: .tencentTokenPlan,
+                    refreshURL: URL(string: "https://console.cloud.tencent.com/tokenhub/tokenplan")!,
+                    cookieDomainSuffixes: ["tencent.com", "qq.com", "qcloud.com"],
+                    requiredCookieNames: [],
+                    postLoadWait: 8
+                )
             case .baiduQianfan:
                 // The Qianfan dashboard SPA pings
                 // `/api/qianfan/charge/user/info` + a handful of IAM
@@ -116,7 +131,7 @@ final class HiddenCookieRefresher {
             }
         }
 
-        static let supportedTools: [ToolType] = [.tencentHunyuan, .volcengine, .alibaba, .alibabaTokenPlan, .baiduQianfan]
+        static let supportedTools: [ToolType] = [.tencentHunyuan, .tencentTokenPlan, .volcengine, .alibaba, .alibabaTokenPlan, .baiduQianfan]
     }
 
     private var inflight: [ToolType: Task<Bool, Never>] = [:]

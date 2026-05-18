@@ -752,6 +752,32 @@ final class MiscWebLoginRegistry {
                 savedConfirmation: "Alibaba Token Plan cookies saved.",
                 setupHint: "Sign in to Bailian (CN) or ModelStudio (Intl) on the same Aliyun account that owns the Token Plan. Then click Save Cookies."
             )
+        case .tencentTokenPlan:
+            return MiscWebLoginController.Config(
+                tool: .tencentTokenPlan,
+                // Token Plan and Coding Plan both live under the
+                // TokenHub umbrella on `console.cloud.tencent.com`,
+                // and the cookie jar is identical to the Coding Plan
+                // login. Land users on the Token Plan page directly so
+                // they can confirm the variant they need (generic or
+                // HY3) is active before saving cookies.
+                loginURL: URL(string: "https://console.cloud.tencent.com/tokenhub/tokenplan")!,
+                cookieDomainSuffixes: ["cloud.tencent.com", "tencent.com"],
+                requiredCookieNames: [],
+                trustedAuthHostSuffixes: [
+                    "cloud.tencent.com",
+                    "tencent.com",
+                    "qq.com",
+                    "qcloud.com",
+                    "tencent-cloud.com",
+                    "wx.qq.com",
+                    "captcha.qcloud.com",
+                    "captcha.gtimg.com"
+                ],
+                windowTitle: "Tencent Token Plan Login",
+                savedConfirmation: "Token Plan cookies saved.",
+                setupHint: "Sign in to Tencent Cloud TokenHub Token Plan (sub-user works). Same login as the Coding Plan card — you can sign in on either."
+            )
         case .baiduQianfan:
             return MiscWebLoginController.Config(
                 tool: .baiduQianfan,

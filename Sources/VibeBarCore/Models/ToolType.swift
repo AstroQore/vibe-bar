@@ -18,9 +18,9 @@ import Foundation
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.gemini`, `.antigravity`,
 ///   `.copilot`, `.zai`, `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
-///   `.tencentHunyuan`, `.volcengine`, `.baiduQianfan`, `.openCodeGo`,
-///   `.kilo`, `.kiro`, `.ollama`, `.openRouter`, `.warp`) — usage-only
-///   cards on the Misc tab.
+///   `.tencentHunyuan`, `.tencentTokenPlan`, `.volcengine`, `.baiduQianfan`,
+///   `.openCodeGo`, `.kilo`, `.kiro`, `.ollama`, `.openRouter`, `.warp`) —
+///   usage-only cards on the Misc tab.
 ///   No token-cost scanning, no Atlassian-style status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
@@ -43,6 +43,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case mimo
     case iflytek
     case tencentHunyuan
+    case tencentTokenPlan
     case volcengine
     case baiduQianfan
     case openCodeGo
@@ -57,7 +58,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -86,8 +87,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch self {
         case .codex:       return "OpenAI - ChatGPT"
         case .claude:      return "Anthropic - Claude"
-        case .alibaba:     return "Alibaba Qwen"
-        case .alibabaTokenPlan: return "Alibaba Qwen"
+        case .alibaba:     return "Alibaba Bailian Coding Plan"
+        case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
         case .gemini:      return "Gemini"
         case .antigravity: return "Google - Antigravity"
         case .copilot:     return "GitHub - Copilot"
@@ -97,9 +98,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return "Cursor"
         case .mimo:        return "Xiaomi - MiMo"
         case .iflytek:     return "iFlytek - Spark"
-        case .tencentHunyuan: return "Tencent Hunyuan"
+        case .tencentHunyuan:   return "Tencent Cloud Coding Plan"
+        case .tencentTokenPlan: return "Tencent Cloud Token Plan"
         case .volcengine:  return "Volcengine"
-        case .baiduQianfan: return "Baidu - Qianfan"
+        case .baiduQianfan: return "Baidu Qianfan Coding Plan"
         case .openCodeGo:  return "OpenCode Go"
         case .kilo:        return "Kilo"
         case .kiro:        return "Kiro"
@@ -124,7 +126,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return "Cursor"
         case .mimo:        return "Token Plan"
         case .iflytek:     return "Coding Plan"
-        case .tencentHunyuan: return "Coding Plan"
+        case .tencentHunyuan:   return "Coding Plan"
+        case .tencentTokenPlan: return "Token Plan"
         case .volcengine:  return "Coding Plan"
         case .baiduQianfan: return "Coding Plan"
         case .openCodeGo:  return "Workspace"
@@ -140,8 +143,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch self {
         case .codex:       return "OpenAI"
         case .claude:      return "Claude"
-        case .alibaba:     return "Alibaba Qwen"
-        case .alibabaTokenPlan: return "Qwen Token Plan"
+        case .alibaba:     return "Bailian Coding Plan"
+        case .alibabaTokenPlan: return "Bailian Token Plan"
         case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
         case .copilot:     return "Copilot"
@@ -151,9 +154,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return "Cursor"
         case .mimo:        return "MiMo"
         case .iflytek:     return "Spark"
-        case .tencentHunyuan: return "Tencent Hunyuan"
+        case .tencentHunyuan:   return "Tencent Coding Plan"
+        case .tencentTokenPlan: return "Tencent Token Plan"
         case .volcengine:  return "Volcengine"
-        case .baiduQianfan: return "Baidu Qianfan"
+        case .baiduQianfan: return "Qianfan Coding Plan"
         case .openCodeGo:  return "OpenCode Go"
         case .kilo:        return "Kilo"
         case .kiro:        return "Kiro"
@@ -167,8 +171,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch self {
         case .codex:       return "OpenAI"
         case .claude:      return "Anthropic"
-        case .alibaba:     return "Alibaba Qwen"
-        case .alibabaTokenPlan: return "Alibaba Qwen"
+        case .alibaba:     return "Alibaba Bailian"
+        case .alibabaTokenPlan: return "Alibaba Bailian"
         case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
         case .copilot:     return "GitHub"
@@ -178,9 +182,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return "Cursor"
         case .mimo:        return "Xiaomi"
         case .iflytek:     return "iFlytek"
-        case .tencentHunyuan: return "Tencent Hunyuan"
+        case .tencentHunyuan:   return "Tencent Cloud"
+        case .tencentTokenPlan: return "Tencent Cloud"
         case .volcengine:  return "Volcengine"
-        case .baiduQianfan: return "Baidu"
+        case .baiduQianfan: return "Baidu Qianfan"
         case .openCodeGo:  return "OpenCode"
         case .kilo:        return "Kilo"
         case .kiro:        return "Kiro"
@@ -208,7 +213,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return URL(string: "https://status.cursor.com/")!
         case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
         case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
-        case .tencentHunyuan: return URL(string: "https://console.cloud.tencent.com/tokenhub/codingplan")!
+        case .tencentHunyuan:   return URL(string: "https://console.cloud.tencent.com/tokenhub/codingplan")!
+        case .tencentTokenPlan: return URL(string: "https://console.cloud.tencent.com/tokenhub/tokenplan")!
         case .volcengine:  return URL(string: "https://console.volcengine.com/ark")!
         case .baiduQianfan: return URL(string: "https://console.bce.baidu.com/qianfan/resource/subscribe")!
         case .openCodeGo:  return URL(string: "https://opencode.ai/")!

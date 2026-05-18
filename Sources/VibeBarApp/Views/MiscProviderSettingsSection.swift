@@ -207,6 +207,21 @@ struct MiscProviderSettingsSection: View {
                     helpText: "Tencent's `skey` cookie expires within hours. When the card flips to \"Needs re-login\", click here to refresh the session."
                 )
             }
+        case .tencentTokenPlan:
+            VStack(alignment: .leading, spacing: 4) {
+                TencentTokenPlanVariantPicker(instanceID: instanceID)
+                CookieSourceControls(
+                    tool: .tencentTokenPlan,
+                    instanceID: instanceID,
+                    spec: TencentTokenPlanQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste cloud.tencent.com Cookie header (skey=…; uin=…; …)"
+                )
+                MiscWebLoginRow(
+                    tool: .tencentTokenPlan,
+                    instanceID: instanceID,
+                    helpText: "Same Tencent Cloud login as the Coding Plan card. Pick the variant above (generic or HY3) — clone this row to track both at once."
+                )
+            }
         case .volcengine:
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(
@@ -918,6 +933,40 @@ struct AlibabaRegionPicker: View {
             set: { newValue in
                 var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
                 current.region = newValue == .auto ? nil : newValue.rawValue
+                settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
+            }
+        )
+    }
+}
+
+/// Tencent Token Plan variant picker — choose between the generic
+/// TokenHub Token Plan (`/tokenhub/tokenplan`) and the HY3-only
+/// Token Plan (`/tokenhub/tokenplan/hy`). Stored as the
+/// `region` field on `MiscProviderSettings`; values map back to
+/// `TencentTokenPlanVariant`.
+struct TencentTokenPlanVariantPicker: View {
+    let instanceID: String
+
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    var body: some View {
+        Picker("Variant", selection: choiceBinding) {
+            ForEach(TencentTokenPlanVariant.allCases, id: \.rawValue) { choice in
+                Text(choice.displayLabel).tag(choice)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var choiceBinding: Binding<TencentTokenPlanVariant> {
+        Binding(
+            get: {
+                let raw = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).region
+                return TencentTokenPlanVariant.from(settingsRegion: raw)
+            },
+            set: { newValue in
+                var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
+                current.region = newValue.settingsRegionID
                 settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
             }
         )
