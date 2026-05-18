@@ -6,5 +6,6 @@ DerivedData/
 Package.resolved
 *.app/
 dist/
+.codex/
 .claude/
 .research/
