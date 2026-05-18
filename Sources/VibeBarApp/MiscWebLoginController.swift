@@ -675,7 +675,14 @@ final class MiscWebLoginRegistry {
         case .tencentHunyuan:
             return MiscWebLoginController.Config(
                 tool: .tencentHunyuan,
-                loginURL: URL(string: "https://hunyuan.cloud.tencent.com/")!,
+                // The standalone `hunyuan.cloud.tencent.com` console is
+                // scheduled for full shutdown on 2026-09-30; Tencent has
+                // rebranded the Coding Plan product under TokenHub at
+                // `console.cloud.tencent.com/tokenhub/codingplan`. Send
+                // users straight to the new console so the cookies they
+                // capture come from the platform that will still exist
+                // after the migration window.
+                loginURL: URL(string: "https://console.cloud.tencent.com/tokenhub/codingplan")!,
                 cookieDomainSuffixes: ["cloud.tencent.com", "tencent.com"],
                 // Empty set tells the controller to ship every cookie
                 // for the matching domains, mirroring the adapter's
