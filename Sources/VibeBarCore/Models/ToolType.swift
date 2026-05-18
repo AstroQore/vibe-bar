@@ -196,7 +196,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return URL(string: "https://status.cursor.com/")!
         case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
         case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
-        case .tencentHunyuan: return URL(string: "https://hunyuan.cloud.tencent.com/")!
+        case .tencentHunyuan: return URL(string: "https://console.cloud.tencent.com/tokenhub/codingplan")!
         case .volcengine:  return URL(string: "https://console.volcengine.com/ark")!
         case .openCodeGo:  return URL(string: "https://opencode.ai/")!
         case .kilo:        return URL(string: "https://app.kilo.ai/")!
