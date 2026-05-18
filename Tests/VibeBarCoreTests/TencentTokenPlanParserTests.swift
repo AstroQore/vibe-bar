@@ -9,7 +9,7 @@ final class TencentTokenPlanParserTests: XCTestCase {
         XCTAssertEqual(TencentTokenPlanVariant.from(settingsRegion: nil), .generic)
         XCTAssertEqual(TencentTokenPlanVariant.from(settingsRegion: ""), .generic)
         XCTAssertEqual(TencentTokenPlanVariant.from(settingsRegion: "generic"), .generic)
-        XCTAssertEqual(TencentTokenPlanVariant.from(settingsRegion: "general"), .generic)
+        XCTAssertEqual(TencentTokenPlanVariant.from(settingsRegion: "personal"), .generic)
         XCTAssertEqual(TencentTokenPlanVariant.from(settingsRegion: "unknown"), .generic)
     }
 
@@ -19,12 +19,17 @@ final class TencentTokenPlanParserTests: XCTestCase {
         XCTAssertEqual(TencentTokenPlanVariant.from(settingsRegion: "hy3"), .hunyuan)
     }
 
-    // MARK: - Time-window envelope (Coding Plan-style)
+    func testEditionParamMapsVariantsToBffEditionString() {
+        XCTAssertEqual(TencentTokenPlanVariant.generic.editionParam, "personal")
+        XCTAssertEqual(TencentTokenPlanVariant.hunyuan.editionParam, "hunyuan")
+    }
 
-    func testParsesTimeWindowEnvelope() throws {
-        // If Tencent ships Token Plan through the same DescribePkg
-        // envelope as Coding Plan, all three time-window buckets must
-        // be surfaced. The CGI wrapper is unwrapped first.
+    // MARK: - Live shape (captured from console)
+
+    /// Captured 2026-05 from `console.cloud.tencent.com/tokenhub/tokenplan`
+    /// with `Edition: "personal"`. Numbers are real shape; identifiers
+    /// are scrubbed.
+    func testParsesPersonalEditionEnvelope() throws {
         let json = """
         {
           "code": 0,
@@ -33,23 +38,26 @@ final class TencentTokenPlanParserTests: XCTestCase {
             "cgwerrorCode": 0,
             "data": {
               "Response": {
-                "PkgList": [
+                "RequestId": "00000000-0000-0000-0000-000000000000",
+                "TokenPlanUsageList": [
                   {
-                    "PkgName": "Token Plan Pro",
-                    "PkgType": "tokenplan",
-                    "UsageDetail": {
-                      "PerFiveHour": {
-                        "Total": 6000, "Used": 200, "UsagePercent": 3.33,
-                        "EndTime": "2026-05-09 03:43:15"
-                      },
-                      "PerWeek": {
-                        "Total": 45000, "Used": 1000, "UsagePercent": 2.22,
-                        "EndTime": "2026-05-11 00:00:00"
-                      },
-                      "PerMonth": {
-                        "Total": 90000, "Used": 9000, "UsagePercent": 10.0,
-                        "EndTime": "2026-05-24 00:00:00"
-                      }
+                    "TokenPlanPackage": {
+                      "Plan": "tp_standard",
+                      "Level": 2,
+                      "QuotaStatus": 1,
+                      "StartTime": "2026-05-19 00:17:00",
+                      "ExpireTime": "2026-06-19 00:16:59",
+                      "ResourceId": "sp_lmp_tokenplan-example-1",
+                      "RenewFlag": 0
+                    },
+                    "TokenPlanResource": {
+                      "RemainCycles": "0",
+                      "CycleCapacity": "100000000",
+                      "CycleRemain": "99999949",
+                      "CycleTotalUsage": "51",
+                      "CycleInputUsage": "43",
+                      "CycleOutputUsage": "8",
+                      "CycleCacheUsage": "0"
                     }
                   }
                 ]
@@ -62,20 +70,66 @@ final class TencentTokenPlanParserTests: XCTestCase {
             data: Data(json.utf8),
             variant: .generic
         )
-        XCTAssertEqual(snap.planName, "Token Plan Pro")
-        XCTAssertEqual(snap.buckets.count, 3)
-        XCTAssertEqual(snap.buckets[0].id, "tencentTokenPlan.generic.fiveHour")
-        XCTAssertEqual(snap.buckets[0].usedPercent, 3.33, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[1].id, "tencentTokenPlan.generic.weekly")
-        XCTAssertEqual(snap.buckets[2].id, "tencentTokenPlan.generic.monthly")
-        XCTAssertEqual(snap.buckets[2].usedPercent, 10.0, accuracy: 0.01)
-        XCTAssertNotNil(snap.buckets[0].resetAt)
+        XCTAssertEqual(snap.planName, "Standard")
+        XCTAssertEqual(snap.buckets.count, 1)
+        let bucket = snap.buckets[0]
+        XCTAssertEqual(bucket.id, "tencentTokenPlan.generic.tp_standard")
+        XCTAssertEqual(bucket.groupTitle, "Standard")
+        // 51 / 100_000_000 * 100 ≈ 0.000051
+        XCTAssertEqual(bucket.usedPercent, 0.000051, accuracy: 0.00001)
+        XCTAssertNotNil(bucket.resetAt)
     }
 
-    func testTimeWindowBucketIdsCarryVariantPrefix() throws {
-        // The bucket id namespace is per-variant so the cache stays
-        // stable when a user clones an instance and toggles the other
-        // variant.
+    /// Captured 2026-05 from `Edition: "hunyuan"`. Same response
+    /// envelope, different `Plan` code (`tp_hy_standard`).
+    func testParsesHunyuanEditionEnvelope() throws {
+        let json = """
+        {
+          "code": 0,
+          "data": {
+            "code": 0,
+            "cgwerrorCode": 0,
+            "data": {
+              "Response": {
+                "RequestId": "00000000-0000-0000-0000-000000000000",
+                "TokenPlanUsageList": [
+                  {
+                    "TokenPlanPackage": {
+                      "Plan": "tp_hy_standard",
+                      "Level": 2,
+                      "QuotaStatus": 1,
+                      "StartTime": "2026-05-16 04:23:00",
+                      "ExpireTime": "2026-06-16 04:22:59"
+                    },
+                    "TokenPlanResource": {
+                      "CycleCapacity": "100000000",
+                      "CycleRemain": "98149494",
+                      "CycleTotalUsage": "1850506"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+        """
+        let snap = try TencentTokenPlanResponseParser.parse(
+            data: Data(json.utf8),
+            variant: .hunyuan
+        )
+        XCTAssertEqual(snap.planName, "HY Standard")
+        XCTAssertEqual(snap.buckets.count, 1)
+        let bucket = snap.buckets[0]
+        XCTAssertEqual(bucket.id, "tencentTokenPlan.hunyuan.tp_hy_standard")
+        XCTAssertEqual(bucket.groupTitle, "HY Standard")
+        // 1_850_506 / 100_000_000 * 100 ≈ 1.85
+        XCTAssertEqual(bucket.usedPercent, 1.850506, accuracy: 0.001)
+        XCTAssertNotNil(bucket.resetAt)
+    }
+
+    func testFallsBackToRemainWhenCycleTotalUsageMissing() throws {
+        // Defensive — if Tencent ever omits CycleTotalUsage, derive it
+        // from capacity - remain.
         let json = """
         {
           "code": 0,
@@ -83,15 +137,18 @@ final class TencentTokenPlanParserTests: XCTestCase {
             "code": 0,
             "data": {
               "Response": {
-                "PkgList": [{
-                  "PkgName": "HY Token Plan",
-                  "UsageDetail": {
-                    "PerMonth": {
-                      "Total": 100, "Used": 50, "UsagePercent": 50,
-                      "EndTime": "2026-05-24 00:00:00"
+                "TokenPlanUsageList": [
+                  {
+                    "TokenPlanPackage": {
+                      "Plan": "tp_hy_pro",
+                      "ExpireTime": "2026-06-30 00:00:00"
+                    },
+                    "TokenPlanResource": {
+                      "CycleCapacity": "1000",
+                      "CycleRemain": "250"
                     }
                   }
-                }]
+                ]
               }
             }
           }
@@ -102,15 +159,15 @@ final class TencentTokenPlanParserTests: XCTestCase {
             variant: .hunyuan
         )
         XCTAssertEqual(snap.buckets.count, 1)
-        XCTAssertEqual(snap.buckets[0].id, "tencentTokenPlan.hunyuan.monthly")
+        XCTAssertEqual(snap.buckets[0].usedPercent, 75.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[0].id, "tencentTokenPlan.hunyuan.tp_hy_pro")
+        XCTAssertEqual(snap.buckets[0].groupTitle, "HY Pro")
     }
 
-    // MARK: - Credit envelope (Token Plan-style)
-
-    func testParsesFlatCreditEnvelope() throws {
-        // Token-style plans usually expose a flat credit counter
-        // instead of time-windowed buckets. Surface a single
-        // "Credits" bucket so the card renders.
+    func testMultipleUsageEntriesSurfaceAsMultipleBuckets() throws {
+        // A user could in principle hold more than one Token Plan
+        // subscription per edition (e.g. a primary + a top-up). The
+        // parser surfaces one bucket per entry.
         let json = """
         {
           "code": 0,
@@ -118,11 +175,16 @@ final class TencentTokenPlanParserTests: XCTestCase {
             "code": 0,
             "data": {
               "Response": {
-                "PkgName": "Token Plan",
-                "TotalCredits": 100000,
-                "UsedCredits": 25000,
-                "RemainingCredits": 75000,
-                "EndTime": "2026-06-30 00:00:00"
+                "TokenPlanUsageList": [
+                  {
+                    "TokenPlanPackage": {"Plan": "tp_standard", "ExpireTime": "2026-06-19 00:00:00"},
+                    "TokenPlanResource": {"CycleCapacity": "100", "CycleRemain": "75", "CycleTotalUsage": "25"}
+                  },
+                  {
+                    "TokenPlanPackage": {"Plan": "tp_pro", "ExpireTime": "2026-07-19 00:00:00"},
+                    "TokenPlanResource": {"CycleCapacity": "200", "CycleRemain": "100", "CycleTotalUsage": "100"}
+                  }
+                ]
               }
             }
           }
@@ -132,41 +194,49 @@ final class TencentTokenPlanParserTests: XCTestCase {
             data: Data(json.utf8),
             variant: .generic
         )
-        XCTAssertEqual(snap.buckets.count, 1)
-        XCTAssertEqual(snap.buckets[0].id, "tencentTokenPlan.generic.credits")
+        XCTAssertEqual(snap.buckets.count, 2)
         XCTAssertEqual(snap.buckets[0].usedPercent, 25.0, accuracy: 0.01)
-        XCTAssertNotNil(snap.buckets[0].resetAt)
+        XCTAssertEqual(snap.buckets[0].id, "tencentTokenPlan.generic.tp_standard")
+        XCTAssertEqual(snap.buckets[1].usedPercent, 50.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[1].id, "tencentTokenPlan.generic.tp_pro")
     }
 
-    func testCreditEnvelopeFallsBackToRemainingWhenUsedMissing() throws {
+    // MARK: - Error envelopes
+
+    func testUnknownParameterMapsToNetworkError() {
+        // Captured shape — what the BFF returns when an unrecognised
+        // parameter (e.g. `PkgType: "tokenplan"`) is sent in the body.
+        // The outer `code` is a string, not 0, but data.data.Response
+        // still carries the Error envelope.
         let json = """
         {
-          "code": 0,
+          "code": "UnknownParameter",
+          "mccode": "UnknownParameter",
           "data": {
-            "code": 0,
+            "code": "UnknownParameter",
+            "cgwerrorCode": "UnknownParameter",
             "data": {
               "Response": {
-                "TokenInfo": {
-                  "TotalValue": 1000,
-                  "SurplusValue": 250
-                }
+                "Error": {
+                  "Code": "UnknownParameter",
+                  "Message": "The parameter `PkgType` is not recognized."
+                },
+                "RequestId": "00000000-0000-0000-0000-000000000000"
               }
             }
           }
         }
         """
-        let snap = try TencentTokenPlanResponseParser.parse(
+        XCTAssertThrowsError(try TencentTokenPlanResponseParser.parse(
             data: Data(json.utf8),
-            variant: .hunyuan
-        )
-        XCTAssertEqual(snap.buckets.count, 1)
-        // (1000 - 250) / 1000 = 75% used.
-        XCTAssertEqual(snap.buckets[0].usedPercent, 75.0, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[0].id, "tencentTokenPlan.hunyuan.credits")
-        XCTAssertEqual(snap.buckets[0].groupTitle, "Hunyuan 3 Token Plan")
+            variant: .generic
+        )) { error in
+            guard let qe = error as? QuotaError, case .network = qe else {
+                XCTFail("Expected network error, got \(error)")
+                return
+            }
+        }
     }
-
-    // MARK: - Error envelopes
 
     func testAuthFailureMapsToNeedsLogin() {
         let json = """
@@ -261,9 +331,24 @@ final class TencentTokenPlanParserTests: XCTestCase {
         }
     }
 
-    func testEmptyBodyThrowsParseFailure() {
+    func testEmptyTokenPlanUsageListThrowsParseFailure() {
+        // User signed in but does not own a Token Plan for this
+        // edition — the BFF returns a 0/0 envelope with an empty list.
+        let json = """
+        {
+          "code": 0,
+          "data": {
+            "code": 0,
+            "data": {
+              "Response": {
+                "TokenPlanUsageList": []
+              }
+            }
+          }
+        }
+        """
         XCTAssertThrowsError(try TencentTokenPlanResponseParser.parse(
-            data: Data(),
+            data: Data(json.utf8),
             variant: .generic
         )) { error in
             guard let qe = error as? QuotaError, case .parseFailure = qe else {
@@ -273,25 +358,9 @@ final class TencentTokenPlanParserTests: XCTestCase {
         }
     }
 
-    func testCgiEnvelopeWithoutUsableShapeThrowsParseFailure() {
-        // Outer success, no PkgList and no credit fields anywhere —
-        // we don't synthesise a card, we surface a parse failure so
-        // the user knows the BFF returned something unexpected.
-        let json = """
-        {
-          "code": 0,
-          "data": {
-            "code": 0,
-            "data": {
-              "Response": {
-                "RequestId": "req-1"
-              }
-            }
-          }
-        }
-        """
+    func testEmptyBodyThrowsParseFailure() {
         XCTAssertThrowsError(try TencentTokenPlanResponseParser.parse(
-            data: Data(json.utf8),
+            data: Data(),
             variant: .generic
         )) { error in
             guard let qe = error as? QuotaError, case .parseFailure = qe else {

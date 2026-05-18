@@ -3,41 +3,36 @@ import Foundation
 /// Tencent Cloud TokenHub **Token Plan** usage adapter.
 ///
 /// Lives alongside `TencentHunyuanQuotaAdapter` (the Coding Plan
-/// flavour). Token Plan is a different commercial product under the
-/// TokenHub umbrella — credit-based instead of 5h/weekly/monthly
-/// windows. It comes in two console variants:
+/// flavour). Token Plan is a separate commercial product under the
+/// TokenHub umbrella — credit-based instead of 5h / weekly / monthly
+/// windows. It ships in two console variants:
 ///
-/// - **Generic Token Plan** — `console.cloud.tencent.com/tokenhub/tokenplan`,
-///   covers the cross-model credit bundle.
-/// - **Hunyuan 3 Token Plan** — `console.cloud.tencent.com/tokenhub/tokenplan/hy`,
-///   the HY3-only credit bundle. Tencent ships it under the same
-///   TokenHub shell but it lives on a separate quota counter so we
-///   can't fold the two into one BFF call.
+/// - **Generic Token Plan** (`/tokenhub/tokenplan`) — the
+///   cross-model "Personal Edition" credit bundle. BFF body carries
+///   `Edition: "personal"`.
+/// - **HY3 Token Plan** (`/tokenhub/tokenplan/hy`) — the
+///   Hunyuan 3 credit bundle. BFF body carries `Edition: "hunyuan"`.
 ///
-/// Each Vibe Bar misc instance picks one variant via the `region`
+/// Both pages share one BFF endpoint
+/// (`POST cgi/capi?cmd=DescribeTokenPlanUsage&serviceType=hunyuan`)
+/// and the same response envelope; the page partitions purely by the
+/// `Edition` field. Captured live (2026-05) — the SPA on either page
+/// actually fires both Edition variants concurrently so the dashboard
+/// can render whichever subscription the user owns.
+///
+/// Each Vibe Bar misc instance pins one variant via the `region`
 /// field on `MiscProviderSettings` (`"generic"` or `"hunyuan"`; empty
 /// defaults to `"generic"`). To track both at once, the user clones
 /// the misc instance and sets the clone to the other variant — the
 /// existing instance-clone path already gives each copy its own
-/// credentials slot, quota cache, and visibility toggle. The misc
-/// card shows one variant per instance, which matches the way the
-/// Tencent console renders the two pages.
+/// Keychain slot, quota cache, and visibility toggle. The misc card
+/// shows one variant per instance, mirroring the way the Tencent
+/// console renders the two pages.
 ///
 /// Auth: same `*.cloud.tencent.com` console session jar as the Coding
 /// Plan adapter (`skey` + `uin` + HttpOnly login tickets). The
 /// `csrfCode` URL parameter is computed locally from `skey` via
-/// `TencentCsrfCode` — same algorithm Tencent's own console JS uses.
-///
-/// BFF: `POST https://console.cloud.tencent.com/cgi/capi`. The router
-/// dispatches on `cmd` + `serviceType`. The exact values shipped here
-/// were extrapolated from the Coding Plan capture in
-/// `TencentHunyuanQuotaAdapter` — if Tencent ships a different cmd or
-/// serviceType for Token Plan, swap `Variant.cgiCommand` /
-/// `Variant.cgiServiceType` once a live capture is available. The
-/// parser is intentionally tolerant of both the Coding Plan-style
-/// `PerFiveHour/PerWeek/PerMonth` envelope and a credit-style
-/// `TotalCredits/UsedCredits/RemainingCredits` envelope so either
-/// shape lands a non-empty bucket on the card.
+/// `TencentCsrfCode` — same algorithm Tencent's console JS uses.
 public struct TencentTokenPlanQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .tencentTokenPlan
 
@@ -122,7 +117,7 @@ public struct TencentTokenPlanQuotaAdapter: QuotaAdapter {
 
         let csrfCode = TencentCsrfCode.compute(from: skey)
         let urlString = "https://console.cloud.tencent.com/cgi/capi" +
-            "?cmd=\(variant.cgiCommand)&action=delegate&serviceType=\(variant.cgiServiceType)" +
+            "?cmd=DescribeTokenPlanUsage&action=delegate&serviceType=hunyuan" +
             "&t=\(Self.epochMillis())&uin=\(uin)&csrfCode=\(csrfCode)"
         guard let url = URL(string: urlString) else {
             throw QuotaError.network("Tencent Token Plan: could not build BFF URL.")
@@ -140,17 +135,22 @@ public struct TencentTokenPlanQuotaAdapter: QuotaAdapter {
             forHTTPHeaderField: "User-Agent"
         )
 
-        // The body mirrors the Hunyuan Coding Plan body — the same
-        // `data: {Version: ...}` shape the CGI router expects for
-        // `DescribePkg`-family commands. Variant-specific overrides
-        // (e.g. a sub-model identifier) live on `Variant.bodyOverrides`.
-        var body: [String: Any] = [
-            "serviceType": variant.cgiServiceType,
-            "cmd": variant.cgiCommand,
+        // Body shape captured from the live TokenHub SPA. `Edition` is
+        // the partition key — `personal` returns the generic Token
+        // Plan (`tp_standard`), `hunyuan` returns the HY3 Token Plan
+        // (`tp_hy_standard`). Any unrecognized data key triggers
+        // `UnknownParameter` from the BFF, so we ship only what the
+        // SPA itself sends.
+        let body: [String: Any] = [
             "regionId": 1,
-            "data": variant.requestData
+            "serviceType": "hunyuan",
+            "cmd": "DescribeTokenPlanUsage",
+            "data": [
+                "Version": "2023-09-01",
+                "Edition": variant.editionParam,
+                "Language": "zh-CN"
+            ]
         ]
-        for (k, v) in variant.bodyOverrides { body[k] = v }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response): (Data, URLResponse)
@@ -188,17 +188,19 @@ public struct TencentTokenPlanQuotaAdapter: QuotaAdapter {
 /// surface stays unchanged.
 public enum TencentTokenPlanVariant: String, CaseIterable, Sendable {
     /// `console.cloud.tencent.com/tokenhub/tokenplan` — the cross-model
-    /// credit bundle. Default when no setting is stored.
+    /// "Personal Edition" credit bundle. Default when no setting is
+    /// stored. Maps to `Edition: "personal"` on the BFF.
     case generic
     /// `console.cloud.tencent.com/tokenhub/tokenplan/hy` — the
-    /// Hunyuan 3 credit bundle.
+    /// Hunyuan 3 credit bundle. Maps to `Edition: "hunyuan"` on the
+    /// BFF.
     case hunyuan
 
     public static func from(settingsRegion raw: String?) -> Self {
         switch raw?.lowercased() {
-        case "hunyuan", "hy", "hy3":
+        case "hunyuan", "hy", "hy3", "personal-hy", "hunyuan3":
             return .hunyuan
-        case "generic", "general", "all", nil, "":
+        case "generic", "general", "personal", "all", nil, "":
             return .generic
         default:
             return .generic
@@ -219,47 +221,14 @@ public enum TencentTokenPlanVariant: String, CaseIterable, Sendable {
         }
     }
 
-    /// CGI BFF `cmd` parameter. Both variants use `DescribePkg` until a
-    /// live capture proves Tencent ships a Token Plan-specific cmd —
-    /// edit here when that lands.
-    var cgiCommand: String { "DescribePkg" }
-
-    /// CGI BFF `serviceType` parameter.
-    ///
-    /// - Generic Token Plan routes through TokenHub's own service
-    ///   identifier (`tokenhub`). Captured from the live console.
-    /// - HY3 Token Plan still routes through `hunyuan` because the
-    ///   page lives under the Hunyuan product tree on the BFF side
-    ///   even though the front-end URL is nested under TokenHub.
-    var cgiServiceType: String {
+    /// BFF body `data.Edition` value — `personal` for the generic
+    /// Personal Edition, `hunyuan` for the HY3 variant.
+    var editionParam: String {
         switch self {
-        case .generic: return "tokenhub"
+        case .generic: return "personal"
         case .hunyuan: return "hunyuan"
         }
     }
-
-    /// Body payload posted under `data`. Both variants currently send
-    /// `Version: "2023-09-01"` (matches the Coding Plan body); a
-    /// `PkgType` selector is sent for HY3 so the router can pick the
-    /// Token Plan counter rather than the Coding Plan one when the
-    /// service shares both products. Update when a live capture
-    /// clarifies the exact selector keys.
-    var requestData: [String: Any] {
-        switch self {
-        case .generic:
-            return ["Version": "2023-09-01"]
-        case .hunyuan:
-            return [
-                "Version": "2023-09-01",
-                "PkgType": "tokenplan"
-            ]
-        }
-    }
-
-    /// Optional extra top-level body fields. Empty by default; reserve
-    /// for variant-specific overrides if the BFF eventually requires
-    /// them.
-    var bodyOverrides: [String: Any] { [:] }
 
     var refererURL: URL {
         switch self {
@@ -303,157 +272,103 @@ enum TencentTokenPlanResponseParser {
             throw QuotaError.network("Tencent Token Plan: \(msg)")
         }
 
+        guard let usageList = response["TokenPlanUsageList"] as? [[String: Any]] else {
+            // The BFF returned a 0/0 envelope but no usage list — this
+            // means the user is signed in but doesn't own a Token Plan
+            // for this edition. Surface as `needsLogin`-style empty
+            // state via parseFailure so the card shows a "set up"
+            // CTA instead of a hard error.
+            throw QuotaError.parseFailure("Tencent Token Plan response had no TokenPlanUsageList.")
+        }
+
+        guard !usageList.isEmpty else {
+            throw QuotaError.parseFailure(
+                "Tencent Token Plan returned an empty TokenPlanUsageList for the \(variant.displayLabel)."
+            )
+        }
+
         var buckets: [QuotaBucket] = []
         var planName: String?
-
-        // Shape 1 — `PkgList[].UsageDetail.PerFiveHour/PerWeek/PerMonth`.
-        // If Tencent ships Token Plan in the same envelope as the
-        // Coding Plan, the existing time-window buckets light up.
-        if let pkgList = response["PkgList"] as? [[String: Any]], let firstPkg = pkgList.first {
-            planName = (firstPkg["PkgName"] as? String)?.trimmed
-            if let detail = firstPkg["UsageDetail"] as? [String: Any] {
-                buckets.append(contentsOf: parseTimeWindows(detail, variant: variant))
-            }
-        }
-
-        // Shape 2 — flat credit envelope. Walk the response tree for
-        // any dictionary that carries the recognised credit keys, then
-        // surface a single aggregate "Credits" bucket. Matches the
-        // pattern used by the Alibaba Token Plan parser for its
-        // `TotalValue / SurplusValue` fallback.
-        if buckets.isEmpty {
-            if let creditDict = findFirstDictionary(
-                matchingAnyKey: [
-                    "TotalCredits", "TotalCreditValue", "TotalValue",
-                    "UsedCredits", "UsedValue",
-                    "RemainingCredits", "SurplusCredits", "RemainingValue", "SurplusValue"
-                ],
-                in: response
-            ) {
-                if let bucket = parseCreditEnvelope(creditDict, variant: variant) {
-                    buckets.append(bucket)
-                }
-            }
-        }
-
-        // Shape 3 — `TokenInfo` / `TokenUsageDetail` nested under the
-        // Response, as some Tencent BFFs ship for token-style plans.
-        if buckets.isEmpty,
-           let tokenInfo = findFirstDictionary(
-               matchingAnyKey: ["TokenInfo", "TokenUsageDetail", "TokenPkg"],
-               in: response
-           ) {
-            if let bucket = parseCreditEnvelope(tokenInfo, variant: variant) {
-                buckets.append(bucket)
+        for (index, item) in usageList.enumerated() {
+            guard let bucket = bucket(for: item, variant: variant, index: index) else { continue }
+            buckets.append(bucket)
+            if planName == nil,
+               let pkg = item["TokenPlanPackage"] as? [String: Any],
+               let plan = pkg["Plan"] as? String, !plan.isEmpty {
+                planName = humanPlanName(plan)
             }
         }
 
         guard !buckets.isEmpty else {
-            throw QuotaError.parseFailure("Tencent Token Plan response had no usable usage envelope.")
+            throw QuotaError.parseFailure("Tencent Token Plan response had no usable credit data.")
         }
 
         return Snapshot(buckets: buckets, planName: planName ?? variant.displayLabel)
     }
 
-    // MARK: - Wire-shape variants
+    // MARK: - Per-usage bucket
 
-    private static func parseTimeWindows(_ detail: [String: Any], variant: TencentTokenPlanVariant) -> [QuotaBucket] {
-        var buckets: [QuotaBucket] = []
-        let windows: [(id: String, title: String, shortLabel: String, key: String, seconds: Int)] = [
-            (
-                "tencentTokenPlan.\(variant.rawValue).fiveHour",
-                "5 Hours",
-                "5h",
-                "PerFiveHour",
-                5 * 3600
-            ),
-            (
-                "tencentTokenPlan.\(variant.rawValue).weekly",
-                "Weekly",
-                "Wk",
-                "PerWeek",
-                7 * 86_400
-            ),
-            (
-                "tencentTokenPlan.\(variant.rawValue).monthly",
-                "Monthly",
-                "Mo",
-                "PerMonth",
-                30 * 86_400
-            )
-        ]
-        for spec in windows {
-            guard let window = detail[spec.key] as? [String: Any] else { continue }
-            let total = parseInt(window["Total"]) ?? 0
-            let used = parseInt(window["Used"]) ?? 0
-            let explicitPct = parseDouble(window["UsagePercent"])
-            let percent: Double
-            if let explicitPct {
-                percent = max(0, min(100, explicitPct))
-            } else if total > 0 {
-                percent = max(0, min(100, Double(used) / Double(total) * 100))
-            } else {
-                continue
-            }
-            buckets.append(QuotaBucket(
-                id: spec.id,
-                title: spec.title,
-                shortLabel: spec.shortLabel,
-                usedPercent: percent,
-                resetAt: parseShanghaiDate(window["EndTime"] as? String),
-                rawWindowSeconds: spec.seconds
-            ))
-        }
-        return buckets
-    }
-
-    private static func parseCreditEnvelope(
-        _ dict: [String: Any],
-        variant: TencentTokenPlanVariant
+    private static func bucket(
+        for item: [String: Any],
+        variant: TencentTokenPlanVariant,
+        index: Int
     ) -> QuotaBucket? {
-        let total = parseDouble(
-            dict["TotalCredits"]
-                ?? dict["TotalCreditValue"]
-                ?? dict["TotalValue"]
-                ?? dict["Total"]
-        ) ?? 0
-        let used = parseDouble(
-            dict["UsedCredits"]
-                ?? dict["UsedValue"]
-                ?? dict["Used"]
-        )
-        let remaining = parseDouble(
-            dict["RemainingCredits"]
-                ?? dict["SurplusCredits"]
-                ?? dict["RemainingValue"]
-                ?? dict["SurplusValue"]
-                ?? dict["Remaining"]
-        )
+        guard let resource = item["TokenPlanResource"] as? [String: Any] else { return nil }
+        let pkg = item["TokenPlanPackage"] as? [String: Any]
+        let plan = (pkg?["Plan"] as? String) ?? "tp"
 
-        guard total > 0 else { return nil }
+        // Token Plan counters arrive as strings (`"100000000"`); take
+        // the safe path through `parseDouble` so we don't truncate
+        // hundred-million scale values via Int.
+        let capacity = parseDouble(resource["CycleCapacity"]) ?? 0
+        guard capacity > 0 else { return nil }
+
+        let used = parseDouble(resource["CycleTotalUsage"])
+        let remain = parseDouble(resource["CycleRemain"])
         let usedValue: Double
         if let used {
             usedValue = max(0, used)
-        } else if let remaining {
-            usedValue = max(0, total - remaining)
+        } else if let remain {
+            usedValue = max(0, capacity - remain)
         } else {
             return nil
         }
-        let percent = max(0, min(100, usedValue / total * 100))
+        let percent = max(0, min(100, usedValue / capacity * 100))
 
-        let resetAt = parseShanghaiDate(dict["EndTime"] as? String)
-            ?? parseShanghaiDate(dict["NextResetTime"] as? String)
-            ?? parseShanghaiDate(dict["ExpireTime"] as? String)
+        let resetAt = parseShanghaiDate(pkg?["ExpireTime"] as? String)
+            ?? parseShanghaiDate(resource["ExpireTime"] as? String)
 
+        // Use the plan code (`tp_standard`, `tp_hy_standard`, ...) as
+        // the stable bucket id suffix so caches survive multi-plan
+        // upgrades cleanly; fall back to the array index when Tencent
+        // ever ships a plan without a Plan key.
+        let stableSuffix = plan.isEmpty ? "row\(index)" : plan
+        let displayLabel = humanPlanName(plan)
         return QuotaBucket(
-            id: "tencentTokenPlan.\(variant.rawValue).credits",
+            id: "tencentTokenPlan.\(variant.rawValue).\(stableSuffix)",
             title: "Credits",
             shortLabel: "Credits",
             usedPercent: percent,
             resetAt: resetAt,
             rawWindowSeconds: nil,
-            groupTitle: variant.displayLabel
+            groupTitle: displayLabel
         )
+    }
+
+    /// `tp_standard` → "Standard", `tp_hy_standard` → "HY Standard",
+    /// `tp_hy_pro` → "HY Pro". Leaves unknown shapes alone.
+    private static func humanPlanName(_ raw: String) -> String {
+        let parts = raw.split(separator: "_").map(String.init)
+        guard parts.first == "tp", parts.count > 1 else { return raw }
+        let rest = parts.dropFirst().map { piece -> String in
+            switch piece.lowercased() {
+            case "hy", "hy3": return "HY"
+            case "tokenplan": return "Token Plan"
+            default:
+                return piece.prefix(1).uppercased() + piece.dropFirst()
+            }
+        }
+        return rest.joined(separator: " ")
     }
 
     // MARK: - CGI router unwrap
@@ -464,12 +379,24 @@ enum TencentTokenPlanResponseParser {
         }
         // Legacy direct shape: pass through.
         if root["Response"] != nil { return data }
-        // Recognise the CGI router wrapper.
-        guard let outerCode = (root["code"] as? NSNumber)?.intValue else {
+        // Recognise the CGI router wrapper. The outer code may serialise
+        // as either a number or a string ("UnknownParameter" arrives as
+        // a string when the inner Response itself signals the failure).
+        let outerCodeInt = (root["code"] as? NSNumber)?.intValue
+        let outerCodeString = (root["code"] as? String)
+        guard outerCodeInt != nil || outerCodeString != nil else {
             return data
         }
-        if outerCode != 0 {
-            throw cgiBffError(code: outerCode, layer: "outer", payload: root)
+        if let outerCodeInt, outerCodeInt != 0 {
+            throw cgiBffError(code: outerCodeInt, layer: "outer", payload: root)
+        }
+        if let outerCodeString, outerCodeString != "0", outerCodeString.lowercased() != "success" {
+            // Try to peel anyway — the inner Response.Error carries the
+            // actionable message and the parser dispatches from there.
+            // If there's no inner data block, surface the outer code.
+            if root["data"] == nil {
+                throw QuotaError.network("Tencent Token Plan CGI BFF outer error: \(outerCodeString)")
+            }
         }
         guard let middle = root["data"] as? [String: Any] else {
             throw QuotaError.parseFailure("Tencent Token Plan CGI envelope had no middle data block.")
@@ -525,22 +452,13 @@ enum TencentTokenPlanResponseParser {
 
     // MARK: - Helpers
 
-    private static func parseInt(_ value: Any?) -> Int? {
-        switch value {
-        case let v as Int: return v
-        case let v as Double: return Int(v)
-        case let v as NSNumber: return v.intValue
-        case let v as String: return Int(v)
-        default: return nil
-        }
-    }
-
     private static func parseDouble(_ value: Any?) -> Double? {
         switch value {
         case let v as Double: return v
         case let v as Int: return Double(v)
         case let v as NSNumber: return v.doubleValue
-        case let v as String: return Double(v)
+        case let v as String:
+            return Double(v.trimmingCharacters(in: .whitespacesAndNewlines))
         default: return nil
         }
     }
@@ -554,28 +472,5 @@ enum TencentTokenPlanResponseParser {
         formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.date(from: raw)
-    }
-
-    private static func findFirstDictionary(matchingAnyKey keys: [String], in value: Any) -> [String: Any]? {
-        if let dict = value as? [String: Any] {
-            if keys.contains(where: { dict[$0] != nil }) { return dict }
-            for nested in dict.values {
-                if let found = findFirstDictionary(matchingAnyKey: keys, in: nested) { return found }
-            }
-            return nil
-        }
-        if let arr = value as? [Any] {
-            for item in arr {
-                if let found = findFirstDictionary(matchingAnyKey: keys, in: item) { return found }
-            }
-        }
-        return nil
-    }
-}
-
-private extension String {
-    var trimmed: String? {
-        let t = trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
     }
 }
