@@ -5,9 +5,8 @@ import Foundation
 /// Auth: cookies captured from a Tencent Cloud console login. The user
 /// signs in once via `MiscWebLoginController` (or pastes a Cookie
 /// header in Settings); we ship the full `*.cloud.tencent.com` jar to
-/// `console-hc.cloud.tencent.com` and derive the per-request
-/// `csrfCode` URL parameter locally from the `skey` cookie via
-/// `TencentCsrfCode`.
+/// the console BFF and derive the per-request `csrfCode` URL parameter
+/// locally from the `skey` cookie via `TencentCsrfCode`.
 ///
 /// We previously ran a sub-account password login via
 /// `TencentSessionManager`, but Tencent's `auth-api/login/submit` now
@@ -16,9 +15,20 @@ import Foundation
 /// generates. The cookie path mirrors what MiMo / Kimi / Cursor do
 /// and avoids the captcha treadmill.
 ///
-/// Endpoint: `POST https://console-hc.cloud.tencent.com/_api/hunyuan/DescribePkg`
-/// with the standard Tencent console BFF envelope. Returns the
-/// PerFiveHour / PerWeek / PerMonth windows for the user's plan.
+/// Endpoint: `POST https://console.cloud.tencent.com/cgi/capi` with
+/// `?cmd=DescribePkg&action=delegate&serviceType=hunyuan` plus the
+/// usual `t`/`uin`/`csrfCode` console params. Returns the PerFiveHour /
+/// PerWeek / PerMonth windows for the user's plan, wrapped in the CGI
+/// router envelope (`{code:0, data:{code:0, cgwerrorCode:0, data:{Response:...}}}`).
+///
+/// Migrated 2026-05 from the legacy `console-hc.cloud.tencent.com/_api/hunyuan/DescribePkg`
+/// path, which Tencent announced will be fully shut down on 2026-09-30
+/// alongside the rest of the standalone `hunyuan.cloud.tencent.com`
+/// console. The new console lives at `console.cloud.tencent.com/tokenhub/codingplan`
+/// (TokenHub-branded) and routes through the same `cgi/capi` BFF as
+/// the rest of the Tencent Cloud console; `serviceType=hunyuan` is
+/// still the backend identifier on Tencent's side, so the response
+/// shape inside the new wrapper is byte-identical to the legacy one.
 public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .tencentHunyuan
 
@@ -106,8 +116,15 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
         }
 
         let csrfCode = TencentCsrfCode.compute(from: skey)
-        let urlString = "https://console-hc.cloud.tencent.com/_api/hunyuan/DescribePkg" +
-            "?t=\(Self.epochMillis())&uin=\(uin)&csrfCode=\(csrfCode)"
+        // The TokenHub console routes Coding Plan reads through the
+        // shared `/cgi/capi` BFF. `cmd`, `action=delegate`, and
+        // `serviceType=hunyuan` are required by the router; `t`, `uin`,
+        // and `csrfCode` are the standard console session params. The
+        // page also sends `secure=1&version=3&json=1&dictId=...&sts=1&ownerUin=...`
+        // but those are all optional — the call still 200s without them.
+        let urlString = "https://console.cloud.tencent.com/cgi/capi" +
+            "?cmd=DescribePkg&action=delegate&serviceType=hunyuan" +
+            "&t=\(Self.epochMillis())&uin=\(uin)&csrfCode=\(csrfCode)"
         guard let url = URL(string: urlString) else {
             throw QuotaError.network("Tencent Hunyuan: could not build BFF URL.")
         }
@@ -116,8 +133,8 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(resolution.header, forHTTPHeaderField: "Cookie")
-        request.setValue("https://hunyuan.cloud.tencent.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://hunyuan.cloud.tencent.com/", forHTTPHeaderField: "Referer")
+        request.setValue("https://console.cloud.tencent.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://console.cloud.tencent.com/tokenhub/codingplan", forHTTPHeaderField: "Referer")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
@@ -172,9 +189,17 @@ enum TencentHunyuanResponseParser {
         guard !data.isEmpty else {
             throw QuotaError.parseFailure("Tencent Hunyuan returned an empty body.")
         }
+        // Tencent serves the same payload through two transports today.
+        // The legacy `console-hc.cloud.tencent.com/_api/hunyuan/DescribePkg`
+        // path returns `{Response: {...}}` directly. The new TokenHub
+        // path on `console.cloud.tencent.com/cgi/capi` wraps the same
+        // envelope twice: `{code, data: {code, cgwerrorCode, data: {Response: ...}}}`.
+        // Peel the CGI wrapper transparently so the rest of the parser
+        // (and every existing test fixture) stays oblivious.
+        let envelopeData = try Self.unwrapCgiBffEnvelopeIfPresent(data)
         let envelope: TencentHunyuanEnvelope
         do {
-            envelope = try JSONDecoder().decode(TencentHunyuanEnvelope.self, from: data)
+            envelope = try JSONDecoder().decode(TencentHunyuanEnvelope.self, from: envelopeData)
         } catch {
             throw QuotaError.parseFailure(
                 "Tencent Hunyuan response not parseable: \(error.localizedDescription)"
@@ -270,6 +295,57 @@ enum TencentHunyuanResponseParser {
             resetAt: parseShanghaiDate(window.endTime),
             rawWindowSeconds: windowSeconds
         )
+    }
+
+    /// If `data` is wrapped in the `console.cloud.tencent.com/cgi/capi`
+    /// router envelope, walk two `data.data` hops to the inner
+    /// `{Response: ...}` payload. Otherwise return `data` untouched so
+    /// the existing direct-shape fixtures and the legacy
+    /// `console-hc...` host both still parse.
+    ///
+    /// Non-zero outer / middle `code` values are treated as auth or
+    /// rate-limit failures where the code is recognisable, and as a
+    /// generic network error otherwise — we don't want to confuse a
+    /// router-level rejection with a parse failure inside the inner
+    /// `Response.Error` channel.
+    private static func unwrapCgiBffEnvelopeIfPresent(_ data: Data) throws -> Data {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return data
+        }
+        // The new wrapper has a top-level numeric `code` and no
+        // top-level `Response` key. Anything else is the legacy shape.
+        guard root["Response"] == nil,
+              let outerCode = (root["code"] as? NSNumber)?.intValue else {
+            return data
+        }
+        // Always check outer code first — when the router rejects the
+        // request (e.g. 401), `data` is usually `null` and we don't
+        // want to misreport that as a missing inner payload.
+        if outerCode != 0 {
+            throw cgiBffError(code: outerCode, layer: "outer", payload: root)
+        }
+        guard let middle = root["data"] as? [String: Any] else {
+            throw QuotaError.parseFailure("Tencent CGI BFF envelope had no middle data block.")
+        }
+        if let middleCode = (middle["code"] as? NSNumber)?.intValue, middleCode != 0 {
+            throw cgiBffError(code: middleCode, layer: "middle", payload: middle)
+        }
+        guard let inner = middle["data"] as? [String: Any] else {
+            // Recognisable wrapper, both codes zero, but no inner
+            // payload — surface this as a parse failure rather than
+            // silently handing the wrapper itself to the Response decoder.
+            throw QuotaError.parseFailure("Tencent CGI BFF envelope had no inner data block.")
+        }
+        return try JSONSerialization.data(withJSONObject: inner)
+    }
+
+    private static func cgiBffError(code: Int, layer: String, payload: [String: Any]) -> Error {
+        if code == 401 || code == 403 { return QuotaError.needsLogin }
+        if code == 429 { return QuotaError.rateLimited }
+        let message = (payload["message"] as? String)
+            ?? (payload["msg"] as? String)
+            ?? "code \(code)"
+        return QuotaError.network("Tencent CGI BFF \(layer) error: \(message)")
     }
 
     private static func isAuthError(_ error: TencentHunyuanError) -> Bool {

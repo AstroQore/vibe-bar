@@ -207,4 +207,78 @@ final class TencentHunyuanParserTests: XCTestCase {
             }
         }
     }
+
+    func testParsesCgiBffEnvelope() throws {
+        // TokenHub-era `console.cloud.tencent.com/cgi/capi?cmd=DescribePkg`
+        // wraps the legacy `{Response: ...}` payload in
+        // `{code, data: {code, cgwerrorCode, data: <inner>}}`. The parser
+        // must peel both wrappers transparently and still surface the
+        // same three windows.
+        let json = """
+        {
+          "code": 0,
+          "data": {
+            "code": 0,
+            "cgwerrorCode": 0,
+            "data": {
+              "Response": {
+                "RequestId": "req-cgi-1",
+                "PkgList": [
+                  {
+                    "PkgName": "Coding Plan Pro",
+                    "PkgType": "pro",
+                    "UsageDetail": {
+                      "PerFiveHour": {
+                        "Total": 6000, "Used": 0, "UsagePercent": 0,
+                        "EndTime": "2026-05-18 14:14:55"
+                      },
+                      "PerWeek": {
+                        "Total": 45000, "Used": 0, "UsagePercent": 0,
+                        "EndTime": "2026-05-25 00:00:00"
+                      },
+                      "PerMonth": {
+                        "Total": 90000, "Used": 23830, "UsagePercent": 26.48,
+                        "EndTime": "2026-05-24 00:00:42"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+        """
+        let snap = try TencentHunyuanResponseParser.parse(data: Data(json.utf8))
+        XCTAssertEqual(snap.planName, "Coding Plan Pro")
+        XCTAssertEqual(snap.buckets.count, 3)
+        XCTAssertEqual(snap.buckets[2].id, "tencentHunyuan.monthly")
+        XCTAssertEqual(snap.buckets[2].usedPercent, 26.48, accuracy: 0.01)
+    }
+
+    func testCgiBffOuter401MapsToNeedsLogin() {
+        let json = """
+        {"code": 401, "message": "session expired", "data": null}
+        """
+        XCTAssertThrowsError(try TencentHunyuanResponseParser.parse(data: Data(json.utf8))) { error in
+            guard let qe = error as? QuotaError, case .needsLogin = qe else {
+                XCTFail("Expected needsLogin, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testCgiBffMiddleNonZeroMapsToNetworkError() {
+        // Outer code 0 but middle (CGW) code non-zero — typically a
+        // backend gateway hiccup, surface as network error so the UI
+        // shows a retry rather than dragging the user back to login.
+        let json = """
+        {"code": 0, "data": {"code": 9999, "cgwerrorCode": 9999, "msg": "upstream timeout", "data": null}}
+        """
+        XCTAssertThrowsError(try TencentHunyuanResponseParser.parse(data: Data(json.utf8))) { error in
+            guard let qe = error as? QuotaError, case .network = qe else {
+                XCTFail("Expected network error, got \(error)")
+                return
+            }
+        }
+    }
 }
