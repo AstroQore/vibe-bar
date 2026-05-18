@@ -221,6 +221,20 @@ struct MiscProviderSettingsSection: View {
                     helpText: "Volcengine console session cookies expire after a few hours. When the card flips to \"Needs re-login\", click here to refresh."
                 )
             }
+        case .baiduQianfan:
+            VStack(alignment: .leading, spacing: 4) {
+                CookieSourceControls(
+                    tool: .baiduQianfan,
+                    instanceID: instanceID,
+                    spec: BaiduQianfanQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste console.bce.baidu.com Cookie header (BDUSS=…; STOKEN=…; __bid_n=…; …)"
+                )
+                MiscWebLoginRow(
+                    tool: .baiduQianfan,
+                    instanceID: instanceID,
+                    helpText: "Sign in to console.bce.baidu.com once with the Baidu Cloud account that owns the Qianfan Coding Plan. Vibe Bar then refreshes the BCE console session in the background."
+                )
+            }
         case .openCodeGo:
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(

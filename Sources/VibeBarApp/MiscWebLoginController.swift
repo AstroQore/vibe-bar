@@ -752,6 +752,35 @@ final class MiscWebLoginRegistry {
                 savedConfirmation: "Alibaba Token Plan cookies saved.",
                 setupHint: "Sign in to Bailian (CN) or ModelStudio (Intl) on the same Aliyun account that owns the Token Plan. Then click Save Cookies."
             )
+        case .baiduQianfan:
+            return MiscWebLoginController.Config(
+                tool: .baiduQianfan,
+                // Land users directly on the Qianfan Coding Plan
+                // subscription page so they can confirm the plan is
+                // active before saving cookies. BCE login first hops
+                // through `passport.baidu.com`; both the Passport
+                // host and `bce.baidu.com` need to be on the trusted
+                // list so the WKWebView lets the SSO redirect through.
+                loginURL: URL(string: "https://console.bce.baidu.com/qianfan/resource/subscribe")!,
+                cookieDomainSuffixes: ["baidu.com", "bce.baidu.com", "baidubce.com"],
+                requiredCookieNames: [],
+                trustedAuthHostSuffixes: [
+                    "baidu.com",
+                    "bce.baidu.com",
+                    "baidubce.com",
+                    "passport.baidu.com",
+                    "wappass.baidu.com",
+                    "loginservice.baidu.com",
+                    "bdimg.com",
+                    "bdstatic.com",
+                    "baidustatic.com",
+                    "captcha.baidu.com",
+                    "tieba.baidu.com"
+                ],
+                windowTitle: "Baidu Qianfan Coding Plan Login",
+                savedConfirmation: "Baidu Qianfan cookies saved.",
+                setupHint: "Sign in to console.bce.baidu.com with the Baidu Cloud account that owns the Qianfan Coding Plan. Then click Save Cookies."
+            )
         default:
             return nil
         }
