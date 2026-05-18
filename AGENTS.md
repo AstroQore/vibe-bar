@@ -478,13 +478,48 @@ more than one human or agent shaped a commit.
 The repository is `AstroQore/vibe-bar` on GitHub. Default branch is
 `main`. Any contribution is licensed under AGPL-3.0.
 
-### 9.1 End-to-end PR flow
+### 9.1 Branch and worktree rules
+
+All maintenance work starts from an up-to-date `main`, then moves onto a
+topic branch. Do not commit directly on `main`, and do not push directly
+to `main` unless AQ explicitly asks for an emergency direct push.
+
+Use short, descriptive branch names with a conventional prefix:
+
+- `feat/<short-topic>` for new user-facing behavior.
+- `fix/<short-topic>` for bug fixes.
+- `docs/<short-topic>` for documentation-only changes.
+- `test/<short-topic>` for test-only changes.
+- `refactor/<short-topic>` for behavior-preserving restructuring.
+- `release/<version-or-topic>` for release-prep branches.
+
+Commit subjects still follow this repo's normal style: imperative,
+plain-English, and no `feat:` / `fix:` / `chore:` prefix. The prefix is
+for branch organization only.
+
+Because multiple local AI agents may work in this checkout at once,
+prefer creating a separate Git worktree for non-trivial changes:
+
+```sh
+git checkout main
+git pull --ff-only origin main
+git worktree add ../vibe-bar-<short-topic> -b <prefix>/<short-topic> main
+cd ../vibe-bar-<short-topic>
+```
+
+If the user did not explicitly mention worktrees, do not stop just to
+ask. Pick the safer path and keep moving: use a worktree when parallel
+work, a dirty checkout, or a long-running branch would make isolation
+useful; for tiny single-agent changes on a clean checkout, an in-place
+topic branch is acceptable.
+
+### 9.2 End-to-end PR flow
 
 ```sh
 # 1. Branch from main
 git checkout main
-git pull --ff-only
-git checkout -b <short-topic-branch-name>
+git pull --ff-only origin main
+git checkout -b <prefix>/<short-topic>
 
 # 2. Make your change. Keep edits scoped to the topic.
 
@@ -499,7 +534,7 @@ git add <files>
 git commit -m "<imperative subject line>"
 
 # 5. Push the branch.
-git push -u origin <short-topic-branch-name>
+git push -u origin <prefix>/<short-topic>
 
 # 6. Open the PR.
 gh pr create --base main \
@@ -517,7 +552,10 @@ EOF
 )"
 ```
 
-### 9.2 Required local checks before pushing
+Do not replace the PR flow with a direct push to `main`. Push the topic
+branch and open a PR against `main`.
+
+### 9.3 Required local checks before pushing
 
 | Check                                                         | Why it must pass                                              |
 | ------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -529,7 +567,7 @@ EOF
 If you cannot run one of these (no macOS host, no Xcode, etc.), say so
 explicitly in the PR description instead of skipping the checkbox.
 
-### 9.3 Commit message style
+### 9.4 Commit message style
 
 Match what `git log` shows on `main`:
 
@@ -552,7 +590,7 @@ be current when the off-screen NSImage rendered. Forward the matching
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 
-### 9.4 After the PR is open
+### 9.5 After the PR is open
 
 - CI may run additional checks. Address any failures.
 - A maintainer may request changes. Push follow-up commits to the same

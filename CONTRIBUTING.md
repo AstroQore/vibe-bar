@@ -19,6 +19,24 @@ Do not commit personal emails, machine hostnames, internal handles, or
 `/Users/<name>` paths inside source files, fixtures, or logs — that's a
 source-content rule, not a commit-author rule.
 
+## Branch and PR Workflow
+
+Start from an up-to-date `main`, then create a topic branch. Use short,
+descriptive branch names with conventional prefixes such as
+`feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `test/<topic>`,
+`refactor/<topic>`, or `release/<topic>`. These prefixes are for branch
+names only; commit subjects should stay imperative and should not use
+`feat:` / `fix:` / `chore:` prefixes.
+
+If multiple local agents may be working at once, prefer a separate Git
+worktree so each branch has its own checkout. If the user has not
+explicitly asked about worktrees, choose the safer path and proceed
+instead of stopping for confirmation.
+
+Submit changes through a pull request against `main`. Do not push
+directly to `main` unless AQ explicitly asks for an emergency direct
+push.
+
 ## Development Setup
 
 Vibe Bar is a Swift package with two main targets:
