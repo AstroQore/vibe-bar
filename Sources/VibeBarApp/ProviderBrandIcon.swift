@@ -62,7 +62,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
         case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return tool.miscFallbackSymbol
         }
     }
@@ -162,7 +162,7 @@ enum ProviderBrandIcon {
         let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             nil
         }
         guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -359,6 +359,7 @@ extension ToolType {
         case .codex:       return "ProviderIcon-codex"
         case .claude:      return "ProviderIcon-claude"
         case .alibaba:     return "ProviderIcon-alibaba"
+        case .alibabaTokenPlan: return "ProviderIcon-alibaba"
         case .gemini:      return "ProviderIcon-gemini"
         case .antigravity: return "ProviderIcon-antigravity"
         case .copilot:     return "ProviderIcon-copilot"
@@ -385,7 +386,7 @@ extension ToolType {
             return 1.0
         case .gemini, .antigravity, .copilot, .cursor:
             return 1.25
-        case .alibaba, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 1.36
         case .zai:
             return 1.5
@@ -401,6 +402,7 @@ extension ToolType {
         case .codex, .claude:
             return "sparkles"
         case .alibaba:     return "cube.transparent"
+        case .alibabaTokenPlan: return "creditcard"
         case .gemini:      return "sparkle"
         case .antigravity: return "arrow.up.forward.app"
         case .copilot:     return "chevron.left.forward.slash.chevron.right"

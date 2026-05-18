@@ -82,12 +82,26 @@ final class HiddenCookieRefresher {
                     requiredCookieNames: [],
                     postLoadWait: 10
                 )
+            case .alibabaTokenPlan:
+                // Same console family as Alibaba Coding Plan — the
+                // cookies are interchangeable since they're issued
+                // by `*.aliyun.com`. We still refresh through the
+                // Token Plan dashboard URL so the page's own keepalive
+                // touches the BSS-side session helpers the Token Plan
+                // BFF (`GetSeatSubscriptionSummary`) cares about.
+                return Config(
+                    tool: .alibabaTokenPlan,
+                    refreshURL: URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=plan#/efm/subscription/token-plan")!,
+                    cookieDomainSuffixes: ["aliyun.com", "alibabacloud.com"],
+                    requiredCookieNames: [],
+                    postLoadWait: 10
+                )
             default:
                 return nil
             }
         }
 
-        static let supportedTools: [ToolType] = [.tencentHunyuan, .volcengine, .alibaba]
+        static let supportedTools: [ToolType] = [.tencentHunyuan, .volcengine, .alibaba, .alibabaTokenPlan]
     }
 
     private var inflight: [ToolType: Task<Bool, Never>] = [:]

@@ -16,8 +16,8 @@ import Foundation
 /// Tools split into two tiers:
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
-/// - **Misc** (`.alibaba`, `.gemini`, `.antigravity`, `.copilot`, `.zai`,
-///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
+/// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.gemini`, `.antigravity`,
+///   `.copilot`, `.zai`, `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
 ///   `.tencentHunyuan`, `.volcengine`, `.openCodeGo`, `.kilo`, `.kiro`,
 ///   `.ollama`, `.openRouter`, `.warp`) — usage-only cards on the Misc tab.
 ///   No token-cost scanning, no Atlassian-style status polling.
@@ -31,6 +31,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case claude
     // Misc — usage-only, no cost / status integration.
     case alibaba
+    case alibabaTokenPlan
     case gemini
     case antigravity
     case copilot
@@ -54,7 +55,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .volcengine, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -84,6 +85,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .codex:       return "OpenAI - ChatGPT"
         case .claude:      return "Anthropic - Claude"
         case .alibaba:     return "Alibaba Qwen"
+        case .alibabaTokenPlan: return "Alibaba Qwen"
         case .gemini:      return "Gemini"
         case .antigravity: return "Google - Antigravity"
         case .copilot:     return "GitHub - Copilot"
@@ -109,6 +111,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .codex:       return "CodeX"
         case .claude:      return "Claude Code"
         case .alibaba:     return "Coding Plan"
+        case .alibabaTokenPlan: return "Token Plan"
         case .gemini:      return "Usage"
         case .antigravity: return "Local LSP"
         case .copilot:     return "GitHub Copilot"
@@ -134,6 +137,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .codex:       return "OpenAI"
         case .claude:      return "Claude"
         case .alibaba:     return "Alibaba Qwen"
+        case .alibabaTokenPlan: return "Qwen Token Plan"
         case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
         case .copilot:     return "Copilot"
@@ -159,6 +163,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .codex:       return "OpenAI"
         case .claude:      return "Anthropic"
         case .alibaba:     return "Alibaba Qwen"
+        case .alibabaTokenPlan: return "Alibaba Qwen"
         case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
         case .copilot:     return "GitHub"
@@ -187,6 +192,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .codex:       return URL(string: "https://status.openai.com/")!
         case .claude:      return URL(string: "https://status.claude.com/")!
         case .alibaba:     return URL(string: "https://bailian.console.aliyun.com/")!
+        case .alibabaTokenPlan: return URL(string: "https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan")!
         case .gemini:      return URL(string: "https://status.cloud.google.com/")!
         case .antigravity: return URL(string: "https://antigravity.google/")!
         case .copilot:     return URL(string: "https://www.githubstatus.com/")!

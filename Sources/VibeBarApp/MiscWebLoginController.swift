@@ -727,6 +727,31 @@ final class MiscWebLoginRegistry {
                 savedConfirmation: "Alibaba console cookies saved.",
                 setupHint: "Sign in to Bailian (CN) or ModelStudio (Intl); use the same console where your Coding Plan lives. Then click Save Cookies."
             )
+        case .alibabaTokenPlan:
+            return MiscWebLoginController.Config(
+                tool: .alibabaTokenPlan,
+                // Open the Token Plan dashboard directly so the user
+                // can confirm their subscription is active before
+                // saving cookies. The auth jar is identical to the
+                // Coding Plan login — same Aliyun ID, same *.aliyun.com
+                // ticket cookies.
+                loginURL: URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=plan#/efm/subscription/token-plan")!,
+                cookieDomainSuffixes: ["aliyun.com", "alibabacloud.com"],
+                requiredCookieNames: [],
+                trustedAuthHostSuffixes: [
+                    "aliyun.com",
+                    "alibabacloud.com",
+                    "alibaba.com",
+                    "alibaba-inc.com",
+                    "alicdn.com",
+                    "alipay.com",
+                    "taobao.com",
+                    "alibabausercontent.com"
+                ],
+                windowTitle: "Alibaba Bailian Token Plan Login",
+                savedConfirmation: "Alibaba Token Plan cookies saved.",
+                setupHint: "Sign in to Bailian (CN) or ModelStudio (Intl) on the same Aliyun account that owns the Token Plan. Then click Save Cookies."
+            )
         default:
             return nil
         }
