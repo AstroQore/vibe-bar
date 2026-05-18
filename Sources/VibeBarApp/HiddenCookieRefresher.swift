@@ -116,30 +116,46 @@ final class HiddenCookieRefresher {
     }
 
     private func performRefresh(_ config: Config) async -> Bool {
-        let slots = MiscCookieSlotStore.slots(for: config.tool)
-            .filter { $0.origin != .manual }
-        guard !slots.isEmpty else {
+        let settings = (try? VibeBarLocalStore.readJSON(
+            AppSettings.self,
+            from: VibeBarLocalStore.settingsURL
+        )) ?? .default
+        let targets = settings.miscProviderInstances
+            .filter { $0.tool == config.tool }
+            .flatMap { instance in
+                MiscCookieSlotStore.slots(for: config.tool, instanceID: instance.id)
+                    .filter { $0.origin != .manual }
+                    .map { RefreshTarget(instanceID: instance.id, slot: $0) }
+            }
+        guard !targets.isEmpty else {
             SafeLog.info("HiddenCookieRefresher skip tool=\(config.tool.rawValue) — no browser-origin slots")
             return false
         }
 
         var anyChanged = false
-        for slot in slots {
-            if await performRefreshForSlot(config, slot: slot) {
+        var changedInstanceIDs: Set<String> = []
+        for target in targets {
+            if await performRefreshForSlot(config, instanceID: target.instanceID, slot: target.slot) {
                 anyChanged = true
+                changedInstanceIDs.insert(target.instanceID)
             }
         }
-        if anyChanged {
+        for instanceID in changedInstanceIDs {
             NotificationCenter.default.post(
                 name: .cookiesRefreshed,
                 object: nil,
-                userInfo: ["tool": config.tool.rawValue]
+                userInfo: ["tool": config.tool.rawValue, "instanceID": instanceID]
             )
         }
         return anyChanged
     }
 
-    private func performRefreshForSlot(_ config: Config, slot: MiscCookieSlot) async -> Bool {
+    private struct RefreshTarget {
+        var instanceID: String
+        var slot: MiscCookieSlot
+    }
+
+    private func performRefreshForSlot(_ config: Config, instanceID: String, slot: MiscCookieSlot) async -> Bool {
         let beforeHeader = slot.cookieHeader
         let beforeFingerprint = headerFingerprint(beforeHeader)
         SafeLog.info(
@@ -186,6 +202,7 @@ final class HiddenCookieRefresher {
                         try? await Task.sleep(nanoseconds: UInt64(config.postLoadWait * 1_000_000_000))
                         let captured = await self.captureAndUpdateSlot(
                             config,
+                            instanceID: instanceID,
                             slot: slot,
                             store: dataStore.httpCookieStore,
                             beforeFingerprint: beforeFingerprint
@@ -211,6 +228,7 @@ final class HiddenCookieRefresher {
     }
 
     private func captureAndUpdateSlot(_ config: Config,
+                                      instanceID: String,
                                       slot: MiscCookieSlot,
                                       store: WKHTTPCookieStore,
                                       beforeFingerprint: String) async -> Bool {
@@ -235,6 +253,7 @@ final class HiddenCookieRefresher {
         return MiscCookieSlotStore.updateHeader(
             slotID: slot.id,
             for: config.tool,
+            instanceID: instanceID,
             header: header,
             sourceLabel: "Auto-refresh",
             origin: .autoRefresh

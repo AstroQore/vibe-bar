@@ -8,13 +8,22 @@ import VibeBarCore
 /// provider's current integration path (API key, device login, local
 /// CLI/OAuth status, browser-cookie import, or local process probe).
 struct MiscProviderSettingsSection: View {
-    let tool: ToolType
+    let instance: MiscProviderInstance
 
+    @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
+
+    private var tool: ToolType { instance.tool }
+    private var instanceID: String { instance.id }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14)
+                    .help("Drag to reorder")
                 Toggle(isOn: visibilityBinding) {
                     EmptyView()
                 }
@@ -24,26 +33,32 @@ struct MiscProviderSettingsSection: View {
                 ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
                 Text(tool.menuTitle)
                     .font(.system(size: 13, weight: .semibold))
+                if copyCount > 1 {
+                    CopyNameField(
+                        instanceID: instanceID,
+                        fallback: "Copy \(copyIndex)"
+                    )
+                }
                 Text(tool.subtitle)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
                 BorderlessIconButton(
-                    systemImage: "chevron.up",
-                    help: "Move \(tool.menuTitle) up",
+                    systemImage: "doc.on.doc",
+                    help: "Clone \(tool.menuTitle)",
                     size: 10
                 ) {
-                    settingsStore.settings.moveMiscProvider(tool, offset: -1)
+                    _ = settingsStore.settings.cloneMiscProviderInstance(id: instanceID)
                 }
-                .disabled(isFirst)
-                BorderlessIconButton(
-                    systemImage: "chevron.down",
-                    help: "Move \(tool.menuTitle) down",
-                    size: 10
-                ) {
-                    settingsStore.settings.moveMiscProvider(tool, offset: 1)
+                if !instance.isDefault {
+                    BorderlessIconButton(
+                        systemImage: "trash",
+                        help: "Remove this \(tool.menuTitle) copy",
+                        size: 10
+                    ) {
+                        removeClone()
+                    }
                 }
-                .disabled(isLast)
             }
             placeholderRow
         }
@@ -57,24 +72,29 @@ struct MiscProviderSettingsSection: View {
 
     private var visibilityBinding: Binding<Bool> {
         Binding(
-            get: { settingsStore.settings.isMiscProviderVisible(tool) },
+            get: { settingsStore.settings.miscProviderInstance(id: instanceID)?.isVisible ?? false },
             set: { value in
-                settingsStore.settings.setMiscProviderVisible(value, for: tool)
+                settingsStore.settings.setMiscProviderInstanceVisible(value, forID: instanceID)
             }
         )
     }
 
-    private var orderIndex: Int? {
-        settingsStore.settings.miscProviderOrderIndex(tool)
+    private var copyCount: Int {
+        settingsStore.settings.miscProviderInstances.filter { $0.tool == tool }.count
     }
 
-    private var isFirst: Bool {
-        orderIndex == 0
+    private var copyIndex: Int {
+        let sameTool = settingsStore.settings.miscProviderInstances.filter { $0.tool == tool }
+        return (sameTool.firstIndex { $0.id == instanceID } ?? 0) + 1
     }
 
-    private var isLast: Bool {
-        guard let orderIndex else { return true }
-        return orderIndex >= settingsStore.settings.miscProviderOrder.count - 1
+    private func removeClone() {
+        guard let removed = settingsStore.settings.removeMiscProviderInstance(id: instanceID) else { return }
+        MiscCookieSlotStore.deleteAll(for: removed.tool, instanceID: removed.id)
+        MiscCredentialStore.clearAll(for: removed.tool, instanceID: removed.id)
+        if let account = environment.accountStore.account(forMiscProviderInstanceID: removed.id) {
+            environment.quotaService.clear(accountId: account.id)
+        }
     }
 
     @ViewBuilder
@@ -82,31 +102,34 @@ struct MiscProviderSettingsSection: View {
         switch tool {
         case .zai:
             VStack(alignment: .leading, spacing: 4) {
-                ApiKeyField(tool: .zai, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
-                ZaiRegionPicker()
+                ApiKeyField(tool: .zai, instanceID: instanceID, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
+                ZaiRegionPicker(instanceID: instanceID)
             }
         case .copilot:
             VStack(alignment: .leading, spacing: 4) {
-                CopilotDeviceLoginRow()
-                EnterpriseHostField(tool: .copilot, prompt: "GitHub Enterprise host (optional, e.g. github.example.com)")
+                CopilotDeviceLoginRow(instanceID: instanceID)
+                EnterpriseHostField(tool: .copilot, instanceID: instanceID, prompt: "GitHub Enterprise host (optional, e.g. github.example.com)")
             }
         case .gemini:
-            GeminiCredentialStatusRow()
+            GeminiCredentialStatusRow(instanceID: instanceID)
         case .alibaba:
             VStack(alignment: .leading, spacing: 4) {
                 ApiKeyField(
                     tool: .alibaba,
+                    instanceID: instanceID,
                     prompt: "Paste DashScope API key (sk-...) — optional",
                     helpText: "If you have a DashScope key, paste it here. Otherwise sign in via Web below to use console cookies. Stored in macOS Keychain."
                 )
-                AlibabaRegionPicker()
+                AlibabaRegionPicker(instanceID: instanceID)
                 CookieSourceControls(
                     tool: .alibaba,
+                    instanceID: instanceID,
                     spec: AlibabaQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste console.aliyun.com Cookie header (login_aliyunid_csrf=…; cna=…; …)"
                 )
                 MiscWebLoginRow(
                     tool: .alibaba,
+                    instanceID: instanceID,
                     helpText: "No DashScope key? Sign in to bailian.console.aliyun.com or modelstudio.console.alibabacloud.com once via Web; Vibe Bar refreshes the console session in the background after that."
                 )
             }
@@ -114,20 +137,23 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 ApiKeyField(
                     tool: .minimax,
+                    instanceID: instanceID,
                     prompt: "Paste MiniMax Token Plan API key (sk-cp-... or MINIMAX_CODING_API_KEY)",
                     helpText: "Find it under Billing → Token Plan. Stored in macOS Keychain. Env fallback: MINIMAX_CODING_API_KEY, then MINIMAX_API_KEY."
                 )
-                MiniMaxRegionPicker()
+                MiniMaxRegionPicker(instanceID: instanceID)
             }
         case .kimi:
             CookieSourceControls(
                 tool: .kimi,
+                instanceID: instanceID,
                 spec: KimiQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste www.kimi.com Cookie header (kimi-auth=eyJ...)"
             )
         case .cursor:
             CookieSourceControls(
                 tool: .cursor,
+                instanceID: instanceID,
                 spec: CursorQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
             )
@@ -135,17 +161,20 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(
                     tool: .mimo,
+                    instanceID: instanceID,
                     spec: MimoQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...; api-platform_serviceToken=...)"
                 )
                 MiscWebLoginRow(
                     tool: .mimo,
+                    instanceID: instanceID,
                     helpText: "Chrome's newer cookie encryption blocks the browser-import path on macOS. Sign in via the in-app webview to capture cookies cleanly."
                 )
             }
         case .iflytek:
             CookieSourceControls(
                 tool: .iflytek,
+                instanceID: instanceID,
                 spec: IFlyTekQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste maas.xfyun.cn Cookie header (atp-auth-token=…; account_id=…; ssoSessionId=…; tenantToken=…)"
             )
@@ -153,11 +182,13 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(
                     tool: .tencentHunyuan,
+                    instanceID: instanceID,
                     spec: TencentHunyuanQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste cloud.tencent.com Cookie header (skey=…; uin=…; …)"
                 )
                 MiscWebLoginRow(
                     tool: .tencentHunyuan,
+                    instanceID: instanceID,
                     helpText: "Tencent's `skey` cookie expires within hours. When the card flips to \"Needs re-login\", click here to refresh the session."
                 )
             }
@@ -165,11 +196,13 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(
                     tool: .volcengine,
+                    instanceID: instanceID,
                     spec: VolcengineQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste console.volcengine.com Cookie header (csrfToken=…; AccountID=…; …)"
                 )
                 MiscWebLoginRow(
                     tool: .volcengine,
+                    instanceID: instanceID,
                     helpText: "Volcengine console session cookies expire after a few hours. When the card flips to \"Needs re-login\", click here to refresh."
                 )
             }
@@ -177,25 +210,29 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(
                     tool: .openCodeGo,
+                    instanceID: instanceID,
                     spec: OpenCodeGoQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste opencode.ai Cookie header (__Host-auth=... or auth=...)"
                 )
                 WorkspaceIDField(
                     tool: .openCodeGo,
+                    instanceID: instanceID,
                     prompt: "Workspace ID or URL (optional, wrk_... or /workspace/wrk_.../go)"
                 )
             }
         case .kilo:
             ApiKeyField(
                 tool: .kilo,
+                instanceID: instanceID,
                 prompt: "Paste Kilo API key (optional)",
                 helpText: "Optional. Vibe Bar also reads ~/.local/share/kilo/auth.json after `kilo login`. Env fallback: KILO_API_KEY."
             )
         case .kiro:
-            KiroStatusRow()
+            KiroStatusRow(instanceID: instanceID)
         case .ollama:
             CookieSourceControls(
                 tool: .ollama,
+                instanceID: instanceID,
                 spec: OllamaQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste ollama.com Cookie header (session=... or next-auth.session-token=...)"
             )
@@ -203,16 +240,18 @@ struct MiscProviderSettingsSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 ApiKeyField(
                     tool: .openRouter,
+                    instanceID: instanceID,
                     prompt: "Paste OpenRouter API key (sk-or-v1-...)",
                     helpText: "Stored in macOS Keychain. Env fallback: OPENROUTER_API_KEY."
                 )
-                EnterpriseHostField(tool: .openRouter, prompt: "OpenRouter API URL (optional, defaults to https://openrouter.ai/api/v1)")
+                EnterpriseHostField(tool: .openRouter, instanceID: instanceID, prompt: "OpenRouter API URL (optional, defaults to https://openrouter.ai/api/v1)")
             }
         case .antigravity:
-            AntigravityStatusRow()
+            AntigravityStatusRow(instanceID: instanceID)
         case .warp:
             ApiKeyField(
                 tool: .warp,
+                instanceID: instanceID,
                 prompt: "Paste Warp API key (wk-...)",
                 helpText: "Open Warp → Settings → AI → API Keys to mint one. Stored in macOS Keychain. Env fallback: WARP_API_KEY, then WARP_TOKEN."
             )
@@ -223,6 +262,46 @@ struct MiscProviderSettingsSection: View {
 
 }
 
+private struct CopyNameField: View {
+    let instanceID: String
+    let fallback: String
+
+    @EnvironmentObject var settingsStore: SettingsStore
+    @FocusState private var isFocused: Bool
+    @State private var draft: String = ""
+
+    var body: some View {
+        TextField(fallback, text: $draft)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .font(.caption2)
+            .frame(width: 120)
+            .focused($isFocused)
+            .help("Rename this copy")
+            .onAppear(perform: syncDraft)
+            .onSubmit(save)
+            .onChange(of: isFocused) { _, focused in
+                if !focused { save() }
+            }
+            .onChange(of: currentDisplayName) { _, _ in
+                if !isFocused { syncDraft() }
+            }
+    }
+
+    private var currentDisplayName: String {
+        settingsStore.settings.miscProviderInstance(id: instanceID)?.displayName ?? ""
+    }
+
+    private func syncDraft() {
+        draft = currentDisplayName
+    }
+
+    private func save() {
+        settingsStore.settings.setMiscProviderInstanceDisplayName(draft, forID: instanceID)
+        syncDraft()
+    }
+}
+
 /// Secure-text input for misc-provider API keys / PATs.
 ///
 /// Reads/writes through `MiscCredentialStore` (Keychain) — the
@@ -231,6 +310,7 @@ struct MiscProviderSettingsSection: View {
 /// the misc card flips out of "Set up" state immediately.
 struct ApiKeyField: View {
     let tool: ToolType
+    let instanceID: String
     let prompt: String
     let helpText: String
 
@@ -269,13 +349,13 @@ struct ApiKeyField: View {
                     .foregroundStyle(.orange)
             }
         }
-        .onAppear { hasStored = MiscCredentialStore.hasValue(tool: tool, kind: .apiKey) }
+        .onAppear { hasStored = MiscCredentialStore.hasValue(tool: tool, kind: .apiKey, instanceID: instanceID) }
     }
 
     private func save() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let ok = MiscCredentialStore.writeString(trimmed, tool: tool, kind: .apiKey)
+        let ok = MiscCredentialStore.writeString(trimmed, tool: tool, kind: .apiKey, instanceID: instanceID)
         if ok {
             saveError = nil
             hasStored = true
@@ -287,13 +367,13 @@ struct ApiKeyField: View {
     }
 
     private func clear() {
-        MiscCredentialStore.delete(tool: tool, kind: .apiKey)
+        MiscCredentialStore.delete(tool: tool, kind: .apiKey, instanceID: instanceID)
         hasStored = false
         triggerRefresh()
     }
 
     private func triggerRefresh() {
-        guard let account = environment.account(for: tool) else { return }
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 }
@@ -302,6 +382,8 @@ struct ApiKeyField: View {
 /// old PAT-first setup while keeping legacy PATs readable in Core as
 /// a migration fallback.
 struct CopilotDeviceLoginRow: View {
+    let instanceID: String
+
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
     @EnvironmentObject var settingsStore: SettingsStore
@@ -359,7 +441,7 @@ struct CopilotDeviceLoginRow: View {
                 reloadStoredToken()
             }
 
-            let host = settingsStore.settings.miscProvider(.copilot).enterpriseHost?.absoluteString
+            let host = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).enterpriseHost?.absoluteString
             let flow = CopilotDeviceFlow(enterpriseHost: host)
             do {
                 let code = try await flow.requestDeviceCode()
@@ -378,18 +460,19 @@ struct CopilotDeviceLoginRow: View {
                 guard MiscCredentialStore.writeString(
                     token,
                     tool: .copilot,
-                    kind: .oauthAccessToken
+                    kind: .oauthAccessToken,
+                    instanceID: instanceID
                 ) else {
                     status = "GitHub login succeeded, but Vibe Bar could not save the token."
                     return
                 }
-                guard MiscCredentialStore.hasValue(tool: .copilot, kind: .oauthAccessToken) else {
+                guard MiscCredentialStore.hasValue(tool: .copilot, kind: .oauthAccessToken, instanceID: instanceID) else {
                     status = "GitHub login succeeded, but saved token could not be read back."
                     return
                 }
 
                 // Hide the old PAT path once device auth succeeds.
-                MiscCredentialStore.delete(tool: .copilot, kind: .apiKey)
+                MiscCredentialStore.delete(tool: .copilot, kind: .apiKey, instanceID: instanceID)
                 status = "GitHub signed in."
                 triggerRefresh()
             } catch is CancellationError {
@@ -401,8 +484,8 @@ struct CopilotDeviceLoginRow: View {
     }
 
     private func clearToken() {
-        MiscCredentialStore.delete(tool: .copilot, kind: .oauthAccessToken)
-        MiscCredentialStore.delete(tool: .copilot, kind: .apiKey)
+        MiscCredentialStore.delete(tool: .copilot, kind: .oauthAccessToken, instanceID: instanceID)
+        MiscCredentialStore.delete(tool: .copilot, kind: .apiKey, instanceID: instanceID)
         hasStoredToken = false
         status = "GitHub token cleared."
         triggerRefresh()
@@ -410,12 +493,12 @@ struct CopilotDeviceLoginRow: View {
 
     private func reloadStoredToken() {
         hasStoredToken =
-            MiscCredentialStore.hasValue(tool: .copilot, kind: .oauthAccessToken) ||
-            MiscCredentialStore.hasValue(tool: .copilot, kind: .apiKey)
+            MiscCredentialStore.hasValue(tool: .copilot, kind: .oauthAccessToken, instanceID: instanceID) ||
+            MiscCredentialStore.hasValue(tool: .copilot, kind: .apiKey, instanceID: instanceID)
     }
 
     private func triggerRefresh() {
-        guard let account = environment.account(for: .copilot) else { return }
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 }
@@ -427,6 +510,8 @@ struct CopilotDeviceLoginRow: View {
 /// `cloudcode-pa.googleapis.com` — there's no value to enter here,
 /// just a status indicator and a "re-check" button.
 struct GeminiCredentialStatusRow: View {
+    let instanceID: String
+
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
     @State private var status: Status = .unknown
@@ -502,7 +587,7 @@ struct GeminiCredentialStatusRow: View {
 
     private func refresh() {
         reload()
-        guard let account = environment.account(for: .gemini) else { return }
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 
@@ -520,6 +605,8 @@ struct GeminiCredentialStatusRow: View {
 /// indicator + manual refresh; the real action happens on the misc
 /// card itself.
 struct AntigravityStatusRow: View {
+    let instanceID: String
+
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
 
@@ -539,7 +626,7 @@ struct AntigravityStatusRow: View {
     }
 
     private func probe() {
-        guard let account = environment.account(for: .antigravity) else { return }
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 }
@@ -548,6 +635,8 @@ struct AntigravityStatusRow: View {
 /// but points users at the login command that creates the usable
 /// session.
 struct KiroStatusRow: View {
+    let instanceID: String
+
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
 
@@ -567,7 +656,7 @@ struct KiroStatusRow: View {
     }
 
     private func probe() {
-        guard let account = environment.account(for: .kiro) else { return }
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 }
@@ -582,6 +671,7 @@ struct KiroStatusRow: View {
 /// averaged; see `MiscQuotaAggregator`.
 struct CookieSourceControls: View {
     let tool: ToolType
+    let instanceID: String
     let spec: MiscCookieResolver.Spec
     let manualPrompt: String
 
@@ -630,20 +720,23 @@ struct CookieSourceControls: View {
             for: MiscCookieSlotStore.didChangeNotification
         )) { note in
             guard let raw = note.userInfo?["tool"] as? String,
-                  raw == tool.rawValue else { return }
+                  raw == tool.rawValue,
+                  let changedInstanceID = note.userInfo?["instanceID"] as? String,
+                  changedInstanceID == instanceID else { return }
             reloadSlots()
         }
     }
 
     private func reloadSlots() {
-        slots = MiscCookieSlotStore.slots(for: tool)
+        slots = MiscCookieSlotStore.slots(for: tool, instanceID: instanceID)
     }
 
     private func importNow() {
         importStatus = "Importing…"
         let snapshotSpec = spec
+        let snapshotInstanceID = instanceID
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = MiscCookieResolver.appendBrowserImport(for: snapshotSpec)
+            let result = MiscCookieResolver.appendBrowserImport(for: snapshotSpec, instanceID: snapshotInstanceID)
             DispatchQueue.main.async {
                 if let result {
                     importStatus = "Imported from \(result.sourceLabel)."
@@ -669,7 +762,7 @@ struct CookieSourceControls: View {
             importedAt: Date(),
             origin: .manual
         )
-        guard MiscCookieSlotStore.append(slot, for: tool) else {
+        guard MiscCookieSlotStore.append(slot, for: tool, instanceID: instanceID) else {
             importStatus = "Could not save to Keychain."
             return
         }
@@ -680,7 +773,7 @@ struct CookieSourceControls: View {
     }
 
     private func deleteSlot(_ slot: MiscCookieSlot) {
-        guard MiscCookieSlotStore.delete(slotID: slot.id, for: tool) else { return }
+        guard MiscCookieSlotStore.delete(slotID: slot.id, for: tool, instanceID: instanceID) else { return }
         importStatus = "Removed \(slot.sourceLabel)."
         reloadSlots()
         triggerRefresh()
@@ -701,7 +794,7 @@ struct CookieSourceControls: View {
     }
 
     private func triggerRefresh() {
-        guard let account = environment.account(for: tool) else { return }
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 }
@@ -759,6 +852,8 @@ private struct CookieSlotRow: View {
 /// china-mainland (cn-beijing). "Auto" lets the adapter try both
 /// in order on each refresh.
 struct AlibabaRegionPicker: View {
+    let instanceID: String
+
     @EnvironmentObject var settingsStore: SettingsStore
 
     enum Choice: String, CaseIterable, Identifiable {
@@ -788,13 +883,13 @@ struct AlibabaRegionPicker: View {
     private var choiceBinding: Binding<Choice> {
         Binding(
             get: {
-                let raw = settingsStore.settings.miscProvider(.alibaba).region ?? ""
+                let raw = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).region ?? ""
                 return Choice(rawValue: raw) ?? .auto
             },
             set: { newValue in
-                var current = settingsStore.settings.miscProvider(.alibaba)
+                var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
                 current.region = newValue == .auto ? nil : newValue.rawValue
-                settingsStore.settings.setMiscProvider(current, for: .alibaba)
+                settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
             }
         )
     }
@@ -802,6 +897,8 @@ struct AlibabaRegionPicker: View {
 
 /// Z.ai has separate international and mainland China quota hosts.
 struct ZaiRegionPicker: View {
+    let instanceID: String
+
     @EnvironmentObject var settingsStore: SettingsStore
 
     enum Choice: String, CaseIterable, Identifiable {
@@ -829,13 +926,13 @@ struct ZaiRegionPicker: View {
     private var choiceBinding: Binding<Choice> {
         Binding(
             get: {
-                let raw = settingsStore.settings.miscProvider(.zai).region ?? Choice.global.rawValue
+                let raw = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).region ?? Choice.global.rawValue
                 return Choice(rawValue: raw) ?? .global
             },
             set: { newValue in
-                var current = settingsStore.settings.miscProvider(.zai)
+                var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
                 current.region = newValue.rawValue
-                settingsStore.settings.setMiscProvider(current, for: .zai)
+                settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
             }
         )
     }
@@ -845,6 +942,8 @@ struct ZaiRegionPicker: View {
 /// The adapter still falls back across both, but this picker controls
 /// the preferred region tried first.
 struct MiniMaxRegionPicker: View {
+    let instanceID: String
+
     @EnvironmentObject var settingsStore: SettingsStore
 
     enum Choice: String, CaseIterable, Identifiable {
@@ -872,13 +971,13 @@ struct MiniMaxRegionPicker: View {
     private var choiceBinding: Binding<Choice> {
         Binding(
             get: {
-                let raw = settingsStore.settings.miscProvider(.minimax).region ?? Choice.global.rawValue
+                let raw = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).region ?? Choice.global.rawValue
                 return Choice(rawValue: raw) ?? .global
             },
             set: { newValue in
-                var current = settingsStore.settings.miscProvider(.minimax)
+                var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
                 current.region = newValue.rawValue
-                settingsStore.settings.setMiscProvider(current, for: .minimax)
+                settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
             }
         )
     }
@@ -890,6 +989,7 @@ struct MiniMaxRegionPicker: View {
 /// it through `AppSettings.miscProvider(...).enterpriseHost`.
 struct EnterpriseHostField: View {
     let tool: ToolType
+    let instanceID: String
     let prompt: String
 
     @EnvironmentObject var settingsStore: SettingsStore
@@ -906,11 +1006,11 @@ struct EnterpriseHostField: View {
     }
 
     private var currentRaw: String {
-        settingsStore.settings.miscProvider(tool).enterpriseHost?.absoluteString ?? ""
+        settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).enterpriseHost?.absoluteString ?? ""
     }
 
     private func save() {
-        var current = settingsStore.settings.miscProvider(tool)
+        var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             current.enterpriseHost = nil
@@ -919,7 +1019,7 @@ struct EnterpriseHostField: View {
         } else {
             return
         }
-        settingsStore.settings.setMiscProvider(current, for: tool)
+        settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
     }
 }
 
@@ -928,6 +1028,7 @@ struct EnterpriseHostField: View {
 /// URL; the adapter normalizes it at fetch time.
 struct WorkspaceIDField: View {
     let tool: ToolType
+    let instanceID: String
     let prompt: String
 
     @EnvironmentObject var settingsStore: SettingsStore
@@ -953,14 +1054,14 @@ struct WorkspaceIDField: View {
     }
 
     private var currentRaw: String {
-        settingsStore.settings.miscProvider(tool).workspaceID ?? ""
+        settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).workspaceID ?? ""
     }
 
     private func save() {
-        var current = settingsStore.settings.miscProvider(tool)
+        var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         current.workspaceID = trimmed.isEmpty ? nil : trimmed
-        settingsStore.settings.setMiscProvider(current, for: tool)
+        settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
         triggerRefresh()
     }
 
@@ -970,7 +1071,7 @@ struct WorkspaceIDField: View {
     }
 
     private func triggerRefresh() {
-        guard let account = environment.account(for: tool) else { return }
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
         Task { _ = await quotaService.refresh(account) }
     }
 }
@@ -980,6 +1081,7 @@ struct WorkspaceIDField: View {
 /// renders for any tool that `MiscWebLoginRegistry` knows how to drive.
 struct MiscWebLoginRow: View {
     let tool: ToolType
+    let instanceID: String
     let helpText: String
 
     @EnvironmentObject var environment: AppEnvironment
@@ -999,7 +1101,7 @@ struct MiscWebLoginRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
                 Button("Sign in via Web") {
-                    environment.openMiscWebLogin(for: tool)
+                    environment.openMiscWebLogin(for: tool, instanceID: instanceID)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

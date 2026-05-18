@@ -34,12 +34,13 @@ public struct MiniMaxQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let settings = MiscProviderSettings.current(for: .minimax)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .minimax)
+        let settings = MiscProviderSettings.current(for: .minimax, instanceID: instanceID)
         var lastError: QuotaError?
         let regions = MiniMaxRegion.resolve(settings: settings)
 
         guard settings.allowsAPIOrOAuthAccess,
-              let apiKey = MiniMaxSettings.resolveAPIKey(environment: environment),
+              let apiKey = MiniMaxSettings.resolveAPIKey(environment: environment, instanceID: instanceID),
               !apiKey.isEmpty else {
             throw QuotaError.noCredential
         }
@@ -199,8 +200,8 @@ enum MiniMaxRegion: String, CaseIterable {
 }
 
 private enum MiniMaxSettings {
-    static func resolveAPIKey(environment: [String: String]) -> String? {
-        if let stored = MiscCredentialStore.readString(tool: .minimax, kind: .apiKey),
+    static func resolveAPIKey(environment: [String: String], instanceID: String) -> String? {
+        if let stored = MiscCredentialStore.readString(tool: .minimax, kind: .apiKey, instanceID: instanceID),
            !stored.isEmpty {
             return stored
         }

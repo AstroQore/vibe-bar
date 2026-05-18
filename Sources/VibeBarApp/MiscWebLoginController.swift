@@ -40,6 +40,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
     }
 
     private let config: Config
+    private let instanceID: String
     private var window: NSWindow?
     private var webView: WKWebView?
     private var popupWindow: NSWindow?
@@ -50,8 +51,9 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
     private let websiteDataStore = WKWebsiteDataStore.default()
     private var autofillBridges: [MiscWebLoginAutofillBridge] = []
 
-    init(config: Config) {
+    init(config: Config, instanceID: String) {
         self.config = config
+        self.instanceID = instanceID
         super.init()
     }
 
@@ -166,7 +168,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
             importedAt: Date(),
             origin: .browserImport
         )
-        let stored = MiscCookieSlotStore.append(slot, for: config.tool)
+        let stored = MiscCookieSlotStore.append(slot, for: config.tool, instanceID: instanceID)
         guard stored else {
             if manual {
                 showAlert(message: "Could not save \(config.tool.menuTitle) cookies to Keychain.")
@@ -617,7 +619,7 @@ final class MiscWebLoginAutofillBridge: NSObject, WKScriptMessageHandler {
 /// SwiftUI view re-renders.
 @MainActor
 final class MiscWebLoginRegistry {
-    private var controllers: [ToolType: MiscWebLoginController] = [:]
+    private var controllers: [String: MiscWebLoginController] = [:]
 
     /// Returns `true` if a webview-login flow is configured for `tool`.
     /// Used by the Settings UI to decide whether to render a "Sign in
@@ -626,10 +628,10 @@ final class MiscWebLoginRegistry {
         config(for: tool) != nil
     }
 
-    func openLogin(for tool: ToolType, onSaved: @escaping () -> Void) {
+    func openLogin(for tool: ToolType, instanceID: String, onSaved: @escaping () -> Void) {
         guard let config = Self.config(for: tool) else { return }
-        let controller = controllers[tool] ?? MiscWebLoginController(config: config)
-        controllers[tool] = controller
+        let controller = controllers[instanceID] ?? MiscWebLoginController(config: config, instanceID: instanceID)
+        controllers[instanceID] = controller
         controller.open(onSaved: onSaved)
     }
 

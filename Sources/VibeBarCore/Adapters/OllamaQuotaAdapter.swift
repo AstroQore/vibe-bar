@@ -26,7 +26,7 @@ public struct OllamaQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec)
+        let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec, account: account)
             .filter { Self.hasRecognizedSessionCookie($0.header) }
         guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 

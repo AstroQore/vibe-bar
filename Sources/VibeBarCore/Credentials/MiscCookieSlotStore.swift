@@ -42,9 +42,10 @@ public struct MiscCookieSlot: Codable, Equatable, Sendable, Identifiable {
 
 /// Keychain-backed list-of-cookies storage for misc providers.
 ///
-/// Each tool maps to one Keychain entry: service
+/// Each provider instance maps to one Keychain entry: service
 /// `com.astroqore.VibeBar.misc-secrets`, account
-/// `<tool.rawValue>.cookieSlots`. The value is a JSON-encoded
+/// `<tool.rawValue>.cookieSlots` for the default instance and
+/// `<instanceID>.cookieSlots` for clones. The value is a JSON-encoded
 /// `[MiscCookieSlot]`.
 ///
 /// The store is mutable — append, update, delete — but each
@@ -62,7 +63,14 @@ public enum MiscCookieSlotStore {
     public static let slotsAccountSuffix = "cookieSlots"
 
     public static func keychainAccount(for tool: ToolType) -> String {
+        keychainAccount(for: tool, instanceID: tool.rawValue)
+    }
+
+    public static func keychainAccount(for tool: ToolType, instanceID: String) -> String {
         precondition(tool.isMisc, "MiscCookieSlotStore is misc-only; got \(tool)")
+        if instanceID != tool.rawValue {
+            return "\(instanceID).\(slotsAccountSuffix)"
+        }
         return "\(tool.rawValue).\(slotsAccountSuffix)"
     }
 
@@ -70,13 +78,18 @@ public enum MiscCookieSlotStore {
     /// state on first read. Returns an empty array if no cookies are
     /// configured.
     public static func slots(for tool: ToolType) -> [MiscCookieSlot] {
+        slots(for: tool, instanceID: tool.rawValue)
+    }
+
+    public static func slots(for tool: ToolType, instanceID: String) -> [MiscCookieSlot] {
         guard tool.isMisc else { return [] }
-        if let stored = readRaw(for: tool) {
+        if let stored = readRaw(for: tool, instanceID: instanceID) {
             return stored
         }
+        guard instanceID == tool.rawValue else { return [] }
         let migrated = LegacyCookieMigration.collectSlots(for: tool)
         if !migrated.isEmpty {
-            _ = writeRaw(migrated, for: tool)
+            _ = writeRaw(migrated, for: tool, instanceID: instanceID)
             LegacyCookieMigration.clearLegacy(for: tool)
         }
         return migrated
@@ -84,8 +97,13 @@ public enum MiscCookieSlotStore {
 
     @discardableResult
     public static func append(_ slot: MiscCookieSlot, for tool: ToolType) -> Bool {
+        append(slot, for: tool, instanceID: tool.rawValue)
+    }
+
+    @discardableResult
+    public static func append(_ slot: MiscCookieSlot, for tool: ToolType, instanceID: String) -> Bool {
         guard tool.isMisc else { return false }
-        var list = slots(for: tool)
+        var list = slots(for: tool, instanceID: instanceID)
         if let existing = list.firstIndex(where: { $0.cookieHeader == slot.cookieHeader }) {
             // Refresh the timestamp/source so the user can see they're
             // pasting the same cookie they had before.
@@ -95,7 +113,7 @@ public enum MiscCookieSlotStore {
         } else {
             list.append(slot)
         }
-        return writeRaw(list, for: tool)
+        return writeRaw(list, for: tool, instanceID: instanceID)
     }
 
     @discardableResult
@@ -107,8 +125,29 @@ public enum MiscCookieSlotStore {
         importedAt: Date? = nil,
         origin: MiscCookieSlot.Origin? = nil
     ) -> Bool {
+        updateHeader(
+            slotID: slotID,
+            for: tool,
+            instanceID: tool.rawValue,
+            header: header,
+            sourceLabel: sourceLabel,
+            importedAt: importedAt,
+            origin: origin
+        )
+    }
+
+    @discardableResult
+    public static func updateHeader(
+        slotID: UUID,
+        for tool: ToolType,
+        instanceID: String,
+        header: String,
+        sourceLabel: String? = nil,
+        importedAt: Date? = nil,
+        origin: MiscCookieSlot.Origin? = nil
+    ) -> Bool {
         guard tool.isMisc else { return false }
-        var list = slots(for: tool)
+        var list = slots(for: tool, instanceID: instanceID)
         guard let idx = list.firstIndex(where: { $0.id == slotID }) else { return false }
         let trimmed = header.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
@@ -116,30 +155,44 @@ public enum MiscCookieSlotStore {
         if let sourceLabel { list[idx].sourceLabel = sourceLabel }
         if let importedAt { list[idx].importedAt = importedAt }
         if let origin { list[idx].origin = origin }
-        return writeRaw(list, for: tool)
+        return writeRaw(list, for: tool, instanceID: instanceID)
     }
 
     @discardableResult
     public static func delete(slotID: UUID, for tool: ToolType) -> Bool {
+        delete(slotID: slotID, for: tool, instanceID: tool.rawValue)
+    }
+
+    @discardableResult
+    public static func delete(slotID: UUID, for tool: ToolType, instanceID: String) -> Bool {
         guard tool.isMisc else { return false }
-        var list = slots(for: tool)
+        var list = slots(for: tool, instanceID: instanceID)
         let before = list.count
         list.removeAll { $0.id == slotID }
         guard list.count != before else { return false }
         if list.isEmpty {
-            return deleteRaw(for: tool)
+            return deleteRaw(for: tool, instanceID: instanceID)
         }
-        return writeRaw(list, for: tool)
+        return writeRaw(list, for: tool, instanceID: instanceID)
     }
 
     @discardableResult
     public static func deleteAll(for tool: ToolType) -> Bool {
+        deleteAll(for: tool, instanceID: tool.rawValue)
+    }
+
+    @discardableResult
+    public static func deleteAll(for tool: ToolType, instanceID: String) -> Bool {
         guard tool.isMisc else { return false }
-        return deleteRaw(for: tool)
+        return deleteRaw(for: tool, instanceID: instanceID)
     }
 
     public static func hasAnySlot(for tool: ToolType) -> Bool {
         !slots(for: tool).isEmpty
+    }
+
+    public static func hasAnySlot(for tool: ToolType, instanceID: String) -> Bool {
+        !slots(for: tool, instanceID: instanceID).isEmpty
     }
 
     // MARK: - Notifications
@@ -152,18 +205,18 @@ public enum MiscCookieSlotStore {
         "com.astroqore.VibeBar.miscCookieSlotsChanged"
     )
 
-    private static func postChangeNotification(for tool: ToolType) {
+    private static func postChangeNotification(for tool: ToolType, instanceID: String) {
         NotificationCenter.default.post(
             name: didChangeNotification,
             object: nil,
-            userInfo: ["tool": tool.rawValue]
+            userInfo: ["tool": tool.rawValue, "instanceID": instanceID]
         )
     }
 
     // MARK: - Keychain plumbing
 
-    private static func readRaw(for tool: ToolType) -> [MiscCookieSlot]? {
-        let account = keychainAccount(for: tool)
+    private static func readRaw(for tool: ToolType, instanceID: String) -> [MiscCookieSlot]? {
+        let account = keychainAccount(for: tool, instanceID: instanceID)
         do {
             let data = try KeychainStore.readData(
                 service: keychainService,
@@ -183,10 +236,10 @@ public enum MiscCookieSlotStore {
     }
 
     @discardableResult
-    private static func writeRaw(_ slots: [MiscCookieSlot], for tool: ToolType) -> Bool {
-        let account = keychainAccount(for: tool)
+    private static func writeRaw(_ slots: [MiscCookieSlot], for tool: ToolType, instanceID: String) -> Bool {
+        let account = keychainAccount(for: tool, instanceID: instanceID)
         guard !slots.isEmpty else {
-            return deleteRaw(for: tool)
+            return deleteRaw(for: tool, instanceID: instanceID)
         }
         do {
             let data = try Self.encoder().encode(slots)
@@ -196,7 +249,7 @@ public enum MiscCookieSlotStore {
                 data: data,
                 useDataProtectionKeychain: true
             )
-            postChangeNotification(for: tool)
+            postChangeNotification(for: tool, instanceID: instanceID)
             return true
         } catch {
             SafeLog.error("MiscCookieSlotStore write failed for \(tool.rawValue): \(error)")
@@ -205,15 +258,15 @@ public enum MiscCookieSlotStore {
     }
 
     @discardableResult
-    private static func deleteRaw(for tool: ToolType) -> Bool {
-        let account = keychainAccount(for: tool)
+    private static func deleteRaw(for tool: ToolType, instanceID: String) -> Bool {
+        let account = keychainAccount(for: tool, instanceID: instanceID)
         do {
             try KeychainStore.deleteItem(
                 service: keychainService,
                 account: account,
                 useDataProtectionKeychain: true
             )
-            postChangeNotification(for: tool)
+            postChangeNotification(for: tool, instanceID: instanceID)
             return true
         } catch KeychainStore.KeychainError.itemNotFound {
             return false

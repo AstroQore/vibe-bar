@@ -62,7 +62,7 @@ public struct TencentHunyuanQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let resolutions = MiscCookieResolver.resolveAll(for: TencentHunyuanQuotaAdapter.cookieSpec)
+        let resolutions = MiscCookieResolver.resolveAll(for: TencentHunyuanQuotaAdapter.cookieSpec, account: account)
         guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
         let queriedAt = now()

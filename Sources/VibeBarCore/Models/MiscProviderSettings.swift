@@ -3,7 +3,7 @@ import Foundation
 /// Non-sensitive per-misc-provider configuration that lives in
 /// `~/.vibebar/settings.json`. Sensitive values (API keys, cookie
 /// headers, OAuth tokens) live in Keychain — see
-/// `MiscCredentialStore` and `CookieHeaderCache`.
+/// `MiscCredentialStore` and `MiscCookieSlotStore`.
 ///
 /// The Codable round-trip rejects any field whose name contains a
 /// secret-looking key (`apiKey`, `cookie`, `token`, `password`, etc.).
@@ -145,12 +145,16 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
     }
 
     public static func current(for tool: ToolType) -> MiscProviderSettings {
+        current(for: tool, instanceID: tool.rawValue)
+    }
+
+    public static func current(for tool: ToolType, instanceID: String) -> MiscProviderSettings {
         guard tool.isMisc else { return .default }
         let appSettings = (try? VibeBarLocalStore.readJSON(
             AppSettings.self,
             from: VibeBarLocalStore.settingsURL
         )) ?? .default
-        return appSettings.miscProvider(tool).automaticSourceSelection
+        return appSettings.miscProviderSettings(forInstanceID: instanceID).automaticSourceSelection
     }
 
     public var allowsAPIOrOAuthAccess: Bool {

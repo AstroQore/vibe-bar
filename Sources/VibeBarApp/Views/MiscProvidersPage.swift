@@ -3,59 +3,70 @@ import AppKit
 import VibeBarCore
 
 /// The Misc tab inside the Overview popover. Renders a card for each
-/// provider checked in Misc settings. Hidden providers keep their
-/// credentials/config but don't render cards.
+/// visible provider instance. Multiple visible instances for the same
+/// provider collapse into one provider card with an aggregate state
+/// followed by per-copy states.
 struct MiscProvidersPage: View {
     let density: Theme.Density
 
-    @EnvironmentObject var environment: AppEnvironment
-    @EnvironmentObject var quotaService: QuotaService
     @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
-        // The Misc page is intentionally denser than the primary
-        // overview: every card is reorderable and receives the same
-        // third-width column treatment.
         ColumnMasonryLayout(columns: 3, spacing: density.interSectionSpacing, anchoredItems: 0) {
-            ForEach(settingsStore.settings.visibleMiscProviderList, id: \.self) { tool in
-                MiscProviderCard(tool: tool, density: density)
+            ForEach(providerGroups) { group in
+                if group.instances.count == 1, let instance = group.instances.first {
+                    MiscProviderCard(instance: instance, density: density)
+                } else {
+                    MiscProviderGroupCard(group: group, density: density)
+                }
             }
         }
     }
+
+    private var providerGroups: [MiscProviderInstanceGroup] {
+        var groups: [MiscProviderInstanceGroup] = []
+        for instance in settingsStore.settings.visibleMiscProviderInstances {
+            if let index = groups.firstIndex(where: { $0.tool == instance.tool }) {
+                groups[index].instances.append(instance)
+            } else {
+                groups.append(MiscProviderInstanceGroup(tool: instance.tool, instances: [instance]))
+            }
+        }
+        return groups
+    }
 }
 
-/// Single-provider card on the Misc page. Three states:
-/// - **Set up** — no credential configured. CTA opens Settings.
-/// - **Loaded** — `AccountQuota` carries usage buckets; render them.
-/// - **Error** — adapter returned a `QuotaError`; render its message
-///   as a soft tint.
-struct MiscProviderCard: View {
-    let tool: ToolType
+private struct MiscProviderInstanceGroup: Identifiable {
+    var tool: ToolType
+    var instances: [MiscProviderInstance]
+
+    var id: String { tool.rawValue }
+}
+
+private struct MiscProviderCard: View {
+    let instance: MiscProviderInstance
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
-    @EnvironmentObject var settingsStore: SettingsStore
+
+    private var tool: ToolType { instance.tool }
+    private var accountID: String { AccountStore.miscAccountId(forInstanceID: instance.id) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: density.cardSpacing) {
+        MiscProviderCardShell(density: density) {
             header
             Divider().opacity(0.25)
-            content
+            MiscQuotaBody(
+                tool: tool,
+                density: density,
+                quota: environment.quota(for: instance),
+                liveError: quotaService.lastErrorByAccount[accountID],
+                lastUpdated: quotaService.lastUpdatedByAccount[accountID],
+                isCompact: false
+            )
         }
-        .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-        )
     }
-
-    // MARK: - Header
 
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -68,15 +79,10 @@ struct MiscProviderCard: View {
                 Text(tool.menuTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
-                if let plan = quota?.plan, !plan.isEmpty {
-                    Text(plan)
+                if let subtitle = headerSubtitle {
+                    Text(subtitle.text)
                         .font(.system(size: density.subtitleFontSize))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else {
-                    Text(tool.subtitle)
-                        .font(.system(size: density.subtitleFontSize))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(subtitle.isPrimary ? .secondary : .tertiary)
                         .lineLimit(1)
                 }
             }
@@ -86,34 +92,224 @@ struct MiscProviderCard: View {
                 help: "Refresh \(tool.menuTitle)",
                 size: density.subtitleFontSize
             ) {
-                guard let account = environment.account(for: tool) else { return }
-                Task { _ = await quotaService.refresh(account) }
+                environment.refresh(instance)
+            }
+            .disabled(quotaService.inFlightAccountIds.contains(accountID))
+        }
+    }
+
+    private var headerSubtitle: (text: String, isPrimary: Bool)? {
+        if let displayName = instance.displayName {
+            if let plan = environment.quota(for: instance)?.plan, !plan.isEmpty {
+                return ("\(displayName) · \(plan)", true)
+            }
+            return (displayName, true)
+        }
+        if let plan = environment.quota(for: instance)?.plan, !plan.isEmpty {
+            return (plan, true)
+        }
+        return (tool.subtitle, false)
+    }
+}
+
+private struct MiscProviderGroupCard: View {
+    let group: MiscProviderInstanceGroup
+    let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+
+    var body: some View {
+        MiscProviderCardShell(density: density) {
+            header
+            Divider().opacity(0.25)
+            MiscQuotaBody(
+                tool: group.tool,
+                density: density,
+                quota: aggregateQuota,
+                liveError: aggregateQuota?.error,
+                lastUpdated: latestUpdated,
+                isCompact: false
+            )
+            Divider().opacity(0.2)
+            VStack(alignment: .leading, spacing: max(6, density.bucketRowSpacing)) {
+                ForEach(Array(group.instances.enumerated()), id: \.element.id) { index, instance in
+                    MiscProviderInstanceStatusRow(
+                        instance: instance,
+                        ordinal: index + 1,
+                        density: density
+                    )
+                    if index < group.instances.count - 1 {
+                        Divider().opacity(0.16)
+                    }
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 10) {
+            ToolBrandBadge(
+                tool: group.tool,
+                iconSize: max(17, density.bucketTitleFontSize + 1),
+                containerSize: 26
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.tool.menuTitle)
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    .lineLimit(1)
+                Text("\(group.instances.count) independent copies")
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            BorderlessIconButton(
+                systemImage: "arrow.clockwise",
+                help: "Refresh \(group.tool.menuTitle) copies",
+                size: density.subtitleFontSize
+            ) {
+                for instance in group.instances {
+                    environment.refresh(instance)
+                }
             }
             .disabled(isRefreshing)
         }
     }
 
-    // MARK: - Content
+    private var isRefreshing: Bool {
+        group.instances.contains { instance in
+            quotaService.inFlightAccountIds.contains(AccountStore.miscAccountId(forInstanceID: instance.id))
+        }
+    }
 
-    @ViewBuilder
-    private var content: some View {
-        let liveError = displayableError(quotaService.lastErrorByAccount[accountId], with: quota)
+    private var latestUpdated: Date? {
+        group.instances
+            .compactMap { quotaService.lastUpdatedByAccount[AccountStore.miscAccountId(forInstanceID: $0.id)] }
+            .max()
+    }
+
+    private var aggregateQuota: AccountQuota? {
+        let queriedAt = group.instances
+            .compactMap { environment.quota(for: $0)?.queriedAt }
+            .max() ?? Date()
+        let results: [MiscQuotaAggregator.SlotResult] = group.instances.enumerated().map { index, instance in
+            let accountID = AccountStore.miscAccountId(forInstanceID: instance.id)
+            let label = instance.displayTitle(fallback: "Copy \(index + 1)")
+            if let quota = environment.quota(for: instance), !quota.buckets.isEmpty {
+                return .init(slotID: nil, sourceLabel: label, outcome: .success(quota))
+            }
+            let error = quotaService.lastErrorByAccount[accountID]
+                ?? environment.quota(for: instance)?.error
+                ?? .noCredential
+            return .init(slotID: nil, sourceLabel: label, outcome: .failure(error))
+        }
+        let account = AccountIdentity(
+            id: "misc-\(group.tool.rawValue)-aggregate",
+            tool: group.tool,
+            alias: group.tool.menuTitle,
+            source: .notConfigured
+        )
+        return MiscQuotaAggregator.aggregate(
+            tool: group.tool,
+            account: account,
+            results: results,
+            queriedAt: queriedAt
+        )
+    }
+}
+
+private struct MiscProviderInstanceStatusRow: View {
+    let instance: MiscProviderInstance
+    let ordinal: Int
+    let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+
+    private var accountID: String { AccountStore.miscAccountId(forInstanceID: instance.id) }
+    private var title: String { instance.displayTitle(fallback: "Copy \(ordinal)") }
+    private var refreshTitle: String { instance.displayTitle(fallback: "copy \(ordinal)") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 6) {
+                Text(title)
+                    .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                BorderlessIconButton(
+                    systemImage: "arrow.clockwise",
+                    help: "Refresh \(refreshTitle)",
+                    size: max(9, density.subtitleFontSize - 1)
+                ) {
+                    environment.refresh(instance)
+                }
+                .disabled(quotaService.inFlightAccountIds.contains(accountID))
+            }
+            MiscQuotaBody(
+                tool: instance.tool,
+                density: density,
+                quota: environment.quota(for: instance),
+                liveError: quotaService.lastErrorByAccount[accountID],
+                lastUpdated: quotaService.lastUpdatedByAccount[accountID],
+                isCompact: true
+            )
+        }
+        .padding(.leading, 6)
+    }
+}
+
+private struct MiscProviderCardShell<Content: View>: View {
+    let density: Theme.Density
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
+            content()
+        }
+        .padding(density.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+}
+
+private struct MiscQuotaBody: View {
+    let tool: ToolType
+    let density: Theme.Density
+    let quota: AccountQuota?
+    let liveError: QuotaError?
+    let lastUpdated: Date?
+    let isCompact: Bool
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    var body: some View {
+        let visibleError = displayableError(liveError, with: quota)
         if let buckets = quota?.buckets, !buckets.isEmpty {
-            VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
+            VStack(alignment: .leading, spacing: max(4, density.bucketRowSpacing - (isCompact ? 2 : 0))) {
                 ForEach(buckets) { bucket in
                     miscBucketRow(bucket)
                 }
-                if let updated = quotaService.lastUpdatedByAccount[accountId] {
-                    Text(ResetCountdownFormatter.updatedAgo(from: updated, now: Date()))
+                if let lastUpdated {
+                    Text(ResetCountdownFormatter.updatedAgo(from: lastUpdated, now: Date()))
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                 }
-                if let liveError {
-                    compactErrorText("Update failed: \(liveError.userFacingMessage)")
+                if let visibleError {
+                    compactErrorText("Update failed: \(visibleError.userFacingMessage)")
                 }
             }
-        } else if let liveError, liveError != .noCredential {
-            errorState(liveError)
+        } else if let visibleError, visibleError != .noCredential {
+            errorState(visibleError)
         } else {
             setupState
         }
@@ -132,28 +328,29 @@ struct MiscProviderCard: View {
     }
 
     private func miscBucketRow(_ bucket: QuotaBucket) -> some View {
-        // Honour the user's `displayMode` (used vs remaining) the same
-        // way the primary `ProviderBucketRow` does. With the default
-        // `.remaining` setting, "92%" means "92% remaining" and the
-        // bar fills toward "full". Without this conversion the misc
-        // cards always rendered used%, which read inverted next to
-        // the OpenAI / Claude cards.
         let mode = settingsStore.settings.displayMode
         let percent = bucket.displayPercent(mode)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
-                    .font(.system(size: density.bucketTitleFontSize - 1, weight: .medium))
+                    .font(.system(
+                        size: density.bucketTitleFontSize - (isCompact ? 2 : 1),
+                        weight: .medium
+                    ))
                 Spacer()
                 Text("\(Int(percent.rounded()))%")
-                    .font(.system(size: density.bucketPercentFontSize, weight: .semibold))
+                    .font(.system(
+                        size: density.bucketPercentFontSize - (isCompact ? 2 : 0),
+                        weight: .semibold
+                    ))
                     .monospacedDigit()
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
             }
-            QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
-            // groupTitle is used by Cursor's on-demand bucket and
-            // similar adapters to surface a short dollar / count
-            // summary alongside the percent bar.
+            QuotaBarShape(
+                percent: percent,
+                mode: mode,
+                height: max(3, density.bucketBarHeight - (isCompact ? 1 : 0))
+            )
             if let group = bucket.groupTitle, !group.isEmpty, group != bucket.title {
                 Text(group)
                     .font(.system(size: density.resetCountdownFontSize))
@@ -219,19 +416,5 @@ struct MiscProviderCard: View {
         }
         .font(.system(size: density.resetCountdownFontSize))
         .foregroundStyle(.orange)
-    }
-
-    // MARK: - State helpers
-
-    private var accountId: String {
-        AccountStore.miscAccountId(for: tool)
-    }
-
-    private var quota: AccountQuota? {
-        environment.quota(for: tool)
-    }
-
-    private var isRefreshing: Bool {
-        quotaService.inFlightAccountIds.contains(accountId)
     }
 }

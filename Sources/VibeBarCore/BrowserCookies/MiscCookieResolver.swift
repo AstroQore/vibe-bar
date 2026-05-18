@@ -126,11 +126,22 @@ public enum MiscCookieResolver {
     /// slots, or when the source mode bans cookies entirely
     /// (`apiOnly` / `off`).
     public static func resolveAll(for spec: Spec) -> [Resolution] {
-        let settings = currentSettings(for: spec.tool)
+        resolveAll(for: spec, instanceID: spec.tool.rawValue)
+    }
+
+    public static func resolveAll(for spec: Spec, account: AccountIdentity) -> [Resolution] {
+        resolveAll(
+            for: spec,
+            instanceID: AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: spec.tool)
+        )
+    }
+
+    public static func resolveAll(for spec: Spec, instanceID: String) -> [Resolution] {
+        let settings = currentSettings(for: spec.tool, instanceID: instanceID)
         let filter = SlotFilter(settings: settings)
         guard filter != .none else { return [] }
 
-        return MiscCookieSlotStore.slots(for: spec.tool).compactMap { slot in
+        return MiscCookieSlotStore.slots(for: spec.tool, instanceID: instanceID).compactMap { slot in
             guard filter.allows(slot) else { return nil }
             guard let header = spec.minimizedHeader(from: slot.cookieHeader),
                   !header.isEmpty else { return nil }
@@ -148,12 +159,20 @@ public enum MiscCookieResolver {
         resolveAll(for: spec).first
     }
 
+    public static func resolve(for spec: Spec, account: AccountIdentity) -> Resolution? {
+        resolveAll(for: spec, account: account).first
+    }
+
     /// Run the SweetCookieKit browser-import dance and append the
     /// captured header as a new slot. Returns the appended slot's
     /// Resolution on success, or `nil` if no browser session was
     /// found (or the source mode bans cookies).
     public static func appendBrowserImport(for spec: Spec) -> Resolution? {
-        let settings = currentSettings(for: spec.tool)
+        appendBrowserImport(for: spec, instanceID: spec.tool.rawValue)
+    }
+
+    public static func appendBrowserImport(for spec: Spec, instanceID: String) -> Resolution? {
+        let settings = currentSettings(for: spec.tool, instanceID: instanceID)
         guard SlotFilter(settings: settings) != .none else { return nil }
         guard let imported = importFromBrowsers(
             spec: spec,
@@ -168,7 +187,7 @@ public enum MiscCookieResolver {
             importedAt: Date(),
             origin: .browserImport
         )
-        guard MiscCookieSlotStore.append(slot, for: spec.tool) else { return nil }
+        guard MiscCookieSlotStore.append(slot, for: spec.tool, instanceID: instanceID) else { return nil }
         return Resolution(
             slotID: slot.id,
             header: imported.header,
@@ -181,6 +200,10 @@ public enum MiscCookieResolver {
     /// invocation appends a new slot rather than replacing one.
     public static func forceBrowserImport(for spec: Spec) -> Resolution? {
         appendBrowserImport(for: spec)
+    }
+
+    public static func forceBrowserImport(for spec: Spec, instanceID: String) -> Resolution? {
+        appendBrowserImport(for: spec, instanceID: instanceID)
     }
 
     // MARK: - Internals
@@ -309,7 +332,7 @@ public enum MiscCookieResolver {
         }
     }
 
-    private static func currentSettings(for tool: ToolType) -> MiscProviderSettings {
-        MiscProviderSettings.current(for: tool)
+    private static func currentSettings(for tool: ToolType, instanceID: String) -> MiscProviderSettings {
+        MiscProviderSettings.current(for: tool, instanceID: instanceID)
     }
 }

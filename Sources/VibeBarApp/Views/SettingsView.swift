@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import VibeBarCore
 
 struct SettingsView: View {
@@ -17,6 +18,7 @@ struct SettingsView: View {
     @State private var isAuthorizingKeychain: Bool = false
     @State private var keychainAuthorizationStatus: String?
     @State private var keychainAuthorizationSucceeded: Bool = false
+    @State private var draggedMiscProviderInstanceID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -203,9 +205,31 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 10) {
-                            ForEach(settingsStore.settings.miscProviderOrder, id: \.self) { tool in
-                                MiscProviderSettingsSection(tool: tool)
+                            ForEach(settingsStore.settings.miscProviderInstances) { instance in
+                                MiscProviderSettingsSection(instance: instance)
+                                    .onDrag {
+                                        draggedMiscProviderInstanceID = instance.id
+                                        return NSItemProvider(object: instance.id as NSString)
+                                    }
+                                    .onDrop(
+                                        of: [UTType.text],
+                                        delegate: MiscProviderInstanceDropDelegate(
+                                            targetID: instance.id,
+                                            draggedID: $draggedMiscProviderInstanceID,
+                                            settingsStore: settingsStore
+                                        )
+                                    )
                             }
+                            Color.clear
+                                .frame(height: 8)
+                                .onDrop(
+                                    of: [UTType.text],
+                                    delegate: MiscProviderInstanceDropDelegate(
+                                        targetID: nil,
+                                        draggedID: $draggedMiscProviderInstanceID,
+                                        settingsStore: settingsStore
+                                    )
+                                )
                         }
                     }
 
@@ -795,5 +819,30 @@ struct SettingsView: View {
         case 365 * 3: return "3 years"
         default: return "\(days) days"
         }
+    }
+}
+
+private struct MiscProviderInstanceDropDelegate: DropDelegate {
+    let targetID: String?
+    @Binding var draggedID: String?
+    let settingsStore: SettingsStore
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedID else { return }
+        if let targetID {
+            guard draggedID != targetID else { return }
+            settingsStore.settings.moveMiscProviderInstance(id: draggedID, before: targetID)
+        } else {
+            settingsStore.settings.moveMiscProviderInstanceToEnd(id: draggedID)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedID = nil
+        return true
     }
 }

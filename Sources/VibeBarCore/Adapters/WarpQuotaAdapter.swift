@@ -48,9 +48,10 @@ public struct WarpQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let settings = MiscProviderSettings.current(for: .warp)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .warp)
+        let settings = MiscProviderSettings.current(for: .warp, instanceID: instanceID)
         guard settings.allowsAPIOrOAuthAccess,
-              let apiKey = WarpQuotaAdapter.resolveAPIKey(environment: environment) else {
+              let apiKey = WarpQuotaAdapter.resolveAPIKey(environment: environment, instanceID: instanceID) else {
             throw QuotaError.noCredential
         }
 
@@ -122,8 +123,8 @@ public struct WarpQuotaAdapter: QuotaAdapter {
         return data
     }
 
-    public static func resolveAPIKey(environment: [String: String]) -> String? {
-        if let stored = MiscCredentialStore.readString(tool: .warp, kind: .apiKey),
+    public static func resolveAPIKey(environment: [String: String], instanceID: String = ToolType.warp.rawValue) -> String? {
+        if let stored = MiscCredentialStore.readString(tool: .warp, kind: .apiKey, instanceID: instanceID),
            !stored.isEmpty {
             return stored
         }

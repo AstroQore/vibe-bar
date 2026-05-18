@@ -8,9 +8,9 @@ import Combine
 /// credential is found, no account is registered, and the popover shows
 /// a "logged out" placeholder for that tool.
 ///
-/// Misc providers (`ToolType.miscProviders`) follow the opposite rule:
-/// every misc provider always has a stable account id of the form
-/// `"misc-<rawValue>"`, even when no credential is configured. The
+/// Misc provider instances follow the opposite rule: every visible or
+/// hidden instance always has a stable account id of the form
+/// `"misc-<instanceID>"`, even when no credential is configured. The
 /// resulting card shows a "Set up" call-to-action; once a credential
 /// lands the same id is reused so cached snapshots survive.
 @MainActor
@@ -19,15 +19,21 @@ public final class AccountStore: ObservableObject {
 
     public init(
         codexUsageMode: CodexUsageMode = .auto,
-        claudeUsageMode: ClaudeUsageMode = .auto
+        claudeUsageMode: ClaudeUsageMode = .auto,
+        miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
     ) {
-        reload(codexUsageMode: codexUsageMode, claudeUsageMode: claudeUsageMode)
+        reload(
+            codexUsageMode: codexUsageMode,
+            claudeUsageMode: claudeUsageMode,
+            miscProviderInstances: miscProviderInstances
+        )
     }
 
     /// Re-scan CLI keychain/files for auto-detected provider identities.
     public func reload(
         codexUsageMode: CodexUsageMode = .auto,
-        claudeUsageMode: ClaudeUsageMode = .auto
+        claudeUsageMode: ClaudeUsageMode = .auto,
+        miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
     ) {
         var detected: [AccountIdentity] = []
 
@@ -38,9 +44,9 @@ public final class AccountStore: ObservableObject {
             detected.append(claude)
         }
 
-        // Misc providers always present, regardless of credentials.
-        for tool in ToolType.miscProviders {
-            detected.append(miscPlaceholder(for: tool))
+        // Misc provider instances always present, regardless of credentials.
+        for instance in miscProviderInstances {
+            detected.append(miscPlaceholder(for: instance))
         }
 
         self.accounts = detected
@@ -50,9 +56,25 @@ public final class AccountStore: ObservableObject {
         accounts.filter { $0.tool == tool }
     }
 
-    public static func miscAccountId(for tool: ToolType) -> String {
+    public func account(forMiscProviderInstanceID instanceID: String) -> AccountIdentity? {
+        accounts.first { $0.id == Self.miscAccountId(forInstanceID: instanceID) }
+    }
+
+    nonisolated public static func miscAccountId(for tool: ToolType) -> String {
         precondition(tool.isMisc, "miscAccountId requested for primary tool: \(tool)")
-        return "misc-\(tool.rawValue)"
+        return miscAccountId(forInstanceID: tool.rawValue)
+    }
+
+    nonisolated public static func miscAccountId(forInstanceID instanceID: String) -> String {
+        "misc-\(instanceID)"
+    }
+
+    nonisolated public static func miscInstanceID(fromAccountID accountID: String, fallbackTool: ToolType) -> String {
+        let prefix = "misc-"
+        guard accountID.hasPrefix(prefix), accountID.count > prefix.count else {
+            return fallbackTool.rawValue
+        }
+        return String(accountID.dropFirst(prefix.count))
     }
 
     // MARK: - CLI auto detection
@@ -182,11 +204,11 @@ public final class AccountStore: ObservableObject {
     /// adapter actually fetches successfully, `QuotaService` updates
     /// the snapshot's metadata — the placeholder identity is mainly a
     /// hook for the UI to render a card and route to Settings.
-    private func miscPlaceholder(for tool: ToolType) -> AccountIdentity {
+    private func miscPlaceholder(for instance: MiscProviderInstance) -> AccountIdentity {
         AccountIdentity(
-            id: AccountStore.miscAccountId(for: tool),
-            tool: tool,
-            alias: tool.menuTitle,
+            id: AccountStore.miscAccountId(forInstanceID: instance.id),
+            tool: instance.tool,
+            alias: instance.displayName ?? instance.tool.menuTitle,
             source: .notConfigured,
             createdAt: Date(),
             updatedAt: Date()

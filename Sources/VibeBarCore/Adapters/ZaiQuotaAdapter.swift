@@ -32,7 +32,8 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let providerSettings = MiscProviderSettings.current(for: .zai)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .zai)
+        let providerSettings = MiscProviderSettings.current(for: .zai, instanceID: instanceID)
         guard providerSettings.allowsAPIOrOAuthAccess else {
             throw QuotaError.noCredential
         }
@@ -41,7 +42,7 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
             providerSettings: providerSettings
         )
 
-        guard let apiKey = MiscCredentialStore.readString(tool: .zai, kind: .apiKey),
+        guard let apiKey = MiscCredentialStore.readString(tool: .zai, kind: .apiKey, instanceID: instanceID),
               !apiKey.isEmpty
         else {
             throw QuotaError.noCredential

@@ -28,6 +28,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// used by Settings and the Misc page; missing providers are appended so
     /// older settings files pick up new integrations automatically.
     public var miscProviderOrder: [ToolType]
+    /// User-controlled misc provider instances. Multiple instances may share
+    /// one `ToolType`, but each gets independent credentials, cookie slots,
+    /// quota cache, and settings.
+    public var miscProviderInstances: [MiscProviderInstance]
     public var costData: CostDataSettings
 
     public static let `default` = AppSettings(
@@ -45,6 +49,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscProviders: Self.defaultMiscProviders,
         visibleMiscProviders: Self.defaultVisibleMiscProviders,
         miscProviderOrder: Self.defaultMiscProviderOrder,
+        miscProviderInstances: Self.defaultMiscProviderInstances,
         costData: .default
     )
 
@@ -121,6 +126,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         ToolType.miscProviders
     }
 
+    public static var defaultMiscProviderInstances: [MiscProviderInstance] {
+        ToolType.miscProviders.map { .defaultInstance(for: $0) }
+    }
+
     public init(
         displayMode: DisplayMode,
         refreshIntervalSeconds: Int,
@@ -136,6 +145,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
         visibleMiscProviders: Set<ToolType> = AppSettings.defaultVisibleMiscProviders,
         miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
+        miscProviderInstances: [MiscProviderInstance]? = nil,
         costData: CostDataSettings = .default
     ) {
         self.displayMode = displayMode
@@ -149,9 +159,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miniWindow = miniWindow
         self.popoverDensities = popoverDensities
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
-        self.miscProviders = Self.normalizedMiscProviders(miscProviders)
-        self.visibleMiscProviders = Self.normalizedVisibleMiscProviders(visibleMiscProviders)
-        self.miscProviderOrder = Self.normalizedMiscProviderOrder(miscProviderOrder)
+        let normalizedLegacyProviders = Self.normalizedMiscProviders(miscProviders)
+        let normalizedVisibleProviders = Self.normalizedVisibleMiscProviders(visibleMiscProviders)
+        let normalizedProviderOrder = Self.normalizedMiscProviderOrder(miscProviderOrder)
+        self.miscProviderInstances = Self.normalizedMiscProviderInstances(
+            miscProviderInstances,
+            legacyProviders: normalizedLegacyProviders,
+            legacyVisible: normalizedVisibleProviders,
+            legacyOrder: normalizedProviderOrder
+        )
+        self.miscProviders = Self.legacyMiscProviders(from: self.miscProviderInstances)
+        self.visibleMiscProviders = Self.legacyVisibleMiscProviders(from: self.miscProviderInstances)
+        self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
         self.costData = costData
     }
 
@@ -171,6 +190,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case miscProviders
         case visibleMiscProviders
         case miscProviderOrder
+        case miscProviderInstances
         case costData
     }
 
@@ -222,35 +242,49 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // dropped. `MiscProviderSettings`' own decoder rejects fields
         // whose names look like secrets — together they keep
         // settings.json minimal and credential-free.
+        let decodedLegacyProviders: [ToolType: MiscProviderSettings]
         if let raw = try c.decodeIfPresent([String: MiscProviderSettings].self, forKey: .miscProviders) {
             var map: [ToolType: MiscProviderSettings] = [:]
             for (key, value) in raw {
                 if let tool = ToolType(rawValue: key), tool.isMisc { map[tool] = value }
             }
-            self.miscProviders = Self.normalizedMiscProviders(map)
+            decodedLegacyProviders = Self.normalizedMiscProviders(map)
         } else {
-            self.miscProviders = Self.defaultMiscProviders
+            decodedLegacyProviders = Self.defaultMiscProviders
         }
 
+        let decodedLegacyVisible: Set<ToolType>
         if let rawVisible = try c.decodeIfPresent([String].self, forKey: .visibleMiscProviders) {
             var set: Set<ToolType> = []
             for raw in rawVisible {
                 if let tool = ToolType(rawValue: raw), tool.isMisc { set.insert(tool) }
             }
-            self.visibleMiscProviders = Self.normalizedVisibleMiscProviders(set)
+            decodedLegacyVisible = Self.normalizedVisibleMiscProviders(set)
         } else {
-            self.visibleMiscProviders = Self.defaultVisibleMiscProviders
+            decodedLegacyVisible = Self.defaultVisibleMiscProviders
         }
 
+        let decodedLegacyOrder: [ToolType]
         if let rawOrder = try c.decodeIfPresent([String].self, forKey: .miscProviderOrder) {
             let order = rawOrder.compactMap { raw -> ToolType? in
                 guard let tool = ToolType(rawValue: raw), tool.isMisc else { return nil }
                 return tool
             }
-            self.miscProviderOrder = Self.normalizedMiscProviderOrder(order)
+            decodedLegacyOrder = Self.normalizedMiscProviderOrder(order)
         } else {
-            self.miscProviderOrder = Self.defaultMiscProviderOrder
+            decodedLegacyOrder = Self.defaultMiscProviderOrder
         }
+
+        let decodedInstances = try c.decodeIfPresent([MiscProviderInstance].self, forKey: .miscProviderInstances)
+        self.miscProviderInstances = Self.normalizedMiscProviderInstances(
+            decodedInstances,
+            legacyProviders: decodedLegacyProviders,
+            legacyVisible: decodedLegacyVisible,
+            legacyOrder: decodedLegacyOrder
+        )
+        self.miscProviders = Self.legacyMiscProviders(from: self.miscProviderInstances)
+        self.visibleMiscProviders = Self.legacyVisibleMiscProviders(from: self.miscProviderInstances)
+        self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
 
         self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
     }
@@ -277,6 +311,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             .map(\.rawValue)
         try c.encode(visibleRaw, forKey: .visibleMiscProviders)
         try c.encode(miscProviderOrder.map(\.rawValue), forKey: .miscProviderOrder)
+        try c.encode(miscProviderInstances, forKey: .miscProviderInstances)
         try c.encode(costData, forKey: .costData)
     }
 
@@ -378,15 +413,98 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return out
     }
 
+    private static func normalizedMiscProviderInstances(
+        _ instances: [MiscProviderInstance]?,
+        legacyProviders: [ToolType: MiscProviderSettings],
+        legacyVisible: Set<ToolType>,
+        legacyOrder: [ToolType]
+    ) -> [MiscProviderInstance] {
+        var seenIDs: Set<String> = []
+        var out: [MiscProviderInstance] = []
+
+        if let instances, !instances.isEmpty {
+            for raw in instances {
+                guard raw.tool.isMisc else { continue }
+                let trimmedID = raw.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmedID.isEmpty, seenIDs.insert(trimmedID).inserted else { continue }
+                out.append(MiscProviderInstance(
+                    id: trimmedID,
+                    tool: raw.tool,
+                    settings: raw.settings,
+                    isVisible: raw.isVisible,
+                    displayName: raw.displayName
+                ))
+            }
+        } else {
+            for tool in legacyOrder {
+                out.append(.defaultInstance(
+                    for: tool,
+                    settings: legacyProviders[tool] ?? .default,
+                    isVisible: legacyVisible.contains(tool)
+                ))
+                seenIDs.insert(tool.rawValue)
+            }
+        }
+
+        for tool in ToolType.miscProviders where !seenIDs.contains(tool.rawValue) {
+            out.append(.defaultInstance(
+                for: tool,
+                settings: legacyProviders[tool] ?? .default,
+                isVisible: legacyVisible.contains(tool)
+            ))
+            seenIDs.insert(tool.rawValue)
+        }
+        return out
+    }
+
+    private static func legacyMiscProviders(from instances: [MiscProviderInstance]) -> [ToolType: MiscProviderSettings] {
+        var out: [ToolType: MiscProviderSettings] = [:]
+        for tool in ToolType.miscProviders {
+            let preferred = instances.first { $0.tool == tool && $0.isDefault }
+                ?? instances.first { $0.tool == tool }
+            out[tool] = preferred?.settings ?? .default
+        }
+        return out
+    }
+
+    private static func legacyVisibleMiscProviders(from instances: [MiscProviderInstance]) -> Set<ToolType> {
+        Set(instances.filter(\.isVisible).map(\.tool))
+    }
+
+    private static func legacyMiscProviderOrder(from instances: [MiscProviderInstance]) -> [ToolType] {
+        var seen: Set<ToolType> = []
+        var out: [ToolType] = []
+        for instance in instances where seen.insert(instance.tool).inserted {
+            out.append(instance.tool)
+        }
+        for tool in ToolType.miscProviders where seen.insert(tool).inserted {
+            out.append(tool)
+        }
+        return out
+    }
+
+    private mutating func syncLegacyMiscProviderFields() {
+        miscProviderInstances = Self.normalizedMiscProviderInstances(
+            miscProviderInstances,
+            legacyProviders: miscProviders,
+            legacyVisible: visibleMiscProviders,
+            legacyOrder: miscProviderOrder
+        )
+        miscProviders = Self.legacyMiscProviders(from: miscProviderInstances)
+        visibleMiscProviders = Self.legacyVisibleMiscProviders(from: miscProviderInstances)
+        miscProviderOrder = Self.legacyMiscProviderOrder(from: miscProviderInstances)
+    }
+
     public func miscProvider(_ tool: ToolType) -> MiscProviderSettings {
         precondition(tool.isMisc, "miscProvider lookup requested for primary tool: \(tool)")
-        return miscProviders[tool] ?? .default
+        return miscProviderInstance(id: tool.rawValue)?.settings
+            ?? miscProviders[tool]
+            ?? .default
     }
 
     public mutating func setMiscProvider(_ settings: MiscProviderSettings, for tool: ToolType) {
         precondition(tool.isMisc, "setMiscProvider lookup requested for primary tool: \(tool)")
-        miscProviders[tool] = settings
-        miscProviders = Self.normalizedMiscProviders(miscProviders)
+        setMiscProviderInstanceSettings(settings, forID: tool.rawValue)
     }
 
     public func isMiscProviderVisible(_ tool: ToolType) -> Bool {
@@ -395,17 +513,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public var visibleMiscProviderList: [ToolType] {
-        Self.normalizedMiscProviderOrder(miscProviderOrder).filter { isMiscProviderVisible($0) }
+        visibleMiscProviderInstances.map(\.tool)
     }
 
     public mutating func setMiscProviderVisible(_ visible: Bool, for tool: ToolType) {
         precondition(tool.isMisc, "visibility update requested for primary tool: \(tool)")
-        if visible {
-            visibleMiscProviders.insert(tool)
-        } else {
-            visibleMiscProviders.remove(tool)
-        }
-        visibleMiscProviders = Self.normalizedVisibleMiscProviders(visibleMiscProviders)
+        setMiscProviderInstanceVisible(visible, forID: tool.rawValue)
     }
 
     public func miscProviderOrderIndex(_ tool: ToolType) -> Int? {
@@ -415,13 +528,115 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public mutating func moveMiscProvider(_ tool: ToolType, offset: Int) {
         precondition(tool.isMisc, "order update requested for primary tool: \(tool)")
-        var order = Self.normalizedMiscProviderOrder(miscProviderOrder)
-        guard let from = order.firstIndex(of: tool) else { return }
+        var order = miscProviderInstances
+        guard let from = order.firstIndex(where: { $0.id == tool.rawValue }) else { return }
         let to = max(0, min(order.count - 1, from + offset))
         guard from != to else { return }
         let item = order.remove(at: from)
         order.insert(item, at: to)
-        miscProviderOrder = Self.normalizedMiscProviderOrder(order)
+        miscProviderInstances = order
+        syncLegacyMiscProviderFields()
+    }
+
+    public var visibleMiscProviderInstances: [MiscProviderInstance] {
+        miscProviderInstances.filter(\.isVisible)
+    }
+
+    public func miscProviderInstance(id: String) -> MiscProviderInstance? {
+        miscProviderInstances.first { $0.id == id }
+    }
+
+    public func miscProviderSettings(forInstanceID id: String) -> MiscProviderSettings {
+        miscProviderInstance(id: id)?.settings ?? .default
+    }
+
+    public mutating func setMiscProviderInstanceSettings(_ settings: MiscProviderSettings, forID id: String) {
+        guard let index = miscProviderInstances.firstIndex(where: { $0.id == id }) else { return }
+        miscProviderInstances[index].settings = settings.automaticSourceSelection
+        syncLegacyMiscProviderFields()
+    }
+
+    public mutating func setMiscProviderInstanceVisible(_ visible: Bool, forID id: String) {
+        guard let index = miscProviderInstances.firstIndex(where: { $0.id == id }) else { return }
+        miscProviderInstances[index].isVisible = visible
+        syncLegacyMiscProviderFields()
+    }
+
+    public mutating func setMiscProviderInstanceDisplayName(_ displayName: String?, forID id: String) {
+        guard let index = miscProviderInstances.firstIndex(where: { $0.id == id }) else { return }
+        miscProviderInstances[index].displayName = MiscProviderInstance.normalizedDisplayName(displayName)
+        syncLegacyMiscProviderFields()
+    }
+
+    @discardableResult
+    public mutating func cloneMiscProviderInstance(id: String) -> MiscProviderInstance? {
+        guard let index = miscProviderInstances.firstIndex(where: { $0.id == id }) else { return nil }
+        let original = miscProviderInstances[index]
+        let existingIDs = Set(miscProviderInstances.map(\.id))
+        var cloneID: String
+        repeat {
+            cloneID = "\(original.tool.rawValue)-\(UUID().uuidString.lowercased())"
+        } while existingIDs.contains(cloneID)
+
+        let clone = MiscProviderInstance(
+            id: cloneID,
+            tool: original.tool,
+            settings: original.settings,
+            isVisible: true
+        )
+        miscProviderInstances.insert(clone, at: miscProviderInstances.index(after: index))
+        syncLegacyMiscProviderFields()
+        return clone
+    }
+
+    @discardableResult
+    public mutating func removeMiscProviderInstance(id: String) -> MiscProviderInstance? {
+        guard let index = miscProviderInstances.firstIndex(where: { $0.id == id }) else { return nil }
+        let instance = miscProviderInstances[index]
+        guard !instance.isDefault else { return nil }
+        miscProviderInstances.remove(at: index)
+        syncLegacyMiscProviderFields()
+        return instance
+    }
+
+    public mutating func moveMiscProviderInstance(id: String, before targetID: String) {
+        guard id != targetID,
+              let from = miscProviderInstances.firstIndex(where: { $0.id == id }),
+              let target = miscProviderInstances.firstIndex(where: { $0.id == targetID })
+        else { return }
+        let item = miscProviderInstances.remove(at: from)
+        let adjustedTarget = from < target ? target - 1 : target
+        miscProviderInstances.insert(item, at: adjustedTarget)
+        syncLegacyMiscProviderFields()
+    }
+
+    public mutating func moveMiscProviderInstanceToEnd(id: String) {
+        guard let from = miscProviderInstances.firstIndex(where: { $0.id == id }) else { return }
+        let item = miscProviderInstances.remove(at: from)
+        miscProviderInstances.append(item)
+        syncLegacyMiscProviderFields()
+    }
+
+    public mutating func moveMiscProviderInstance(fromOffsets offsets: IndexSet, toOffset: Int) {
+        let sortedOffsets = offsets.sorted()
+        guard !sortedOffsets.isEmpty else { return }
+        let moving = sortedOffsets.compactMap { index -> MiscProviderInstance? in
+            guard miscProviderInstances.indices.contains(index) else { return nil }
+            return miscProviderInstances[index]
+        }
+        guard moving.count == sortedOffsets.count else { return }
+
+        var remaining = miscProviderInstances.enumerated()
+            .filter { !offsets.contains($0.offset) }
+            .map(\.element)
+        var destination = toOffset
+        for offset in sortedOffsets where offset < toOffset {
+            destination -= 1
+        }
+        destination = max(0, min(destination, remaining.count))
+        remaining.insert(contentsOf: moving, at: destination)
+        miscProviderInstances = remaining
+        syncLegacyMiscProviderFields()
     }
 
     private static func migratedMenuBarItem(_ item: MenuBarItemSettings) -> MenuBarItemSettings {

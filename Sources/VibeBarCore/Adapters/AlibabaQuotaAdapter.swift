@@ -54,7 +54,8 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let settings = MiscProviderSettings.current(for: .alibaba)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .alibaba)
+        let settings = MiscProviderSettings.current(for: .alibaba, instanceID: instanceID)
 
         let preferred: [AlibabaRegion]
         switch settings.region {
@@ -68,11 +69,11 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
 
         let queriedAt = now()
         let hasAPIKey = settings.allowsAPIOrOAuthAccess && {
-            guard let key = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
+            guard let key = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey, instanceID: instanceID),
                   !key.isEmpty else { return false }
             return true
         }()
-        let cookieResolutions = MiscCookieResolver.resolveAll(for: AlibabaQuotaAdapter.cookieSpec)
+        let cookieResolutions = MiscCookieResolver.resolveAll(for: AlibabaQuotaAdapter.cookieSpec, account: account)
 
         // Path 1: API key (preferred when present — fewer round-trips,
         // no SEC_TOKEN scrape). Fall through to the cookie path on
@@ -80,7 +81,7 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
         // black-hole users who also have a console session. The API
         // key returns a single account; aggregation is a no-op there.
         if hasAPIKey,
-           let apiKey = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey),
+           let apiKey = MiscCredentialStore.readString(tool: .alibaba, kind: .apiKey, instanceID: instanceID),
            !apiKey.isEmpty {
             do {
                 return try await fetchViaAPIKey(

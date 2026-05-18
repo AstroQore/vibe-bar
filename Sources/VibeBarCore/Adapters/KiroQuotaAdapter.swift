@@ -15,7 +15,8 @@ public struct KiroQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let settings = MiscProviderSettings.current(for: .kiro)
+        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .kiro)
+        let settings = MiscProviderSettings.current(for: .kiro, instanceID: instanceID)
         guard settings.allowsLocalProbeAccess else {
             throw QuotaError.noCredential
         }
