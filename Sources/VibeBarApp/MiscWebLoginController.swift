@@ -691,7 +691,7 @@ final class MiscWebLoginRegistry {
                 // enumerate from JS.
                 requiredCookieNames: [],
                 trustedAuthHostSuffixes: [
-                    // Tencent Cloud console + Hunyuan console.
+                    // Tencent Cloud console + TokenHub / legacy Hunyuan console.
                     "cloud.tencent.com",
                     "tencent.com",
                     "qq.com",                     // QQ login + assets
@@ -701,9 +701,9 @@ final class MiscWebLoginRegistry {
                     "captcha.qcloud.com",         // Tencent captcha
                     "captcha.gtimg.com"           // captcha assets
                 ],
-                windowTitle: "Tencent Hunyuan Login",
-                savedConfirmation: "Hunyuan cookies saved.",
-                setupHint: "Sign in to Tencent Cloud (sub-user works), then click Save Cookies."
+                windowTitle: "Tencent Coding Plan Login",
+                savedConfirmation: "Coding Plan cookies saved.",
+                setupHint: "Sign in to Tencent Cloud TokenHub Coding Plan (sub-user works), then click Save Cookies."
             )
         case .alibaba:
             return MiscWebLoginController.Config(
