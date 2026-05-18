@@ -133,6 +133,21 @@ struct MiscProviderSettingsSection: View {
                     helpText: "No DashScope key? Sign in to bailian.console.aliyun.com or modelstudio.console.alibabacloud.com once via Web; Vibe Bar refreshes the console session in the background after that."
                 )
             }
+        case .alibabaTokenPlan:
+            VStack(alignment: .leading, spacing: 4) {
+                AlibabaRegionPicker(instanceID: instanceID)
+                CookieSourceControls(
+                    tool: .alibabaTokenPlan,
+                    instanceID: instanceID,
+                    spec: AlibabaTokenPlanQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste console.aliyun.com Cookie header (login_aliyunid_csrf=…; cna=…; …)"
+                )
+                MiscWebLoginRow(
+                    tool: .alibabaTokenPlan,
+                    instanceID: instanceID,
+                    helpText: "Sign in to bailian.console.aliyun.com once on the Aliyun account that owns the Token Plan. Same login as the Coding Plan card — you can sign in on either."
+                )
+            }
         case .minimax:
             VStack(alignment: .leading, spacing: 4) {
                 ApiKeyField(

@@ -37,6 +37,7 @@ public final class QuotaService: ObservableObject {
                 .copilot: CopilotQuotaAdapter(),
                 .gemini: GeminiQuotaAdapter(),
                 .alibaba: AlibabaQuotaAdapter(),
+                .alibabaTokenPlan: AlibabaTokenPlanQuotaAdapter(),
                 .minimax: MiniMaxQuotaAdapter(),
                 .kimi: KimiQuotaAdapter(),
                 .cursor: CursorQuotaAdapter(),

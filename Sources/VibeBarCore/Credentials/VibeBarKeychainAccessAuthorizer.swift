@@ -69,7 +69,7 @@ public enum VibeBarKeychainAccessAuthorizer {
     /// `MiscCookieSlotStore`. The list mirrors every cookie-only adapter
     /// plus Alibaba (cookie path is one of two auth modes).
     private static let currentCookieBackedMiscTools: [ToolType] = [
-        .alibaba, .kimi, .cursor, .mimo, .iflytek,
+        .alibaba, .alibabaTokenPlan, .kimi, .cursor, .mimo, .iflytek,
         .tencentHunyuan, .volcengine, .openCodeGo, .ollama
     ]
     /// Misc tools with an in-app WKWebView login flow where
@@ -77,7 +77,7 @@ public enum VibeBarKeychainAccessAuthorizer {
     /// Keeping the list explicit lets the preflight pre-authorize the
     /// Keychain accounts so users don't see a prompt on first save.
     private static let currentWebFormBackedMiscTools: [ToolType] = [
-        .mimo, .volcengine, .tencentHunyuan, .alibaba
+        .mimo, .volcengine, .tencentHunyuan, .alibaba, .alibabaTokenPlan
     ]
     private static let currentSecretKindsByTool: [ToolType: [MiscCredentialStore.Kind]] = [
         .alibaba: [.apiKey],
