@@ -131,20 +131,54 @@ private struct MiscProviderGroupCard: View {
                 lastUpdated: latestUpdated,
                 isCompact: false
             )
-            Divider().opacity(0.2)
-            VStack(alignment: .leading, spacing: max(6, density.bucketRowSpacing)) {
-                ForEach(Array(group.instances.enumerated()), id: \.element.id) { index, instance in
-                    MiscProviderInstanceStatusRow(
-                        instance: instance,
-                        ordinal: index + 1,
-                        density: density
-                    )
-                    if index < group.instances.count - 1 {
-                        Divider().opacity(0.16)
+            if shouldShowPerInstanceRows {
+                Divider().opacity(0.2)
+                VStack(alignment: .leading, spacing: max(6, density.bucketRowSpacing)) {
+                    ForEach(Array(group.instances.enumerated()), id: \.element.id) { index, instance in
+                        MiscProviderInstanceStatusRow(
+                            instance: instance,
+                            ordinal: index + 1,
+                            density: density
+                        )
+                        if index < group.instances.count - 1 {
+                            Divider().opacity(0.16)
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// True when the per-instance breakdown adds information the
+    /// aggregated top section can't show on its own.
+    ///
+    /// Hide the breakdown when every instance contributes distinct
+    /// buckets and is healthy — the aggregated body already lists
+    /// every bucket once, so the per-instance rows would just repeat
+    /// the same numbers (this is the common Tencent Token Plan case:
+    /// one generic + one HY3 clone, no bucket ids overlap).
+    ///
+    /// Show the breakdown when:
+    /// - Any bucket id is contributed by 2+ instances (the aggregator
+    ///   averages them, so per-instance rows are how the user sees
+    ///   each copy's real number).
+    /// - Any instance has no successful quota (`needs login`, network
+    ///   error, etc.) — the aggregate suppresses that error if even
+    ///   one sibling succeeded, so the per-instance row is the only
+    ///   place that failure surfaces.
+    private var shouldShowPerInstanceRows: Bool {
+        var seenBucketIDs = Set<String>()
+        for instance in group.instances {
+            guard let quota = environment.quota(for: instance),
+                  !quota.buckets.isEmpty,
+                  quota.error == nil else {
+                return true
+            }
+            for bucket in quota.buckets where !seenBucketIDs.insert(bucket.id).inserted {
+                return true
+            }
+        }
+        return false
     }
 
     private var header: some View {
