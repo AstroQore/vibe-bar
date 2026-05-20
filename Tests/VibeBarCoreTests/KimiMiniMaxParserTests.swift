@@ -43,6 +43,69 @@ final class KimiParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 5 * 3600)
     }
 
+    func testMissingRateLimitWindowDefaultsToFiveHours() throws {
+        let json = """
+        {
+          "usages": [
+            {
+              "scope": "FEATURE_CODING",
+              "detail": {
+                "limit": "1000",
+                "used": "200",
+                "remaining": "800"
+              },
+              "limits": [
+                {
+                  "detail": {
+                    "limit": "100",
+                    "used": "50",
+                    "remaining": "50"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        """
+        let snap = try KimiResponseParser.parse(data: Data(json.utf8), now: now)
+
+        XCTAssertEqual(snap.buckets[1].title, "5 Hours")
+        XCTAssertEqual(snap.buckets[1].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 5 * 3600)
+    }
+
+    func testUnknownRateLimitWindowDefaultsToFiveHours() throws {
+        let json = """
+        {
+          "usages": [
+            {
+              "scope": "FEATURE_CODING",
+              "detail": {
+                "limit": "1000",
+                "used": "200",
+                "remaining": "800"
+              },
+              "limits": [
+                {
+                  "window": {"duration": 1, "timeUnit": "SESSION"},
+                  "detail": {
+                    "limit": "100",
+                    "used": "50",
+                    "remaining": "50"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        """
+        let snap = try KimiResponseParser.parse(data: Data(json.utf8), now: now)
+
+        XCTAssertEqual(snap.buckets[1].title, "5 Hours")
+        XCTAssertEqual(snap.buckets[1].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 5 * 3600)
+    }
+
     func testNoCodingScopeThrowsParseFailure() {
         let json = """
         {
@@ -284,7 +347,7 @@ final class MiniMaxParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets.count, 2)
         XCTAssertEqual(snap.buckets[1].id, "minimax.weekly")
         XCTAssertEqual(snap.buckets[1].usedPercent, 25.0, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[1].groupTitle, "750/1000 · Weekly")
+        XCTAssertEqual(snap.buckets[1].groupTitle, "750/1000 · weekly")
     }
 
     func testMapsEveryMiniMaxModelRemainServiceShownByCodexBar() throws {

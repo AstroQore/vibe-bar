@@ -268,12 +268,13 @@ struct KimiAPIWindow: Decodable {
         case "HOUR", "HOURS":     return duration * 3600
         case "DAY", "DAYS":       return duration * 86_400
         case "WEEK", "WEEKS":     return duration * 7 * 86_400
+        case "SESSION", "SESSIONS": return 5 * 3600
         default: return nil
         }
     }
 
     var title: String {
-        guard let secs = windowSeconds else { return "Rate limit" }
+        guard let secs = windowSeconds else { return "5 Hours" }
         if secs >= 86_400 {
             let days = secs / 86_400
             return "\(days) Day\(days == 1 ? "" : "s")"
@@ -287,7 +288,7 @@ struct KimiAPIWindow: Decodable {
     }
 
     var shortLabel: String {
-        guard let secs = windowSeconds else { return "Rate" }
+        guard let secs = windowSeconds else { return "5h" }
         if secs >= 86_400 { return "\(secs / 86_400)d" }
         if secs >= 3600   { return "\(secs / 3600)h" }
         return "\(max(1, secs / 60))m"
