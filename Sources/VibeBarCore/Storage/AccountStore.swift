@@ -191,50 +191,46 @@ public final class AccountStore: ObservableObject {
         )
     }
 
+    /// Gemini in `.auto` mode runs both sources in parallel and merges
+    /// their buckets — so the account is registered if *either* source
+    /// has credentials. The `source` field reflects the dominant route
+    /// (OAuth wins when present because it carries email + plan info).
+    /// `.oauthOnly` / `.webOnly` register the account only when that
+    /// one source is configured.
     private func autoDetectGemini(mode: GeminiUsageMode) -> AccountIdentity? {
-        let order = GeminiSourcePlanner.resolve(mode: mode)
+        let enabled = GeminiSourcePlanner.enabledSources(mode: mode)
         let homeDir = RealHomeDirectory.path
         let geminiOAuthPath = URL(fileURLWithPath: homeDir)
             .appendingPathComponent(".gemini/oauth_creds.json").path
-        var selected: CredentialSource?
-        for source in order {
-            switch source {
-            case .oauthCLI:
-                if FileManager.default.fileExists(atPath: geminiOAuthPath) {
-                    selected = .oauthCLI
-                }
-            case .webCookie:
-                if GeminiWebCookieStore.hasCookieHeader() {
-                    selected = .webCookie
-                }
-            case .cliDetected, .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
-                break
-            }
-            if selected != nil { break }
-        }
-        guard let selectedSource = selected else { return nil }
+        let hasOAuth = enabled.contains(.oauthCLI) && FileManager.default.fileExists(atPath: geminiOAuthPath)
+        let hasWeb = enabled.contains(.webCookie) && GeminiWebCookieStore.hasCookieHeader()
+        guard hasOAuth || hasWeb else { return nil }
+
+        // Dominant source: OAuth (richer metadata) > Web. The
+        // `source` field is mostly informational on the card — the
+        // adapter still decides which paths to actually fetch.
+        let primarySource: CredentialSource = hasOAuth ? .oauthCLI : .webCookie
         let id: String
         let alias: String
-        switch selectedSource {
-        case .oauthCLI:
+        switch mode {
+        case .auto:
+            id = hasOAuth && hasWeb ? "dual-gemini" : (hasOAuth ? "oauth-gemini" : "web-gemini")
+            alias = hasOAuth && hasWeb ? "Gemini CLI + Web" : (hasOAuth ? "Gemini CLI" : "Gemini Web")
+        case .oauthOnly:
             id = "oauth-gemini"
             alias = "Gemini CLI"
-        case .webCookie:
+        case .webOnly:
             id = "web-gemini"
             alias = "Gemini Web"
-        default:
-            id = "gemini"
-            alias = "Gemini"
         }
-        let remaining = remainingSources(after: selectedSource, in: order)
         return AccountIdentity(
             id: id,
             tool: .gemini,
             alias: alias,
-            source: selectedSource,
-            allowsWebFallback: remaining.contains(.webCookie),
+            source: primarySource,
+            allowsWebFallback: mode == .auto && hasWeb && !hasOAuth ? false : (mode != .oauthOnly && hasWeb),
             allowsCLIFallback: false,
-            allowsOAuthFallback: remaining.contains(.oauthCLI),
+            allowsOAuthFallback: mode != .webOnly && hasOAuth,
             createdAt: Date(),
             updatedAt: Date()
         )

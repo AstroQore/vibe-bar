@@ -80,18 +80,25 @@ public enum ClaudeSourcePlanner {
     }
 }
 
+/// Gemini's adapter does not walk a fallback chain — it runs the
+/// enabled sources in parallel and merges their buckets. Callers ask
+/// the planner which sources are enabled for the current mode; order
+/// within the returned array is informational only.
 public enum GeminiSourcePlanner {
-    public static func resolve(mode: GeminiUsageMode) -> [CredentialSource] {
+    public static func enabledSources(mode: GeminiUsageMode) -> [CredentialSource] {
         switch mode {
-        case .auto, .oauthThenWeb:
-            return [.oauthCLI, .webCookie]
-        case .webThenOAuth:
-            return [.webCookie, .oauthCLI]
-        case .oauthOnly:
-            return [.oauthCLI]
-        case .webOnly:
-            return [.webCookie]
+        case .auto:      return [.oauthCLI, .webCookie]
+        case .oauthOnly: return [.oauthCLI]
+        case .webOnly:   return [.webCookie]
         }
+    }
+
+    public static func runsOAuth(mode: GeminiUsageMode) -> Bool {
+        enabledSources(mode: mode).contains(.oauthCLI)
+    }
+
+    public static func runsWeb(mode: GeminiUsageMode) -> Bool {
+        enabledSources(mode: mode).contains(.webCookie)
     }
 }
 

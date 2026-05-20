@@ -15,14 +15,34 @@ final class AppSettingsGoogleAIMigrationTests: XCTestCase {
 
     func testGeminiUsageModeRoundTrip() throws {
         var settings = AppSettings.default
-        settings.geminiUsageMode = .webThenOAuth
+        settings.geminiUsageMode = .webOnly
         settings.antigravityUsageMode = .localOnly
 
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
 
-        XCTAssertEqual(decoded.geminiUsageMode, .webThenOAuth)
+        XCTAssertEqual(decoded.geminiUsageMode, .webOnly)
         XCTAssertEqual(decoded.antigravityUsageMode, .localOnly)
+    }
+
+    /// Old `settings.json` files persisted while the v1 enum was in
+    /// place may contain `.oauthThenWeb` or `.webThenOAuth`. The
+    /// `decodeIfPresent` fallback should drop the unknown value and
+    /// re-default to `.auto` (dual-fetch) — which is what the user
+    /// likely wanted anyway.
+    func testLegacyGeminiUsageModeFallsBackToAuto() throws {
+        let json = """
+        {
+          "displayMode": "remaining",
+          "refreshIntervalSeconds": 600,
+          "launchAtLogin": false,
+          "menuBarTextEnabled": true,
+          "mockEnabled": false,
+          "geminiUsageMode": "webThenOAuth"
+        }
+        """
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.geminiUsageMode, .auto)
     }
 
     func testLegacyGeminiMiscInstanceIsDroppedOnDecode() throws {
