@@ -8,6 +8,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var mockEnabled: Bool
     public var codexUsageMode: CodexUsageMode
     public var claudeUsageMode: ClaudeUsageMode
+    public var geminiUsageMode: GeminiUsageMode
+    public var antigravityUsageMode: AntigravityUsageMode
     public var menuBarItems: [MenuBarItemSettings]
     public var miniWindow: MiniWindowSettings
     /// Per-popover density. Each menu bar item kind has its own density so the
@@ -42,6 +44,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mockEnabled: false,
         codexUsageMode: .auto,
         claudeUsageMode: .auto,
+        geminiUsageMode: .auto,
+        antigravityUsageMode: .auto,
         menuBarItems: Self.defaultMenuBarItems,
         miniWindow: Self.defaultMiniWindow,
         popoverDensities: Self.defaultPopoverDensities,
@@ -107,27 +111,29 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let defaultProviderPlanLabels: [ToolType: String] = [:]
 
-    /// Default `MiscProviderSettings` for every misc provider. Source
+    /// Default `MiscProviderSettings` for every misc-page provider. Source
     /// selection is intentionally automatic and not exposed in the UI;
     /// region / enterprise host remain as provider-specific knobs.
+    /// Partial-primary providers (`.gemini`, `.antigravity`) are excluded —
+    /// they have dedicated `*UsageMode` top-level fields instead.
     public static var defaultMiscProviders: [ToolType: MiscProviderSettings] {
         var out: [ToolType: MiscProviderSettings] = [:]
-        for tool in ToolType.miscProviders {
+        for tool in ToolType.miscPageProviders {
             out[tool] = .default
         }
         return out
     }
 
     public static var defaultVisibleMiscProviders: Set<ToolType> {
-        Set(ToolType.miscProviders)
+        Set(ToolType.miscPageProviders)
     }
 
     public static var defaultMiscProviderOrder: [ToolType] {
-        ToolType.miscProviders
+        ToolType.miscPageProviders
     }
 
     public static var defaultMiscProviderInstances: [MiscProviderInstance] {
-        ToolType.miscProviders.map { .defaultInstance(for: $0) }
+        ToolType.miscPageProviders.map { .defaultInstance(for: $0) }
     }
 
     public init(
@@ -138,6 +144,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mockEnabled: Bool,
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
+        geminiUsageMode: GeminiUsageMode = .auto,
+        antigravityUsageMode: AntigravityUsageMode = .auto,
         menuBarItems: [MenuBarItemSettings] = AppSettings.defaultMenuBarItems,
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
         popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
@@ -155,6 +163,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mockEnabled = false
         self.codexUsageMode = codexUsageMode
         self.claudeUsageMode = claudeUsageMode
+        self.geminiUsageMode = geminiUsageMode
+        self.antigravityUsageMode = antigravityUsageMode
         self.menuBarItems = Self.normalizedMenuBarItems(menuBarItems)
         self.miniWindow = miniWindow
         self.popoverDensities = popoverDensities
@@ -182,6 +192,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case mockEnabled
         case codexUsageMode
         case claudeUsageMode
+        case geminiUsageMode
+        case antigravityUsageMode
         case menuBarItems
         case miniWindow
         case popoverDensities
@@ -203,6 +215,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mockEnabled = false
         self.codexUsageMode = try c.decodeIfPresent(CodexUsageMode.self, forKey: .codexUsageMode) ?? Self.default.codexUsageMode
         self.claudeUsageMode = try c.decodeIfPresent(ClaudeUsageMode.self, forKey: .claudeUsageMode) ?? Self.default.claudeUsageMode
+        self.geminiUsageMode = try c.decodeIfPresent(GeminiUsageMode.self, forKey: .geminiUsageMode) ?? Self.default.geminiUsageMode
+        self.antigravityUsageMode = try c.decodeIfPresent(AntigravityUsageMode.self, forKey: .antigravityUsageMode) ?? Self.default.antigravityUsageMode
 
         // Gemini support was removed; old persisted configs may contain
         // {"kind":"gemini",...} entries that no longer match a known case.
@@ -241,12 +255,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // Unknown ToolType keys (typo, removed provider) are silently
         // dropped. `MiscProviderSettings`' own decoder rejects fields
         // whose names look like secrets — together they keep
-        // settings.json minimal and credential-free.
+        // settings.json minimal and credential-free. Partial-primary
+        // providers (`.gemini`, `.antigravity`) are also dropped here:
+        // their settings have been lifted into top-level
+        // `geminiUsageMode` / `antigravityUsageMode` fields and any
+        // legacy entries in `settings.json` are stale.
         let decodedLegacyProviders: [ToolType: MiscProviderSettings]
         if let raw = try c.decodeIfPresent([String: MiscProviderSettings].self, forKey: .miscProviders) {
             var map: [ToolType: MiscProviderSettings] = [:]
             for (key, value) in raw {
-                if let tool = ToolType(rawValue: key), tool.isMisc { map[tool] = value }
+                if let tool = ToolType(rawValue: key), tool.isMiscPageProvider { map[tool] = value }
             }
             decodedLegacyProviders = Self.normalizedMiscProviders(map)
         } else {
@@ -257,7 +275,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let rawVisible = try c.decodeIfPresent([String].self, forKey: .visibleMiscProviders) {
             var set: Set<ToolType> = []
             for raw in rawVisible {
-                if let tool = ToolType(rawValue: raw), tool.isMisc { set.insert(tool) }
+                if let tool = ToolType(rawValue: raw), tool.isMiscPageProvider { set.insert(tool) }
             }
             decodedLegacyVisible = Self.normalizedVisibleMiscProviders(set)
         } else {
@@ -267,7 +285,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let decodedLegacyOrder: [ToolType]
         if let rawOrder = try c.decodeIfPresent([String].self, forKey: .miscProviderOrder) {
             let order = rawOrder.compactMap { raw -> ToolType? in
-                guard let tool = ToolType(rawValue: raw), tool.isMisc else { return nil }
+                guard let tool = ToolType(rawValue: raw), tool.isMiscPageProvider else { return nil }
                 return tool
             }
             decodedLegacyOrder = Self.normalizedMiscProviderOrder(order)
@@ -298,6 +316,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(mockEnabled, forKey: .mockEnabled)
         try c.encode(codexUsageMode, forKey: .codexUsageMode)
         try c.encode(claudeUsageMode, forKey: .claudeUsageMode)
+        try c.encode(geminiUsageMode, forKey: .geminiUsageMode)
+        try c.encode(antigravityUsageMode, forKey: .antigravityUsageMode)
         try c.encode(menuBarItems, forKey: .menuBarItems)
         try c.encode(miniWindow, forKey: .miniWindow)
         let stringKeyed = Dictionary(uniqueKeysWithValues: popoverDensities.map { ($0.key.rawValue, $0.value) })
@@ -306,7 +326,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(planLabels, forKey: .providerPlanLabels)
         let miscRaw = Dictionary(uniqueKeysWithValues: miscProviders.map { ($0.key.rawValue, $0.value) })
         try c.encode(miscRaw, forKey: .miscProviders)
-        let visibleRaw = ToolType.miscProviders
+        let visibleRaw = ToolType.miscPageProviders
             .filter { visibleMiscProviders.contains($0) }
             .map(\.rawValue)
         try c.encode(visibleRaw, forKey: .visibleMiscProviders)
@@ -387,27 +407,28 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return out
     }
 
-    /// Fill in defaults for any misc provider missing from the
-    /// incoming map, and drop entries for non-misc tools.
+    /// Fill in defaults for any misc-page provider missing from the
+    /// incoming map, and drop entries for non-misc-page tools
+    /// (including partial-primary providers).
     private static func normalizedMiscProviders(_ map: [ToolType: MiscProviderSettings]) -> [ToolType: MiscProviderSettings] {
         var out: [ToolType: MiscProviderSettings] = [:]
-        for tool in ToolType.miscProviders {
+        for tool in ToolType.miscPageProviders {
             out[tool] = (map[tool] ?? .default).automaticSourceSelection
         }
         return out
     }
 
     private static func normalizedVisibleMiscProviders(_ providers: Set<ToolType>) -> Set<ToolType> {
-        Set(providers.filter(\.isMisc))
+        Set(providers.filter(\.isMiscPageProvider))
     }
 
     private static func normalizedMiscProviderOrder(_ order: [ToolType]) -> [ToolType] {
         var seen: Set<ToolType> = []
         var out: [ToolType] = []
-        for tool in order where tool.isMisc && seen.insert(tool).inserted {
+        for tool in order where tool.isMiscPageProvider && seen.insert(tool).inserted {
             out.append(tool)
         }
-        for tool in ToolType.miscProviders where seen.insert(tool).inserted {
+        for tool in ToolType.miscPageProviders where seen.insert(tool).inserted {
             out.append(tool)
         }
         return out
@@ -424,7 +445,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
         if let instances, !instances.isEmpty {
             for raw in instances {
-                guard raw.tool.isMisc else { continue }
+                // Partial-primary providers (`.gemini`, `.antigravity`)
+                // are silently dropped: any legacy instances from older
+                // `settings.json` files belong to top-level
+                // `*UsageMode` fields now.
+                guard raw.tool.isMiscPageProvider else { continue }
                 let trimmedID = raw.id.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmedID.isEmpty, seenIDs.insert(trimmedID).inserted else { continue }
                 out.append(MiscProviderInstance(
@@ -446,7 +471,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             }
         }
 
-        for tool in ToolType.miscProviders where !seenIDs.contains(tool.rawValue) {
+        for tool in ToolType.miscPageProviders where !seenIDs.contains(tool.rawValue) {
             out.append(.defaultInstance(
                 for: tool,
                 settings: legacyProviders[tool] ?? .default,
@@ -459,7 +484,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     private static func legacyMiscProviders(from instances: [MiscProviderInstance]) -> [ToolType: MiscProviderSettings] {
         var out: [ToolType: MiscProviderSettings] = [:]
-        for tool in ToolType.miscProviders {
+        for tool in ToolType.miscPageProviders {
             let preferred = instances.first { $0.tool == tool && $0.isDefault }
                 ?? instances.first { $0.tool == tool }
             out[tool] = preferred?.settings ?? .default
@@ -477,7 +502,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         for instance in instances where seen.insert(instance.tool).inserted {
             out.append(instance.tool)
         }
-        for tool in ToolType.miscProviders where seen.insert(tool).inserted {
+        for tool in ToolType.miscPageProviders where seen.insert(tool).inserted {
             out.append(tool)
         }
         return out
@@ -838,6 +863,66 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
         case .oauthOnly: return "Use only Claude OAuth credentials."
         case .cliOnly: return "Use only local Claude Code OAuth credentials."
         case .webOnly: return "Use only saved claude.ai cookies."
+        }
+    }
+}
+
+public enum GeminiUsageMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case auto
+    case oauthThenWeb
+    case webThenOAuth
+    case oauthOnly
+    case webOnly
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .auto: return "Auto"
+        case .oauthThenWeb: return "Gemini CLI, then Web"
+        case .webThenOAuth: return "Gemini Web, then CLI"
+        case .oauthOnly: return "Gemini CLI only"
+        case .webOnly: return "Gemini Web only"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .auto: return "Use local Gemini CLI credentials first; fall back to imported gemini.google.com cookies."
+        case .oauthThenWeb: return "Use local Gemini CLI credentials first; fall back to imported gemini.google.com cookies."
+        case .webThenOAuth: return "Use imported gemini.google.com cookies first; fall back to local Gemini CLI credentials."
+        case .oauthOnly: return "Use only the Gemini CLI OAuth credentials at ~/.gemini/oauth_creds.json."
+        case .webOnly: return "Use only imported gemini.google.com cookies."
+        }
+    }
+}
+
+public enum AntigravityUsageMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case auto
+    case localThenWeb
+    case webThenLocal
+    case localOnly
+    case webOnly
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .auto: return "Auto"
+        case .localThenWeb: return "Local LSP, then Web"
+        case .webThenLocal: return "Web, then Local LSP"
+        case .localOnly: return "Local LSP only"
+        case .webOnly: return "Web only"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .auto: return "Probe the running Antigravity language server first; fall back to imported cookies when the web source is available."
+        case .localThenWeb: return "Probe the running Antigravity language server first; fall back to imported cookies."
+        case .webThenLocal: return "Use imported cookies first; fall back to the running Antigravity language server."
+        case .localOnly: return "Only probe the running Antigravity language server."
+        case .webOnly: return "Only use imported cookies. Falls back to the local probe until the Antigravity Cloud endpoint ships."
         }
     }
 }

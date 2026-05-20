@@ -11,6 +11,7 @@ struct SettingsView: View {
     private let costRetentionOptions = CostDataSettings.retentionOptions
     @State private var openAICookieDeleteFailed: Bool = false
     @State private var claudeCookieDeleteFailed: Bool = false
+    @State private var geminiCookieDeleteFailed: Bool = false
     @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
     @State private var launchAtLoginError: String?
@@ -197,6 +198,73 @@ struct SettingsView: View {
                             environment.recheckPrimaryRouteHealth(provider: .claude)
                         } label: {
                             Label("Check connections", systemImage: "checkmark.circle")
+                        }
+                    }
+
+                    settingsSection("Google AI Account") {
+                        Text("Gemini and Antigravity share the same Google AI subscription quota. Cookie import is the only supported web path — there is no WebView login.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Picker("Gemini source", selection: $settingsStore.settings.geminiUsageMode) {
+                            ForEach(GeminiUsageMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        Text(settingsStore.settings.geminiUsageMode.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            Button {
+                                environment.importGeminiBrowserCookies()
+                            } label: {
+                                Label("Import Gemini cookies from browser", systemImage: "safari")
+                            }
+                            .disabled(environment.isImportingGeminiBrowserCookies)
+                            Button(role: .destructive) {
+                                geminiCookieDeleteFailed = !environment.deleteGeminiWebCookies()
+                            } label: {
+                                Label("Delete Gemini cookies", systemImage: "trash")
+                            }
+                            .disabled(!environment.hasGeminiWebCookies)
+                        }
+                        if environment.hasGeminiWebCookies {
+                            Text("Gemini cookies saved.")
+                                .font(.caption2).foregroundStyle(.green)
+                        }
+                        if let status = environment.geminiBrowserCookieImportStatus {
+                            Text(status)
+                                .font(.caption2)
+                                .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
+                        }
+                        if geminiCookieDeleteFailed {
+                            Text("Could not delete saved Gemini cookies.")
+                                .font(.caption2).foregroundStyle(.orange)
+                        }
+
+                        Divider()
+                            .padding(.vertical, 2)
+
+                        Picker("Antigravity source", selection: $settingsStore.settings.antigravityUsageMode) {
+                            ForEach(AntigravityUsageMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        Text(settingsStore.settings.antigravityUsageMode.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        // Antigravity web-cookie controls are gated on the
+                        // spike outcome (plan §9). When the planner has the
+                        // flag off, only the local LSP probe runs and the
+                        // cookie controls would be dead UI.
+                        if AntigravitySourcePlanner.antigravityWebSourceAvailable {
+                            Text("Antigravity cookie import is enabled — sign in at antigravity.google first.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Antigravity reads the locally running language server. Cookie import is deferred until the Antigravity Cloud endpoint ships.")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
                         }
                     }
 

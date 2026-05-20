@@ -13,20 +13,33 @@ import Foundation
 /// - MiniQuotaWindowView.swift: providerAccent / providerTitle
 /// - ProviderBrandIcon.swift: SF symbol + brand SVG mapping
 ///
-/// Tools split into two tiers:
+/// Adding a *partial-primary* case (dedicated card without token cost or
+/// status integration) also requires:
+/// - PrimaryProviderSourcePlanner.swift: a per-provider UsageMode + planner
+/// - AccountStore.swift: autoDetect<Provider> helper
+/// - AppSettings.swift: dedicated settings struct + lossy migration from
+///   `miscProviderInstances`
+///
+/// Tools split into three tiers:
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
-/// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.gemini`, `.antigravity`,
-///   `.copilot`, `.zai`, `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
+/// - **Partial-Primary** (`.gemini`, `.antigravity`) — dedicated popover
+///   card (Google AI dual page) + SettingsView panel + multi-source
+///   credential fallback, but no token-cost scanning and no Atlassian-style
+///   status polling. Share `supportsDedicatedCard == true` with primary.
+/// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.copilot`, `.zai`,
+///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
 ///   `.tencentHunyuan`, `.tencentTokenPlan`, `.volcengine`, `.baiduQianfan`,
 ///   `.openCodeGo`, `.kilo`, `.kiro`, `.ollama`, `.openRouter`, `.warp`) —
 ///   usage-only cards on the Misc tab.
-///   No token-cost scanning, no Atlassian-style status polling.
 ///
 /// `supportsTokenCost` and `supportsStatusPage` short-circuit the cost
-/// scanner and the status-page poller for misc providers; most other
-/// switch sites only need to add a `default:` arm or guard with
-/// `tool.isPrimary`.
+/// scanner and the status-page poller; `supportsDedicatedCard` is the
+/// predicate the dedicated-card UI uses; `isMiscPageProvider` is the
+/// filter the Misc tab and `defaultMiscProviderInstances` use. Note
+/// `isMisc` still reports true for the partial-primary pair so legacy
+/// `tool.isMisc` callers keep their original semantics — new misc-only
+/// code paths should switch to `isMiscPageProvider`.
 public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case codex
     case claude
@@ -65,12 +78,56 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
 
     public var isMisc: Bool { !isPrimary }
 
+    /// True for providers that get a dedicated popover card, a SettingsView
+    /// panel, and multi-source credential fallback. Primary providers are a
+    /// proper subset of this set; partial-primary providers (Gemini,
+    /// Antigravity) live here without the cost / status integrations.
+    public var supportsDedicatedCard: Bool {
+        switch self {
+        case .codex, .claude, .gemini, .antigravity: return true
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            return false
+        }
+    }
+
+    /// True for the Google AI pair — dedicated card, multi-source
+    /// credentials, no token cost, no status page integration.
+    public var isPartialPrimary: Bool {
+        supportsDedicatedCard && !isPrimary
+    }
+
+    /// True for providers that show up on the Misc settings tab and in
+    /// `defaultMiscProviderInstances`. Equivalent to "no dedicated card" —
+    /// narrower than `isMisc`, which still reports true for the
+    /// partial-primary pair so legacy `tool.isMisc` callers keep working.
+    public var isMiscPageProvider: Bool {
+        !supportsDedicatedCard
+    }
+
     public static var primaryProviders: [ToolType] {
         allCases.filter { $0.isPrimary }
     }
 
     public static var miscProviders: [ToolType] {
         allCases.filter { $0.isMisc }
+    }
+
+    public static var dedicatedCardProviders: [ToolType] {
+        allCases.filter { $0.supportsDedicatedCard }
+    }
+
+    public static var partialPrimaryProviders: [ToolType] {
+        allCases.filter { $0.isPartialPrimary }
+    }
+
+    public static var miscPageProviders: [ToolType] {
+        allCases.filter { $0.isMiscPageProvider }
+    }
+
+    /// The two Google AI providers that render side-by-side in the
+    /// Overview popover's "Google AI" page.
+    public static var googleAIPair: [ToolType] {
+        [.gemini, .antigravity]
     }
 
     public var supportsTokenCost: Bool {

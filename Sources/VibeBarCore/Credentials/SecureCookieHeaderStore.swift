@@ -9,6 +9,11 @@ public enum SecureCookieHeaderStore {
     public enum Provider: String, Sendable {
         case openAI = "openai"
         case claude
+        case gemini
+        // Antigravity is intentionally absent until
+        // `AntigravitySourcePlanner.antigravityWebSourceAvailable` flips
+        // to true. Once the spike confirms a cloud endpoint, add
+        // `case antigravity` and the matching cookie store.
     }
 
     public enum Source: String, Sendable, CaseIterable {

@@ -15,10 +15,12 @@ struct MiniQuotaWindowView: View {
 
     var body: some View {
         let contentByTool = miniContentByTool
-        // Mini window only surfaces primary providers — misc cards
-        // live on the Misc tab inside the Overview popover, not in
-        // this floating panel.
-        let visibleTools = ToolType.primaryProviders.filter { tool in
+        // Mini window only surfaces dedicated-card providers — misc
+        // cards live on the Misc tab inside the Overview popover, not
+        // in this floating panel. Today the field catalog only has
+        // Codex / Claude entries, so Gemini / Antigravity stay invisible
+        // here until / unless they grow their own catalog rows.
+        let visibleTools = ToolType.dedicatedCardProviders.filter { tool in
             contentByTool[tool]?.isEmpty == false
         }
         let displayMode = settingsStore.settings.miniWindow.displayMode
@@ -54,7 +56,7 @@ struct MiniQuotaWindowView: View {
         let selected = mini.fieldIds(for: mini.displayMode)
         let selectedFieldIds = Set(selected)
         var contentByTool: [ToolType: MiniToolContent] = [:]
-        for tool in ToolType.primaryProviders {
+        for tool in ToolType.dedicatedCardProviders {
             var cells: [MiniCell] = []
             for fieldId in selected {
                 guard
