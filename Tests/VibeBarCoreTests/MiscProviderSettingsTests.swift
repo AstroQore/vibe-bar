@@ -133,9 +133,12 @@ final class MiscProviderSettingsTests: XCTestCase {
 }
 
 final class AppSettingsMiscProviderTests: XCTestCase {
-    func testDefaultsIncludeEveryMiscProvider() {
+    func testDefaultsIncludeEveryMiscPageProvider() {
+        // Partial-primary providers (`.gemini`, `.antigravity`) live in
+        // top-level `*UsageMode` fields after the dedicated-card upgrade
+        // and are intentionally absent from `miscProviders` defaults.
         let settings = AppSettings.default
-        for tool in ToolType.miscProviders {
+        for tool in ToolType.miscPageProviders {
             XCTAssertNotNil(settings.miscProviders[tool], "default settings missing entry for \(tool)")
             XCTAssertEqual(settings.miscProviders[tool], .default)
             XCTAssertTrue(settings.isMiscProviderVisible(tool), "default settings should show \(tool)")
@@ -144,7 +147,8 @@ final class AppSettingsMiscProviderTests: XCTestCase {
 
     func testMissingMiscProvidersFieldFillsDefaults() throws {
         // Old settings.json from before this PR had no miscProviders
-        // key. Decoding should still produce a complete map.
+        // key. Decoding should still produce a complete map for every
+        // misc-page provider.
         let json = """
         {
           "displayMode": "remaining",
@@ -155,7 +159,7 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         }
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        XCTAssertEqual(settings.miscProviders.count, ToolType.miscProviders.count)
+        XCTAssertEqual(settings.miscProviders.count, ToolType.miscPageProviders.count)
         XCTAssertEqual(settings.visibleMiscProviders, AppSettings.defaultVisibleMiscProviders)
     }
 
@@ -306,8 +310,9 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
         XCTAssertEqual(settings.miscProviders[.alibaba]?.sourceMode, .auto)
-        // Every other misc tool falls back to default.
-        for tool in ToolType.miscProviders where tool != .alibaba {
+        // Every other misc-page tool falls back to default. Partial-primary
+        // providers no longer live in this dictionary.
+        for tool in ToolType.miscPageProviders where tool != .alibaba {
             XCTAssertEqual(settings.miscProviders[tool], .default, "expected default for \(tool)")
         }
     }

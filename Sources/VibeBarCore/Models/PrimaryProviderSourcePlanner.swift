@@ -79,3 +79,41 @@ public enum ClaudeSourcePlanner {
         }
     }
 }
+
+public enum GeminiSourcePlanner {
+    public static func resolve(mode: GeminiUsageMode) -> [CredentialSource] {
+        switch mode {
+        case .auto, .oauthThenWeb:
+            return [.oauthCLI, .webCookie]
+        case .webThenOAuth:
+            return [.webCookie, .oauthCLI]
+        case .oauthOnly:
+            return [.oauthCLI]
+        case .webOnly:
+            return [.webCookie]
+        }
+    }
+}
+
+public enum AntigravitySourcePlanner {
+    /// Compile-time flag controlling whether the web-cookie path is
+    /// exposed. Flip to `true` only after the Antigravity Cloud endpoint
+    /// spike succeeds (see plan §9). Until then, `webOnly` collapses to
+    /// `[.localProbe]` and the Settings UI hides the Antigravity cookie
+    /// controls. Centralised here so the follow-up patch is a one-line
+    /// flip instead of a multi-file churn.
+    public static let antigravityWebSourceAvailable = false
+
+    public static func resolve(mode: AntigravityUsageMode) -> [CredentialSource] {
+        switch mode {
+        case .auto, .localThenWeb:
+            return antigravityWebSourceAvailable ? [.localProbe, .webCookie] : [.localProbe]
+        case .webThenLocal:
+            return antigravityWebSourceAvailable ? [.webCookie, .localProbe] : [.localProbe]
+        case .localOnly:
+            return [.localProbe]
+        case .webOnly:
+            return antigravityWebSourceAvailable ? [.webCookie] : [.localProbe]
+        }
+    }
+}

@@ -36,13 +36,16 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
 
     private let timeout: TimeInterval
     private let now: @Sendable () -> Date
+    private let usageModeProvider: @Sendable () -> AntigravityUsageMode
 
     public init(
         timeout: TimeInterval = 8,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        usageMode: (@Sendable () -> AntigravityUsageMode)? = nil
     ) {
         self.timeout = timeout
         self.now = now
+        self.usageModeProvider = usageMode ?? { Self.resolveUsageMode() }
     }
 
     private static let processName = "language_server_macos"
@@ -50,11 +53,37 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         "/exa.language_server_pb.LanguageServerService/GetUserStatus"
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .antigravity)
-        guard MiscProviderSettings.current(for: .antigravity, instanceID: instanceID).allowsLocalProbeAccess else {
-            throw QuotaError.noCredential
+        let order = AntigravitySourcePlanner.resolve(mode: usageModeProvider())
+        var lastError: Error?
+        for source in order {
+            do {
+                switch source {
+                case .localProbe:
+                    return try await fetchWithLocalProbe(for: account)
+                case .webCookie:
+                    // Spike-gated: returns `.noCredential` until the
+                    // Antigravity Cloud endpoint is reverse-engineered
+                    // and `antigravityWebSourceAvailable` flips. See
+                    // plan §9. The planner already collapses
+                    // `webOnly` / `webThenLocal` to `[.localProbe]`
+                    // while the flag is off, so this arm is unreachable
+                    // in practice until the spike lands.
+                    throw QuotaError.noCredential
+                default:
+                    continue
+                }
+            } catch QuotaError.noCredential {
+                lastError = QuotaError.noCredential
+                continue
+            } catch {
+                lastError = error
+                continue
+            }
         }
+        throw mapURLError(lastError ?? QuotaError.noCredential)
+    }
 
+    private func fetchWithLocalProbe(for account: AccountIdentity) async throws -> AccountQuota {
         let process = try await detectProcessInfo()
         let ports = try await listeningPorts(pid: process.pid)
         let endpoints = endpointCandidates(for: process, ports: ports)
@@ -84,6 +113,17 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
             }
         }
         throw mapError(lastError)
+    }
+
+    /// Reads the persisted `antigravityUsageMode` setting from disk.
+    /// Internal (not `private`) so the public init's default argument
+    /// can reference it.
+    static func resolveUsageMode() -> AntigravityUsageMode {
+        let appSettings = (try? VibeBarLocalStore.readJSON(
+            AppSettings.self,
+            from: VibeBarLocalStore.settingsURL
+        )) ?? .default
+        return appSettings.antigravityUsageMode
     }
 
     // MARK: - Process detection

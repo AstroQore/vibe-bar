@@ -70,6 +70,7 @@ struct PopoverRoot: View {
             case .overview: return .compact
             case .claude:   return .claude
             case .openAI:   return .codex
+            case .googleAI: return .compact
             case .misc:     return .compact
             }
         default:
@@ -105,6 +106,8 @@ struct PopoverRoot: View {
                 ProviderDetailView(tool: .claude, density: density)
             case .openAI:
                 ProviderDetailView(tool: .codex, density: density)
+            case .googleAI:
+                GoogleAIDualPage(density: density)
             case .misc:
                 MiscProvidersPage(density: density)
             }
@@ -123,6 +126,9 @@ struct PopoverRoot: View {
         if kind == .compact, overviewPage == .misc {
             return "Misc Providers"
         }
+        if kind == .compact, overviewPage == .googleAI {
+            return "Google AI"
+        }
         switch effectiveKind {
         case .compact: return "Overview"
         case .codex:   return "OpenAI"
@@ -134,6 +140,9 @@ struct PopoverRoot: View {
     private var headerSubtitle: String? {
         if kind == .compact, overviewPage == .misc {
             return "Usage-only · sign in or paste a key"
+        }
+        if kind == .compact, overviewPage == .googleAI {
+            return "Gemini + Antigravity · quota only"
         }
         switch effectiveKind {
         case .compact: return "All providers · quota & cost"
@@ -160,10 +169,14 @@ struct PopoverRoot: View {
     private var visibleTools: [ToolType] {
         // Header timestamps and refresh state aggregate the providers
         // visible in the current popover. The Misc subpage owns its
-        // usage-only integrations; the normal Overview and Status
-        // surfaces continue to aggregate just the primary providers.
+        // usage-only integrations; the Google AI subpage aggregates the
+        // partial-primary pair; the Overview and Status surfaces stick
+        // to the two primary providers.
         if kind == .compact, overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
+        }
+        if kind == .compact, overviewPage == .googleAI {
+            return ToolType.googleAIPair
         }
         switch effectiveKind {
         case .compact, .status: return ToolType.primaryProviders
@@ -263,6 +276,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
     case overview
     case openAI
     case claude
+    case googleAI
     case misc
 
     var id: String { rawValue }
@@ -272,6 +286,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .overview: return "Overview"
         case .openAI:   return "OpenAI"
         case .claude:   return "Claude"
+        case .googleAI: return "Google AI"
         case .misc:     return "Misc"
         }
     }
@@ -281,6 +296,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .overview: return .compact
         case .openAI:   return .codex
         case .claude:   return .claude
+        case .googleAI: return .compact
         case .misc:     return .compact
         }
     }
@@ -341,10 +357,15 @@ private struct OverviewSwitchIcon: View {
         Group {
             if page == .misc {
                 // Misc gets a generic "more" glyph — the misc tab
-                // covers eight providers so no single brand icon is
+                // covers many providers so no single brand icon is
                 // a fair representative.
                 Image(systemName: "square.grid.2x2")
                     .font(.system(size: 11, weight: .medium))
+            } else if page == .googleAI {
+                // The Google AI tab pairs Gemini + Antigravity. Use the
+                // Gemini brand icon as the visual anchor; the label
+                // already says "Google AI".
+                ToolBrandIconView(tool: .gemini, size: 13)
             } else {
                 ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 14 : 13)
             }
@@ -410,6 +431,26 @@ private struct OverviewWaterfall: View {
                     )
                 }
             }
+        }
+    }
+}
+
+/// The "Google AI" overview sub-page. Two `ProviderQuotaCard`s side
+/// by side — Gemini on the left, Antigravity on the right — with no
+/// cost / model-ranking / heatmap rails. Per the design decision in
+/// the partial-primary plan, Google AI providers expose quota only
+/// (`supportsTokenCost == false`).
+private struct GoogleAIDualPage: View {
+    let density: Theme.Density
+
+    var body: some View {
+        ColumnMasonryLayout(
+            columns: 2,
+            spacing: density.interSectionSpacing,
+            anchoredItems: 2
+        ) {
+            ProviderQuotaCard(tool: .gemini, density: density, compact: false)
+            ProviderQuotaCard(tool: .antigravity, density: density, compact: false)
         }
     }
 }

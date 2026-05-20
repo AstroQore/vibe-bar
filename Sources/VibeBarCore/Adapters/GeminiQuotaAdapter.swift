@@ -1,52 +1,76 @@
 import Foundation
 
-/// Google Gemini (Code Assist) usage adapter.
+/// Google Gemini partial-primary usage adapter.
 ///
-/// Auth flow vs. codexbar's reference:
+/// Source order (driven by `GeminiSourcePlanner.resolve(mode:)`):
 ///
-/// - **Read** the user's Gemini CLI OAuth file at
-///   `~/.gemini/oauth_creds.json` and reuse `access_token`. We
-///   surface a friendly "re-run `gemini`" error when the token is
-///   expired rather than re-implementing codexbar's
-///   binary-discovery + npm-package-walk + Google OAuth refresh
-///   pipeline. That's a meaningful simplification — codexbar's
-///   refresh path is ~600 lines because Google distributes the
-///   OAuth client credentials inside the Gemini CLI npm package
-///   itself; reading them requires resolving the binary, walking
-///   `node_modules`, and parsing source files. Vibe Bar's first
-///   port pushes that complexity to a follow-up.
-/// - **Skip** `loadCodeAssist` and the project-ID discovery hop.
-///   `retrieveUserQuota` accepts an empty body and returns the
-///   per-model buckets we render. Tier detection (Free / Workspace
-///   / Paid / Legacy) is dropped for now — same follow-up.
+/// - **OAuth CLI** — read `~/.gemini/oauth_creds.json`, reuse
+///   `access_token`, call
+///   `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`. This is
+///   the Gemini Code Assist protocol the official CLI uses. Tier
+///   detection (Free / Workspace / Paid / Legacy) is still deferred,
+///   matching codexbar's port. `GeminiTokenRefreshHelper` shells out
+///   to `gemini` itself to refresh expired tokens.
+/// - **Web cookie** — use cookies imported from `gemini.google.com`
+///   (Chrome Safe Storage via SweetCookieKit). Routed through
+///   `GeminiWebQuotaFetcher`; the live endpoint and parser are
+///   spike-pending (see plan §9).
 ///
-/// Output: one `QuotaBucket` per model (Pro / Flash / Flash-Lite).
-/// `usedPercent = (1 - remainingFraction) * 100`. The bucket
-/// `groupTitle` carries the model id so the misc card can group
-/// related models if they ever land.
+/// Output: one `QuotaBucket` per model with
+/// `usedPercent = (1 - remainingFraction) * 100`. The `groupTitle`
+/// carries the prettified model name so the popover card can group
+/// related variants.
 public struct GeminiQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .gemini
 
     private let session: URLSession
     private let homeDirectory: String
     private let now: @Sendable () -> Date
+    private let usageModeProvider: @Sendable () -> GeminiUsageMode
 
     public init(
         session: URLSession = .shared,
         homeDirectory: String = RealHomeDirectory.path,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        usageMode: (@Sendable () -> GeminiUsageMode)? = nil
     ) {
         self.session = session
         self.homeDirectory = homeDirectory
         self.now = now
+        // Default to reading the persisted setting on every fetch. The
+        // closure indirection lets tests inject a fixed mode without
+        // touching disk, and keeps the public default expression free
+        // of any internal references (Swift forbids those).
+        self.usageModeProvider = usageMode ?? { Self.resolveUsageMode() }
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .gemini)
-        guard MiscProviderSettings.current(for: .gemini, instanceID: instanceID).allowsAPIOrOAuthAccess else {
-            throw QuotaError.noCredential
+        let order = GeminiSourcePlanner.resolve(mode: usageModeProvider())
+        var lastError: Error?
+        for source in order {
+            do {
+                switch source {
+                case .oauthCLI:
+                    return try await fetchWithOAuth(for: account)
+                case .webCookie:
+                    return try await fetchWithWebCookies(for: account)
+                default:
+                    continue
+                }
+            } catch QuotaError.noCredential {
+                // Try the next source; only surface "no credential"
+                // if every source agreed there is nothing to use.
+                lastError = QuotaError.noCredential
+                continue
+            } catch {
+                lastError = error
+                continue
+            }
         }
+        throw mapURLError(lastError ?? QuotaError.noCredential)
+    }
 
+    private func fetchWithOAuth(for account: AccountIdentity) async throws -> AccountQuota {
         let credsURL = URL(fileURLWithPath: homeDirectory)
             .appendingPathComponent(".gemini/oauth_creds.json")
 
@@ -73,9 +97,10 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         }
 
         if let expiry = credentials.expiry, expiry < now() {
-            // Vibe Bar's first port doesn't refresh tokens. The user
-            // can run any `gemini` command to refresh in-place; we
-            // surface a clear hint instead of silently failing.
+            // The keepalive in `GeminiTokenRefreshHelper` is best-effort
+            // and cooldown-throttled. A stale token reaching this point
+            // means the keepalive failed or is on cooldown; hint the
+            // user to refresh in a terminal instead of silently failing.
             throw QuotaError.needsLogin
         }
 
@@ -119,6 +144,39 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             queriedAt: now(),
             error: nil
         )
+    }
+
+    private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
+        let header: String
+        do {
+            header = try GeminiWebCookieStore.readCookieHeader()
+        } catch {
+            throw QuotaError.noCredential
+        }
+        let fetcher = GeminiWebQuotaFetcher(session: session, now: now)
+        let snapshot = try await fetcher.fetch(cookieHeader: header)
+        return AccountQuota(
+            accountId: account.id,
+            tool: .gemini,
+            buckets: snapshot.buckets,
+            plan: snapshot.planName,
+            email: snapshot.email,
+            queriedAt: now(),
+            error: nil
+        )
+    }
+
+    /// Reads the persisted `geminiUsageMode` setting from disk.
+    /// Matches how the Codex / Claude adapters resolve their modes
+    /// without threading `AppSettings` through every call site.
+    /// Internal (not `private`) so the public init's default argument
+    /// can reference it.
+    static func resolveUsageMode() -> GeminiUsageMode {
+        let appSettings = (try? VibeBarLocalStore.readJSON(
+            AppSettings.self,
+            from: VibeBarLocalStore.settingsURL
+        )) ?? .default
+        return appSettings.geminiUsageMode
     }
 }
 

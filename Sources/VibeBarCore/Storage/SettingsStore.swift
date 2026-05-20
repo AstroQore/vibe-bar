@@ -129,6 +129,14 @@ public final class SettingsStore: ObservableObject {
         get { settings.claudeUsageMode }
         set { settings.claudeUsageMode = newValue }
     }
+    public var geminiUsageMode: GeminiUsageMode {
+        get { settings.geminiUsageMode }
+        set { settings.geminiUsageMode = newValue }
+    }
+    public var antigravityUsageMode: AntigravityUsageMode {
+        get { settings.antigravityUsageMode }
+        set { settings.antigravityUsageMode = newValue }
+    }
     public var launchAtLogin: Bool {
         get { settings.launchAtLogin }
         set { settings.launchAtLogin = newValue }

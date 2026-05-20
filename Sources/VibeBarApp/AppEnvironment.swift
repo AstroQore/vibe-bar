@@ -13,10 +13,13 @@ final class AppEnvironment: ObservableObject {
 
     @Published private(set) var hasClaudeWebCookies: Bool
     @Published private(set) var hasOpenAIWebCookies: Bool
+    @Published private(set) var hasGeminiWebCookies: Bool
     @Published private(set) var isImportingOpenAIBrowserCookies = false
     @Published private(set) var isImportingClaudeBrowserCookies = false
+    @Published private(set) var isImportingGeminiBrowserCookies = false
     @Published private(set) var openAIBrowserCookieImportStatus: String?
     @Published private(set) var claudeBrowserCookieImportStatus: String?
+    @Published private(set) var geminiBrowserCookieImportStatus: String?
     @Published private(set) var routeHealth: [PrimaryProviderRoute: PrimaryProviderRouteHealth]
 
     private let openAIWebLoginController = OpenAIWebLoginController()
@@ -30,12 +33,15 @@ final class AppEnvironment: ObservableObject {
     private var browserClaudeCookieImportInFlight = false
     private var persistentOpenAICookieImportInFlight = false
     private var browserOpenAICookieImportInFlight = false
+    private var browserGeminiCookieImportInFlight = false
 
     init() {
         let settings = SettingsStore()
         let accounts = AccountStore(
             codexUsageMode: settings.codexUsageMode,
             claudeUsageMode: settings.claudeUsageMode,
+            geminiUsageMode: settings.geminiUsageMode,
+            antigravityUsageMode: settings.antigravityUsageMode,
             miscProviderInstances: settings.settings.miscProviderInstances
         )
         let service = QuotaService.makeDefault(mockProvider: { [weak settings] in
@@ -54,6 +60,7 @@ final class AppEnvironment: ObservableObject {
         self.costService = costService
         self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
         self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+        self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
         self.routeHealth = PrimaryProviderRouteHealthChecker.checkAll()
 
         let scheduler = QuotaRefreshScheduler(
@@ -97,12 +104,16 @@ final class AppEnvironment: ObservableObject {
                     && $0.mockEnabled == $1.mockEnabled
                     && $0.codexUsageMode == $1.codexUsageMode
                     && $0.claudeUsageMode == $1.claudeUsageMode
+                    && $0.geminiUsageMode == $1.geminiUsageMode
+                    && $0.antigravityUsageMode == $1.antigravityUsageMode
                     && $0.miscProviderInstances == $1.miscProviderInstances
             }
             .sink { [weak self] settings in
                 self?.accountStore.reload(
                     codexUsageMode: settings.codexUsageMode,
                     claudeUsageMode: settings.claudeUsageMode,
+                    geminiUsageMode: settings.geminiUsageMode,
+                    antigravityUsageMode: settings.antigravityUsageMode,
                     miscProviderInstances: settings.miscProviderInstances
                 )
                 self?.recheckPrimaryRouteHealth()
@@ -211,6 +222,8 @@ final class AppEnvironment: ObservableObject {
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
             claudeUsageMode: settingsStore.claudeUsageMode,
+            geminiUsageMode: settingsStore.geminiUsageMode,
+            antigravityUsageMode: settingsStore.antigravityUsageMode,
             miscProviderInstances: settingsStore.settings.miscProviderInstances
         )
         // Cookies may have changed (login / re-login) — drop any stale
@@ -244,6 +257,8 @@ final class AppEnvironment: ObservableObject {
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
             claudeUsageMode: settingsStore.claudeUsageMode,
+            geminiUsageMode: settingsStore.geminiUsageMode,
+            antigravityUsageMode: settingsStore.antigravityUsageMode,
             miscProviderInstances: settingsStore.settings.miscProviderInstances
         )
         let account = account(for: tool)
@@ -320,6 +335,60 @@ final class AppEnvironment: ObservableObject {
         )
     }
 
+    func importGeminiBrowserCookies() {
+        importGeminiBrowserCookiesAndRefreshIfNeeded(
+            allowKeychainPrompt: true,
+            userInitiated: true
+        )
+    }
+
+    private func importGeminiBrowserCookiesAndRefreshIfNeeded(
+        allowKeychainPrompt: Bool = false,
+        userInitiated: Bool = false
+    ) {
+        if !allowKeychainPrompt, GeminiWebCookieStore.hasCookieHeader() {
+            return
+        }
+        guard !browserGeminiCookieImportInFlight else { return }
+        browserGeminiCookieImportInFlight = true
+        if userInitiated {
+            isImportingGeminiBrowserCookies = true
+            geminiBrowserCookieImportStatus = "Importing from browser..."
+        }
+
+        let importTask = Task.detached(priority: userInitiated ? .userInitiated : .utility) {
+            try? GeminiBrowserCookieImporter.importAndStoreFromBrowsers(
+                allowKeychainPrompt: allowKeychainPrompt
+            )
+        }
+        Task { @MainActor [weak self] in
+            let result = await importTask.value
+            guard let self else { return }
+            self.browserGeminiCookieImportInFlight = false
+            if userInitiated {
+                self.isImportingGeminiBrowserCookies = false
+            }
+            self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+            guard let result else {
+                if userInitiated {
+                    self.geminiBrowserCookieImportStatus = "No Gemini cookies found in readable browser stores."
+                }
+                return
+            }
+            if userInitiated {
+                self.geminiBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
+            }
+            self.accountStore.reload(
+                codexUsageMode: self.settingsStore.settings.codexUsageMode,
+                claudeUsageMode: self.settingsStore.claudeUsageMode,
+                geminiUsageMode: self.settingsStore.geminiUsageMode,
+                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
+                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
+            )
+            self.scheduler.triggerRefresh()
+        }
+    }
+
     private func importPersistentClaudeCookiesAndRefreshIfNeeded() {
         guard !persistentClaudeCookieImportInFlight else { return }
         persistentClaudeCookieImportInFlight = true
@@ -333,6 +402,8 @@ final class AppEnvironment: ObservableObject {
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
+                geminiUsageMode: self.settingsStore.geminiUsageMode,
+                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
                 miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
@@ -380,6 +451,8 @@ final class AppEnvironment: ObservableObject {
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
+                geminiUsageMode: self.settingsStore.geminiUsageMode,
+                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
                 miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
@@ -400,6 +473,8 @@ final class AppEnvironment: ObservableObject {
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
+                geminiUsageMode: self.settingsStore.geminiUsageMode,
+                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
                 miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.scheduler.triggerRefresh()
@@ -446,6 +521,8 @@ final class AppEnvironment: ObservableObject {
             self.accountStore.reload(
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
+                geminiUsageMode: self.settingsStore.geminiUsageMode,
+                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
                 miscProviderInstances: self.settingsStore.settings.miscProviderInstances
             )
             self.scheduler.triggerRefresh()
@@ -466,6 +543,8 @@ final class AppEnvironment: ObservableObject {
             accountStore.reload(
                 codexUsageMode: settingsStore.settings.codexUsageMode,
                 claudeUsageMode: settingsStore.claudeUsageMode,
+                geminiUsageMode: settingsStore.geminiUsageMode,
+                antigravityUsageMode: settingsStore.antigravityUsageMode,
                 miscProviderInstances: settingsStore.settings.miscProviderInstances
             )
             scheduler.triggerRefresh()
@@ -491,6 +570,8 @@ final class AppEnvironment: ObservableObject {
             accountStore.reload(
                 codexUsageMode: settingsStore.settings.codexUsageMode,
                 claudeUsageMode: settingsStore.claudeUsageMode,
+                geminiUsageMode: settingsStore.geminiUsageMode,
+                antigravityUsageMode: settingsStore.antigravityUsageMode,
                 miscProviderInstances: settingsStore.settings.miscProviderInstances
             )
             scheduler.triggerRefresh()
@@ -498,6 +579,31 @@ final class AppEnvironment: ObservableObject {
         } catch {
             SafeLog.warn("Deleting OpenAI web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
             hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteGeminiWebCookies() -> Bool {
+        do {
+            try GeminiWebCookieStore.deleteCookieHeader()
+            geminiBrowserCookieImportStatus = nil
+            hasGeminiWebCookies = false
+            for account in accountStore.accounts(for: .gemini) {
+                quotaService.clear(accountId: account.id)
+            }
+            accountStore.reload(
+                codexUsageMode: settingsStore.settings.codexUsageMode,
+                claudeUsageMode: settingsStore.claudeUsageMode,
+                geminiUsageMode: settingsStore.geminiUsageMode,
+                antigravityUsageMode: settingsStore.antigravityUsageMode,
+                miscProviderInstances: settingsStore.settings.miscProviderInstances
+            )
+            scheduler.triggerRefresh()
+            return true
+        } catch {
+            SafeLog.warn("Deleting Gemini web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
+            hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
             return false
         }
     }

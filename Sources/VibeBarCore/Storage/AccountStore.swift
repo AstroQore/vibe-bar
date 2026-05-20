@@ -20,11 +20,15 @@ public final class AccountStore: ObservableObject {
     public init(
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
+        geminiUsageMode: GeminiUsageMode = .auto,
+        antigravityUsageMode: AntigravityUsageMode = .auto,
         miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
     ) {
         reload(
             codexUsageMode: codexUsageMode,
             claudeUsageMode: claudeUsageMode,
+            geminiUsageMode: geminiUsageMode,
+            antigravityUsageMode: antigravityUsageMode,
             miscProviderInstances: miscProviderInstances
         )
     }
@@ -33,6 +37,8 @@ public final class AccountStore: ObservableObject {
     public func reload(
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
+        geminiUsageMode: GeminiUsageMode = .auto,
+        antigravityUsageMode: AntigravityUsageMode = .auto,
         miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
     ) {
         var detected: [AccountIdentity] = []
@@ -42,6 +48,12 @@ public final class AccountStore: ObservableObject {
         }
         if let claude = autoDetectClaude(mode: claudeUsageMode) {
             detected.append(claude)
+        }
+        if let gemini = autoDetectGemini(mode: geminiUsageMode) {
+            detected.append(gemini)
+        }
+        if let antigravity = autoDetectAntigravity(mode: antigravityUsageMode) {
+            detected.append(antigravity)
         }
 
         // Misc provider instances always present, regardless of credentials.
@@ -174,6 +186,86 @@ public final class AccountStore: ObservableObject {
             allowsWebFallback: remaining.contains(.webCookie),
             allowsCLIFallback: remaining.contains(.cliDetected),
             allowsOAuthFallback: remaining.contains(.oauthCLI),
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    private func autoDetectGemini(mode: GeminiUsageMode) -> AccountIdentity? {
+        let order = GeminiSourcePlanner.resolve(mode: mode)
+        let homeDir = RealHomeDirectory.path
+        let geminiOAuthPath = URL(fileURLWithPath: homeDir)
+            .appendingPathComponent(".gemini/oauth_creds.json").path
+        var selected: CredentialSource?
+        for source in order {
+            switch source {
+            case .oauthCLI:
+                if FileManager.default.fileExists(atPath: geminiOAuthPath) {
+                    selected = .oauthCLI
+                }
+            case .webCookie:
+                if GeminiWebCookieStore.hasCookieHeader() {
+                    selected = .webCookie
+                }
+            case .cliDetected, .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
+                break
+            }
+            if selected != nil { break }
+        }
+        guard let selectedSource = selected else { return nil }
+        let id: String
+        let alias: String
+        switch selectedSource {
+        case .oauthCLI:
+            id = "oauth-gemini"
+            alias = "Gemini CLI"
+        case .webCookie:
+            id = "web-gemini"
+            alias = "Gemini Web"
+        default:
+            id = "gemini"
+            alias = "Gemini"
+        }
+        let remaining = remainingSources(after: selectedSource, in: order)
+        return AccountIdentity(
+            id: id,
+            tool: .gemini,
+            alias: alias,
+            source: selectedSource,
+            allowsWebFallback: remaining.contains(.webCookie),
+            allowsCLIFallback: false,
+            allowsOAuthFallback: remaining.contains(.oauthCLI),
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Antigravity always registers a placeholder identity so its
+    /// dedicated card shows up even when the desktop app isn't running
+    /// or no cookies have been imported yet. The adapter's `fetch`
+    /// surfaces the real "open Antigravity" / "import cookies" error
+    /// once the user opens the popover.
+    private func autoDetectAntigravity(mode: AntigravityUsageMode) -> AccountIdentity? {
+        let order = AntigravitySourcePlanner.resolve(mode: mode)
+        let primarySource: CredentialSource = order.first ?? .localProbe
+        let id: String
+        let alias: String
+        switch primarySource {
+        case .webCookie:
+            id = "web-antigravity"
+            alias = "Antigravity Web"
+        default:
+            id = "local-antigravity"
+            alias = "Antigravity"
+        }
+        return AccountIdentity(
+            id: id,
+            tool: .antigravity,
+            alias: alias,
+            source: primarySource,
+            allowsWebFallback: order.contains(.webCookie),
+            allowsCLIFallback: false,
+            allowsOAuthFallback: false,
             createdAt: Date(),
             updatedAt: Date()
         )
