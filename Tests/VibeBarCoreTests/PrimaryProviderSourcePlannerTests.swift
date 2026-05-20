@@ -27,29 +27,27 @@ final class PrimaryProviderSourcePlannerTests: XCTestCase {
     }
 
     // MARK: - Gemini
+    //
+    // Gemini's adapter runs sources in parallel and merges buckets,
+    // so the planner exposes "which sources are enabled" rather than
+    // a fallback chain.
 
-    func testGeminiAutoPrefersOAuthThenWeb() {
-        let plan = GeminiSourcePlanner.resolve(mode: .auto)
-
-        XCTAssertEqual(plan, [.oauthCLI, .webCookie])
+    func testGeminiAutoEnablesBothSources() {
+        XCTAssertEqual(GeminiSourcePlanner.enabledSources(mode: .auto), [.oauthCLI, .webCookie])
+        XCTAssertTrue(GeminiSourcePlanner.runsOAuth(mode: .auto))
+        XCTAssertTrue(GeminiSourcePlanner.runsWeb(mode: .auto))
     }
 
-    func testGeminiWebThenOAuthOrder() {
-        let plan = GeminiSourcePlanner.resolve(mode: .webThenOAuth)
-
-        XCTAssertEqual(plan, [.webCookie, .oauthCLI])
+    func testGeminiOAuthOnlyEnablesOnlyOAuth() {
+        XCTAssertEqual(GeminiSourcePlanner.enabledSources(mode: .oauthOnly), [.oauthCLI])
+        XCTAssertTrue(GeminiSourcePlanner.runsOAuth(mode: .oauthOnly))
+        XCTAssertFalse(GeminiSourcePlanner.runsWeb(mode: .oauthOnly))
     }
 
-    func testGeminiOAuthOnlyDoesNotIncludeWeb() {
-        let plan = GeminiSourcePlanner.resolve(mode: .oauthOnly)
-
-        XCTAssertEqual(plan, [.oauthCLI])
-    }
-
-    func testGeminiWebOnlyDoesNotIncludeOAuth() {
-        let plan = GeminiSourcePlanner.resolve(mode: .webOnly)
-
-        XCTAssertEqual(plan, [.webCookie])
+    func testGeminiWebOnlyEnablesOnlyWeb() {
+        XCTAssertEqual(GeminiSourcePlanner.enabledSources(mode: .webOnly), [.webCookie])
+        XCTAssertFalse(GeminiSourcePlanner.runsOAuth(mode: .webOnly))
+        XCTAssertTrue(GeminiSourcePlanner.runsWeb(mode: .webOnly))
     }
 
     // MARK: - Antigravity

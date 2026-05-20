@@ -2,24 +2,28 @@ import Foundation
 
 /// Google Gemini partial-primary usage adapter.
 ///
-/// Source order (driven by `GeminiSourcePlanner.resolve(mode:)`):
+/// `.auto` mode runs both sources **in parallel** and merges the
+/// resulting buckets so the user sees CLI and Web data on one card.
+/// `.oauthOnly` / `.webOnly` are explicit single-source escape hatches.
 ///
+/// Sources:
 /// - **OAuth CLI** — read `~/.gemini/oauth_creds.json`, reuse
 ///   `access_token`, call
 ///   `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`. This is
-///   the Gemini Code Assist protocol the official CLI uses. Tier
-///   detection (Free / Workspace / Paid / Legacy) is still deferred,
-///   matching codexbar's port. `GeminiTokenRefreshHelper` shells out
-///   to `gemini` itself to refresh expired tokens.
+///   the Gemini Code Assist protocol the official CLI uses.
+///   `GeminiTokenRefreshHelper` shells out to `gemini` itself to refresh
+///   expired tokens.
 /// - **Web cookie** — use cookies imported from `gemini.google.com`
 ///   (Chrome Safe Storage via SweetCookieKit). Routed through
 ///   `GeminiWebQuotaFetcher`; the live endpoint and parser are
-///   spike-pending (see plan §9).
+///   spike-pending. While the spike is incomplete this source returns
+///   a parse failure and the dual-fetch merger drops it silently —
+///   the OAuth half still shows up.
 ///
 /// Output: one `QuotaBucket` per model with
-/// `usedPercent = (1 - remainingFraction) * 100`. The `groupTitle`
-/// carries the prettified model name so the popover card can group
-/// related variants.
+/// `usedPercent = (1 - remainingFraction) * 100`. In dual-fetch mode
+/// buckets from each source carry a `"CLI · "` / `"Web · "` groupTitle
+/// prefix so the popover renders distinct sections.
 public struct GeminiQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .gemini
 
@@ -45,29 +49,89 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let order = GeminiSourcePlanner.resolve(mode: usageModeProvider())
-        var lastError: Error?
-        for source in order {
-            do {
-                switch source {
-                case .oauthCLI:
-                    return try await fetchWithOAuth(for: account)
-                case .webCookie:
-                    return try await fetchWithWebCookies(for: account)
-                default:
-                    continue
-                }
-            } catch QuotaError.noCredential {
-                // Try the next source; only surface "no credential"
-                // if every source agreed there is nothing to use.
-                lastError = QuotaError.noCredential
-                continue
-            } catch {
-                lastError = error
-                continue
-            }
+        switch usageModeProvider() {
+        case .oauthOnly:
+            return try await fetchWithOAuth(for: account)
+        case .webOnly:
+            return try await fetchWithWebCookies(for: account)
+        case .auto:
+            return try await fetchDual(for: account)
         }
-        throw mapURLError(lastError ?? QuotaError.noCredential)
+    }
+
+    /// Run OAuth and Web in parallel, merge their buckets. When both
+    /// fail, surface the OAuth error (the Web side currently throws a
+    /// spike-pending parseFailure, which is less informative). When
+    /// either succeeds, the failed half is silently dropped — partial
+    /// data beats a "needs login" placeholder on the dedicated card.
+    private func fetchDual(for account: AccountIdentity) async throws -> AccountQuota {
+        async let oauthResult = tryFetchOAuth(for: account)
+        async let webResult = tryFetchWeb(for: account)
+        let oauth = await oauthResult
+        let web = await webResult
+
+        if oauth.quota == nil && web.quota == nil {
+            throw mapURLError(oauth.error ?? web.error ?? QuotaError.noCredential)
+        }
+
+        var buckets: [QuotaBucket] = []
+        if let q = oauth.quota {
+            buckets.append(contentsOf: q.buckets.map { Self.tagBucket($0, source: .oauthCLI) })
+        }
+        if let q = web.quota {
+            buckets.append(contentsOf: q.buckets.map { Self.tagBucket($0, source: .webCookie) })
+        }
+
+        return AccountQuota(
+            accountId: account.id,
+            tool: .gemini,
+            buckets: buckets,
+            plan: oauth.quota?.plan ?? web.quota?.plan,
+            email: oauth.quota?.email ?? web.quota?.email,
+            queriedAt: now(),
+            error: nil
+        )
+    }
+
+    private func tryFetchOAuth(for account: AccountIdentity) async -> (quota: AccountQuota?, error: QuotaError?) {
+        do {
+            return (try await fetchWithOAuth(for: account), nil)
+        } catch let error as QuotaError {
+            return (nil, error)
+        } catch {
+            return (nil, .unknown(String(describing: error)))
+        }
+    }
+
+    private func tryFetchWeb(for account: AccountIdentity) async -> (quota: AccountQuota?, error: QuotaError?) {
+        do {
+            return (try await fetchWithWebCookies(for: account), nil)
+        } catch let error as QuotaError {
+            return (nil, error)
+        } catch {
+            return (nil, .unknown(String(describing: error)))
+        }
+    }
+
+    /// Prefix a bucket's `id` and `groupTitle` with `"CLI"` / `"Web"`
+    /// so the popover card renders the two source's bucket lists as
+    /// distinct sections (rather than letting them visually overlap
+    /// when `groupTitle` collides — e.g. CLI's "Pro" and Web's "Pro").
+    private static func tagBucket(_ bucket: QuotaBucket, source: CredentialSource) -> QuotaBucket {
+        let prefix: String
+        switch source {
+        case .oauthCLI:  prefix = "CLI"
+        case .webCookie: prefix = "Web"
+        default:         return bucket
+        }
+        var copy = bucket
+        copy.id = "\(prefix.lowercased()).\(bucket.id)"
+        if let group = bucket.groupTitle, !group.isEmpty {
+            copy.groupTitle = "\(prefix) · \(group)"
+        } else {
+            copy.groupTitle = prefix
+        }
+        return copy
     }
 
     private func fetchWithOAuth(for account: AccountIdentity) async throws -> AccountQuota {
@@ -305,22 +369,41 @@ enum GeminiResponseParser {
         return Snapshot(buckets: buckets, planName: nil, email: email)
     }
 
-    private static func prettyModelName(_ id: String) -> String {
+    static func prettyModelName(_ id: String) -> String {
         let lower = id.lowercased()
-        if lower.contains("flash-lite") { return "Flash Lite" }
-        if lower.contains("flash")      { return "Flash" }
-        if lower.contains("pro")        { return "Pro" }
-        if lower.contains("ultra")      { return "Ultra" }
+        let version = extractGeminiVersion(from: lower)
+        let suffix = version.isEmpty ? "" : " \(version)"
+        if lower.contains("flash-lite") { return "Flash Lite\(suffix)" }
+        if lower.contains("flash")      { return "Flash\(suffix)" }
+        if lower.contains("pro")        { return "Pro\(suffix)" }
+        if lower.contains("ultra")      { return "Ultra\(suffix)" }
         return id
     }
 
-    private static func shortLabel(for id: String) -> String {
+    static func shortLabel(for id: String) -> String {
         let lower = id.lowercased()
-        if lower.contains("flash-lite") { return "Lite" }
-        if lower.contains("flash")      { return "Flash" }
-        if lower.contains("pro")        { return "Pro" }
-        if lower.contains("ultra")      { return "Ultra" }
+        let version = extractGeminiVersion(from: lower)
+        let suffix = version.isEmpty ? "" : " \(version)"
+        if lower.contains("flash-lite") { return "Lite\(suffix)" }
+        if lower.contains("flash")      { return "Flash\(suffix)" }
+        if lower.contains("pro")        { return "Pro\(suffix)" }
+        if lower.contains("ultra")      { return "Ultra\(suffix)" }
         return id
+    }
+
+    /// Best-effort version extractor for Gemini model identifiers.
+    /// Handles `"gemini-2.5-flash-lite"`, `"gemini-3-pro"`,
+    /// `"models/gemini-3.0-pro"` → `"2.5"` / `"3"` / `"3.0"`. Returns
+    /// `""` when no version segment is recognisable so callers can
+    /// fall back to the plain family name.
+    static func extractGeminiVersion(from id: String) -> String {
+        let pattern = #"gemini[-_/]?(\d+(?:\.\d+)?)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: id, range: NSRange(id.startIndex..., in: id)),
+              let range = Range(match.range(at: 1), in: id) else {
+            return ""
+        }
+        return String(id[range])
     }
 }
 

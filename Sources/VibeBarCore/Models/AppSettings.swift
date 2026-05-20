@@ -215,8 +215,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mockEnabled = false
         self.codexUsageMode = try c.decodeIfPresent(CodexUsageMode.self, forKey: .codexUsageMode) ?? Self.default.codexUsageMode
         self.claudeUsageMode = try c.decodeIfPresent(ClaudeUsageMode.self, forKey: .claudeUsageMode) ?? Self.default.claudeUsageMode
-        self.geminiUsageMode = try c.decodeIfPresent(GeminiUsageMode.self, forKey: .geminiUsageMode) ?? Self.default.geminiUsageMode
-        self.antigravityUsageMode = try c.decodeIfPresent(AntigravityUsageMode.self, forKey: .antigravityUsageMode) ?? Self.default.antigravityUsageMode
+        // `try?` (not `try`) so legacy raw values from older builds —
+        // e.g. the v1 `.oauthThenWeb` / `.webThenOAuth` Gemini cases —
+        // fall back to `.auto` instead of failing the whole AppSettings
+        // decode. Same robustness for AntigravityUsageMode.
+        self.geminiUsageMode = (try? c.decodeIfPresent(GeminiUsageMode.self, forKey: .geminiUsageMode)) ?? Self.default.geminiUsageMode
+        self.antigravityUsageMode = (try? c.decodeIfPresent(AntigravityUsageMode.self, forKey: .antigravityUsageMode)) ?? Self.default.antigravityUsageMode
 
         // Gemini support was removed; old persisted configs may contain
         // {"kind":"gemini",...} entries that no longer match a known case.
@@ -867,10 +871,14 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
     }
 }
 
+/// Gemini exposes two complementary usage views (Code Assist quota via
+/// the CLI's OAuth credentials, and gemini.google.com's per-model
+/// compute usage). They surface different bucket sets — running both
+/// and merging is the default. The single-source modes exist for users
+/// who only sign in via one path or want to silence noisy errors from
+/// the other.
 public enum GeminiUsageMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case auto
-    case oauthThenWeb
-    case webThenOAuth
     case oauthOnly
     case webOnly
 
@@ -878,9 +886,7 @@ public enum GeminiUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var label: String {
         switch self {
-        case .auto: return "Auto"
-        case .oauthThenWeb: return "Gemini CLI, then Web"
-        case .webThenOAuth: return "Gemini Web, then CLI"
+        case .auto: return "Auto (CLI + Web)"
         case .oauthOnly: return "Gemini CLI only"
         case .webOnly: return "Gemini Web only"
         }
@@ -888,11 +894,9 @@ public enum GeminiUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var detail: String {
         switch self {
-        case .auto: return "Use local Gemini CLI credentials first; fall back to imported gemini.google.com cookies."
-        case .oauthThenWeb: return "Use local Gemini CLI credentials first; fall back to imported gemini.google.com cookies."
-        case .webThenOAuth: return "Use imported gemini.google.com cookies first; fall back to local Gemini CLI credentials."
-        case .oauthOnly: return "Use only the Gemini CLI OAuth credentials at ~/.gemini/oauth_creds.json."
-        case .webOnly: return "Use only imported gemini.google.com cookies."
+        case .auto: return "Fetch both ~/.gemini/oauth_creds.json (Code Assist) and imported gemini.google.com cookies in parallel; merge whichever buckets each source returns."
+        case .oauthOnly: return "Only fetch the Gemini CLI OAuth credentials at ~/.gemini/oauth_creds.json."
+        case .webOnly: return "Only fetch imported gemini.google.com cookies."
         }
     }
 }
