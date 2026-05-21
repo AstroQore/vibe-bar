@@ -42,6 +42,7 @@ public final class QuotaService: ObservableObject {
                 .kimi: KimiQuotaAdapter(),
                 .cursor: CursorQuotaAdapter(),
                 .antigravity: AntigravityQuotaAdapter(),
+                .grok: GrokQuotaAdapter(),
                 .mimo: MimoQuotaAdapter(),
                 .iflytek: IFlyTekQuotaAdapter(),
                 .tencentHunyuan: TencentHunyuanQuotaAdapter(),

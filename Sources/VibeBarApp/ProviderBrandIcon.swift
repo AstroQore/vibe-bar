@@ -62,7 +62,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
         case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return tool.miscFallbackSymbol
         }
     }
@@ -162,7 +162,7 @@ enum ProviderBrandIcon {
         let svg: String? = switch tool {
         case .codex: openAISVG
         case .claude: claudeSVG
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             nil
         }
         guard let svg, let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -362,6 +362,7 @@ extension ToolType {
         case .alibabaTokenPlan: return "ProviderIcon-alibaba"
         case .gemini:      return "ProviderIcon-gemini"
         case .antigravity: return "ProviderIcon-antigravity"
+        case .grok:        return "ProviderIcon-grok"
         case .copilot:     return "ProviderIcon-copilot"
         case .zai:         return "ProviderIcon-zai"
         case .minimax:     return "ProviderIcon-minimax"
@@ -386,7 +387,7 @@ extension ToolType {
         switch self {
         case .codex, .claude:
             return 1.0
-        case .gemini, .antigravity, .copilot, .cursor:
+        case .gemini, .antigravity, .grok, .copilot, .cursor:
             return 1.25
         case .alibaba, .alibabaTokenPlan, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 1.36
@@ -407,6 +408,7 @@ extension ToolType {
         case .alibabaTokenPlan: return "creditcard"
         case .gemini:      return "sparkle"
         case .antigravity: return "arrow.up.forward.app"
+        case .grok:        return "x.circle"
         case .copilot:     return "chevron.left.forward.slash.chevron.right"
         case .zai:         return "z.circle"
         case .minimax:     return "function"

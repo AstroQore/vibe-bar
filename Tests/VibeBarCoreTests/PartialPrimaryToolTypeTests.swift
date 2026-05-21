@@ -13,12 +13,24 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(ToolType.googleAIPair, [.gemini, .antigravity])
     }
 
-    func testPartialPrimaryProvidersAreGeminiAndAntigravity() {
-        XCTAssertEqual(ToolType.partialPrimaryProviders, [.gemini, .antigravity])
+    func testPartialPrimaryProvidersAreGeminiAntigravityAndGrok() {
+        XCTAssertEqual(ToolType.partialPrimaryProviders, [.gemini, .antigravity, .grok])
     }
 
     func testDedicatedCardProvidersIncludePrimaryAndPartialPrimary() {
-        XCTAssertEqual(ToolType.dedicatedCardProviders, [.codex, .claude, .gemini, .antigravity])
+        XCTAssertEqual(
+            ToolType.dedicatedCardProviders,
+            [.codex, .claude, .gemini, .antigravity, .grok]
+        )
+    }
+
+    func testGrokIsPartialPrimary() {
+        XCTAssertTrue(ToolType.grok.isPartialPrimary)
+        XCTAssertTrue(ToolType.grok.supportsDedicatedCard)
+        XCTAssertFalse(ToolType.grok.isPrimary)
+        XCTAssertFalse(ToolType.grok.supportsTokenCost)
+        XCTAssertFalse(ToolType.grok.supportsStatusPage)
+        XCTAssertFalse(ToolType.grok.isMiscPageProvider)
     }
 
     func testGoogleAIPairDoesNotSupportTokenCost() {

@@ -53,6 +53,9 @@ public final class AccountStore: ObservableObject {
         if let antigravity = autoDetectAntigravity(mode: antigravityUsageMode) {
             detected.append(antigravity)
         }
+        if let grok = autoDetectGrok() {
+            detected.append(grok)
+        }
 
         // Misc provider instances always present, regardless of credentials.
         for instance in miscProviderInstances {
@@ -264,6 +267,33 @@ public final class AccountStore: ObservableObject {
             allowsWebFallback: order.contains(.webCookie),
             allowsCLIFallback: false,
             allowsOAuthFallback: false,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Grok registers only when `~/.grok/auth.json` is present — the
+    /// current adapter has no cookie-based fallback, so a missing
+    /// auth.json means there is no usable credential to surface. Once
+    /// the file lands the popover starts showing the live monthly
+    /// usage card on the dedicated Grok sub-page.
+    private func autoDetectGrok() -> AccountIdentity? {
+        guard GrokCredentialsStore.hasCredentials() else { return nil }
+        // Best-effort identity enrichment: surface the account's email
+        // and SuperGrok plan badge when auth.json parses cleanly. If
+        // parsing fails we still register the account so the adapter
+        // can run and report a fetch error in the popover.
+        let credentials = try? GrokCredentialsStore.load()
+        return AccountIdentity(
+            id: "oauth-grok",
+            tool: .grok,
+            email: credentials?.email,
+            alias: "Grok",
+            plan: credentials?.planLabel,
+            source: .oauthCLI,
+            allowsWebFallback: false,
+            allowsCLIFallback: false,
+            allowsOAuthFallback: true,
             createdAt: Date(),
             updatedAt: Date()
         )
