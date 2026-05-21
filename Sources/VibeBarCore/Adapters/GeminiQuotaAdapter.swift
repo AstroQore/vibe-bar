@@ -1,137 +1,56 @@
 import Foundation
 
-/// Google Gemini partial-primary usage adapter.
-///
-/// `.auto` mode runs both sources **in parallel** and merges the
-/// resulting buckets so the user sees CLI and Web data on one card.
-/// `.oauthOnly` / `.webOnly` are explicit single-source escape hatches.
+/// Google Gemini partial-primary usage adapter. Gemini exposes two
+/// sources with structurally **different** bucket shapes, so each
+/// gets its own `AccountIdentity` and renders as a separate card —
+/// this adapter just dispatches by `account.source`, it does not
+/// merge.
 ///
 /// Sources:
-/// - **OAuth CLI** — read `~/.gemini/oauth_creds.json`, reuse
-///   `access_token`, call
-///   `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`. This is
-///   the Gemini Code Assist protocol the official CLI uses.
-///   `GeminiTokenRefreshHelper` shells out to `gemini` itself to refresh
-///   expired tokens.
-/// - **Web cookie** — use cookies imported from `gemini.google.com`
-///   (Chrome Safe Storage via SweetCookieKit). Routed through
-///   `GeminiWebQuotaFetcher`; the live endpoint and parser are
-///   spike-pending. While the spike is incomplete this source returns
-///   a parse failure and the dual-fetch merger drops it silently —
-///   the OAuth half still shows up.
+/// - **OAuth CLI** (`account.source == .oauthCLI`, id `oauth-gemini`)
+///   — read `~/.gemini/oauth_creds.json`, reuse `access_token`, call
+///   `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`.
+///   Returns per-model `remainingFraction` (Pro / Flash / Flash Lite).
+///   `GeminiTokenRefreshHelper` shells out to `gemini` itself to
+///   refresh expired tokens.
+/// - **Web cookie** (`account.source == .webCookie`, id `web-gemini`)
+///   — use cookies imported from `gemini.google.com` (Chrome Safe
+///   Storage via SweetCookieKit). Routed through
+///   `GeminiWebQuotaFetcher`; the page shows aggregate Current usage
+///   + Weekly limit (the same data `gemini.google.com/usage` displays),
+///   not per-model.
 ///
-/// Output: one `QuotaBucket` per model with
-/// `usedPercent = (1 - remainingFraction) * 100`. In dual-fetch mode
-/// buckets from each source carry a `"CLI · "` / `"Web · "` groupTitle
-/// prefix so the popover renders distinct sections.
+/// Account selection happens in `AccountStore.autoDetectGemini`,
+/// which returns one identity per configured-and-enabled source.
 public struct GeminiQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .gemini
 
     private let session: URLSession
     private let homeDirectory: String
     private let now: @Sendable () -> Date
-    private let usageModeProvider: @Sendable () -> GeminiUsageMode
 
     public init(
         session: URLSession = .shared,
         homeDirectory: String = RealHomeDirectory.path,
-        now: @escaping @Sendable () -> Date = { Date() },
-        usageMode: (@Sendable () -> GeminiUsageMode)? = nil
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.session = session
         self.homeDirectory = homeDirectory
         self.now = now
-        // Default to reading the persisted setting on every fetch. The
-        // closure indirection lets tests inject a fixed mode without
-        // touching disk, and keeps the public default expression free
-        // of any internal references (Swift forbids those).
-        self.usageModeProvider = usageMode ?? { Self.resolveUsageMode() }
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        switch usageModeProvider() {
-        case .oauthOnly:
+        switch account.source {
+        case .oauthCLI:
             return try await fetchWithOAuth(for: account)
-        case .webOnly:
+        case .webCookie:
             return try await fetchWithWebCookies(for: account)
-        case .auto:
-            return try await fetchDual(for: account)
+        default:
+            // Shouldn't happen — AccountStore only registers Gemini
+            // accounts with these two sources. Surface a clear error
+            // if it ever does (e.g. a stale persisted source value).
+            throw QuotaError.unknown("Gemini adapter received unsupported source \(account.source)")
         }
-    }
-
-    /// Run OAuth and Web in parallel, merge their buckets. When both
-    /// fail, surface the OAuth error (the Web side currently throws a
-    /// spike-pending parseFailure, which is less informative). When
-    /// either succeeds, the failed half is silently dropped — partial
-    /// data beats a "needs login" placeholder on the dedicated card.
-    private func fetchDual(for account: AccountIdentity) async throws -> AccountQuota {
-        async let oauthResult = tryFetchOAuth(for: account)
-        async let webResult = tryFetchWeb(for: account)
-        let oauth = await oauthResult
-        let web = await webResult
-
-        if oauth.quota == nil && web.quota == nil {
-            throw mapURLError(oauth.error ?? web.error ?? QuotaError.noCredential)
-        }
-
-        var buckets: [QuotaBucket] = []
-        if let q = oauth.quota {
-            buckets.append(contentsOf: q.buckets.map { Self.tagBucket($0, source: .oauthCLI) })
-        }
-        if let q = web.quota {
-            buckets.append(contentsOf: q.buckets.map { Self.tagBucket($0, source: .webCookie) })
-        }
-
-        return AccountQuota(
-            accountId: account.id,
-            tool: .gemini,
-            buckets: buckets,
-            plan: oauth.quota?.plan ?? web.quota?.plan,
-            email: oauth.quota?.email ?? web.quota?.email,
-            queriedAt: now(),
-            error: nil
-        )
-    }
-
-    private func tryFetchOAuth(for account: AccountIdentity) async -> (quota: AccountQuota?, error: QuotaError?) {
-        do {
-            return (try await fetchWithOAuth(for: account), nil)
-        } catch let error as QuotaError {
-            return (nil, error)
-        } catch {
-            return (nil, .unknown(String(describing: error)))
-        }
-    }
-
-    private func tryFetchWeb(for account: AccountIdentity) async -> (quota: AccountQuota?, error: QuotaError?) {
-        do {
-            return (try await fetchWithWebCookies(for: account), nil)
-        } catch let error as QuotaError {
-            return (nil, error)
-        } catch {
-            return (nil, .unknown(String(describing: error)))
-        }
-    }
-
-    /// Prefix a bucket's `id` and `groupTitle` with `"CLI"` / `"Web"`
-    /// so the popover card renders the two source's bucket lists as
-    /// distinct sections (rather than letting them visually overlap
-    /// when `groupTitle` collides — e.g. CLI's "Pro" and Web's "Pro").
-    private static func tagBucket(_ bucket: QuotaBucket, source: CredentialSource) -> QuotaBucket {
-        let prefix: String
-        switch source {
-        case .oauthCLI:  prefix = "CLI"
-        case .webCookie: prefix = "Web"
-        default:         return bucket
-        }
-        var copy = bucket
-        copy.id = "\(prefix.lowercased()).\(bucket.id)"
-        if let group = bucket.groupTitle, !group.isEmpty {
-            copy.groupTitle = "\(prefix) · \(group)"
-        } else {
-            copy.groupTitle = prefix
-        }
-        return copy
     }
 
     private func fetchWithOAuth(for account: AccountIdentity) async throws -> AccountQuota {
@@ -230,18 +149,6 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         )
     }
 
-    /// Reads the persisted `geminiUsageMode` setting from disk.
-    /// Matches how the Codex / Claude adapters resolve their modes
-    /// without threading `AppSettings` through every call site.
-    /// Internal (not `private`) so the public init's default argument
-    /// can reference it.
-    static func resolveUsageMode() -> GeminiUsageMode {
-        let appSettings = (try? VibeBarLocalStore.readJSON(
-            AppSettings.self,
-            from: VibeBarLocalStore.settingsURL
-        )) ?? .default
-        return appSettings.geminiUsageMode
-    }
 }
 
 // MARK: - Endpoints

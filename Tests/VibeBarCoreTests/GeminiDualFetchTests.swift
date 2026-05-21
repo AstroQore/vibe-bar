@@ -1,25 +1,19 @@
 import XCTest
 @testable import VibeBarCore
 
-/// Smoke tests for the dual-fetch dispatch in `GeminiQuotaAdapter`.
-/// The adapter's helpers are private, so these tests focus on the
-/// observable behaviour: which sources get attempted for each mode,
-/// and how failures from both halves are surfaced.
-///
-/// The Web parser is currently spike-pending and always throws
-/// `parseFailure`; in `.auto` mode that side is silently dropped when
-/// OAuth succeeds, and is the dominant error only when OAuth also
-/// fails.
+/// Smoke tests for `GeminiQuotaAdapter`'s account-source dispatch.
+/// After the split-cards refactor each Gemini source has its own
+/// `AccountIdentity`, and the adapter routes by `account.source` —
+/// no fallback chain, no bucket merging.
 final class GeminiDualFetchTests: XCTestCase {
-    private func makeEmptyHomeAdapter(mode: GeminiUsageMode) throws -> (GeminiQuotaAdapter, URL) {
+    private func makeEmptyHomeAdapter() throws -> (GeminiQuotaAdapter, URL) {
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("vibebar-gemini-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
         let adapter = GeminiQuotaAdapter(
             session: .shared,
             homeDirectory: temp.path,
-            now: { Date() },
-            usageMode: { mode }
+            now: { Date() }
         )
         return (adapter, temp)
     }
@@ -28,23 +22,23 @@ final class GeminiDualFetchTests: XCTestCase {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private var fixtureAccount: AccountIdentity {
+    private func account(source: CredentialSource) -> AccountIdentity {
         AccountIdentity(
-            id: "test-gemini",
+            id: source == .oauthCLI ? "oauth-gemini" : "web-gemini",
             tool: .gemini,
-            alias: "Gemini Test",
-            source: .oauthCLI,
+            alias: source == .oauthCLI ? "Gemini CLI" : "Gemini Web",
+            source: source,
             createdAt: Date(),
             updatedAt: Date()
         )
     }
 
-    func testOAuthOnlyModeThrowsNoCredentialWhenCredsMissing() async throws {
-        let (adapter, temp) = try makeEmptyHomeAdapter(mode: .oauthOnly)
+    func testOAuthAccountThrowsNoCredentialWhenCredsMissing() async throws {
+        let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
 
         do {
-            _ = try await adapter.fetch(for: fixtureAccount)
+            _ = try await adapter.fetch(for: account(source: .oauthCLI))
             XCTFail("Expected throw with no oauth_creds.json present")
         } catch QuotaError.noCredential {
             // Pass
@@ -53,48 +47,48 @@ final class GeminiDualFetchTests: XCTestCase {
         }
     }
 
-    func testAutoModeThrowsWhenBothSourcesUnconfigured() async throws {
-        // With no `~/.gemini/oauth_creds.json` and no imported cookies,
-        // the adapter should surface an error rather than returning an
-        // empty bucket list. The Web side always parseFailures while
-        // the spike is incomplete, so the merged error is OAuth's
-        // .noCredential (the more diagnostic of the two).
-        let (adapter, temp) = try makeEmptyHomeAdapter(mode: .auto)
+    func testWebAccountSurfacesSpikePendingError() async throws {
+        // The Web fetcher is spike-pending and always throws either
+        // .noCredential (no cookies imported) or .parseFailure
+        // (cookies present, but the wire shape isn't decoded yet).
+        // The adapter must propagate whichever happens — never crash.
+        let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
 
         do {
-            _ = try await adapter.fetch(for: fixtureAccount)
-            XCTFail("Expected throw with no sources configured")
-        } catch QuotaError.noCredential {
-            // Pass — OAuth's noCredential dominates the merger.
-        } catch QuotaError.parseFailure {
-            // Acceptable fallback if the local keychain still has
-            // imported cookies from a previous session: the Web
-            // side then surfaces its spike-pending parseFailure.
-        } catch QuotaError.network {
-            // Acceptable if the spike Web fetcher made a real call.
+            _ = try await adapter.fetch(for: account(source: .webCookie))
+            // If this ever succeeds, the spike has landed —
+            // tighten the assertion in a follow-up PR to verify the
+            // expected current/weekly bucket pair.
+        } catch is QuotaError {
+            // Pass — any QuotaError variant is acceptable here.
         } catch {
-            XCTFail("Unexpected error: \(error)")
+            XCTFail("Expected a QuotaError, got \(error)")
         }
     }
 
-    func testWebOnlyModeSurfacesSpikePendingError() async throws {
-        // `.webOnly` always exercises the Web path. With the spike
-        // incomplete the fetcher returns `parseFailure` (or
-        // `noCredential` if no cookies are imported). Either is
-        // acceptable here — the test guarantees no crash and a
-        // QuotaError reaching the caller.
-        let (adapter, temp) = try makeEmptyHomeAdapter(mode: .webOnly)
+    func testUnsupportedSourceThrowsUnknown() async throws {
+        let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
 
+        // A Gemini account that somehow got registered with the wrong
+        // source (e.g. a stale persisted snapshot) must surface a
+        // clear error instead of silently doing nothing.
+        let oddAccount = AccountIdentity(
+            id: "stale-gemini",
+            tool: .gemini,
+            alias: "Stale",
+            source: .cliDetected,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
         do {
-            _ = try await adapter.fetch(for: fixtureAccount)
-            // If this ever succeeds it means the spike landed —
-            // tighten the assertion to verify bucket shape.
-        } catch is QuotaError {
-            // Pass — any QuotaError is fine for this smoke test.
+            _ = try await adapter.fetch(for: oddAccount)
+            XCTFail("Expected throw for unsupported source")
+        } catch QuotaError.unknown {
+            // Pass
         } catch {
-            XCTFail("Expected a QuotaError, got \(error)")
+            XCTFail("Expected .unknown, got \(error)")
         }
     }
 }
