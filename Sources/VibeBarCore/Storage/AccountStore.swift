@@ -49,9 +49,7 @@ public final class AccountStore: ObservableObject {
         if let claude = autoDetectClaude(mode: claudeUsageMode) {
             detected.append(claude)
         }
-        if let gemini = autoDetectGemini(mode: geminiUsageMode) {
-            detected.append(gemini)
-        }
+        detected.append(contentsOf: autoDetectGemini(mode: geminiUsageMode))
         if let antigravity = autoDetectAntigravity(mode: antigravityUsageMode) {
             detected.append(antigravity)
         }
@@ -191,49 +189,53 @@ public final class AccountStore: ObservableObject {
         )
     }
 
-    /// Gemini in `.auto` mode runs both sources in parallel and merges
-    /// their buckets — so the account is registered if *either* source
-    /// has credentials. The `source` field reflects the dominant route
-    /// (OAuth wins when present because it carries email + plan info).
-    /// `.oauthOnly` / `.webOnly` register the account only when that
-    /// one source is configured.
-    private func autoDetectGemini(mode: GeminiUsageMode) -> AccountIdentity? {
+    /// Gemini exposes two sources with structurally different bucket
+    /// shapes — CLI returns per-model `remainingFraction`, Web returns
+    /// the aggregate `Current usage` + `Weekly limit` pair shown on
+    /// `gemini.google.com/usage`. They render as **two separate
+    /// cards** on the Google AI page, so this helper returns one
+    /// `AccountIdentity` per enabled-and-configured source.
+    ///
+    /// `.auto` registers either or both depending on which credentials
+    /// are present. `.oauthOnly` / `.webOnly` register at most one.
+    /// Stable account ids let `QuotaCacheStore` keep snapshots across
+    /// restarts.
+    private func autoDetectGemini(mode: GeminiUsageMode) -> [AccountIdentity] {
         let enabled = GeminiSourcePlanner.enabledSources(mode: mode)
         let homeDir = RealHomeDirectory.path
         let geminiOAuthPath = URL(fileURLWithPath: homeDir)
             .appendingPathComponent(".gemini/oauth_creds.json").path
         let hasOAuth = enabled.contains(.oauthCLI) && FileManager.default.fileExists(atPath: geminiOAuthPath)
         let hasWeb = enabled.contains(.webCookie) && GeminiWebCookieStore.hasCookieHeader()
-        guard hasOAuth || hasWeb else { return nil }
 
-        // Dominant source: OAuth (richer metadata) > Web. The
-        // `source` field is mostly informational on the card — the
-        // adapter still decides which paths to actually fetch.
-        let primarySource: CredentialSource = hasOAuth ? .oauthCLI : .webCookie
-        let id: String
-        let alias: String
-        switch mode {
-        case .auto:
-            id = hasOAuth && hasWeb ? "dual-gemini" : (hasOAuth ? "oauth-gemini" : "web-gemini")
-            alias = hasOAuth && hasWeb ? "Gemini CLI + Web" : (hasOAuth ? "Gemini CLI" : "Gemini Web")
-        case .oauthOnly:
-            id = "oauth-gemini"
-            alias = "Gemini CLI"
-        case .webOnly:
-            id = "web-gemini"
-            alias = "Gemini Web"
+        var out: [AccountIdentity] = []
+        if hasOAuth {
+            out.append(AccountIdentity(
+                id: "oauth-gemini",
+                tool: .gemini,
+                alias: "Gemini CLI",
+                source: .oauthCLI,
+                allowsWebFallback: false,
+                allowsCLIFallback: false,
+                allowsOAuthFallback: false,
+                createdAt: Date(),
+                updatedAt: Date()
+            ))
         }
-        return AccountIdentity(
-            id: id,
-            tool: .gemini,
-            alias: alias,
-            source: primarySource,
-            allowsWebFallback: mode == .auto && hasWeb && !hasOAuth ? false : (mode != .oauthOnly && hasWeb),
-            allowsCLIFallback: false,
-            allowsOAuthFallback: mode != .webOnly && hasOAuth,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
+        if hasWeb {
+            out.append(AccountIdentity(
+                id: "web-gemini",
+                tool: .gemini,
+                alias: "Gemini Web",
+                source: .webCookie,
+                allowsWebFallback: false,
+                allowsCLIFallback: false,
+                allowsOAuthFallback: false,
+                createdAt: Date(),
+                updatedAt: Date()
+            ))
+        }
+        return out
     }
 
     /// Antigravity always registers a placeholder identity so its

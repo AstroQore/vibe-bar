@@ -435,21 +435,38 @@ private struct OverviewWaterfall: View {
     }
 }
 
-/// The "Google AI" overview sub-page. Two `ProviderQuotaCard`s side
-/// by side — Gemini on the left, Antigravity on the right — with no
-/// cost / model-ranking / heatmap rails. Per the design decision in
-/// the partial-primary plan, Google AI providers expose quota only
-/// (`supportsTokenCost == false`).
+/// The "Google AI" overview sub-page. Gemini's two sources expose
+/// **structurally different** bucket shapes — Code Assist returns
+/// per-model fractions, gemini.google.com returns aggregate Current /
+/// Weekly — so each source becomes its own card. Antigravity rounds
+/// out the page with its local-LSP probe. All three are quota-only
+/// (`supportsTokenCost == false`); cost data isn't available from any
+/// of these endpoints today.
 private struct GoogleAIDualPage: View {
     let density: Theme.Density
 
+    @EnvironmentObject var environment: AppEnvironment
+
     var body: some View {
+        // Order is deterministic: CLI before Web (Account id
+        // "oauth-gemini" sorts before "web-gemini"); then Antigravity.
+        let geminiAccounts = environment.accountStore
+            .accounts(for: .gemini)
+            .sorted { $0.id < $1.id }
+
         ColumnMasonryLayout(
             columns: 2,
             spacing: density.interSectionSpacing,
-            anchoredItems: 2
+            anchoredItems: max(2, geminiAccounts.count + 1)
         ) {
-            ProviderQuotaCard(tool: .gemini, density: density, compact: false)
+            ForEach(geminiAccounts, id: \.id) { account in
+                ProviderQuotaCard(
+                    tool: .gemini,
+                    accountId: account.id,
+                    density: density,
+                    compact: false
+                )
+            }
             ProviderQuotaCard(tool: .antigravity, density: density, compact: false)
         }
     }
@@ -1055,8 +1072,15 @@ private func groupExtraBuckets(_ buckets: [QuotaBucket]) -> [ExtraGroup] {
 /// Provider quota card. Renders all top-level buckets, then any grouped
 /// (Additional Features) buckets, then live extras (credits / overage) at the
 /// bottom — Extras is no longer its own tab.
+///
+/// When `accountId` is non-nil the card targets that specific account
+/// (used by the Gemini split, where `.gemini` has both an `oauth-gemini`
+/// and a `web-gemini` account). The default — `accountId == nil` — falls
+/// back to "first account for this tool", which is the single-account
+/// behaviour every other provider uses today.
 struct ProviderQuotaCard: View {
     let tool: ToolType
+    var accountId: String?
     let density: Theme.Density
     /// When true, only the headline (no-group) buckets are rendered. Used in
     /// Overview where 3 cards are stacked. Single-provider popovers pass `false`
@@ -1068,8 +1092,18 @@ struct ProviderQuotaCard: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        let account = environment.account(for: tool)
-        let quota = environment.quota(for: tool)
+        let account: AccountIdentity? = {
+            if let accountId {
+                return environment.accountStore.accounts.first { $0.id == accountId }
+            }
+            return environment.account(for: tool)
+        }()
+        let quota: AccountQuota? = {
+            if let account, let cached = quotaService.cachedQuota(for: account.id) {
+                return cached
+            }
+            return accountId == nil ? environment.quota(for: tool) : nil
+        }()
         let liveError = displayableError(
             account.flatMap { quotaService.lastErrorByAccount[$0.id] },
             with: quota
@@ -1080,13 +1114,22 @@ struct ProviderQuotaCard: View {
             quotaPlan: quota?.plan,
             accountPlan: account?.plan
         )
+        let cardTitle = (accountId != nil ? account?.alias : nil) ?? tool.menuTitle
+        let cardSubtitle: String = {
+            guard accountId != nil else { return tool.subtitle }
+            switch account?.source {
+            case .oauthCLI: return "Code Assist · per-model"
+            case .webCookie: return "gemini.google.com · current + weekly"
+            default: return tool.subtitle
+            }
+        }()
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center, spacing: 8) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: tool.menuTitle,
-                    subtitle: tool.subtitle,
+                    title: cardTitle,
+                    subtitle: cardSubtitle,
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16,
