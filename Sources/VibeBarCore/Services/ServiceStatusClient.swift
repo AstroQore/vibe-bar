@@ -19,7 +19,12 @@ public actor ServiceStatusClient {
         switch tool {
         case .codex:  return try await fetchOpenAI(dayCount: dayCount, now: now)
         case .claude: return try await fetchClaude(dayCount: dayCount, now: now)
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .gemini, .antigravity:
+            // Both Gemini and Antigravity live under the same Google
+            // Apps Status product (id `npdyhgECDJ6tB66MxXyo` =
+            // "Gemini"), so they share one feed.
+            return try await fetchGoogleAppsStatus(tool: tool, dayCount: dayCount, now: now)
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose Atlassian-style status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
             // upstream callers should already be filtering to primary
@@ -36,6 +41,138 @@ public actor ServiceStatusClient {
                 components: [],
                 recentIncidents: []
             )
+        }
+    }
+
+    // MARK: - Google Apps Status (incidents.json + products.json)
+
+    /// Product id for Gemini on Google's Workspace Status dashboard.
+    /// Confirmed against `https://www.google.com/appsstatus/dashboard/products.json`
+    /// on 2026-05-22. Antigravity quotas / incidents currently roll up
+    /// into the same Gemini product entry — Google hasn't split them
+    /// out.
+    private static let googleGeminiProductId = "npdyhgECDJ6tB66MxXyo"
+    private static let googleIncidentsURL = URL(string: "https://www.google.com/appsstatus/dashboard/incidents.json")!
+
+    private func fetchGoogleAppsStatus(
+        tool: ToolType,
+        dayCount: Int,
+        now: Date
+    ) async throws -> ServiceStatusSnapshot {
+        let raw = try await fetchJSON([GoogleAppsIncident].self, from: Self.googleIncidentsURL)
+        let geminiIncidents = raw.filter { incident in
+            if incident.service_key == Self.googleGeminiProductId { return true }
+            return incident.affected_products?.contains(where: { $0.id == Self.googleGeminiProductId }) ?? false
+        }
+
+        let impacts: [(start: Date, end: Date, impact: IncidentImpact)] = geminiIncidents.compactMap { incident in
+            guard let start = ServiceStatusClient.flexibleDate(from: incident.begin) else { return nil }
+            let end = incident.end.flatMap(ServiceStatusClient.flexibleDate(from:)) ?? now
+            return (start: start, end: end, impact: ServiceStatusClient.googleStatusImpact(incident))
+        }
+
+        let perDay = buildDayBuckets(from: impacts, dayCount: dayCount, now: now)
+        let uptime = computeUptime(perDay)
+
+        // The component summary for the dedicated card. Google's feed
+        // doesn't expose per-subsystem health, so the single "Gemini"
+        // component reflects the worst recent impact.
+        let currentImpact = perDay.last?.worstImpact ?? .none
+        let currentStatus: ComponentStatusLevel = ServiceStatusClient.componentStatus(for: currentImpact)
+        let component = ServiceComponentSummary(
+            id: Self.googleGeminiProductId,
+            name: tool == .antigravity ? "Antigravity (shared Gemini status)" : "Gemini",
+            status: currentStatus,
+            groupId: nil,
+            uptimePercent: uptime,
+            recentDays: perDay
+        )
+
+        let recent: [IncidentSummary] = geminiIncidents
+            .compactMap { incident -> (Date, IncidentSummary)? in
+                guard let createdAt = ServiceStatusClient.flexibleDate(from: incident.created ?? incident.begin) else {
+                    return nil
+                }
+                let resolvedAt = incident.end.flatMap(ServiceStatusClient.flexibleDate(from:))
+                let summary = IncidentSummary(
+                    id: incident.id,
+                    name: incident.external_desc ?? incident.service_name ?? "Gemini incident",
+                    impact: ServiceStatusClient.googleStatusImpact(incident),
+                    createdAt: createdAt,
+                    resolvedAt: resolvedAt,
+                    url: incident.uri.flatMap { URL(string: "https://www.google.com/appsstatus/dashboard/\($0)") }
+                )
+                return (createdAt, summary)
+            }
+            .sorted { $0.0 > $1.0 }
+            .prefix(4)
+            .map { $0.1 }
+
+        let topIndicator: StatusIndicator = ServiceStatusClient.statusIndicator(for: currentImpact)
+        let description: String
+        switch topIndicator {
+        case .none: description = "All services operational"
+        case .minor: description = "Service issue"
+        case .major: description = "Partial outage"
+        case .critical: description = "Major outage"
+        case .maintenance: description = "Under maintenance"
+        }
+
+        let mostRecentUpdate = geminiIncidents
+            .compactMap { incident -> Date? in
+                if let when = incident.most_recent_update?.when {
+                    return ServiceStatusClient.flexibleDate(from: when)
+                }
+                return ServiceStatusClient.flexibleDate(from: incident.modified ?? incident.created ?? incident.begin)
+            }
+            .max() ?? now
+
+        return ServiceStatusSnapshot(
+            tool: tool,
+            indicator: topIndicator,
+            description: description,
+            updatedAt: mostRecentUpdate,
+            groups: [],
+            components: [component],
+            recentIncidents: Array(recent)
+        )
+    }
+
+    private nonisolated static func googleStatusImpact(_ incident: GoogleAppsIncident) -> IncidentImpact {
+        // Google publishes a free-text `status_impact` plus a
+        // `severity` enum (low / medium / high / critical). Use
+        // severity primarily; fall back to status_impact heuristics.
+        switch incident.severity?.lowercased() {
+        case "critical": return .critical
+        case "high":     return .major
+        case "medium":   return .minor
+        case "low":      return .minor
+        default: break
+        }
+        let impact = incident.status_impact?.uppercased() ?? ""
+        if impact.contains("DISRUPT") || impact.contains("OUTAGE") { return .critical }
+        if impact.contains("DEGRADED") || impact.contains("DELAY")  { return .minor }
+        if impact.contains("MAINTENANCE") { return .maintenance }
+        return .minor
+    }
+
+    private nonisolated static func componentStatus(for impact: IncidentImpact) -> ComponentStatusLevel {
+        switch impact {
+        case .none:        return .operational
+        case .maintenance: return .underMaintenance
+        case .minor:       return .degradedPerformance
+        case .major:       return .partialOutage
+        case .critical:    return .majorOutage
+        }
+    }
+
+    private nonisolated static func statusIndicator(for impact: IncidentImpact) -> StatusIndicator {
+        switch impact {
+        case .none:        return .none
+        case .maintenance: return .maintenance
+        case .minor:       return .minor
+        case .major:       return .major
+        case .critical:    return .critical
         }
     }
 
@@ -574,4 +711,36 @@ private struct ClaudeComponentMeta: Decodable {
 private struct ClaudeDay: Decodable {
     let date: String
     let outages: [String: Int]
+}
+
+// MARK: - Google Apps Status DTOs
+
+/// One element of `https://www.google.com/appsstatus/dashboard/incidents.json`.
+/// All fields are optional because Google adds new keys over time —
+/// dropping a key shouldn't break the whole decode.
+private struct GoogleAppsIncident: Decodable {
+    let id: String
+    let number: String?
+    let begin: String
+    let end: String?
+    let created: String?
+    let modified: String?
+    let external_desc: String?
+    let service_key: String?
+    let service_name: String?
+    let severity: String?
+    let status_impact: String?
+    let uri: String?
+    let affected_products: [GoogleAppsProduct]?
+    let most_recent_update: GoogleAppsUpdate?
+}
+
+private struct GoogleAppsProduct: Decodable {
+    let title: String?
+    let id: String
+}
+
+private struct GoogleAppsUpdate: Decodable {
+    let status: String?
+    let when: String?
 }

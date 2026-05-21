@@ -24,8 +24,11 @@ public enum CostUsageScanner {
             return await scanCodex(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         case .claude:
             return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
-            // Misc providers don't expose token-level cost data; the
+        case .gemini:
+            return await scanGemini(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
+        case .alibaba, .alibabaTokenPlan, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            // Antigravity and misc providers don't expose token-level
+            // cost data through any documented public protocol. The
             // cost-history pipeline is gated by `tool.supportsTokenCost`
             // upstream. Returning `nil` here is a defensive belt:
             // anything that does call us by accident gets an empty
@@ -269,6 +272,192 @@ public enum CostUsageScanner {
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
+    // MARK: - Gemini CLI (OpenTelemetry log file)
+    //
+    // Gemini CLI writes telemetry as **newline-delimited JSON** to
+    // `~/.gemini/telemetry.log` when the user opts in via
+    // `~/.gemini/settings.json` (`{"telemetry":{"enabled":true,"target":
+    // "local","outfile":".gemini/telemetry.log"}}`). Each line is one
+    // OpenTelemetry log record. The event we care about is
+    // `gemini_cli.api_response` — its attributes carry per-call
+    // `input_token_count`, `output_token_count`,
+    // `cached_content_token_count`, `model`, `prompt_id`, and a
+    // session-wide `session.id`. We aggregate into the same
+    // `CostSnapshot` shape Codex / Claude produce.
+    //
+    // OpenTelemetry SDKs serialise log records in several shapes; we
+    // probe `attributes`, `body`, and top-level fallback keys so the
+    // scanner survives version drift. When the file isn't there yet
+    // (user hasn't enabled telemetry) we return an empty snapshot —
+    // the UI will show "no Gemini CLI cost data yet, enable telemetry"
+    // copy.
+
+    private static let geminiCLIEventName = "gemini_cli.api_response"
+    private static let geminiCLIFallbackBodies: Set<String> = [
+        "gemini_cli.api_response",
+        "ApiResponse",
+        "api_response"
+    ]
+
+    private static func scanGemini(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?
+    ) async -> CostSnapshot {
+        let candidates = geminiTelemetryFileCandidates(homeDirectory: homeDirectory)
+        let files = candidates.filter { FileManager.default.fileExists(atPath: $0.path) }
+        var aggregator = CostAggregator(tool: .gemini, now: now)
+        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .gemini, retentionDays: retentionDays)
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+
+        for file in files {
+            let (mtime, size) = fileFingerprint(file)
+            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+                let retained = retainedEvents(cached, cutoff: cutoff)
+                if retained.count != cached.count {
+                    cache.store(retained, for: file.path, mtime: mtime, size: size)
+                }
+                for event in retained {
+                    let cost = costUSD(tool: .gemini, event: event)
+                    aggregator.add(at: event.date, model: event.model, input: event.input,
+                                   output: event.output, cache: event.cache, costUSD: cost)
+                }
+                continue
+            }
+
+            var parsed: [CostUsageScanCache.ParsedEvent] = []
+            let fileMTimeFallback = fileMTime(file) ?? now
+            let didRead = forEachJSONLLine(in: file) { lineData in
+                guard !lineData.isEmpty,
+                      lineData.contains(asciiSequence: "gemini_cli")
+                else { return }
+                guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+                guard isGeminiApiResponse(raw) else { return }
+                let attributes = geminiAttributes(raw)
+                let model = (attributes["model"] as? String)
+                    ?? (attributes["gen_ai.request.model"] as? String)
+                    ?? (attributes["gen_ai.response.model"] as? String)
+                    ?? "gemini-unknown"
+                let input = anyInt(attributes["input_token_count"]
+                                   ?? attributes["gen_ai.usage.input_tokens"]
+                                   ?? attributes["prompt_token_count"])
+                let cached = anyInt(attributes["cached_content_token_count"]
+                                    ?? attributes["gen_ai.usage.cached_tokens"])
+                let output = anyInt(attributes["output_token_count"]
+                                    ?? attributes["gen_ai.usage.output_tokens"]
+                                    ?? attributes["candidates_token_count"])
+                if input == 0, cached == 0, output == 0 { return }
+                let timestamp = geminiTimestamp(raw) ?? fileMTimeFallback
+                let promptId = attributes["prompt_id"] as? String
+                    ?? attributes["gen_ai.prompt_id"] as? String
+                let sessionId = attributes["session.id"] as? String
+                    ?? attributes["session_id"] as? String
+                let inputNonCached = max(0, input - cached)
+                let parsedEvent = CostUsageScanCache.ParsedEvent(
+                    date: timestamp,
+                    model: model,
+                    input: inputNonCached,
+                    output: output,
+                    cache: cached,
+                    sessionId: sessionId,
+                    messageId: promptId
+                )
+                guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
+                parsed.append(parsedEvent)
+                let cost = CostUsagePricing.geminiCostUSD(
+                    model: model,
+                    inputTokens: input,
+                    cacheReadInputTokens: cached,
+                    outputTokens: output
+                ) ?? 0
+                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                               input: parsedEvent.input, output: parsedEvent.output,
+                               cache: parsedEvent.cache, costUSD: cost)
+            }
+            if didRead {
+                cache.store(parsed, for: file.path, mtime: mtime, size: size)
+            }
+        }
+        cache.prune(known: Set(files.map(\.path)))
+        cache.save(homeDirectory: homeDirectory, tool: .gemini)
+        return aggregator.snapshot(jsonlFilesFound: files.count)
+    }
+
+    private static func geminiTelemetryFileCandidates(homeDirectory: String) -> [URL] {
+        // Default outfile is `.gemini/telemetry.log` (configurable in
+        // settings.json). The OTLP-via-local-collector setup also drops
+        // a per-project `tmp/<projectHash>/otel/collector-gcp.log`.
+        let root = URL(fileURLWithPath: homeDirectory).appendingPathComponent(".gemini")
+        var out: [URL] = [root.appendingPathComponent("telemetry.log")]
+        let tmp = root.appendingPathComponent("tmp")
+        if let projects = try? FileManager.default.contentsOfDirectory(atPath: tmp.path) {
+            for project in projects {
+                let otel = tmp.appendingPathComponent(project).appendingPathComponent("otel")
+                let log = otel.appendingPathComponent("collector-gcp.log")
+                out.append(log)
+            }
+        }
+        return out
+    }
+
+    private static func isGeminiApiResponse(_ raw: [String: Any]) -> Bool {
+        if let name = raw["name"] as? String, name == geminiCLIEventName { return true }
+        if let eventName = raw["event_name"] as? String, eventName == geminiCLIEventName { return true }
+        if let body = raw["body"] as? String, geminiCLIFallbackBodies.contains(body) { return true }
+        if let body = raw["body"] as? [String: Any] {
+            if let n = body["name"] as? String, n == geminiCLIEventName { return true }
+            if let n = body["event_name"] as? String, n == geminiCLIEventName { return true }
+        }
+        // OTLP-style: `attributes` may carry an `event.name` key.
+        let attrs = geminiAttributes(raw)
+        if let n = attrs["event.name"] as? String, n == geminiCLIEventName { return true }
+        if let n = attrs["event_name"] as? String, n == geminiCLIEventName { return true }
+        return false
+    }
+
+    /// Flatten OpenTelemetry attribute representations into a plain
+    /// `[String: Any]` dictionary. OTel attributes may be a flat object
+    /// (`{"key":value}`) or an OTLP-style array
+    /// (`[{"key":"foo","value":{"intValue":42}}]`).
+    private static func geminiAttributes(_ raw: [String: Any]) -> [String: Any] {
+        if let attrs = raw["attributes"] as? [String: Any] { return attrs }
+        if let array = raw["attributes"] as? [[String: Any]] {
+            var out: [String: Any] = [:]
+            for entry in array {
+                guard let key = entry["key"] as? String else { continue }
+                if let v = entry["value"] as? [String: Any] {
+                    if let i = v["intValue"] as? Int { out[key] = i }
+                    else if let s = v["intValue"] as? String, let i = Int(s) { out[key] = i }
+                    else if let d = v["doubleValue"] as? Double { out[key] = d }
+                    else if let s = v["stringValue"] as? String { out[key] = s }
+                    else if let b = v["boolValue"] as? Bool { out[key] = b }
+                } else if let v = entry["value"] {
+                    out[key] = v
+                }
+            }
+            return out
+        }
+        // Some SDKs embed flat top-level attribute keys; fall back
+        // to the raw envelope so callers see `input_token_count`
+        // even if the writer didn't put them under `attributes`.
+        return raw
+    }
+
+    private static func geminiTimestamp(_ raw: [String: Any]) -> Date? {
+        if let s = raw["timestamp"] as? String, let d = parseISO(s) { return d }
+        if let s = raw["time"] as? String, let d = parseISO(s) { return d }
+        if let n = raw["observedTimeUnixNano"] as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(n) / 1_000_000_000)
+        }
+        if let n = raw["timeUnixNano"] as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(n) / 1_000_000_000)
+        }
+        if let s = raw["observedTimeUnixNano"] as? String, let n = Int(s) {
+            return Date(timeIntervalSince1970: TimeInterval(n) / 1_000_000_000)
+        }
+        return nil
+    }
+
     private static func retentionCutoff(now: Date, retentionDays: Int?) -> Date? {
         guard let retentionDays else { return nil }
         let normalized = CostDataSettings.normalizedRetentionDays(retentionDays)
@@ -310,7 +499,14 @@ public enum CostUsageScanner {
                 cacheCreationInputTokens: cacheCreation,
                 outputTokens: event.output
             ) ?? 0
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .gemini:
+            return CostUsagePricing.geminiCostUSD(
+                model: event.model,
+                inputTokens: event.input + event.cache,
+                cacheReadInputTokens: event.cache,
+                outputTokens: event.output
+            ) ?? 0
+        case .alibaba, .alibabaTokenPlan, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 0
         }
     }

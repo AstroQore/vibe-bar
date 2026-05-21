@@ -130,12 +130,33 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         [.gemini, .antigravity]
     }
 
+    /// True for providers we can build a per-token cost panel for.
+    /// `.gemini` joins Codex / Claude because Gemini CLI's
+    /// OpenTelemetry log (`~/.gemini/telemetry.log`) carries
+    /// `input_token_count` / `output_token_count` per
+    /// `gemini_cli.api_response` event. Antigravity has no comparable
+    /// public protocol (LS quotas are remainingFraction only;
+    /// `~/.gemini/antigravity/conversations/*.db` is Electron-encrypted
+    /// protobuf), so it stays false.
     public var supportsTokenCost: Bool {
-        isPrimary
+        switch self {
+        case .codex, .claude, .gemini: return true
+        case .alibaba, .alibabaTokenPlan, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            return false
+        }
     }
 
+    /// True for providers we can poll a status feed for. `.gemini` and
+    /// `.antigravity` share the Google Apps Status dashboard feed
+    /// (`https://www.google.com/appsstatus/dashboard/incidents.json`,
+    /// filtered to product id `npdyhgECDJ6tB66MxXyo` = "Gemini").
+    /// Codex / Claude use their own Atlassian / incident.io feeds.
     public var supportsStatusPage: Bool {
-        isPrimary
+        switch self {
+        case .codex, .claude, .gemini, .antigravity: return true
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            return false
+        }
     }
 
     // MARK: - Display

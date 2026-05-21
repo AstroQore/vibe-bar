@@ -21,15 +21,23 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(ToolType.dedicatedCardProviders, [.codex, .claude, .gemini, .antigravity])
     }
 
-    func testGoogleAIPairDoesNotSupportTokenCost() {
-        for tool in ToolType.googleAIPair {
-            XCTAssertFalse(tool.supportsTokenCost, "\(tool) should not support token cost")
-        }
+    func testGeminiSupportsTokenCostAntigravityDoesNot() {
+        // Gemini joined the cost-aware club: the OpenTelemetry log
+        // (~/.gemini/telemetry.log, when telemetry is enabled) carries
+        // per-call token counts. Antigravity has no public protocol
+        // exposing token-level data, so it stays cost-blind.
+        XCTAssertTrue(ToolType.gemini.supportsTokenCost,
+                      "Gemini should support token cost via OpenTelemetry log scanning")
+        XCTAssertFalse(ToolType.antigravity.supportsTokenCost,
+                       "Antigravity has no public token-count protocol")
     }
 
-    func testGoogleAIPairDoesNotSupportStatusPage() {
+    func testGoogleAIPairSupportsStatusPage() {
+        // Both Gemini and Antigravity share Google's Workspace Status
+        // dashboard feed (one product entry covers the Gemini family).
         for tool in ToolType.googleAIPair {
-            XCTAssertFalse(tool.supportsStatusPage, "\(tool) should not support status page")
+            XCTAssertTrue(tool.supportsStatusPage,
+                          "\(tool) should support status page via Google Apps Status feed")
         }
     }
 
