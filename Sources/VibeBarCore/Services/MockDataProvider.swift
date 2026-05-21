@@ -171,10 +171,11 @@ public enum MockDataProvider {
                 extraUsageEnabled: true,
                 updatedAt: now
             )
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
-            // Misc providers don't carry credits / overage extras in the
-            // mock. The Cursor card surfaces on-demand budget through a
-            // different field on `AccountQuota`, not `ProviderExtras`.
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            // Misc / partial-primary providers don't carry credits or
+            // overage extras in the mock. The Cursor card surfaces
+            // on-demand budget through a different field on
+            // `AccountQuota`, not `ProviderExtras`.
             return nil
         }
     }
@@ -240,6 +241,22 @@ public enum MockDataProvider {
                 QuotaBucket(id: "antigravity.claude-sonnet-4-5", title: "Claude Sonnet 4.5",
                             shortLabel: "Sonnet", usedPercent: 71, resetAt: fiveHourReset,
                             rawWindowSeconds: nil, groupTitle: "Claude")
+            ]
+        case .grok:
+            // Partial-primary mock: single monthly bucket so the
+            // dedicated Grok sub-page renders the expected card
+            // during mock mode.
+            let monthlyReset = now.addingTimeInterval(18 * 24 * 3600)
+            buckets = [
+                QuotaBucket(
+                    id: "monthly",
+                    title: "Monthly",
+                    shortLabel: "Monthly",
+                    usedPercent: 45,
+                    resetAt: monthlyReset,
+                    rawWindowSeconds: nil,
+                    groupTitle: "Grok"
+                )
             ]
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' mock data lands in subsequent phases as

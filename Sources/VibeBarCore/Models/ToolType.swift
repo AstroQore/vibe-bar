@@ -23,10 +23,11 @@ import Foundation
 /// Tools split into three tiers:
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
-/// - **Partial-Primary** (`.gemini`, `.antigravity`) — dedicated popover
-///   card (Google AI dual page) + SettingsView panel + multi-source
-///   credential fallback, but no token-cost scanning and no Atlassian-style
-///   status polling. Share `supportsDedicatedCard == true` with primary.
+/// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`) — dedicated
+///   popover sub-page (Google AI dual page for Gemini+Antigravity, single
+///   provider page for Grok) + SettingsView panel, but no token-cost
+///   scanning and no Atlassian-style status polling. Share
+///   `supportsDedicatedCard == true` with primary.
 /// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
 ///   `.tencentHunyuan`, `.tencentTokenPlan`, `.volcengine`, `.baiduQianfan`,
@@ -48,6 +49,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case alibabaTokenPlan
     case gemini
     case antigravity
+    case grok
     case copilot
     case zai
     case minimax
@@ -71,7 +73,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -84,7 +86,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Antigravity) live here without the cost / status integrations.
     public var supportsDedicatedCard: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity: return true
+        case .codex, .claude, .gemini, .antigravity, .grok: return true
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -148,6 +150,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
         case .gemini:      return "Gemini"
         case .antigravity: return "Google - Antigravity"
+        case .grok:        return "xAI - Grok"
         case .copilot:     return "GitHub - Copilot"
         case .zai:         return "Zhipu GLM Coding Plan"
         case .minimax:     return "MiniMax Token Plan"
@@ -176,6 +179,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .alibabaTokenPlan: return "Token Plan"
         case .gemini:      return "Usage"
         case .antigravity: return "Local LSP"
+        case .grok:        return "Monthly"
         case .copilot:     return "GitHub Copilot"
         case .zai:         return "Coding Plan"
         case .minimax:     return "Token Plan"
@@ -204,6 +208,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .alibabaTokenPlan: return "Alibaba Bailian"
         case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
+        case .grok:        return "Grok"
         case .copilot:     return "Copilot"
         case .zai:         return "Zhipu GLM"
         case .minimax:     return "MiniMax"
@@ -232,6 +237,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .alibabaTokenPlan: return "Alibaba Bailian"
         case .gemini:      return "Gemini"
         case .antigravity: return "Antigravity"
+        case .grok:        return "xAI"
         case .copilot:     return "GitHub"
         case .zai:         return "Z.ai"
         case .minimax:     return "MiniMax"
@@ -263,6 +269,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .alibabaTokenPlan: return URL(string: "https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan")!
         case .gemini:      return URL(string: "https://status.cloud.google.com/")!
         case .antigravity: return URL(string: "https://antigravity.google/")!
+        case .grok:        return URL(string: "https://grok.com/?_s=usage")!
         case .copilot:     return URL(string: "https://www.githubstatus.com/")!
         case .zai:         return URL(string: "https://www.z.ai/")!
         case .minimax:     return URL(string: "https://platform.minimax.io/")!
