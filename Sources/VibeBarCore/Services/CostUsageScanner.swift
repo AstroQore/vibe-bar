@@ -26,9 +26,10 @@ public enum CostUsageScanner {
             return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         case .gemini:
             return await scanGemini(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
-        case .alibaba, .alibabaTokenPlan, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
-            // Antigravity and misc providers don't expose token-level
-            // cost data through any documented public protocol. The
+        case .alibaba, .alibabaTokenPlan, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            // Antigravity, Grok, and misc providers don't expose
+            // token-level cost data through any documented public
+            // protocol. The
             // cost-history pipeline is gated by `tool.supportsTokenCost`
             // upstream. Returning `nil` here is a defensive belt:
             // anything that does call us by accident gets an empty
@@ -506,7 +507,7 @@ public enum CostUsageScanner {
                 cacheReadInputTokens: event.cache,
                 outputTokens: event.output
             ) ?? 0
-        case .alibaba, .alibabaTokenPlan, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 0
         }
     }

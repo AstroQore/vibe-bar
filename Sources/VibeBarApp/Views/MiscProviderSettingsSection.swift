@@ -299,6 +299,10 @@ struct MiscProviderSettingsSection: View {
                 prompt: "Paste Warp API key (wk-...)",
                 helpText: "Open Warp → Settings → AI → API Keys to mint one. Stored in macOS Keychain. Env fallback: WARP_API_KEY, then WARP_TOKEN."
             )
+        case .grok:
+            // Partial-primary providers don't ship a misc-card UI;
+            // their settings live in the dedicated SettingsView panel.
+            EmptyView()
         case .codex, .claude:
             EmptyView()
         }

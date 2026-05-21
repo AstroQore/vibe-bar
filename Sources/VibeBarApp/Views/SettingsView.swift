@@ -268,6 +268,25 @@ struct SettingsView: View {
                         }
                     }
 
+                    settingsSection("Grok Account") {
+                        Text("Vibe Bar reads ~/.grok/auth.json and queries grok.com for the monthly credit usage. Run `grok login` once in a terminal to sign in.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if GrokCredentialsStore.hasCredentials() {
+                            Label("~/.grok/auth.json detected", systemImage: "checkmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("No ~/.grok/auth.json yet — run `grok login` to authenticate.",
+                                  systemImage: "exclamationmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Link("Open grok.com usage dashboard",
+                             destination: ToolType.grok.statusPageURL)
+                            .font(.caption2)
+                    }
+
                     settingsSection("Misc Providers") {
                         Text("Usage-only integrations. Check providers to show them on the Misc page; hidden providers keep their saved setup.")
                             .font(.caption)

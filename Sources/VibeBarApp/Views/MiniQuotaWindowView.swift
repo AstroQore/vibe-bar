@@ -273,6 +273,7 @@ private func providerAccent(for tool: ToolType) -> Color {
     case .alibabaTokenPlan: return Color(red: 1.00, green: 0.48, blue: 0.18)  // deeper amber
     case .gemini:      return Color(red: 0.34, green: 0.62, blue: 0.96)  // google blue
     case .antigravity: return Color(red: 0.55, green: 0.40, blue: 0.92)  // violet
+    case .grok:        return Color(red: 0.18, green: 0.18, blue: 0.18)  // xAI near-black
     case .copilot:     return Color(red: 0.46, green: 0.46, blue: 0.46)  // graphite
     case .zai:         return Color(red: 0.26, green: 0.74, blue: 0.55)  // emerald
     case .minimax:     return Color(red: 0.97, green: 0.30, blue: 0.45)  // pink
@@ -301,6 +302,7 @@ private func providerTitle(for tool: ToolType) -> String {
     case .alibabaTokenPlan: return "QWEN TP"
     case .gemini:      return "GEMINI"
     case .antigravity: return "ANTIGRAVITY"
+    case .grok:        return "GROK"
     case .copilot:     return "COPILOT"
     case .zai:         return "Z.AI"
     case .minimax:     return "MINIMAX"

@@ -71,6 +71,7 @@ struct PopoverRoot: View {
             case .claude:   return .claude
             case .openAI:   return .codex
             case .googleAI: return .compact
+            case .grok:     return .compact
             case .misc:     return .compact
             }
         default:
@@ -108,6 +109,8 @@ struct PopoverRoot: View {
                 ProviderDetailView(tool: .codex, density: density)
             case .googleAI:
                 GoogleAIDualPage(density: density)
+            case .grok:
+                GrokPage(density: density)
             case .misc:
                 MiscProvidersPage(density: density)
             }
@@ -129,6 +132,9 @@ struct PopoverRoot: View {
         if kind == .compact, overviewPage == .googleAI {
             return "Google AI"
         }
+        if kind == .compact, overviewPage == .grok {
+            return "Grok"
+        }
         switch effectiveKind {
         case .compact: return "Overview"
         case .codex:   return "OpenAI"
@@ -143,6 +149,9 @@ struct PopoverRoot: View {
         }
         if kind == .compact, overviewPage == .googleAI {
             return "Gemini + Antigravity · quota only"
+        }
+        if kind == .compact, overviewPage == .grok {
+            return "xAI · monthly credits"
         }
         switch effectiveKind {
         case .compact: return "All providers · quota & cost"
@@ -170,13 +179,17 @@ struct PopoverRoot: View {
         // Header timestamps and refresh state aggregate the providers
         // visible in the current popover. The Misc subpage owns its
         // usage-only integrations; the Google AI subpage aggregates the
-        // partial-primary pair; the Overview and Status surfaces stick
-        // to the two primary providers.
+        // partial-primary pair; the Grok subpage shows just `.grok`;
+        // the Overview and Status surfaces stick to the two primary
+        // providers.
         if kind == .compact, overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
         }
         if kind == .compact, overviewPage == .googleAI {
             return ToolType.googleAIPair
+        }
+        if kind == .compact, overviewPage == .grok {
+            return [.grok]
         }
         switch effectiveKind {
         case .compact, .status: return ToolType.primaryProviders
@@ -277,6 +290,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
     case openAI
     case claude
     case googleAI
+    case grok
     case misc
 
     var id: String { rawValue }
@@ -287,6 +301,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .openAI:   return "OpenAI"
         case .claude:   return "Claude"
         case .googleAI: return "Google AI"
+        case .grok:     return "Grok"
         case .misc:     return "Misc"
         }
     }
@@ -297,6 +312,7 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .openAI:   return .codex
         case .claude:   return .claude
         case .googleAI: return .compact
+        case .grok:     return .compact
         case .misc:     return .compact
         }
     }
@@ -366,6 +382,10 @@ private struct OverviewSwitchIcon: View {
                 // Gemini brand icon as the visual anchor; the label
                 // already says "Google AI".
                 ToolBrandIconView(tool: .gemini, size: 13)
+            } else if page == .grok {
+                // Grok has no dedicated MenuBarItemKind, so we render
+                // its brand icon directly off the ToolType.
+                ToolBrandIconView(tool: .grok, size: 13)
             } else {
                 ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 14 : 13)
             }
@@ -431,6 +451,24 @@ private struct OverviewWaterfall: View {
                     )
                 }
             }
+        }
+    }
+}
+
+/// The "Grok" overview sub-page. A single `ProviderQuotaCard` for
+/// `.grok` with no cost / heatmap rails — Grok ships per-month credit
+/// usage only, mirroring the partial-primary contract that Gemini
+/// and Antigravity use.
+private struct GrokPage: View {
+    let density: Theme.Density
+
+    var body: some View {
+        ColumnMasonryLayout(
+            columns: 1,
+            spacing: density.interSectionSpacing,
+            anchoredItems: 1
+        ) {
+            ProviderQuotaCard(tool: .grok, density: density, compact: false)
         }
     }
 }
@@ -929,7 +967,7 @@ private struct OverviewCostCard: View {
         switch tool {
         case .codex:  return "No Codex CLI sessions found yet."
         case .claude: return "No Claude CLI sessions found yet."
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
             // `tool.supportsTokenCost`), but render a graceful
@@ -1291,7 +1329,7 @@ struct ProviderQuotaCard: View {
         switch tool {
         case .codex:  return "Run codex login, then refresh."
         case .claude: return "Run claude login, then refresh."
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from
             // a primary-provider detail view, but cover misc cases

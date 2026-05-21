@@ -24,7 +24,7 @@ public actor ServiceStatusClient {
             // Apps Status product (id `npdyhgECDJ6tB66MxXyo` =
             // "Gemini"), so they share one feed.
             return try await fetchGoogleAppsStatus(tool: tool, dayCount: dayCount, now: now)
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose Atlassian-style status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
             // upstream callers should already be filtering to primary
