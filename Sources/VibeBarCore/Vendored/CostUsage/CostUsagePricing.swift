@@ -5,16 +5,30 @@ import Foundation
 // so users can see freshness in Settings.
 public enum CostUsagePricing {
     /// ISO date the pricing tables were last refreshed against upstream provider docs.
-    public static let pricingDataUpdatedAt: String = "2026-05-09"
+    public static let pricingDataUpdatedAt: String = "2026-05-22"
 
     /// Bump when local cost parsing or pricing semantics change in a way that
     /// makes persisted cost totals unsafe to max-merge with fresh scans.
-    public static let calculationVersion: Int = 3
+    public static let calculationVersion: Int = 4
 
     struct CodexPricing {
         let inputCostPerToken: Double
         let outputCostPerToken: Double
         let cacheReadInputCostPerToken: Double?
+        let displayLabel: String?
+    }
+
+    struct GeminiPricing {
+        let inputCostPerToken: Double
+        let outputCostPerToken: Double
+        let cacheReadInputCostPerToken: Double?
+        /// Tiered: when total input tokens exceed `thresholdTokens`, rates
+        /// flip to the `*AboveThreshold` values. Gemini 2.5 Pro & Pro
+        /// Preview have a 200K threshold; smaller / earlier models are flat.
+        let thresholdTokens: Int?
+        let inputCostPerTokenAboveThreshold: Double?
+        let outputCostPerTokenAboveThreshold: Double?
+        let cacheReadInputCostPerTokenAboveThreshold: Double?
         let displayLabel: String?
     }
 
@@ -267,6 +281,120 @@ public enum CostUsagePricing {
             cacheReadInputCostPerTokenAboveThreshold: 6e-7),
     ]
 
+    /// Gemini API pricing, USD per token, as of `pricingDataUpdatedAt`.
+    /// Source: ai.google.dev/gemini-api/docs/pricing. Free-tier rows
+    /// have zero cost so the cost chart stays at $0 for AI-Studio-only
+    /// users. Paid tier rates are tiered for Pro models (≤200K and
+    /// >200K input-token prompts use different rates).
+    private static let gemini: [String: GeminiPricing] = [
+        // === Gemini 2.5 family ===
+        "gemini-2.5-pro": GeminiPricing(
+            inputCostPerToken: 1.25e-6,
+            outputCostPerToken: 1e-5,
+            cacheReadInputCostPerToken: 3.1e-7,
+            thresholdTokens: 200_000,
+            inputCostPerTokenAboveThreshold: 2.5e-6,
+            outputCostPerTokenAboveThreshold: 1.5e-5,
+            cacheReadInputCostPerTokenAboveThreshold: 6.25e-7,
+            displayLabel: nil),
+        "gemini-2.5-flash": GeminiPricing(
+            inputCostPerToken: 3e-7,
+            outputCostPerToken: 2.5e-6,
+            cacheReadInputCostPerToken: 7.5e-8,
+            thresholdTokens: nil,
+            inputCostPerTokenAboveThreshold: nil,
+            outputCostPerTokenAboveThreshold: nil,
+            cacheReadInputCostPerTokenAboveThreshold: nil,
+            displayLabel: nil),
+        "gemini-2.5-flash-lite": GeminiPricing(
+            inputCostPerToken: 1e-7,
+            outputCostPerToken: 4e-7,
+            cacheReadInputCostPerToken: 2.5e-8,
+            thresholdTokens: nil,
+            inputCostPerTokenAboveThreshold: nil,
+            outputCostPerTokenAboveThreshold: nil,
+            cacheReadInputCostPerTokenAboveThreshold: nil,
+            displayLabel: nil),
+        // === Gemini 3 family (post-I/O 2026) ===
+        "gemini-3-pro": GeminiPricing(
+            inputCostPerToken: 2e-6,
+            outputCostPerToken: 1.2e-5,
+            cacheReadInputCostPerToken: 5e-7,
+            thresholdTokens: 200_000,
+            inputCostPerTokenAboveThreshold: 4e-6,
+            outputCostPerTokenAboveThreshold: 1.8e-5,
+            cacheReadInputCostPerTokenAboveThreshold: 1e-6,
+            displayLabel: nil),
+        "gemini-3-pro-preview": GeminiPricing(
+            inputCostPerToken: 2e-6,
+            outputCostPerToken: 1.2e-5,
+            cacheReadInputCostPerToken: 5e-7,
+            thresholdTokens: 200_000,
+            inputCostPerTokenAboveThreshold: 4e-6,
+            outputCostPerTokenAboveThreshold: 1.8e-5,
+            cacheReadInputCostPerTokenAboveThreshold: 1e-6,
+            displayLabel: nil),
+        "gemini-3-flash": GeminiPricing(
+            inputCostPerToken: 3.5e-7,
+            outputCostPerToken: 2.8e-6,
+            cacheReadInputCostPerToken: 8.75e-8,
+            thresholdTokens: nil,
+            inputCostPerTokenAboveThreshold: nil,
+            outputCostPerTokenAboveThreshold: nil,
+            cacheReadInputCostPerTokenAboveThreshold: nil,
+            displayLabel: nil),
+        "gemini-3-flash-lite": GeminiPricing(
+            inputCostPerToken: 1.25e-7,
+            outputCostPerToken: 5e-7,
+            cacheReadInputCostPerToken: 3.1e-8,
+            thresholdTokens: nil,
+            inputCostPerTokenAboveThreshold: nil,
+            outputCostPerTokenAboveThreshold: nil,
+            cacheReadInputCostPerTokenAboveThreshold: nil,
+            displayLabel: nil)
+    ]
+
+    static func normalizeGeminiModel(_ raw: String) -> String {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // Drop the common `models/` prefix used by the Gemini API.
+        if trimmed.hasPrefix("models/") {
+            trimmed = String(trimmed.dropFirst("models/".count))
+        }
+
+        if self.gemini[trimmed] != nil {
+            return trimmed
+        }
+
+        // Strip `-001`, `-002`, `-preview-04-09` style suffixes — they
+        // share pricing with the bare base name.
+        if let datedSuffix = trimmed.range(of: #"-(preview-)?\d{2,4}-\d{2}(-\d{2})?$"#, options: .regularExpression) {
+            let base = String(trimmed[..<datedSuffix.lowerBound])
+            if self.gemini[base] != nil {
+                return base
+            }
+        }
+        if let revSuffix = trimmed.range(of: #"-\d{3}$"#, options: .regularExpression) {
+            let base = String(trimmed[..<revSuffix.lowerBound])
+            if self.gemini[base] != nil {
+                return base
+            }
+        }
+        // Best-effort family fallback: "gemini-2.5-pro-exp" → "gemini-2.5-pro".
+        let segments = trimmed.split(separator: "-")
+        for end in stride(from: segments.count, through: 3, by: -1) {
+            let candidate = segments.prefix(end).joined(separator: "-")
+            if self.gemini[candidate] != nil {
+                return candidate
+            }
+        }
+        return trimmed
+    }
+
+    static func geminiDisplayLabel(model: String) -> String? {
+        let key = self.normalizeGeminiModel(model)
+        return self.gemini[key]?.displayLabel
+    }
+
     static func normalizeCodexModel(_ raw: String) -> String {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("openai/") {
@@ -329,6 +457,47 @@ public enum CostUsagePricing {
         return Double(nonCached) * pricing.inputCostPerToken
             + Double(cached) * cachedRate
             + Double(max(0, outputTokens)) * pricing.outputCostPerToken
+    }
+
+    /// Compute USD cost for a Gemini API call. `cacheReadInputTokens`
+    /// is the slice of `inputTokens` that hit context cache — same
+    /// shape as `codexCostUSD`. Returns `nil` when the model is
+    /// unknown so the scanner can skip the row instead of charging
+    /// $0 (which would silently under-count cost on a new model).
+    static func geminiCostUSD(
+        model: String,
+        inputTokens: Int,
+        cacheReadInputTokens: Int,
+        outputTokens: Int
+    ) -> Double? {
+        let key = self.normalizeGeminiModel(model)
+        guard let pricing = self.gemini[key] else { return nil }
+
+        let cached = min(max(0, cacheReadInputTokens), max(0, inputTokens))
+        let nonCached = max(0, inputTokens - cached)
+        let output = max(0, outputTokens)
+
+        func tier(_ tokens: Int, base: Double, above: Double?, threshold: Int?) -> Double {
+            guard let threshold, let above else { return Double(tokens) * base }
+            let below = min(tokens, threshold)
+            let over = max(tokens - threshold, 0)
+            return Double(below) * base + Double(over) * above
+        }
+
+        let cachedRate = pricing.cacheReadInputCostPerToken ?? pricing.inputCostPerToken
+        let cachedRateAbove = pricing.cacheReadInputCostPerTokenAboveThreshold ?? pricing.inputCostPerTokenAboveThreshold
+        return tier(nonCached,
+                    base: pricing.inputCostPerToken,
+                    above: pricing.inputCostPerTokenAboveThreshold,
+                    threshold: pricing.thresholdTokens)
+            + tier(cached,
+                   base: cachedRate,
+                   above: cachedRateAbove,
+                   threshold: pricing.thresholdTokens)
+            + tier(output,
+                   base: pricing.outputCostPerToken,
+                   above: pricing.outputCostPerTokenAboveThreshold,
+                   threshold: pricing.thresholdTokens)
     }
 
     static func claudeCostUSD(

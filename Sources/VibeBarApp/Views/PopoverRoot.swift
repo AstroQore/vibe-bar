@@ -476,14 +476,23 @@ private struct GrokPage: View {
 /// The "Google AI" overview sub-page. Gemini's two sources expose
 /// **structurally different** bucket shapes — Code Assist returns
 /// per-model fractions, gemini.google.com returns aggregate Current /
-/// Weekly — so each source becomes its own card. Antigravity rounds
-/// out the page with its local-LSP probe. All three are quota-only
-/// (`supportsTokenCost == false`); cost data isn't available from any
-/// of these endpoints today.
+/// Weekly — so each source becomes its own card. Antigravity gets
+/// its own quota card (local-LSP probe), and the page also surfaces
+/// Gemini CLI's full cost panel + service-status feed via the same
+/// detail-view layout the OpenAI / Claude tabs use.
+///
+/// Cost data only lights up if the user has opted into Gemini CLI
+/// telemetry (`~/.gemini/settings.json` → `telemetry.enabled=true`).
+/// Antigravity has no cost data source (its conversation database
+/// is Electron-encrypted protobuf with no public schema). Service
+/// status is shared — Google publishes one feed for the whole
+/// "Gemini" product family covering both CLI and Antigravity.
 private struct GoogleAIDualPage: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         // Order is deterministic: CLI before Web (Account id
@@ -491,22 +500,89 @@ private struct GoogleAIDualPage: View {
         let geminiAccounts = environment.accountStore
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
+        let snapshot = environment.costService.snapshot(for: .gemini)
+        let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
 
-        ColumnMasonryLayout(
-            columns: 2,
-            spacing: density.interSectionSpacing,
-            anchoredItems: max(2, geminiAccounts.count + 1)
-        ) {
-            ForEach(geminiAccounts, id: \.id) { account in
-                ProviderQuotaCard(
-                    tool: .gemini,
-                    accountId: account.id,
-                    density: density,
-                    compact: false
-                )
+        HStack(alignment: .top, spacing: density.interSectionSpacing) {
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                ForEach(geminiAccounts, id: \.id) { account in
+                    ProviderQuotaCard(
+                        tool: .gemini,
+                        accountId: account.id,
+                        density: density,
+                        compact: false
+                    )
+                }
+                ProviderQuotaCard(tool: .antigravity, density: density, compact: false)
+                if let cliAccount = geminiAccounts.first(where: { $0.source == .oauthCLI }) {
+                    // Subscription Utilization only renders against
+                    // OAuth-source quotas (CLI). Web-source buckets
+                    // would mix different units (aggregate compute
+                    // vs per-model fractions) and confuse the bar.
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        SubscriptionUtilizationView(
+                            tool: .gemini,
+                            buckets: quotaService.cachedQuota(for: cliAccount.id)?.buckets ?? [],
+                            mode: settingsStore.displayMode,
+                            density: density,
+                            now: context.date
+                        )
+                    }
+                }
+                ServiceStatusCard(tools: [.gemini])
             }
-            ProviderQuotaCard(tool: .antigravity, density: density, compact: false)
+            .frame(
+                minWidth: googleAILeftColumnMinWidth,
+                idealWidth: googleAILeftColumnIdealWidth,
+                maxWidth: googleAILeftColumnMaxWidth,
+                alignment: .topLeading
+            )
+
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                if let snapshot, hasCostData {
+                    CostHeaderCard(tool: .gemini, snapshot: snapshot, density: density)
+                    CostHistoryView(
+                        tool: .gemini,
+                        snapshot: snapshot,
+                        density: density,
+                        chartHeight: 160
+                    )
+                    ModelRankingList(snapshot: snapshot, density: density)
+                    YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: ToolType.gemini.menuTitle)
+                    UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
+                    UsageRateView(heatmap: snapshot.heatmap, density: density)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No Gemini CLI cost data yet.")
+                            .font(.system(size: density.subtitleFontSize))
+                            .foregroundStyle(.secondary)
+                        Text("Enable telemetry to populate this panel: edit ~/.gemini/settings.json and add `\"telemetry\":{\"enabled\":true,\"target\":\"local\",\"outfile\":\".gemini/telemetry.log\"}`, then re-run a `gemini` command.")
+                            .font(.system(size: max(10, density.subtitleFontSize - 1)))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(nil)
+                    }
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(minWidth: googleAIRightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    private var googleAILeftColumnMinWidth: CGFloat {
+        max(320, min(380, density.popoverWidth * 0.34))
+    }
+
+    private var googleAILeftColumnIdealWidth: CGFloat {
+        max(googleAILeftColumnMinWidth, min(410, density.popoverWidth * 0.38))
+    }
+
+    private var googleAILeftColumnMaxWidth: CGFloat {
+        max(googleAILeftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
+    }
+
+    private var googleAIRightColumnMinWidth: CGFloat {
+        500
     }
 }
 
