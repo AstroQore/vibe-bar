@@ -34,13 +34,61 @@ public enum GrokWebBillingFetcher {
         endpoint: URL = Self.defaultEndpoint,
         now: @Sendable () -> Date = { Date() }
     ) async throws -> GrokWebBillingSnapshot {
+        try await Self.fetch(
+            authorizationHeader: "Bearer \(credentials.accessToken)",
+            cookieHeader: nil,
+            session: session,
+            endpoint: endpoint,
+            now: now
+        )
+    }
+
+    /// Cookie-authenticated overload. Used when `~/.grok/auth.json` is
+    /// absent and the user has imported grok.com cookies from a
+    /// signed-in browser session. xAI's billing endpoint accepts
+    /// either Bearer or Cookie auth — Codex Bar exercises both paths
+    /// in parallel; Vibe Bar picks one based on which credential the
+    /// adapter found.
+    public static func fetch(
+        cookieHeader: String,
+        session: URLSession = .shared,
+        endpoint: URL = Self.defaultEndpoint,
+        now: @Sendable () -> Date = { Date() }
+    ) async throws -> GrokWebBillingSnapshot {
+        try await Self.fetch(
+            authorizationHeader: nil,
+            cookieHeader: cookieHeader,
+            session: session,
+            endpoint: endpoint,
+            now: now
+        )
+    }
+
+    private static func fetch(
+        authorizationHeader: String?,
+        cookieHeader: String?,
+        session: URLSession,
+        endpoint: URL,
+        now: @Sendable () -> Date
+    ) async throws -> GrokWebBillingSnapshot {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = Self.requestTimeoutSeconds
+        // URLSession.shared shares the system HTTP cookie jar — that
+        // can quietly inject stale grok.com cookies on every request,
+        // which conflicts with the bearer header and trips xAI's auth
+        // gate. We pass the cookie header ourselves (or nothing) and
+        // tell URLSession to stay out of it.
+        request.httpShouldHandleCookies = false
         // Empty gRPC-web message frame: 1-byte flags + 4-byte big-endian
         // length (zero). Matches what xAI's web UI sends.
         request.httpBody = Data([0x00, 0x00, 0x00, 0x00, 0x00])
-        request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+        if let authorizationHeader {
+            request.setValue(authorizationHeader, forHTTPHeaderField: "Authorization")
+        }
+        if let cookieHeader {
+            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        }
         request.setValue("https://grok.com", forHTTPHeaderField: "Origin")
         request.setValue("https://grok.com/?_s=usage", forHTTPHeaderField: "Referer")
         request.setValue("*/*", forHTTPHeaderField: "Accept")

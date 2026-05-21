@@ -14,12 +14,15 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var hasClaudeWebCookies: Bool
     @Published private(set) var hasOpenAIWebCookies: Bool
     @Published private(set) var hasGeminiWebCookies: Bool
+    @Published private(set) var hasGrokWebCookies: Bool
     @Published private(set) var isImportingOpenAIBrowserCookies = false
     @Published private(set) var isImportingClaudeBrowserCookies = false
     @Published private(set) var isImportingGeminiBrowserCookies = false
+    @Published private(set) var isImportingGrokBrowserCookies = false
     @Published private(set) var openAIBrowserCookieImportStatus: String?
     @Published private(set) var claudeBrowserCookieImportStatus: String?
     @Published private(set) var geminiBrowserCookieImportStatus: String?
+    @Published private(set) var grokBrowserCookieImportStatus: String?
     @Published private(set) var routeHealth: [PrimaryProviderRoute: PrimaryProviderRouteHealth]
 
     private let openAIWebLoginController = OpenAIWebLoginController()
@@ -34,6 +37,7 @@ final class AppEnvironment: ObservableObject {
     private var persistentOpenAICookieImportInFlight = false
     private var browserOpenAICookieImportInFlight = false
     private var browserGeminiCookieImportInFlight = false
+    private var browserGrokCookieImportInFlight = false
 
     init() {
         let settings = SettingsStore()
@@ -61,6 +65,7 @@ final class AppEnvironment: ObservableObject {
         self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
         self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
         self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+        self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
         self.routeHealth = PrimaryProviderRouteHealthChecker.checkAll()
 
         let scheduler = QuotaRefreshScheduler(
@@ -342,6 +347,60 @@ final class AppEnvironment: ObservableObject {
         )
     }
 
+    func importGrokBrowserCookies() {
+        importGrokBrowserCookiesAndRefreshIfNeeded(
+            allowKeychainPrompt: true,
+            userInitiated: true
+        )
+    }
+
+    private func importGrokBrowserCookiesAndRefreshIfNeeded(
+        allowKeychainPrompt: Bool = false,
+        userInitiated: Bool = false
+    ) {
+        if !allowKeychainPrompt, GrokWebCookieStore.hasCookieHeader() {
+            return
+        }
+        guard !browserGrokCookieImportInFlight else { return }
+        browserGrokCookieImportInFlight = true
+        if userInitiated {
+            isImportingGrokBrowserCookies = true
+            grokBrowserCookieImportStatus = "Importing from browser..."
+        }
+
+        let importTask = Task.detached(priority: userInitiated ? .userInitiated : .utility) {
+            try? GrokBrowserCookieImporter.importAndStoreFromBrowsers(
+                allowKeychainPrompt: allowKeychainPrompt
+            )
+        }
+        Task { @MainActor [weak self] in
+            let result = await importTask.value
+            guard let self else { return }
+            self.browserGrokCookieImportInFlight = false
+            if userInitiated {
+                self.isImportingGrokBrowserCookies = false
+            }
+            self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+            guard let result else {
+                if userInitiated {
+                    self.grokBrowserCookieImportStatus = "No Grok cookies found in readable browser stores."
+                }
+                return
+            }
+            if userInitiated {
+                self.grokBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
+            }
+            self.accountStore.reload(
+                codexUsageMode: self.settingsStore.settings.codexUsageMode,
+                claudeUsageMode: self.settingsStore.claudeUsageMode,
+                geminiUsageMode: self.settingsStore.geminiUsageMode,
+                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
+                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
+            )
+            self.scheduler.triggerRefresh()
+        }
+    }
+
     private func importGeminiBrowserCookiesAndRefreshIfNeeded(
         allowKeychainPrompt: Bool = false,
         userInitiated: Bool = false
@@ -604,6 +663,31 @@ final class AppEnvironment: ObservableObject {
         } catch {
             SafeLog.warn("Deleting Gemini web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
             hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteGrokWebCookies() -> Bool {
+        do {
+            try GrokWebCookieStore.deleteCookieHeader()
+            grokBrowserCookieImportStatus = nil
+            hasGrokWebCookies = false
+            for account in accountStore.accounts(for: .grok) {
+                quotaService.clear(accountId: account.id)
+            }
+            accountStore.reload(
+                codexUsageMode: settingsStore.settings.codexUsageMode,
+                claudeUsageMode: settingsStore.claudeUsageMode,
+                geminiUsageMode: settingsStore.geminiUsageMode,
+                antigravityUsageMode: settingsStore.antigravityUsageMode,
+                miscProviderInstances: settingsStore.settings.miscProviderInstances
+            )
+            scheduler.triggerRefresh()
+            return true
+        } catch {
+            SafeLog.warn("Deleting Grok web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
+            hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
             return false
         }
     }
