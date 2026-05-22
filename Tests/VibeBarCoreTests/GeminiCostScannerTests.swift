@@ -104,9 +104,21 @@ final class GeminiCostScannerTests: XCTestCase {
     }
 
     func testNonGeminiToolsStillBehave() async throws {
-        // Defensive — Antigravity remains cost-blind even though it's
-        // partial-primary; misc providers stay nil.
-        let snapshot = await CostUsageScanner.scan(tool: .antigravity, homeDirectory: NSTemporaryDirectory())
-        XCTAssertNil(snapshot)
+        // Misc providers stay nil; partial-primary cost-aware tools
+        // now return an empty snapshot instead (zero files found, all
+        // counters at zero) — confirms `scan` dispatches by tool but
+        // doesn't fabricate data when nothing is on disk.
+        let miscSnapshot = await CostUsageScanner.scan(tool: .cursor, homeDirectory: NSTemporaryDirectory())
+        XCTAssertNil(miscSnapshot)
+
+        let antigravitySnapshot = await CostUsageScanner.scan(tool: .antigravity, homeDirectory: NSTemporaryDirectory())
+        let antigravitySnap = try XCTUnwrap(antigravitySnapshot)
+        XCTAssertEqual(antigravitySnap.jsonlFilesFound, 0)
+        XCTAssertEqual(antigravitySnap.allTimeTokens, 0)
+
+        let grokSnapshot = await CostUsageScanner.scan(tool: .grok, homeDirectory: NSTemporaryDirectory())
+        let grokSnap = try XCTUnwrap(grokSnapshot)
+        XCTAssertEqual(grokSnap.jsonlFilesFound, 0)
+        XCTAssertEqual(grokSnap.allTimeTokens, 0)
     }
 }

@@ -31,6 +31,15 @@ let package = Package(
             dependencies: [
                 .product(name: "SweetCookieKit", package: "SweetCookieKit")
             ],
+            resources: [
+                // Pricing tables: shipped as a bundled JSON so model
+                // rate updates can be merged without a code change.
+                // `PricingResolver` loads this via `Bundle.module` and
+                // a runtime cache under ~/.vibebar/pricing_cache.json
+                // can override it when `PricingRefresher` fetches a
+                // newer copy from the project's GitHub raw URL.
+                .copy("Resources/pricing.json")
+            ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(

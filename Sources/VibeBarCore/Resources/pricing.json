@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-05-22",
+  "calculationVersion": 5,
+  "providers": {
+    "codex": {
+      "displayName": "OpenAI",
+      "models": {
+        "gpt-5":               { "input": 1.25e-6, "output": 1e-5,    "cacheRead": 1.25e-7 },
+        "gpt-5-codex":         { "input": 1.25e-6, "output": 1e-5,    "cacheRead": 1.25e-7 },
+        "gpt-5-mini":          { "input": 2.5e-7,  "output": 2e-6,    "cacheRead": 2.5e-8 },
+        "gpt-5-nano":          { "input": 5e-8,    "output": 4e-7,    "cacheRead": 5e-9 },
+        "gpt-5-pro":           { "input": 1.5e-5,  "output": 1.2e-4,  "cacheRead": null },
+        "gpt-5.1":             { "input": 1.25e-6, "output": 1e-5,    "cacheRead": 1.25e-7 },
+        "gpt-5.1-codex":       { "input": 1.25e-6, "output": 1e-5,    "cacheRead": 1.25e-7 },
+        "gpt-5.1-codex-max":   { "input": 1.25e-6, "output": 1e-5,    "cacheRead": 1.25e-7 },
+        "gpt-5.1-codex-mini":  { "input": 2.5e-7,  "output": 2e-6,    "cacheRead": 2.5e-8 },
+        "gpt-5.2":             { "input": 1.75e-6, "output": 1.4e-5,  "cacheRead": 1.75e-7 },
+        "gpt-5.2-codex":       { "input": 1.75e-6, "output": 1.4e-5,  "cacheRead": 1.75e-7 },
+        "gpt-5.2-pro":         { "input": 2.1e-5,  "output": 1.68e-4, "cacheRead": null },
+        "gpt-5.3-codex":       { "input": 1.75e-6, "output": 1.4e-5,  "cacheRead": 1.75e-7 },
+        "gpt-5.3-codex-spark": { "input": 0,       "output": 0,       "cacheRead": 0,
+                                 "displayLabel": "Research Preview" },
+        "gpt-5.4":             { "input": 2.5e-6,  "output": 1.5e-5,  "cacheRead": 2.5e-7 },
+        "gpt-5.4-mini":        { "input": 7.5e-7,  "output": 4.5e-6,  "cacheRead": 7.5e-8 },
+        "gpt-5.4-nano":        { "input": 2e-7,    "output": 1.25e-6, "cacheRead": 2e-8 },
+        "gpt-5.4-pro":         { "input": 3e-5,    "output": 1.8e-4,  "cacheRead": null },
+        "gpt-5.5":             { "input": 5e-6,    "output": 3e-5,    "cacheRead": 5e-7 },
+        "gpt-5.5-pro":         { "input": 3e-5,    "output": 1.8e-4,  "cacheRead": null }
+      }
+    },
+    "claude": {
+      "displayName": "Anthropic",
+      "models": {
+        "claude-haiku-4-5-20251001": {
+          "input": 1e-6, "output": 5e-6,
+          "cacheCreation": 1.25e-6, "cacheRead": 1e-7
+        },
+        "claude-haiku-4-5": {
+          "input": 1e-6, "output": 5e-6,
+          "cacheCreation": 1.25e-6, "cacheRead": 1e-7
+        },
+        "claude-opus-4-5-20251101": {
+          "input": 5e-6, "output": 2.5e-5,
+          "cacheCreation": 6.25e-6, "cacheRead": 5e-7
+        },
+        "claude-opus-4-5": {
+          "input": 5e-6, "output": 2.5e-5,
+          "cacheCreation": 6.25e-6, "cacheRead": 5e-7
+        },
+        "claude-opus-4-6-20260205": {
+          "input": 5e-6, "output": 2.5e-5,
+          "cacheCreation": 6.25e-6, "cacheRead": 5e-7
+        },
+        "claude-opus-4-6": {
+          "input": 5e-6, "output": 2.5e-5,
+          "cacheCreation": 6.25e-6, "cacheRead": 5e-7
+        },
+        "claude-opus-4-7": {
+          "input": 5e-6, "output": 2.5e-5,
+          "cacheCreation": 6.25e-6, "cacheRead": 5e-7
+        },
+        "claude-sonnet-4-5": {
+          "input": 3e-6, "output": 1.5e-5,
+          "cacheCreation": 3.75e-6, "cacheRead": 3e-7,
+          "thresholdTokens": 200000,
+          "inputAboveThreshold": 6e-6, "outputAboveThreshold": 2.25e-5,
+          "cacheCreationAboveThreshold": 7.5e-6, "cacheReadAboveThreshold": 6e-7
+        },
+        "claude-sonnet-4-6": {
+          "input": 3e-6, "output": 1.5e-5,
+          "cacheCreation": 3.75e-6, "cacheRead": 3e-7
+        },
+        "claude-sonnet-4-5-20250929": {
+          "input": 3e-6, "output": 1.5e-5,
+          "cacheCreation": 3.75e-6, "cacheRead": 3e-7,
+          "thresholdTokens": 200000,
+          "inputAboveThreshold": 6e-6, "outputAboveThreshold": 2.25e-5,
+          "cacheCreationAboveThreshold": 7.5e-6, "cacheReadAboveThreshold": 6e-7
+        },
+        "claude-opus-4-20250514": {
+          "input": 1.5e-5, "output": 7.5e-5,
+          "cacheCreation": 1.875e-5, "cacheRead": 1.5e-6
+        },
+        "claude-opus-4-1": {
+          "input": 1.5e-5, "output": 7.5e-5,
+          "cacheCreation": 1.875e-5, "cacheRead": 1.5e-6
+        },
+        "claude-sonnet-4-20250514": {
+          "input": 3e-6, "output": 1.5e-5,
+          "cacheCreation": 3.75e-6, "cacheRead": 3e-7,
+          "thresholdTokens": 200000,
+          "inputAboveThreshold": 6e-6, "outputAboveThreshold": 2.25e-5,
+          "cacheCreationAboveThreshold": 7.5e-6, "cacheReadAboveThreshold": 6e-7
+        }
+      }
+    },
+    "gemini": {
+      "displayName": "Google Gemini",
+      "models": {
+        "gemini-2.5-pro": {
+          "input": 1.25e-6, "output": 1e-5, "cacheRead": 3.1e-7,
+          "thresholdTokens": 200000,
+          "inputAboveThreshold": 2.5e-6, "outputAboveThreshold": 1.5e-5,
+          "cacheReadAboveThreshold": 6.25e-7
+        },
+        "gemini-2.5-flash": {
+          "input": 3e-7, "output": 2.5e-6, "cacheRead": 7.5e-8
+        },
+        "gemini-2.5-flash-lite": {
+          "input": 1e-7, "output": 4e-7, "cacheRead": 2.5e-8
+        },
+        "gemini-3-pro": {
+          "input": 2e-6, "output": 1.2e-5, "cacheRead": 5e-7,
+          "thresholdTokens": 200000,
+          "inputAboveThreshold": 4e-6, "outputAboveThreshold": 1.8e-5,
+          "cacheReadAboveThreshold": 1e-6
+        },
+        "gemini-3-pro-preview": {
+          "input": 2e-6, "output": 1.2e-5, "cacheRead": 5e-7,
+          "thresholdTokens": 200000,
+          "inputAboveThreshold": 4e-6, "outputAboveThreshold": 1.8e-5,
+          "cacheReadAboveThreshold": 1e-6
+        },
+        "gemini-3-flash": {
+          "input": 3.5e-7, "output": 2.8e-6, "cacheRead": 8.75e-8
+        },
+        "gemini-3-flash-lite": {
+          "input": 1.25e-7, "output": 5e-7, "cacheRead": 3.1e-8
+        }
+      }
+    },
+    "grok": {
+      "displayName": "xAI Grok",
+      "models": {
+        "grok-build":        { "input": 1e-6,    "output": 2e-6,    "cacheRead": null },
+        "grok-build-0.1":    { "input": 1e-6,    "output": 2e-6,    "cacheRead": null },
+        "grok-4":            { "input": 3e-6,    "output": 1.5e-5,  "cacheRead": 7.5e-7 },
+        "grok-4-fast":       { "input": 2e-7,    "output": 5e-7,    "cacheRead": 5e-8 },
+        "grok-4.1-fast":     { "input": 2e-7,    "output": 5e-7,    "cacheRead": 5e-8 },
+        "grok-4.3":          { "input": 1.25e-6, "output": 2.5e-6,  "cacheRead": 3.1e-7 },
+        "grok-4.20":         { "input": 2e-6,    "output": 6e-6,    "cacheRead": 2e-7 },
+        "grok-3":            { "input": 3e-6,    "output": 1.5e-5,  "cacheRead": 7.5e-7 },
+        "grok-3-mini":       { "input": 3e-7,    "output": 5e-7,    "cacheRead": 7.5e-8 },
+        "grok-code-fast-1":  { "input": 2e-7,    "output": 1.5e-6,  "cacheRead": 2e-8 }
+      }
+    },
+    "antigravity": {
+      "displayName": "Google AntiGravity (shadow rates)",
+      "models": {
+        "antigravity-default": {
+          "input": 3e-6, "output": 1.5e-5,
+          "cacheRead": 3e-7, "cacheCreation": 3.75e-6,
+          "displayLabel": "Sonnet-rate est."
+        },
+        "antigravity-claude-sonnet": {
+          "input": 3e-6, "output": 1.5e-5,
+          "cacheRead": 3e-7, "cacheCreation": 3.75e-6
+        },
+        "antigravity-claude-opus": {
+          "input": 5e-6, "output": 2.5e-5,
+          "cacheRead": 5e-7, "cacheCreation": 6.25e-6
+        },
+        "antigravity-claude-haiku": {
+          "input": 1e-6, "output": 5e-6,
+          "cacheRead": 1e-7, "cacheCreation": 1.25e-6
+        },
+        "antigravity-gemini-pro": {
+          "input": 1.25e-6, "output": 1e-5,
+          "cacheRead": 3.1e-7, "cacheCreation": 0
+        },
+        "antigravity-gemini-flash": {
+          "input": 3e-7, "output": 2.5e-6,
+          "cacheRead": 7.5e-8, "cacheCreation": 0
+        }
+      }
+    }
+  }
+}
