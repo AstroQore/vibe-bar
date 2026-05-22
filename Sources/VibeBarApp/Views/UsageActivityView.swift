@@ -1,10 +1,10 @@
 import SwiftUI
 import VibeBarCore
 
-/// Merged "When you use X" card. The top half is the hourly burn-rate
-/// histogram (formerly `UsageRateView`); the bottom half is the weekday ×
-/// hour heatmap (formerly `UsageHeatmapView`). Both share one X axis, one
-/// `HeatmapGridMetrics` instance, one peak label, and one refresh button.
+/// "When you use X" card. The top half is the 24-hour burn-rate
+/// histogram; the bottom half is the weekday × hour heatmap. Both share
+/// one X axis, one `HeatmapGridMetrics` instance, one peak label, and
+/// one refresh button.
 struct UsageActivityView: View {
     let heatmap: UsageHeatmap
     let density: Theme.Density
