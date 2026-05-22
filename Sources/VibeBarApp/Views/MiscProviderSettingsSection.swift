@@ -776,7 +776,17 @@ struct CookieSourceControls: View {
     }
 
     private func reloadSlots() {
-        slots = MiscCookieSlotStore.slots(for: tool, instanceID: instanceID)
+        let snapshotTool = tool
+        let snapshotInstanceID = instanceID
+        DispatchQueue.global(qos: .utility).async {
+            let loaded = MiscCookieSlotStore.slots(
+                for: snapshotTool,
+                instanceID: snapshotInstanceID
+            )
+            DispatchQueue.main.async {
+                slots = loaded
+            }
+        }
     }
 
     private func importNow() {
@@ -810,21 +820,45 @@ struct CookieSourceControls: View {
             importedAt: Date(),
             origin: .manual
         )
-        guard MiscCookieSlotStore.append(slot, for: tool, instanceID: instanceID) else {
-            importStatus = "Could not save to Keychain."
-            return
+        importStatus = "Saving…"
+        let snapshotTool = tool
+        let snapshotInstanceID = instanceID
+        DispatchQueue.global(qos: .userInitiated).async {
+            let saved = MiscCookieSlotStore.append(
+                slot,
+                for: snapshotTool,
+                instanceID: snapshotInstanceID
+            )
+            DispatchQueue.main.async {
+                guard saved else {
+                    importStatus = "Could not save to Keychain."
+                    return
+                }
+                importStatus = "Pasted cookie saved."
+                manualDraft = ""
+                reloadSlots()
+                triggerRefresh()
+            }
         }
-        importStatus = "Pasted cookie saved."
-        manualDraft = ""
-        reloadSlots()
-        triggerRefresh()
     }
 
     private func deleteSlot(_ slot: MiscCookieSlot) {
-        guard MiscCookieSlotStore.delete(slotID: slot.id, for: tool, instanceID: instanceID) else { return }
-        importStatus = "Removed \(slot.sourceLabel)."
-        reloadSlots()
-        triggerRefresh()
+        let snapshotTool = tool
+        let snapshotInstanceID = instanceID
+        let snapshotSlot = slot
+        DispatchQueue.global(qos: .userInitiated).async {
+            let deleted = MiscCookieSlotStore.delete(
+                slotID: snapshotSlot.id,
+                for: snapshotTool,
+                instanceID: snapshotInstanceID
+            )
+            DispatchQueue.main.async {
+                guard deleted else { return }
+                importStatus = "Removed \(snapshotSlot.sourceLabel)."
+                reloadSlots()
+                triggerRefresh()
+            }
+        }
     }
 
     private func normalizedManualCookie(from raw: String) -> String? {
