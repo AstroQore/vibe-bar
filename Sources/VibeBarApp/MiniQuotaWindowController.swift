@@ -235,18 +235,35 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             countsByTool[field.tool, default: 0] += 1
         }
 
+        // Sizing now mirrors the L2-grouped layout in
+        // `MiniWindowProviderLayout`: consecutive tools sharing the
+        // same L2 productName (Gemini Web + AntiGravity → "Gemini")
+        // share one provider column with an internal divider between
+        // L3 sub-tools. The width calc treats each L2 group as one
+        // visible column for `providerSpacing` accounting, then adds
+        // an extra `groupDividerReserve` per intra-group L3 boundary.
         var width: CGFloat = 0
-        var visibleToolCount = 0
+        var visibleProductGroupCount = 0
+        var lastProductName: String? = nil
+        var toolsInCurrentGroup = 0
         for tool in ToolType.dedicatedCardProviders {
             guard let count = countsByTool[tool], count > 0 else { continue }
             let cellCount = CGFloat(count)
             width += cellCount * cellWidth
             width += CGFloat(max(0, count - 1)) * cellSpacing
             width += CGFloat(max(0, min(count - 1, 4))) * groupDividerReserve
-            visibleToolCount += 1
+            if lastProductName == tool.productName {
+                // Same L2 group as previous tool — count one intra-group divider.
+                width += groupDividerReserve
+                toolsInCurrentGroup += 1
+            } else {
+                visibleProductGroupCount += 1
+                lastProductName = tool.productName
+                toolsInCurrentGroup = 1
+            }
         }
-        if visibleToolCount > 1 {
-            width += CGFloat(visibleToolCount - 1) * providerSpacing
+        if visibleProductGroupCount > 1 {
+            width += CGFloat(visibleProductGroupCount - 1) * providerSpacing
         }
         width += horizontalPadding + closeButtonReserve
 
