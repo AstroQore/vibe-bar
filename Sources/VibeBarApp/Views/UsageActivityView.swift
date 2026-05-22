@@ -170,7 +170,8 @@ struct UsageActivityView: View {
     private func formatTokens(_ tokens: Int) -> String {
         if tokens < 1_000 { return "\(tokens)" }
         if tokens < 1_000_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
-        return String(format: "%.1fM", Double(tokens) / 1_000_000)
+        if tokens < 1_000_000_000 { return String(format: "%.1fM", Double(tokens) / 1_000_000) }
+        return String(format: "%.2fB", Double(tokens) / 1_000_000_000)
     }
 
     // MARK: - Hour axis row
@@ -228,7 +229,8 @@ struct UsageActivityView: View {
         let label: String
         if value < 1_000 { label = "\(value) tok" }
         else if value < 1_000_000 { label = String(format: "%.1fk tok", Double(value) / 1_000) }
-        else { label = String(format: "%.2fM tok", Double(value) / 1_000_000) }
+        else if value < 1_000_000_000 { label = String(format: "%.2fM tok", Double(value) / 1_000_000) }
+        else { label = String(format: "%.2fB tok", Double(value) / 1_000_000_000) }
         return "\(day) \(hourStr) · \(label)"
     }
 
