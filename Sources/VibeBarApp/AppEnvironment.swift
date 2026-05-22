@@ -167,6 +167,16 @@ final class AppEnvironment: ObservableObject {
             await costService.applyCostDataSettings()
             await costService.refreshAll()
         }
+
+        // Best-effort pricing refresh: fetches the latest pricing.json from
+        // GitHub raw and updates ~/.vibebar/pricing_cache.json so the *next*
+        // launch picks up new model rates without a rebuild. Failures are
+        // silent — the bundled fallback keeps the current session usable.
+        // The 24-hour freshness window inside PricingRefresher short-circuits
+        // the network call when the cache is still recent.
+        Task.detached(priority: .utility) {
+            await PricingRefresher.refresh()
+        }
         importPersistentClaudeCookiesAndRefreshIfNeeded()
         importClaudeBrowserCookiesAndRefreshIfNeeded()
         importPersistentOpenAICookiesAndRefreshIfNeeded()
