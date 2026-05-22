@@ -167,6 +167,44 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertTrue(parsed?.command.contains("language_server_macos") ?? false)
     }
 
+    /// AntiGravity IDE 1.x shipped its language server as
+    /// `language_server_macos`. The adapter must still recognise that
+    /// older naming so users on legacy builds aren't broken when we
+    /// loosen the substring match for v2.0.x.
+    func testMatchesLegacyLanguageServerMacosBinary() {
+        let command = "/Applications/Antigravity.app/Contents/Resources/bin/language_server_macos --app_data_dir antigravity --csrf_token 00000000-0000-0000-0000-000000000000"
+        XCTAssertTrue(AntigravityQuotaAdapter.matchesAntigravityProcess(lowercasedCommand: command.lowercased()))
+    }
+
+    /// AntiGravity IDE v2.0.x renamed the binary to plain
+    /// `language_server` (without the `_macos` suffix). The previous
+    /// hard-coded `processName = "language_server_macos"` regressed
+    /// detection for this build — this test pins the v2.0.x command
+    /// shape (mirrored from a live AQ session, with the CSRF
+    /// token scrubbed to a synthetic UUID).
+    func testMatchesV2LanguageServerBinary() {
+        let command = "/Applications/Antigravity.app/Contents/Resources/bin/language_server --standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.0.1 --override_user_agent_name antigravity --https_server_port 0 --csrf_token 00000000-0000-0000-0000-000000000000 --app_data_dir antigravity --api_server_url https://generativelanguage.googleapis.com --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com --enable_sidecars"
+        XCTAssertTrue(AntigravityQuotaAdapter.matchesAntigravityProcess(lowercasedCommand: command.lowercased()))
+    }
+
+    /// Other vendors ship binaries called `language_server` too
+    /// (e.g. Codeium, Cursor, Sourcegraph). Without an AntiGravity
+    /// path or `--app_data_dir antigravity` flag, the match must
+    /// reject — otherwise we'd dispatch CSRF tokens to the wrong LSP.
+    func testRejectsForeignLanguageServer() {
+        let command = "/Applications/Codeium.app/.../language_server --csrf_token=other"
+        XCTAssertFalse(AntigravityQuotaAdapter.matchesAntigravityProcess(lowercasedCommand: command.lowercased()))
+    }
+
+    /// Conversely, a non-language-server process running inside an
+    /// AntiGravity directory (e.g. a helper) must not get picked up —
+    /// the language-server binary substring is the load-bearing
+    /// filter for "this is the RPC endpoint we want."
+    func testRejectsNonLanguageServerInAntigravityDir() {
+        let command = "/Applications/Antigravity.app/Contents/Frameworks/Antigravity Helper.app/.../some-other-binary --app_data_dir antigravity"
+        XCTAssertFalse(AntigravityQuotaAdapter.matchesAntigravityProcess(lowercasedCommand: command.lowercased()))
+    }
+
     func testLocalhostTrustPolicyAcceptsLocalhostOnly() {
         XCTAssertTrue(
             AntigravityLocalhostTrustPolicy.shouldAcceptServerTrust(

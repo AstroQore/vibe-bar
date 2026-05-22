@@ -9,9 +9,11 @@ import Foundation
 /// `X-Codeium-Csrf-Token`.
 ///
 /// Step-by-step:
-/// 1. `/bin/ps -ax -o pid=,command=` → look for `language_server_macos`
-///    with `--app_data_dir` containing `antigravity` (or path
-///    contains `antigravity`).
+/// 1. `/bin/ps -ax -o pid=,command=` → look for any `language_server`
+///    process with `--app_data_dir` containing `antigravity` (or
+///    path contains `antigravity`). AntiGravity IDE 1.x shipped the
+///    binary as `language_server_macos`; v2.0.x renamed it to plain
+///    `language_server`. The substring match here covers both.
 /// 2. From that command line, extract `--csrf_token`,
 ///    `--extension_server_port`, `--extension_server_csrf_token`.
 /// 3. `/usr/sbin/lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>` → set
@@ -48,7 +50,14 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         self.usageModeProvider = usageMode ?? { Self.resolveUsageMode() }
     }
 
-    private static let processName = "language_server_macos"
+    /// Substring that every AntiGravity language-server process name
+    /// must contain. AntiGravity IDE 1.x shipped the binary as
+    /// `language_server_macos`; v2.0.x renamed it to plain
+    /// `language_server`. The loose substring works for both — the
+    /// `isAntigravityCommand` filter below narrows it to the right
+    /// process when other vendors ship a `language_server` of their
+    /// own.
+    private static let processNameSubstring = "language_server"
     private static let userStatusPath =
         "/exa.language_server_pb.LanguageServerService/GetUserStatus"
 
@@ -152,8 +161,7 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         for line in result.stdout.split(separator: "\n") {
             guard let match = AntigravityProcessLine.parse(String(line)) else { continue }
             let lower = match.command.lowercased()
-            guard lower.contains(AntigravityQuotaAdapter.processName) else { continue }
-            guard isAntigravityCommand(lower) else { continue }
+            guard Self.matchesAntigravityProcess(lowercasedCommand: lower) else { continue }
             foundAntigravity = true
             guard let csrf = extractFlag("--csrf_token", from: match.command) else { continue }
             return ProcessInfo(
@@ -169,7 +177,19 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         throw QuotaError.noCredential
     }
 
-    private func isAntigravityCommand(_ command: String) -> Bool {
+    /// Whether a process-list line looks like an AntiGravity language
+    /// server. Combines the loose `language_server` binary-name match
+    /// with the AntiGravity-specific path or flag check so unrelated
+    /// vendors that also ship a `language_server` binary don't get
+    /// picked up. Exposed at the package level so the parser tests can
+    /// lock in v1.x → v2.0.x process-name compatibility without going
+    /// through `ProcessRunner`.
+    static func matchesAntigravityProcess(lowercasedCommand command: String) -> Bool {
+        guard command.contains(processNameSubstring) else { return false }
+        return isAntigravityCommand(command)
+    }
+
+    static func isAntigravityCommand(_ command: String) -> Bool {
         if command.contains("--app_data_dir") && command.contains("antigravity") { return true }
         if command.contains("/antigravity/") || command.contains("\\antigravity\\") { return true }
         return false
