@@ -140,6 +140,72 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(decoded.savedScreenScale)
     }
 
+    func testMiniWindowMigratesLegacyAntigravityFields() throws {
+        let json = """
+        {
+          "selectedFieldIds": [
+            "antigravity.gemini-3-flash",
+            "antigravity.gemini-2.5-flash",
+            "antigravity.gemini-3-pro",
+            "antigravity.claude-sonnet-4-5",
+            "antigravity.gemini-2.5-flash-lite"
+          ],
+          "compactSelectedFieldIds": [
+            "antigravity.claude-sonnet-4-20250514",
+            "antigravity.gemini-2.5-pro"
+          ],
+          "customLabels": {}
+        }
+        """
+        let decoded = try JSONDecoder().decode(MiniWindowSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded.selectedFieldIds, [
+            "antigravity.gemini-3.5-flash-high",
+            "antigravity.gemini-3.5-flash-medium",
+            "antigravity.gemini-3.1-pro-high",
+            "antigravity.gemini-3.1-pro-low",
+            "antigravity.claude-sonnet-4.6-thinking"
+        ])
+        XCTAssertEqual(decoded.compactSelectedFieldIds, [
+            "antigravity.claude-sonnet-4.6-thinking",
+            "antigravity.gemini-3.1-pro-high",
+            "antigravity.gemini-3.1-pro-low"
+        ])
+    }
+
+    func testMenuBarItemMigratesLegacyAntigravityFields() throws {
+        let json = """
+        {
+          "displayMode": "remaining",
+          "refreshIntervalSeconds": 600,
+          "launchAtLogin": false,
+          "menuBarTextEnabled": true,
+          "mockEnabled": false,
+          "menuBarItems": [
+            {
+              "kind": "compact",
+              "isVisible": true,
+              "showTitle": false,
+              "layout": "twoRows",
+              "selectedFieldIds": [
+                "antigravity.gemini-3-flash",
+                "antigravity.claude-sonnet-4-20250514"
+              ],
+              "customLabels": {}
+            }
+          ]
+        }
+        """
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        let compact = settings.menuBarItem(.compact)
+
+        XCTAssertEqual(compact.selectedFieldIds, [
+            "antigravity.gemini-3.5-flash-high",
+            "antigravity.gemini-3.5-flash-medium",
+            "antigravity.claude-sonnet-4.6-thinking"
+        ])
+    }
+
     func testOldCompactDefaultMigratesToOverviewIconOnly() throws {
         let json = """
         {

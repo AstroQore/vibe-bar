@@ -221,6 +221,18 @@ private struct MiniBranchCell: Identifiable {
         case "daily_routines": return "Daily"
         case "weekly_opus": return "Opus"
         case "weekly_oauth_apps": return "OAuth"
+        case let id where tool == .antigravity && id.contains("gpt-oss"):
+            return "GPT"
+        case let id where tool == .antigravity && id.contains("sonnet"):
+            return "Sonnet"
+        case let id where tool == .antigravity && id.contains("opus"):
+            return "Opus"
+        case let id where tool == .antigravity && id.contains("high"):
+            return "High"
+        case let id where tool == .antigravity && id.contains("medium"):
+            return "Med"
+        case let id where tool == .antigravity && id.contains("low"):
+            return "Low"
         default:
             let group = bucket.groupTitle ?? bucket.shortLabel
             return group
@@ -249,6 +261,8 @@ private struct MiniBranchCell: Identifiable {
             return "gemini.flash"
         case let id where tool == .gemini && id.contains("pro"):
             return "gemini.pro"
+        case let id where tool == .antigravity && id.contains("gpt-oss"):
+            return "antigravity.gpt-oss"
         case let id where tool == .antigravity && id.contains("claude"):
             return "antigravity.claude"
         case let id where tool == .antigravity && id.contains("flash-lite"):
@@ -285,6 +299,8 @@ private struct MiniBranchCell: Identifiable {
             return "Flash"
         case let id where tool == .gemini && id.contains("pro"):
             return "Pro"
+        case let id where tool == .antigravity && id.contains("gpt-oss"):
+            return "GPT-OSS"
         case let id where tool == .antigravity && id.contains("claude"):
             return "Claude"
         case let id where tool == .antigravity && id.contains("flash-lite"):

@@ -155,13 +155,13 @@ public enum MenuBarFieldCatalog {
     ]
 
     public static let antigravityFields: [MenuBarFieldOption] = [
-        option(.antigravity, "claude-sonnet-4-20250514", "Claude Sonnet 4", "Sonnet"),
-        option(.antigravity, "claude-sonnet-4-5", "Claude Sonnet 4.5", "Sonnet"),
-        option(.antigravity, "gemini-2.5-pro", "Gemini 2.5 Pro", "Pro"),
-        option(.antigravity, "gemini-2.5-flash", "Gemini 2.5 Flash", "Flash"),
-        option(.antigravity, "gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite", "Lite"),
-        option(.antigravity, "gemini-3-pro", "Gemini 3 Pro", "3 Pro"),
-        option(.antigravity, "gemini-3-flash", "Gemini 3 Flash", "3 Flash")
+        option(.antigravity, "claude-sonnet-4.6-thinking", "Claude Sonnet 4.6 Thinking", "Sonnet"),
+        option(.antigravity, "claude-opus-4.6-thinking", "Claude Opus 4.6 Thinking", "Opus"),
+        option(.antigravity, "gpt-oss-120b-medium", "GPT-OSS 120B Medium", "GPT"),
+        option(.antigravity, "gemini-3.5-flash-high", "Gemini 3.5 Flash High", "Flash H"),
+        option(.antigravity, "gemini-3.5-flash-medium", "Gemini 3.5 Flash Medium", "Flash M"),
+        option(.antigravity, "gemini-3.1-pro-high", "Gemini 3.1 Pro High", "Pro H"),
+        option(.antigravity, "gemini-3.1-pro-low", "Gemini 3.1 Pro Low", "Pro L")
     ]
 
     public static let grokFields: [MenuBarFieldOption] = [
@@ -188,6 +188,28 @@ public enum MenuBarFieldCatalog {
         "\(tool.rawValue).\(bucketId)"
     }
 
+    public static func migratedFieldIds(_ ids: [String]) -> [String] {
+        var seen: Set<String> = []
+        var out: [String] = []
+        for id in ids {
+            let resolved = fieldIdMigrations[id] ?? [id]
+            for candidate in resolved where seen.insert(candidate).inserted {
+                out.append(candidate)
+            }
+        }
+        return out
+    }
+
+    public static func migratedCustomLabels(_ labels: [String: String]) -> [String: String] {
+        var out: [String: String] = [:]
+        for (id, label) in labels {
+            let resolved = fieldIdMigrations[id] ?? [id]
+            guard resolved.count == 1, let migratedId = resolved.first else { continue }
+            out[migratedId] = label
+        }
+        return out
+    }
+
     private static func option(
         _ tool: ToolType,
         _ bucketId: String,
@@ -202,4 +224,29 @@ public enum MenuBarFieldCatalog {
             defaultLabel: defaultLabel
         )
     }
+
+    private static let fieldIdMigrations: [String: [String]] = [
+        "gemini.gemini_pro": ["gemini.gemini-2.5-pro"],
+        "gemini.gemini_flash": ["gemini.gemini-2.5-flash"],
+        "gemini.gemini_flash_lite": ["gemini.gemini-2.5-flash-lite"],
+        "antigravity.claude-sonnet-4-20250514": ["antigravity.claude-sonnet-4.6-thinking"],
+        "antigravity.claude-sonnet-4-5": ["antigravity.claude-sonnet-4.6-thinking"],
+        "antigravity.gemini-2.5-pro": [
+            "antigravity.gemini-3.1-pro-high",
+            "antigravity.gemini-3.1-pro-low"
+        ],
+        "antigravity.gemini-3-pro": [
+            "antigravity.gemini-3.1-pro-high",
+            "antigravity.gemini-3.1-pro-low"
+        ],
+        "antigravity.gemini-2.5-flash": [
+            "antigravity.gemini-3.5-flash-high",
+            "antigravity.gemini-3.5-flash-medium"
+        ],
+        "antigravity.gemini-3-flash": [
+            "antigravity.gemini-3.5-flash-high",
+            "antigravity.gemini-3.5-flash-medium"
+        ],
+        "antigravity.gemini-2.5-flash-lite": []
+    ]
 }
