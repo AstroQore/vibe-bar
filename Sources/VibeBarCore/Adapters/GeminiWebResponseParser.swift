@@ -21,9 +21,16 @@ import Foundation
 ///   user-visible plan name (`2 = Pro` confirmed; `1 = Free` and
 ///   `3 = Ultra` inferred from Google's published tier names).
 enum GeminiWebResponseParser {
-    /// Bucket ids the parser emits. Surfaces in `QuotaBucket.id`.
-    static let currentUsageBucketId = "gemini.web.current"
-    static let weeklyUsageBucketId  = "gemini.web.weekly"
+    /// Bucket ids the parser emits. Aligned with Codex's
+    /// `five_hour` / `weekly` naming so the Overview/MiniWindow
+    /// label catalog can share field-id conventions across providers
+    /// instead of per-tool quirks. The label "5 Hours" matches the
+    /// shorter-window bucket regardless of the exact reset cadence
+    /// Google ships — Gemini's type=1 quota refreshes roughly every
+    /// 4-6 hours in practice, close enough to Codex's 5h primary
+    /// that the shared label is more useful than a brand-new one.
+    static let currentUsageBucketId = "gemini.five_hour"
+    static let weeklyUsageBucketId  = "gemini.weekly"
 
     /// Strip Google's anti-hijacking prefix `)]}'` (with or without a
     /// trailing newline) that fronts most internal JSON RPCs.
@@ -150,12 +157,12 @@ enum GeminiWebResponseParser {
     private static func bucketDescriptor(forType type: Int) -> BucketDescriptor {
         switch type {
         case 1:
-            return BucketDescriptor(id: currentUsageBucketId, title: "Current usage", shortLabel: "Current")
+            return BucketDescriptor(id: currentUsageBucketId, title: "5 Hours", shortLabel: "5h")
         case 2:
-            return BucketDescriptor(id: weeklyUsageBucketId,  title: "Weekly limit",  shortLabel: "Weekly")
+            return BucketDescriptor(id: weeklyUsageBucketId,  title: "Weekly",  shortLabel: "Wk")
         default:
             return BucketDescriptor(
-                id: "gemini.web.bucket\(type)",
+                id: "gemini.bucket\(type)",
                 title: "Bucket \(type)",
                 shortLabel: "B\(type)"
             )

@@ -389,8 +389,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     private static func normalizedMenuBarItems(_ items: [MenuBarItemSettings]) -> [MenuBarItemSettings] {
         MenuBarItemKind.allCases.map { kind in
-            items.first { $0.kind == kind }.map(migratedMenuBarItem)
+            var item = items.first { $0.kind == kind }.map(migratedMenuBarItem)
                 ?? defaultMenuBarItems.first { $0.kind == kind }!
+            // Standalone menu bar tiles for non-user-visible kinds were
+            // retired in favour of the unified Overview tile. Force
+            // their isVisible=false on every normalize pass so legacy
+            // settings that had Codex/Claude/Status tiles enabled don't
+            // come back after the upgrade. The stored settings still
+            // round-trip — they just don't surface in the menu bar.
+            if !kind.isUserVisibleStandalone {
+                item.isVisible = false
+            }
+            return item
         }
     }
 
