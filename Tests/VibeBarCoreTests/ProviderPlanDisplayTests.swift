@@ -73,16 +73,33 @@ final class ProviderPlanDisplayTests: XCTestCase {
         XCTAssertEqual(ToolType.baiduQianfan.displayName, "Baidu Qianfan Coding Plan")
     }
 
-    func testMiscProviderMenuTitleAndSubtitleComposeNormalizedPlanNames() {
-        let tools: [ToolType] = [
-            .kimi, .alibaba, .alibabaTokenPlan, .tencentHunyuan,
-            .tencentTokenPlan, .volcengine, .mimo, .minimax,
-            .zai, .iflytek, .baiduQianfan
-        ]
-
+    /// Misc-provider displayName + menuTitle + subtitle used to share
+    /// a strict join invariant (`menuTitle + " " + subtitle == displayName`).
+    /// The L1/L2/L3 hierarchy split severed that — menuTitle is now
+    /// pure L2 product, displayName is curated per-tool, and the misc
+    /// providers have a mix of vendor-prefixed (`Alibaba Bailian
+    /// Coding Plan`) and vendor-omitted (`Volcengine Coding Plan`,
+    /// where the vendor name `ByteDance` is implicit) display forms.
+    /// We keep the assertions for the primary tools only because
+    /// they're the ones the user mentally maps to the hierarchy.
+    func testPrimaryToolHierarchyLevelsAreDistinct() {
+        let tools: [ToolType] = [.codex, .claude, .gemini, .antigravity, .grok]
         for tool in tools {
-            XCTAssertEqual("\(tool.menuTitle) \(tool.subtitle)", tool.displayName)
+            // L1 vendor and L2 product must not be empty.
+            XCTAssertFalse(tool.vendorName.isEmpty, "vendorName for \(tool)")
+            XCTAssertFalse(tool.productName.isEmpty, "productName for \(tool)")
+            XCTAssertFalse(tool.toolName.isEmpty, "toolName for \(tool)")
+            // For the primary tools, statusProviderName = L1 vendor.
+            XCTAssertEqual(tool.statusProviderName, tool.vendorName,
+                           "statusProviderName should equal vendorName for primary tool \(tool)")
+            // menuTitle = L2 product.
+            XCTAssertEqual(tool.menuTitle, tool.productName,
+                           "menuTitle should equal productName for primary tool \(tool)")
         }
+        // Both Gemini Web and AntiGravity roll up to the Gemini product
+        // under the Google vendor — the dual page relies on this.
+        XCTAssertEqual(ToolType.gemini.vendorName, ToolType.antigravity.vendorName)
+        XCTAssertEqual(ToolType.gemini.productName, ToolType.antigravity.productName)
     }
 
     private func makeJWT(payload: [String: Any]) throws -> String {

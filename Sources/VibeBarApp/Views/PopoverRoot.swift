@@ -895,7 +895,10 @@ private struct OverviewStatusSummaryCard: View {
     }
 
     private func statusTitle(for tool: ToolType) -> String {
-        tool == .gemini ? "Google AI" : tool.statusProviderName
+        // Service-status row always renders at the L1 vendor level —
+        // the Gemini/AntiGravity pair both roll up to Google so the
+        // shared status feed gets one "Google" header instead of two.
+        tool.statusProviderName
     }
 
     private func statusSnapshot(for tool: ToolType) -> ServiceStatusSnapshot? {
