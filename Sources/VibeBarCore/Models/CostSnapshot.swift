@@ -18,6 +18,15 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
     public let last30DaysTokens: Int
     public let allTimeTokens: Int
 
+    /// Request count per window. Each event the CostAggregator sees
+    /// (one JSONL line ≈ one assistant turn ≈ one provider request)
+    /// increments these. Powers the RPM (Requests Per Minute) tile
+    /// in the Overview cost row.
+    public let todayRequests: Int
+    public let last7DaysRequests: Int
+    public let last30DaysRequests: Int
+    public let allTimeRequests: Int
+
     /// Per-day series since `dayHistoryStart`, ordered ascending.
     public let dailyHistory: [DailyCostPoint]
     /// Per-hour series for the current local day, ordered ascending. This is
@@ -61,6 +70,10 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         last7DaysTokens: Int,
         last30DaysTokens: Int,
         allTimeTokens: Int,
+        todayRequests: Int = 0,
+        last7DaysRequests: Int = 0,
+        last30DaysRequests: Int = 0,
+        allTimeRequests: Int = 0,
         dailyHistory: [DailyCostPoint],
         todayHourlyHistory: [HourlyCostPoint] = [],
         heatmap: UsageHeatmap,
@@ -79,6 +92,10 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.last7DaysTokens = last7DaysTokens
         self.last30DaysTokens = last30DaysTokens
         self.allTimeTokens = allTimeTokens
+        self.todayRequests = todayRequests
+        self.last7DaysRequests = last7DaysRequests
+        self.last30DaysRequests = last30DaysRequests
+        self.allTimeRequests = allTimeRequests
         self.dailyHistory = dailyHistory
         self.todayHourlyHistory = todayHourlyHistory
         self.heatmap = heatmap
@@ -94,6 +111,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             tool: tool,
             todayCostUSD: 0, last7DaysCostUSD: 0, last30DaysCostUSD: 0, allTimeCostUSD: 0,
             todayTokens: 0, last7DaysTokens: 0, last30DaysTokens: 0, allTimeTokens: 0,
+            todayRequests: 0, last7DaysRequests: 0, last30DaysRequests: 0, allTimeRequests: 0,
             dailyHistory: [], todayHourlyHistory: [], heatmap: .empty(tool: tool),
             modelBreakdowns: [], last7DaysModelBreakdowns: [], dailyModelBreakdown: [:], jsonlFilesFound: 0, updatedAt: now
         )
@@ -136,16 +154,25 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             calendar.isDate($0.date, inSameDayAs: now)
         }
 
+        // Request counts have no daily history — they pass through
+        // verbatim except for the today bucket, which we zero out
+        // when the cached snapshot's `updatedAt` is from a previous
+        // day (otherwise yesterday's TPM/RPM bleed into "today").
+        let todayIsFresh = calendar.isDate(updatedAt, inSameDayAs: now)
         return CostSnapshot(
             tool: tool,
-            todayCostUSD: hasDailyHistory ? todayCost : (calendar.isDate(updatedAt, inSameDayAs: now) ? todayCostUSD : 0),
+            todayCostUSD: hasDailyHistory ? todayCost : (todayIsFresh ? todayCostUSD : 0),
             last7DaysCostUSD: hasDailyHistory ? weekCost : last7DaysCostUSD,
             last30DaysCostUSD: hasDailyHistory ? monthCost : last30DaysCostUSD,
             allTimeCostUSD: hasDailyHistory ? allCost : allTimeCostUSD,
-            todayTokens: hasDailyHistory ? todayTokenCount : (calendar.isDate(updatedAt, inSameDayAs: now) ? todayTokens : 0),
+            todayTokens: hasDailyHistory ? todayTokenCount : (todayIsFresh ? todayTokens : 0),
             last7DaysTokens: hasDailyHistory ? weekTokenCount : last7DaysTokens,
             last30DaysTokens: hasDailyHistory ? monthTokenCount : last30DaysTokens,
             allTimeTokens: hasDailyHistory ? allTokenCount : allTimeTokens,
+            todayRequests: todayIsFresh ? todayRequests : 0,
+            last7DaysRequests: last7DaysRequests,
+            last30DaysRequests: last30DaysRequests,
+            allTimeRequests: allTimeRequests,
             dailyHistory: dailyHistory,
             todayHourlyHistory: hourlyToday,
             heatmap: heatmap,
@@ -175,6 +202,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case tool, todayCostUSD, last7DaysCostUSD, last30DaysCostUSD, allTimeCostUSD
         case todayTokens, last7DaysTokens, last30DaysTokens, allTimeTokens
+        case todayRequests, last7DaysRequests, last30DaysRequests, allTimeRequests
         case dailyHistory, todayHourlyHistory, heatmap, modelBreakdowns, last7DaysModelBreakdowns, dailyModelBreakdown
         case jsonlFilesFound, updatedAt
     }
@@ -196,6 +224,13 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.last7DaysTokens = try c.decode(Int.self, forKey: .last7DaysTokens)
         self.last30DaysTokens = try c.decode(Int.self, forKey: .last30DaysTokens)
         self.allTimeTokens = try c.decode(Int.self, forKey: .allTimeTokens)
+        // Request counts are new — cached snapshots from older builds
+        // omit them; default to 0 so the TPM/RPM tiles render as 0
+        // until the next scan lands.
+        self.todayRequests = try c.decodeIfPresent(Int.self, forKey: .todayRequests) ?? 0
+        self.last7DaysRequests = try c.decodeIfPresent(Int.self, forKey: .last7DaysRequests) ?? 0
+        self.last30DaysRequests = try c.decodeIfPresent(Int.self, forKey: .last30DaysRequests) ?? 0
+        self.allTimeRequests = try c.decodeIfPresent(Int.self, forKey: .allTimeRequests) ?? 0
         self.dailyHistory = try c.decode([DailyCostPoint].self, forKey: .dailyHistory)
         self.todayHourlyHistory = try c.decodeIfPresent([HourlyCostPoint].self, forKey: .todayHourlyHistory) ?? []
         self.heatmap = try c.decode(UsageHeatmap.self, forKey: .heatmap)
@@ -228,6 +263,10 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         try c.encode(last7DaysTokens, forKey: .last7DaysTokens)
         try c.encode(last30DaysTokens, forKey: .last30DaysTokens)
         try c.encode(allTimeTokens, forKey: .allTimeTokens)
+        try c.encode(todayRequests, forKey: .todayRequests)
+        try c.encode(last7DaysRequests, forKey: .last7DaysRequests)
+        try c.encode(last30DaysRequests, forKey: .last30DaysRequests)
+        try c.encode(allTimeRequests, forKey: .allTimeRequests)
         try c.encode(dailyHistory, forKey: .dailyHistory)
         try c.encode(todayHourlyHistory, forKey: .todayHourlyHistory)
         try c.encode(heatmap, forKey: .heatmap)
@@ -376,6 +415,10 @@ public enum CostSnapshotAggregator {
             last7DaysTokens: rebased.reduce(0) { $0 + $1.last7DaysTokens },
             last30DaysTokens: rebased.reduce(0) { $0 + $1.last30DaysTokens },
             allTimeTokens: rebased.reduce(0) { $0 + $1.allTimeTokens },
+            todayRequests: rebased.reduce(0) { $0 + $1.todayRequests },
+            last7DaysRequests: rebased.reduce(0) { $0 + $1.last7DaysRequests },
+            last30DaysRequests: rebased.reduce(0) { $0 + $1.last30DaysRequests },
+            allTimeRequests: rebased.reduce(0) { $0 + $1.allTimeRequests },
             dailyHistory: combinedDailyHistory(rebased, calendar: calendar),
             todayHourlyHistory: combinedHourlyHistory(rebased, calendar: calendar),
             heatmap: combinedHeatmap(rebased, tool: tool),

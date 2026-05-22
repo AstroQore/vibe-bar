@@ -127,6 +127,7 @@ struct UsageRateView: View {
     private func formatTokens(_ tokens: Int) -> String {
         if tokens < 1_000 { return "\(tokens)" }
         if tokens < 1_000_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
-        return String(format: "%.1fM", Double(tokens) / 1_000_000)
+        if tokens < 1_000_000_000 { return String(format: "%.1fM", Double(tokens) / 1_000_000) }
+        return String(format: "%.2fB", Double(tokens) / 1_000_000_000)
     }
 }
