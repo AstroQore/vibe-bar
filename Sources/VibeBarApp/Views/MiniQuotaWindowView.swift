@@ -17,9 +17,7 @@ struct MiniQuotaWindowView: View {
         let contentByTool = miniContentByTool
         // Mini window only surfaces dedicated-card providers — misc
         // cards live on the Misc tab inside the Overview popover, not
-        // in this floating panel. Today the field catalog only has
-        // Codex / Claude entries, so Gemini / Antigravity stay invisible
-        // here until / unless they grow their own catalog rows.
+        // in this floating panel.
         let visibleTools = ToolType.dedicatedCardProviders.filter { tool in
             contentByTool[tool]?.isEmpty == false
         }
@@ -89,6 +87,9 @@ struct MiniQuotaWindowView: View {
     }
 
     private func isBranchField(_ field: MenuBarFieldOption) -> Bool {
+        if field.tool == .gemini || field.tool == .antigravity {
+            return true
+        }
         switch field.bucketId {
         case "gpt_5_3_codex_spark_five_hour",
              "gpt_5_3_codex_spark_weekly",
@@ -235,6 +236,20 @@ private struct MiniBranchCell: Identifiable {
             return "claude.opus"
         case "weekly_oauth_apps":
             return "claude.oauth"
+        case let id where tool == .gemini && id.contains("flash-lite"):
+            return "gemini.flash-lite"
+        case let id where tool == .gemini && id.contains("flash"):
+            return "gemini.flash"
+        case let id where tool == .gemini && id.contains("pro"):
+            return "gemini.pro"
+        case let id where tool == .antigravity && id.contains("claude"):
+            return "antigravity.claude"
+        case let id where tool == .antigravity && id.contains("flash-lite"):
+            return "antigravity.gemini-flash-lite"
+        case let id where tool == .antigravity && id.contains("flash"):
+            return "antigravity.gemini-flash"
+        case let id where tool == .antigravity && id.contains("gemini") && id.contains("pro"):
+            return "antigravity.gemini-pro"
         default:
             return "\(tool.rawValue).\(field.bucketId)"
         }
@@ -257,6 +272,20 @@ private struct MiniBranchCell: Identifiable {
             return "Opus"
         case "weekly_oauth_apps":
             return "OAuth"
+        case let id where tool == .gemini && id.contains("flash-lite"):
+            return "Lite"
+        case let id where tool == .gemini && id.contains("flash"):
+            return "Flash"
+        case let id where tool == .gemini && id.contains("pro"):
+            return "Pro"
+        case let id where tool == .antigravity && id.contains("claude"):
+            return "Claude"
+        case let id where tool == .antigravity && id.contains("flash-lite"):
+            return "G Lite"
+        case let id where tool == .antigravity && id.contains("flash"):
+            return "G Flash"
+        case let id where tool == .antigravity && id.contains("gemini") && id.contains("pro"):
+            return "G Pro"
         default:
             return (bucket.groupTitle ?? bucket.shortLabel)
                 .replacingOccurrences(of: "GPT-5.3 Codex Spark", with: "Spark")

@@ -56,10 +56,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 8) {
-                            // Plan badges only meaningful for primary
-                            // providers (Codex, Claude). Misc providers
-                            // expose their plan inline on the misc card.
-                            ForEach(ToolType.primaryProviders, id: \.self) { tool in
+                            ForEach(ToolType.dedicatedCardProviders, id: \.self) { tool in
                                 providerBadgeRow(tool)
                             }
                         }
@@ -242,6 +239,14 @@ struct SettingsView: View {
                             Text("Could not delete saved Gemini cookies.")
                                 .font(.caption2).foregroundStyle(.orange)
                         }
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .gemini)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .gemini)
+                        } label: {
+                            Label("Check Gemini connections", systemImage: "checkmark.circle")
+                        }
 
                         Divider()
                             .padding(.vertical, 2)
@@ -266,6 +271,14 @@ struct SettingsView: View {
                             Text("Antigravity reads the locally running language server. Cookie import is deferred until the Antigravity Cloud endpoint ships.")
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
+                        }
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .antigravity)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .antigravity)
+                        } label: {
+                            Label("Check Antigravity connection", systemImage: "checkmark.circle")
                         }
                     }
 
@@ -313,7 +326,16 @@ struct SettingsView: View {
                                 .font(.caption2).foregroundStyle(.orange)
                         }
 
-                        Link("Open grok.com usage dashboard",
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .grok)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .grok)
+                        } label: {
+                            Label("Check Grok connections", systemImage: "checkmark.circle")
+                        }
+
+                        Link("Open xAI status page",
                              destination: ToolType.grok.statusPageURL)
                             .font(.caption2)
                     }

@@ -13,8 +13,8 @@ import Foundation
 /// - MiniQuotaWindowView.swift: providerAccent / providerTitle
 /// - ProviderBrandIcon.swift: SF symbol + brand SVG mapping
 ///
-/// Adding a *partial-primary* case (dedicated card without token cost or
-/// status integration) also requires:
+/// Adding a *partial-primary* case (dedicated card outside the two
+/// historical primary menu-bar items) also requires:
 /// - PrimaryProviderSourcePlanner.swift: a per-provider UsageMode + planner
 /// - AccountStore.swift: autoDetect<Provider> helper
 /// - AppSettings.swift: dedicated settings struct + lossy migration from
@@ -25,9 +25,8 @@ import Foundation
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`) — dedicated
 ///   popover sub-page (Google AI dual page for Gemini+Antigravity, single
-///   provider page for Grok) + SettingsView panel, but no token-cost
-///   scanning and no Atlassian-style status polling. Share
-///   `supportsDedicatedCard == true` with primary.
+///   provider page for Grok) + SettingsView panel. These can still opt into
+///   token-cost scanning and status polling as provider data becomes known.
 /// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
 ///   `.tencentHunyuan`, `.tencentTokenPlan`, `.volcengine`, `.baiduQianfan`,
@@ -83,7 +82,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// True for providers that get a dedicated popover card, a SettingsView
     /// panel, and multi-source credential fallback. Primary providers are a
     /// proper subset of this set; partial-primary providers (Gemini,
-    /// Antigravity) live here without the cost / status integrations.
+    /// Antigravity, Grok) live here without dedicated menu-bar item kinds.
     public var supportsDedicatedCard: Bool {
         switch self {
         case .codex, .claude, .gemini, .antigravity, .grok: return true
@@ -92,8 +91,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
-    /// True for the Google AI pair — dedicated card, multi-source
-    /// credentials, no token cost, no status page integration.
+    /// True for dedicated-card providers that do not have their own
+    /// `MenuBarItemKind`.
     public var isPartialPrimary: Bool {
         supportsDedicatedCard && !isPrimary
     }
@@ -120,6 +119,14 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
 
     public static var partialPrimaryProviders: [ToolType] {
         allCases.filter { $0.isPartialPrimary }
+    }
+
+    public static var costAwareProviders: [ToolType] {
+        allCases.filter { $0.supportsTokenCost }
+    }
+
+    public static var statusPageProviders: [ToolType] {
+        allCases.filter { $0.supportsStatusPage }
     }
 
     public static var miscPageProviders: [ToolType] {
@@ -162,11 +169,12 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// `.antigravity` share the Google Apps Status dashboard feed
     /// (`https://www.google.com/appsstatus/dashboard/incidents.json`,
     /// filtered to product id `npdyhgECDJ6tB66MxXyo` = "Gemini").
+    /// Grok reads the xAI service-status HTML at `https://status.x.ai/`.
     /// Codex / Claude use their own Atlassian / incident.io feeds.
     public var supportsStatusPage: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity: return true
-        case .alibaba, .alibabaTokenPlan, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .codex, .claude, .gemini, .antigravity, .grok: return true
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -290,8 +298,9 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     /// Click-through URL for the provider's status / dashboard page.
-    /// The Atlassian-style API endpoints (`statusSummaryAPI` etc.) are
-    /// only meaningful when `supportsStatusPage` is true.
+    /// The Statuspage-style API endpoints (`statusSummaryAPI` etc.) are
+    /// meaningful only for providers backed by those APIs; xAI/Grok is
+    /// scraped from HTML at this URL instead.
     public var statusPageURL: URL {
         switch self {
         case .codex:       return URL(string: "https://status.openai.com/")!
@@ -300,7 +309,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .alibabaTokenPlan: return URL(string: "https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan")!
         case .gemini:      return URL(string: "https://status.cloud.google.com/")!
         case .antigravity: return URL(string: "https://antigravity.google/")!
-        case .grok:        return URL(string: "https://grok.com/?_s=usage")!
+        case .grok:        return URL(string: "https://status.x.ai/")!
         case .copilot:     return URL(string: "https://www.githubstatus.com/")!
         case .zai:         return URL(string: "https://www.z.ai/")!
         case .minimax:     return URL(string: "https://platform.minimax.io/")!

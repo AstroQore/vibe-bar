@@ -221,24 +221,24 @@ public enum MockDataProvider {
             // shape Gemini CLI / Web returns. Reset times are arbitrary —
             // the live data overrides whichever fields are present.
             buckets = [
-                QuotaBucket(id: "gemini.pro", title: "Pro", shortLabel: "Pro",
+                QuotaBucket(id: "gemini-2.5-pro", title: "Pro", shortLabel: "Pro",
                             usedPercent: 78, resetAt: weeklyReset, rawWindowSeconds: nil, groupTitle: "Pro"),
-                QuotaBucket(id: "gemini.flash", title: "Flash", shortLabel: "Flash",
+                QuotaBucket(id: "gemini-2.5-flash", title: "Flash", shortLabel: "Flash",
                             usedPercent: 33, resetAt: weeklyReset, rawWindowSeconds: nil, groupTitle: "Flash"),
-                QuotaBucket(id: "gemini.flash-lite", title: "Flash Lite", shortLabel: "Lite",
+                QuotaBucket(id: "gemini-2.5-flash-lite", title: "Flash Lite", shortLabel: "Lite",
                             usedPercent: 9, resetAt: weeklyReset, rawWindowSeconds: nil, groupTitle: "Flash Lite")
             ]
         case .antigravity:
             // Partial-primary mock: the live Antigravity LSP groups
             // buckets by Gemini Pro / Flash / Claude variants.
             buckets = [
-                QuotaBucket(id: "antigravity.gemini-3-pro", title: "Gemini Pro",
+                QuotaBucket(id: "gemini-3-pro", title: "Gemini Pro",
                             shortLabel: "Pro", usedPercent: 41, resetAt: fiveHourReset,
                             rawWindowSeconds: nil, groupTitle: "Gemini Pro"),
-                QuotaBucket(id: "antigravity.gemini-3-flash", title: "Gemini Flash",
+                QuotaBucket(id: "gemini-3-flash", title: "Gemini Flash",
                             shortLabel: "Flash", usedPercent: 17, resetAt: fiveHourReset,
                             rawWindowSeconds: nil, groupTitle: "Gemini Flash"),
-                QuotaBucket(id: "antigravity.claude-sonnet-4-5", title: "Claude Sonnet 4.5",
+                QuotaBucket(id: "claude-sonnet-4-5", title: "Claude Sonnet 4.5",
                             shortLabel: "Sonnet", usedPercent: 71, resetAt: fiveHourReset,
                             rawWindowSeconds: nil, groupTitle: "Claude")
             ]

@@ -24,8 +24,10 @@ public actor ServiceStatusClient {
             // Apps Status product (id `npdyhgECDJ6tB66MxXyo` =
             // "Gemini"), so they share one feed.
             return try await fetchGoogleAppsStatus(tool: tool, dayCount: dayCount, now: now)
-        case .alibaba, .alibabaTokenPlan, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
-            // Misc providers don't expose Atlassian-style status APIs.
+        case .grok:
+            return try await fetchXAIStatus(dayCount: dayCount, now: now)
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
             // upstream callers should already be filtering to primary
             // tools via `tool.supportsStatusPage` before reaching here.
@@ -42,6 +44,329 @@ public actor ServiceStatusClient {
                 recentIncidents: []
             )
         }
+    }
+
+    // MARK: - xAI Status (HTML status.x.ai)
+
+    private static let xAIComponentPageSpecs: [(id: String, name: String, path: String)] = [
+        ("grok-com", "Grok (Web)", "grok-com"),
+        ("ios-app", "Grok (iOS)", "ios-app"),
+        ("android-app", "Grok (Android)", "android-app"),
+        ("grok-in-x", "Grok in X", "grok-in-x"),
+        ("api-us-east-1", "API (us-east-1.api.x.ai)", "api-us-east-1"),
+        ("api-eu-west-1", "API (eu-west-1.api.x.ai)", "api-eu-west-1"),
+        ("api-console", "API Console", "api-console")
+    ]
+
+    private func fetchXAIStatus(dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
+        let overviewHTML = try await fetchHTML(url: ToolType.grok.statusPageURL)
+        var componentPages: [(id: String, name: String, url: URL, html: String)] = []
+        for spec in Self.xAIComponentPageSpecs {
+            guard let url = URL(string: spec.path, relativeTo: ToolType.grok.statusPageURL)?.absoluteURL else {
+                continue
+            }
+            if let html = try? await fetchHTML(url: url) {
+                componentPages.append((id: spec.id, name: spec.name, url: url, html: html))
+            }
+        }
+        return Self.parseXAIStatusPages(
+            tool: .grok,
+            overviewHTML: overviewHTML,
+            componentPages: componentPages,
+            dayCount: dayCount,
+            now: now
+        )
+    }
+
+    nonisolated static func parseXAIStatusPages(
+        tool: ToolType,
+        overviewHTML: String,
+        componentPages: [(id: String, name: String, url: URL, html: String)],
+        dayCount: Int,
+        now: Date
+    ) -> ServiceStatusSnapshot {
+        let parsedComponents = componentPages.map { page in
+            parseXAIComponentPage(
+                id: page.id,
+                name: page.name,
+                url: page.url,
+                html: page.html,
+                dayCount: dayCount,
+                now: now
+            )
+        }
+        let components: [ServiceComponentSummary]
+        if parsedComponents.isEmpty {
+            components = parseXAIOverviewComponents(
+                overviewHTML,
+                dayCount: dayCount,
+                now: now
+            )
+        } else {
+            components = parsedComponents.map(\.component)
+        }
+
+        let recentIncidents = parsedComponents
+            .flatMap(\.incidents)
+            .sorted { $0.createdAt > $1.createdAt }
+            .prefix(4)
+            .map { $0 }
+
+        let worstStatus = components.map(\.status).max { $0.severity < $1.severity } ?? .operational
+        let indicator = xAIIndicator(for: worstStatus)
+        let overviewText = visibleTextLines(fromHTML: overviewHTML).joined(separator: " ").lowercased()
+        let description: String
+        if overviewText.contains("no incidents declared") && indicator == .none {
+            description = "All services operational"
+        } else {
+            description = xAIDescription(for: indicator)
+        }
+
+        let updatedAt = recentIncidents.compactMap(\.resolvedAt).max()
+            ?? recentIncidents.map(\.createdAt).max()
+            ?? now
+
+        return ServiceStatusSnapshot(
+            tool: tool,
+            indicator: indicator,
+            description: description,
+            updatedAt: updatedAt,
+            groups: [],
+            components: components,
+            recentIncidents: Array(recentIncidents)
+        )
+    }
+
+    private nonisolated static func parseXAIComponentPage(
+        id: String,
+        name: String,
+        url: URL,
+        html: String,
+        dayCount: Int,
+        now: Date
+    ) -> (component: ServiceComponentSummary, incidents: [IncidentSummary]) {
+        let lines = visibleTextLines(fromHTML: html)
+        let status = xAIComponentStatus(from: lines)
+        let incidents = parseXAIIncidents(
+            text: lines.joined(separator: " "),
+            componentId: id,
+            url: url
+        )
+        let dayBuckets = buildXAIDayBuckets(
+            from: incidents.map { incident in
+                (start: incident.createdAt, end: incident.resolvedAt ?? now, impact: incident.impact)
+            },
+            dayCount: dayCount,
+            now: now
+        )
+        let component = ServiceComponentSummary(
+            id: id,
+            name: name,
+            status: status,
+            groupId: nil,
+            uptimePercent: xAIUptime(dayBuckets),
+            recentDays: dayBuckets
+        )
+        return (component, incidents)
+    }
+
+    private nonisolated static func parseXAIOverviewComponents(
+        _ html: String,
+        dayCount: Int,
+        now: Date
+    ) -> [ServiceComponentSummary] {
+        let lines = visibleTextLines(fromHTML: html)
+        let statusWords = ["available", "degraded", "unavailable", "maintenance"]
+        let services = lines.compactMap { line -> (name: String, status: ComponentStatusLevel)? in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let word = statusWords.first(where: { trimmed.lowercased().hasSuffix(" \($0)") }) else {
+                return nil
+            }
+            let name = String(trimmed.dropLast(word.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return nil }
+            return (name, xAIComponentStatus(fromAvailabilityWord: word))
+        }
+        return services.map { service in
+            ServiceComponentSummary(
+                id: xAISlug(service.name),
+                name: service.name,
+                status: service.status,
+                groupId: nil,
+                uptimePercent: service.status == .operational ? 100 : nil,
+                recentDays: buildXAIDayBuckets(from: [], dayCount: dayCount, now: now)
+            )
+        }
+    }
+
+    private nonisolated static func parseXAIIncidents(
+        text: String,
+        componentId: String,
+        url: URL
+    ) -> [IncidentSummary] {
+        let normalized = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        let pattern = #"([A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2} [AP]M UTC)\s+(.+?)\s+Resolved\s+·\s+Duration:\s+(.+?)\s+·\s+(info|disruption|outage)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }
+        let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+        var incidents: [IncidentSummary] = []
+        regex.enumerateMatches(in: normalized, options: [], range: range) { match, _, _ in
+            guard let match,
+                  let dateRange = Range(match.range(at: 1), in: normalized),
+                  let nameRange = Range(match.range(at: 2), in: normalized),
+                  let impactRange = Range(match.range(at: 4), in: normalized),
+                  let createdAt = parseXAIStatusDate(String(normalized[dateRange]))
+            else { return }
+            let name = String(normalized[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let impact = xAIIncidentImpact(String(normalized[impactRange]))
+            incidents.append(
+                IncidentSummary(
+                    id: "\(componentId)-\(Int(createdAt.timeIntervalSince1970))-\(xAISlug(name))",
+                    name: name,
+                    impact: impact,
+                    createdAt: createdAt,
+                    resolvedAt: createdAt,
+                    url: url
+                )
+            )
+        }
+        return incidents
+    }
+
+    nonisolated static func parseXAIStatusDate(_ raw: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "MMM d, yyyy, hh:mm a 'UTC'"
+        return formatter.date(from: raw)
+    }
+
+    private nonisolated static func xAIComponentStatus(from lines: [String]) -> ComponentStatusLevel {
+        let head = lines.prefix(12).joined(separator: " ").lowercased()
+        if head.contains("service fully operational")
+            || head.contains("not aware of any issues")
+            || head.contains("available") {
+            return .operational
+        }
+        if head.contains("major outage") || head.contains("unavailable") {
+            return .majorOutage
+        }
+        if head.contains("partial outage") {
+            return .partialOutage
+        }
+        if head.contains("maintenance") {
+            return .underMaintenance
+        }
+        if head.contains("degraded") || head.contains("disruption") {
+            return .degradedPerformance
+        }
+        return .operational
+    }
+
+    private nonisolated static func xAIComponentStatus(fromAvailabilityWord word: String) -> ComponentStatusLevel {
+        switch word.lowercased() {
+        case "available": return .operational
+        case "maintenance": return .underMaintenance
+        case "degraded": return .degradedPerformance
+        case "unavailable": return .majorOutage
+        default: return .operational
+        }
+    }
+
+    private nonisolated static func xAIIncidentImpact(_ raw: String) -> IncidentImpact {
+        switch raw.lowercased() {
+        case "outage": return .critical
+        case "disruption": return .minor
+        case "info": return .minor
+        default: return .minor
+        }
+    }
+
+    private nonisolated static func xAIIndicator(for status: ComponentStatusLevel) -> StatusIndicator {
+        switch status {
+        case .operational: return .none
+        case .underMaintenance: return .maintenance
+        case .degradedPerformance: return .minor
+        case .partialOutage: return .major
+        case .majorOutage: return .critical
+        }
+    }
+
+    private nonisolated static func xAIDescription(for indicator: StatusIndicator) -> String {
+        switch indicator {
+        case .none: return "All services operational"
+        case .maintenance: return "Under maintenance"
+        case .minor: return "Service issue"
+        case .major: return "Partial outage"
+        case .critical: return "Major outage"
+        }
+    }
+
+    private nonisolated static func visibleTextLines(fromHTML html: String) -> [String] {
+        var text = html
+            .replacingOccurrences(of: "(?is)<script.*?</script>", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "(?is)<style.*?</style>", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "<[^>]+>", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&middot;", with: "·")
+            .replacingOccurrences(of: "&#183;", with: "·")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+        text = text.replacingOccurrences(of: "\\s*\\n\\s*", with: "\n", options: .regularExpression)
+        return text
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private nonisolated static func buildXAIDayBuckets(
+        from impacts: [(start: Date, end: Date, impact: IncidentImpact)],
+        dayCount: Int,
+        now: Date
+    ) -> [DayUptime] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let today = calendar.startOfDay(for: now)
+        var bucket: [Date: IncidentImpact] = [:]
+        for entry in impacts {
+            let start = calendar.startOfDay(for: entry.start)
+            let end = calendar.startOfDay(for: entry.end)
+            var date = start
+            while date <= end {
+                if let existing = bucket[date] {
+                    if entry.impact.severity > existing.severity {
+                        bucket[date] = entry.impact
+                    }
+                } else {
+                    bucket[date] = entry.impact
+                }
+                guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                date = next
+                if date > today { break }
+            }
+        }
+        return stride(from: dayCount - 1, through: 0, by: -1).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
+            return DayUptime(date: date, worstImpact: bucket[date])
+        }
+    }
+
+    private nonisolated static func xAIUptime(_ days: [DayUptime]) -> Double {
+        guard !days.isEmpty else { return 0 }
+        let clean = days.filter { $0.worstImpact == nil }.count
+        return Double(clean) / Double(days.count) * 100
+    }
+
+    private nonisolated static func xAISlug(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics
+        return raw.lowercased().unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        .reduce(into: "") { result, ch in
+            if ch == "-", result.last == "-" { return }
+            result.append(ch)
+        }
+        .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 
     // MARK: - Google Apps Status (incidents.json + products.json)

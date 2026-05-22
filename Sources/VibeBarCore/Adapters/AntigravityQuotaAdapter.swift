@@ -424,7 +424,7 @@ enum AntigravityResponseParser {
             let resetAt = quota.resetTime.flatMap(parseDate)
             let modelId = config.modelOrAlias?.model ?? config.label
             var bucket = QuotaBucket(
-                id: "antigravity.\(modelId)",
+                id: modelId,
                 title: config.label,
                 shortLabel: AntigravityResponseParser.shortLabel(for: modelId),
                 usedPercent: max(0, min(100, (1 - fraction) * 100)),

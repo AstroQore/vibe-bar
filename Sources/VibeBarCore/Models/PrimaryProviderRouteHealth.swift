@@ -9,6 +9,11 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
     case claudeWebViewCookies
     case claudeOAuth
     case claudeCLI
+    case geminiOAuth
+    case geminiBrowserCookies
+    case antigravityLocalProbe
+    case grokAuthJSON
+    case grokBrowserCookies
 
     public var id: String { rawValue }
 
@@ -18,6 +23,12 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
             return .codex
         case .claudeBrowserCookies, .claudeWebViewCookies, .claudeOAuth, .claudeCLI:
             return .claude
+        case .geminiOAuth, .geminiBrowserCookies:
+            return .gemini
+        case .antigravityLocalProbe:
+            return .antigravity
+        case .grokAuthJSON, .grokBrowserCookies:
+            return .grok
         }
     }
 
@@ -31,6 +42,11 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
         case .claudeWebViewCookies: return "WebView cookies"
         case .claudeOAuth: return "OAuth"
         case .claudeCLI: return "CLI"
+        case .geminiOAuth: return "OAuth"
+        case .geminiBrowserCookies: return "Chrome/Safari cookies"
+        case .antigravityLocalProbe: return "Local language server"
+        case .grokAuthJSON: return "~/.grok/auth.json"
+        case .grokBrowserCookies: return "Chrome/Safari cookies"
         }
     }
 
@@ -120,6 +136,160 @@ public enum PrimaryProviderRouteHealthChecker {
             return credentialHealth(route: route, now: now) {
                 _ = try ClaudeCredentialReader.loadFromCLI()
             }
+        case .geminiOAuth:
+            return geminiOAuthHealth(route: route, now: now)
+        case .geminiBrowserCookies:
+            return cookieHealth(
+                route: route,
+                result: GeminiWebCookieStore.storageState(source: .browser),
+                now: now
+            )
+        case .antigravityLocalProbe:
+            return antigravityLocalProbeHealth(route: route, now: now)
+        case .grokAuthJSON:
+            return grokAuthJSONHealth(route: route, now: now)
+        case .grokBrowserCookies:
+            return cookieHealth(
+                route: route,
+                result: GrokWebCookieStore.storageState(source: .browser),
+                now: now
+            )
+        }
+    }
+
+    private static func geminiOAuthHealth(
+        route: PrimaryProviderRoute,
+        now: Date
+    ) -> PrimaryProviderRouteHealth {
+        let url = URL(fileURLWithPath: RealHomeDirectory.path)
+            .appendingPathComponent(".gemini/oauth_creds.json")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .missing,
+                detail: "No oauth_creds.json",
+                checkedAt: now
+            )
+        }
+        do {
+            let credentials = try GeminiCredentials.load(from: url)
+            let hasAccess = credentials.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            let hasRefresh = credentials.refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            guard hasAccess || hasRefresh else {
+                return PrimaryProviderRouteHealth(
+                    route: route,
+                    status: .missing,
+                    detail: "Token fields missing",
+                    checkedAt: now
+                )
+            }
+            if let expiry = credentials.expiry, expiry <= now, !hasRefresh {
+                return PrimaryProviderRouteHealth(
+                    route: route,
+                    status: .failed,
+                    detail: "Access token expired",
+                    checkedAt: now
+                )
+            }
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .ok,
+                detail: hasRefresh ? "Refresh token available" : "Access token available",
+                checkedAt: now
+            )
+        } catch {
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .failed,
+                detail: "Could not read OAuth file",
+                checkedAt: now
+            )
+        }
+    }
+
+    private static func antigravityLocalProbeHealth(
+        route: PrimaryProviderRoute,
+        now: Date
+    ) -> PrimaryProviderRouteHealth {
+        if antigravityLanguageServerIsRunning() {
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .ok,
+                detail: "Local LSP running",
+                checkedAt: now
+            )
+        }
+        let dataRoot = URL(fileURLWithPath: RealHomeDirectory.path)
+            .appendingPathComponent(".gemini/antigravity")
+        if FileManager.default.fileExists(atPath: dataRoot.path) {
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .missing,
+                detail: "Local data found; LSP not running",
+                checkedAt: now
+            )
+        }
+        return PrimaryProviderRouteHealth(
+            route: route,
+            status: .missing,
+            detail: "No local Antigravity data",
+            checkedAt: now
+        )
+    }
+
+    private static func grokAuthJSONHealth(
+        route: PrimaryProviderRoute,
+        now: Date
+    ) -> PrimaryProviderRouteHealth {
+        do {
+            let credentials = try GrokCredentialsStore.load()
+            if let expiresAt = credentials.expiresAt, expiresAt <= now {
+                return PrimaryProviderRouteHealth(
+                    route: route,
+                    status: .failed,
+                    detail: "auth.json expired",
+                    checkedAt: now
+                )
+            }
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .ok,
+                detail: credentials.planLabel ?? "Credentials available",
+                checkedAt: now
+            )
+        } catch let error as QuotaError where error == .noCredential || error == .needsLogin {
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .missing,
+                detail: "No auth.json",
+                checkedAt: now
+            )
+        } catch {
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .failed,
+                detail: "Could not read auth.json",
+                checkedAt: now
+            )
+        }
+    }
+
+    private static func antigravityLanguageServerIsRunning() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-ax", "-o", "command="]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return false }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8)?.lowercased() else { return false }
+            return output.contains("language_server_macos") && output.contains("antigravity")
+        } catch {
+            return false
         }
     }
 
