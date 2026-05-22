@@ -98,7 +98,22 @@ public enum GeminiWebCookieStore {
         guard kept.contains(where: { $0.name == "__Secure-1PSID" && !$0.value.isEmpty }) else {
             return nil
         }
-        let header = kept.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+        // De-duplicate by cookie name (keeping the first occurrence).
+        // GeminiBrowserCookieImporter queries both `gemini.google.com`
+        // and `.google.com` in a single cookie scan, and Chrome's cookie
+        // store returns the same `.google.com`-scoped cookie once per
+        // matching domain. The unfiltered output therefore contains 2-3
+        // copies of every SID-family cookie, and shipping that as a
+        // single `Cookie:` header trips Google's `CookieMismatch`
+        // protection (HTTP 302 → accounts.google.com/CookieMismatch
+        // before any quota request lands). Folding to one value per
+        // name restores the canonical browser-sent shape.
+        var deduped: [(name: String, value: String)] = []
+        var seenNames: Set<String> = []
+        for pair in kept where seenNames.insert(pair.name).inserted {
+            deduped.append(pair)
+        }
+        let header = deduped.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
         return header.isEmpty ? nil : header
     }
 
