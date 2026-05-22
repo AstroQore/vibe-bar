@@ -276,10 +276,31 @@ public enum CostSnapshotAggregator {
             .sorted { $0.date < $1.date }
     }
 
-    public static func combinedHeatmap(_ snapshots: [CostSnapshot]) -> UsageHeatmap {
+    public static func combinedHourlyHistory(
+        _ snapshots: [CostSnapshot],
+        calendar: Calendar = .current
+    ) -> [HourlyCostPoint] {
+        var totals: [Date: (cost: Double, tokens: Int)] = [:]
+        for snapshot in snapshots {
+            for point in snapshot.todayHourlyHistory {
+                let components = calendar.dateComponents([.year, .month, .day, .hour], from: point.date)
+                guard let hour = calendar.date(from: components) else { continue }
+                let current = totals[hour] ?? (0, 0)
+                totals[hour] = (current.cost + point.costUSD, current.tokens + point.totalTokens)
+            }
+        }
+        return totals
+            .map { HourlyCostPoint(date: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
+            .sorted { $0.date < $1.date }
+    }
+
+    public static func combinedHeatmap(
+        _ snapshots: [CostSnapshot],
+        tool: ToolType? = nil
+    ) -> UsageHeatmap {
         let zeroes = Array(repeating: Array(repeating: 0, count: 24), count: 7)
         guard !snapshots.isEmpty else {
-            return UsageHeatmap(tool: .codex, cells: zeroes, totalTokens: 0)
+            return UsageHeatmap(tool: tool ?? .codex, cells: zeroes, totalTokens: 0)
         }
         var combined = zeroes
         var total = 0
@@ -293,21 +314,89 @@ public enum CostSnapshotAggregator {
             }
             total += snapshot.heatmap.totalTokens
         }
-        return UsageHeatmap(tool: snapshots.first?.tool ?? .codex, cells: combined, totalTokens: total)
+        return UsageHeatmap(tool: tool ?? snapshots.first?.tool ?? .codex, cells: combined, totalTokens: total)
     }
 
     public static func combinedModelBreakdowns(
         _ snapshots: [CostSnapshot]
     ) -> [CostSnapshot.ModelBreakdown] {
-        var totals: [String: (cost: Double, tokens: Int)] = [:]
+        combineBreakdowns(snapshots.flatMap(\.modelBreakdowns))
+    }
+
+    public static func combinedLast7DaysModelBreakdowns(
+        _ snapshots: [CostSnapshot]
+    ) -> [CostSnapshot.ModelBreakdown] {
+        combineBreakdowns(snapshots.flatMap(\.last7DaysModelBreakdowns))
+    }
+
+    public static func combinedDailyModelBreakdown(
+        _ snapshots: [CostSnapshot],
+        calendar: Calendar = .current
+    ) -> [Date: [CostSnapshot.ModelBreakdown]] {
+        var totals: [Date: [String: (cost: Double, tokens: Int)]] = [:]
         for snapshot in snapshots {
-            for breakdown in snapshot.modelBreakdowns {
-                let current = totals[breakdown.modelName] ?? (0, 0)
-                totals[breakdown.modelName] = (
-                    current.cost + breakdown.costUSD,
-                    current.tokens + breakdown.totalTokens
-                )
+            for (day, breakdowns) in snapshot.dailyModelBreakdown {
+                let key = calendar.startOfDay(for: day)
+                var dayTotals = totals[key] ?? [:]
+                for breakdown in breakdowns {
+                    let current = dayTotals[breakdown.modelName] ?? (0, 0)
+                    dayTotals[breakdown.modelName] = (
+                        current.cost + breakdown.costUSD,
+                        current.tokens + breakdown.totalTokens
+                    )
+                }
+                totals[key] = dayTotals
             }
+        }
+        return totals.mapValues { models in
+            models
+                .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
+                .sorted { $0.costUSD > $1.costUSD }
+        }
+    }
+
+    public static func combinedSnapshot(
+        tool: ToolType,
+        snapshots: [CostSnapshot],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> CostSnapshot {
+        guard !snapshots.isEmpty else {
+            return .empty(tool: tool, now: now)
+        }
+
+        let rebased = snapshots.map { $0.rebasedForCurrentDay(now: now, calendar: calendar) }
+        return CostSnapshot(
+            tool: tool,
+            todayCostUSD: rebased.reduce(0) { $0 + $1.todayCostUSD },
+            last7DaysCostUSD: rebased.reduce(0) { $0 + $1.last7DaysCostUSD },
+            last30DaysCostUSD: rebased.reduce(0) { $0 + $1.last30DaysCostUSD },
+            allTimeCostUSD: rebased.reduce(0) { $0 + $1.allTimeCostUSD },
+            todayTokens: rebased.reduce(0) { $0 + $1.todayTokens },
+            last7DaysTokens: rebased.reduce(0) { $0 + $1.last7DaysTokens },
+            last30DaysTokens: rebased.reduce(0) { $0 + $1.last30DaysTokens },
+            allTimeTokens: rebased.reduce(0) { $0 + $1.allTimeTokens },
+            dailyHistory: combinedDailyHistory(rebased, calendar: calendar),
+            todayHourlyHistory: combinedHourlyHistory(rebased, calendar: calendar),
+            heatmap: combinedHeatmap(rebased, tool: tool),
+            modelBreakdowns: combinedModelBreakdowns(rebased),
+            last7DaysModelBreakdowns: combinedLast7DaysModelBreakdowns(rebased),
+            dailyModelBreakdown: combinedDailyModelBreakdown(rebased, calendar: calendar),
+            jsonlFilesFound: rebased.reduce(0) { $0 + $1.jsonlFilesFound },
+            updatedAt: rebased.map(\.updatedAt).max() ?? now
+        )
+    }
+
+    private static func combineBreakdowns(
+        _ breakdowns: [CostSnapshot.ModelBreakdown]
+    ) -> [CostSnapshot.ModelBreakdown] {
+        var totals: [String: (cost: Double, tokens: Int)] = [:]
+        for breakdown in breakdowns {
+            let current = totals[breakdown.modelName] ?? (0, 0)
+            totals[breakdown.modelName] = (
+                current.cost + breakdown.costUSD,
+                current.tokens + breakdown.totalTokens
+            )
         }
         return totals
             .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }

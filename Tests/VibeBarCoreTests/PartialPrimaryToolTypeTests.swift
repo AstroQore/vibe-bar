@@ -63,6 +63,13 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         )
     }
 
+    func testCombinedStatusDisplayProvidersMergeGoogleAI() {
+        XCTAssertEqual(
+            ToolType.combinedStatusPageProviders,
+            [.codex, .claude, .gemini, .grok]
+        )
+    }
+
     func testCostAwareProvidersIncludeGoogleAIAndGrok() {
         XCTAssertEqual(
             ToolType.costAwareProviders,

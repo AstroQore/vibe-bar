@@ -22,6 +22,7 @@ import SQLite3
 ///     dedupe key in the scan cache
 ///   - `1.9.4.1` / `1.9.4.2` — seconds + nanoseconds of the wall
 ///     clock when the turn started
+///   - `1.19` — model id, e.g. `gemini-3-flash-a`
 ///
 /// Unknown fields are ignored. Missing fields default to 0 / nil so
 /// callers never have to special-case a turn whose blob is short on
@@ -35,6 +36,7 @@ public enum AntigravitySessionReader {
         public let thoughtsTokens: Int
         public let toolTokens: Int
         public let requestId: String?
+        public let model: String?
 
         public init(
             date: Date,
@@ -43,7 +45,8 @@ public enum AntigravitySessionReader {
             cumulativeCacheReadTokens: Int,
             thoughtsTokens: Int,
             toolTokens: Int,
-            requestId: String?
+            requestId: String?,
+            model: String? = nil
         ) {
             self.date = date
             self.inputTokens = inputTokens
@@ -52,6 +55,7 @@ public enum AntigravitySessionReader {
             self.thoughtsTokens = thoughtsTokens
             self.toolTokens = toolTokens
             self.requestId = requestId
+            self.model = model
         }
     }
 
@@ -108,6 +112,7 @@ public enum AntigravitySessionReader {
         let thoughts = Int(extractVarint(bytes: usage, fieldNumber: 9) ?? 0)
         let tool = Int(extractVarint(bytes: usage, fieldNumber: 10) ?? 0)
         let requestId = extractString(bytes: usage, fieldNumber: 11)
+        let model = extractString(bytes: outer, fieldNumber: 19)
 
         let date: Date
         if let seconds = extractVarint(bytes: timeBlock, fieldNumber: 1) {
@@ -124,7 +129,8 @@ public enum AntigravitySessionReader {
             cumulativeCacheReadTokens: cache,
             thoughtsTokens: thoughts,
             toolTokens: tool,
-            requestId: requestId
+            requestId: requestId,
+            model: model
         )
     }
 

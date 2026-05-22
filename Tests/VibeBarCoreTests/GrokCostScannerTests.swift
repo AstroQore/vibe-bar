@@ -2,8 +2,8 @@ import XCTest
 @testable import VibeBarCore
 
 /// Grok stores each session as `~/.grok/sessions/<urlEncodedCwd>/
-/// <sessionUUID>/updates.jsonl`. Every record carries a cumulative
-/// `_meta.totalTokens` plus `_meta.agentTimestampMs` — per-turn token
+/// <sessionUUID>/updates.jsonl`. Modern records carry a cumulative
+/// `params._meta.totalTokens` plus `params._meta.agentTimestampMs` — per-turn token
 /// delta is the only "what did this turn cost" signal Grok hands us,
 /// so the scanner deltas the running total and 70 / 30 splits the
 /// number across input vs output for cost.
@@ -30,8 +30,9 @@ final class GrokCostScannerTests: XCTestCase {
         home: URL,
         cwdLabel: String,
         sessionId: String,
-        records: [(date: Date, total: Int)]
-    ) throws {
+        records: [(date: Date, total: Int)],
+        nestedMeta: Bool = false
+    ) throws -> URL {
         let dir = home
             .appendingPathComponent(".grok", isDirectory: true)
             .appendingPathComponent("sessions", isDirectory: true)
@@ -41,8 +42,27 @@ final class GrokCostScannerTests: XCTestCase {
         let file = dir.appendingPathComponent("updates.jsonl")
         let lines = records.map { record -> String in
             let ms = Int64(record.date.timeIntervalSince1970 * 1000)
+            if nestedMeta {
+                return """
+                {"method":"session/update","params":{"sessionId":"\(sessionId)","_meta":{"totalTokens":\(record.total),"agentTimestampMs":\(ms),"updateType":"AvailableCommandsUpdate"}}}
+                """
+            }
             return """
             {"_meta":{"totalTokens":\(record.total),"agentTimestampMs":\(ms),"updateType":"AvailableCommandsUpdate"},"payload":{}}
+            """
+        }
+        try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+        return dir
+    }
+
+    private func writeEventsFile(
+        sessionDirectory: URL,
+        records: [(date: Date, model: String)]
+    ) throws {
+        let file = sessionDirectory.appendingPathComponent("events.jsonl")
+        let lines = records.map { record -> String in
+            """
+            {"ts":"\(Self.isoFormatter.string(from: record.date))","type":"turn_started","model_id":"\(record.model)"}
             """
         }
         try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
@@ -97,6 +117,41 @@ final class GrokCostScannerTests: XCTestCase {
         // 11_000 tokens * $1.30/Mtok = $0.01430
         XCTAssertEqual(snap.allTimeCostUSD, 0.0143, accuracy: 0.0001)
         XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["grok-build"])
+    }
+
+    func testNestedSessionUpdateMetaAndSiblingModelAreParsed() async throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let t0 = now.addingTimeInterval(-240)
+        let t1 = now.addingTimeInterval(-120)
+        let sessionDirectory = try writeUpdatesFile(
+            home: home,
+            cwdLabel: "%2FUsers%2Fexample%2Fproject",
+            sessionId: "session-model",
+            records: [
+                (t0, 2_000),
+                (t1, 7_000)
+            ],
+            nestedMeta: true
+        )
+        try writeEventsFile(
+            sessionDirectory: sessionDirectory,
+            records: [(t0.addingTimeInterval(-1), "grok-4-fast")]
+        )
+
+        let snapshot = await CostUsageScanner.scan(
+            tool: .grok,
+            homeDirectory: home.path,
+            now: now
+        )
+        let snap = try XCTUnwrap(snapshot)
+        XCTAssertEqual(snap.jsonlFilesFound, 1)
+        XCTAssertEqual(snap.allTimeTokens, 7_000)
+        XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["grok-4-fast"])
+        // 7000 tokens split 70 / 30 at grok-4-fast's $0.20 / $0.50 per Mtok.
+        XCTAssertEqual(snap.allTimeCostUSD, 0.00203, accuracy: 0.00001)
     }
 
     func testMultipleSessionsAggregateAcrossWorkingDirectories() async throws {
