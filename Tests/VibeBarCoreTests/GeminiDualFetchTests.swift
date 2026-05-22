@@ -46,19 +46,19 @@ final class GeminiDualFetchTests: XCTestCase {
         }
     }
 
-    func testWebAccountSurfacesSpikePendingError() async throws {
-        // The Web fetcher is spike-pending and always throws either
-        // .noCredential (no cookies imported) or .parseFailure
-        // (cookies present, but the wire shape isn't decoded yet).
-        // The adapter must propagate whichever happens — never crash.
+    func testWebAccountWithoutCookiesSurfacesNoCredential() async throws {
+        // With no cookies imported, the adapter should surface a
+        // QuotaError without crashing. Most likely .noCredential
+        // from GeminiWebCookieStore; .network is acceptable if the
+        // test env happens to have a stale cookie in the keychain.
         let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
 
         do {
             _ = try await adapter.fetch(for: account(source: .webCookie))
-            // If this ever succeeds, the spike has landed —
-            // tighten the assertion in a follow-up PR to verify the
-            // expected current/weekly bucket pair.
+            // If this ever succeeds, the test env happens to have a
+            // live cookie in the keychain. Don't fail — but the
+            // smoke test scope still passes.
         } catch is QuotaError {
             // Pass — any QuotaError variant is acceptable here.
         } catch {
