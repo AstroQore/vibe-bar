@@ -172,7 +172,8 @@ struct UsageHeatmapView: View {
         let label: String
         if value < 1_000 { label = "\(value) tok" }
         else if value < 1_000_000 { label = String(format: "%.1fk tok", Double(value) / 1_000) }
-        else { label = String(format: "%.2fM tok", Double(value) / 1_000_000) }
+        else if value < 1_000_000_000 { label = String(format: "%.2fM tok", Double(value) / 1_000_000) }
+        else { label = String(format: "%.2fB tok", Double(value) / 1_000_000_000) }
         return "\(day) \(hourLabel(hour)) · \(label)"
     }
 

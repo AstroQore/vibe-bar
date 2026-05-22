@@ -53,6 +53,7 @@ struct CostSummaryRow: View {
     private func formatTokens(_ tokens: Int) -> String {
         if tokens < 1_000 { return "\(tokens) tok" }
         if tokens < 1_000_000 { return String(format: "%.1fk tok", Double(tokens) / 1_000) }
-        return String(format: "%.2fM tok", Double(tokens) / 1_000_000)
+        if tokens < 1_000_000_000 { return String(format: "%.2fM tok", Double(tokens) / 1_000_000) }
+        return String(format: "%.2fB tok", Double(tokens) / 1_000_000_000)
     }
 }

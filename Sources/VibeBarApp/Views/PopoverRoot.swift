@@ -618,7 +618,6 @@ private struct CombinedTotalsRow: View {
             .filter { !ToolType.googleAIPair.contains($0) }
             .compactMap { environment.costService.snapshot(for: $0) }
         let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
-        let activeDays = dailyHistory.filter { $0.costUSD > 0 || $0.totalTokens > 0 }
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
         let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
         let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
@@ -627,11 +626,19 @@ private struct CombinedTotalsRow: View {
         let todayTokens = snapshots.reduce(0) { $0 + $1.todayTokens }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
-        let totalFiles = snapshots.reduce(0) { $0 + $1.jsonlFilesFound }
+        let todayRequests = snapshots.reduce(0) { $0 + $1.todayRequests }
         let peakDayCost = dailyHistory.map(\.costUSD).max() ?? 0
-        let averageDayCost = activeDays.isEmpty
-            ? 0
-            : activeDays.reduce(0.0) { $0 + $1.costUSD } / Double(activeDays.count)
+        // TPM / RPM are today-so-far rates: tokens (or requests)
+        // divided by the elapsed minutes since local midnight. We
+        // floor the divisor to 1 so a 00:00:05 launch can't divide
+        // by zero, and clamp the result on the display side.
+        let elapsedMinutesToday: Double = {
+            let cal = Calendar.current
+            let start = cal.startOfDay(for: Date())
+            return max(1, Date().timeIntervalSince(start) / 60)
+        }()
+        let tokensPerMinute = Int((Double(todayTokens) / elapsedMinutesToday).rounded())
+        let requestsPerMinute = Double(todayRequests) / elapsedMinutesToday
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: 8) {
@@ -670,16 +677,14 @@ private struct CombinedTotalsRow: View {
                     divider
                     metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
                     divider
-                    metric(label: "SESSIONS", value: "\(totalFiles)")
+                    metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
                 }
                 HStack(alignment: .top, spacing: 0) {
-                    metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
-                    divider
                     metric(label: "PEAK DAY", value: formatCost(peakDayCost))
                     divider
-                    metric(label: "AVG/DAY", value: formatCost(averageDayCost))
+                    metric(label: "TPM", value: formatTokens(tokensPerMinute))
                     divider
-                    metric(label: "DAYS USED", value: "\(activeDays.count)")
+                    metric(label: "RPM", value: formatRate(requestsPerMinute))
                 }
             }
             .padding(density.cardPadding)
@@ -731,9 +736,19 @@ private struct CombinedTotalsRow: View {
     }
 
     private func formatTokens(_ tokens: Int) -> String {
+        if tokens >= 1_000_000_000 { return String(format: "%.2fB", Double(tokens) / 1_000_000_000) }
         if tokens >= 1_000_000 { return String(format: "%.2fM", Double(tokens) / 1_000_000) }
         if tokens >= 1_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
         return "\(tokens)"
+    }
+
+    private func formatRate(_ value: Double) -> String {
+        if value <= 0 { return "0" }
+        if value < 0.1 { return String(format: "%.2f", value) }
+        if value < 10 { return String(format: "%.1f", value) }
+        if value >= 1_000_000 { return String(format: "%.2fM", value / 1_000_000) }
+        if value >= 1_000 { return String(format: "%.1fk", value / 1_000) }
+        return String(format: "%.0f", value)
     }
 
     private func formatModelName(_ modelName: String?) -> String {

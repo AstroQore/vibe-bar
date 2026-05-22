@@ -1098,10 +1098,10 @@ public enum CostUsageScanner {
         let weekCutoff: Date
         let monthCutoff: Date
 
-        var totalCost: Double = 0, totalTokens: Int = 0
-        var todayCost: Double = 0, todayTokens: Int = 0
-        var weekCost: Double = 0, weekTokens: Int = 0
-        var monthCost: Double = 0, monthTokens: Int = 0
+        var totalCost: Double = 0, totalTokens: Int = 0, totalRequests: Int = 0
+        var todayCost: Double = 0, todayTokens: Int = 0, todayRequests: Int = 0
+        var weekCost: Double = 0, weekTokens: Int = 0, weekRequests: Int = 0
+        var monthCost: Double = 0, monthTokens: Int = 0, monthRequests: Int = 0
         var byDay: [Date: (cost: Double, tokens: Int)] = [:]
         var byHourToday: [Date: (cost: Double, tokens: Int)] = [:]
         var heatmap: [[Int]] = Array(repeating: Array(repeating: 0, count: 24), count: 7)
@@ -1128,9 +1128,11 @@ public enum CostUsageScanner {
             let tokens = input + output + cache
             totalCost += costUSD
             totalTokens += tokens
+            totalRequests += 1
             if date >= startOfToday {
                 todayCost += costUSD
                 todayTokens += tokens
+                todayRequests += 1
                 if let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
                     var hourBucket = byHourToday[hourKey] ?? (0, 0)
                     hourBucket.cost += costUSD
@@ -1141,10 +1143,12 @@ public enum CostUsageScanner {
             if date >= weekCutoff {
                 weekCost += costUSD
                 weekTokens += tokens
+                weekRequests += 1
             }
             if date >= monthCutoff {
                 monthCost += costUSD
                 monthTokens += tokens
+                monthRequests += 1
             }
             let dayKey = calendar.startOfDay(for: date)
             var bucket = byDay[dayKey] ?? (0, 0)
@@ -1216,6 +1220,10 @@ public enum CostUsageScanner {
                 last7DaysTokens: weekTokens,
                 last30DaysTokens: monthTokens,
                 allTimeTokens: totalTokens,
+                todayRequests: todayRequests,
+                last7DaysRequests: weekRequests,
+                last30DaysRequests: monthRequests,
+                allTimeRequests: totalRequests,
                 dailyHistory: sortedDays,
                 todayHourlyHistory: hourlyToday,
                 heatmap: UsageHeatmap(tool: tool, cells: heatmap, totalTokens: totalTokens),
