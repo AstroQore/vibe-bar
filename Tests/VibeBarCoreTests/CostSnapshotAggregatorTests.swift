@@ -12,24 +12,33 @@ final class CostSnapshotAggregatorTests: XCTestCase {
     private func makeSnapshot(
         tool: ToolType,
         days: [(Date, Double, Int)],
+        hours: [(Date, Double, Int)] = [],
         heatmap: [[Int]],
-        models: [(String, Double, Int)]
+        models: [(String, Double, Int)],
+        last7Models: [(String, Double, Int)] = [],
+        dailyModels: [Date: [(String, Double, Int)]] = [:],
+        updatedAt: Date = Date(timeIntervalSince1970: 0)
     ) -> CostSnapshot {
         CostSnapshot(
             tool: tool,
-            todayCostUSD: 0,
-            last7DaysCostUSD: 0,
-            last30DaysCostUSD: 0,
-            allTimeCostUSD: 0,
-            todayTokens: 0,
-            last7DaysTokens: 0,
-            last30DaysTokens: 0,
-            allTimeTokens: 0,
+            todayCostUSD: hours.reduce(0) { $0 + $1.1 },
+            last7DaysCostUSD: days.reduce(0) { $0 + $1.1 },
+            last30DaysCostUSD: days.reduce(0) { $0 + $1.1 },
+            allTimeCostUSD: days.reduce(0) { $0 + $1.1 },
+            todayTokens: hours.reduce(0) { $0 + $1.2 },
+            last7DaysTokens: days.reduce(0) { $0 + $1.2 },
+            last30DaysTokens: days.reduce(0) { $0 + $1.2 },
+            allTimeTokens: days.reduce(0) { $0 + $1.2 },
             dailyHistory: days.map { DailyCostPoint(date: $0.0, costUSD: $0.1, totalTokens: $0.2) },
+            todayHourlyHistory: hours.map { HourlyCostPoint(date: $0.0, costUSD: $0.1, totalTokens: $0.2) },
             heatmap: UsageHeatmap(tool: tool, cells: heatmap, totalTokens: heatmap.flatMap { $0 }.reduce(0, +)),
             modelBreakdowns: models.map { CostSnapshot.ModelBreakdown(modelName: $0.0, costUSD: $0.1, totalTokens: $0.2) },
+            last7DaysModelBreakdowns: last7Models.map { CostSnapshot.ModelBreakdown(modelName: $0.0, costUSD: $0.1, totalTokens: $0.2) },
+            dailyModelBreakdown: dailyModels.mapValues { values in
+                values.map { CostSnapshot.ModelBreakdown(modelName: $0.0, costUSD: $0.1, totalTokens: $0.2) }
+            },
             jsonlFilesFound: 1,
-            updatedAt: Date(timeIntervalSince1970: 0)
+            updatedAt: updatedAt
         )
     }
 
@@ -118,5 +127,52 @@ final class CostSnapshotAggregatorTests: XCTestCase {
         let merged = try XCTUnwrap(combined.first { $0.modelName == "gpt-5" })
         XCTAssertEqual(merged.costUSD, 4.00, accuracy: 0.0001)
         XCTAssertEqual(merged.totalTokens, 40_000)
+    }
+
+    func testCombinedSnapshotMergesGoogleAICostAndUsage() throws {
+        let cal = calendar()
+        let day = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 22)))
+        let hour = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 22, hour: 8)))
+        var geminiCells = Array(repeating: Array(repeating: 0, count: 24), count: 7)
+        geminiCells[5][8] = 1_000
+        var antigravityCells = Array(repeating: Array(repeating: 0, count: 24), count: 7)
+        antigravityCells[5][8] = 2_000
+
+        let gemini = makeSnapshot(
+            tool: .gemini,
+            days: [(day, 1.50, 10_000)],
+            hours: [(hour, 0.50, 3_000)],
+            heatmap: geminiCells,
+            models: [("gemini-3-flash", 1.50, 10_000)],
+            last7Models: [("gemini-3-flash", 1.50, 10_000)],
+            dailyModels: [day: [("gemini-3-flash", 1.50, 10_000)]],
+            updatedAt: day
+        )
+        let antigravity = makeSnapshot(
+            tool: .antigravity,
+            days: [(day, 2.00, 20_000)],
+            hours: [(hour, 0.75, 4_000)],
+            heatmap: antigravityCells,
+            models: [("gemini-3-flash-a", 2.00, 20_000)],
+            last7Models: [("gemini-3-flash-a", 2.00, 20_000)],
+            dailyModels: [day: [("gemini-3-flash-a", 2.00, 20_000)]],
+            updatedAt: hour
+        )
+
+        let combined = CostSnapshotAggregator.combinedSnapshot(
+            tool: .gemini,
+            snapshots: [gemini, antigravity],
+            now: day,
+            calendar: cal
+        )
+        XCTAssertEqual(combined.tool, .gemini)
+        XCTAssertEqual(combined.allTimeCostUSD, 3.50, accuracy: 0.0001)
+        XCTAssertEqual(combined.allTimeTokens, 30_000)
+        let combinedHour = try XCTUnwrap(combined.todayHourlyHistory.first)
+        XCTAssertEqual(combinedHour.costUSD, 1.25, accuracy: 0.0001)
+        XCTAssertEqual(combined.heatmap.cells[5][8], 3_000)
+        XCTAssertEqual(combined.modelBreakdowns.map(\.modelName), ["gemini-3-flash-a", "gemini-3-flash"])
+        XCTAssertEqual(combined.jsonlFilesFound, 2)
+        XCTAssertEqual(combined.updatedAt, hour)
     }
 }

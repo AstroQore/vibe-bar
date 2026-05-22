@@ -129,6 +129,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         allCases.filter { $0.supportsStatusPage }
     }
 
+    public static var combinedStatusPageProviders: [ToolType] {
+        [.codex, .claude, .gemini, .grok]
+    }
+
     public static var miscPageProviders: [ToolType] {
         allCases.filter { $0.isMiscPageProvider }
     }
@@ -148,12 +152,12 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// - `.antigravity` reads the AntiGravity IDE's per-conversation
     ///   SQLite databases under `~/.gemini/antigravity/conversations/*.db`;
     ///   the `gen_metadata.data` protobuf blob exposes per-turn
-    ///   input / output / cumulative cache-read counts. The
+    ///   input / output / cumulative cache-read counts and model id. The
     ///   `~/.gemini/antigravity-cli/conversations/*.pb` files use an
     ///   unidentified container format and are skipped — accept that
     ///   CLI-only AntiGravity usage stays dark for now.
     /// - `.grok` reads `~/.grok/sessions/**/updates.jsonl` and takes
-    ///   per-session deltas of the cumulative `_meta.totalTokens`
+    ///   per-session deltas of the cumulative `params._meta.totalTokens`
     ///   field. Grok exposes only a session-level total (no per-call
     ///   input / output split), so the USD figure is a blended
     ///   approximation against the published `grok-build` rate.

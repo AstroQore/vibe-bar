@@ -51,7 +51,8 @@ final class AntigravityCostScannerTests: XCTestCase {
         cumulativeCache: UInt64,
         thoughts: UInt64 = 0,
         tool: UInt64 = 0,
-        requestId: String = "test-request"
+        requestId: String = "test-request",
+        model: String? = "gemini-3-flash-a"
     ) -> Data {
         var usage: [UInt8] = []
         usage += encodeVarintField(1, systemPrompt)
@@ -66,7 +67,10 @@ final class AntigravityCostScannerTests: XCTestCase {
         let timeBlock = encodeVarintField(1, seconds) + encodeVarintField(2, nanos)
         let systemBlock = encodeLengthDelimited(4, timeBlock)
 
-        let outer = encodeLengthDelimited(4, usage) + encodeLengthDelimited(9, systemBlock)
+        var outer = encodeLengthDelimited(4, usage) + encodeLengthDelimited(9, systemBlock)
+        if let model {
+            outer += encodeString(19, model)
+        }
         let blob = encodeLengthDelimited(1, outer)
         return Data(blob)
     }
@@ -139,6 +143,7 @@ final class AntigravityCostScannerTests: XCTestCase {
         XCTAssertEqual(turn.thoughtsTokens, 158)
         XCTAssertEqual(turn.toolTokens, 87)
         XCTAssertEqual(turn.requestId, "req-001")
+        XCTAssertEqual(turn.model, "gemini-3-flash-a")
         XCTAssertEqual(turn.date.timeIntervalSince1970,
                        1_779_434_426 + 571_722_000.0 / 1_000_000_000,
                        accuracy: 1e-6)
@@ -160,6 +165,21 @@ final class AntigravityCostScannerTests: XCTestCase {
         XCTAssertEqual(turn.cumulativeCacheReadTokens, 0)
         XCTAssertEqual(turn.thoughtsTokens, 0)
         XCTAssertEqual(turn.toolTokens, 0)
+        XCTAssertEqual(turn.model, "gemini-3-flash-a")
+    }
+
+    func testDecoderKeepsLegacyBlobsWithoutModelReadable() throws {
+        let blob = encodeTurnBlob(
+            seconds: 1_779_434_426,
+            input: 16_738,
+            output: 780,
+            cumulativeCache: 0,
+            requestId: "req-legacy",
+            model: nil
+        )
+        let turn = try XCTUnwrap(AntigravitySessionReader.decodeTurn(blob: blob))
+        XCTAssertNil(turn.model)
+        XCTAssertEqual(turn.requestId, "req-legacy")
     }
 
     func testDecoderRejectsTruncatedBlobs() {
@@ -216,7 +236,7 @@ final class AntigravityCostScannerTests: XCTestCase {
         XCTAssertEqual(snap.allTimeTokens, 63_137)
         // All turns are within the last 7 days from `now`.
         XCTAssertEqual(snap.last7DaysTokens, 63_137)
-        XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["antigravity-default"])
+        XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["gemini-3-flash-a"])
         XCTAssertGreaterThan(snap.allTimeCostUSD, 0)
     }
 

@@ -70,7 +70,7 @@ private struct ServiceStatusRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
                 ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
-                Text(tool.statusProviderName)
+                Text(displayName)
                     .font(.system(size: 13, weight: .semibold))
                 StatusPill(indicator: snapshot?.indicator, description: snapshot?.description)
                 Spacer(minLength: 6)
@@ -142,11 +142,15 @@ private struct ServiceStatusRow: View {
     }
 
     private var shouldExpandFlatComponents: Bool {
-        tool == .claude
+        tool == .claude || tool == .grok
     }
 
     private func shouldExpand(_ group: ServiceComponentGroup) -> Bool {
         tool == .codex && group.name.localizedCaseInsensitiveContains("codex")
+    }
+
+    private var displayName: String {
+        tool == .gemini ? "Google AI" : tool.statusProviderName
     }
 }
 

@@ -610,7 +610,7 @@ public enum CostUsageScanner {
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
         for file in files {
-            let (mtime, size) = fileFingerprint(file)
+            let (mtime, size) = grokFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
                 let retained = retainedEvents(cached, cutoff: cutoff)
                 if retained.count != cached.count {
@@ -668,6 +668,11 @@ public enum CostUsageScanner {
         let sessionId: String?
     }
 
+    private struct GrokModelChange {
+        let date: Date
+        let model: String
+    }
+
     private static func collectGrokUpdatesFiles(under root: URL) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let enumerator = FileManager.default.enumerator(
@@ -696,13 +701,19 @@ public enum CostUsageScanner {
 
     private static func parseGrokUpdatesFile(file: URL) -> [GrokSnapshot] {
         var events: [GrokSnapshot] = []
-        let sessionId = file.deletingLastPathComponent().lastPathComponent
+        let sessionDirectory = file.deletingLastPathComponent()
+        let fallbackSessionId = sessionDirectory.lastPathComponent
+        let modelTimeline = grokModelTimeline(in: sessionDirectory)
+        let fallbackModel = grokSessionModel(in: sessionDirectory) ?? "grok-build"
         let didRead = forEachJSONLLine(in: file) { lineData in
             guard !lineData.isEmpty,
                   lineData.contains(asciiSequence: "totalTokens")
             else { return }
             guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
-            guard let meta = obj["_meta"] as? [String: Any] else { return }
+            let params = obj["params"] as? [String: Any]
+            let meta = (obj["_meta"] as? [String: Any])
+                ?? (params?["_meta"] as? [String: Any])
+            guard let meta else { return }
             let total = anyInt(meta["totalTokens"])
             guard total >= 0 else { return }
             let timestamp: Date
@@ -717,9 +728,24 @@ public enum CostUsageScanner {
             } else {
                 timestamp = fileMTime(file) ?? Date()
             }
+            let sessionId = firstNonEmptyString(
+                params?["sessionId"],
+                obj["sessionId"],
+                meta["sessionId"]
+            ) ?? fallbackSessionId
+            let model = grokModel(
+                at: timestamp,
+                timeline: modelTimeline,
+                fallback: firstNonEmptyString(
+                    meta["model_id"],
+                    meta["modelId"],
+                    obj["model_id"],
+                    obj["modelId"]
+                ) ?? fallbackModel
+            )
             events.append(GrokSnapshot(
                 date: timestamp,
-                model: "grok-build",
+                model: model,
                 totalTokens: total,
                 sessionId: sessionId
             ))
@@ -727,6 +753,115 @@ public enum CostUsageScanner {
         // Stable order: sessions written by Grok CLI are append-only but we
         // still sort by timestamp to absorb out-of-order writes.
         return didRead ? events.sorted { $0.date < $1.date } : []
+    }
+
+    private static func grokFingerprint(_ file: URL) -> (Date, Int64) {
+        let sessionDirectory = file.deletingLastPathComponent()
+        let siblings = [
+            file,
+            sessionDirectory.appendingPathComponent("events.jsonl"),
+            sessionDirectory.appendingPathComponent("summary.json"),
+            sessionDirectory.appendingPathComponent("signals.json")
+        ]
+        var latest = Date.distantPast
+        var totalSize: Int64 = 0
+        var seen: Set<String> = []
+        for sibling in siblings where !seen.contains(sibling.path) {
+            seen.insert(sibling.path)
+            guard FileManager.default.fileExists(atPath: sibling.path) else { continue }
+            let (mtime, size) = fileFingerprint(sibling)
+            if mtime > latest { latest = mtime }
+            totalSize += size
+        }
+        return (latest, totalSize)
+    }
+
+    private static func grokModelTimeline(in sessionDirectory: URL) -> [GrokModelChange] {
+        let eventsFile = sessionDirectory.appendingPathComponent("events.jsonl")
+        guard FileManager.default.fileExists(atPath: eventsFile.path) else { return [] }
+        var changes: [GrokModelChange] = []
+        _ = forEachJSONLLine(in: eventsFile) { lineData in
+            guard !lineData.isEmpty,
+                  lineData.contains(asciiSequence: "model")
+            else { return }
+            guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any],
+                  let model = firstNonEmptyString(
+                    obj["model_id"],
+                    obj["modelId"],
+                    obj["current_model_id"],
+                    obj["currentModelId"]
+                  )
+            else { return }
+            guard let date = firstDate(from: obj["ts"], obj["timestamp"], obj["createdAt"]) else {
+                return
+            }
+            changes.append(GrokModelChange(date: date, model: model))
+        }
+        return changes.sorted { $0.date < $1.date }
+    }
+
+    private static func grokSessionModel(in sessionDirectory: URL) -> String? {
+        if let model = grokModelFromJSON(
+            sessionDirectory.appendingPathComponent("summary.json"),
+            keys: ["current_model_id", "currentModelId", "model_id", "modelId"]
+        ) {
+            return model
+        }
+        if let model = grokModelFromJSON(
+            sessionDirectory.appendingPathComponent("signals.json"),
+            keys: ["primaryModelId", "primary_model_id", "current_model_id", "currentModelId"]
+        ) {
+            return model
+        }
+        if let model = grokModelFromJSONArray(
+            sessionDirectory.appendingPathComponent("signals.json"),
+            key: "modelsUsed"
+        ) {
+            return model
+        }
+        return grokModelTimeline(in: sessionDirectory).last?.model
+    }
+
+    private static func grokModelFromJSON(_ file: URL, keys: [String]) -> String? {
+        guard let data = try? Data(contentsOf: file),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return nil }
+        for key in keys {
+            if let value = firstNonEmptyString(obj[key]) {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func grokModelFromJSONArray(_ file: URL, key: String) -> String? {
+        guard let data = try? Data(contentsOf: file),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let values = obj[key] as? [Any]
+        else { return nil }
+        for value in values {
+            if let model = firstNonEmptyString(value) {
+                return model
+            }
+        }
+        return nil
+    }
+
+    private static func grokModel(
+        at date: Date,
+        timeline: [GrokModelChange],
+        fallback: String
+    ) -> String {
+        guard !timeline.isEmpty else { return fallback }
+        var current: String?
+        for change in timeline {
+            if change.date <= date {
+                current = change.model
+            } else {
+                break
+            }
+        }
+        return current ?? timeline.first?.model ?? fallback
     }
 
     // MARK: - AntiGravity (per-trajectory SQLite + protobuf blobs)
@@ -743,6 +878,7 @@ public enum CostUsageScanner {
     //   - field 5: cumulative cache-read pool size
     //   - field 9: reasoning / thinking tokens (counted as output)
     //   - field 10: tool tokens (counted as output)
+    // Model id lives at path `1.19`.
     // Timestamp lives at path `1.9.4` (seconds + nanos).
     //
     // The CLI-only `~/.gemini/antigravity-cli/conversations/*.pb`
@@ -791,9 +927,10 @@ public enum CostUsageScanner {
                 // Claude / Gemini, so fold them into output here.
                 let output = turn.outputTokens + turn.thoughtsTokens + turn.toolTokens
                 guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { continue }
+                let model = normalizedNonEmpty(turn.model) ?? "antigravity-default"
                 let parsedEvent = CostUsageScanCache.ParsedEvent(
                     date: turn.date,
-                    model: "antigravity-default",
+                    model: model,
                     input: input,
                     output: output,
                     cache: cacheRead + cacheCreation,
@@ -1191,6 +1328,41 @@ public enum CostUsageScanner {
 
     private static func parseISO(_ raw: String) -> Date? {
         isoWithFraction.date(from: raw) ?? isoStandard.date(from: raw)
+    }
+
+    private static func normalizedNonEmpty(_ raw: String?) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty
+        else { return nil }
+        return value
+    }
+
+    private static func firstNonEmptyString(_ values: Any?...) -> String? {
+        for value in values {
+            if let string = value as? String,
+               let normalized = normalizedNonEmpty(string) {
+                return normalized
+            }
+            if let number = value as? NSNumber {
+                let string = number.stringValue
+                if let normalized = normalizedNonEmpty(string) {
+                    return normalized
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func firstDate(from values: Any?...) -> Date? {
+        for value in values {
+            if let string = value as? String, let date = parseISO(string) {
+                return date
+            }
+            if let number = value as? NSNumber {
+                return Date(timeIntervalSince1970: number.doubleValue)
+            }
+        }
+        return nil
     }
 
     private static func anyInt(_ value: Any?) -> Int {

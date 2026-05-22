@@ -119,7 +119,7 @@ struct PopoverRoot: View {
         case .claude:
             ProviderDetailView(tool: .claude, density: density)
         case .status:
-            ServiceStatusCard(tools: ToolType.statusPageProviders)
+            ServiceStatusCard(tools: ToolType.combinedStatusPageProviders)
         }
     }
 
@@ -189,7 +189,7 @@ struct PopoverRoot: View {
         }
         switch effectiveKind {
         case .compact:          return ToolType.dedicatedCardProviders
-        case .status:           return ToolType.statusPageProviders
+        case .status:           return ToolType.combinedStatusPageProviders
         case .codex:            return [.codex]
         case .claude:           return [.claude]
         }
@@ -408,11 +408,12 @@ private struct OverviewWaterfall: View {
     @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
-        let snapshots = ToolType.costAwareProviders.compactMap { environment.costService.snapshot(for: $0) }
+        let snapshots = overviewCostSnapshots
         let combinedHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let combinedHeatmap = CostSnapshotAggregator.combinedHeatmap(snapshots)
         let combinedModels = CostSnapshotAggregator.combinedModelBreakdowns(snapshots)
         let hasCostData = snapshots.contains { $0.jsonlFilesFound > 0 }
+        let googleAISnapshot = googleAICombinedSnapshot
 
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             CombinedTotalsRow(density: density)
@@ -426,8 +427,20 @@ private struct OverviewWaterfall: View {
                 ForEach(ToolType.partialPrimaryProviders, id: \.self) { tool in
                     ProviderQuotaCard(tool: tool, density: density, compact: false)
                 }
-                ForEach(ToolType.costAwareProviders, id: \.self) { tool in
-                    OverviewCostCard(tool: tool, density: density)
+                ForEach(overviewCostProviders, id: \.self) { tool in
+                    if tool == .gemini {
+                        OverviewCostCard(
+                            tool: .gemini,
+                            density: density,
+                            snapshotOverride: googleAISnapshot,
+                            titleOverride: "Google AI Cost",
+                            emptyMessageOverride: "No Google AI local cost data yet.",
+                            toolNameOverride: "Google AI",
+                            heatmapTitleOverride: "When you use Google AI"
+                        )
+                    } else {
+                        OverviewCostCard(tool: tool, density: density)
+                    }
                 }
                 if hasCostData {
                     ModelRankingList(
@@ -452,6 +465,25 @@ private struct OverviewWaterfall: View {
                 }
             }
         }
+    }
+
+    private var overviewCostProviders: [ToolType] {
+        [.codex, .claude, .gemini, .grok]
+    }
+
+    private var overviewCostSnapshots: [CostSnapshot] {
+        overviewCostProviders.compactMap { tool in
+            if tool == .gemini {
+                return googleAICombinedSnapshot
+            }
+            return environment.costService.snapshot(for: tool)
+        }
+    }
+
+    private var googleAICombinedSnapshot: CostSnapshot? {
+        let snapshots = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
+        guard !snapshots.isEmpty else { return nil }
+        return CostSnapshotAggregator.combinedSnapshot(tool: .gemini, snapshots: snapshots)
     }
 }
 
@@ -483,12 +515,11 @@ private struct GoogleAIDualPage: View {
         let geminiAccounts = environment.accountStore
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
-        let costTools = ToolType.googleAIPair
-        let costSnapshots = costTools.compactMap { tool -> (ToolType, CostSnapshot)? in
-            guard let snapshot = environment.costService.snapshot(for: tool),
-                  snapshot.jsonlFilesFound > 0 else { return nil }
-            return (tool, snapshot)
-        }
+        let googleAICostSnapshot: CostSnapshot? = {
+            let snapshots = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
+            guard !snapshots.isEmpty else { return nil }
+            return CostSnapshotAggregator.combinedSnapshot(tool: .gemini, snapshots: snapshots)
+        }()
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
@@ -516,7 +547,7 @@ private struct GoogleAIDualPage: View {
                         )
                     }
                 }
-                ServiceStatusCard(tools: ToolType.googleAIPair)
+                ServiceStatusCard(tools: [.gemini])
             }
             .frame(
                 minWidth: googleAILeftColumnMinWidth,
@@ -526,10 +557,15 @@ private struct GoogleAIDualPage: View {
             )
 
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                if !costSnapshots.isEmpty {
-                    ForEach(costSnapshots, id: \.0) { tool, snapshot in
-                        ProviderCostStack(tool: tool, snapshot: snapshot, density: density)
-                    }
+                if let snapshot = googleAICostSnapshot, snapshot.jsonlFilesFound > 0 {
+                    ProviderCostStack(
+                        tool: .gemini,
+                        snapshot: snapshot,
+                        density: density,
+                        titleOverride: "Google AI Cost",
+                        toolNameOverride: "Google AI",
+                        heatmapTitleOverride: "When you use Google AI"
+                    )
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("No Google AI local cost data yet.")
@@ -569,10 +605,19 @@ private struct ProviderCostStack: View {
     let tool: ToolType
     let snapshot: CostSnapshot
     let density: Theme.Density
+    var titleOverride: String? = nil
+    var toolNameOverride: String? = nil
+    var heatmapTitleOverride: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-            CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
+            CostHeaderCard(
+                tool: tool,
+                snapshot: snapshot,
+                density: density,
+                titleOverride: titleOverride,
+                toolNameOverride: toolNameOverride
+            )
             CostHistoryView(
                 tool: tool,
                 snapshot: snapshot,
@@ -583,9 +628,9 @@ private struct ProviderCostStack: View {
             YearlyContributionHeatmapView(
                 history: snapshot.dailyHistory,
                 density: density,
-                toolName: tool.menuTitle
+                toolName: toolNameOverride ?? tool.menuTitle
             )
-            UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
+            UsageHeatmapView(heatmap: snapshot.heatmap, density: density, titleOverride: heatmapTitleOverride)
             UsageRateView(heatmap: snapshot.heatmap, density: density)
         }
     }
@@ -739,7 +784,7 @@ private struct OverviewStatusSummaryCard: View {
                 alignment: .leading,
                 spacing: 8
             ) {
-                ForEach(ToolType.statusPageProviders, id: \.self) { tool in
+                ForEach(ToolType.combinedStatusPageProviders, id: \.self) { tool in
                     providerStatusTile(tool)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -759,7 +804,7 @@ private struct OverviewStatusSummaryCard: View {
 
     private func providerStatusTile(_ tool: ToolType) -> some View {
         let state = statusState(for: tool)
-        let snapshot = serviceStatus.snapshotByTool[tool]
+        let snapshot = statusSnapshot(for: tool)
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: state.iconName)
@@ -768,7 +813,7 @@ private struct OverviewStatusSummaryCard: View {
                 ToolBrandIconView(tool: tool, size: 16)
                     .opacity(0.9)
                     .frame(width: 18, height: 18)
-                Text(tool.statusProviderName)
+                Text(statusTitle(for: tool))
                     .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -810,8 +855,8 @@ private struct OverviewStatusSummaryCard: View {
         snapshot: ServiceStatusSnapshot?,
         state: OverviewStatusState
     ) -> String {
-        if serviceStatus.inFlight.contains(tool) { return "Refreshing" }
-        if serviceStatus.errorByTool[tool] != nil { return "Fetch failed" }
+        if statusInFlight(for: tool) { return "Refreshing" }
+        if statusError(for: tool) != nil { return "Fetch failed" }
         if let incident = snapshot?.recentIncidents.first, !incident.isResolved {
             return incident.name
         }
@@ -819,13 +864,13 @@ private struct OverviewStatusSummaryCard: View {
     }
 
     private func statusState(for tool: ToolType) -> OverviewStatusState {
-        if serviceStatus.inFlight.contains(tool) {
+        if statusInFlight(for: tool) {
             return .checking
         }
-        if serviceStatus.errorByTool[tool] != nil {
+        if statusError(for: tool) != nil {
             return .down
         }
-        guard let indicator = serviceStatus.snapshotByTool[tool]?.indicator else {
+        guard let indicator = statusSnapshot(for: tool)?.indicator else {
             return .checking
         }
         switch indicator {
@@ -842,6 +887,35 @@ private struct OverviewStatusSummaryCard: View {
         case .critical:
             return .down
         }
+    }
+
+    private func statusTitle(for tool: ToolType) -> String {
+        tool == .gemini ? "Google AI" : tool.statusProviderName
+    }
+
+    private func statusSnapshot(for tool: ToolType) -> ServiceStatusSnapshot? {
+        if tool == .gemini {
+            return serviceStatus.snapshotByTool[.gemini]
+                ?? serviceStatus.snapshotByTool[.antigravity]
+        }
+        return serviceStatus.snapshotByTool[tool]
+    }
+
+    private func statusInFlight(for tool: ToolType) -> Bool {
+        if tool == .gemini {
+            return serviceStatus.inFlight.contains(.gemini)
+                || serviceStatus.inFlight.contains(.antigravity)
+        }
+        return serviceStatus.inFlight.contains(tool)
+    }
+
+    private func statusError(for tool: ToolType) -> String? {
+        if tool == .gemini {
+            if statusSnapshot(for: tool) != nil { return nil }
+            return serviceStatus.errorByTool[.gemini]
+                ?? serviceStatus.errorByTool[.antigravity]
+        }
+        return serviceStatus.errorByTool[tool]
     }
 }
 
@@ -902,18 +976,25 @@ private enum OverviewStatusState {
 private struct OverviewCostCard: View {
     let tool: ToolType
     let density: Theme.Density
+    var snapshotOverride: CostSnapshot? = nil
+    var titleOverride: String? = nil
+    var emptyMessageOverride: String? = nil
+    var toolNameOverride: String? = nil
+    var heatmapTitleOverride: String? = nil
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
     @State private var detailPresented: Bool = false
 
     var body: some View {
-        let snapshot = environment.costService.snapshot(for: tool)
+        let snapshot = snapshotOverride ?? environment.costService.snapshot(for: tool)
+        let title = titleOverride ?? "\(tool.menuTitle) Cost"
+        let toolName = toolNameOverride ?? tool.menuTitle
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: "\(tool.menuTitle) Cost",
+                    title: title,
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
@@ -925,7 +1006,7 @@ private struct OverviewCostCard: View {
                         .controlSize(.small)
                         .frame(width: 12, height: 12)
                 }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(tool.menuTitle) cost") {
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(toolName) cost") {
                     environment.refreshCostUsage()
                 }
                 .disabled(costService.isRefreshing)
@@ -941,7 +1022,14 @@ private struct OverviewCostCard: View {
                     .foregroundStyle(.secondary)
                     .help("Open full charts")
                     .popover(isPresented: $detailPresented, arrowEdge: .trailing) {
-                        CostDetailPopoverContent(tool: tool, density: density)
+                        CostDetailPopoverContent(
+                            tool: tool,
+                            density: density,
+                            snapshotOverride: snapshot,
+                            titleOverride: "\(title) — Full Charts",
+                            toolNameOverride: toolName,
+                            heatmapTitleOverride: heatmapTitleOverride
+                        )
                             .frame(width: max(660, density.popoverWidth * 0.70), height: 660)
                     }
                 }
@@ -952,7 +1040,7 @@ private struct OverviewCostCard: View {
                 CostHistoryView(tool: tool, snapshot: snapshot, density: density, chartHeight: 160)
                     .padding(.top, 2)
             } else {
-                Text(emptyMessage)
+                Text(emptyMessageOverride ?? emptyMessage)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 24)
@@ -993,17 +1081,21 @@ private struct OverviewCostCard: View {
 private struct CostDetailPopoverContent: View {
     let tool: ToolType
     let density: Theme.Density
+    var snapshotOverride: CostSnapshot? = nil
+    var titleOverride: String? = nil
+    var toolNameOverride: String? = nil
+    var heatmapTitleOverride: String? = nil
 
     @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
-        let snapshot = environment.costService.snapshot(for: tool)
+        let snapshot = snapshotOverride ?? environment.costService.snapshot(for: tool)
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 HStack(alignment: .center) {
                     ProviderSectionTitle(
                         tool: tool,
-                        title: "\(tool.menuTitle) Cost — Full Charts",
+                        title: titleOverride ?? "\(tool.menuTitle) Cost — Full Charts",
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 15,
@@ -1017,8 +1109,12 @@ private struct CostDetailPopoverContent: View {
                     }
                 }
                 if let snap = snapshot {
-                    YearlyContributionHeatmapView(history: snap.dailyHistory, density: density, toolName: tool.menuTitle)
-                    UsageHeatmapView(heatmap: snap.heatmap, density: density)
+                    YearlyContributionHeatmapView(
+                        history: snap.dailyHistory,
+                        density: density,
+                        toolName: toolNameOverride ?? tool.menuTitle
+                    )
+                    UsageHeatmapView(heatmap: snap.heatmap, density: density, titleOverride: heatmapTitleOverride)
                     UsageRateView(heatmap: snap.heatmap, density: density)
                 }
             }
@@ -1126,6 +1222,8 @@ private struct CostHeaderCard: View {
     let tool: ToolType
     let snapshot: CostSnapshot
     let density: Theme.Density
+    var titleOverride: String? = nil
+    var toolNameOverride: String? = nil
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
@@ -1135,7 +1233,7 @@ private struct CostHeaderCard: View {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: "\(tool.menuTitle) Cost",
+                    title: titleOverride ?? "\(tool.menuTitle) Cost",
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
@@ -1150,7 +1248,7 @@ private struct CostHeaderCard: View {
                         .controlSize(.small)
                         .frame(width: 12, height: 12)
                 }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(tool.menuTitle) cost") {
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(toolNameOverride ?? tool.menuTitle) cost") {
                     environment.refreshCostUsage()
                 }
                 .disabled(costService.isRefreshing)
