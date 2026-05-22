@@ -293,7 +293,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
 ///   bucket.
 /// - The 7×24 heatmap is summed cell-by-cell. The returned heatmap's `tool`
 ///   field is irrelevant for the combined view; callers should pass an
-///   explicit title to `UsageHeatmapView` instead of relying on it.
+///   explicit title to `UsageActivityView` instead of relying on it.
 /// - Models from different providers don't normally collide, but if they do
 ///   we sum costs/tokens under the shared name. The output is sorted by cost
 ///   desc to match the existing single-provider rendering.

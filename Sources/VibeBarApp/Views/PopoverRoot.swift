@@ -447,14 +447,10 @@ private struct OverviewWaterfall: View {
                         density: density,
                         toolName: "All providers"
                     )
-                    UsageHeatmapView(
+                    UsageActivityView(
                         heatmap: combinedHeatmap,
                         density: density,
                         titleOverride: "When you use everything"
-                    )
-                    UsageRateView(
-                        heatmap: combinedHeatmap,
-                        density: density
                     )
                 }
             }
@@ -592,8 +588,7 @@ private struct ProviderCostStack: View {
                 density: density,
                 toolName: toolNameOverride ?? tool.menuTitle
             )
-            UsageHeatmapView(heatmap: snapshot.heatmap, density: density, titleOverride: heatmapTitleOverride)
-            UsageRateView(heatmap: snapshot.heatmap, density: density)
+            UsageActivityView(heatmap: snapshot.heatmap, density: density, titleOverride: heatmapTitleOverride)
         }
     }
 }
@@ -1122,8 +1117,7 @@ private struct CostDetailPopoverContent: View {
                         density: density,
                         toolName: toolNameOverride ?? tool.menuTitle
                     )
-                    UsageHeatmapView(heatmap: snap.heatmap, density: density, titleOverride: heatmapTitleOverride)
-                    UsageRateView(heatmap: snap.heatmap, density: density)
+                    UsageActivityView(heatmap: snap.heatmap, density: density, titleOverride: heatmapTitleOverride)
                 }
             }
             .padding(density.cardPadding)
@@ -1192,8 +1186,7 @@ private struct ProviderDetailView: View {
                     )
                     ModelRankingList(snapshot: snapshot, density: density)
                     YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
-                    UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
-                    UsageRateView(heatmap: snapshot.heatmap, density: density)
+                    UsageActivityView(heatmap: snapshot.heatmap, density: density)
                 } else {
                     Text("No \(tool.menuTitle) CLI sessions found yet.")
                         .font(.system(size: density.subtitleFontSize))
