@@ -217,9 +217,9 @@ public enum MockDataProvider {
                             usedPercent: 18, resetAt: weeklyReset, rawWindowSeconds: 604_800, groupTitle: "Opus")
             ]
         case .gemini:
-            // Partial-primary mock: per-model buckets matching the
-            // shape Gemini CLI / Web returns. Reset times are arbitrary —
-            // the live data overrides whichever fields are present.
+            // Partial-primary mock: per-model buckets keep the Google
+            // AI UI populated in mock mode. Reset times are arbitrary;
+            // live Web data overrides whichever fields are present.
             buckets = [
                 QuotaBucket(id: "gemini-2.5-pro", title: "Pro", shortLabel: "Pro",
                             usedPercent: 78, resetAt: weeklyReset, rawWindowSeconds: nil, groupTitle: "Pro"),
@@ -254,8 +254,7 @@ public enum MockDataProvider {
                     shortLabel: "Monthly",
                     usedPercent: 45,
                     resetAt: monthlyReset,
-                    rawWindowSeconds: nil,
-                    groupTitle: "Grok"
+                    rawWindowSeconds: nil
                 )
             ]
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:

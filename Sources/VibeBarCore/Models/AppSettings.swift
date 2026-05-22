@@ -44,7 +44,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mockEnabled: false,
         codexUsageMode: .auto,
         claudeUsageMode: .auto,
-        geminiUsageMode: .auto,
+        geminiUsageMode: .webOnly,
         antigravityUsageMode: .auto,
         menuBarItems: Self.defaultMenuBarItems,
         miniWindow: Self.defaultMiniWindow,
@@ -144,7 +144,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mockEnabled: Bool,
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
-        geminiUsageMode: GeminiUsageMode = .auto,
+        geminiUsageMode: GeminiUsageMode = .webOnly,
         antigravityUsageMode: AntigravityUsageMode = .auto,
         menuBarItems: [MenuBarItemSettings] = AppSettings.defaultMenuBarItems,
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
@@ -871,31 +871,23 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
     }
 }
 
-/// Gemini exposes two complementary usage views (Code Assist quota via
-/// the CLI's OAuth credentials, and gemini.google.com's per-model
-/// compute usage). They surface different bucket sets — running both
-/// and merging is the default. The single-source modes exist for users
-/// who only sign in via one path or want to silence noisy errors from
-/// the other.
+/// Gemini quota is fetched only from gemini.google.com's Web usage
+/// surface. Local Gemini CLI logs still feed historical cost/usage
+/// scanning, but the CLI OAuth quota endpoint is intentionally not a
+/// live quota source.
 public enum GeminiUsageMode: String, Codable, CaseIterable, Identifiable, Sendable {
-    case auto
-    case oauthOnly
     case webOnly
 
     public var id: String { rawValue }
 
     public var label: String {
         switch self {
-        case .auto: return "Auto (CLI + Web)"
-        case .oauthOnly: return "Gemini CLI only"
         case .webOnly: return "Gemini Web only"
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: return "Fetch both ~/.gemini/oauth_creds.json (Code Assist) and imported gemini.google.com cookies in parallel; merge whichever buckets each source returns."
-        case .oauthOnly: return "Only fetch the Gemini CLI OAuth credentials at ~/.gemini/oauth_creds.json."
         case .webOnly: return "Only fetch imported gemini.google.com cookies."
         }
     }

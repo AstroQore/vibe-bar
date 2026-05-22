@@ -9,7 +9,7 @@ import XCTest
 /// path and the normalisation helpers now filter by `isMiscPageProvider`.
 final class AppSettingsGoogleAIMigrationTests: XCTestCase {
     func testDefaultIncludesNewGoogleAIUsageModes() {
-        XCTAssertEqual(AppSettings.default.geminiUsageMode, .auto)
+        XCTAssertEqual(AppSettings.default.geminiUsageMode, .webOnly)
         XCTAssertEqual(AppSettings.default.antigravityUsageMode, .auto)
     }
 
@@ -25,12 +25,11 @@ final class AppSettingsGoogleAIMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.antigravityUsageMode, .localOnly)
     }
 
-    /// Old `settings.json` files persisted while the v1 enum was in
-    /// place may contain `.oauthThenWeb` or `.webThenOAuth`. The
-    /// `decodeIfPresent` fallback should drop the unknown value and
-    /// re-default to `.auto` (dual-fetch) — which is what the user
-    /// likely wanted anyway.
-    func testLegacyGeminiUsageModeFallsBackToAuto() throws {
+    /// Old `settings.json` files persisted while earlier enums were
+    /// in place may contain CLI/OAuth modes. The `decodeIfPresent`
+    /// fallback should drop the unknown value and re-default to
+    /// `.webOnly`, because CLI quota fetch is no longer supported.
+    func testLegacyGeminiUsageModeFallsBackToWebOnly() throws {
         let json = """
         {
           "displayMode": "remaining",
@@ -42,7 +41,7 @@ final class AppSettingsGoogleAIMigrationTests: XCTestCase {
         }
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        XCTAssertEqual(settings.geminiUsageMode, .auto)
+        XCTAssertEqual(settings.geminiUsageMode, .webOnly)
     }
 
     func testLegacyGeminiMiscInstanceIsDroppedOnDecode() throws {

@@ -1,135 +1,31 @@
 import Foundation
 
-/// Google Gemini partial-primary usage adapter. Gemini exposes two
-/// sources with structurally **different** bucket shapes, so each
-/// gets its own `AccountIdentity` and renders as a separate card —
-/// this adapter just dispatches by `account.source`, it does not
-/// merge.
+/// Google Gemini partial-primary usage adapter.
 ///
-/// Sources:
-/// - **OAuth CLI** (`account.source == .oauthCLI`, id `oauth-gemini`)
-///   — read `~/.gemini/oauth_creds.json`, reuse `access_token`, call
-///   `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`.
-///   Returns per-model `remainingFraction` (Pro / Flash / Flash Lite).
-///   `GeminiTokenRefreshHelper` shells out to `gemini` itself to
-///   refresh expired tokens.
-/// - **Web cookie** (`account.source == .webCookie`, id `web-gemini`)
-///   — use cookies imported from `gemini.google.com` (Chrome Safe
-///   Storage via SweetCookieKit). Routed through
-///   `GeminiWebQuotaFetcher`; the page shows aggregate Current usage
-///   + Weekly limit (the same data `gemini.google.com/usage` displays),
-///   not per-model.
-///
-/// Account selection happens in `AccountStore.autoDetectGemini`,
-/// which returns one identity per configured-and-enabled source.
+/// Live quota is intentionally Web-only: imported `gemini.google.com`
+/// cookies are routed through `GeminiWebQuotaFetcher`. Local Gemini CLI
+/// telemetry and chat-history files still feed historical cost/usage
+/// scanning, but `~/.gemini/oauth_creds.json` is no longer used for
+/// quota fetching.
 public struct GeminiQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .gemini
 
     private let session: URLSession
-    private let homeDirectory: String
     private let now: @Sendable () -> Date
 
     public init(
         session: URLSession = .shared,
-        homeDirectory: String = RealHomeDirectory.path,
+        homeDirectory _: String = RealHomeDirectory.path,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.session = session
-        self.homeDirectory = homeDirectory
         self.now = now
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        switch account.source {
-        case .oauthCLI:
-            return try await fetchWithOAuth(for: account)
-        case .webCookie:
-            return try await fetchWithWebCookies(for: account)
-        default:
-            // Shouldn't happen — AccountStore only registers Gemini
-            // accounts with these two sources. Surface a clear error
-            // if it ever does (e.g. a stale persisted source value).
-            throw QuotaError.unknown("Gemini adapter received unsupported source \(account.source)")
+        guard account.source == .webCookie else {
+            throw QuotaError.unknown("Gemini live quota supports only imported gemini.google.com cookies.")
         }
-    }
-
-    private func fetchWithOAuth(for account: AccountIdentity) async throws -> AccountQuota {
-        let credsURL = URL(fileURLWithPath: homeDirectory)
-            .appendingPathComponent(".gemini/oauth_creds.json")
-
-        guard FileManager.default.fileExists(atPath: credsURL.path) else {
-            throw QuotaError.noCredential
-        }
-
-        var credentials: GeminiCredentials
-        do {
-            credentials = try GeminiCredentials.load(from: credsURL)
-        } catch {
-            throw QuotaError.parseFailure("Could not parse \(credsURL.path): \(error.localizedDescription)")
-        }
-
-        credentials = await GeminiTokenRefreshHelper.refreshedCredentialsIfNeeded(
-            credentials,
-            credentialsURL: credsURL,
-            homeDirectory: homeDirectory,
-            now: now()
-        )
-
-        guard let accessToken = credentials.accessToken, !accessToken.isEmpty else {
-            throw QuotaError.noCredential
-        }
-
-        if let expiry = credentials.expiry, expiry < now() {
-            // The keepalive in `GeminiTokenRefreshHelper` is best-effort
-            // and cooldown-throttled. A stale token reaching this point
-            // means the keepalive failed or is on cooldown; hint the
-            // user to refresh in a terminal instead of silently failing.
-            throw QuotaError.needsLogin
-        }
-
-        var request = URLRequest(url: GeminiEndpoint.retrieveUserQuota)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data("{}".utf8)
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw QuotaError.network("Gemini network error: \(error.localizedDescription)")
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw QuotaError.network("Gemini: invalid response object")
-        }
-        guard http.statusCode == 200 else {
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw QuotaError.needsLogin
-            }
-            if http.statusCode == 429 {
-                throw QuotaError.rateLimited
-            }
-            throw QuotaError.network("Gemini returned HTTP \(http.statusCode).")
-        }
-
-        let snapshot = try GeminiResponseParser.parse(
-            data: data,
-            email: GeminiCredentials.email(from: credentials.idToken),
-            now: now()
-        )
-        return AccountQuota(
-            accountId: account.id,
-            tool: .gemini,
-            buckets: snapshot.buckets,
-            plan: snapshot.planName,
-            email: snapshot.email,
-            queriedAt: now(),
-            error: nil
-        )
-    }
-
-    private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
         let header: String
         do {
             header = try GeminiWebCookieStore.readCookieHeader()
@@ -149,72 +45,6 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         )
     }
 
-}
-
-// MARK: - Endpoints
-
-enum GeminiEndpoint {
-    static let retrieveUserQuota = URL(string: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota")!
-}
-
-// MARK: - Credentials file
-
-public struct GeminiCredentials {
-    public let accessToken: String?
-    public let idToken: String?
-    public let refreshToken: String?
-    public let expiry: Date?
-
-    public init(
-        accessToken: String?,
-        idToken: String?,
-        refreshToken: String?,
-        expiry: Date?
-    ) {
-        self.accessToken = accessToken
-        self.idToken = idToken
-        self.refreshToken = refreshToken
-        self.expiry = expiry
-    }
-
-    public static func load(from url: URL) throws -> GeminiCredentials {
-        let data = try Data(contentsOf: url)
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw QuotaError.parseFailure("oauth_creds.json was not a JSON object")
-        }
-        var expiry: Date?
-        if let ms = json["expiry_date"] as? Double {
-            expiry = Date(timeIntervalSince1970: ms / 1000)
-        } else if let ms = json["expiry_date"] as? Int {
-            expiry = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
-        }
-        return GeminiCredentials(
-            accessToken: json["access_token"] as? String,
-            idToken: json["id_token"] as? String,
-            refreshToken: json["refresh_token"] as? String,
-            expiry: expiry
-        )
-    }
-
-    /// Decode the Google ID token's payload claims and return the
-    /// `email` field. JWT validation is not performed — the token
-    /// came from local disk so we treat it as already authoritative.
-    public static func email(from idToken: String?) -> String? {
-        guard let idToken else { return nil }
-        let parts = idToken.split(separator: ".")
-        guard parts.count >= 2 else { return nil }
-        var payload = String(parts[1])
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let pad = payload.count % 4
-        if pad > 0 { payload += String(repeating: "=", count: 4 - pad) }
-        guard let data = Data(base64Encoded: payload, options: .ignoreUnknownCharacters),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return nil
-        }
-        return json["email"] as? String
-    }
 }
 
 // MARK: - Response parsing
@@ -325,139 +155,4 @@ private struct GeminiAPIBucket: Decodable {
     let resetTime: String?
     let modelId: String?
     let tokenType: String?
-}
-
-public enum GeminiTokenRefreshHelper {
-    public static let refreshLeadTime: TimeInterval = 10 * 60
-    private static let attemptCooldown: TimeInterval = 5 * 60
-    private static let lock = NSLock()
-    private nonisolated(unsafe) static var lastAttemptAt: Date?
-
-    public static func refreshedCredentialsIfNeeded(
-        _ credentials: GeminiCredentials,
-        credentialsURL: URL,
-        homeDirectory: String = RealHomeDirectory.path,
-        now: Date = Date()
-    ) async -> GeminiCredentials {
-        guard shouldRefresh(expiry: credentials.expiry, now: now, leadTime: refreshLeadTime) else {
-            return credentials
-        }
-        guard claimAttempt(now: now) else {
-            return credentials
-        }
-        guard let binary = resolveGeminiBinary(homeDirectory: homeDirectory) else {
-            SafeLog.warn("Gemini token refresh skipped: gemini CLI not found")
-            return credentials
-        }
-
-        do {
-            let result = try await ProcessRunner.run(
-                binary: binary,
-                arguments: [
-                    "--prompt",
-                    "Vibe Bar token refresh keepalive. Do not use tools. Reply OK.",
-                    "--output-format",
-                    "json",
-                    "--skip-trust"
-                ],
-                timeout: 90,
-                label: "gemini token refresh",
-                environment: refreshEnvironment(binary: binary, homeDirectory: homeDirectory)
-            )
-            guard result.terminationStatus == 0 else {
-                SafeLog.warn("Gemini token refresh exited \(result.terminationStatus)")
-                return credentials
-            }
-            return (try? GeminiCredentials.load(from: credentialsURL)) ?? credentials
-        } catch {
-            SafeLog.warn("Gemini token refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
-            return credentials
-        }
-    }
-
-    public static func shouldRefresh(expiry: Date?, now: Date, leadTime: TimeInterval) -> Bool {
-        guard let expiry else { return false }
-        return expiry <= now.addingTimeInterval(leadTime)
-    }
-
-    public static func resolveGeminiBinary(
-        homeDirectory: String = RealHomeDirectory.path,
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> String? {
-        for candidate in geminiBinaryCandidates(homeDirectory: homeDirectory, environment: environment) {
-            if FileManager.default.isExecutableFile(atPath: candidate) {
-                return candidate
-            }
-        }
-        return nil
-    }
-
-    private static func claimAttempt(now: Date) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        if let lastAttemptAt, now.timeIntervalSince(lastAttemptAt) < attemptCooldown {
-            return false
-        }
-        lastAttemptAt = now
-        return true
-    }
-
-    private static func refreshEnvironment(binary: String, homeDirectory: String) -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
-        env["HOME"] = homeDirectory
-        let binaryDir = URL(fileURLWithPath: binary).deletingLastPathComponent().path
-        let existing = env["PATH"]?.split(separator: ":").map(String.init) ?? []
-        let path = unique([
-            binaryDir,
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "/usr/bin",
-            "/bin",
-            "/usr/sbin",
-            "/sbin"
-        ] + existing)
-        env["PATH"] = path.joined(separator: ":")
-        return env
-    }
-
-    private static func geminiBinaryCandidates(
-        homeDirectory: String,
-        environment: [String: String]
-    ) -> [String] {
-        var candidates: [String] = []
-        if let path = environment["PATH"] {
-            candidates.append(contentsOf: path.split(separator: ":").map { "\($0)/gemini" })
-        }
-        candidates.append(contentsOf: [
-            "\(homeDirectory)/.npm-global/bin/gemini",
-            "\(homeDirectory)/.bun/bin/gemini",
-            "/opt/homebrew/bin/gemini",
-            "/usr/local/bin/gemini"
-        ])
-
-        let nvmRoot = URL(fileURLWithPath: homeDirectory)
-            .appendingPathComponent(".nvm/versions/node")
-        if let versions = try? FileManager.default.contentsOfDirectory(
-            at: nvmRoot,
-            includingPropertiesForKeys: nil
-        ) {
-            let sorted = versions.sorted {
-                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending
-            }
-            candidates.append(contentsOf: sorted.map {
-                $0.appendingPathComponent("bin/gemini").path
-            })
-        }
-
-        return unique(candidates)
-    }
-
-    private static func unique(_ values: [String]) -> [String] {
-        var seen: Set<String> = []
-        var out: [String] = []
-        for value in values where seen.insert(value).inserted {
-            out.append(value)
-        }
-        return out
-    }
 }

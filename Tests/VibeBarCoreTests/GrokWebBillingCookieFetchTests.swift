@@ -73,6 +73,62 @@ final class GrokWebBillingCookieFetchTests: XCTestCase {
         }
     }
 
+    func testQuotaAdapterSurfacesMonthlyBucketAsTopLevel() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GrokCookieStubURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibebar-grok-adapter-\(UUID().uuidString)", isDirectory: true)
+        let grokDir = home.appendingPathComponent(".grok", isDirectory: true)
+        try FileManager.default.createDirectory(at: grokDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let auth = """
+        {
+          "https://auth.x.ai::client": {
+            "key": "xai-fake-token",
+            "auth_mode": "oidc",
+            "email": "user@example.com",
+            "expires_at": "2099-01-01T00:00:00Z"
+          }
+        }
+        """
+        try Data(auth.utf8).write(to: grokDir.appendingPathComponent("auth.json"))
+
+        GrokCookieStubURLProtocol.reset()
+        GrokCookieStubURLProtocol.handler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer xai-fake-token")
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/grpc-web+proto"]
+            )!
+            let payload = Self.protobufPayload(usedPercent: 72, resetEpoch: 1_800_000_000)
+            return (response, Self.grpcFrame(payload))
+        }
+
+        let adapter = GrokQuotaAdapter(
+            session: session,
+            homeDirectory: home.path,
+            now: { Date(timeIntervalSince1970: 1_799_000_000) }
+        )
+        let account = AccountIdentity(
+            id: "grok",
+            tool: .grok,
+            alias: "Grok",
+            source: .oauthCLI,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+
+        let quota = try await adapter.fetch(for: account)
+
+        XCTAssertEqual(quota.buckets.count, 1)
+        XCTAssertEqual(quota.buckets[0].id, "monthly")
+        XCTAssertNil(quota.buckets[0].groupTitle)
+    }
+
     // MARK: - Helpers
 
     private static func protobufPayload(usedPercent: Float, resetEpoch: UInt64) -> Data {

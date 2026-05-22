@@ -104,8 +104,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             shortLabel: "Monthly",
             usedPercent: snapshot.usedPercent,
             resetAt: snapshot.resetsAt,
-            rawWindowSeconds: nil,
-            groupTitle: "Grok"
+            rawWindowSeconds: nil
         )
         return AccountQuota(
             accountId: account.id,

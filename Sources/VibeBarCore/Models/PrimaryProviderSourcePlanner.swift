@@ -80,25 +80,20 @@ public enum ClaudeSourcePlanner {
     }
 }
 
-/// Gemini's adapter does not walk a fallback chain — it runs the
-/// enabled sources in parallel and merges their buckets. Callers ask
-/// the planner which sources are enabled for the current mode; order
-/// within the returned array is informational only.
+/// Gemini live quota comes only from the Web usage surface. The local
+/// CLI still feeds historical cost/usage scans, but it is not a quota
+/// source.
 public enum GeminiSourcePlanner {
-    public static func enabledSources(mode: GeminiUsageMode) -> [CredentialSource] {
-        switch mode {
-        case .auto:      return [.oauthCLI, .webCookie]
-        case .oauthOnly: return [.oauthCLI]
-        case .webOnly:   return [.webCookie]
-        }
+    public static func enabledSources(mode _: GeminiUsageMode) -> [CredentialSource] {
+        [.webCookie]
     }
 
-    public static func runsOAuth(mode: GeminiUsageMode) -> Bool {
-        enabledSources(mode: mode).contains(.oauthCLI)
+    public static func runsOAuth(mode _: GeminiUsageMode) -> Bool {
+        false
     }
 
-    public static func runsWeb(mode: GeminiUsageMode) -> Bool {
-        enabledSources(mode: mode).contains(.webCookie)
+    public static func runsWeb(mode _: GeminiUsageMode) -> Bool {
+        true
     }
 }
 

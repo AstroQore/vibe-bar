@@ -35,9 +35,8 @@ final class GeminiModelNameTests: XCTestCase {
     }
 
     func testTwoFlashLiteVariantsRenderAsDistinctRows() throws {
-        // The actual bug: two different Flash Lite buckets came back
-        // from `retrieveUserQuota` and the popover rendered both with
-        // an identical "Flash Lite" header.
+        // The actual bug: two different Flash Lite quota buckets
+        // rendered with an identical "Flash Lite" header.
         let json = """
         {
           "buckets": [

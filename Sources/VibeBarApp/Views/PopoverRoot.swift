@@ -495,13 +495,10 @@ private struct GrokPage: View {
     }
 }
 
-/// The "Google AI" overview sub-page. Gemini's two sources expose
-/// **structurally different** bucket shapes — Code Assist returns
-/// per-model fractions, gemini.google.com returns aggregate Current /
-/// Weekly — so each source becomes its own card. Antigravity gets
-/// its own quota card (local-LSP probe), and the page surfaces the
-/// Gemini + Antigravity local cost panels plus the shared Google status
-/// feed.
+/// The "Google AI" overview sub-page. Gemini live quota comes from
+/// gemini.google.com cookies, Antigravity gets its own local-LSP quota
+/// card, and the page surfaces the combined Gemini + Antigravity local
+/// cost panels plus the shared Google status feed.
 private struct GoogleAIDualPage: View {
     let density: Theme.Density
 
@@ -510,8 +507,6 @@ private struct GoogleAIDualPage: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        // Order is deterministic: CLI before Web (Account id
-        // "oauth-gemini" sorts before "web-gemini"); then Antigravity.
         let geminiAccounts = environment.accountStore
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
@@ -532,15 +527,11 @@ private struct GoogleAIDualPage: View {
                     )
                 }
                 ProviderQuotaCard(tool: .antigravity, density: density, compact: false)
-                if let cliAccount = geminiAccounts.first(where: { $0.source == .oauthCLI }) {
-                    // Subscription Utilization only renders against
-                    // OAuth-source quotas (CLI). Web-source buckets
-                    // would mix different units (aggregate compute
-                    // vs per-model fractions) and confuse the bar.
+                if let geminiAccount = geminiAccounts.first {
                     TimelineView(.periodic(from: .now, by: 30)) { context in
                         SubscriptionUtilizationView(
                             tool: .gemini,
-                            buckets: quotaService.cachedQuota(for: cliAccount.id)?.buckets ?? [],
+                            buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
                             mode: settingsStore.displayMode,
                             density: density,
                             now: context.date
@@ -645,10 +636,13 @@ private struct CombinedTotalsRow: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
-    private let summaryHeight: CGFloat = 134
+    private let summaryHeight: CGFloat = 178
 
     var body: some View {
         let snapshots = ToolType.costAwareProviders.compactMap { environment.costService.snapshot(for: $0) }
+        let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
+        let activeDays = dailyHistory.filter { $0.costUSD > 0 || $0.totalTokens > 0 }
+        let activeTools = snapshots.filter { $0.allTimeCostUSD > 0 || $0.allTimeTokens > 0 || $0.jsonlFilesFound > 0 }.count
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
         let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
         let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
@@ -657,6 +651,11 @@ private struct CombinedTotalsRow: View {
         let todayTokens = snapshots.reduce(0) { $0 + $1.todayTokens }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let totalFiles = snapshots.reduce(0) { $0 + $1.jsonlFilesFound }
+        let topModel7D = CostSnapshotAggregator.combinedLast7DaysModelBreakdowns(snapshots).first
+        let peakDayCost = dailyHistory.map(\.costUSD).max() ?? 0
+        let averageDayCost = activeDays.isEmpty
+            ? 0
+            : activeDays.reduce(0.0) { $0 + $1.costUSD } / Double(activeDays.count)
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: 8) {
@@ -696,6 +695,15 @@ private struct CombinedTotalsRow: View {
                     metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
                     divider
                     metric(label: "SESSIONS", value: "\(totalFiles)")
+                }
+                HStack(alignment: .top, spacing: 0) {
+                    metric(label: "TOP 7D", value: formatModelName(topModel7D?.modelName))
+                    divider
+                    metric(label: "PEAK DAY", value: formatCost(peakDayCost))
+                    divider
+                    metric(label: "AVG/DAY", value: formatCost(averageDayCost))
+                    divider
+                    metric(label: "ACTIVE", value: "\(activeTools)/\(ToolType.costAwareProviders.count)")
                 }
             }
             .padding(density.cardPadding)
@@ -750,6 +758,12 @@ private struct CombinedTotalsRow: View {
         if tokens >= 1_000_000 { return String(format: "%.2fM", Double(tokens) / 1_000_000) }
         if tokens >= 1_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
         return "\(tokens)"
+    }
+
+    private func formatModelName(_ modelName: String?) -> String {
+        guard let modelName, !modelName.isEmpty else { return "-" }
+        if modelName.count <= 18 { return modelName }
+        return "\(modelName.prefix(17))..."
     }
 }
 
@@ -1296,8 +1310,8 @@ private func groupExtraBuckets(_ buckets: [QuotaBucket]) -> [ExtraGroup] {
 /// bottom — Extras is no longer its own tab.
 ///
 /// When `accountId` is non-nil the card targets that specific account
-/// (used by the Gemini split, where `.gemini` has both an `oauth-gemini`
-/// and a `web-gemini` account). The default — `accountId == nil` — falls
+/// (used by Gemini Web, where `.gemini` has a dedicated `web-gemini`
+/// account). The default — `accountId == nil` — falls
 /// back to "first account for this tool", which is the single-account
 /// behaviour every other provider uses today.
 struct ProviderQuotaCard: View {
@@ -1340,7 +1354,6 @@ struct ProviderQuotaCard: View {
         let cardSubtitle: String = {
             guard accountId != nil else { return tool.subtitle }
             switch account?.source {
-            case .oauthCLI: return "Code Assist · per-model"
             case .webCookie: return "gemini.google.com · current + weekly"
             default: return tool.subtitle
             }
