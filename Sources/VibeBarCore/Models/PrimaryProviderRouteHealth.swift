@@ -275,21 +275,34 @@ public enum PrimaryProviderRouteHealthChecker {
     }
 
     private static func antigravityLanguageServerIsRunning() -> Bool {
+        guard let result = captureProcessOutput(
+            executablePath: "/bin/ps",
+            arguments: ["-ax", "-o", "command="]
+        ), result.terminationStatus == 0 else {
+            return false
+        }
+        let output = result.output.lowercased()
+        return output.contains("language_server_macos") && output.contains("antigravity")
+    }
+
+    static func captureProcessOutput(
+        executablePath: String,
+        arguments: [String]
+    ) -> (terminationStatus: Int32, output: String)? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-ax", "-o", "command="]
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return false }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8)?.lowercased() else { return false }
-            return output.contains("language_server_macos") && output.contains("antigravity")
+            process.waitUntilExit()
+            guard let output = String(data: data, encoding: .utf8) else { return nil }
+            return (process.terminationStatus, output)
         } catch {
-            return false
+            return nil
         }
     }
 
