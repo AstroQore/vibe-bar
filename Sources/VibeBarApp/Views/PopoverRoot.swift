@@ -108,7 +108,7 @@ struct PopoverRoot: View {
             case .openAI:
                 ProviderDetailView(tool: .codex, density: density)
             case .googleAI:
-                GoogleAIDualPage(density: density)
+                GeminiTabPage(density: density)
             case .grok:
                 GrokPage(density: density)
             case .misc:
@@ -128,14 +128,14 @@ struct PopoverRoot: View {
             return "Misc Providers"
         }
         if kind == .compact, overviewPage == .googleAI {
-            return "Google AI"
+            return "Gemini"
         }
         if kind == .compact, overviewPage == .grok {
             return "Grok"
         }
         switch effectiveKind {
         case .compact: return "Overview"
-        case .codex:   return "OpenAI"
+        case .codex:   return "ChatGPT"
         case .claude:  return "Claude"
         case .status:  return "Service Status"
         }
@@ -146,7 +146,7 @@ struct PopoverRoot: View {
             return "Usage-only · sign in or paste a key"
         }
         if kind == .compact, overviewPage == .googleAI {
-            return "Gemini + Antigravity · quota, cost & status"
+            return "Gemini Web + AntiGravity · quota & status"
         }
         if kind == .compact, overviewPage == .grok {
             return "xAI · monthly credits, cost & status"
@@ -292,12 +292,18 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// L2 product-family labels. The tab strip used to mix L1 vendor
+    /// names (OpenAI, Google AI) with L2 product names (Claude, Grok);
+    /// pinning every tab to L2 means the tab strip reads "ChatGPT ·
+    /// Claude · Gemini · Grok" — what the user calls the AI, not how
+    /// they're billed. Gemini's tab covers both Gemini Web and the
+    /// AntiGravity IDE since both roll up to the Gemini product.
     var label: String {
         switch self {
         case .overview: return "Overview"
-        case .openAI:   return "OpenAI"
+        case .openAI:   return "ChatGPT"
         case .claude:   return "Claude"
-        case .googleAI: return "Google AI"
+        case .googleAI: return "Gemini"
         case .grok:     return "Grok"
         case .misc:     return "Misc"
         }
@@ -423,9 +429,12 @@ private struct OverviewWaterfall: View {
             ) {
                 ProviderQuotaCard(tool: .codex, density: density, compact: false)
                 ProviderQuotaCard(tool: .claude, density: density, compact: false)
-                ForEach(ToolType.partialPrimaryProviders, id: \.self) { tool in
-                    ProviderQuotaCard(tool: tool, density: density, compact: false)
-                }
+                // Gemini Web and AntiGravity both roll up to the
+                // Gemini product, so the Overview surface shows them
+                // as a single L2 "Gemini" card with two L3 sub-sections
+                // (`GeminiCombinedCard`). Grok stays on its own card.
+                GeminiCombinedCard(density: density, compact: true)
+                ProviderQuotaCard(tool: .grok, density: density, compact: false)
                 // Google AI (Gemini + Antigravity) cost is intentionally
                 // omitted while the IDE/CLI cost story is incomplete
                 // (`~/.gemini/antigravity-cli/conversations/*.pb` is
@@ -481,11 +490,114 @@ private struct GrokPage: View {
     }
 }
 
-/// The "Google AI" overview sub-page. Gemini live quota comes from
-/// gemini.google.com cookies, Antigravity gets its own local-LSP quota
-/// card, and the page surfaces the combined Gemini + Antigravity local
-/// cost panels plus the shared Google status feed.
-private struct GoogleAIDualPage: View {
+/// Overview popover card that merges Gemini Web + AntiGravity into a
+/// single L2 "Gemini" surface, with each tool as an L3 sub-section.
+/// Replaces the previous side-by-side ProviderQuotaCard pair so the
+/// two surfaces under the Gemini product no longer look like
+/// unrelated tools to the user.
+///
+/// The card itself owns the outer card chrome; the inner
+/// `ProviderQuotaCard`s render with `embedded: true` so they
+/// contribute only the per-tool header + bucket list, not their
+/// own rounded-rectangle background.
+private struct GeminiCombinedCard: View {
+    let density: Theme.Density
+    /// Compact buckets-only rendering for the dense Overview grid;
+    /// dedicated Gemini tab passes `false` so every per-model bucket
+    /// shows.
+    var compact: Bool = true
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+
+    var body: some View {
+        let geminiAccounts = environment.accountStore
+            .accounts(for: .gemini)
+            .sorted { $0.id < $1.id }
+        let anyGeminiInFlight = geminiAccounts.contains {
+            quotaService.inFlightAccountIds.contains($0.id)
+        }
+        let antigravityAccount = environment.account(for: .antigravity)
+        let antigravityInFlight = antigravityAccount.map {
+            quotaService.inFlightAccountIds.contains($0.id)
+        } ?? false
+        let anyInFlight = anyGeminiInFlight || antigravityInFlight
+
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
+            HStack(alignment: .center, spacing: 8) {
+                ProviderSectionTitle(
+                    tool: .gemini,
+                    title: ToolType.gemini.productName,
+                    subtitle: "\(ToolType.gemini.toolName) + \(ToolType.antigravity.toolName)",
+                    titleFontSize: density.titleFontSize,
+                    subtitleFontSize: density.subtitleFontSize,
+                    iconSize: 16,
+                    badgeSize: 24
+                )
+                Spacer(minLength: 4)
+                BorderlessIconButton(
+                    systemImage: "arrow.clockwise",
+                    help: "Refresh Gemini Web + AntiGravity"
+                ) {
+                    environment.refresh(.gemini)
+                    environment.refresh(.antigravity)
+                }
+                .disabled(anyInFlight)
+                if anyInFlight {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 16, height: 16)
+                }
+            }
+
+            ForEach(Array(geminiAccounts.enumerated()), id: \.element.id) { index, account in
+                if index > 0 {
+                    Divider().opacity(0.18).padding(.vertical, 1)
+                }
+                ProviderQuotaCard(
+                    tool: .gemini,
+                    accountId: account.id,
+                    density: density,
+                    compact: compact,
+                    embedded: true
+                )
+            }
+            if geminiAccounts.isEmpty {
+                ProviderQuotaCard(
+                    tool: .gemini,
+                    density: density,
+                    compact: compact,
+                    embedded: true
+                )
+            }
+
+            Divider().opacity(0.18).padding(.vertical, 1)
+
+            ProviderQuotaCard(
+                tool: .antigravity,
+                density: density,
+                compact: compact,
+                embedded: true
+            )
+        }
+        .padding(density.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+}
+
+/// The dedicated Gemini sub-page (still routed through `OverviewPage.googleAI`
+/// for backwards-compat with the menu-bar settings, but labelled "Gemini" at
+/// every user-facing surface). Renders the unified Gemini card with full
+/// bucket detail, plus the shared subscription pace chart and the
+/// Google service-status feed.
+private struct GeminiTabPage: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
@@ -497,65 +609,21 @@ private struct GoogleAIDualPage: View {
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
 
-        HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                ForEach(geminiAccounts, id: \.id) { account in
-                    ProviderQuotaCard(
+        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+            GeminiCombinedCard(density: density, compact: false)
+            if let geminiAccount = geminiAccounts.first {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    SubscriptionUtilizationView(
                         tool: .gemini,
-                        accountId: account.id,
+                        buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
+                        mode: settingsStore.displayMode,
                         density: density,
-                        compact: false
+                        now: context.date
                     )
                 }
-                ProviderQuotaCard(tool: .antigravity, density: density, compact: false)
-                if let geminiAccount = geminiAccounts.first {
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        SubscriptionUtilizationView(
-                            tool: .gemini,
-                            buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
-                            mode: settingsStore.displayMode,
-                            density: density,
-                            now: context.date
-                        )
-                    }
-                }
-                ServiceStatusCard(tools: [.gemini])
             }
-            .frame(
-                minWidth: googleAILeftColumnMinWidth,
-                idealWidth: googleAILeftColumnIdealWidth,
-                maxWidth: googleAILeftColumnMaxWidth,
-                alignment: .topLeading
-            )
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Cost tracking hidden for Google AI")
-                    .font(.system(size: density.subtitleFontSize, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("Antigravity CLI conversations live in encrypted `.pb` files that we can't yet parse, and the IDE-side rates mix Google-owned and third-party model pricing in ways we haven't verified end-to-end. The cost numbers were giving misleading totals, so the section is hidden until accuracy improves. Quota readings above are unaffected.")
-                    .font(.system(size: max(10, density.subtitleFontSize - 1)))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(nil)
-            }
-            .padding(.vertical, 24)
-            .frame(minWidth: googleAIRightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
+            ServiceStatusCard(tools: [.gemini])
         }
-    }
-
-    private var googleAILeftColumnMinWidth: CGFloat {
-        max(320, min(380, density.popoverWidth * 0.34))
-    }
-
-    private var googleAILeftColumnIdealWidth: CGFloat {
-        max(googleAILeftColumnMinWidth, min(410, density.popoverWidth * 0.38))
-    }
-
-    private var googleAILeftColumnMaxWidth: CGFloat {
-        max(googleAILeftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
-    }
-
-    private var googleAIRightColumnMinWidth: CGFloat {
-        500
     }
 }
 
@@ -622,7 +690,15 @@ private struct CombinedTotalsRow: View {
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
         let todayRequests = snapshots.reduce(0) { $0 + $1.todayRequests }
-        let peakDayCost = dailyHistory.map(\.costUSD).max() ?? 0
+        // Pick the single day with the highest cost across all
+        // providers, then surface both its cost and token totals so
+        // the user sees what they spent *and* burned on their worst
+        // day. Using `.max(by:)` rather than two separate `.max()`
+        // calls keeps the two numbers from drifting onto different
+        // days when token-heavy and dollar-heavy days disagree.
+        let peakDayPoint = dailyHistory.max(by: { $0.costUSD < $1.costUSD })
+        let peakDayCost = peakDayPoint?.costUSD ?? 0
+        let peakDayTokens = peakDayPoint?.totalTokens ?? 0
         // TPM / RPM are today-so-far rates: tokens (or requests)
         // divided by the elapsed minutes since local midnight. We
         // floor the divisor to 1 so a 00:00:05 launch can't divide
@@ -676,6 +752,8 @@ private struct CombinedTotalsRow: View {
                 }
                 HStack(alignment: .top, spacing: 0) {
                     metric(label: "PEAK DAY", value: formatCost(peakDayCost))
+                    divider
+                    metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
                     divider
                     metric(label: "TPM", value: formatTokens(tokensPerMinute))
                     divider
@@ -1309,6 +1387,11 @@ struct ProviderQuotaCard: View {
     /// Overview where 3 cards are stacked. Single-provider popovers pass `false`
     /// so every bucket appears (Sonnet, Designs, Daily Routines, …).
     var compact: Bool = false
+    /// When true, drop the outer rounded-rectangle chrome so the card can
+    /// be nested inside a larger container (the unified Gemini card uses
+    /// this to host Gemini Web + AntiGravity as L3 sub-sections inside a
+    /// single L2 Gemini surface).
+    var embedded: Bool = false
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -1385,14 +1468,22 @@ struct ProviderQuotaCard: View {
                 messageRow(text: emptyMessage, color: .secondary)
             }
         }
-        .padding(density.cardPadding)
+        .padding(embedded ? 0 : density.cardPadding)
         .background(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary.opacity(0.6))
+            embedded
+                ? AnyView(Color.clear)
+                : AnyView(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .fill(.background.tertiary.opacity(0.6))
+                )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+            embedded
+                ? AnyView(EmptyView())
+                : AnyView(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+                )
         )
     }
 

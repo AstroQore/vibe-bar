@@ -185,195 +185,155 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
 
     // MARK: - Display
     //
-    // Three explicit levels of the user-facing hierarchy. The legacy
-    // `displayName` / `menuTitle` / `statusProviderName` properties
-    // now delegate to these so each surface uses one level
-    // consistently:
+    // Every UI surface that needs to identify a provider picks one of
+    // three explicit levels from `hierarchy` and stays at that level:
     //
-    //   L1 vendorName  → who bills you (OpenAI / Anthropic / Google / xAI)
-    //   L2 productName → what users call the AI (ChatGPT / Claude / Gemini / Grok)
-    //   L3 toolName    → the specific surface Vibe Bar tracks (Codex CLI,
-    //                    Claude Code, Gemini Web, AntiGravity, Grok Build)
+    //   L1 vendor  → who bills you (OpenAI / Anthropic / Google / xAI)
+    //   L2 product → what users call the AI (ChatGPT / Claude / Gemini / Grok)
+    //   L3 tool    → the specific surface Vibe Bar tracks (Codex,
+    //                Claude Code, Gemini Web, AntiGravity, Grok Build)
     //
-    // Misc-provider tools (Alibaba / Tencent / Volcengine / etc.)
-    // don't slot cleanly into the hierarchy, so their L1/L2/L3 are
-    // best-effort mirrors of the existing label — the consistency
-    // requirement applies to the five primary tools listed in
-    // `ToolType.partialPrimaryProviders + [.codex, .claude]`.
+    // The catalog in `ProviderHierarchyCatalog` is the single source of
+    // truth — renaming a provider is one edit there, not a hunt across
+    // five `switch` statements. The legacy `displayName` / `menuTitle`
+    // / `statusProviderName` accessors all derive from the same entry.
+    // Misc-provider tools (Alibaba / Tencent / Volcengine / etc.) get
+    // best-effort hierarchy entries too so callers don't have to
+    // special-case them, but the consistency contract only applies to
+    // the five primary tools (`[.codex, .claude] +
+    // ToolType.partialPrimaryProviders`).
+
+    /// The single hierarchy entry every L1/L2/L3 accessor reads from.
+    public var hierarchy: ProviderHierarchy {
+        switch self {
+        case .codex:            return ProviderHierarchyCatalog.codex
+        case .claude:           return ProviderHierarchyCatalog.claude
+        case .gemini:           return ProviderHierarchyCatalog.gemini
+        case .antigravity:      return ProviderHierarchyCatalog.antigravity
+        case .grok:             return ProviderHierarchyCatalog.grok
+        case .copilot:          return ProviderHierarchyCatalog.copilot
+        case .alibaba:          return ProviderHierarchyCatalog.alibaba
+        case .alibabaTokenPlan: return ProviderHierarchyCatalog.alibabaTokenPlan
+        case .zai:              return ProviderHierarchyCatalog.zai
+        case .minimax:          return ProviderHierarchyCatalog.minimax
+        case .kimi:             return ProviderHierarchyCatalog.kimi
+        case .cursor:           return ProviderHierarchyCatalog.cursor
+        case .mimo:             return ProviderHierarchyCatalog.mimo
+        case .iflytek:          return ProviderHierarchyCatalog.iflytek
+        case .tencentHunyuan:   return ProviderHierarchyCatalog.tencentHunyuan
+        case .tencentTokenPlan: return ProviderHierarchyCatalog.tencentTokenPlan
+        case .volcengine:       return ProviderHierarchyCatalog.volcengine
+        case .baiduQianfan:     return ProviderHierarchyCatalog.baiduQianfan
+        case .openCodeGo:       return ProviderHierarchyCatalog.openCodeGo
+        case .kilo:             return ProviderHierarchyCatalog.kilo
+        case .kiro:             return ProviderHierarchyCatalog.kiro
+        case .ollama:           return ProviderHierarchyCatalog.ollama
+        case .openRouter:       return ProviderHierarchyCatalog.openRouter
+        case .warp:             return ProviderHierarchyCatalog.warp
+        }
+    }
 
     /// Level 1 — the vendor that issues the plan / bills the account.
-    public var vendorName: String {
-        switch self {
-        case .codex:       return "OpenAI"
-        case .claude:      return "Anthropic"
-        case .gemini:      return "Google"
-        case .antigravity: return "Google"
-        case .grok:        return "xAI"
-        case .copilot:     return "GitHub"
-        case .alibaba, .alibabaTokenPlan: return "Alibaba"
-        case .zai:         return "Zhipu"
-        case .minimax:     return "MiniMax"
-        case .kimi:        return "Moonshot"
-        case .cursor:      return "Cursor"
-        case .mimo:        return "Xiaomi"
-        case .iflytek:     return "iFlytek"
-        case .tencentHunyuan, .tencentTokenPlan: return "Tencent"
-        case .volcengine:  return "ByteDance"
-        case .baiduQianfan: return "Baidu"
-        case .openCodeGo:  return "OpenCode"
-        case .kilo:        return "Kilo"
-        case .kiro:        return "Kiro"
-        case .ollama:      return "Ollama"
-        case .openRouter:  return "OpenRouter"
-        case .warp:        return "Warp"
-        }
-    }
+    public var vendorName: String { hierarchy.vendor }
 
     /// Level 2 — the product brand a user identifies with.
-    public var productName: String {
-        switch self {
-        case .codex:       return "ChatGPT"
-        case .claude:      return "Claude"
-        case .gemini:      return "Gemini"
-        case .antigravity: return "Gemini"
-        case .grok:        return "Grok"
-        case .copilot:     return "Copilot"
-        case .alibaba, .alibabaTokenPlan: return "Bailian"
-        case .zai:         return "GLM"
-        case .minimax:     return "MiniMax"
-        case .kimi:        return "Kimi"
-        case .cursor:      return "Cursor"
-        case .mimo:        return "MiMo"
-        case .iflytek:     return "Spark"
-        case .tencentHunyuan, .tencentTokenPlan: return "Hunyuan"
-        case .volcengine:  return "Doubao"
-        case .baiduQianfan: return "Qianfan"
-        case .openCodeGo:  return "OpenCode Go"
-        case .kilo:        return "Kilo"
-        case .kiro:        return "Kiro"
-        case .ollama:      return "Ollama"
-        case .openRouter:  return "OpenRouter"
-        case .warp:        return "Warp"
-        }
-    }
+    public var productName: String { hierarchy.product }
 
     /// Level 3 — the specific surface Vibe Bar tracks usage for.
-    public var toolName: String {
-        switch self {
-        case .codex:       return "Codex CLI"
-        case .claude:      return "Claude Code"
-        case .gemini:      return "Gemini Web"
-        case .antigravity: return "AntiGravity"
-        case .grok:        return "Grok Build"
-        case .copilot:     return "GitHub Copilot"
-        case .alibaba:     return "Coding Plan"
-        case .alibabaTokenPlan: return "Token Plan"
-        case .zai:         return "GLM Coding Plan"
-        case .minimax:     return "MiniMax Token Plan"
-        case .kimi:        return "Kimi Coding Plan"
-        case .cursor:      return "Cursor"
-        case .mimo:        return "MiMo Token Plan"
-        case .iflytek:     return "Spark Coding Plan"
-        case .tencentHunyuan:   return "Hunyuan Coding Plan"
-        case .tencentTokenPlan: return "Hunyuan Token Plan"
-        case .volcengine:  return "Doubao Coding Plan"
-        case .baiduQianfan: return "Qianfan Coding Plan"
-        case .openCodeGo:  return "OpenCode Go"
-        case .kilo:        return "Kilo"
-        case .kiro:        return "Kiro"
-        case .ollama:      return "Ollama"
-        case .openRouter:  return "OpenRouter"
-        case .warp:        return "Warp"
-        }
-    }
+    public var toolName: String { hierarchy.tool }
 
+    /// Long-form name used by Spotlight-y surfaces (system menu items,
+    /// account-list aliases). Primary tools use the L3 tool name from
+    /// `hierarchy` directly; misc tools keep their curated long form
+    /// because the hierarchy can't capture distinctions like
+    /// "Alibaba Bailian Coding Plan" vs "Alibaba Bailian Token Plan".
     public var displayName: String {
         switch self {
-        case .codex:       return "Codex CLI"
-        case .claude:      return "Claude Code"
-        case .alibaba:     return "Alibaba Bailian Coding Plan"
+        case .codex, .claude, .gemini, .antigravity, .grok:
+            return hierarchy.tool
+        case .alibaba:          return "Alibaba Bailian Coding Plan"
         case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
-        case .gemini:      return "Gemini Web"
-        case .antigravity: return "AntiGravity"
-        case .grok:        return "Grok Build"
-        case .copilot:     return "GitHub - Copilot"
-        case .zai:         return "Zhipu GLM Coding Plan"
-        case .minimax:     return "MiniMax Token Plan"
-        case .kimi:        return "Kimi Coding Plan"
-        case .cursor:      return "Cursor"
-        case .mimo:        return "Xiaomi MiMo Token Plan"
-        case .iflytek:     return "iFlytek Spark Coding Plan"
+        case .copilot:          return "GitHub - Copilot"
+        case .zai:              return "Zhipu GLM Coding Plan"
+        case .minimax:          return "MiniMax Token Plan"
+        case .kimi:             return "Kimi Coding Plan"
+        case .cursor:           return "Cursor"
+        case .mimo:             return "Xiaomi MiMo Token Plan"
+        case .iflytek:          return "iFlytek Spark Coding Plan"
         case .tencentHunyuan:   return "Tencent Hunyuan Coding Plan"
         case .tencentTokenPlan: return "Tencent Hunyuan Token Plan"
-        case .volcengine:  return "Volcengine Coding Plan"
-        case .baiduQianfan: return "Baidu Qianfan Coding Plan"
-        case .openCodeGo:  return "OpenCode Go"
-        case .kilo:        return "Kilo"
-        case .kiro:        return "Kiro"
-        case .ollama:      return "Ollama"
-        case .openRouter:  return "OpenRouter"
-        case .warp:        return "Warp"
+        case .volcengine:       return "Volcengine Coding Plan"
+        case .baiduQianfan:     return "Baidu Qianfan Coding Plan"
+        case .openCodeGo:       return "OpenCode Go"
+        case .kilo:             return "Kilo"
+        case .kiro:             return "Kiro"
+        case .ollama:           return "Ollama"
+        case .openRouter:       return "OpenRouter"
+        case .warp:             return "Warp"
         }
     }
 
+    /// Card subtitle rendered under the L2 product title. For the
+    /// primary five tools this is the L3 tool name from `hierarchy`
+    /// so the Overview popover reads "Gemini · Gemini Web" / "Gemini ·
+    /// AntiGravity" instead of the old ad-hoc "Usage" / "Local LSP"
+    /// labels. Misc tools keep their plan-flavour descriptor since
+    /// they distinguish multiple plans inside one product (Coding
+    /// Plan vs Token Plan).
     public var subtitle: String {
         switch self {
-        case .codex:       return "CodeX"
-        case .claude:      return "Claude Code"
-        case .alibaba:     return "Coding Plan"
+        case .codex, .claude, .gemini, .antigravity, .grok:
+            return hierarchy.tool
+        case .alibaba:          return "Coding Plan"
         case .alibabaTokenPlan: return "Token Plan"
-        case .gemini:      return "Usage"
-        case .antigravity: return "Local LSP"
-        case .grok:        return "Monthly"
-        case .copilot:     return "GitHub Copilot"
-        case .zai:         return "Coding Plan"
-        case .minimax:     return "Token Plan"
-        case .kimi:        return "Coding Plan"
-        case .cursor:      return "Cursor"
-        case .mimo:        return "Token Plan"
-        case .iflytek:     return "Coding Plan"
+        case .copilot:          return "GitHub Copilot"
+        case .zai:              return "Coding Plan"
+        case .minimax:          return "Token Plan"
+        case .kimi:             return "Coding Plan"
+        case .cursor:           return "Cursor"
+        case .mimo:             return "Token Plan"
+        case .iflytek:          return "Coding Plan"
         case .tencentHunyuan:   return "Coding Plan"
         case .tencentTokenPlan: return "Token Plan"
-        case .volcengine:  return "Coding Plan"
-        case .baiduQianfan: return "Coding Plan"
-        case .openCodeGo:  return "Workspace"
-        case .kilo:        return "Credits"
-        case .kiro:        return "CLI Usage"
-        case .ollama:      return "Cloud"
-        case .openRouter:  return "Credits"
-        case .warp:        return "Warp AI Credits"
+        case .volcengine:       return "Coding Plan"
+        case .baiduQianfan:     return "Coding Plan"
+        case .openCodeGo:       return "Workspace"
+        case .kilo:             return "Credits"
+        case .kiro:             return "CLI Usage"
+        case .ollama:           return "Cloud"
+        case .openRouter:       return "Credits"
+        case .warp:             return "Warp AI Credits"
         }
     }
 
     /// L2 product family — what users call the AI brand. Used by
     /// menu-bar tile titles, popover sub-page headers, and anywhere
     /// the surface should pick one consistent level across all tools.
+    /// Primary tools take their L2 product directly from `hierarchy`;
+    /// misc tools keep curated forms that prefix the vendor for
+    /// disambiguation (e.g. "Tencent Hunyuan" rather than bare
+    /// "Hunyuan", which would clash with other Tencent surfaces).
     public var menuTitle: String {
         switch self {
-        case .codex:       return "ChatGPT"
-        case .claude:      return "Claude"
-        case .alibaba:     return "Bailian"
-        case .alibabaTokenPlan: return "Bailian"
-        case .gemini:      return "Gemini"
-        case .antigravity: return "Gemini"
-        case .grok:        return "Grok"
-        case .copilot:     return "Copilot"
-        case .zai:         return "Zhipu GLM"
-        case .minimax:     return "MiniMax"
-        case .kimi:        return "Kimi"
-        case .cursor:      return "Cursor"
-        case .mimo:        return "Xiaomi MiMo"
-        case .iflytek:     return "iFlytek Spark"
-        case .tencentHunyuan:   return "Tencent Hunyuan"
-        case .tencentTokenPlan: return "Tencent Hunyuan"
-        case .volcengine:  return "Volcengine"
-        case .baiduQianfan: return "Baidu Qianfan"
-        case .openCodeGo:  return "OpenCode Go"
-        case .kilo:        return "Kilo"
-        case .kiro:        return "Kiro"
-        case .ollama:      return "Ollama"
-        case .openRouter:  return "OpenRouter"
-        case .warp:        return "Warp"
+        case .codex, .claude, .gemini, .antigravity, .grok:
+            return hierarchy.product
+        case .alibaba, .alibabaTokenPlan: return "Bailian"
+        case .copilot:          return "Copilot"
+        case .zai:              return "Zhipu GLM"
+        case .minimax:          return "MiniMax"
+        case .kimi:             return "Kimi"
+        case .cursor:           return "Cursor"
+        case .mimo:             return "Xiaomi MiMo"
+        case .iflytek:          return "iFlytek Spark"
+        case .tencentHunyuan, .tencentTokenPlan: return "Tencent Hunyuan"
+        case .volcengine:       return "Volcengine"
+        case .baiduQianfan:     return "Baidu Qianfan"
+        case .openCodeGo:       return "OpenCode Go"
+        case .kilo:             return "Kilo"
+        case .kiro:             return "Kiro"
+        case .ollama:           return "Ollama"
+        case .openRouter:       return "OpenRouter"
+        case .warp:             return "Warp"
         }
     }
 
@@ -384,30 +344,25 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// status feed with `.gemini` for the same reason.
     public var statusProviderName: String {
         switch self {
-        case .codex:       return "OpenAI"
-        case .claude:      return "Anthropic"
-        case .alibaba:     return "Alibaba"
-        case .alibabaTokenPlan: return "Alibaba"
-        case .gemini:      return "Google"
-        case .antigravity: return "Google"
-        case .grok:        return "xAI"
-        case .copilot:     return "GitHub"
-        case .zai:         return "Z.ai"
-        case .minimax:     return "MiniMax"
-        case .kimi:        return "Moonshot"
-        case .cursor:      return "Cursor"
-        case .mimo:        return "Xiaomi"
-        case .iflytek:     return "iFlytek"
-        case .tencentHunyuan:   return "Tencent Cloud"
-        case .tencentTokenPlan: return "Tencent Cloud"
-        case .volcengine:  return "Volcengine"
-        case .baiduQianfan: return "Baidu Qianfan"
-        case .openCodeGo:  return "OpenCode"
-        case .kilo:        return "Kilo"
-        case .kiro:        return "Kiro"
-        case .ollama:      return "Ollama"
-        case .openRouter:  return "OpenRouter"
-        case .warp:        return "Warp"
+        case .codex, .claude, .gemini, .antigravity, .grok:
+            return hierarchy.vendor
+        case .alibaba, .alibabaTokenPlan: return "Alibaba"
+        case .copilot:          return "GitHub"
+        case .zai:              return "Z.ai"
+        case .minimax:          return "MiniMax"
+        case .kimi:             return "Moonshot"
+        case .cursor:           return "Cursor"
+        case .mimo:             return "Xiaomi"
+        case .iflytek:          return "iFlytek"
+        case .tencentHunyuan, .tencentTokenPlan: return "Tencent Cloud"
+        case .volcengine:       return "Volcengine"
+        case .baiduQianfan:     return "Baidu Qianfan"
+        case .openCodeGo:       return "OpenCode"
+        case .kilo:             return "Kilo"
+        case .kiro:             return "Kiro"
+        case .ollama:           return "Ollama"
+        case .openRouter:       return "OpenRouter"
+        case .warp:             return "Warp"
         }
     }
 
