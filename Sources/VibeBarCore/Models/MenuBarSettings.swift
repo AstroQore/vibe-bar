@@ -8,6 +8,19 @@ public enum MenuBarItemKind: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var id: String { rawValue }
 
+    /// Cases that the Settings page is allowed to surface as
+    /// independently togglable menu bar items. The other cases
+    /// (`.codex` / `.claude` / `.status`) remain in the enum for
+    /// stored-settings backward compatibility and for sub-page
+    /// routing inside the Overview popover, but the standalone
+    /// menu-bar entry is intentionally retired in favour of the
+    /// single Overview tile.
+    public static let userVisibleCases: [MenuBarItemKind] = [.compact]
+
+    public var isUserVisibleStandalone: Bool {
+        Self.userVisibleCases.contains(self)
+    }
+
     public var label: String {
         switch self {
         case .compact: return "Overview"

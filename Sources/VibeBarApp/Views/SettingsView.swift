@@ -64,7 +64,7 @@ struct SettingsView: View {
 
                     settingsSection("Menu Bar Items") {
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(MenuBarItemKind.allCases) { kind in
+                            ForEach(MenuBarItemKind.userVisibleCases) { kind in
                                 menuBarItemEditor(kind)
                             }
                         }

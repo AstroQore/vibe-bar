@@ -93,15 +93,15 @@ final class GeminiWebResponseParserTests: XCTestCase {
         XCTAssertEqual(snapshot.buckets.count, 2)
 
         let current = try XCTUnwrap(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.currentUsageBucketId }))
-        XCTAssertEqual(current.title, "Current usage")
-        XCTAssertEqual(current.shortLabel, "Current")
+        XCTAssertEqual(current.title, "5 Hours")
+        XCTAssertEqual(current.shortLabel, "5h")
         XCTAssertEqual(current.usedPercent, 25.0, accuracy: 0.0001)
         XCTAssertEqual(current.resetAt?.timeIntervalSince1970 ?? 0, 1779469511.884512, accuracy: 0.001)
         XCTAssertNil(current.rawWindowSeconds)
 
         let weekly = try XCTUnwrap(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.weeklyUsageBucketId }))
-        XCTAssertEqual(weekly.title, "Weekly limit")
-        XCTAssertEqual(weekly.shortLabel, "Weekly")
+        XCTAssertEqual(weekly.title, "Weekly")
+        XCTAssertEqual(weekly.shortLabel, "Wk")
         XCTAssertEqual(weekly.usedPercent, 10.0, accuracy: 0.0001)
         XCTAssertEqual(weekly.resetAt?.timeIntervalSince1970 ?? 0, 1779815111.884621, accuracy: 0.001)
     }
@@ -140,7 +140,7 @@ final class GeminiWebResponseParserTests: XCTestCase {
         let inner = "[2,[[1,0.05,7,[[1779469511,884512000]]]],false]"
         let snapshot = try GeminiWebResponseParser.parse(data: Self.wireFormat(inner: inner))
         XCTAssertEqual(snapshot.buckets.count, 1)
-        XCTAssertEqual(snapshot.buckets[0].id, "gemini.web.bucket7")
+        XCTAssertEqual(snapshot.buckets[0].id, "gemini.bucket7")
         XCTAssertEqual(snapshot.buckets[0].title, "Bucket 7")
         XCTAssertEqual(snapshot.buckets[0].shortLabel, "B7")
     }
