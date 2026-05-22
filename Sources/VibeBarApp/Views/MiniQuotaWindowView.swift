@@ -45,17 +45,15 @@ struct MiniQuotaWindowView: View {
             .padding(.top, 6)
             .padding(.trailing, 8)
         }
-        .fixedSize(horizontal: true, vertical: true)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.miniCornerRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
+        .frame(
+            minWidth: displayMode == .compact ? 156 : 240,
+            minHeight: displayMode == .compact ? 134 : 166,
+            alignment: .center
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.miniCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.35), lineWidth: 0.6)
+        .glassEffect(
+            .regular.interactive(),
+            in: .rect(cornerRadius: Theme.miniCornerRadius)
         )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.miniCornerRadius, style: .continuous))
-        .shadow(color: .black.opacity(0.16), radius: 18, x: 0, y: 8)
     }
 
     private var miniContentByTool: [ToolType: MiniToolContent] {
