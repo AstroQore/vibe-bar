@@ -184,16 +184,118 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     // MARK: - Display
+    //
+    // Three explicit levels of the user-facing hierarchy. The legacy
+    // `displayName` / `menuTitle` / `statusProviderName` properties
+    // now delegate to these so each surface uses one level
+    // consistently:
+    //
+    //   L1 vendorName  → who bills you (OpenAI / Anthropic / Google / xAI)
+    //   L2 productName → what users call the AI (ChatGPT / Claude / Gemini / Grok)
+    //   L3 toolName    → the specific surface Vibe Bar tracks (Codex CLI,
+    //                    Claude Code, Gemini Web, AntiGravity, Grok Build)
+    //
+    // Misc-provider tools (Alibaba / Tencent / Volcengine / etc.)
+    // don't slot cleanly into the hierarchy, so their L1/L2/L3 are
+    // best-effort mirrors of the existing label — the consistency
+    // requirement applies to the five primary tools listed in
+    // `ToolType.partialPrimaryProviders + [.codex, .claude]`.
+
+    /// Level 1 — the vendor that issues the plan / bills the account.
+    public var vendorName: String {
+        switch self {
+        case .codex:       return "OpenAI"
+        case .claude:      return "Anthropic"
+        case .gemini:      return "Google"
+        case .antigravity: return "Google"
+        case .grok:        return "xAI"
+        case .copilot:     return "GitHub"
+        case .alibaba, .alibabaTokenPlan: return "Alibaba"
+        case .zai:         return "Zhipu"
+        case .minimax:     return "MiniMax"
+        case .kimi:        return "Moonshot"
+        case .cursor:      return "Cursor"
+        case .mimo:        return "Xiaomi"
+        case .iflytek:     return "iFlytek"
+        case .tencentHunyuan, .tencentTokenPlan: return "Tencent"
+        case .volcengine:  return "ByteDance"
+        case .baiduQianfan: return "Baidu"
+        case .openCodeGo:  return "OpenCode"
+        case .kilo:        return "Kilo"
+        case .kiro:        return "Kiro"
+        case .ollama:      return "Ollama"
+        case .openRouter:  return "OpenRouter"
+        case .warp:        return "Warp"
+        }
+    }
+
+    /// Level 2 — the product brand a user identifies with.
+    public var productName: String {
+        switch self {
+        case .codex:       return "ChatGPT"
+        case .claude:      return "Claude"
+        case .gemini:      return "Gemini"
+        case .antigravity: return "Gemini"
+        case .grok:        return "Grok"
+        case .copilot:     return "Copilot"
+        case .alibaba, .alibabaTokenPlan: return "Bailian"
+        case .zai:         return "GLM"
+        case .minimax:     return "MiniMax"
+        case .kimi:        return "Kimi"
+        case .cursor:      return "Cursor"
+        case .mimo:        return "MiMo"
+        case .iflytek:     return "Spark"
+        case .tencentHunyuan, .tencentTokenPlan: return "Hunyuan"
+        case .volcengine:  return "Doubao"
+        case .baiduQianfan: return "Qianfan"
+        case .openCodeGo:  return "OpenCode Go"
+        case .kilo:        return "Kilo"
+        case .kiro:        return "Kiro"
+        case .ollama:      return "Ollama"
+        case .openRouter:  return "OpenRouter"
+        case .warp:        return "Warp"
+        }
+    }
+
+    /// Level 3 — the specific surface Vibe Bar tracks usage for.
+    public var toolName: String {
+        switch self {
+        case .codex:       return "Codex CLI"
+        case .claude:      return "Claude Code"
+        case .gemini:      return "Gemini Web"
+        case .antigravity: return "AntiGravity"
+        case .grok:        return "Grok Build"
+        case .copilot:     return "GitHub Copilot"
+        case .alibaba:     return "Coding Plan"
+        case .alibabaTokenPlan: return "Token Plan"
+        case .zai:         return "GLM Coding Plan"
+        case .minimax:     return "MiniMax Token Plan"
+        case .kimi:        return "Kimi Coding Plan"
+        case .cursor:      return "Cursor"
+        case .mimo:        return "MiMo Token Plan"
+        case .iflytek:     return "Spark Coding Plan"
+        case .tencentHunyuan:   return "Hunyuan Coding Plan"
+        case .tencentTokenPlan: return "Hunyuan Token Plan"
+        case .volcengine:  return "Doubao Coding Plan"
+        case .baiduQianfan: return "Qianfan Coding Plan"
+        case .openCodeGo:  return "OpenCode Go"
+        case .kilo:        return "Kilo"
+        case .kiro:        return "Kiro"
+        case .ollama:      return "Ollama"
+        case .openRouter:  return "OpenRouter"
+        case .warp:        return "Warp"
+        }
+    }
 
     public var displayName: String {
         switch self {
-        case .codex:       return "OpenAI - ChatGPT"
-        case .claude:      return "Anthropic - Claude"
+        case .codex:       return "Codex CLI"
+        case .claude:      return "Claude Code"
         case .alibaba:     return "Alibaba Bailian Coding Plan"
         case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
-        case .gemini:      return "Gemini"
-        case .antigravity: return "Google - Antigravity"
-        case .grok:        return "xAI - Grok"
+        case .gemini:      return "Gemini Web"
+        case .antigravity: return "AntiGravity"
+        case .grok:        return "Grok Build"
         case .copilot:     return "GitHub - Copilot"
         case .zai:         return "Zhipu GLM Coding Plan"
         case .minimax:     return "MiniMax Token Plan"
@@ -243,14 +345,17 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
+    /// L2 product family — what users call the AI brand. Used by
+    /// menu-bar tile titles, popover sub-page headers, and anywhere
+    /// the surface should pick one consistent level across all tools.
     public var menuTitle: String {
         switch self {
-        case .codex:       return "OpenAI"
+        case .codex:       return "ChatGPT"
         case .claude:      return "Claude"
-        case .alibaba:     return "Alibaba Bailian"
-        case .alibabaTokenPlan: return "Alibaba Bailian"
+        case .alibaba:     return "Bailian"
+        case .alibabaTokenPlan: return "Bailian"
         case .gemini:      return "Gemini"
-        case .antigravity: return "Antigravity"
+        case .antigravity: return "Gemini"
         case .grok:        return "Grok"
         case .copilot:     return "Copilot"
         case .zai:         return "Zhipu GLM"
@@ -272,14 +377,19 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
+    /// L1 vendor name — used by ServiceStatusCard and any surface
+    /// that should pick one consistent level across all tools. The
+    /// five primary tools all roll up to four vendors (OpenAI,
+    /// Anthropic, Google, xAI); `.antigravity` shares Google's
+    /// status feed with `.gemini` for the same reason.
     public var statusProviderName: String {
         switch self {
         case .codex:       return "OpenAI"
         case .claude:      return "Anthropic"
-        case .alibaba:     return "Alibaba Bailian"
-        case .alibabaTokenPlan: return "Alibaba Bailian"
-        case .gemini:      return "Gemini"
-        case .antigravity: return "Antigravity"
+        case .alibaba:     return "Alibaba"
+        case .alibabaTokenPlan: return "Alibaba"
+        case .gemini:      return "Google"
+        case .antigravity: return "Google"
         case .grok:        return "xAI"
         case .copilot:     return "GitHub"
         case .zai:         return "Z.ai"
