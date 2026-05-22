@@ -15,21 +15,48 @@ import Combine
 /// lands the same id is reused so cached snapshots survive.
 @MainActor
 public final class AccountStore: ObservableObject {
+    public struct WebCookiePresence: Equatable, Sendable {
+        public var openAI: Bool
+        public var claude: Bool
+        public var gemini: Bool
+        public var grok: Bool
+
+        public init(openAI: Bool, claude: Bool, gemini: Bool, grok: Bool) {
+            self.openAI = openAI
+            self.claude = claude
+            self.gemini = gemini
+            self.grok = grok
+        }
+
+        public static let none = WebCookiePresence(
+            openAI: false,
+            claude: false,
+            gemini: false,
+            grok: false
+        )
+    }
+
     @Published public private(set) var accounts: [AccountIdentity] = []
+
+    public init(initialAccounts: [AccountIdentity]) {
+        self.accounts = initialAccounts
+    }
 
     public init(
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
         geminiUsageMode: GeminiUsageMode = .auto,
         antigravityUsageMode: AntigravityUsageMode = .auto,
-        miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
+        miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances,
+        webCookiePresence: WebCookiePresence? = nil
     ) {
         reload(
             codexUsageMode: codexUsageMode,
             claudeUsageMode: claudeUsageMode,
             geminiUsageMode: geminiUsageMode,
             antigravityUsageMode: antigravityUsageMode,
-            miscProviderInstances: miscProviderInstances
+            miscProviderInstances: miscProviderInstances,
+            webCookiePresence: webCookiePresence
         )
     }
 
@@ -39,30 +66,53 @@ public final class AccountStore: ObservableObject {
         claudeUsageMode: ClaudeUsageMode = .auto,
         geminiUsageMode: GeminiUsageMode = .auto,
         antigravityUsageMode: AntigravityUsageMode = .auto,
-        miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
+        miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances,
+        webCookiePresence: WebCookiePresence? = nil
     ) {
+        self.accounts = Self.detectedAccounts(
+            codexUsageMode: codexUsageMode,
+            claudeUsageMode: claudeUsageMode,
+            geminiUsageMode: geminiUsageMode,
+            antigravityUsageMode: antigravityUsageMode,
+            miscProviderInstances: miscProviderInstances,
+            webCookiePresence: webCookiePresence
+        )
+    }
+
+    nonisolated public static func detectedAccounts(
+        codexUsageMode: CodexUsageMode = .auto,
+        claudeUsageMode: ClaudeUsageMode = .auto,
+        geminiUsageMode: GeminiUsageMode = .auto,
+        antigravityUsageMode: AntigravityUsageMode = .auto,
+        miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances,
+        webCookiePresence: WebCookiePresence? = nil
+    ) -> [AccountIdentity] {
         var detected: [AccountIdentity] = []
 
-        if let codex = autoDetectCodex(mode: codexUsageMode) {
+        if let codex = Self.autoDetectCodex(mode: codexUsageMode, webCookiePresence: webCookiePresence) {
             detected.append(codex)
         }
-        if let claude = autoDetectClaude(mode: claudeUsageMode) {
+        if let claude = Self.autoDetectClaude(mode: claudeUsageMode, webCookiePresence: webCookiePresence) {
             detected.append(claude)
         }
-        detected.append(contentsOf: autoDetectGemini(mode: geminiUsageMode))
-        if let antigravity = autoDetectAntigravity(mode: antigravityUsageMode) {
+        detected.append(contentsOf: Self.autoDetectGemini(mode: geminiUsageMode, webCookiePresence: webCookiePresence))
+        if let antigravity = Self.autoDetectAntigravity(mode: antigravityUsageMode) {
             detected.append(antigravity)
         }
-        if let grok = autoDetectGrok() {
+        if let grok = Self.autoDetectGrok(webCookiePresence: webCookiePresence) {
             detected.append(grok)
         }
 
         // Misc provider instances always present, regardless of credentials.
         for instance in miscProviderInstances {
-            detected.append(miscPlaceholder(for: instance))
+            detected.append(Self.miscPlaceholder(for: instance))
         }
 
-        self.accounts = detected
+        return detected
+    }
+
+    public func replaceAccounts(_ accounts: [AccountIdentity]) {
+        self.accounts = accounts
     }
 
     public func accounts(for tool: ToolType) -> [AccountIdentity] {
@@ -92,7 +142,7 @@ public final class AccountStore: ObservableObject {
 
     // MARK: - CLI auto detection
 
-    private func autoDetectCodex(mode: CodexUsageMode) -> AccountIdentity? {
+    nonisolated private static func autoDetectCodex(mode: CodexUsageMode, webCookiePresence: WebCookiePresence?) -> AccountIdentity? {
         let order = CodexSourcePlanner.resolve(mode: mode)
         let lookupOrder = order + (CodexSourcePlanner.allowsWebFallback(mode: mode) ? [.webCookie] : [])
         var selected: (source: CredentialSource, credential: CodexCredential?)?
@@ -107,7 +157,7 @@ public final class AccountStore: ObservableObject {
                     selected = (source, credential)
                 }
             case .webCookie:
-                if OpenAIWebCookieStore.hasCookieHeader() {
+                if Self.hasOpenAIWebCookie(webCookiePresence) {
                     selected = (source, nil)
                 }
             case .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
@@ -117,7 +167,7 @@ public final class AccountStore: ObservableObject {
         }
         guard let selected else { return nil }
         let cred = selected.credential
-        let remaining = remainingSources(after: selected.source, in: order)
+        let remaining = Self.remainingSources(after: selected.source, in: order)
         let id = cred?.accountId ?? (selected.source == .oauthCLI ? "oauth-codex" : selected.source == .webCookie ? "web-codex" : "cli-codex")
         return AccountIdentity(
             id: id,
@@ -129,7 +179,7 @@ public final class AccountStore: ObservableObject {
             source: selected.source,
             allowsWebFallback: selected.source == .webCookie
                 ? false
-                : CodexSourcePlanner.allowsWebFallback(mode: mode) && OpenAIWebCookieStore.hasCookieHeader(),
+                : CodexSourcePlanner.allowsWebFallback(mode: mode) && Self.hasOpenAIWebCookie(webCookiePresence),
             allowsCLIFallback: remaining.contains(.cliDetected),
             allowsOAuthFallback: remaining.contains(.oauthCLI),
             createdAt: Date(),
@@ -137,7 +187,7 @@ public final class AccountStore: ObservableObject {
         )
     }
 
-    private func autoDetectClaude(mode: ClaudeUsageMode) -> AccountIdentity? {
+    nonisolated private static func autoDetectClaude(mode: ClaudeUsageMode, webCookiePresence: WebCookiePresence?) -> AccountIdentity? {
         let order = ClaudeSourcePlanner.resolve(mode: mode)
         var selected: (source: CredentialSource, credential: ClaudeCredential?)?
         for source in order {
@@ -151,7 +201,7 @@ public final class AccountStore: ObservableObject {
                     selected = (source, credential)
                 }
             case .webCookie:
-                if ClaudeWebCookieStore.hasCookieHeader() {
+                if Self.hasClaudeWebCookie(webCookiePresence) {
                     selected = (source, nil)
                 }
             case .apiToken, .browserCookie, .manualCookie, .localProbe, .notConfigured:
@@ -177,7 +227,7 @@ public final class AccountStore: ObservableObject {
             id = "claude"
             alias = "Claude"
         }
-        let remaining = remainingSources(after: selected.source, in: order)
+        let remaining = Self.remainingSources(after: selected.source, in: order)
         return AccountIdentity(
             id: id,
             tool: .claude,
@@ -203,13 +253,13 @@ public final class AccountStore: ObservableObject {
     /// are present. `.oauthOnly` / `.webOnly` register at most one.
     /// Stable account ids let `QuotaCacheStore` keep snapshots across
     /// restarts.
-    private func autoDetectGemini(mode: GeminiUsageMode) -> [AccountIdentity] {
+    nonisolated private static func autoDetectGemini(mode: GeminiUsageMode, webCookiePresence: WebCookiePresence?) -> [AccountIdentity] {
         let enabled = GeminiSourcePlanner.enabledSources(mode: mode)
         let homeDir = RealHomeDirectory.path
         let geminiOAuthPath = URL(fileURLWithPath: homeDir)
             .appendingPathComponent(".gemini/oauth_creds.json").path
         let hasOAuth = enabled.contains(.oauthCLI) && FileManager.default.fileExists(atPath: geminiOAuthPath)
-        let hasWeb = enabled.contains(.webCookie) && GeminiWebCookieStore.hasCookieHeader()
+        let hasWeb = enabled.contains(.webCookie) && Self.hasGeminiWebCookie(webCookiePresence)
 
         var out: [AccountIdentity] = []
         if hasOAuth {
@@ -246,7 +296,7 @@ public final class AccountStore: ObservableObject {
     /// or no cookies have been imported yet. The adapter's `fetch`
     /// surfaces the real "open Antigravity" / "import cookies" error
     /// once the user opens the popover.
-    private func autoDetectAntigravity(mode: AntigravityUsageMode) -> AccountIdentity? {
+    nonisolated private static func autoDetectAntigravity(mode: AntigravityUsageMode) -> AccountIdentity? {
         let order = AntigravitySourcePlanner.resolve(mode: mode)
         let primarySource: CredentialSource = order.first ?? .localProbe
         let id: String
@@ -278,9 +328,9 @@ public final class AccountStore: ObservableObject {
     /// The dominant source determines the account id / alias; the
     /// adapter still falls back internally if its preferred source
     /// trips at fetch time.
-    private func autoDetectGrok() -> AccountIdentity? {
+    nonisolated private static func autoDetectGrok(webCookiePresence: WebCookiePresence?) -> AccountIdentity? {
         let hasAuthJson = GrokCredentialsStore.hasCredentials()
-        let hasCookies = GrokWebCookieStore.hasCookieHeader()
+        let hasCookies = Self.hasGrokWebCookie(webCookiePresence)
         guard hasAuthJson || hasCookies else { return nil }
 
         if hasAuthJson {
@@ -320,15 +370,15 @@ public final class AccountStore: ObservableObject {
         )
     }
 
-    private func remainingSources(after source: CredentialSource, in order: [CredentialSource]) -> [CredentialSource] {
+    nonisolated private static func remainingSources(after source: CredentialSource, in order: [CredentialSource]) -> [CredentialSource] {
         guard let index = order.firstIndex(of: source) else { return [] }
         let next = order.index(after: index)
         guard next < order.endIndex else { return [] }
         return Array(order[next...])
     }
 
-    private func webClaudeAccount(allowsCLIFallback: Bool = false) -> AccountIdentity? {
-        guard ClaudeWebCookieStore.hasCookieHeader() else { return nil }
+    nonisolated private static func webClaudeAccount(allowsCLIFallback: Bool = false) -> AccountIdentity? {
+        guard Self.hasClaudeWebCookie(nil) else { return nil }
         return AccountIdentity(
             id: "web-claude",
             tool: .claude,
@@ -345,7 +395,7 @@ public final class AccountStore: ObservableObject {
     /// adapter actually fetches successfully, `QuotaService` updates
     /// the snapshot's metadata — the placeholder identity is mainly a
     /// hook for the UI to render a card and route to Settings.
-    private func miscPlaceholder(for instance: MiscProviderInstance) -> AccountIdentity {
+    nonisolated private static func miscPlaceholder(for instance: MiscProviderInstance) -> AccountIdentity {
         AccountIdentity(
             id: AccountStore.miscAccountId(forInstanceID: instance.id),
             tool: instance.tool,
@@ -354,5 +404,21 @@ public final class AccountStore: ObservableObject {
             createdAt: Date(),
             updatedAt: Date()
         )
+    }
+
+    nonisolated private static func hasOpenAIWebCookie(_ presence: WebCookiePresence?) -> Bool {
+        presence?.openAI ?? OpenAIWebCookieStore.hasCookieHeader()
+    }
+
+    nonisolated private static func hasClaudeWebCookie(_ presence: WebCookiePresence?) -> Bool {
+        presence?.claude ?? ClaudeWebCookieStore.hasCookieHeader()
+    }
+
+    nonisolated private static func hasGeminiWebCookie(_ presence: WebCookiePresence?) -> Bool {
+        presence?.gemini ?? GeminiWebCookieStore.hasCookieHeader()
+    }
+
+    nonisolated private static func hasGrokWebCookie(_ presence: WebCookiePresence?) -> Bool {
+        presence?.grok ?? GrokWebCookieStore.hasCookieHeader()
     }
 }
