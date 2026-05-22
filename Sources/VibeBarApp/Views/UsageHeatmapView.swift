@@ -192,25 +192,3 @@ struct UsageHeatmapView: View {
         return "Peak: \(weekdayLabels[bestDay]) \(hourLabel(bestHour))"
     }
 }
-
-private struct HeatmapGridMetrics {
-    let labelWidth: CGFloat
-    let cellSide: CGFloat
-    let cellSpacing: CGFloat
-
-    var hourBlockWidth: CGFloat {
-        cellSide * 6 + cellSpacing * 5
-    }
-
-    var cellCornerRadius: CGFloat {
-        min(2.5, max(1.5, cellSide * 0.16))
-    }
-}
-
-private struct HeatmapGridWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
