@@ -26,14 +26,16 @@ public enum CostUsageScanner {
             return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         case .gemini:
             return await scanGemini(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
-        case .alibaba, .alibabaTokenPlan, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
-            // Antigravity, Grok, and misc providers don't expose
-            // token-level cost data through any documented public
-            // protocol. The
-            // cost-history pipeline is gated by `tool.supportsTokenCost`
-            // upstream. Returning `nil` here is a defensive belt:
-            // anything that does call us by accident gets an empty
-            // snapshot, not a crash.
+        case .grok:
+            return await scanGrok(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
+        case .antigravity:
+            return await scanAntigravity(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            // Misc providers don't expose token-level cost data through
+            // any documented public protocol. The cost-history pipeline
+            // is gated by `tool.supportsTokenCost` upstream. Returning
+            // `nil` here is a defensive belt: anything that does call
+            // us by accident gets an empty snapshot, not a crash.
             return nil
         }
     }
@@ -305,13 +307,16 @@ public enum CostUsageScanner {
         now: Date,
         retentionDays: Int?
     ) async -> CostSnapshot {
-        let candidates = geminiTelemetryFileCandidates(homeDirectory: homeDirectory)
-        let files = candidates.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let telemetryCandidates = geminiTelemetryFileCandidates(homeDirectory: homeDirectory)
+        let chatCandidates = geminiChatFileCandidates(homeDirectory: homeDirectory)
+        let telemetryFiles = telemetryCandidates.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let chatFiles = chatCandidates // chat enumerator only returns existing files
+        let allFiles = telemetryFiles + chatFiles
         var aggregator = CostAggregator(tool: .gemini, now: now)
         var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .gemini, retentionDays: retentionDays)
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
-        for file in files {
+        for file in allFiles {
             let (mtime, size) = fileFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
                 let retained = retainedEvents(cached, cutoff: cutoff)
@@ -326,62 +331,177 @@ public enum CostUsageScanner {
                 continue
             }
 
-            var parsed: [CostUsageScanCache.ParsedEvent] = []
-            let fileMTimeFallback = fileMTime(file) ?? now
-            let didRead = forEachJSONLLine(in: file) { lineData in
-                guard !lineData.isEmpty,
-                      lineData.contains(asciiSequence: "gemini_cli")
-                else { return }
-                guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
-                guard isGeminiApiResponse(raw) else { return }
-                let attributes = geminiAttributes(raw)
-                let model = (attributes["model"] as? String)
-                    ?? (attributes["gen_ai.request.model"] as? String)
-                    ?? (attributes["gen_ai.response.model"] as? String)
-                    ?? "gemini-unknown"
-                let input = anyInt(attributes["input_token_count"]
-                                   ?? attributes["gen_ai.usage.input_tokens"]
-                                   ?? attributes["prompt_token_count"])
-                let cached = anyInt(attributes["cached_content_token_count"]
-                                    ?? attributes["gen_ai.usage.cached_tokens"])
-                let output = anyInt(attributes["output_token_count"]
-                                    ?? attributes["gen_ai.usage.output_tokens"]
-                                    ?? attributes["candidates_token_count"])
-                if input == 0, cached == 0, output == 0 { return }
-                let timestamp = geminiTimestamp(raw) ?? fileMTimeFallback
-                let promptId = attributes["prompt_id"] as? String
-                    ?? attributes["gen_ai.prompt_id"] as? String
-                let sessionId = attributes["session.id"] as? String
-                    ?? attributes["session_id"] as? String
-                let inputNonCached = max(0, input - cached)
-                let parsedEvent = CostUsageScanCache.ParsedEvent(
-                    date: timestamp,
-                    model: model,
-                    input: inputNonCached,
-                    output: output,
-                    cache: cached,
-                    sessionId: sessionId,
-                    messageId: promptId
-                )
-                guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
-                parsed.append(parsedEvent)
-                let cost = CostUsagePricing.geminiCostUSD(
-                    model: model,
-                    inputTokens: input,
-                    cacheReadInputTokens: cached,
-                    outputTokens: output
-                ) ?? 0
-                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
-                               input: parsedEvent.input, output: parsedEvent.output,
-                               cache: parsedEvent.cache, costUSD: cost)
+            let isChatFile = file.path.contains("/chats/")
+            let parsed: [CostUsageScanCache.ParsedEvent]
+            let didRead: Bool
+            if isChatFile {
+                (parsed, didRead) = parseGeminiChatFile(file: file, cutoff: cutoff, aggregator: &aggregator)
+            } else {
+                (parsed, didRead) = parseGeminiTelemetryFile(file: file, now: now, cutoff: cutoff, aggregator: &aggregator)
             }
             if didRead {
                 cache.store(parsed, for: file.path, mtime: mtime, size: size)
             }
         }
-        cache.prune(known: Set(files.map(\.path)))
+        cache.prune(known: Set(allFiles.map(\.path)))
         cache.save(homeDirectory: homeDirectory, tool: .gemini)
-        return aggregator.snapshot(jsonlFilesFound: files.count)
+        return aggregator.snapshot(jsonlFilesFound: allFiles.count)
+    }
+
+    /// Parse the original Gemini CLI OpenTelemetry telemetry-log
+    /// format — `gemini_cli.api_response` events whose attributes
+    /// carry per-call token counts. Returns the cached events
+    /// (still subject to retention) plus a `didRead` bool the
+    /// caller uses to decide whether to update the per-file cache.
+    private static func parseGeminiTelemetryFile(
+        file: URL,
+        now: Date,
+        cutoff: Date?,
+        aggregator: inout CostAggregator
+    ) -> ([CostUsageScanCache.ParsedEvent], Bool) {
+        var parsed: [CostUsageScanCache.ParsedEvent] = []
+        let fileMTimeFallback = fileMTime(file) ?? now
+        let didRead = forEachJSONLLine(in: file) { lineData in
+            guard !lineData.isEmpty,
+                  lineData.contains(asciiSequence: "gemini_cli")
+            else { return }
+            guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+            guard isGeminiApiResponse(raw) else { return }
+            let attributes = geminiAttributes(raw)
+            let model = (attributes["model"] as? String)
+                ?? (attributes["gen_ai.request.model"] as? String)
+                ?? (attributes["gen_ai.response.model"] as? String)
+                ?? "gemini-unknown"
+            let input = anyInt(attributes["input_token_count"]
+                               ?? attributes["gen_ai.usage.input_tokens"]
+                               ?? attributes["prompt_token_count"])
+            let cached = anyInt(attributes["cached_content_token_count"]
+                                ?? attributes["gen_ai.usage.cached_tokens"])
+            let output = anyInt(attributes["output_token_count"]
+                                ?? attributes["gen_ai.usage.output_tokens"]
+                                ?? attributes["candidates_token_count"])
+            if input == 0, cached == 0, output == 0 { return }
+            let timestamp = geminiTimestamp(raw) ?? fileMTimeFallback
+            let promptId = attributes["prompt_id"] as? String
+                ?? attributes["gen_ai.prompt_id"] as? String
+            let sessionId = attributes["session.id"] as? String
+                ?? attributes["session_id"] as? String
+            let inputNonCached = max(0, input - cached)
+            let parsedEvent = CostUsageScanCache.ParsedEvent(
+                date: timestamp,
+                model: model,
+                input: inputNonCached,
+                output: output,
+                cache: cached,
+                sessionId: sessionId,
+                messageId: promptId
+            )
+            guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
+            parsed.append(parsedEvent)
+            let cost = CostUsagePricing.geminiCostUSD(
+                model: model,
+                inputTokens: input,
+                cacheReadInputTokens: cached,
+                outputTokens: output
+            ) ?? 0
+            aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                           input: parsedEvent.input, output: parsedEvent.output,
+                           cache: parsedEvent.cache, costUSD: cost)
+        }
+        return (parsed, didRead)
+    }
+
+    /// Parse a Gemini CLI chat-history JSONL file from
+    /// `~/.gemini/tmp/<project>/chats/session-*.jsonl`. Each line is
+    /// one chat message; the `type: "gemini"` records carry a
+    /// `tokens` object with `input` / `output` / `cached` / `thoughts`
+    /// / `tool` / `total`. This is the format AQ's installation uses
+    /// instead of the OpenTelemetry log; once a project enables
+    /// telemetry the OTLP path takes over again.
+    private static func parseGeminiChatFile(
+        file: URL,
+        cutoff: Date?,
+        aggregator: inout CostAggregator
+    ) -> ([CostUsageScanCache.ParsedEvent], Bool) {
+        var parsed: [CostUsageScanCache.ParsedEvent] = []
+        var sessionIdFromHeader: String? = nil
+        let didRead = forEachJSONLLine(in: file) { lineData in
+            guard !lineData.isEmpty,
+                  lineData.contains(asciiSequence: "\"tokens\"")
+                    || lineData.contains(asciiSequence: "\"sessionId\"")
+            else { return }
+            guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+            if let sid = raw["sessionId"] as? String, sessionIdFromHeader == nil {
+                sessionIdFromHeader = sid
+            }
+            guard raw["type"] as? String == "gemini",
+                  let tokens = raw["tokens"] as? [String: Any]
+            else { return }
+            let model = (raw["model"] as? String) ?? "gemini-unknown"
+            let inputTotal = anyInt(tokens["input"])
+            let cached = anyInt(tokens["cached"])
+            let output = anyInt(tokens["output"])
+            let thoughts = anyInt(tokens["thoughts"])
+            let tool = anyInt(tokens["tool"])
+            if inputTotal == 0, cached == 0, output == 0, thoughts == 0, tool == 0 { return }
+            let timestamp = (raw["timestamp"] as? String).flatMap(parseISO)
+                ?? fileMTime(file) ?? Date()
+            let inputNonCached = max(0, inputTotal - cached)
+            // Gemini bills reasoning ("thoughts") and tool tokens at
+            // output rates, so fold them into output for cost — matches
+            // the CLI's own usage page totals.
+            let outputBilled = output + thoughts + tool
+            let parsedEvent = CostUsageScanCache.ParsedEvent(
+                date: timestamp,
+                model: model,
+                input: inputNonCached,
+                output: outputBilled,
+                cache: cached,
+                sessionId: sessionIdFromHeader,
+                messageId: raw["id"] as? String
+            )
+            guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
+            parsed.append(parsedEvent)
+            let cost = CostUsagePricing.geminiCostUSD(
+                model: model,
+                inputTokens: inputTotal,
+                cacheReadInputTokens: cached,
+                outputTokens: outputBilled
+            ) ?? 0
+            aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                           input: parsedEvent.input, output: parsedEvent.output,
+                           cache: parsedEvent.cache, costUSD: cost)
+        }
+        return (parsed, didRead)
+    }
+
+    /// Gather all `~/.gemini/tmp/<project>/chats/session-*.jsonl`
+    /// files. Each chat file is one conversation; an installation
+    /// can have hundreds across multiple project hashes.
+    private static func geminiChatFileCandidates(homeDirectory: String) -> [URL] {
+        let tmp = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent(".gemini/tmp")
+        guard let projects = try? FileManager.default.contentsOfDirectory(atPath: tmp.path) else {
+            return []
+        }
+        var out: [URL] = []
+        for project in projects {
+            let chats = tmp.appendingPathComponent(project).appendingPathComponent("chats")
+            guard let entries = try? FileManager.default.contentsOfDirectory(
+                at: chats,
+                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for url in entries
+            where url.pathExtension == "jsonl" && url.lastPathComponent.hasPrefix("session-")
+            {
+                let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+                if values?.isSymbolicLink == true { continue }
+                if values?.isRegularFile == false { continue }
+                out.append(url)
+            }
+        }
+        return out
     }
 
     private static func geminiTelemetryFileCandidates(homeDirectory: String) -> [URL] {
@@ -459,6 +579,258 @@ public enum CostUsageScanner {
         return nil
     }
 
+    // MARK: - Grok (per-session updates.jsonl)
+    //
+    // Grok CLI stores each session as a directory under
+    // `~/.grok/sessions/<urlEncodedCwd>/<sessionUUID>/` and writes
+    // three JSONL streams (chat_history, events, updates). Per-call
+    // token counts are not exposed — what we get is a cumulative
+    // `_meta.totalTokens` on every `updates.jsonl` record, paired
+    // with an `_meta.agentTimestampMs`. Per-turn deltas of that
+    // running total tell us how many tokens the turn cost; the
+    // first row's value is the floor.
+    //
+    // We split each delta 70 / 30 between input and output before
+    // costing — Grok's pricing tables charge input and output at
+    // different rates and a session-total figure can't be billed
+    // precisely without the split. 70 / 30 is the rough chat-assistant
+    // average and lines up with how Grok's own dashboard summarises
+    // sessions.
+
+    private static func scanGrok(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?
+    ) async -> CostSnapshot {
+        let root = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent(".grok/sessions")
+        let files = collectGrokUpdatesFiles(under: root)
+        var aggregator = CostAggregator(tool: .grok, now: now)
+        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .grok, retentionDays: retentionDays)
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+
+        for file in files {
+            let (mtime, size) = fileFingerprint(file)
+            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+                let retained = retainedEvents(cached, cutoff: cutoff)
+                if retained.count != cached.count {
+                    cache.store(retained, for: file.path, mtime: mtime, size: size)
+                }
+                for event in retained {
+                    let cost = costUSD(tool: .grok, event: event)
+                    aggregator.add(at: event.date, model: event.model, input: event.input,
+                                   output: event.output, cache: event.cache, costUSD: cost)
+                }
+                continue
+            }
+
+            let raw = parseGrokUpdatesFile(file: file)
+            var parsed: [CostUsageScanCache.ParsedEvent] = []
+            parsed.reserveCapacity(raw.count)
+            var previousTotal: Int? = nil
+            for snapshot in raw {
+                let delta: Int
+                if let previousTotal {
+                    delta = max(0, snapshot.totalTokens - previousTotal)
+                } else {
+                    delta = max(0, snapshot.totalTokens)
+                }
+                previousTotal = snapshot.totalTokens
+                guard delta > 0 else { continue }
+                let inputTokens = Int((Double(delta) * 0.7).rounded())
+                let outputTokens = max(0, delta - inputTokens)
+                let parsedEvent = CostUsageScanCache.ParsedEvent(
+                    date: snapshot.date,
+                    model: snapshot.model,
+                    input: inputTokens,
+                    output: outputTokens,
+                    cache: 0,
+                    sessionId: snapshot.sessionId
+                )
+                guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
+                parsed.append(parsedEvent)
+                let cost = costUSD(tool: .grok, event: parsedEvent)
+                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                               input: parsedEvent.input, output: parsedEvent.output,
+                               cache: parsedEvent.cache, costUSD: cost)
+            }
+            cache.store(parsed, for: file.path, mtime: mtime, size: size)
+        }
+        cache.prune(known: Set(files.map(\.path)))
+        cache.save(homeDirectory: homeDirectory, tool: .grok)
+        return aggregator.snapshot(jsonlFilesFound: files.count)
+    }
+
+    private struct GrokSnapshot {
+        let date: Date
+        let model: String
+        let totalTokens: Int
+        let sessionId: String?
+    }
+
+    private static func collectGrokUpdatesFiles(under root: URL) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        var out: [URL] = []
+        for case let url as URL in enumerator
+        where url.lastPathComponent == "updates.jsonl"
+            || url.lastPathComponent == "events.jsonl"
+        {
+            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+            if values?.isSymbolicLink == true { continue }
+            if values?.isRegularFile == false { continue }
+            // Prefer updates.jsonl when both exist for the same session.
+            if url.lastPathComponent == "events.jsonl" {
+                let sibling = url.deletingLastPathComponent()
+                    .appendingPathComponent("updates.jsonl")
+                if FileManager.default.fileExists(atPath: sibling.path) { continue }
+            }
+            out.append(url)
+        }
+        return out
+    }
+
+    private static func parseGrokUpdatesFile(file: URL) -> [GrokSnapshot] {
+        var events: [GrokSnapshot] = []
+        let sessionId = file.deletingLastPathComponent().lastPathComponent
+        let didRead = forEachJSONLLine(in: file) { lineData in
+            guard !lineData.isEmpty,
+                  lineData.contains(asciiSequence: "totalTokens")
+            else { return }
+            guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+            guard let meta = obj["_meta"] as? [String: Any] else { return }
+            let total = anyInt(meta["totalTokens"])
+            guard total >= 0 else { return }
+            let timestamp: Date
+            if let ms = meta["agentTimestampMs"] as? Double {
+                timestamp = Date(timeIntervalSince1970: ms / 1000)
+            } else if let ms = meta["agentTimestampMs"] as? Int {
+                timestamp = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
+            } else if let s = meta["agentTimestampMs"] as? String, let ms = Double(s) {
+                timestamp = Date(timeIntervalSince1970: ms / 1000)
+            } else if let iso = obj["timestamp"] as? String, let d = parseISO(iso) {
+                timestamp = d
+            } else {
+                timestamp = fileMTime(file) ?? Date()
+            }
+            events.append(GrokSnapshot(
+                date: timestamp,
+                model: "grok-build",
+                totalTokens: total,
+                sessionId: sessionId
+            ))
+        }
+        // Stable order: sessions written by Grok CLI are append-only but we
+        // still sort by timestamp to absorb out-of-order writes.
+        return didRead ? events.sorted { $0.date < $1.date } : []
+    }
+
+    // MARK: - AntiGravity (per-trajectory SQLite + protobuf blobs)
+    //
+    // The AntiGravity IDE writes one SQLite database per conversation
+    // under `~/.gemini/antigravity/conversations/<UUID>.db`. The
+    // `gen_metadata` table holds one row per model call; its `data`
+    // BLOB is a protobuf message we read with a raw varint scanner
+    // (no SwiftProtobuf dependency). Per-row token fields under path
+    // `1.4`:
+    //   - field 1: constant system-prompt size (cached after turn 1)
+    //   - field 2: non-cached input tokens this turn
+    //   - field 3: output tokens this turn
+    //   - field 5: cumulative cache-read pool size
+    //   - field 9: reasoning / thinking tokens (counted as output)
+    //   - field 10: tool tokens (counted as output)
+    // Timestamp lives at path `1.9.4` (seconds + nanos).
+    //
+    // The CLI-only `~/.gemini/antigravity-cli/conversations/*.pb`
+    // container uses an unidentified compressed format (magic bytes
+    // `4f fc 3f 34 …`) and stays unparsed — we accept that CLI-only
+    // AntiGravity usage is dark until that format is reverse-engineered.
+
+    private static func scanAntigravity(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?
+    ) async -> CostSnapshot {
+        let root = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent(".gemini/antigravity/conversations")
+        let dbFiles = collectAntigravityConversationFiles(under: root)
+        var aggregator = CostAggregator(tool: .antigravity, now: now)
+        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .antigravity, retentionDays: retentionDays)
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+
+        for file in dbFiles {
+            let (mtime, size) = fileFingerprint(file)
+            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+                let retained = retainedEvents(cached, cutoff: cutoff)
+                if retained.count != cached.count {
+                    cache.store(retained, for: file.path, mtime: mtime, size: size)
+                }
+                for event in retained {
+                    let cost = costUSD(tool: .antigravity, event: event)
+                    aggregator.add(at: event.date, model: event.model, input: event.input,
+                                   output: event.output, cache: event.cache, costUSD: cost)
+                }
+                continue
+            }
+
+            let turns = AntigravitySessionReader.readGenMetadata(at: file)
+            var parsed: [CostUsageScanCache.ParsedEvent] = []
+            parsed.reserveCapacity(turns.count)
+            var previousCacheCumulative = 0
+            let sessionId = file.deletingPathExtension().lastPathComponent
+            for turn in turns {
+                let cacheCreation = max(0, turn.cumulativeCacheReadTokens - previousCacheCumulative)
+                let cacheRead = max(0, previousCacheCumulative)
+                previousCacheCumulative = turn.cumulativeCacheReadTokens
+                let input = turn.inputTokens
+                // Reasoning + tool tokens are billed at output rates by
+                // Claude / Gemini, so fold them into output here.
+                let output = turn.outputTokens + turn.thoughtsTokens + turn.toolTokens
+                guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { continue }
+                let parsedEvent = CostUsageScanCache.ParsedEvent(
+                    date: turn.date,
+                    model: "antigravity-default",
+                    input: input,
+                    output: output,
+                    cache: cacheRead + cacheCreation,
+                    cacheCreation: cacheCreation,
+                    sessionId: sessionId,
+                    messageId: turn.requestId
+                )
+                guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
+                parsed.append(parsedEvent)
+                let cost = costUSD(tool: .antigravity, event: parsedEvent)
+                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                               input: parsedEvent.input, output: parsedEvent.output,
+                               cache: parsedEvent.cache, costUSD: cost)
+            }
+            cache.store(parsed, for: file.path, mtime: mtime, size: size)
+        }
+        cache.prune(known: Set(dbFiles.map(\.path)))
+        cache.save(homeDirectory: homeDirectory, tool: .antigravity)
+        return aggregator.snapshot(jsonlFilesFound: dbFiles.count)
+    }
+
+    private static func collectAntigravityConversationFiles(under root: URL) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return entries.filter { url in
+            guard url.pathExtension == "db" else { return false }
+            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+            if values?.isSymbolicLink == true { return false }
+            if values?.isRegularFile == false { return false }
+            return true
+        }
+    }
+
     private static func retentionCutoff(now: Date, retentionDays: Int?) -> Date? {
         guard let retentionDays else { return nil }
         let normalized = CostDataSettings.normalizedRetentionDays(retentionDays)
@@ -507,7 +879,24 @@ public enum CostUsageScanner {
                 cacheReadInputTokens: event.cache,
                 outputTokens: event.output
             ) ?? 0
-        case .alibaba, .alibabaTokenPlan, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .grok:
+            return CostUsagePricing.grokCostUSD(
+                model: event.model,
+                inputTokens: event.input + event.cache,
+                cachedInputTokens: event.cache,
+                outputTokens: event.output
+            ) ?? 0
+        case .antigravity:
+            let cacheCreation = max(0, event.cacheCreation ?? 0)
+            let cacheRead = max(0, event.cache - cacheCreation)
+            return CostUsagePricing.antigravityCostUSD(
+                model: event.model,
+                inputTokens: event.input,
+                cacheReadInputTokens: cacheRead,
+                cacheCreationInputTokens: cacheCreation,
+                outputTokens: event.output
+            ) ?? 0
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 0
         }
     }

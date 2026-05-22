@@ -28,20 +28,22 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertTrue(ToolType.grok.isPartialPrimary)
         XCTAssertTrue(ToolType.grok.supportsDedicatedCard)
         XCTAssertFalse(ToolType.grok.isPrimary)
-        XCTAssertFalse(ToolType.grok.supportsTokenCost)
+        XCTAssertTrue(ToolType.grok.supportsTokenCost,
+                      "Grok joined the cost-aware club: ~/.grok/sessions/**/updates.jsonl carries per-session running totals")
         XCTAssertFalse(ToolType.grok.supportsStatusPage)
         XCTAssertFalse(ToolType.grok.isMiscPageProvider)
     }
 
-    func testGeminiSupportsTokenCostAntigravityDoesNot() {
-        // Gemini joined the cost-aware club: the OpenTelemetry log
-        // (~/.gemini/telemetry.log, when telemetry is enabled) carries
-        // per-call token counts. Antigravity has no public protocol
-        // exposing token-level data, so it stays cost-blind.
+    func testGoogleAIPairSupportsTokenCost() {
+        // Gemini reads the OpenTelemetry log + chat-history JSONL;
+        // AntiGravity reads the per-conversation SQLite stores under
+        // ~/.gemini/antigravity/conversations/*.db. Both join Codex /
+        // Claude in the cost-aware tier, even though they're
+        // partial-primary in every other respect.
         XCTAssertTrue(ToolType.gemini.supportsTokenCost,
-                      "Gemini should support token cost via OpenTelemetry log scanning")
-        XCTAssertFalse(ToolType.antigravity.supportsTokenCost,
-                       "Antigravity has no public token-count protocol")
+                      "Gemini should support token cost via telemetry + chat-history scanning")
+        XCTAssertTrue(ToolType.antigravity.supportsTokenCost,
+                      "AntiGravity should support token cost via per-conversation SQLite scanning")
     }
 
     func testGoogleAIPairSupportsStatusPage() {

@@ -133,17 +133,27 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     /// True for providers we can build a per-token cost panel for.
-    /// `.gemini` joins Codex / Claude because Gemini CLI's
-    /// OpenTelemetry log (`~/.gemini/telemetry.log`) carries
-    /// `input_token_count` / `output_token_count` per
-    /// `gemini_cli.api_response` event. Antigravity has no comparable
-    /// public protocol (LS quotas are remainingFraction only;
-    /// `~/.gemini/antigravity/conversations/*.db` is Electron-encrypted
-    /// protobuf), so it stays false.
+    /// - `.gemini` reads Gemini CLI's OpenTelemetry log
+    ///   (`~/.gemini/telemetry.log` / per-project OTLP collector log)
+    ///   *and* the persistent chat-history JSONL files under
+    ///   `~/.gemini/tmp/*/chats/session-*.jsonl` (each `type:gemini`
+    ///   message carries `tokens.{input,output,cached,thoughts}`).
+    /// - `.antigravity` reads the AntiGravity IDE's per-conversation
+    ///   SQLite databases under `~/.gemini/antigravity/conversations/*.db`;
+    ///   the `gen_metadata.data` protobuf blob exposes per-turn
+    ///   input / output / cumulative cache-read counts. The
+    ///   `~/.gemini/antigravity-cli/conversations/*.pb` files use an
+    ///   unidentified container format and are skipped — accept that
+    ///   CLI-only AntiGravity usage stays dark for now.
+    /// - `.grok` reads `~/.grok/sessions/**/updates.jsonl` and takes
+    ///   per-session deltas of the cumulative `_meta.totalTokens`
+    ///   field. Grok exposes only a session-level total (no per-call
+    ///   input / output split), so the USD figure is a blended
+    ///   approximation against the published `grok-build` rate.
     public var supportsTokenCost: Bool {
         switch self {
-        case .codex, .claude, .gemini: return true
-        case .alibaba, .alibabaTokenPlan, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .codex, .claude, .gemini, .antigravity, .grok: return true
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }

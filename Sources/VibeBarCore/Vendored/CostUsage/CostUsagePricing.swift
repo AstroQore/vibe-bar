@@ -9,7 +9,9 @@ public enum CostUsagePricing {
 
     /// Bump when local cost parsing or pricing semantics change in a way that
     /// makes persisted cost totals unsafe to max-merge with fresh scans.
-    public static let calculationVersion: Int = 4
+    /// v5: add Grok + AntiGravity adapters with their own pricing tables;
+    /// existing Codex / Claude / Gemini totals stay byte-identical.
+    public static let calculationVersion: Int = 5
 
     struct CodexPricing {
         let inputCostPerToken: Double
@@ -29,6 +31,25 @@ public enum CostUsagePricing {
         let inputCostPerTokenAboveThreshold: Double?
         let outputCostPerTokenAboveThreshold: Double?
         let cacheReadInputCostPerTokenAboveThreshold: Double?
+        let displayLabel: String?
+    }
+
+    struct GrokPricing {
+        let inputCostPerToken: Double
+        let outputCostPerToken: Double
+        let cacheReadInputCostPerToken: Double?
+        let displayLabel: String?
+    }
+
+    struct AntigravityPricing {
+        let inputCostPerToken: Double
+        let outputCostPerToken: Double
+        /// AntiGravity bills by plan quota, not per-token. These rates
+        /// shadow the corresponding upstream model (Sonnet, Opus,
+        /// Gemini Pro, etc.) so the dollar number is interpretable as
+        /// "the API-equivalent of this session would have cost ~$X".
+        let cacheReadInputCostPerToken: Double
+        let cacheCreationInputCostPerToken: Double
         let displayLabel: String?
     }
 
@@ -354,6 +375,151 @@ public enum CostUsagePricing {
             displayLabel: nil)
     ]
 
+    /// xAI Grok API pricing, USD per token, as of `pricingDataUpdatedAt`.
+    /// Source: docs.x.ai/docs/models and pricepertoken.com cross-checks.
+    /// Cached-input rates that aren't published explicitly stay `nil`
+    /// and fall back to the regular input rate in `grokCostUSD`.
+    private static let grok: [String: GrokPricing] = [
+        "grok-build": GrokPricing(
+            inputCostPerToken: 1e-6,
+            outputCostPerToken: 2e-6,
+            cacheReadInputCostPerToken: nil,
+            displayLabel: nil),
+        "grok-build-0.1": GrokPricing(
+            inputCostPerToken: 1e-6,
+            outputCostPerToken: 2e-6,
+            cacheReadInputCostPerToken: nil,
+            displayLabel: nil),
+        "grok-4": GrokPricing(
+            inputCostPerToken: 3e-6,
+            outputCostPerToken: 1.5e-5,
+            cacheReadInputCostPerToken: 7.5e-7,
+            displayLabel: nil),
+        "grok-4-fast": GrokPricing(
+            inputCostPerToken: 2e-7,
+            outputCostPerToken: 5e-7,
+            cacheReadInputCostPerToken: 5e-8,
+            displayLabel: nil),
+        "grok-4.1-fast": GrokPricing(
+            inputCostPerToken: 2e-7,
+            outputCostPerToken: 5e-7,
+            cacheReadInputCostPerToken: 5e-8,
+            displayLabel: nil),
+        "grok-4.3": GrokPricing(
+            inputCostPerToken: 1.25e-6,
+            outputCostPerToken: 2.5e-6,
+            cacheReadInputCostPerToken: 3.1e-7,
+            displayLabel: nil),
+        "grok-4.20": GrokPricing(
+            inputCostPerToken: 2e-6,
+            outputCostPerToken: 6e-6,
+            cacheReadInputCostPerToken: 2e-7,
+            displayLabel: nil),
+        "grok-3": GrokPricing(
+            inputCostPerToken: 3e-6,
+            outputCostPerToken: 1.5e-5,
+            cacheReadInputCostPerToken: 7.5e-7,
+            displayLabel: nil),
+        "grok-3-mini": GrokPricing(
+            inputCostPerToken: 3e-7,
+            outputCostPerToken: 5e-7,
+            cacheReadInputCostPerToken: 7.5e-8,
+            displayLabel: nil),
+        "grok-code-fast-1": GrokPricing(
+            inputCostPerToken: 2e-7,
+            outputCostPerToken: 1.5e-6,
+            cacheReadInputCostPerToken: 2e-8,
+            displayLabel: nil)
+    ]
+
+    /// AntiGravity is a managed product, not a pay-per-token API.
+    /// These rates shadow Claude Sonnet 4.6 (the default) / Opus /
+    /// Haiku / Gemini Pro / Gemini Flash so the dollar number is
+    /// interpretable as "if this session had hit the API directly,
+    /// it would have cost approximately $X". The `-default` key is
+    /// the fallback when the scanner can't pin the underlying model.
+    private static let antigravity: [String: AntigravityPricing] = [
+        "antigravity-default": AntigravityPricing(
+            inputCostPerToken: 3e-6,
+            outputCostPerToken: 1.5e-5,
+            cacheReadInputCostPerToken: 3e-7,
+            cacheCreationInputCostPerToken: 3.75e-6,
+            displayLabel: "Sonnet-rate est."),
+        "antigravity-claude-sonnet": AntigravityPricing(
+            inputCostPerToken: 3e-6,
+            outputCostPerToken: 1.5e-5,
+            cacheReadInputCostPerToken: 3e-7,
+            cacheCreationInputCostPerToken: 3.75e-6,
+            displayLabel: nil),
+        "antigravity-claude-opus": AntigravityPricing(
+            inputCostPerToken: 5e-6,
+            outputCostPerToken: 2.5e-5,
+            cacheReadInputCostPerToken: 5e-7,
+            cacheCreationInputCostPerToken: 6.25e-6,
+            displayLabel: nil),
+        "antigravity-claude-haiku": AntigravityPricing(
+            inputCostPerToken: 1e-6,
+            outputCostPerToken: 5e-6,
+            cacheReadInputCostPerToken: 1e-7,
+            cacheCreationInputCostPerToken: 1.25e-6,
+            displayLabel: nil),
+        "antigravity-gemini-pro": AntigravityPricing(
+            inputCostPerToken: 1.25e-6,
+            outputCostPerToken: 1e-5,
+            cacheReadInputCostPerToken: 3.1e-7,
+            cacheCreationInputCostPerToken: 0,
+            displayLabel: nil),
+        "antigravity-gemini-flash": AntigravityPricing(
+            inputCostPerToken: 3e-7,
+            outputCostPerToken: 2.5e-6,
+            cacheReadInputCostPerToken: 7.5e-8,
+            cacheCreationInputCostPerToken: 0,
+            displayLabel: nil)
+    ]
+
+    static func normalizeGrokModel(_ raw: String) -> String {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.hasPrefix("xai/") {
+            trimmed = String(trimmed.dropFirst("xai/".count))
+        }
+        if self.grok[trimmed] != nil { return trimmed }
+        if let datedRange = trimmed.range(of: #"-(beta|preview|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})$"#, options: .regularExpression) {
+            let base = String(trimmed[..<datedRange.lowerBound])
+            if self.grok[base] != nil { return base }
+        }
+        let segments = trimmed.split(separator: "-")
+        for end in stride(from: segments.count, through: 1, by: -1) {
+            let candidate = segments.prefix(end).joined(separator: "-")
+            if self.grok[candidate] != nil { return candidate }
+        }
+        return trimmed
+    }
+
+    static func grokDisplayLabel(model: String) -> String? {
+        self.grok[self.normalizeGrokModel(model)]?.displayLabel
+    }
+
+    static func normalizeAntigravityModel(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if self.antigravity[trimmed] != nil { return trimmed }
+        if trimmed.contains("opus") { return "antigravity-claude-opus" }
+        if trimmed.contains("haiku") { return "antigravity-claude-haiku" }
+        if trimmed.contains("sonnet") || trimmed.contains("claude") {
+            return "antigravity-claude-sonnet"
+        }
+        if trimmed.contains("flash-lite") || trimmed.contains("flash") {
+            return "antigravity-gemini-flash"
+        }
+        if trimmed.contains("pro") || trimmed.contains("gemini") {
+            return "antigravity-gemini-pro"
+        }
+        return "antigravity-default"
+    }
+
+    static func antigravityDisplayLabel(model: String) -> String? {
+        self.antigravity[self.normalizeAntigravityModel(model)]?.displayLabel
+    }
+
     static func normalizeGeminiModel(_ raw: String) -> String {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         // Drop the common `models/` prefix used by the Gemini API.
@@ -498,6 +664,48 @@ public enum CostUsagePricing {
                    base: pricing.outputCostPerToken,
                    above: pricing.outputCostPerTokenAboveThreshold,
                    threshold: pricing.thresholdTokens)
+    }
+
+    /// Compute USD cost for a Grok call. xAI publishes per-model input
+    /// and output rates; cached-input is sometimes ~10% of input on
+    /// newer models. The caller passes pre-split tokens — when the
+    /// upstream source only has a session-level total, the Grok
+    /// scanner splits it ~70 / 30 input vs output before calling us.
+    /// Returns `nil` for unknown models.
+    static func grokCostUSD(
+        model: String,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int
+    ) -> Double? {
+        let key = self.normalizeGrokModel(model)
+        guard let pricing = self.grok[key] else { return nil }
+        let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
+        let nonCached = max(0, inputTokens - cached)
+        let cachedRate = pricing.cacheReadInputCostPerToken ?? pricing.inputCostPerToken
+        return Double(nonCached) * pricing.inputCostPerToken
+            + Double(cached) * cachedRate
+            + Double(max(0, outputTokens)) * pricing.outputCostPerToken
+    }
+
+    /// Compute USD cost for an AntiGravity-mediated call. AntiGravity
+    /// bills by plan quota, so this number is an "if this same volume
+    /// hit the underlying API directly" estimate, not a real invoice
+    /// figure. Default key (`antigravity-default`) shadows Claude
+    /// Sonnet 4.6 rates.
+    static func antigravityCostUSD(
+        model: String,
+        inputTokens: Int,
+        cacheReadInputTokens: Int,
+        cacheCreationInputTokens: Int,
+        outputTokens: Int
+    ) -> Double? {
+        let key = self.normalizeAntigravityModel(model)
+        guard let pricing = self.antigravity[key] else { return nil }
+        return Double(max(0, inputTokens)) * pricing.inputCostPerToken
+            + Double(max(0, cacheReadInputTokens)) * pricing.cacheReadInputCostPerToken
+            + Double(max(0, cacheCreationInputTokens)) * pricing.cacheCreationInputCostPerToken
+            + Double(max(0, outputTokens)) * pricing.outputCostPerToken
     }
 
     static func claudeCostUSD(
