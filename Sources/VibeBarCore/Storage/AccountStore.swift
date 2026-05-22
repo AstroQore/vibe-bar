@@ -272,28 +272,49 @@ public final class AccountStore: ObservableObject {
         )
     }
 
-    /// Grok registers only when `~/.grok/auth.json` is present — the
-    /// current adapter has no cookie-based fallback, so a missing
-    /// auth.json means there is no usable credential to surface. Once
-    /// the file lands the popover starts showing the live monthly
-    /// usage card on the dedicated Grok sub-page.
+    /// Grok registers when EITHER `~/.grok/auth.json` is present
+    /// (preferred — carries email + plan label) OR a signed-in
+    /// grok.com browser session has been imported into the Keychain.
+    /// The dominant source determines the account id / alias; the
+    /// adapter still falls back internally if its preferred source
+    /// trips at fetch time.
     private func autoDetectGrok() -> AccountIdentity? {
-        guard GrokCredentialsStore.hasCredentials() else { return nil }
-        // Best-effort identity enrichment: surface the account's email
-        // and SuperGrok plan badge when auth.json parses cleanly. If
-        // parsing fails we still register the account so the adapter
-        // can run and report a fetch error in the popover.
-        let credentials = try? GrokCredentialsStore.load()
+        let hasAuthJson = GrokCredentialsStore.hasCredentials()
+        let hasCookies = GrokWebCookieStore.hasCookieHeader()
+        guard hasAuthJson || hasCookies else { return nil }
+
+        if hasAuthJson {
+            // Best-effort identity enrichment: surface the account's
+            // email and SuperGrok plan badge when auth.json parses
+            // cleanly. If parsing fails we still register the account
+            // so the adapter can run and report a fetch error.
+            let credentials = try? GrokCredentialsStore.load()
+            return AccountIdentity(
+                id: "oauth-grok",
+                tool: .grok,
+                email: credentials?.email,
+                alias: "Grok",
+                plan: credentials?.planLabel,
+                source: .oauthCLI,
+                allowsWebFallback: hasCookies,
+                allowsCLIFallback: false,
+                allowsOAuthFallback: true,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        }
+
+        // Cookie-only session. The web payload doesn't carry email or
+        // plan tier, so the card shows just "Grok Web" until/unless
+        // the user also runs `grok login`.
         return AccountIdentity(
-            id: "oauth-grok",
+            id: "web-grok",
             tool: .grok,
-            email: credentials?.email,
-            alias: "Grok",
-            plan: credentials?.planLabel,
-            source: .oauthCLI,
-            allowsWebFallback: false,
+            alias: "Grok Web",
+            source: .webCookie,
+            allowsWebFallback: true,
             allowsCLIFallback: false,
-            allowsOAuthFallback: true,
+            allowsOAuthFallback: false,
             createdAt: Date(),
             updatedAt: Date()
         )

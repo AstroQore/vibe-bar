@@ -10,6 +10,7 @@ public enum SecureCookieHeaderStore {
         case openAI = "openai"
         case claude
         case gemini
+        case grok
         // Antigravity is intentionally absent until
         // `AntigravitySourcePlanner.antigravityWebSourceAvailable` flips
         // to true. Once the spike confirms a cloud endpoint, add

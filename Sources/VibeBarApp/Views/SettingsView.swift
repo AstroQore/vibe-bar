@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var openAICookieDeleteFailed: Bool = false
     @State private var claudeCookieDeleteFailed: Bool = false
     @State private var geminiCookieDeleteFailed: Bool = false
+    @State private var grokCookieDeleteFailed: Bool = false
     @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
     @State private var launchAtLoginError: String?
@@ -269,19 +270,49 @@ struct SettingsView: View {
                     }
 
                     settingsSection("Grok Account") {
-                        Text("Vibe Bar reads ~/.grok/auth.json and queries grok.com for the monthly credit usage. Run `grok login` once in a terminal to sign in.")
+                        Text("Vibe Bar can read Grok usage from `~/.grok/auth.json` (preferred — written by `grok login`) or from a signed-in grok.com browser session. Either source is enough.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
                         if GrokCredentialsStore.hasCredentials() {
                             Label("~/.grok/auth.json detected", systemImage: "checkmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.green)
                         } else {
-                            Label("No ~/.grok/auth.json yet — run `grok login` to authenticate.",
+                            Label("No ~/.grok/auth.json yet — run `grok login` to authenticate, or import cookies below.",
                                   systemImage: "exclamationmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
+
+                        HStack {
+                            Button {
+                                environment.importGrokBrowserCookies()
+                            } label: {
+                                Label("Import Grok cookies from browser", systemImage: "safari")
+                            }
+                            .disabled(environment.isImportingGrokBrowserCookies)
+                            Button(role: .destructive) {
+                                grokCookieDeleteFailed = !environment.deleteGrokWebCookies()
+                            } label: {
+                                Label("Delete Grok cookies", systemImage: "trash")
+                            }
+                            .disabled(!environment.hasGrokWebCookies)
+                        }
+                        if environment.hasGrokWebCookies {
+                            Text("Grok cookies saved.")
+                                .font(.caption2).foregroundStyle(.green)
+                        }
+                        if let status = environment.grokBrowserCookieImportStatus {
+                            Text(status)
+                                .font(.caption2)
+                                .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
+                        }
+                        if grokCookieDeleteFailed {
+                            Text("Could not delete saved Grok cookies.")
+                                .font(.caption2).foregroundStyle(.orange)
+                        }
+
                         Link("Open grok.com usage dashboard",
                              destination: ToolType.grok.statusPageURL)
                             .font(.caption2)
