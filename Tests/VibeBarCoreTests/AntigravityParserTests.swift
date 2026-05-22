@@ -47,6 +47,77 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[2].groupTitle, "Gemini Flash Lite")
     }
 
+    /// Google's wire format omits `remainingFraction` (proto3 zero
+    /// default) when a model's per-window quota is fully spent. The
+    /// older parser dropped those entries entirely, hiding the
+    /// exhausted state from the user — they would just stop seeing
+    /// the affected model in Vibe Bar's card while still seeing the
+    /// reset countdown in the official Antigravity dashboard.
+    /// Treat a missing fraction as 0 so the bucket stays visible.
+    func testKeepsDepletedModelsWithMissingRemainingFraction() throws {
+        let json = """
+        {
+          "code": 0,
+          "userStatus": {
+            "cascadeModelConfigData": {
+              "clientModelConfigs": [
+                {
+                  "label": "Gemini 3.5 Flash (High)",
+                  "modelOrAlias": {"model": "gemini-3.5-flash-high"},
+                  "quotaInfo": {"resetTime": "2026-05-23T01:05:00Z"}
+                },
+                {
+                  "label": "Gemini 3.5 Flash (Medium)",
+                  "modelOrAlias": {"model": "gemini-3.5-flash-medium"},
+                  "quotaInfo": {"remainingFraction": 0.0, "resetTime": "2026-05-23T01:05:00Z"}
+                },
+                {
+                  "label": "Claude Sonnet 4.6 (Thinking)",
+                  "modelOrAlias": {"model": "claude-sonnet-4-6"},
+                  "quotaInfo": {"remainingFraction": 0.42, "resetTime": "2026-05-23T05:55:00Z"}
+                }
+              ]
+            }
+          }
+        }
+        """
+        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
+        XCTAssertEqual(snap.buckets.count, 3, "All three models must surface — including the two depleted Gemini variants.")
+
+        let flashHigh = try XCTUnwrap(snap.buckets.first { $0.title == "Gemini 3.5 Flash (High)" })
+        XCTAssertEqual(flashHigh.usedPercent, 100.0, accuracy: 0.01, "Missing remainingFraction should map to 100% used.")
+        XCTAssertNotNil(flashHigh.resetAt, "Reset countdown should still surface.")
+
+        let flashMed = try XCTUnwrap(snap.buckets.first { $0.title == "Gemini 3.5 Flash (Medium)" })
+        XCTAssertEqual(flashMed.usedPercent, 100.0, accuracy: 0.01, "Explicit zero fraction should also be 100% used.")
+
+        let sonnet = try XCTUnwrap(snap.buckets.first { $0.title == "Claude Sonnet 4.6 (Thinking)" })
+        XCTAssertEqual(sonnet.usedPercent, 58.0, accuracy: 0.01, "Non-depleted models continue to compute as before.")
+    }
+
+    /// Entries with no quotaInfo at all stay filtered out — without
+    /// any quota object, we can't say anything meaningful about the
+    /// model's usage and dragging a "no data" pill into the card is
+    /// worse than omitting it.
+    func testStillSkipsModelsWithoutQuotaInfo() throws {
+        let json = """
+        {
+          "code": 0,
+          "userStatus": {
+            "cascadeModelConfigData": {
+              "clientModelConfigs": [
+                {"label": "Unknown Model A", "modelOrAlias": {"model": "unknown-a"}},
+                {"label": "Claude Sonnet 4.6 (Thinking)", "modelOrAlias": {"model": "claude-sonnet"}, "quotaInfo": {"remainingFraction": 0.5}}
+              ]
+            }
+          }
+        }
+        """
+        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
+        XCTAssertEqual(snap.buckets.count, 1)
+        XCTAssertEqual(snap.buckets[0].title, "Claude Sonnet 4.6 (Thinking)")
+    }
+
     func testFallsBackToPlanInfoWhenUserTierMissing() throws {
         let json = """
         {

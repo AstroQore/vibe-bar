@@ -419,8 +419,16 @@ enum AntigravityResponseParser {
         let modelConfigs = userStatus.cascadeModelConfigData?.clientModelConfigs ?? []
         var buckets: [QuotaBucket] = []
         for config in modelConfigs {
-            guard let quota = config.quotaInfo,
-                  let fraction = quota.remainingFraction else { continue }
+            guard let quota = config.quotaInfo else { continue }
+            // Google's wire format omits `remainingFraction` when the
+            // model's quota is fully spent (proto3 zero-default). The
+            // older guard dropped depleted models entirely, hiding the
+            // exhausted state from the user. Treat a missing fraction
+            // as 0 so the bucket still shows up (at 100% used) with
+            // the reset countdown that Google does send. See the live
+            // AntigravityQuotaWatcher-v2 panel — depleted models stay
+            // visible there for exactly the same reason.
+            let fraction = quota.remainingFraction ?? 0.0
             let resetAt = quota.resetTime.flatMap(parseDate)
             let modelId = normalizedModelID(label: config.label, rawModelID: config.modelOrAlias?.model)
             var bucket = QuotaBucket(

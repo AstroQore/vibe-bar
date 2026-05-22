@@ -413,7 +413,6 @@ private struct OverviewWaterfall: View {
         let combinedHeatmap = CostSnapshotAggregator.combinedHeatmap(snapshots)
         let combinedModels = CostSnapshotAggregator.combinedModelBreakdowns(snapshots)
         let hasCostData = snapshots.contains { $0.jsonlFilesFound > 0 }
-        let googleAISnapshot = googleAICombinedSnapshot
 
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             CombinedTotalsRow(density: density)
@@ -427,20 +426,15 @@ private struct OverviewWaterfall: View {
                 ForEach(ToolType.partialPrimaryProviders, id: \.self) { tool in
                     ProviderQuotaCard(tool: tool, density: density, compact: false)
                 }
+                // Google AI (Gemini + Antigravity) cost is intentionally
+                // omitted while the IDE/CLI cost story is incomplete
+                // (`~/.gemini/antigravity-cli/conversations/*.pb` is
+                // encrypted and the IDE side mixes Google-vs-third-party
+                // model rates that we haven't validated end-to-end). The
+                // dedicated Google AI sub-page surfaces a placeholder
+                // explaining the gap.
                 ForEach(overviewCostProviders, id: \.self) { tool in
-                    if tool == .gemini {
-                        OverviewCostCard(
-                            tool: .gemini,
-                            density: density,
-                            snapshotOverride: googleAISnapshot,
-                            titleOverride: "Google AI Cost",
-                            emptyMessageOverride: "No Google AI local cost data yet.",
-                            toolNameOverride: "Google AI",
-                            heatmapTitleOverride: "When you use Google AI"
-                        )
-                    } else {
-                        OverviewCostCard(tool: tool, density: density)
-                    }
+                    OverviewCostCard(tool: tool, density: density)
                 }
                 if hasCostData {
                     ModelRankingList(
@@ -467,23 +461,19 @@ private struct OverviewWaterfall: View {
         }
     }
 
+    /// Cost providers that contribute to the overview totals and the
+    /// per-provider OverviewCostCard. Google AI (Gemini + Antigravity)
+    /// is deliberately excluded while the local cost story is
+    /// incomplete — see the GoogleAIDualPage right column for the
+    /// user-facing explanation.
     private var overviewCostProviders: [ToolType] {
-        [.codex, .claude, .gemini, .grok]
+        [.codex, .claude, .grok]
     }
 
     private var overviewCostSnapshots: [CostSnapshot] {
         overviewCostProviders.compactMap { tool in
-            if tool == .gemini {
-                return googleAICombinedSnapshot
-            }
-            return environment.costService.snapshot(for: tool)
+            environment.costService.snapshot(for: tool)
         }
-    }
-
-    private var googleAICombinedSnapshot: CostSnapshot? {
-        let snapshots = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
-        guard !snapshots.isEmpty else { return nil }
-        return CostSnapshotAggregator.combinedSnapshot(tool: .gemini, snapshots: snapshots)
     }
 }
 
@@ -510,11 +500,6 @@ private struct GoogleAIDualPage: View {
         let geminiAccounts = environment.accountStore
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
-        let googleAICostSnapshot: CostSnapshot? = {
-            let snapshots = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
-            guard !snapshots.isEmpty else { return nil }
-            return CostSnapshotAggregator.combinedSnapshot(tool: .gemini, snapshots: snapshots)
-        }()
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
@@ -547,30 +532,16 @@ private struct GoogleAIDualPage: View {
                 alignment: .topLeading
             )
 
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                if let snapshot = googleAICostSnapshot, snapshot.jsonlFilesFound > 0 {
-                    ProviderCostStack(
-                        tool: .gemini,
-                        snapshot: snapshot,
-                        density: density,
-                        titleOverride: "Google AI Cost",
-                        toolNameOverride: "Google AI",
-                        heatmapTitleOverride: "When you use Google AI"
-                    )
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("No Google AI local cost data yet.")
-                            .font(.system(size: density.subtitleFontSize))
-                            .foregroundStyle(.secondary)
-                        Text("Gemini reads ~/.gemini telemetry and chat-history logs; Antigravity reads local conversation databases when they contain token metadata.")
-                            .font(.system(size: max(10, density.subtitleFontSize - 1)))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(nil)
-                    }
-                    .padding(.vertical, 24)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Cost tracking hidden for Google AI")
+                    .font(.system(size: density.subtitleFontSize, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("Antigravity CLI conversations live in encrypted `.pb` files that we can't yet parse, and the IDE-side rates mix Google-owned and third-party model pricing in ways we haven't verified end-to-end. The cost numbers were giving misleading totals, so the section is hidden until accuracy improves. Quota readings above are unaffected.")
+                    .font(.system(size: max(10, density.subtitleFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(nil)
             }
+            .padding(.vertical, 24)
             .frame(minWidth: googleAIRightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
         }
     }
@@ -639,7 +610,13 @@ private struct CombinedTotalsRow: View {
     private let summaryHeight: CGFloat = 178
 
     var body: some View {
-        let snapshots = ToolType.costAwareProviders.compactMap { environment.costService.snapshot(for: $0) }
+        // Skip Google AI snapshots here so the headline totals don't
+        // get polluted by unreliable Gemini/Antigravity cost numbers.
+        // See OverviewWaterfall.overviewCostProviders for the parallel
+        // exclusion in the per-provider cost grid.
+        let snapshots = ToolType.costAwareProviders
+            .filter { !ToolType.googleAIPair.contains($0) }
+            .compactMap { environment.costService.snapshot(for: $0) }
         let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let activeDays = dailyHistory.filter { $0.costUSD > 0 || $0.totalTokens > 0 }
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
