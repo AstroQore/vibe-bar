@@ -642,7 +642,6 @@ private struct CombinedTotalsRow: View {
         let snapshots = ToolType.costAwareProviders.compactMap { environment.costService.snapshot(for: $0) }
         let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let activeDays = dailyHistory.filter { $0.costUSD > 0 || $0.totalTokens > 0 }
-        let activeTools = snapshots.filter { $0.allTimeCostUSD > 0 || $0.allTimeTokens > 0 || $0.jsonlFilesFound > 0 }.count
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
         let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
         let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
@@ -650,8 +649,8 @@ private struct CombinedTotalsRow: View {
         let totalTokens = snapshots.reduce(0) { $0 + $1.allTimeTokens }
         let todayTokens = snapshots.reduce(0) { $0 + $1.todayTokens }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
+        let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
         let totalFiles = snapshots.reduce(0) { $0 + $1.jsonlFilesFound }
-        let topModel7D = CostSnapshotAggregator.combinedLast7DaysModelBreakdowns(snapshots).first
         let peakDayCost = dailyHistory.map(\.costUSD).max() ?? 0
         let averageDayCost = activeDays.isEmpty
             ? 0
@@ -697,13 +696,13 @@ private struct CombinedTotalsRow: View {
                     metric(label: "SESSIONS", value: "\(totalFiles)")
                 }
                 HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TOP 7D", value: formatModelName(topModel7D?.modelName))
+                    metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
                     divider
                     metric(label: "PEAK DAY", value: formatCost(peakDayCost))
                     divider
                     metric(label: "AVG/DAY", value: formatCost(averageDayCost))
                     divider
-                    metric(label: "ACTIVE", value: "\(activeTools)/\(ToolType.costAwareProviders.count)")
+                    metric(label: "DAYS USED", value: "\(activeDays.count)")
                 }
             }
             .padding(density.cardPadding)

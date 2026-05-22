@@ -52,6 +52,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         self.environment = environment
         let panel = panel ?? makePanel(environment: environment)
         self.panel = panel
+        applyStableContentSize(to: panel, settings: environment.settingsStore.settings, preserveTopRight: false)
         applySavedPositionOrDefault(to: panel, settings: environment.settingsStore.settings)
         panel.orderFrontRegardless()
         markWasOpen(true)
@@ -84,8 +85,9 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makePanel(environment: AppEnvironment) -> NSPanel {
+        let contentSize = Self.stableContentSize(for: environment.settingsStore.settings)
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 200, height: 120),
+            contentRect: NSRect(origin: .zero, size: contentSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -110,7 +112,6 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
                 .environmentObject(environment.settingsStore)
                 .environmentObject(environment.quotaService)
         )
-        host.sizingOptions = [.preferredContentSize]
         panel.contentViewController = host
 
         // Persist the panel's origin whenever the user drags it. We hook
@@ -125,6 +126,103 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             Task { @MainActor in self?.scheduleOriginPersist() }
         }
         return panel
+    }
+
+    private func applyStableContentSize(to panel: NSPanel, settings: AppSettings, preserveTopRight: Bool) {
+        let contentSize = Self.stableContentSize(for: settings)
+        let current = panel.contentView?.bounds.size ?? panel.frame.size
+        guard abs(current.width - contentSize.width) > 0.5 || abs(current.height - contentSize.height) > 0.5 else {
+            return
+        }
+        if preserveTopRight {
+            let oldFrame = panel.frame
+            let resized = NSRect(
+                x: oldFrame.maxX - contentSize.width,
+                y: oldFrame.maxY - contentSize.height,
+                width: contentSize.width,
+                height: contentSize.height
+            )
+            panel.setFrame(Self.clampedFrame(resized, preferredScreen: panel.screen), display: false)
+        } else {
+            panel.setContentSize(contentSize)
+        }
+    }
+
+    private static func stableContentSize(for settings: AppSettings) -> NSSize {
+        let mini = settings.miniWindow
+        let displayMode = mini.displayMode
+        let cellWidth: CGFloat
+        let cellSpacing: CGFloat
+        let groupDividerReserve: CGFloat
+        let providerSpacing: CGFloat
+        let horizontalPadding: CGFloat
+        let closeButtonReserve: CGFloat
+        let minWidth: CGFloat
+        let height: CGFloat
+        switch displayMode {
+        case .regular:
+            cellWidth = 62
+            cellSpacing = 8
+            groupDividerReserve = 16.5
+            providerSpacing = 14.75
+            horizontalPadding = 28
+            closeButtonReserve = 24
+            minWidth = 240
+            height = 166
+        case .compact:
+            cellWidth = 40
+            cellSpacing = 4
+            groupDividerReserve = 10
+            providerSpacing = 8.75
+            horizontalPadding = 16
+            closeButtonReserve = 20
+            minWidth = 156
+            height = 134
+        }
+
+        let selected = mini.fieldIds(for: displayMode)
+        var countsByTool: [ToolType: Int] = [:]
+        for fieldId in selected {
+            guard
+                let field = MenuBarFieldCatalog.field(id: fieldId),
+                field.tool.supportsDedicatedCard
+            else { continue }
+            countsByTool[field.tool, default: 0] += 1
+        }
+
+        var width: CGFloat = 0
+        var visibleToolCount = 0
+        for tool in ToolType.dedicatedCardProviders {
+            guard let count = countsByTool[tool], count > 0 else { continue }
+            let cellCount = CGFloat(count)
+            width += cellCount * cellWidth
+            width += CGFloat(max(0, count - 1)) * cellSpacing
+            width += CGFloat(max(0, min(count - 1, 4))) * groupDividerReserve
+            visibleToolCount += 1
+        }
+        if visibleToolCount > 1 {
+            width += CGFloat(visibleToolCount - 1) * providerSpacing
+        }
+        width += horizontalPadding + closeButtonReserve
+
+        let screenMaxWidth = (NSScreen.main?.visibleFrame.width ?? 900) - 48
+        return NSSize(
+            width: max(minWidth, min(width, max(screenMaxWidth, minWidth))),
+            height: height
+        )
+    }
+
+    private static func clampedFrame(_ frame: NSRect, preferredScreen: NSScreen?) -> NSRect {
+        guard let visibleFrame = preferredScreen?.visibleFrame ?? NSScreen.main?.visibleFrame else {
+            return frame
+        }
+        let margin: CGFloat = 8
+        var origin = frame.origin
+        let maxX = visibleFrame.maxX - margin - frame.width
+        let maxY = visibleFrame.maxY - margin - frame.height
+        origin.x = min(max(origin.x, visibleFrame.minX + margin), maxX)
+        origin.y = min(max(origin.y, visibleFrame.minY + margin), maxY)
+        return NSRect(origin: origin, size: frame.size)
     }
 
     private func scheduleOriginPersist() {
@@ -201,6 +299,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         var settings = environment.settingsStore.settings
         settings.miniWindow.toggleDisplayMode()
         environment.settingsStore.settings = settings
+        if let panel {
+            applyStableContentSize(to: panel, settings: settings, preserveTopRight: true)
+            persistOrigin()
+        }
     }
 
     private func markWasOpen(_ open: Bool) {
