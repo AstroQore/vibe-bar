@@ -263,7 +263,7 @@ enum GeminiResponseParser {
                     withFractional.date(from: raw) ?? plainISO.date(from: raw)
                 }
                 return QuotaBucket(
-                    id: "gemini.\(modelId)",
+                    id: modelId,
                     title: prettyModelName(modelId),
                     shortLabel: shortLabel(for: modelId),
                     usedPercent: max(0, min(100, (1 - info.fraction) * 100)),

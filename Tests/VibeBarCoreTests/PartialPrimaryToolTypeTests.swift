@@ -30,7 +30,8 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertFalse(ToolType.grok.isPrimary)
         XCTAssertTrue(ToolType.grok.supportsTokenCost,
                       "Grok joined the cost-aware club: ~/.grok/sessions/**/updates.jsonl carries per-session running totals")
-        XCTAssertFalse(ToolType.grok.supportsStatusPage)
+        XCTAssertTrue(ToolType.grok.supportsStatusPage)
+        XCTAssertEqual(ToolType.grok.statusPageURL.absoluteString, "https://status.x.ai/")
         XCTAssertFalse(ToolType.grok.isMiscPageProvider)
     }
 
@@ -53,6 +54,20 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
             XCTAssertTrue(tool.supportsStatusPage,
                           "\(tool) should support status page via Google Apps Status feed")
         }
+    }
+
+    func testDedicatedStatusProvidersIncludeGrok() {
+        XCTAssertEqual(
+            ToolType.statusPageProviders,
+            [.codex, .claude, .gemini, .antigravity, .grok]
+        )
+    }
+
+    func testCostAwareProvidersIncludeGoogleAIAndGrok() {
+        XCTAssertEqual(
+            ToolType.costAwareProviders,
+            [.codex, .claude, .gemini, .antigravity, .grok]
+        )
     }
 
     func testGoogleAIPairSupportsDedicatedCard() {

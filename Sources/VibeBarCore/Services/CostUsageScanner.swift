@@ -746,9 +746,9 @@ public enum CostUsageScanner {
     // Timestamp lives at path `1.9.4` (seconds + nanos).
     //
     // The CLI-only `~/.gemini/antigravity-cli/conversations/*.pb`
-    // container uses an unidentified compressed format (magic bytes
-    // `4f fc 3f 34 …`) and stays unparsed — we accept that CLI-only
-    // AntiGravity usage is dark until that format is reverse-engineered.
+    // container is an unidentified binary format, and the companion
+    // transcript/history JSONL files do not carry token counts. CLI-only
+    // AntiGravity usage stays dark until that format is reverse-engineered.
 
     private static func scanAntigravity(
         homeDirectory: String,

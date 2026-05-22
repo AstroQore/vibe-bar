@@ -319,17 +319,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(disabledMenuItem("Usage"))
-        // Tray context menu only summarises primary providers — misc
-        // tools are surfaced through the Misc tab in the Overview
-        // popover, not as menu lines here.
-        for tool in ToolType.primaryProviders {
+        for tool in ToolType.dedicatedCardProviders {
             for line in usageMenuLines(for: tool) {
                 menu.addItem(disabledMenuItem(line))
             }
         }
         menu.addItem(.separator())
         menu.addItem(disabledMenuItem("Service Status"))
-        for tool in ToolType.primaryProviders {
+        for tool in ToolType.statusPageProviders {
             menu.addItem(disabledMenuItem(statusSummaryLine(for: tool)))
         }
         menu.addItem(.separator())
@@ -342,7 +339,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func contextTools(for kind: MenuBarItemKind) -> [ToolType] {
-        ToolType.primaryProviders
+        ToolType.dedicatedCardProviders
     }
 
     private func contextUpdatedLine(for kind: MenuBarItemKind) -> String? {

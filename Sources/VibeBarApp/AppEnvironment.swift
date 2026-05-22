@@ -76,7 +76,7 @@ final class AppEnvironment: ObservableObject {
                     return MockDataProvider.sampleAccounts()
                 }
                 var visibleAccounts: [AccountIdentity] = []
-                for tool in ToolType.primaryProviders {
+                for tool in ToolType.dedicatedCardProviders {
                     if let account = accounts.accounts(for: tool).first {
                         visibleAccounts.append(account)
                     }
@@ -139,6 +139,8 @@ final class AppEnvironment: ObservableObject {
                 $0.mockEnabled == $1.mockEnabled
                     && $0.claudeUsageMode == $1.claudeUsageMode
                     && $0.codexUsageMode == $1.codexUsageMode
+                    && $0.geminiUsageMode == $1.geminiUsageMode
+                    && $0.antigravityUsageMode == $1.antigravityUsageMode
             }
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] _ in
@@ -186,6 +188,8 @@ final class AppEnvironment: ObservableObject {
         importClaudeBrowserCookiesAndRefreshIfNeeded()
         importPersistentOpenAICookiesAndRefreshIfNeeded()
         importOpenAIBrowserCookiesAndRefreshIfNeeded()
+        importGeminiBrowserCookiesAndRefreshIfNeeded()
+        importGrokBrowserCookiesAndRefreshIfNeeded()
 
         // Push Claude/Codex extras parsed by adapters into CostUsageService.
         service.$lastSuccessByAccount
@@ -229,11 +233,15 @@ final class AppEnvironment: ObservableObject {
     func reloadProviderCredentialsAndRefresh() {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
         hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+        hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+        hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
         recheckPrimaryRouteHealth()
         importPersistentOpenAICookiesAndRefreshIfNeeded()
         importOpenAIBrowserCookiesAndRefreshIfNeeded()
         importPersistentClaudeCookiesAndRefreshIfNeeded()
         importClaudeBrowserCookiesAndRefreshIfNeeded()
+        importGeminiBrowserCookiesAndRefreshIfNeeded()
+        importGrokBrowserCookiesAndRefreshIfNeeded()
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
             claudeUsageMode: settingsStore.claudeUsageMode,
@@ -268,6 +276,8 @@ final class AppEnvironment: ObservableObject {
     func refresh(_ tool: ToolType) {
         hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
         hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+        hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+        hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
         recheckPrimaryRouteHealth(provider: tool)
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
@@ -391,6 +401,7 @@ final class AppEnvironment: ObservableObject {
                 self.isImportingGrokBrowserCookies = false
             }
             self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+            self.recheckPrimaryRouteHealth(provider: .grok)
             guard let result else {
                 if userInitiated {
                     self.grokBrowserCookieImportStatus = "No Grok cookies found in readable browser stores."
@@ -438,6 +449,7 @@ final class AppEnvironment: ObservableObject {
                 self.isImportingGeminiBrowserCookies = false
             }
             self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+            self.recheckPrimaryRouteHealth(provider: .gemini)
             guard let result else {
                 if userInitiated {
                     self.geminiBrowserCookieImportStatus = "No Gemini cookies found in readable browser stores."
@@ -658,6 +670,7 @@ final class AppEnvironment: ObservableObject {
             try GeminiWebCookieStore.deleteCookieHeader()
             geminiBrowserCookieImportStatus = nil
             hasGeminiWebCookies = false
+            recheckPrimaryRouteHealth(provider: .gemini)
             for account in accountStore.accounts(for: .gemini) {
                 quotaService.clear(accountId: account.id)
             }
@@ -683,6 +696,7 @@ final class AppEnvironment: ObservableObject {
             try GrokWebCookieStore.deleteCookieHeader()
             grokBrowserCookieImportStatus = nil
             hasGrokWebCookies = false
+            recheckPrimaryRouteHealth(provider: .grok)
             for account in accountStore.accounts(for: .grok) {
                 quotaService.clear(accountId: account.id)
             }

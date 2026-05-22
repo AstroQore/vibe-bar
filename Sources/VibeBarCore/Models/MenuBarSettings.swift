@@ -146,7 +146,30 @@ public enum MenuBarFieldCatalog {
         option(.claude, "weekly_oauth_apps", "OAuth Apps · Weekly", "OAuth wk")
     ]
 
-    public static let allFields: [MenuBarFieldOption] = codexFields + claudeFields
+    public static let geminiFields: [MenuBarFieldOption] = [
+        option(.gemini, "gemini-2.5-pro", "Gemini 2.5 Pro", "Pro"),
+        option(.gemini, "gemini-2.5-flash", "Gemini 2.5 Flash", "Flash"),
+        option(.gemini, "gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite", "Lite"),
+        option(.gemini, "gemini-3-pro", "Gemini 3 Pro", "3 Pro"),
+        option(.gemini, "gemini-3-flash", "Gemini 3 Flash", "3 Flash")
+    ]
+
+    public static let antigravityFields: [MenuBarFieldOption] = [
+        option(.antigravity, "claude-sonnet-4-20250514", "Claude Sonnet 4", "Sonnet"),
+        option(.antigravity, "claude-sonnet-4-5", "Claude Sonnet 4.5", "Sonnet"),
+        option(.antigravity, "gemini-2.5-pro", "Gemini 2.5 Pro", "Pro"),
+        option(.antigravity, "gemini-2.5-flash", "Gemini 2.5 Flash", "Flash"),
+        option(.antigravity, "gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite", "Lite"),
+        option(.antigravity, "gemini-3-pro", "Gemini 3 Pro", "3 Pro"),
+        option(.antigravity, "gemini-3-flash", "Gemini 3 Flash", "3 Flash")
+    ]
+
+    public static let grokFields: [MenuBarFieldOption] = [
+        option(.grok, "monthly", "Monthly Credits", "Mo")
+    ]
+
+    public static let allFields: [MenuBarFieldOption] =
+        codexFields + claudeFields + geminiFields + antigravityFields + grokFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
         switch kind {

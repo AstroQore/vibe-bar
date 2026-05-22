@@ -119,9 +119,7 @@ struct PopoverRoot: View {
         case .claude:
             ProviderDetailView(tool: .claude, density: density)
         case .status:
-            // Status card only renders providers that actually publish
-            // an Atlassian-style status feed — misc providers don't.
-            ServiceStatusCard(tools: ToolType.primaryProviders)
+            ServiceStatusCard(tools: ToolType.statusPageProviders)
         }
     }
 
@@ -148,10 +146,10 @@ struct PopoverRoot: View {
             return "Usage-only · sign in or paste a key"
         }
         if kind == .compact, overviewPage == .googleAI {
-            return "Gemini + Antigravity · quota only"
+            return "Gemini + Antigravity · quota, cost & status"
         }
         if kind == .compact, overviewPage == .grok {
-            return "xAI · monthly credits"
+            return "xAI · monthly credits, cost & status"
         }
         switch effectiveKind {
         case .compact: return "All providers · quota & cost"
@@ -179,9 +177,7 @@ struct PopoverRoot: View {
         // Header timestamps and refresh state aggregate the providers
         // visible in the current popover. The Misc subpage owns its
         // usage-only integrations; the Google AI subpage aggregates the
-        // partial-primary pair; the Grok subpage shows just `.grok`;
-        // the Overview and Status surfaces stick to the two primary
-        // providers.
+        // partial-primary pair; the Grok subpage shows just `.grok`.
         if kind == .compact, overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
         }
@@ -192,7 +188,8 @@ struct PopoverRoot: View {
             return [.grok]
         }
         switch effectiveKind {
-        case .compact, .status: return ToolType.primaryProviders
+        case .compact:          return ToolType.dedicatedCardProviders
+        case .status:           return ToolType.statusPageProviders
         case .codex:            return [.codex]
         case .claude:           return [.claude]
         }
@@ -411,7 +408,7 @@ private struct OverviewWaterfall: View {
     @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
-        let snapshots = ToolType.primaryProviders.compactMap { environment.costService.snapshot(for: $0) }
+        let snapshots = ToolType.costAwareProviders.compactMap { environment.costService.snapshot(for: $0) }
         let combinedHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let combinedHeatmap = CostSnapshotAggregator.combinedHeatmap(snapshots)
         let combinedModels = CostSnapshotAggregator.combinedModelBreakdowns(snapshots)
@@ -426,7 +423,10 @@ private struct OverviewWaterfall: View {
             ) {
                 ProviderQuotaCard(tool: .codex, density: density, compact: false)
                 ProviderQuotaCard(tool: .claude, density: density, compact: false)
-                ForEach(ToolType.primaryProviders, id: \.self) { tool in
+                ForEach(ToolType.partialPrimaryProviders, id: \.self) { tool in
+                    ProviderQuotaCard(tool: tool, density: density, compact: false)
+                }
+                ForEach(ToolType.costAwareProviders, id: \.self) { tool in
                     OverviewCostCard(tool: tool, density: density)
                 }
                 if hasCostData {
@@ -455,21 +455,11 @@ private struct OverviewWaterfall: View {
     }
 }
 
-/// The "Grok" overview sub-page. A single `ProviderQuotaCard` for
-/// `.grok` with no cost / heatmap rails — Grok ships per-month credit
-/// usage only, mirroring the partial-primary contract that Gemini
-/// and Antigravity use.
 private struct GrokPage: View {
     let density: Theme.Density
 
     var body: some View {
-        ColumnMasonryLayout(
-            columns: 1,
-            spacing: density.interSectionSpacing,
-            anchoredItems: 1
-        ) {
-            ProviderQuotaCard(tool: .grok, density: density, compact: false)
-        }
+        ProviderDetailView(tool: .grok, density: density)
     }
 }
 
@@ -477,16 +467,9 @@ private struct GrokPage: View {
 /// **structurally different** bucket shapes — Code Assist returns
 /// per-model fractions, gemini.google.com returns aggregate Current /
 /// Weekly — so each source becomes its own card. Antigravity gets
-/// its own quota card (local-LSP probe), and the page also surfaces
-/// Gemini CLI's full cost panel + service-status feed via the same
-/// detail-view layout the OpenAI / Claude tabs use.
-///
-/// Cost data only lights up if the user has opted into Gemini CLI
-/// telemetry (`~/.gemini/settings.json` → `telemetry.enabled=true`).
-/// Antigravity has no cost data source (its conversation database
-/// is Electron-encrypted protobuf with no public schema). Service
-/// status is shared — Google publishes one feed for the whole
-/// "Gemini" product family covering both CLI and Antigravity.
+/// its own quota card (local-LSP probe), and the page surfaces the
+/// Gemini + Antigravity local cost panels plus the shared Google status
+/// feed.
 private struct GoogleAIDualPage: View {
     let density: Theme.Density
 
@@ -500,8 +483,12 @@ private struct GoogleAIDualPage: View {
         let geminiAccounts = environment.accountStore
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
-        let snapshot = environment.costService.snapshot(for: .gemini)
-        let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
+        let costTools = ToolType.googleAIPair
+        let costSnapshots = costTools.compactMap { tool -> (ToolType, CostSnapshot)? in
+            guard let snapshot = environment.costService.snapshot(for: tool),
+                  snapshot.jsonlFilesFound > 0 else { return nil }
+            return (tool, snapshot)
+        }
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
@@ -529,7 +516,7 @@ private struct GoogleAIDualPage: View {
                         )
                     }
                 }
-                ServiceStatusCard(tools: [.gemini])
+                ServiceStatusCard(tools: ToolType.googleAIPair)
             }
             .frame(
                 minWidth: googleAILeftColumnMinWidth,
@@ -539,24 +526,16 @@ private struct GoogleAIDualPage: View {
             )
 
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                if let snapshot, hasCostData {
-                    CostHeaderCard(tool: .gemini, snapshot: snapshot, density: density)
-                    CostHistoryView(
-                        tool: .gemini,
-                        snapshot: snapshot,
-                        density: density,
-                        chartHeight: 160
-                    )
-                    ModelRankingList(snapshot: snapshot, density: density)
-                    YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: ToolType.gemini.menuTitle)
-                    UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
-                    UsageRateView(heatmap: snapshot.heatmap, density: density)
+                if !costSnapshots.isEmpty {
+                    ForEach(costSnapshots, id: \.0) { tool, snapshot in
+                        ProviderCostStack(tool: tool, snapshot: snapshot, density: density)
+                    }
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("No Gemini CLI cost data yet.")
+                        Text("No Google AI local cost data yet.")
                             .font(.system(size: density.subtitleFontSize))
                             .foregroundStyle(.secondary)
-                        Text("Enable telemetry to populate this panel: edit ~/.gemini/settings.json and add `\"telemetry\":{\"enabled\":true,\"target\":\"local\",\"outfile\":\".gemini/telemetry.log\"}`, then re-run a `gemini` command.")
+                        Text("Gemini reads ~/.gemini telemetry and chat-history logs; Antigravity reads local conversation databases when they contain token metadata.")
                             .font(.system(size: max(10, density.subtitleFontSize - 1)))
                             .foregroundStyle(.tertiary)
                             .lineLimit(nil)
@@ -586,6 +565,32 @@ private struct GoogleAIDualPage: View {
     }
 }
 
+private struct ProviderCostStack: View {
+    let tool: ToolType
+    let snapshot: CostSnapshot
+    let density: Theme.Density
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+            CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
+            CostHistoryView(
+                tool: tool,
+                snapshot: snapshot,
+                density: density,
+                chartHeight: 160
+            )
+            ModelRankingList(snapshot: snapshot, density: density)
+            YearlyContributionHeatmapView(
+                history: snapshot.dailyHistory,
+                density: density,
+                toolName: tool.menuTitle
+            )
+            UsageHeatmapView(heatmap: snapshot.heatmap, density: density)
+            UsageRateView(heatmap: snapshot.heatmap, density: density)
+        }
+    }
+}
+
 /// Sits above the per-provider columns: eight usage metrics in two rows on the
 /// left and current provider status on the right. Both halves get their own
 /// refresh button so the user can pull just-this-card data without firing the
@@ -598,7 +603,7 @@ private struct CombinedTotalsRow: View {
     private let summaryHeight: CGFloat = 134
 
     var body: some View {
-        let snapshots = ToolType.primaryProviders.compactMap { environment.costService.snapshot(for: $0) }
+        let snapshots = ToolType.costAwareProviders.compactMap { environment.costService.snapshot(for: $0) }
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
         let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
         let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
@@ -729,10 +734,12 @@ private struct OverviewStatusSummaryCard: View {
                 }
                 .disabled(!serviceStatus.inFlight.isEmpty)
             }
-            HStack(spacing: 8) {
-                // Only providers with an Atlassian-style status feed
-                // belong here — misc providers don't publish one.
-                ForEach(ToolType.primaryProviders, id: \.self) { tool in
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .top)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(ToolType.statusPageProviders, id: \.self) { tool in
                     providerStatusTile(tool)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -967,7 +974,10 @@ private struct OverviewCostCard: View {
         switch tool {
         case .codex:  return "No Codex CLI sessions found yet."
         case .claude: return "No Claude CLI sessions found yet."
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .gemini: return "No Gemini CLI or chat-history usage found yet."
+        case .antigravity: return "No Antigravity conversation token metadata found yet."
+        case .grok: return "No Grok Build session usage found yet."
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
             // `tool.supportsTokenCost`), but render a graceful
