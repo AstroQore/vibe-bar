@@ -38,16 +38,12 @@ final class AppEnvironment: ObservableObject {
     private var browserOpenAICookieImportInFlight = false
     private var browserGeminiCookieImportInFlight = false
     private var browserGrokCookieImportInFlight = false
+    private var webCookiePresence: AccountStore.WebCookiePresence = .none
 
     init() {
         let settings = SettingsStore()
-        let accounts = AccountStore(
-            codexUsageMode: settings.codexUsageMode,
-            claudeUsageMode: settings.claudeUsageMode,
-            geminiUsageMode: settings.geminiUsageMode,
-            antigravityUsageMode: settings.antigravityUsageMode,
-            miscProviderInstances: settings.settings.miscProviderInstances
-        )
+        let initialWebCookiePresence = AccountStore.WebCookiePresence.none
+        let accounts = AccountStore(initialAccounts: [])
         let service = QuotaService.makeDefault(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
         }, initialAccountIds: accounts.accounts.map(\.id))
@@ -62,10 +58,10 @@ final class AppEnvironment: ObservableObject {
             settings?.settings.costData ?? .default
         })
         self.costService = costService
-        self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
-        self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
-        self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
-        self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+        self.hasClaudeWebCookies = initialWebCookiePresence.claude
+        self.hasOpenAIWebCookies = initialWebCookiePresence.openAI
+        self.hasGeminiWebCookies = initialWebCookiePresence.gemini
+        self.hasGrokWebCookies = initialWebCookiePresence.grok
         self.routeHealth = PrimaryProviderRouteHealthChecker.checkAll()
 
         let scheduler = QuotaRefreshScheduler(
@@ -114,16 +110,9 @@ final class AppEnvironment: ObservableObject {
                     && $0.miscProviderInstances == $1.miscProviderInstances
             }
             .sink { [weak self] settings in
-                self?.accountStore.reload(
-                    codexUsageMode: settings.codexUsageMode,
-                    claudeUsageMode: settings.claudeUsageMode,
-                    geminiUsageMode: settings.geminiUsageMode,
-                    antigravityUsageMode: settings.antigravityUsageMode,
-                    miscProviderInstances: settings.miscProviderInstances
-                )
                 self?.recheckPrimaryRouteHealth()
                 self?.scheduler.reschedule()
-                self?.scheduler.triggerRefresh()
+                self?.reloadAccountsInBackground(from: settings, triggerRefresh: true)
             }
             .store(in: &cancellables)
 
@@ -190,6 +179,7 @@ final class AppEnvironment: ObservableObject {
         importOpenAIBrowserCookiesAndRefreshIfNeeded()
         importGeminiBrowserCookiesAndRefreshIfNeeded()
         importGrokBrowserCookiesAndRefreshIfNeeded()
+        refreshWebCookiePresence(reloadAccounts: true, triggerRefresh: true)
 
         // Push Claude/Codex extras parsed by adapters into CostUsageService.
         service.$lastSuccessByAccount
@@ -231,10 +221,6 @@ final class AppEnvironment: ObservableObject {
     }
 
     func reloadProviderCredentialsAndRefresh() {
-        hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
-        hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
-        hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
-        hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
         recheckPrimaryRouteHealth()
         importPersistentOpenAICookiesAndRefreshIfNeeded()
         importOpenAIBrowserCookiesAndRefreshIfNeeded()
@@ -242,18 +228,11 @@ final class AppEnvironment: ObservableObject {
         importClaudeBrowserCookiesAndRefreshIfNeeded()
         importGeminiBrowserCookiesAndRefreshIfNeeded()
         importGrokBrowserCookiesAndRefreshIfNeeded()
-        accountStore.reload(
-            codexUsageMode: settingsStore.settings.codexUsageMode,
-            claudeUsageMode: settingsStore.claudeUsageMode,
-            geminiUsageMode: settingsStore.geminiUsageMode,
-            antigravityUsageMode: settingsStore.antigravityUsageMode,
-            miscProviderInstances: settingsStore.settings.miscProviderInstances
-        )
         // Cookies may have changed (login / re-login) — drop any stale
         // 1h failure cooldowns so the routine WebView probe gets a fresh
         // chance on the very next quota refresh.
         lastRoutineBudgetAttemptByAccount.removeAll()
-        scheduler.triggerRefresh()
+        refreshWebCookiePresence(reloadAccounts: true, triggerRefresh: true)
         serviceStatus.refreshAll()
     }
 
@@ -273,23 +252,82 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
+    private func refreshWebCookiePresence(
+        reloadAccounts: Bool = false,
+        triggerRefresh: Bool = false,
+        completion: (() -> Void)? = nil
+    ) {
+        let settingsSnapshot = settingsStore.settings
+        DispatchQueue.global(qos: .utility).async {
+            let presence = AccountStore.WebCookiePresence(
+                openAI: OpenAIWebCookieStore.hasCookieHeader(),
+                claude: ClaudeWebCookieStore.hasCookieHeader(),
+                gemini: GeminiWebCookieStore.hasCookieHeader(),
+                grok: GrokWebCookieStore.hasCookieHeader()
+            )
+            let detectedAccounts = reloadAccounts
+                ? AccountStore.detectedAccounts(
+                    codexUsageMode: settingsSnapshot.codexUsageMode,
+                    claudeUsageMode: settingsSnapshot.claudeUsageMode,
+                    geminiUsageMode: settingsSnapshot.geminiUsageMode,
+                    antigravityUsageMode: settingsSnapshot.antigravityUsageMode,
+                    miscProviderInstances: settingsSnapshot.miscProviderInstances,
+                    webCookiePresence: presence
+                )
+                : nil
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.webCookiePresence = presence
+                self.hasOpenAIWebCookies = presence.openAI
+                self.hasClaudeWebCookies = presence.claude
+                self.hasGeminiWebCookies = presence.gemini
+                self.hasGrokWebCookies = presence.grok
+                if let detectedAccounts {
+                    self.accountStore.replaceAccounts(detectedAccounts)
+                }
+                if triggerRefresh {
+                    self.scheduler.triggerRefresh()
+                }
+                completion?()
+            }
+        }
+    }
+
+    private func reloadAccountsInBackground(
+        from settings: AppSettings,
+        triggerRefresh: Bool = false,
+        completion: (() -> Void)? = nil
+    ) {
+        let presence = webCookiePresence
+        DispatchQueue.global(qos: .utility).async {
+            let detectedAccounts = AccountStore.detectedAccounts(
+                codexUsageMode: settings.codexUsageMode,
+                claudeUsageMode: settings.claudeUsageMode,
+                geminiUsageMode: settings.geminiUsageMode,
+                antigravityUsageMode: settings.antigravityUsageMode,
+                miscProviderInstances: settings.miscProviderInstances,
+                webCookiePresence: presence
+            )
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.accountStore.replaceAccounts(detectedAccounts)
+                if triggerRefresh {
+                    self.scheduler.triggerRefresh()
+                }
+                completion?()
+            }
+        }
+    }
+
     func refresh(_ tool: ToolType) {
-        hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
-        hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
-        hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
-        hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
         recheckPrimaryRouteHealth(provider: tool)
-        accountStore.reload(
-            codexUsageMode: settingsStore.settings.codexUsageMode,
-            claudeUsageMode: settingsStore.claudeUsageMode,
-            geminiUsageMode: settingsStore.geminiUsageMode,
-            antigravityUsageMode: settingsStore.antigravityUsageMode,
-            miscProviderInstances: settingsStore.settings.miscProviderInstances
-        )
-        let account = account(for: tool)
-        Task { @MainActor in
+        refreshWebCookiePresence(reloadAccounts: true) { [weak self] in
+            guard let self else { return }
+            let account = self.account(for: tool)
             if let account {
-                _ = await quotaService.refresh(account)
+                Task { @MainActor in
+                    _ = await self.quotaService.refresh(account)
+                }
             }
         }
     }
@@ -317,14 +355,12 @@ final class AppEnvironment: ObservableObject {
 
     func openClaudeWebLogin() {
         claudeWebLoginController.open { [weak self] in
-            self?.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
             self?.reloadProviderCredentialsAndRefresh()
         }
     }
 
     func openOpenAIWebLogin() {
         openAIWebLoginController.open { [weak self] in
-            self?.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
             self?.reloadProviderCredentialsAndRefresh()
         }
     }
@@ -378,7 +414,7 @@ final class AppEnvironment: ObservableObject {
         allowKeychainPrompt: Bool = false,
         userInitiated: Bool = false
     ) {
-        if !allowKeychainPrompt, GrokWebCookieStore.hasCookieHeader() {
+        if !allowKeychainPrompt, hasGrokWebCookies {
             return
         }
         guard !browserGrokCookieImportInFlight else { return }
@@ -400,25 +436,18 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingGrokBrowserCookies = false
             }
-            self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
             self.recheckPrimaryRouteHealth(provider: .grok)
             guard let result else {
                 if userInitiated {
                     self.grokBrowserCookieImportStatus = "No Grok cookies found in readable browser stores."
                 }
+                self.refreshWebCookiePresence()
                 return
             }
             if userInitiated {
                 self.grokBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.scheduler.triggerRefresh()
+            self.refreshWebCookiePresence(reloadAccounts: true, triggerRefresh: true)
         }
     }
 
@@ -426,7 +455,7 @@ final class AppEnvironment: ObservableObject {
         allowKeychainPrompt: Bool = false,
         userInitiated: Bool = false
     ) {
-        if !allowKeychainPrompt, GeminiWebCookieStore.hasCookieHeader() {
+        if !allowKeychainPrompt, hasGeminiWebCookies {
             return
         }
         guard !browserGeminiCookieImportInFlight else { return }
@@ -448,25 +477,18 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingGeminiBrowserCookies = false
             }
-            self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
             self.recheckPrimaryRouteHealth(provider: .gemini)
             guard let result else {
                 if userInitiated {
                     self.geminiBrowserCookieImportStatus = "No Gemini cookies found in readable browser stores."
                 }
+                self.refreshWebCookiePresence()
                 return
             }
             if userInitiated {
                 self.geminiBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.scheduler.triggerRefresh()
+            self.refreshWebCookiePresence(reloadAccounts: true, triggerRefresh: true)
         }
     }
 
@@ -477,18 +499,15 @@ final class AppEnvironment: ObservableObject {
         ClaudeWebLoginController.importPersistentClaudeCookiesIfAvailable { [weak self] didImport in
             guard let self else { return }
             self.persistentClaudeCookieImportInFlight = false
-            self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
             self.recheckPrimaryRouteHealth(provider: .claude)
-            guard didImport, !hadCookies else { return }
-            self.accountStore.reload(
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.lastRoutineBudgetAttemptByAccount.removeAll()
-            self.scheduler.triggerRefresh()
+            let shouldRefreshQuota = didImport && !hadCookies
+            self.refreshWebCookiePresence(
+                reloadAccounts: shouldRefreshQuota,
+                triggerRefresh: shouldRefreshQuota
+            ) { [weak self] in
+                guard shouldRefreshQuota else { return }
+                self?.lastRoutineBudgetAttemptByAccount.removeAll()
+            }
         }
     }
 
@@ -496,7 +515,7 @@ final class AppEnvironment: ObservableObject {
         allowKeychainPrompt: Bool = false,
         userInitiated: Bool = false
     ) {
-        if !allowKeychainPrompt, ClaudeWebCookieStore.hasCookieHeader() {
+        if !allowKeychainPrompt, hasClaudeWebCookies {
             return
         }
         guard !browserClaudeCookieImportInFlight else { return }
@@ -518,26 +537,20 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingClaudeBrowserCookies = false
             }
-            self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
             self.recheckPrimaryRouteHealth(provider: .claude)
             guard let result else {
                 if userInitiated {
                     self.claudeBrowserCookieImportStatus = "No Claude sessionKey found in readable browser cookies."
                 }
+                self.refreshWebCookiePresence()
                 return
             }
             if userInitiated {
                 self.claudeBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.lastRoutineBudgetAttemptByAccount.removeAll()
-            self.scheduler.triggerRefresh()
+            self.refreshWebCookiePresence(reloadAccounts: true, triggerRefresh: true) { [weak self] in
+                self?.lastRoutineBudgetAttemptByAccount.removeAll()
+            }
         }
     }
 
@@ -548,17 +561,12 @@ final class AppEnvironment: ObservableObject {
         OpenAIWebLoginController.importPersistentOpenAICookiesIfAvailable { [weak self] didImport in
             guard let self else { return }
             self.persistentOpenAICookieImportInFlight = false
-            self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
             self.recheckPrimaryRouteHealth(provider: .codex)
-            guard didImport, !hadCookies else { return }
-            self.accountStore.reload(
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
+            let shouldRefreshQuota = didImport && !hadCookies
+            self.refreshWebCookiePresence(
+                reloadAccounts: shouldRefreshQuota,
+                triggerRefresh: shouldRefreshQuota
             )
-            self.scheduler.triggerRefresh()
         }
     }
 
@@ -566,7 +574,7 @@ final class AppEnvironment: ObservableObject {
         allowKeychainPrompt: Bool = false,
         userInitiated: Bool = false
     ) {
-        if !allowKeychainPrompt, OpenAIWebCookieStore.hasCookieHeader() {
+        if !allowKeychainPrompt, hasOpenAIWebCookies {
             return
         }
         guard !browserOpenAICookieImportInFlight else { return }
@@ -588,25 +596,18 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingOpenAIBrowserCookies = false
             }
-            self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
             self.recheckPrimaryRouteHealth(provider: .codex)
             guard let result else {
                 if userInitiated {
                     self.openAIBrowserCookieImportStatus = "No ChatGPT session cookies found in readable browser cookies."
                 }
+                self.refreshWebCookiePresence()
                 return
             }
             if userInitiated {
                 self.openAIBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.scheduler.triggerRefresh()
+            self.refreshWebCookiePresence(reloadAccounts: true, triggerRefresh: true)
         }
     }
 
@@ -617,22 +618,16 @@ final class AppEnvironment: ObservableObject {
             try ClaudeWebCookieStore.deleteCookieHeader()
             claudeBrowserCookieImportStatus = nil
             hasClaudeWebCookies = false
+            webCookiePresence.claude = false
             recheckPrimaryRouteHealth(provider: .claude)
             for account in accountStore.accounts(for: .claude) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccountsInBackground(from: settingsStore.settings, triggerRefresh: true)
             return true
         } catch {
             SafeLog.warn("Deleting Claude web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            refreshWebCookiePresence()
             return false
         }
     }
@@ -644,22 +639,16 @@ final class AppEnvironment: ObservableObject {
             try OpenAIWebCookieStore.deleteCookieHeader()
             openAIBrowserCookieImportStatus = nil
             hasOpenAIWebCookies = false
+            webCookiePresence.openAI = false
             recheckPrimaryRouteHealth(provider: .codex)
             for account in accountStore.accounts(for: .codex) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccountsInBackground(from: settingsStore.settings, triggerRefresh: true)
             return true
         } catch {
             SafeLog.warn("Deleting OpenAI web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            refreshWebCookiePresence()
             return false
         }
     }
@@ -670,22 +659,16 @@ final class AppEnvironment: ObservableObject {
             try GeminiWebCookieStore.deleteCookieHeader()
             geminiBrowserCookieImportStatus = nil
             hasGeminiWebCookies = false
+            webCookiePresence.gemini = false
             recheckPrimaryRouteHealth(provider: .gemini)
             for account in accountStore.accounts(for: .gemini) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccountsInBackground(from: settingsStore.settings, triggerRefresh: true)
             return true
         } catch {
             SafeLog.warn("Deleting Gemini web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+            refreshWebCookiePresence()
             return false
         }
     }
@@ -696,22 +679,16 @@ final class AppEnvironment: ObservableObject {
             try GrokWebCookieStore.deleteCookieHeader()
             grokBrowserCookieImportStatus = nil
             hasGrokWebCookies = false
+            webCookiePresence.grok = false
             recheckPrimaryRouteHealth(provider: .grok)
             for account in accountStore.accounts(for: .grok) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccountsInBackground(from: settingsStore.settings, triggerRefresh: true)
             return true
         } catch {
             SafeLog.warn("Deleting Grok web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+            refreshWebCookiePresence()
             return false
         }
     }
@@ -734,7 +711,7 @@ final class AppEnvironment: ObservableObject {
         // No cookies → the WebView would just load the login page and the
         // parser would never see a budget JSON. Spinning it up costs CPU
         // for no chance of success.
-        guard !ClaudeWebCookieStore.candidateCookieHeaders().isEmpty else { return }
+        guard hasClaudeWebCookies else { return }
         let now = Date()
         if let last = lastRoutineBudgetAttemptByAccount[quota.accountId],
            now.timeIntervalSince(last) < Self.routineBudgetFailureCooldown {
