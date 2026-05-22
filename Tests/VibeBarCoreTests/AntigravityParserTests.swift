@@ -70,6 +70,47 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[0].usedPercent, 0.0, accuracy: 0.01)
     }
 
+    func testNormalizesCurrentPlaceholderModelsFromLabels() throws {
+        let json = """
+        {
+          "code": 0,
+          "userStatus": {
+            "cascadeModelConfigData": {
+              "clientModelConfigs": [
+                {
+                  "label": "Gemini 3.5 Flash (High)",
+                  "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M132"},
+                  "quotaInfo": {"remainingFraction": 0.0}
+                },
+                {
+                  "label": "Claude Sonnet 4.6 (Thinking)",
+                  "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M35"},
+                  "quotaInfo": {"remainingFraction": 1.0}
+                },
+                {
+                  "label": "GPT-OSS 120B (Medium)",
+                  "modelOrAlias": {"model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM"},
+                  "quotaInfo": {"remainingFraction": 0.25}
+                }
+              ]
+            }
+          }
+        }
+        """
+        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
+
+        XCTAssertEqual(snap.buckets.map(\.id), [
+            "gemini-3.5-flash-high",
+            "claude-sonnet-4.6-thinking",
+            "gpt-oss-120b-medium"
+        ])
+        XCTAssertEqual(snap.buckets[0].usedPercent, 100.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[0].remainingPercent, 0.0, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[0].groupTitle, "Gemini Flash")
+        XCTAssertEqual(snap.buckets[1].shortLabel, "Sonnet")
+        XCTAssertEqual(snap.buckets[2].groupTitle, "GPT-OSS")
+    }
+
     func testMissingUserStatusThrowsParseFailure() {
         let json = """
         { "code": 0 }

@@ -422,16 +422,16 @@ enum AntigravityResponseParser {
             guard let quota = config.quotaInfo,
                   let fraction = quota.remainingFraction else { continue }
             let resetAt = quota.resetTime.flatMap(parseDate)
-            let modelId = config.modelOrAlias?.model ?? config.label
+            let modelId = normalizedModelID(label: config.label, rawModelID: config.modelOrAlias?.model)
             var bucket = QuotaBucket(
                 id: modelId,
                 title: config.label,
-                shortLabel: AntigravityResponseParser.shortLabel(for: modelId),
+                shortLabel: AntigravityResponseParser.shortLabel(for: config.label, modelId: modelId),
                 usedPercent: max(0, min(100, (1 - fraction) * 100)),
                 resetAt: resetAt,
                 rawWindowSeconds: nil
             )
-            bucket.groupTitle = AntigravityResponseParser.groupTitle(for: modelId)
+            bucket.groupTitle = AntigravityResponseParser.groupTitle(for: config.label, modelId: modelId)
             buckets.append(bucket)
         }
 
@@ -452,17 +452,53 @@ enum AntigravityResponseParser {
         return nil
     }
 
-    private static func shortLabel(for modelId: String) -> String {
-        let lower = modelId.lowercased()
+    private static func normalizedModelID(label: String, rawModelID: String?) -> String {
+        let trimmedRaw = rawModelID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedRaw, !trimmedRaw.isEmpty, !isPlaceholderModelID(trimmedRaw) {
+            return trimmedRaw
+        }
+        let slug = slugModelLabel(label)
+        return slug.isEmpty ? (trimmedRaw ?? "model") : slug
+    }
+
+    private static func isPlaceholderModelID(_ value: String) -> Bool {
+        value.lowercased().hasPrefix("model_")
+    }
+
+    private static func slugModelLabel(_ label: String) -> String {
+        let lower = label.lowercased()
+        var scalars = String.UnicodeScalarView()
+        var lastWasSeparator = false
+        for scalar in lower.unicodeScalars {
+            if CharacterSet.alphanumerics.contains(scalar) || scalar.value == 46 {
+                scalars.append(scalar)
+                lastWasSeparator = false
+            } else if !lastWasSeparator {
+                scalars.append("-")
+                lastWasSeparator = true
+            }
+        }
+        return String(scalars).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private static func shortLabel(for label: String, modelId: String) -> String {
+        let lower = "\(label) \(modelId)".lowercased()
+        if lower.contains("gpt-oss") { return "GPT-OSS" }
+        if lower.contains("sonnet") { return "Sonnet" }
+        if lower.contains("opus") { return "Opus" }
         if lower.contains("claude") { return "Claude" }
+        if lower.contains("high") { return "High" }
+        if lower.contains("medium") { return "Med" }
+        if lower.contains("low") { return "Low" }
         if lower.contains("flash-lite") { return "Lite" }
         if lower.contains("flash") { return "Flash" }
         if lower.contains("pro") { return "Pro" }
         return modelId
     }
 
-    private static func groupTitle(for modelId: String) -> String? {
-        let lower = modelId.lowercased()
+    private static func groupTitle(for label: String, modelId: String) -> String? {
+        let lower = "\(label) \(modelId)".lowercased()
+        if lower.contains("gpt-oss") { return "GPT-OSS" }
         if lower.contains("claude") { return "Claude" }
         if lower.contains("gemini") {
             if lower.contains("flash-lite") { return "Gemini Flash Lite" }

@@ -669,7 +669,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     private static func migratedMenuBarItem(_ item: MenuBarItemSettings) -> MenuBarItemSettings {
-        guard item.kind == .compact else { return item }
+        var migrated = item
+        migrated.selectedFieldIds = MenuBarFieldCatalog.migratedFieldIds(migrated.selectedFieldIds)
+        migrated.customLabels = MenuBarFieldCatalog.migratedCustomLabels(migrated.customLabels)
+
+        guard migrated.kind == .compact else { return migrated }
         let oldDefaultFieldIds = [
             "codex.five_hour",
             "codex.weekly",
@@ -682,12 +686,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
             "claude.five_hour": "C5h",
             "claude.weekly": "Cwk"
         ]
-        if item.showTitle == true,
-           item.selectedFieldIds == oldDefaultFieldIds,
-           item.customLabels == oldDefaultLabels {
+        if migrated.showTitle == true,
+           migrated.selectedFieldIds == oldDefaultFieldIds,
+           migrated.customLabels == oldDefaultLabels {
             return defaultMenuBarItems.first { $0.kind == .compact }!
         }
-        return item
+        return migrated
     }
 }
 
@@ -763,10 +767,15 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.displayMode = try c.decodeIfPresent(MiniWindowDisplayMode.self, forKey: .displayMode) ?? .regular
-        self.selectedFieldIds = try c.decodeIfPresent([String].self, forKey: .selectedFieldIds) ?? []
-        self.compactSelectedFieldIds = try c.decodeIfPresent([String].self, forKey: .compactSelectedFieldIds)
-            ?? self.selectedFieldIds
-        self.customLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
+        let decodedSelected = try c.decodeIfPresent([String].self, forKey: .selectedFieldIds) ?? []
+        self.selectedFieldIds = MenuBarFieldCatalog.migratedFieldIds(decodedSelected)
+        if let decodedCompact = try c.decodeIfPresent([String].self, forKey: .compactSelectedFieldIds) {
+            self.compactSelectedFieldIds = MenuBarFieldCatalog.migratedFieldIds(decodedCompact)
+        } else {
+            self.compactSelectedFieldIds = self.selectedFieldIds
+        }
+        let decodedLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
+        self.customLabels = MenuBarFieldCatalog.migratedCustomLabels(decodedLabels)
         self.groupLabels = try c.decodeIfPresent([String: String].self, forKey: .groupLabels) ?? [:]
         self.wasOpen = try c.decodeIfPresent(Bool.self, forKey: .wasOpen) ?? false
         self.savedOriginX = try c.decodeIfPresent(Double.self, forKey: .savedOriginX)
