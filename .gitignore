@@ -8,4 +8,8 @@ Package.resolved
 dist/
 .codex/
 .claude/
+.grok/
+.agy/
+.gemini/
+.cursor/
 .research/
