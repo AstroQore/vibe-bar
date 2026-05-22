@@ -9,7 +9,6 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
     case claudeWebViewCookies
     case claudeOAuth
     case claudeCLI
-    case geminiOAuth
     case geminiBrowserCookies
     case antigravityLocalProbe
     case grokAuthJSON
@@ -23,7 +22,7 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
             return .codex
         case .claudeBrowserCookies, .claudeWebViewCookies, .claudeOAuth, .claudeCLI:
             return .claude
-        case .geminiOAuth, .geminiBrowserCookies:
+        case .geminiBrowserCookies:
             return .gemini
         case .antigravityLocalProbe:
             return .antigravity
@@ -42,7 +41,6 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
         case .claudeWebViewCookies: return "WebView cookies"
         case .claudeOAuth: return "OAuth"
         case .claudeCLI: return "CLI"
-        case .geminiOAuth: return "OAuth"
         case .geminiBrowserCookies: return "Chrome/Safari cookies"
         case .antigravityLocalProbe: return "Local language server"
         case .grokAuthJSON: return "~/.grok/auth.json"
@@ -136,8 +134,6 @@ public enum PrimaryProviderRouteHealthChecker {
             return credentialHealth(route: route, now: now) {
                 _ = try ClaudeCredentialReader.loadFromCLI()
             }
-        case .geminiOAuth:
-            return geminiOAuthHealth(route: route, now: now)
         case .geminiBrowserCookies:
             return cookieHealth(
                 route: route,
@@ -153,56 +149,6 @@ public enum PrimaryProviderRouteHealthChecker {
                 route: route,
                 result: GrokWebCookieStore.storageState(source: .browser),
                 now: now
-            )
-        }
-    }
-
-    private static func geminiOAuthHealth(
-        route: PrimaryProviderRoute,
-        now: Date
-    ) -> PrimaryProviderRouteHealth {
-        let url = URL(fileURLWithPath: RealHomeDirectory.path)
-            .appendingPathComponent(".gemini/oauth_creds.json")
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            return PrimaryProviderRouteHealth(
-                route: route,
-                status: .missing,
-                detail: "No oauth_creds.json",
-                checkedAt: now
-            )
-        }
-        do {
-            let credentials = try GeminiCredentials.load(from: url)
-            let hasAccess = credentials.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            let hasRefresh = credentials.refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            guard hasAccess || hasRefresh else {
-                return PrimaryProviderRouteHealth(
-                    route: route,
-                    status: .missing,
-                    detail: "Token fields missing",
-                    checkedAt: now
-                )
-            }
-            if let expiry = credentials.expiry, expiry <= now, !hasRefresh {
-                return PrimaryProviderRouteHealth(
-                    route: route,
-                    status: .failed,
-                    detail: "Access token expired",
-                    checkedAt: now
-                )
-            }
-            return PrimaryProviderRouteHealth(
-                route: route,
-                status: .ok,
-                detail: hasRefresh ? "Refresh token available" : "Access token available",
-                checkedAt: now
-            )
-        } catch {
-            return PrimaryProviderRouteHealth(
-                route: route,
-                status: .failed,
-                detail: "Could not read OAuth file",
-                checkedAt: now
             )
         }
     }

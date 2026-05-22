@@ -204,12 +204,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Picker("Gemini source", selection: $settingsStore.settings.geminiUsageMode) {
-                            ForEach(GeminiUsageMode.allCases) { mode in
-                                Text(mode.label).tag(mode)
-                            }
-                        }
-                        Text(settingsStore.settings.geminiUsageMode.detail)
+                        Text(GeminiUsageMode.webOnly.detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         HStack {

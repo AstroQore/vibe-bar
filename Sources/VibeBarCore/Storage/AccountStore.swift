@@ -20,7 +20,7 @@ public final class AccountStore: ObservableObject {
     public init(
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
-        geminiUsageMode: GeminiUsageMode = .auto,
+        geminiUsageMode: GeminiUsageMode = .webOnly,
         antigravityUsageMode: AntigravityUsageMode = .auto,
         miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
     ) {
@@ -37,7 +37,7 @@ public final class AccountStore: ObservableObject {
     public func reload(
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
-        geminiUsageMode: GeminiUsageMode = .auto,
+        geminiUsageMode: GeminiUsageMode = .webOnly,
         antigravityUsageMode: AntigravityUsageMode = .auto,
         miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
     ) {
@@ -192,39 +192,14 @@ public final class AccountStore: ObservableObject {
         )
     }
 
-    /// Gemini exposes two sources with structurally different bucket
-    /// shapes — CLI returns per-model `remainingFraction`, Web returns
-    /// the aggregate `Current usage` + `Weekly limit` pair shown on
-    /// `gemini.google.com/usage`. They render as **two separate
-    /// cards** on the Google AI page, so this helper returns one
-    /// `AccountIdentity` per enabled-and-configured source.
-    ///
-    /// `.auto` registers either or both depending on which credentials
-    /// are present. `.oauthOnly` / `.webOnly` register at most one.
-    /// Stable account ids let `QuotaCacheStore` keep snapshots across
-    /// restarts.
+    /// Gemini live quota is Web-only. Historical Gemini CLI telemetry
+    /// remains part of cost scanning, but `~/.gemini/oauth_creds.json`
+    /// is no longer registered as a quota account.
     private func autoDetectGemini(mode: GeminiUsageMode) -> [AccountIdentity] {
         let enabled = GeminiSourcePlanner.enabledSources(mode: mode)
-        let homeDir = RealHomeDirectory.path
-        let geminiOAuthPath = URL(fileURLWithPath: homeDir)
-            .appendingPathComponent(".gemini/oauth_creds.json").path
-        let hasOAuth = enabled.contains(.oauthCLI) && FileManager.default.fileExists(atPath: geminiOAuthPath)
         let hasWeb = enabled.contains(.webCookie) && GeminiWebCookieStore.hasCookieHeader()
 
         var out: [AccountIdentity] = []
-        if hasOAuth {
-            out.append(AccountIdentity(
-                id: "oauth-gemini",
-                tool: .gemini,
-                alias: "Gemini CLI",
-                source: .oauthCLI,
-                allowsWebFallback: false,
-                allowsCLIFallback: false,
-                allowsOAuthFallback: false,
-                createdAt: Date(),
-                updatedAt: Date()
-            ))
-        }
         if hasWeb {
             out.append(AccountIdentity(
                 id: "web-gemini",

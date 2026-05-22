@@ -5,7 +5,7 @@ final class PrimaryProviderRouteHealthTests: XCTestCase {
     func testRoutesCoverDedicatedGoogleAndGrokProviders() {
         XCTAssertEqual(
             PrimaryProviderRoute.routes(for: .gemini),
-            [.geminiOAuth, .geminiBrowserCookies]
+            [.geminiBrowserCookies]
         )
         XCTAssertEqual(
             PrimaryProviderRoute.routes(for: .antigravity),

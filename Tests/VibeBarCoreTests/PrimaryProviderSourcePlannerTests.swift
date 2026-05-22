@@ -28,23 +28,10 @@ final class PrimaryProviderSourcePlannerTests: XCTestCase {
 
     // MARK: - Gemini
     //
-    // Gemini's adapter runs sources in parallel and merges buckets,
-    // so the planner exposes "which sources are enabled" rather than
-    // a fallback chain.
+    // Gemini live quota is Web-only. CLI telemetry remains a
+    // cost-history input, not a quota source.
 
-    func testGeminiAutoEnablesBothSources() {
-        XCTAssertEqual(GeminiSourcePlanner.enabledSources(mode: .auto), [.oauthCLI, .webCookie])
-        XCTAssertTrue(GeminiSourcePlanner.runsOAuth(mode: .auto))
-        XCTAssertTrue(GeminiSourcePlanner.runsWeb(mode: .auto))
-    }
-
-    func testGeminiOAuthOnlyEnablesOnlyOAuth() {
-        XCTAssertEqual(GeminiSourcePlanner.enabledSources(mode: .oauthOnly), [.oauthCLI])
-        XCTAssertTrue(GeminiSourcePlanner.runsOAuth(mode: .oauthOnly))
-        XCTAssertFalse(GeminiSourcePlanner.runsWeb(mode: .oauthOnly))
-    }
-
-    func testGeminiWebOnlyEnablesOnlyWeb() {
+    func testGeminiEnablesOnlyWeb() {
         XCTAssertEqual(GeminiSourcePlanner.enabledSources(mode: .webOnly), [.webCookie])
         XCTAssertFalse(GeminiSourcePlanner.runsOAuth(mode: .webOnly))
         XCTAssertTrue(GeminiSourcePlanner.runsWeb(mode: .webOnly))

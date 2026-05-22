@@ -1,10 +1,9 @@
 import XCTest
 @testable import VibeBarCore
 
-/// Smoke tests for `GeminiQuotaAdapter`'s account-source dispatch.
-/// After the split-cards refactor each Gemini source has its own
-/// `AccountIdentity`, and the adapter routes by `account.source` —
-/// no fallback chain, no bucket merging.
+/// Smoke tests for `GeminiQuotaAdapter`'s account-source boundary.
+/// Gemini live quota is Web-only; CLI telemetry remains a cost-history
+/// input, not a quota account.
 final class GeminiDualFetchTests: XCTestCase {
     private func makeEmptyHomeAdapter() throws -> (GeminiQuotaAdapter, URL) {
         let temp = FileManager.default.temporaryDirectory
@@ -24,26 +23,26 @@ final class GeminiDualFetchTests: XCTestCase {
 
     private func account(source: CredentialSource) -> AccountIdentity {
         AccountIdentity(
-            id: source == .oauthCLI ? "oauth-gemini" : "web-gemini",
+            id: source == .oauthCLI ? "stale-oauth-gemini" : "web-gemini",
             tool: .gemini,
-            alias: source == .oauthCLI ? "Gemini CLI" : "Gemini Web",
+            alias: source == .oauthCLI ? "Stale Gemini CLI" : "Gemini Web",
             source: source,
             createdAt: Date(),
             updatedAt: Date()
         )
     }
 
-    func testOAuthAccountThrowsNoCredentialWhenCredsMissing() async throws {
+    func testOAuthAccountThrowsUnknownBecauseCLIQuotaIsRemoved() async throws {
         let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
 
         do {
             _ = try await adapter.fetch(for: account(source: .oauthCLI))
-            XCTFail("Expected throw with no oauth_creds.json present")
-        } catch QuotaError.noCredential {
+            XCTFail("Expected throw for CLI quota source")
+        } catch QuotaError.unknown {
             // Pass
         } catch {
-            XCTFail("Expected .noCredential, got \(error)")
+            XCTFail("Expected .unknown, got \(error)")
         }
     }
 
