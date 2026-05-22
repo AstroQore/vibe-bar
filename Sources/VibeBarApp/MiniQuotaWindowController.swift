@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import VibeBarCore
 
@@ -24,6 +25,16 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     /// geometry file on every pixel during a drag.
     private var originPersistWorkItem: DispatchWorkItem?
     private var isApplicationTerminating = false
+    /// Combine subscription that re-runs the width calc when the user
+    /// toggles a field selection in Settings. Without this, the mini
+    /// window's SwiftUI body re-renders (fewer cells appear) but the
+    /// AppKit NSPanel keeps its old width — so unchecking a Gemini
+    /// model in Settings left the window the same physical size with
+    /// a lot of empty real estate on the right.
+    private var settingsCancellable: AnyCancellable?
+    /// Last fingerprint we applied content size for, so we can skip
+    /// the resize work when an unrelated settings field changes.
+    private var lastSizingFingerprint: String?
 
     func toggle(environment: AppEnvironment) {
         if panel?.isVisible == true {
@@ -52,11 +63,42 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         self.environment = environment
         let panel = panel ?? makePanel(environment: environment)
         self.panel = panel
-        applyStableContentSize(to: panel, settings: environment.settingsStore.settings, preserveTopRight: false)
-        applySavedPositionOrDefault(to: panel, settings: environment.settingsStore.settings)
+        let settings = environment.settingsStore.settings
+        applyStableContentSize(to: panel, settings: settings, preserveTopRight: false)
+        lastSizingFingerprint = Self.sizingFingerprint(for: settings)
+        applySavedPositionOrDefault(to: panel, settings: settings)
         panel.orderFrontRegardless()
         markWasOpen(true)
         persistOrigin()
+        observeSettingsChanges(environment: environment)
+    }
+
+    /// Subscribe to settingsStore so toggling a field in the Settings
+    /// page or pasting in a new MenuBarSettings JSON re-runs the
+    /// width calc and resizes the floating panel. The
+    /// `lastSizingFingerprint` guard skips the resize when the
+    /// settings change doesn't affect sizing (e.g. the user just
+    /// flipped popoverDensity for a different surface).
+    private func observeSettingsChanges(environment: AppEnvironment) {
+        settingsCancellable = environment.settingsStore.$settings
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] settings in
+                guard let self, let panel = self.panel, panel.isVisible else { return }
+                let fp = Self.sizingFingerprint(for: settings)
+                guard fp != self.lastSizingFingerprint else { return }
+                self.lastSizingFingerprint = fp
+                self.applyStableContentSize(to: panel, settings: settings, preserveTopRight: true)
+            }
+    }
+
+    /// Stable identifier for everything `stableContentSize` reads.
+    /// When this string changes we know we need to re-apply the
+    /// content size; otherwise the re-render is a no-op.
+    static func sizingFingerprint(for settings: AppSettings) -> String {
+        let mini = settings.miniWindow
+        let mode = mini.displayMode.rawValue
+        let ids = mini.fieldIds(for: mini.displayMode).joined(separator: ",")
+        return "\(mode)|\(ids)"
     }
 
     private func close() {
@@ -72,6 +114,9 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             NotificationCenter.default.removeObserver(observer)
             frameObserver = nil
         }
+        settingsCancellable?.cancel()
+        settingsCancellable = nil
+        lastSizingFingerprint = nil
         panel = nil
     }
 
