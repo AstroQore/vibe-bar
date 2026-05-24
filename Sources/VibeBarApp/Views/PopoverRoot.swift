@@ -433,7 +433,7 @@ private struct OverviewWaterfall: View {
                 // Gemini product, so the Overview surface shows them
                 // as a single L2 "Gemini" card with two L3 sub-sections
                 // (`GeminiCombinedCard`). Grok stays on its own card.
-                GeminiCombinedCard(density: density, compact: true)
+                GeminiCombinedCard(density: density)
                 ProviderQuotaCard(tool: .grok, density: density, compact: false)
                 // Google AI (Gemini + Antigravity) cost is intentionally
                 // omitted while the IDE/CLI cost story is incomplete
@@ -502,10 +502,6 @@ private struct GrokPage: View {
 /// own rounded-rectangle background.
 private struct GeminiCombinedCard: View {
     let density: Theme.Density
-    /// Compact buckets-only rendering for the dense Overview grid;
-    /// dedicated Gemini tab passes `false` so every per-model bucket
-    /// shows.
-    var compact: Bool = true
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
@@ -528,7 +524,7 @@ private struct GeminiCombinedCard: View {
                 ProviderSectionTitle(
                     tool: .gemini,
                     title: ToolType.gemini.productName,
-                    subtitle: "\(ToolType.gemini.toolName) + \(ToolType.antigravity.toolName)",
+                    subtitle: ToolType.gemini.statusProviderName,
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16,
@@ -550,15 +546,19 @@ private struct GeminiCombinedCard: View {
                 }
             }
 
-            ForEach(Array(geminiAccounts.enumerated()), id: \.element.id) { index, account in
-                if index > 0 {
-                    Divider().opacity(0.18).padding(.vertical, 1)
-                }
+            // Flat bucket layout — AQ explicitly asked to drop the
+            // "Gemini Web" and "AntiGravity" L3 sub-headers ("两个大的
+            // 分类逻辑") and let all buckets sit at the same level
+            // under one Gemini card. Antigravity always renders with
+            // `compact: false` so its 7 per-model buckets expand
+            // inline instead of collapsing behind the
+            // "N per-model limits" placeholder.
+            ForEach(geminiAccounts, id: \.id) { account in
                 ProviderQuotaCard(
                     tool: .gemini,
                     accountId: account.id,
                     density: density,
-                    compact: compact,
+                    compact: false,
                     embedded: true
                 )
             }
@@ -566,17 +566,14 @@ private struct GeminiCombinedCard: View {
                 ProviderQuotaCard(
                     tool: .gemini,
                     density: density,
-                    compact: compact,
+                    compact: false,
                     embedded: true
                 )
             }
-
-            Divider().opacity(0.18).padding(.vertical, 1)
-
             ProviderQuotaCard(
                 tool: .antigravity,
                 density: density,
-                compact: compact,
+                compact: false,
                 embedded: true
             )
         }
@@ -594,9 +591,11 @@ private struct GeminiCombinedCard: View {
 
 /// The dedicated Gemini sub-page (still routed through `OverviewPage.googleAI`
 /// for backwards-compat with the menu-bar settings, but labelled "Gemini" at
-/// every user-facing surface). Renders the unified Gemini card with full
-/// bucket detail, plus the shared subscription pace chart and the
-/// Google service-status feed.
+/// every user-facing surface). Two-column layout matching the OpenAI / Claude
+/// sub-pages: quota + pace + status on the left, a "Cost · Coming soon"
+/// placeholder on the right so the page width stays consistent with the
+/// other Overview sub-pages while the IDE/CLI cost story is still being
+/// validated.
 private struct GeminiTabPage: View {
     let density: Theme.Density
 
@@ -609,21 +608,95 @@ private struct GeminiTabPage: View {
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
 
-        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-            GeminiCombinedCard(density: density, compact: false)
-            if let geminiAccount = geminiAccounts.first {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    SubscriptionUtilizationView(
-                        tool: .gemini,
-                        buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
-                        mode: settingsStore.displayMode,
-                        density: density,
-                        now: context.date
-                    )
+        HStack(alignment: .top, spacing: density.interSectionSpacing) {
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                GeminiCombinedCard(density: density)
+                if let geminiAccount = geminiAccounts.first {
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        SubscriptionUtilizationView(
+                            tool: .gemini,
+                            buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
+                            mode: settingsStore.displayMode,
+                            density: density,
+                            now: context.date
+                        )
+                    }
                 }
+                ServiceStatusCard(tools: [.gemini])
             }
-            ServiceStatusCard(tools: [.gemini])
+            .frame(
+                minWidth: geminiLeftColumnMinWidth,
+                idealWidth: geminiLeftColumnIdealWidth,
+                maxWidth: geminiLeftColumnMaxWidth,
+                alignment: .topLeading
+            )
+
+            GeminiComingSoonCard(density: density)
+                .frame(minWidth: geminiRightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    private var geminiLeftColumnMinWidth: CGFloat {
+        max(320, min(380, density.popoverWidth * 0.34))
+    }
+
+    private var geminiLeftColumnIdealWidth: CGFloat {
+        max(geminiLeftColumnMinWidth, min(410, density.popoverWidth * 0.38))
+    }
+
+    private var geminiLeftColumnMaxWidth: CGFloat {
+        max(geminiLeftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
+    }
+
+    private var geminiRightColumnMinWidth: CGFloat {
+        500
+    }
+}
+
+/// Right-column placeholder on the Gemini sub-page. Mirrors the
+/// shape of the OpenAI/Claude cost panels (rounded card, padded
+/// section title) so the dedicated Gemini page reads the same as
+/// the other primary sub-pages while the cost story is still
+/// blocked on the encrypted `.pb` conversation files and unverified
+/// IDE-side rates.
+private struct GeminiComingSoonCard: View {
+    let density: Theme.Density
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
+            HStack(alignment: .center, spacing: 8) {
+                ProviderSectionTitle(
+                    tool: .gemini,
+                    title: "\(ToolType.gemini.productName) Cost",
+                    subtitle: "Coming soon",
+                    titleFontSize: density.titleFontSize,
+                    subtitleFontSize: density.subtitleFontSize,
+                    iconSize: 16,
+                    badgeSize: 24
+                )
+                Spacer(minLength: 4)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Cost tracking for Gemini Web + AntiGravity is on the roadmap but not yet accurate enough to surface.")
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.secondary)
+                Text("AntiGravity CLI conversations live in encrypted `.pb` files we can't yet parse, and the IDE-side pricing mixes Google-owned and third-party model rates we haven't validated end-to-end. Quota readings on the left are unaffected.")
+                    .font(.system(size: max(10, density.subtitleFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(nil)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(density.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
     }
 }
 
@@ -1430,30 +1503,38 @@ struct ProviderQuotaCard: View {
         }()
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
-            HStack(alignment: .center, spacing: 8) {
-                ProviderSectionTitle(
-                    tool: tool,
-                    title: cardTitle,
-                    subtitle: cardSubtitle,
-                    titleFontSize: density.titleFontSize,
-                    subtitleFontSize: density.subtitleFontSize,
-                    iconSize: 16,
-                    badgeSize: 24
-                )
-                Spacer(minLength: 4)
-                if planBadge?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                    PlanBadgeView(
-                        text: planBadge,
-                        fontSize: max(9, density.subtitleFontSize - 1)
+            // The embedded variant lives inside a parent container
+            // (e.g. GeminiCombinedCard) that already owns the L2
+            // title + per-provider refresh. Rendering ProviderSectionTitle
+            // again here produced two "Gemini" headers stacked on top of
+            // each other — drop the inner header so the parent's title
+            // is the only label.
+            if !embedded {
+                HStack(alignment: .center, spacing: 8) {
+                    ProviderSectionTitle(
+                        tool: tool,
+                        title: cardTitle,
+                        subtitle: cardSubtitle,
+                        titleFontSize: density.titleFontSize,
+                        subtitleFontSize: density.subtitleFontSize,
+                        iconSize: 16,
+                        badgeSize: 24
                     )
-                }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
-                    environment.refresh(tool)
-                }
-                .disabled(isProviderRefreshing)
-                if isProviderRefreshing {
-                    ProgressView().controlSize(.small)
-                        .frame(width: 16, height: 16)
+                    Spacer(minLength: 4)
+                    if planBadge?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                        PlanBadgeView(
+                            text: planBadge,
+                            fontSize: max(9, density.subtitleFontSize - 1)
+                        )
+                    }
+                    BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
+                        environment.refresh(tool)
+                    }
+                    .disabled(isProviderRefreshing)
+                    if isProviderRefreshing {
+                        ProgressView().controlSize(.small)
+                            .frame(width: 16, height: 16)
+                    }
                 }
             }
 
