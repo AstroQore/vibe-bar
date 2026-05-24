@@ -80,9 +80,30 @@ struct SettingsView: View {
                         Text("Pick which fields appear in the selected mini mode.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(MenuBarFieldCatalog.allFields) { field in
-                                miniFieldRow(field)
+                        // The flat `allFields` list had two "5 Hours" rows
+                        // and two "Weekly" rows (one for Codex, one for
+                        // Claude) with no provider context — easy to
+                        // mis-tick. Group by L2 product so each row sits
+                        // under the brand it belongs to.
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(MiniWindowFieldProviderSection.all, id: \.tool) { section in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 6) {
+                                        ToolBrandIconView(tool: section.tool, size: 13)
+                                            .opacity(0.85)
+                                        Text(section.title)
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.secondary)
+                                            .textCase(.uppercase)
+                                            .tracking(0.4)
+                                    }
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ForEach(section.fields) { field in
+                                            miniFieldRow(field)
+                                        }
+                                    }
+                                }
                             }
                         }
                         Divider()
@@ -980,4 +1001,23 @@ private struct MiscProviderInstanceDropDelegate: DropDelegate {
         draggedID = nil
         return true
     }
+}
+
+/// Provider-grouped slice of `MenuBarFieldCatalog.allFields` used by
+/// the Mini Window field picker. Each section shows a brand icon
+/// + L2 product name above its rows so a flat 20-row checklist
+/// stops asking the user to remember which "5 Hours" belongs to
+/// Codex and which to Claude.
+private struct MiniWindowFieldProviderSection {
+    let tool: ToolType
+    let title: String
+    let fields: [MenuBarFieldOption]
+
+    static let all: [MiniWindowFieldProviderSection] = [
+        .init(tool: .codex,       title: ToolType.codex.productName,       fields: MenuBarFieldCatalog.codexFields),
+        .init(tool: .claude,      title: ToolType.claude.productName,      fields: MenuBarFieldCatalog.claudeFields),
+        .init(tool: .gemini,      title: ToolType.gemini.productName + " Web", fields: MenuBarFieldCatalog.geminiFields),
+        .init(tool: .antigravity, title: ToolType.antigravity.toolName,    fields: MenuBarFieldCatalog.antigravityFields),
+        .init(tool: .grok,        title: ToolType.grok.productName,        fields: MenuBarFieldCatalog.grokFields)
+    ]
 }

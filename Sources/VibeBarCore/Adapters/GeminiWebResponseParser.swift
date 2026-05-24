@@ -29,8 +29,17 @@ enum GeminiWebResponseParser {
     /// Google ships — Gemini's type=1 quota refreshes roughly every
     /// 4-6 hours in practice, close enough to Codex's 5h primary
     /// that the shared label is more useful than a brand-new one.
-    static let currentUsageBucketId = "gemini.five_hour"
-    static let weeklyUsageBucketId  = "gemini.weekly"
+    // Bucket IDs follow the Codex / Claude convention — plain
+    // `"five_hour"` / `"weekly"` strings, no `gemini.` prefix. The
+    // tool namespace is implicit (these buckets only live on a
+    // `.gemini` quota) and `MenuBarFieldCatalog.fieldId(tool:bucketId:)`
+    // adds the prefix back when composing field ids, so the catalog
+    // entry `option(.gemini, "five_hour", ...)` ends up with the
+    // same `gemini.five_hour` field id user settings already store
+    // — which is what `MiniQuotaWindowView` looks up against
+    // `field.bucketId` on the live quota.
+    static let currentUsageBucketId = "five_hour"
+    static let weeklyUsageBucketId  = "weekly"
 
     /// Strip Google's anti-hijacking prefix `)]}'` (with or without a
     /// trailing newline) that fronts most internal JSON RPCs.

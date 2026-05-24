@@ -159,12 +159,16 @@ public enum MenuBarFieldCatalog {
         option(.claude, "weekly_oauth_apps", "OAuth Apps · Weekly", "OAuth wk")
     ]
 
+    // Gemini Web (`gemini.google.com`) exposes a 5-hour rolling
+    // window and a weekly bucket — that's the entire quota surface
+    // the jSf9Qc parser returns, regardless of model. Earlier
+    // entries here were per-model CLI ids (Gemini 2.5 Pro / Flash /
+    // Lite, Gemini 3 Pro / Flash) from the pre-PR-#45 telemetry
+    // adapter the Web parser no longer produces; those ids get
+    // migrated to the new pair in `fieldIdMigrations` below.
     public static let geminiFields: [MenuBarFieldOption] = [
-        option(.gemini, "gemini-2.5-pro", "Gemini 2.5 Pro", "Pro"),
-        option(.gemini, "gemini-2.5-flash", "Gemini 2.5 Flash", "Flash"),
-        option(.gemini, "gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite", "Lite"),
-        option(.gemini, "gemini-3-pro", "Gemini 3 Pro", "3 Pro"),
-        option(.gemini, "gemini-3-flash", "Gemini 3 Flash", "3 Flash")
+        option(.gemini, "five_hour", "5 Hours", "5h"),
+        option(.gemini, "weekly", "Weekly", "wk")
     ]
 
     public static let antigravityFields: [MenuBarFieldOption] = [
@@ -239,9 +243,19 @@ public enum MenuBarFieldCatalog {
     }
 
     private static let fieldIdMigrations: [String: [String]] = [
-        "gemini.gemini_pro": ["gemini.gemini-2.5-pro"],
-        "gemini.gemini_flash": ["gemini.gemini-2.5-flash"],
-        "gemini.gemini_flash_lite": ["gemini.gemini-2.5-flash-lite"],
+        // Old Gemini CLI per-model fields all roll up to the Web
+        // parser's two-bucket pair. We collapse them to a single
+        // `gemini.five_hour` since users selecting one model
+        // generally cared about a primary quota indicator; the
+        // Weekly bucket is right next to it in the catalog.
+        "gemini.gemini_pro":             ["gemini.five_hour"],
+        "gemini.gemini_flash":           ["gemini.five_hour"],
+        "gemini.gemini_flash_lite":      ["gemini.five_hour"],
+        "gemini.gemini-2.5-pro":         ["gemini.five_hour"],
+        "gemini.gemini-2.5-flash":       ["gemini.five_hour"],
+        "gemini.gemini-2.5-flash-lite":  ["gemini.five_hour"],
+        "gemini.gemini-3-pro":           ["gemini.five_hour"],
+        "gemini.gemini-3-flash":         ["gemini.five_hour"],
         "antigravity.claude-sonnet-4-20250514": ["antigravity.claude-sonnet-4.6-thinking"],
         "antigravity.claude-sonnet-4-5": ["antigravity.claude-sonnet-4.6-thinking"],
         "antigravity.gemini-2.5-pro": [
