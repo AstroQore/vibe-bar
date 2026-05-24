@@ -275,21 +275,17 @@ struct ProviderBrandBadge: View {
     var containerSize: CGFloat = 24
 
     var body: some View {
+        // Companion to `ToolBrandBadge` — same naked-glyph treatment
+        // so the menu-bar / overview kind icons match the per-tool
+        // brand marks instead of wearing the old rounded-rectangle
+        // wrapper.
         ProviderBrandIconView(kind: kind, size: effectiveIconSize)
             .frame(width: containerSize, height: containerSize, alignment: .center)
-            .background(
-                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
-                    .fill(Color.primary.opacity(0.055))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
-                    .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
-            )
             .accessibilityHidden(true)
     }
 
     private var effectiveIconSize: CGFloat {
-        min(containerSize - 3, max(iconSize, containerSize * 0.78))
+        min(containerSize, max(iconSize, containerSize * 0.85))
     }
 }
 
@@ -335,21 +331,21 @@ struct ToolBrandBadge: View {
     var containerSize: CGFloat = 24
 
     var body: some View {
+        // Render the brand glyph naked — AQ flagged that the
+        // background fill + stroke on the outer rounded rectangle
+        // looked like the icon was "套了一层" (wrapped in an extra
+        // layer), especially for ChatGPT and Claude whose brand
+        // marks already have rounded silhouettes. The fixed
+        // `containerSize` frame is kept so call sites that align
+        // multiple badges horizontally don't shift after the
+        // chrome comes off.
         ToolBrandIconView(tool: tool, size: effectiveIconSize)
             .frame(width: containerSize, height: containerSize, alignment: .center)
-            .background(
-                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
-                    .fill(Color.primary.opacity(0.055))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: min(8, containerSize * 0.32), style: .continuous)
-                    .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
-            )
             .accessibilityHidden(true)
     }
 
     private var effectiveIconSize: CGFloat {
-        min(containerSize - 3, max(iconSize, containerSize * 0.78))
+        min(containerSize, max(iconSize, containerSize * 0.85))
     }
 }
 

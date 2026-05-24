@@ -372,25 +372,33 @@ private struct OverviewSwitchIcon: View {
     let page: OverviewPage
     let isSelected: Bool
 
+    private static let iconSize: CGFloat = 13
+
     var body: some View {
+        // Every tab uses the same 13pt icon canvas — mixing 14pt for
+        // Overview with 13pt for the rest, and ProviderBrandIconView
+        // for codex/claude with ToolBrandIconView for gemini/grok,
+        // made the row read "高低不齐" (uneven baselines / sizes).
+        // One renderer (`ToolBrandIconView` driven off the L2-
+        // representative ToolType) keeps every tab visually pinned to
+        // the same baseline. Overview and Misc still get SF symbols
+        // because they aren't single-provider tabs.
         Group {
-            if page == .misc {
-                // Misc gets a generic "more" glyph — the misc tab
-                // covers many providers so no single brand icon is
-                // a fair representative.
+            switch page {
+            case .overview:
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: Self.iconSize, weight: .semibold))
+            case .misc:
                 Image(systemName: "square.grid.2x2")
-                    .font(.system(size: 11, weight: .medium))
-            } else if page == .googleAI {
-                // The Google AI tab pairs Gemini + Antigravity. Use the
-                // Gemini brand icon as the visual anchor; the label
-                // already says "Google AI".
-                ToolBrandIconView(tool: .gemini, size: 13)
-            } else if page == .grok {
-                // Grok has no dedicated MenuBarItemKind, so we render
-                // its brand icon directly off the ToolType.
-                ToolBrandIconView(tool: .grok, size: 13)
-            } else {
-                ProviderBrandIconView(kind: page.menuBarKind, size: page == .overview ? 14 : 13)
+                    .font(.system(size: Self.iconSize, weight: .medium))
+            case .openAI:
+                ToolBrandIconView(tool: .codex, size: Self.iconSize)
+            case .claude:
+                ToolBrandIconView(tool: .claude, size: Self.iconSize)
+            case .googleAI:
+                ToolBrandIconView(tool: .gemini, size: Self.iconSize)
+            case .grok:
+                ToolBrandIconView(tool: .grok, size: Self.iconSize)
             }
         }
         .opacity(isSelected ? 1 : 0.72)
