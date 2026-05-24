@@ -554,13 +554,13 @@ private struct GeminiCombinedCard: View {
                 }
             }
 
-            // Flat bucket layout — AQ explicitly asked to drop the
-            // "Gemini Web" and "AntiGravity" L3 sub-headers ("两个大的
-            // 分类逻辑") and let all buckets sit at the same level
-            // under one Gemini card. Antigravity always renders with
-            // `compact: false` so its 7 per-model buckets expand
-            // inline instead of collapsing behind the
-            // "N per-model limits" placeholder.
+            // Gemini Web buckets ride directly under the main L2
+            // header — no second sub-header needed because the card
+            // title already reads "Gemini · Google" and the Web
+            // surface is the primary one. AntiGravity gets its own
+            // L3 sub-header below (logo + name) so the IDE-side
+            // model buckets are visibly separated from the Web
+            // quota even though both live in the same card.
             ForEach(geminiAccounts, id: \.id) { account in
                 ProviderQuotaCard(
                     tool: .gemini,
@@ -578,6 +578,22 @@ private struct GeminiCombinedCard: View {
                     embedded: true
                 )
             }
+
+            // L3 sub-section header — AntiGravity logo + tool name
+            // before the model bucket list. AQ asked to surface the
+            // "IDE 关系" (which tool the per-model buckets actually
+            // belong to) so the seven AntiGravity rows don't look
+            // like extra Gemini Web buckets.
+            HStack(alignment: .center, spacing: 6) {
+                ToolBrandIconView(tool: .antigravity, size: 13)
+                    .opacity(0.85)
+                Text(ToolType.antigravity.toolName)
+                    .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+            }
+            .padding(.top, 4)
+
             ProviderQuotaCard(
                 tool: .antigravity,
                 density: density,
