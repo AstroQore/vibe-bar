@@ -115,17 +115,26 @@ private struct ServiceStatusRow: View {
 
     @ViewBuilder
     private func groupedComponents(_ snapshot: ServiceStatusSnapshot) -> some View {
+        // AQ asked for every component group to open by default —
+        // hiding the per-region rows behind a chevron made the
+        // status card look empty and forced an extra click before
+        // any incident detail surfaced. Default to expanded for
+        // every group, especially Google AI's sub-services.
         if snapshot.groups.isEmpty {
             ComponentGroupBlock(
                 title: "Components",
                 components: snapshot.components,
-                defaultExpanded: shouldExpandFlatComponents
+                defaultExpanded: true
             )
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 let ungrouped = snapshot.components(in: nil)
                 if !ungrouped.isEmpty {
-                    ComponentGroupBlock(title: "Other", components: ungrouped, defaultExpanded: false)
+                    ComponentGroupBlock(
+                        title: "Other",
+                        components: ungrouped,
+                        defaultExpanded: true
+                    )
                 }
                 ForEach(snapshot.groups) { group in
                     let comps = snapshot.components(in: group)
@@ -133,7 +142,7 @@ private struct ServiceStatusRow: View {
                         ComponentGroupBlock(
                             title: group.name,
                             components: comps,
-                            defaultExpanded: shouldExpand(group)
+                            defaultExpanded: true
                         )
                     }
                 }
@@ -141,16 +150,12 @@ private struct ServiceStatusRow: View {
         }
     }
 
-    private var shouldExpandFlatComponents: Bool {
-        tool == .claude || tool == .grok
-    }
-
-    private func shouldExpand(_ group: ServiceComponentGroup) -> Bool {
-        tool == .codex && group.name.localizedCaseInsensitiveContains("codex")
-    }
-
+    /// Service Status rows now render at the L1 vendor level
+    /// (`tool.statusProviderName`), so `.gemini` reads "Google" in
+    /// line with the rest of the hierarchy. The old "Google AI"
+    /// override predated the unified L1/L2/L3 catalog.
     private var displayName: String {
-        tool == .gemini ? "Google AI" : tool.statusProviderName
+        tool.statusProviderName
     }
 }
 
