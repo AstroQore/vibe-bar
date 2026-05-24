@@ -512,6 +512,7 @@ private struct GeminiCombinedCard: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
@@ -526,6 +527,11 @@ private struct GeminiCombinedCard: View {
             quotaService.inFlightAccountIds.contains($0.id)
         } ?? false
         let anyInFlight = anyGeminiInFlight || antigravityInFlight
+        let geminiPlanBadge = planBadge(for: .gemini, accountIds: geminiAccounts.map(\.id))
+        let antigravityPlanBadge = planBadge(
+            for: .antigravity,
+            accountIds: antigravityAccount.map { [$0.id] } ?? []
+        )
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center, spacing: 8) {
@@ -539,6 +545,12 @@ private struct GeminiCombinedCard: View {
                     badgeSize: 24
                 )
                 Spacer(minLength: 4)
+                if let label = geminiPlanBadge {
+                    PlanBadgeView(
+                        text: label,
+                        fontSize: max(9, density.subtitleFontSize - 1)
+                    )
+                }
                 BorderlessIconButton(
                     systemImage: "arrow.clockwise",
                     help: "Refresh Gemini Web + AntiGravity"
@@ -558,9 +570,9 @@ private struct GeminiCombinedCard: View {
             // header — no second sub-header needed because the card
             // title already reads "Gemini · Google" and the Web
             // surface is the primary one. AntiGravity gets its own
-            // L3 sub-header below (logo + name) so the IDE-side
-            // model buckets are visibly separated from the Web
-            // quota even though both live in the same card.
+            // L3 sub-header below (logo + name + plan badge) so the
+            // IDE-side model buckets are visibly separated from the
+            // Web quota even though both live in the same card.
             ForEach(geminiAccounts, id: \.id) { account in
                 ProviderQuotaCard(
                     tool: .gemini,
@@ -579,11 +591,6 @@ private struct GeminiCombinedCard: View {
                 )
             }
 
-            // L3 sub-section header — AntiGravity logo + tool name
-            // before the model bucket list. AQ asked to surface the
-            // "IDE 关系" (which tool the per-model buckets actually
-            // belong to) so the seven AntiGravity rows don't look
-            // like extra Gemini Web buckets.
             HStack(alignment: .center, spacing: 6) {
                 ToolBrandIconView(tool: .antigravity, size: 13)
                     .opacity(0.85)
@@ -591,6 +598,12 @@ private struct GeminiCombinedCard: View {
                     .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
+                if let label = antigravityPlanBadge {
+                    PlanBadgeView(
+                        text: label,
+                        fontSize: max(8, density.subtitleFontSize - 2)
+                    )
+                }
             }
             .padding(.top, 4)
 
@@ -610,6 +623,27 @@ private struct GeminiCombinedCard: View {
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .stroke(.separator.opacity(0.4), lineWidth: 0.5)
         )
+    }
+
+    /// Resolve the plan-badge text for a Gemini-family sub-tool. Looks
+    /// at the cached quota first (jSf9Qc returns "Pro" / "Ultra" /
+    /// "Free") and falls back to the account-level plan string. nil
+    /// when nothing meaningful is set so the caller suppresses the
+    /// badge instead of drawing an empty pill.
+    private func planBadge(for tool: ToolType, accountIds: [String]) -> String? {
+        let quotaPlan = accountIds
+            .compactMap { quotaService.cachedQuota(for: $0)?.plan }
+            .first
+        let accountPlan = accountIds
+            .compactMap { id in environment.accountStore.accounts.first(where: { $0.id == id })?.plan }
+            .first
+        let label = settingsStore.settings.planBadgeLabel(
+            for: tool,
+            quotaPlan: quotaPlan,
+            accountPlan: accountPlan
+        )
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
     }
 }
 
