@@ -115,11 +115,13 @@ private struct ServiceStatusRow: View {
 
     @ViewBuilder
     private func groupedComponents(_ snapshot: ServiceStatusSnapshot) -> some View {
-        // AQ asked for every component group to open by default —
-        // hiding the per-region rows behind a chevron made the
-        // status card look empty and forced an extra click before
-        // any incident detail surfaced. Default to expanded for
-        // every group, especially Google AI's sub-services.
+        // Default-expand most provider component groups so the
+        // per-region rows are visible without an extra click. The one
+        // carve-out is OpenAI: its status page has APIs / ChatGPT /
+        // Codex / FedRAMP groups, and AQ only cares about Codex on
+        // this app, so we open just that one and let the user click
+        // through to APIs / ChatGPT / FedRAMP if they want. Claude /
+        // Google / xAI keep the all-expanded behaviour.
         if snapshot.groups.isEmpty {
             ComponentGroupBlock(
                 title: "Components",
@@ -133,7 +135,7 @@ private struct ServiceStatusRow: View {
                     ComponentGroupBlock(
                         title: "Other",
                         components: ungrouped,
-                        defaultExpanded: true
+                        defaultExpanded: defaultExpanded(forGroupName: "Other")
                     )
                 }
                 ForEach(snapshot.groups) { group in
@@ -142,12 +144,21 @@ private struct ServiceStatusRow: View {
                         ComponentGroupBlock(
                             title: group.name,
                             components: comps,
-                            defaultExpanded: true
+                            defaultExpanded: defaultExpanded(forGroupName: group.name)
                         )
                     }
                 }
             }
         }
+    }
+
+    /// Per-tool selective default-expand rule. Codex page opens only
+    /// the "Codex" group; everything else opens every group.
+    private func defaultExpanded(forGroupName name: String) -> Bool {
+        if tool == .codex {
+            return name.localizedCaseInsensitiveContains("codex")
+        }
+        return true
     }
 
     /// Service Status rows now render at the L1 vendor level
