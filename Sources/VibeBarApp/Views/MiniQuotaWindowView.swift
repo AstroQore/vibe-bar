@@ -509,11 +509,10 @@ private struct MiniL2GroupColumn: View {
                 ForEach(Array(group.members.enumerated()), id: \.element.tool) { index, member in
                     if index > 0 {
                         MiniGroupDivider()
-                            .padding(.top, group.isMultiTool ? 4 : 15)
+                            .padding(.top, 15)
                     }
                     MiniMemberStack(
                         member: member,
-                        showSubLabel: group.isMultiTool,
                         settings: settingsStore.settings.miniWindow
                     )
                 }
@@ -536,26 +535,19 @@ private struct MiniL2GroupColumn: View {
     }
 }
 
-/// One L3 member inside an L2 super-column. Renders the optional
-/// L3 sub-label (only when the parent group spans multiple L3 tools),
-/// then the same primary + branch ring layout `MiniProviderColumn`
-/// used to render directly.
+/// One L3 member inside an L2 super-column. Renders only the bucket
+/// rings — AQ asked to drop the per-L3 sub-label ("Gemini Web" /
+/// "AntiGravity") under the GEMINI column. The branch-group titles
+/// the parser already emits (G PRO, G FLASH, CLAUDE, GPT-OSS) still
+/// distinguish the two surfaces visually, so an explicit L3 label
+/// on top was redundant and made the mini window look like a third
+/// hierarchy level when only two are wanted.
 private struct MiniMemberStack: View {
     let member: MiniL2Member
-    let showSubLabel: Bool
     let settings: MiniWindowSettings
 
     var body: some View {
-        VStack(alignment: .center, spacing: showSubLabel ? 4 : 0) {
-            if showSubLabel {
-                Text(member.tool.toolName)
-                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary.opacity(0.85))
-                    .tracking(0.3)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(width: bucketGroupsWidth, alignment: .center)
-            }
+        VStack(alignment: .center, spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
                 if !member.content.primaryCells.isEmpty {
                     MiniPrimaryRingGroup(cells: member.content.primaryCells)
@@ -571,25 +563,6 @@ private struct MiniMemberStack: View {
 
     private var branchGroups: [MiniBranchGroup] {
         miniBranchGroups(from: member.content.branchCells, settings: settings)
-    }
-
-    private var bucketGroupsWidth: CGFloat {
-        var width: CGFloat = 0
-        var groupCount = 0
-        if !member.content.primaryCells.isEmpty {
-            width += CGFloat(member.content.primaryCells.count) * MiniRingMetrics.cellWidth
-                + CGFloat(max(0, member.content.primaryCells.count - 1)) * MiniRingMetrics.ringSpacing
-            groupCount += 1
-        }
-        for group in branchGroups {
-            width += CGFloat(group.cells.count) * MiniRingMetrics.cellWidth
-                + CGFloat(max(0, group.cells.count - 1)) * MiniRingMetrics.ringSpacing
-            groupCount += 1
-        }
-        if groupCount > 1 {
-            width += CGFloat(groupCount - 1) * 16.5
-        }
-        return width
     }
 
     static func width(
@@ -958,11 +931,10 @@ private struct MiniCompactL2GroupColumn: View {
                 ForEach(Array(group.members.enumerated()), id: \.element.tool) { index, member in
                     if index > 0 {
                         MiniGroupDivider(height: 66)
-                            .padding(.top, group.isMultiTool ? 4 : 12)
+                            .padding(.top, 12)
                     }
                     MiniCompactMemberStack(
                         member: member,
-                        showSubLabel: group.isMultiTool,
                         settings: settingsStore.settings.miniWindow
                     )
                 }
@@ -987,20 +959,10 @@ private struct MiniCompactL2GroupColumn: View {
 
 private struct MiniCompactMemberStack: View {
     let member: MiniL2Member
-    let showSubLabel: Bool
     let settings: MiniWindowSettings
 
     var body: some View {
-        VStack(alignment: .center, spacing: showSubLabel ? 3 : 0) {
-            if showSubLabel {
-                Text(member.tool.toolName)
-                    .font(.system(size: 8, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary.opacity(0.85))
-                    .tracking(0.3)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(width: bucketGroupsWidth, alignment: .center)
-            }
+        VStack(alignment: .center, spacing: 0) {
             HStack(alignment: .top, spacing: 5) {
                 if !member.content.primaryCells.isEmpty {
                     MiniCompactPrimaryGroup(cells: member.content.primaryCells)
@@ -1016,25 +978,6 @@ private struct MiniCompactMemberStack: View {
 
     private var branchGroups: [MiniBranchGroup] {
         miniBranchGroups(from: member.content.branchCells, settings: settings)
-    }
-
-    private var bucketGroupsWidth: CGFloat {
-        var width: CGFloat = 0
-        var groupCount = 0
-        if !member.content.primaryCells.isEmpty {
-            width += CGFloat(member.content.primaryCells.count) * MiniCompactMetrics.cellWidth
-                + CGFloat(max(0, member.content.primaryCells.count - 1)) * MiniCompactMetrics.ringSpacing
-            groupCount += 1
-        }
-        for group in branchGroups {
-            width += CGFloat(group.cells.count) * MiniCompactMetrics.cellWidth
-                + CGFloat(max(0, group.cells.count - 1)) * MiniCompactMetrics.ringSpacing
-            groupCount += 1
-        }
-        if groupCount > 1 {
-            width += CGFloat(groupCount - 1) * 10
-        }
-        return width
     }
 
     static func width(
