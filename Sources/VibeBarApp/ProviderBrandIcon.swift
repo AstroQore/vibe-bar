@@ -381,9 +381,14 @@ extension ToolType {
 
     var providerIconDrawScale: CGFloat {
         switch self {
-        case .codex, .claude:
-            return 1.0
-        case .gemini, .antigravity, .grok, .copilot, .cursor:
+        // All five primary tools render at the same overshoot scale.
+        // The previous 1.0 for codex/claude let the SVG paths reach
+        // the canvas edge — the anti-aliased boundary that produced
+        // read as a "细线" (thin line / halo) around the glyph, while
+        // the 1.25 brands (gemini/grok) overshot the canvas and got
+        // clipped to crisp edges. Same scale → same edge treatment →
+        // no halo on either pair.
+        case .codex, .claude, .gemini, .antigravity, .grok, .copilot, .cursor:
             return 1.25
         case .alibaba, .alibabaTokenPlan, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 1.36
