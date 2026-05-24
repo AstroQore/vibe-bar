@@ -94,7 +94,15 @@ struct MiniQuotaWindowView: View {
     }
 
     private func isBranchField(_ field: MenuBarFieldOption) -> Bool {
-        if field.tool == .gemini || field.tool == .antigravity {
+        // AntiGravity rows are always branch-style (one ring per
+        // per-model bucket, each carrying a `groupTitle` set by the
+        // parser). Gemini USED to be in this carve-out too — that
+        // was a leftover from the per-model CLI adapter. After
+        // PR #57 the Gemini Web parser emits two flat primary
+        // buckets (`five_hour` / `weekly`) with `groupTitle == nil`,
+        // so they need to flow through the primary cell path or
+        // they never reach the mini window at all.
+        if field.tool == .antigravity {
             return true
         }
         switch field.bucketId {

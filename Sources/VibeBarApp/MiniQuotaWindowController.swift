@@ -193,6 +193,54 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Count of primary + branch groups the mini window will render
+    /// for `tool` given the selected bucket ids. Mirrors
+    /// `MiniBranchCell.groupKey` so a per-tool sizing decision in the
+    /// AppKit controller stays in sync with the SwiftUI layout
+    /// without having to query the live quota. A primary bucket
+    /// (anything that doesn't match a known branch-group prefix)
+    /// counts as one extra group. Used by `stableContentSize` to
+    /// reserve exactly the right number of `groupDividerReserve` gaps.
+    static func miniGroupCount(tool: ToolType, selectedBucketIds: [String]) -> Int {
+        var keys: Set<String> = []
+        var hasPrimary = false
+        for bucketId in selectedBucketIds {
+            if let key = miniBranchGroupKey(tool: tool, bucketId: bucketId) {
+                keys.insert(key)
+            } else {
+                hasPrimary = true
+            }
+        }
+        return keys.count + (hasPrimary ? 1 : 0)
+    }
+
+    private static func miniBranchGroupKey(tool: ToolType, bucketId: String) -> String? {
+        switch bucketId {
+        case "gpt_5_3_codex_spark_five_hour", "gpt_5_3_codex_spark_weekly":
+            return "codex.spark"
+        case "weekly_sonnet":
+            return "claude.sonnet"
+        case "weekly_design":
+            return "claude.design"
+        case "daily_routines":
+            return "claude.routine"
+        case "weekly_opus":
+            return "claude.opus"
+        case "weekly_oauth_apps":
+            return "claude.oauth"
+        default:
+            break
+        }
+        guard tool == .antigravity else { return nil }
+        let lower = bucketId.lowercased()
+        if lower.contains("gpt-oss") { return "antigravity.gpt-oss" }
+        if lower.contains("claude")  { return "antigravity.claude" }
+        if lower.contains("flash-lite") { return "antigravity.gemini-flash-lite" }
+        if lower.contains("flash")   { return "antigravity.gemini-flash" }
+        if lower.contains("pro")     { return "antigravity.gemini-pro" }
+        return "antigravity.\(bucketId)"
+    }
+
     private static func stableContentSize(for settings: AppSettings) -> NSSize {
         let mini = settings.miniWindow
         let displayMode = mini.displayMode
@@ -226,40 +274,42 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         }
 
         let selected = mini.fieldIds(for: displayMode)
-        var countsByTool: [ToolType: Int] = [:]
+        var bucketsByTool: [ToolType: [String]] = [:]
         for fieldId in selected {
             guard
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 field.tool.supportsDedicatedCard
             else { continue }
-            countsByTool[field.tool, default: 0] += 1
+            bucketsByTool[field.tool, default: []].append(field.bucketId)
         }
 
         // Sizing now mirrors the L2-grouped layout in
         // `MiniWindowProviderLayout`: consecutive tools sharing the
         // same L2 productName (Gemini Web + AntiGravity → "Gemini")
         // share one provider column with an internal divider between
-        // L3 sub-tools. The width calc treats each L2 group as one
-        // visible column for `providerSpacing` accounting, then adds
-        // an extra `groupDividerReserve` per intra-group L3 boundary.
+        // L3 sub-tools. Group dividers come from the actual primary +
+        // branch-group count derived from selected bucket ids; the
+        // old `min(count - 1, 4)` heuristic over-counted dividers for
+        // tools with many primary cells (Codex 4 cells reserved space
+        // for 3 dividers when there's really only 1), which left
+        // visible empty padding on the L/R edges of the panel.
         var width: CGFloat = 0
         var visibleProductGroupCount = 0
         var lastProductName: String? = nil
-        var toolsInCurrentGroup = 0
         for tool in ToolType.dedicatedCardProviders {
-            guard let count = countsByTool[tool], count > 0 else { continue }
-            let cellCount = CGFloat(count)
-            width += cellCount * cellWidth
-            width += CGFloat(max(0, count - 1)) * cellSpacing
-            width += CGFloat(max(0, min(count - 1, 4))) * groupDividerReserve
+            guard let bucketIds = bucketsByTool[tool], !bucketIds.isEmpty else { continue }
+            let cellCount = bucketIds.count
+            width += CGFloat(cellCount) * cellWidth
+            width += CGFloat(max(0, cellCount - 1)) * cellSpacing
+            let groupCount = Self.miniGroupCount(tool: tool, selectedBucketIds: bucketIds)
+            width += CGFloat(max(0, groupCount - 1)) * groupDividerReserve
             if lastProductName == tool.productName {
-                // Same L2 group as previous tool — count one intra-group divider.
+                // Same L2 product as the previous tool — adds one
+                // intra-group divider between L3 sub-columns.
                 width += groupDividerReserve
-                toolsInCurrentGroup += 1
             } else {
                 visibleProductGroupCount += 1
                 lastProductName = tool.productName
-                toolsInCurrentGroup = 1
             }
         }
         if visibleProductGroupCount > 1 {

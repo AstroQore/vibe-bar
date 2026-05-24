@@ -576,11 +576,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.top, 2)
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(MenuBarFieldCatalog.fields(for: kind)) { field in
-                            menuFieldRow(kind: kind, field: field)
-                        }
-                    }
+                    menuItemFieldList(for: kind)
                 }
             }
             .padding(.top, 8)
@@ -669,6 +665,46 @@ struct SettingsView: View {
                 field: field,
                 label: menuFieldLabelBinding(kind, field)
             )
+        }
+    }
+
+    /// Field-picker layout for a `MenuBarItemKind`. Overview lists
+    /// every provider's fields, which used to render as a flat 20-row
+    /// checklist with two unlabelled "5 Hours" rows and no Gemini Web
+    /// section — the same readability problem the Mini Window picker
+    /// already solved with L2-product section headers. Re-use that
+    /// grouping for Overview; the per-tool kinds (.codex / .claude)
+    /// already render a single provider, so they keep the flat list.
+    @ViewBuilder
+    private func menuItemFieldList(for kind: MenuBarItemKind) -> some View {
+        if kind == .compact {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(MiniWindowFieldProviderSection.all, id: \.tool) { section in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            ToolBrandIconView(tool: section.tool, size: 13)
+                                .opacity(0.85)
+                            Text(section.title)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .tracking(0.4)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(section.fields) { field in
+                                menuFieldRow(kind: kind, field: field)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(MenuBarFieldCatalog.fields(for: kind)) { field in
+                    menuFieldRow(kind: kind, field: field)
+                }
+            }
         }
     }
 
