@@ -410,6 +410,9 @@ struct SettingsView: View {
                                 Text(costRetentionLabel(days)).tag(days)
                             }
                         }
+                        Text("Applies to cost history and subscription fill history.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                         Toggle("Privacy mode", isOn: $settingsStore.settings.costData.privacyModeEnabled)
                         HStack {
                             Button {
