@@ -48,9 +48,15 @@ final class AppEnvironment: ObservableObject {
             antigravityUsageMode: settings.antigravityUsageMode,
             miscProviderInstances: settings.settings.miscProviderInstances
         )
-        let service = QuotaService.makeDefault(mockProvider: { [weak settings] in
-            settings?.mockEnabled ?? false
-        }, initialAccountIds: accounts.accounts.map(\.id))
+        let service = QuotaService.makeDefault(
+            mockProvider: { [weak settings] in
+                settings?.mockEnabled ?? false
+            },
+            retentionProvider: { [weak settings] in
+                settings?.settings.costData.retentionDays ?? CostDataSettings.defaultRetentionDays
+            },
+            initialAccountIds: accounts.accounts.map(\.id)
+        )
 
         self.settingsStore = settings
         self.accountStore = accounts
