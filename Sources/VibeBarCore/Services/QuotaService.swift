@@ -9,24 +9,42 @@ public final class QuotaService: ObservableObject {
     @Published public private(set) var lastErrorByAccount: [String: QuotaError] = [:]
     @Published public private(set) var lastUpdatedByAccount: [String: Date] = [:]
     @Published public private(set) var inFlightAccountIds: Set<String> = []
+    /// Per-(accountId, bucketId) subscription fill history loaded from
+    /// `SubscriptionHistoryStore`. Hydrated asynchronously on init and
+    /// kept in sync as each `refresh` succeeds; views read this
+    /// dictionary directly via the `@Published` projection.
+    @Published public private(set) var historyByAccountBucket: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
 
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
+    private let retentionProvider: () -> Int
 
     public init(
         adapters: [ToolType: any QuotaAdapter],
         mockProvider: @escaping () -> Bool,
+        retentionProvider: @escaping () -> Int = { CostDataSettings.defaultRetentionDays },
         initialAccountIds: [String] = []
     ) {
         self.adapters = adapters
         self.mockProvider = mockProvider
+        self.retentionProvider = retentionProvider
         let cached = QuotaCacheStore.loadAll(accountIds: initialAccountIds)
         self.lastSuccessByAccount = cached
         self.lastUpdatedByAccount = cached.mapValues(\.queriedAt)
+
+        // Hydrate the subscription history dictionary from disk. The
+        // store is an actor, so this has to be deferred — the popover
+        // and mini window won't render samples until this Task resolves,
+        // but neither is open at launch so the brief flicker is invisible.
+        Task { @MainActor [weak self] in
+            let samples = await SubscriptionHistoryStore.shared.allSamples()
+            self?.applyInitialSubscriptionHistory(samples)
+        }
     }
 
     public static func makeDefault(
         mockProvider: @escaping () -> Bool,
+        retentionProvider: @escaping () -> Int = { CostDataSettings.defaultRetentionDays },
         initialAccountIds: [String] = []
     ) -> QuotaService {
         QuotaService(
@@ -57,6 +75,7 @@ public final class QuotaService: ObservableObject {
                 .warp: WarpQuotaAdapter()
             ],
             mockProvider: mockProvider,
+            retentionProvider: retentionProvider,
             initialAccountIds: initialAccountIds
         )
     }
@@ -130,6 +149,45 @@ public final class QuotaService: ObservableObject {
             try QuotaCacheStore.save(success)
         } catch {
             SafeLog.warn("Saving quota cache failed: \(SafeLog.sanitize(error.localizedDescription))")
+        }
+
+        // Fold this snapshot into the subscription fill-history store
+        // and republish the affected keys so views can repaint
+        // sparklines. The store's provider and window gates drop
+        // anything outside the four primary providers and 5-hour
+        // buckets, so this is a no-op for misc-provider refreshes.
+        let retention = retentionProvider()
+        let quota = success
+        Task { [weak self] in
+            await SubscriptionHistoryStore.shared.observe(quota, retentionDays: retention)
+            await self?.refreshSubscriptionHistory(for: quota)
+        }
+    }
+
+    private func applyInitialSubscriptionHistory(_ samples: [SubscriptionWindowSample]) {
+        var grouped: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
+        for sample in samples {
+            let key = SubscriptionHistoryKey(accountId: sample.accountId, bucketId: sample.bucketId)
+            grouped[key, default: []].append(sample)
+        }
+        for key in grouped.keys {
+            grouped[key]?.sort { $0.windowEnd > $1.windowEnd }
+        }
+        historyByAccountBucket = grouped
+    }
+
+    private func refreshSubscriptionHistory(for quota: AccountQuota) async {
+        var updates: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
+        for bucket in quota.buckets {
+            let samples = await SubscriptionHistoryStore.shared.samples(
+                accountId: quota.accountId,
+                bucketId: bucket.id
+            )
+            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
+            updates[key] = samples
+        }
+        for (key, samples) in updates {
+            historyByAccountBucket[key] = samples
         }
     }
 
