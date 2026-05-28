@@ -109,11 +109,21 @@ struct SubscriptionUtilizationView: View {
             }
             .chartYAxis(.hidden)
             .frame(height: 36)
+            Text(SubscriptionWindowProgress.summary(
+                usedPercent: bucket.usedPercent,
+                resetAt: bucket.resetAt,
+                rawWindowSeconds: bucket.rawWindowSeconds,
+                now: now
+            ))
+                .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
             if let pace {
                 HStack(spacing: 6) {
                     Text(pace.stageSummary)
                         .font(.system(size: density.subtitleFontSize, weight: .medium))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                     if expected > 0 {
                         Text("·")

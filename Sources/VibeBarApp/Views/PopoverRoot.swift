@@ -801,6 +801,7 @@ private struct CombinedTotalsRow: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
+    @EnvironmentObject var quotaService: QuotaService
     private let summaryHeight: CGFloat = 178
 
     var body: some View {
@@ -820,7 +821,7 @@ private struct CombinedTotalsRow: View {
         let todayTokens = snapshots.reduce(0) { $0 + $1.todayTokens }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
-        let todayRequests = snapshots.reduce(0) { $0 + $1.todayRequests }
+        let overallFill = OverallFillRate.average(quotaService.lastSuccessByAccount)
         // Pick the single day with the highest cost across all
         // providers, then surface both its cost and token totals so
         // the user sees what they spent *and* burned on their worst
@@ -830,17 +831,19 @@ private struct CombinedTotalsRow: View {
         let peakDayPoint = dailyHistory.max(by: { $0.costUSD < $1.costUSD })
         let peakDayCost = peakDayPoint?.costUSD ?? 0
         let peakDayTokens = peakDayPoint?.totalTokens ?? 0
-        // TPM / RPM are today-so-far rates: tokens (or requests)
-        // divided by the elapsed minutes since local midnight. We
-        // floor the divisor to 1 so a 00:00:05 launch can't divide
-        // by zero, and clamp the result on the display side.
+        // TPM is today-so-far tokens divided by elapsed minutes since
+        // local midnight. We floor the divisor to 1 so a 00:00:05
+        // launch can't divide by zero. RPM previously sat next to it
+        // but request counts aren't available across providers; the
+        // cell now surfaces the overall subscription fill rate
+        // instead, which is the more useful "are my plans burning
+        // hot?" indicator.
         let elapsedMinutesToday: Double = {
             let cal = Calendar.current
             let start = cal.startOfDay(for: Date())
             return max(1, Date().timeIntervalSince(start) / 60)
         }()
         let tokensPerMinute = Int((Double(todayTokens) / elapsedMinutesToday).rounded())
-        let requestsPerMinute = Double(todayRequests) / elapsedMinutesToday
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: 8) {
@@ -888,7 +891,7 @@ private struct CombinedTotalsRow: View {
                     divider
                     metric(label: "TPM", value: formatTokens(tokensPerMinute))
                     divider
-                    metric(label: "RPM", value: formatRate(requestsPerMinute))
+                    metric(label: "FILL", value: formatFillPercent(overallFill))
                 }
             }
             .padding(density.cardPadding)
@@ -946,13 +949,9 @@ private struct CombinedTotalsRow: View {
         return "\(tokens)"
     }
 
-    private func formatRate(_ value: Double) -> String {
-        if value <= 0 { return "0" }
-        if value < 0.1 { return String(format: "%.2f", value) }
-        if value < 10 { return String(format: "%.1f", value) }
-        if value >= 1_000_000 { return String(format: "%.2fM", value / 1_000_000) }
-        if value >= 1_000 { return String(format: "%.1fk", value / 1_000) }
-        return String(format: "%.0f", value)
+    private func formatFillPercent(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        return "\(Int(value.rounded()))%"
     }
 
     private func formatModelName(_ modelName: String?) -> String {
