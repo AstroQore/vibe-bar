@@ -166,3 +166,11 @@ provider APIs, model pricing, packaging, and macOS design details.
 
 Vibe Bar is licensed under the GNU Affero General Public License v3.0 only.
 See [LICENSE](LICENSE) for the full license text.
+
+## Star History
+
+<p align="center">
+  <a href="https://star-history.com/#AstroQore/vibe-bar&Date">
+    <img src="https://api.star-history.com/svg?repos=AstroQore/vibe-bar&type=Date" alt="Star History Chart">
+  </a>
+</p>
