@@ -18,26 +18,33 @@ struct SubscriptionWindowSparkline: View {
     let mode: DisplayMode
     let density: Theme.Density
 
-    private static let barWidth: CGFloat = 6
-    private static let barSpacing: CGFloat = 2
-    private static let maxBars: Int = 24
+    private static let barWidth: CGFloat = 8
+    private static let barSpacing: CGFloat = 3
+    private static let maxBars: Int = 20
     private static let minVisibleHeight: CGFloat = 2
 
     var body: some View {
         let bars = renderableBars()
         if bars.isEmpty { EmptyView() } else {
-            HStack(spacing: Self.barSpacing) {
-                ForEach(bars) { bar in
-                    SparklineBar(bar: bar, mode: mode, barWidth: Self.barWidth)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Fill history")
+                    .font(.system(size: max(9, density.subtitleFontSize - 2)))
+                    .foregroundStyle(.tertiary)
+                HStack(spacing: Self.barSpacing) {
+                    ForEach(bars) { bar in
+                        SparklineBar(bar: bar, mode: mode, barWidth: Self.barWidth)
+                    }
+                    Spacer(minLength: 0)
                 }
+                .frame(height: barHeight, alignment: .bottom)
             }
-            .frame(height: barHeight, alignment: .bottom)
+            .padding(.top, 2)
             .accessibilityLabel(accessibilitySummary(bars: bars))
         }
     }
 
     private var barHeight: CGFloat {
-        max(16, density.bucketBarHeight * 0.6)
+        max(26, density.bucketBarHeight * 1.4)
     }
 
     private func renderableBars() -> [BarSlot] {
