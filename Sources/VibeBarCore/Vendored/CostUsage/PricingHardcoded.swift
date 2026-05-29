@@ -14,7 +14,7 @@ import Foundation
 enum PricingHardcoded {
     static let fallback: PricingDataSet = PricingDataSet(
         schemaVersion: 1,
-        updatedAt: "2026-05-22",
+        updatedAt: "2026-05-29",
         calculationVersion: 5,
         providers: PricingDataSet.Providers(
             codex: codex,
@@ -74,6 +74,9 @@ enum PricingHardcoded {
                 input: 5e-6, output: 2.5e-5,
                 cacheCreation: 6.25e-6, cacheRead: 5e-7),
             "claude-opus-4-7": .init(
+                input: 5e-6, output: 2.5e-5,
+                cacheCreation: 6.25e-6, cacheRead: 5e-7),
+            "claude-opus-4-8": .init(
                 input: 5e-6, output: 2.5e-5,
                 cacheCreation: 6.25e-6, cacheRead: 5e-7),
             "claude-sonnet-4-5": .init(
