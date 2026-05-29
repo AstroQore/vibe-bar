@@ -104,7 +104,7 @@ final class PricingResolverTests: XCTestCase {
 
         XCTAssertEqual(bundled.calculationVersion, hardcoded.calculationVersion)
 
-        let claudeSentinel = "claude-opus-4-7"
+        let claudeSentinel = "claude-opus-4-8"
         XCTAssertEqual(
             bundled.providers.claude.models[claudeSentinel],
             hardcoded.providers.claude.models[claudeSentinel],

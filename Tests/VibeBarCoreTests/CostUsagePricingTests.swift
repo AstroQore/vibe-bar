@@ -96,6 +96,28 @@ final class CostUsagePricingTests: XCTestCase {
         XCTAssertEqual(cost ?? -1, 0.9, accuracy: 0.01)
     }
 
+    func testClaudeOpus48CostNormalizesDatedSnapshot() {
+        // Pin the in-code table so the assertion validates the data we
+        // ship, not a stale ~/.vibebar/pricing_cache.json that may
+        // predate this model on the developer's machine.
+        PricingResolver.testOverride = PricingHardcoded.fallback
+        defer { PricingResolver.testOverride = nil }
+
+        // claude-opus-4-8: input $5/MTok, cache write $6.25/MTok,
+        // cache read $0.50/MTok, output $25/MTok. The dated snapshot
+        // must normalize down to the undated entry.
+        // 1M input + 200k cache read + 100k cache write + 50k output
+        // = 5.0 + 0.1 + 0.625 + 1.25 = 6.975
+        let cost = CostUsagePricing.claudeCostUSD(
+            model: "claude-opus-4-8-20260515",
+            inputTokens: 1_000_000,
+            cacheReadInputTokens: 200_000,
+            cacheCreationInputTokens: 100_000,
+            outputTokens: 50_000
+        )
+        XCTAssertEqual(cost ?? -1, 6.975, accuracy: 0.001)
+    }
+
     func testClaudeNormalizesAnthropicPrefix() {
         let cost = CostUsagePricing.claudeCostUSD(
             model: "anthropic.claude-opus-4-1",
