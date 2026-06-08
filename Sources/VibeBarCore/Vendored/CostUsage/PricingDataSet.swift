@@ -14,9 +14,12 @@ import Foundation
 /// of every other provider's quirks.
 public struct PricingDataSet: Codable, Sendable, Equatable {
     public static let currentSchemaVersion = 1
-    /// Hard cap so a corrupt remote file can't blow up the loader.
-    /// 64 KB is ~150× the current bundled JSON's size.
-    public static let maxBytes = 64 * 1024
+    /// Hard cap on a cached / bundled `PricingDataSet` so a corrupt
+    /// file can't blow up the loader. The LiteLLM-overlaid cache the
+    /// refresher writes is ~40 KB; 256 KB leaves room for upstream
+    /// growth. The raw LiteLLM download is capped separately by
+    /// `PricingRefresher.maxFetchBytes`.
+    public static let maxBytes = 256 * 1024
 
     public let schemaVersion: Int
     public let updatedAt: String

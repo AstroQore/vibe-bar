@@ -2,10 +2,10 @@ import XCTest
 @testable import VibeBarCore
 
 /// Exercises `PricingRefresher` against a stubbed URLProtocol so we
-/// can assert behavior on the happy path (200 → cache written),
-/// freshness short-circuit (cache present + within window → skipped),
-/// schema mismatch (unknown version → rejected), and network failure
-/// (left cache untouched).
+/// can assert behavior on the happy path (200 → LiteLLM transformed →
+/// cache written), freshness short-circuit (cache present + within
+/// window → skipped), unusable payload (not LiteLLM → rejected),
+/// oversized download, and network failure (left cache untouched).
 final class PricingRefresherTests: XCTestCase {
     private final class StubURLProtocol: URLProtocol {
         nonisolated(unsafe) static var responder: (@Sendable (URLRequest) -> (HTTPURLResponse, Data?))?
@@ -75,17 +75,29 @@ final class PricingRefresherTests: XCTestCase {
         XCTAssertEqual(outcome, .skippedFresh)
     }
 
-    func testSuccessfulFetchWritesCache() async throws {
+    func testSuccessfulFetchTransformsLiteLLMAndWritesCache() async throws {
         let home = try makeTempHome()
         defer { cleanup(home) }
 
-        let dataSet = PricingDataSet(
-            schemaVersion: 1,
-            updatedAt: "2026-06-01",
-            calculationVersion: 5,
-            providers: PricingHardcoded.fallback.providers
-        )
-        let body = try JSONEncoder().encode(dataSet)
+        // A trimmed LiteLLM-shaped payload: a frontier Claude model with
+        // an explicit fast multiplier, a Codex model whose fast tier comes
+        // from our override table, and a spec stub with no cost fields.
+        let body = Data("""
+        {
+          "claude-opus-4-8": {
+            "input_cost_per_token": 5e-6, "output_cost_per_token": 2.5e-5,
+            "cache_creation_input_token_cost": 6.25e-6,
+            "cache_read_input_token_cost": 5e-7,
+            "max_input_tokens": 1000000,
+            "provider_specific_entry": {"fast": 2.0}
+          },
+          "gpt-5.5": {
+            "input_cost_per_token": 5e-6, "output_cost_per_token": 3e-5,
+            "cache_read_input_token_cost": 5e-7
+          },
+          "sample_spec": {"max_input_tokens": "max input tokens, if the provider specifies it"}
+        }
+        """.utf8)
 
         StubURLProtocol.responder = { request in
             let response = HTTPURLResponse(
@@ -97,30 +109,43 @@ final class PricingRefresherTests: XCTestCase {
             return (response, body)
         }
 
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let expectedDate: String = {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(identifier: "GMT")
+            formatter.dateFormat = "yyyy-MM-dd"
+            return formatter.string(from: now)
+        }()
+
         let outcome = await PricingRefresher.refresh(
             homeDirectory: home.path,
             session: makeStubbedSession(),
-            force: true
+            force: true,
+            now: now
         )
         XCTAssertEqual(outcome, .fetched)
 
         let cacheURL = PricingResolver.cacheFileURL(homeDirectory: home.path)
-        let read = try Data(contentsOf: cacheURL)
-        let decoded = try JSONDecoder().decode(PricingDataSet.self, from: read)
-        XCTAssertEqual(decoded.updatedAt, "2026-06-01")
+        let decoded = try JSONDecoder().decode(PricingDataSet.self, from: Data(contentsOf: cacheURL))
+        XCTAssertEqual(decoded.schemaVersion, PricingDataSet.currentSchemaVersion)
+        XCTAssertEqual(decoded.updatedAt, expectedDate)
+        XCTAssertEqual(decoded.calculationVersion, PricingHardcoded.fallback.calculationVersion)
+        // LiteLLM's fast multiplier survives the round-trip…
+        XCTAssertEqual(decoded.providers.claude.models["claude-opus-4-8"]?.fastMultiplier, 2.0)
+        XCTAssertEqual(decoded.providers.claude.models["claude-opus-4-8"]?.input ?? 0, 5e-6, accuracy: 1e-12)
+        // …and the Codex fast multiplier is filled from the override table.
+        XCTAssertEqual(decoded.providers.codex.models["gpt-5.5"]?.fastMultiplier, 2.5)
+        // Overlay preserves base-only providers LiteLLM never ships.
+        XCTAssertNotNil(decoded.providers.antigravity.models["antigravity-default"])
     }
 
-    func testSchemaMismatchRejectsBadPayload() async throws {
+    func testUnusablePayloadIsRejected() async throws {
         let home = try makeTempHome()
         defer { cleanup(home) }
 
-        let bad = PricingDataSet(
-            schemaVersion: 999,
-            updatedAt: "future",
-            calculationVersion: 5,
-            providers: PricingHardcoded.fallback.providers
-        )
-        let body = try JSONEncoder().encode(bad)
+        // Valid JSON, but not a LiteLLM price map (no priceable models).
+        let body = Data(#"{"note":"this is not litellm","models":[]}"#.utf8)
         StubURLProtocol.responder = { request in
             let response = HTTPURLResponse(url: request.url!,
                                            statusCode: 200,
@@ -134,18 +159,18 @@ final class PricingRefresherTests: XCTestCase {
             session: makeStubbedSession(),
             force: true
         )
-        XCTAssertEqual(outcome, .schemaMismatch)
+        XCTAssertEqual(outcome, .parseFailure)
         XCTAssertFalse(
             FileManager.default.fileExists(atPath: PricingResolver.cacheFileURL(homeDirectory: home.path).path),
-            "Cache should not be written when schemaVersion mismatches"
+            "Cache should not be written when the payload isn't usable LiteLLM data"
         )
     }
 
-    func testOversizedPayloadIsRejected() async throws {
+    func testOversizedDownloadIsRejected() async throws {
         let home = try makeTempHome()
         defer { cleanup(home) }
 
-        let oversize = Data(repeating: 0x20, count: PricingDataSet.maxBytes + 1)
+        let oversize = Data(repeating: 0x20, count: PricingRefresher.maxFetchBytes + 1)
         StubURLProtocol.responder = { request in
             let response = HTTPURLResponse(url: request.url!,
                                            statusCode: 200,
