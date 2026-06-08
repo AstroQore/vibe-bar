@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "updatedAt": "2026-06-08",
-  "calculationVersion": 6,
+  "calculationVersion": 5,
   "providers": {
     "codex": {
       "displayName": "OpenAI",
