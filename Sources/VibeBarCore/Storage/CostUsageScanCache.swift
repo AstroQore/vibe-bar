@@ -34,6 +34,13 @@ public struct CostUsageScanCache: Codable, Sendable {
         public let isSidechain: Bool?
         public let pathRole: PathRole?
         public let sourceKey: String?
+        /// Billing tier the message ran on when the source log records
+        /// it per-event — Claude writes `message.usage.speed`
+        /// (`"standard"` / `"fast"`). A `"fast"`/`"priority"` value
+        /// triggers the model's fast-tier cost multiplier. Codex resolves
+        /// its tier globally from `~/.codex/config.toml` at scan time, so
+        /// codex events leave this `nil`.
+        public let serviceTier: String?
 
         public init(
             date: Date,
@@ -47,7 +54,8 @@ public struct CostUsageScanCache: Codable, Sendable {
             requestId: String? = nil,
             isSidechain: Bool? = nil,
             pathRole: PathRole? = nil,
-            sourceKey: String? = nil
+            sourceKey: String? = nil,
+            serviceTier: String? = nil
         ) {
             self.date = date
             self.model = model
@@ -61,6 +69,7 @@ public struct CostUsageScanCache: Codable, Sendable {
             self.isSidechain = isSidechain
             self.pathRole = pathRole
             self.sourceKey = sourceKey
+            self.serviceTier = serviceTier
         }
     }
 
@@ -128,7 +137,10 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// 64 MB safety cap. The cache for a heavy user with several years of
     /// Codex / Claude history is usually under 10 MB.
     private static let maxFileBytes: Int = 64 * 1024 * 1024
-    public static let currentSchemaVersion = 2
+    /// v3 adds `ParsedEvent.serviceTier` (Claude fast-tier billing) and
+    /// fast-multiplier cost semantics; bumping forces a one-time
+    /// re-parse so historical events pick up the new field.
+    public static let currentSchemaVersion = 3
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)

@@ -71,12 +71,17 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let input: Double
         public let output: Double
         public let cacheRead: Double?
+        /// Multiplier applied to the whole cost when the request ran on
+        /// the "fast"/"priority" Codex service tier (resolved once per
+        /// scan from `~/.codex/config.toml`). `nil` means no premium (×1).
+        public let fastMultiplier: Double?
         public let displayLabel: String?
 
-        public init(input: Double, output: Double, cacheRead: Double?, displayLabel: String? = nil) {
+        public init(input: Double, output: Double, cacheRead: Double?, fastMultiplier: Double? = nil, displayLabel: String? = nil) {
             self.input = input
             self.output = output
             self.cacheRead = cacheRead
+            self.fastMultiplier = fastMultiplier
             self.displayLabel = displayLabel
         }
     }
@@ -91,6 +96,10 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let outputAboveThreshold: Double?
         public let cacheCreationAboveThreshold: Double?
         public let cacheReadAboveThreshold: Double?
+        /// Multiplier applied to the whole cost when the assistant
+        /// message was billed on the "fast"/"priority" tier
+        /// (`message.usage.speed == "fast"`). `nil` means no premium (×1).
+        public let fastMultiplier: Double?
 
         public init(
             input: Double, output: Double,
@@ -99,7 +108,8 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
             inputAboveThreshold: Double? = nil,
             outputAboveThreshold: Double? = nil,
             cacheCreationAboveThreshold: Double? = nil,
-            cacheReadAboveThreshold: Double? = nil
+            cacheReadAboveThreshold: Double? = nil,
+            fastMultiplier: Double? = nil
         ) {
             self.input = input
             self.output = output
@@ -110,6 +120,7 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
             self.outputAboveThreshold = outputAboveThreshold
             self.cacheCreationAboveThreshold = cacheCreationAboveThreshold
             self.cacheReadAboveThreshold = cacheReadAboveThreshold
+            self.fastMultiplier = fastMultiplier
         }
     }
 

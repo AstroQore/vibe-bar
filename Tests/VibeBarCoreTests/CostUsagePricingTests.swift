@@ -132,4 +132,61 @@ final class CostUsagePricingTests: XCTestCase {
     func testPricingDataDateAvailable() {
         XCTAssertFalse(CostUsagePricing.pricingDataUpdatedAt.isEmpty)
     }
+
+    // MARK: - Fast / priority service-tier multiplier
+
+    func testCodexFastTierMultipliesWholeCost() {
+        PricingResolver.testOverride = PricingHardcoded.fallback
+        defer { PricingResolver.testOverride = nil }
+
+        // gpt-5.5: input $5/MTok, output $30/MTok, fast multiplier ×2.5.
+        // 1M input + 100k output = 5.0 + 3.0 = 8.0 base; ×2.5 = 20.0 fast.
+        let base = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.5", inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 100_000)
+        let fast = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.5", inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 100_000, isFast: true)
+        XCTAssertEqual(base ?? -1, 8.0, accuracy: 0.001)
+        XCTAssertEqual(fast ?? -1, 20.0, accuracy: 0.001)
+    }
+
+    func testClaudeFastTierMultipliesWholeCost() {
+        PricingResolver.testOverride = PricingHardcoded.fallback
+        defer { PricingResolver.testOverride = nil }
+
+        // base = 1M input + 100k output = 5.0 + 2.5 = 7.5.
+        // opus-4-7 fast ×6 = 45.0; opus-4-8 fast ×2 = 15.0.
+        let opus47 = CostUsagePricing.claudeCostUSD(
+            model: "claude-opus-4-7", inputTokens: 1_000_000, cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0, outputTokens: 100_000, isFast: true)
+        let opus48 = CostUsagePricing.claudeCostUSD(
+            model: "claude-opus-4-8", inputTokens: 1_000_000, cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0, outputTokens: 100_000, isFast: true)
+        XCTAssertEqual(opus47 ?? -1, 45.0, accuracy: 0.001)
+        XCTAssertEqual(opus48 ?? -1, 15.0, accuracy: 0.001)
+    }
+
+    func testFastTierDefaultsOffSoStandardUsageIsUnchanged() {
+        PricingResolver.testOverride = PricingHardcoded.fallback
+        defer { PricingResolver.testOverride = nil }
+
+        // Regression guard: the new `isFast` parameter defaults to false,
+        // so every existing call site keeps standard-tier pricing.
+        let opus47 = CostUsagePricing.claudeCostUSD(
+            model: "claude-opus-4-7", inputTokens: 1_000_000, cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0, outputTokens: 100_000)
+        XCTAssertEqual(opus47 ?? -1, 7.5, accuracy: 0.001)
+    }
+
+    func testFastTierIsNoOpForModelWithoutPublishedPremium() {
+        PricingResolver.testOverride = PricingHardcoded.fallback
+        defer { PricingResolver.testOverride = nil }
+
+        // gpt-5 has no fast multiplier, so the fast flag must not change
+        // its cost (multiplier resolves to ×1).
+        let base = CostUsagePricing.codexCostUSD(
+            model: "gpt-5", inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 100_000)
+        let fast = CostUsagePricing.codexCostUSD(
+            model: "gpt-5", inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 100_000, isFast: true)
+        XCTAssertEqual(fast ?? -1, base ?? -2, accuracy: 0.0001)
+    }
 }

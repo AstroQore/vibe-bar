@@ -236,6 +236,96 @@ final class CostUsageScannerTests: XCTestCase {
         XCTAssertEqual(snapshot?.jsonlFilesFound, 2)
     }
 
+    // MARK: - Fast / priority service tier
+
+    func testCodexFastServiceTierParsesConfigToml() throws {
+        let fileManager = FileManager.default
+        func tierIsFast(_ toml: String) throws -> Bool {
+            let home = fileManager.temporaryDirectory
+                .appendingPathComponent("VibeBarCodexTier-\(UUID().uuidString)", isDirectory: true)
+            defer { try? fileManager.removeItem(at: home) }
+            let codex = home.appendingPathComponent(".codex", isDirectory: true)
+            try fileManager.createDirectory(at: codex, withIntermediateDirectories: true)
+            try toml.write(to: codex.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+            return CostUsageScanner.codexFastServiceTier(homeDirectory: home.path)
+        }
+
+        XCTAssertTrue(try tierIsFast(#"service_tier = "fast""#))
+        XCTAssertTrue(try tierIsFast(#"service_tier = 'priority'  # higher tier"#))
+        XCTAssertFalse(try tierIsFast(#"service_tier = "standard""#))
+        XCTAssertFalse(try tierIsFast(##"# service_tier = "fast""##))
+        XCTAssertFalse(try tierIsFast("model = \"gpt-5.5\"\n"))
+    }
+
+    func testCodexFastServiceTierMissingConfigIsStandard() {
+        let fileManager = FileManager.default
+        let home = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCodexNoTier-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: home) }
+        XCTAssertFalse(CostUsageScanner.codexFastServiceTier(homeDirectory: home.path))
+    }
+
+    func testCodexScanAppliesConfiguredFastTierMultiplier() async throws {
+        PricingResolver.testOverride = PricingHardcoded.fallback
+        defer { PricingResolver.testOverride = nil }
+        let fileManager = FileManager.default
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+
+        func scanCost(fast: Bool) async throws -> Double {
+            let home = fileManager.temporaryDirectory
+                .appendingPathComponent("VibeBarCodexFastScan-\(UUID().uuidString)", isDirectory: true)
+            defer { try? fileManager.removeItem(at: home) }
+            let codex = home.appendingPathComponent(".codex", isDirectory: true)
+            let sessions = codex.appendingPathComponent("sessions", isDirectory: true)
+            try fileManager.createDirectory(at: sessions, withIntermediateDirectories: true)
+            if fast {
+                try #"service_tier = "fast""#
+                    .write(to: codex.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+            }
+            try codexTokenCountLine(timestamp: now, model: "gpt-5.5", input: 1_000_000, cached: 0, output: 100_000)
+                .write(to: sessions.appendingPathComponent("session.jsonl"), atomically: true, encoding: .utf8)
+            let snapshot = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+            return try XCTUnwrap(snapshot?.modelBreakdowns.first?.costUSD)
+        }
+
+        // gpt-5.5: 1M input + 100k output = 8.0 base; fast tier ×2.5 = 20.0.
+        let standard = try await scanCost(fast: false)
+        let fast = try await scanCost(fast: true)
+        XCTAssertEqual(standard, 8.0, accuracy: 0.001)
+        XCTAssertEqual(fast, 20.0, accuracy: 0.001)
+    }
+
+    func testClaudeScanAppliesPerMessageFastSpeedMultiplier() async throws {
+        PricingResolver.testOverride = PricingHardcoded.fallback
+        defer { PricingResolver.testOverride = nil }
+        let fileManager = FileManager.default
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+
+        func scanCost(speed: String) async throws -> Double {
+            let home = fileManager.temporaryDirectory
+                .appendingPathComponent("VibeBarClaudeFastScan-\(UUID().uuidString)", isDirectory: true)
+            defer { try? fileManager.removeItem(at: home) }
+            let projects = home
+                .appendingPathComponent(".claude", isDirectory: true)
+                .appendingPathComponent("projects", isDirectory: true)
+                .appendingPathComponent("project-a", isDirectory: true)
+            try fileManager.createDirectory(at: projects, withIntermediateDirectories: true)
+            try claudeAssistantLine(
+                timestamp: now, sessionId: "s", messageId: "m", requestId: "r",
+                model: "claude-opus-4-7", input: 1_000_000, cacheRead: 0, cacheCreation: 0,
+                output: 100_000, speed: speed
+            ).write(to: projects.appendingPathComponent("session.jsonl"), atomically: true, encoding: .utf8)
+            let snapshot = await CostUsageScanner.scan(tool: .claude, homeDirectory: home.path, now: now)
+            return try XCTUnwrap(snapshot?.modelBreakdowns.first?.costUSD)
+        }
+
+        // opus-4-7: 1M input + 100k output = 7.5 base; fast speed ×6 = 45.0.
+        let standard = try await scanCost(speed: "standard")
+        let fast = try await scanCost(speed: "fast")
+        XCTAssertEqual(standard, 7.5, accuracy: 0.001)
+        XCTAssertEqual(fast, 45.0, accuracy: 0.001)
+    }
+
     private func codexTokenCountLine(
         timestamp: Date,
         model: String,
@@ -259,11 +349,13 @@ final class CostUsageScannerTests: XCTestCase {
         cacheRead: Int,
         cacheCreation: Int,
         output: Int,
-        isSidechain: Bool = false
+        isSidechain: Bool = false,
+        speed: String? = nil
     ) -> String {
         let timestampString = Self.isoFormatter.string(from: timestamp)
+        let speedField = speed.map { ",\"speed\":\"\($0)\"" } ?? ""
         return """
-        {"timestamp":"\(timestampString)","type":"assistant","sessionId":"\(sessionId)","requestId":"\(requestId)","isSidechain":\(isSidechain),"message":{"id":"\(messageId)","model":"\(model)","usage":{"input_tokens":\(input),"cache_read_input_tokens":\(cacheRead),"cache_creation_input_tokens":\(cacheCreation),"output_tokens":\(output)}}}
+        {"timestamp":"\(timestampString)","type":"assistant","sessionId":"\(sessionId)","requestId":"\(requestId)","isSidechain":\(isSidechain),"message":{"id":"\(messageId)","model":"\(model)","usage":{"input_tokens":\(input),"cache_read_input_tokens":\(cacheRead),"cache_creation_input_tokens":\(cacheCreation),"output_tokens":\(output)\(speedField)}}}
         """
     }
 

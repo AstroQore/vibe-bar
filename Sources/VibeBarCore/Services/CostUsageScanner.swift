@@ -52,6 +52,10 @@ public enum CostUsageScanner {
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/archived_sessions")
         ]
         let files = roots.flatMap { collectJSONL(under: $0) }
+        // Codex bills the whole install at one service tier; it isn't
+        // stamped on each token event, so resolve it once and apply it
+        // to every codex event in this scan (mirrors ccusage).
+        let codexFastTier = codexFastServiceTier(homeDirectory: homeDirectory)
         var aggregator = CostAggregator(tool: .codex, now: now)
         var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays)
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
@@ -64,7 +68,7 @@ public enum CostUsageScanner {
                     cache.store(retained, for: file.path, mtime: mtime, size: size)
                 }
                 for event in retained {
-                    let cost = costUSD(tool: .codex, event: event)
+                    let cost = costUSD(tool: .codex, event: event, codexFastTier: codexFastTier)
                     aggregator.add(at: event.date, model: event.model, input: event.input,
                                    output: event.output, cache: event.cache, costUSD: cost)
                 }
@@ -93,7 +97,8 @@ public enum CostUsageScanner {
                     model: event.model,
                     inputTokens: delta.input,
                     cachedInputTokens: delta.cached,
-                    outputTokens: delta.output
+                    outputTokens: delta.output,
+                    isFast: codexFastTier
                 ) ?? 0
                 let parsedEvent = CostUsageScanCache.ParsedEvent(
                     date: event.date,
@@ -222,6 +227,11 @@ public enum CostUsageScanner {
                 let cacheCreation = anyInt(usage["cache_creation_input_tokens"])
                 let output = anyInt(usage["output_tokens"])
                 if input == 0, cacheRead == 0, cacheCreation == 0, output == 0 { return }
+                // Per-message billing tier. Claude Code writes
+                // `usage.speed` ("standard"/"fast"); `service_tier` is a
+                // fallback. A fast/priority value applies the model's
+                // fast-tier multiplier at costing time.
+                let serviceTier = (usage["speed"] as? String) ?? (usage["service_tier"] as? String)
                 let date = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
                 let messageId = message["id"] as? String
                 let requestId = obj["requestId"] as? String
@@ -241,7 +251,8 @@ public enum CostUsageScanner {
                     requestId: requestId,
                     isSidechain: anyBool(obj["isSidechain"]),
                     pathRole: pathRole,
-                    sourceKey: sourceKey
+                    sourceKey: sourceKey,
+                    serviceTier: serviceTier
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
                 if let messageId, let requestId {
@@ -990,14 +1001,46 @@ public enum CostUsageScanner {
         return events.filter { $0.date >= cutoff }
     }
 
-    private static func costUSD(tool: ToolType, event: CostUsageScanCache.ParsedEvent) -> Double {
+    /// Whether this Codex install is configured for the "fast" /
+    /// "priority" service tier. Codex doesn't stamp the tier on each
+    /// token event, so — like ccusage — we read it once from
+    /// `~/.codex/config.toml` and apply it to every codex event in the
+    /// scan. The flat scan for any `service_tier = "fast" | "priority"`
+    /// line mirrors Codex's own precedence-free reading of the key.
+    static func codexFastServiceTier(homeDirectory: String) -> Bool {
+        let url = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent(".codex/config.toml")
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return false }
+        for rawLine in content.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
+            // Drop trailing `# comment`, then split on the first `=`.
+            let setting = rawLine.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            guard let eq = setting.firstIndex(of: "=") else { continue }
+            let key = setting[..<eq].trimmingCharacters(in: .whitespaces)
+            guard key == "service_tier" else { continue }
+            let value = setting[setting.index(after: eq)...]
+                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            if value == "fast" || value == "priority" { return true }
+        }
+        return false
+    }
+
+    /// A per-event `"fast"`/`"priority"` tier (Claude `usage.speed` /
+    /// `service_tier`) selects the model's fast-tier multiplier.
+    static func eventIsFast(_ event: CostUsageScanCache.ParsedEvent) -> Bool {
+        guard let tier = event.serviceTier else { return false }
+        return tier == "fast" || tier == "priority"
+    }
+
+    private static func costUSD(tool: ToolType, event: CostUsageScanCache.ParsedEvent, codexFastTier: Bool = false) -> Double {
         switch tool {
         case .codex:
             return CostUsagePricing.codexCostUSD(
                 model: event.model,
                 inputTokens: event.input + event.cache,
                 cachedInputTokens: event.cache,
-                outputTokens: event.output
+                outputTokens: event.output,
+                isFast: codexFastTier
             ) ?? 0
         case .claude:
             let cacheCreation = max(0, event.cacheCreation ?? 0)
@@ -1007,7 +1050,8 @@ public enum CostUsageScanner {
                 inputTokens: event.input,
                 cacheReadInputTokens: cacheRead,
                 cacheCreationInputTokens: cacheCreation,
-                outputTokens: event.output
+                outputTokens: event.output,
+                isFast: eventIsFast(event)
             ) ?? 0
         case .gemini:
             return CostUsagePricing.geminiCostUSD(

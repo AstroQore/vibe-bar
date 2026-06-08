@@ -14,8 +14,8 @@ import Foundation
 enum PricingHardcoded {
     static let fallback: PricingDataSet = PricingDataSet(
         schemaVersion: 1,
-        updatedAt: "2026-05-29",
-        calculationVersion: 5,
+        updatedAt: "2026-06-08",
+        calculationVersion: 6,
         providers: PricingDataSet.Providers(
             codex: codex,
             claude: claude,
@@ -40,14 +40,14 @@ enum PricingHardcoded {
             "gpt-5.2":             .init(input: 1.75e-6, output: 1.4e-5,  cacheRead: 1.75e-7),
             "gpt-5.2-codex":       .init(input: 1.75e-6, output: 1.4e-5,  cacheRead: 1.75e-7),
             "gpt-5.2-pro":         .init(input: 2.1e-5,  output: 1.68e-4, cacheRead: nil),
-            "gpt-5.3-codex":       .init(input: 1.75e-6, output: 1.4e-5,  cacheRead: 1.75e-7),
+            "gpt-5.3-codex":       .init(input: 1.75e-6, output: 1.4e-5,  cacheRead: 1.75e-7, fastMultiplier: 2.0),
             "gpt-5.3-codex-spark": .init(input: 0,       output: 0,       cacheRead: 0,
                                          displayLabel: "Research Preview"),
-            "gpt-5.4":             .init(input: 2.5e-6,  output: 1.5e-5,  cacheRead: 2.5e-7),
+            "gpt-5.4":             .init(input: 2.5e-6,  output: 1.5e-5,  cacheRead: 2.5e-7, fastMultiplier: 2.0),
             "gpt-5.4-mini":        .init(input: 7.5e-7,  output: 4.5e-6,  cacheRead: 7.5e-8),
             "gpt-5.4-nano":        .init(input: 2e-7,    output: 1.25e-6, cacheRead: 2e-8),
             "gpt-5.4-pro":         .init(input: 3e-5,    output: 1.8e-4,  cacheRead: nil),
-            "gpt-5.5":             .init(input: 5e-6,    output: 3e-5,    cacheRead: 5e-7),
+            "gpt-5.5":             .init(input: 5e-6,    output: 3e-5,    cacheRead: 5e-7, fastMultiplier: 2.5),
             "gpt-5.5-pro":         .init(input: 3e-5,    output: 1.8e-4,  cacheRead: nil)
         ]
     )
@@ -69,16 +69,20 @@ enum PricingHardcoded {
                 cacheCreation: 6.25e-6, cacheRead: 5e-7),
             "claude-opus-4-6-20260205": .init(
                 input: 5e-6, output: 2.5e-5,
-                cacheCreation: 6.25e-6, cacheRead: 5e-7),
+                cacheCreation: 6.25e-6, cacheRead: 5e-7,
+                fastMultiplier: 6.0),
             "claude-opus-4-6": .init(
                 input: 5e-6, output: 2.5e-5,
-                cacheCreation: 6.25e-6, cacheRead: 5e-7),
+                cacheCreation: 6.25e-6, cacheRead: 5e-7,
+                fastMultiplier: 6.0),
             "claude-opus-4-7": .init(
                 input: 5e-6, output: 2.5e-5,
-                cacheCreation: 6.25e-6, cacheRead: 5e-7),
+                cacheCreation: 6.25e-6, cacheRead: 5e-7,
+                fastMultiplier: 6.0),
             "claude-opus-4-8": .init(
                 input: 5e-6, output: 2.5e-5,
-                cacheCreation: 6.25e-6, cacheRead: 5e-7),
+                cacheCreation: 6.25e-6, cacheRead: 5e-7,
+                fastMultiplier: 2.0),
             "claude-sonnet-4-5": .init(
                 input: 3e-6, output: 1.5e-5,
                 cacheCreation: 3.75e-6, cacheRead: 3e-7,
