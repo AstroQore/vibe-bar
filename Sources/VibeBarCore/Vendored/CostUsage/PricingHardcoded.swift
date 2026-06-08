@@ -12,10 +12,20 @@ import Foundation
 /// because the loaded data set won't match the hardcoded one for
 /// known models.
 enum PricingHardcoded {
+    // calculationVersion gates `CostHistoryStore`: changing it WIPES the
+    // user's entire accumulated daily history — including days whose
+    // session files have since rotated off disk and can never be
+    // re-scanned. The fast-tier multiplier only ever *raises* a day's
+    // cost, and `CostHistoryStore.mergeSeries` max-merges fresh scans
+    // over stored days, so on-disk days self-correct upward without a
+    // bump. Do NOT bump this for additive / re-derivable pricing changes
+    // (new models, higher multipliers); reserve it for changes where a
+    // day's cost could legitimately *decrease* and stale higher values
+    // must be discarded.
     static let fallback: PricingDataSet = PricingDataSet(
         schemaVersion: 1,
         updatedAt: "2026-06-08",
-        calculationVersion: 6,
+        calculationVersion: 5,
         providers: PricingDataSet.Providers(
             codex: codex,
             claude: claude,
