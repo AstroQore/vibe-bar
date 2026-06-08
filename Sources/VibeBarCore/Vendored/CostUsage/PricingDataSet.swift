@@ -14,9 +14,12 @@ import Foundation
 /// of every other provider's quirks.
 public struct PricingDataSet: Codable, Sendable, Equatable {
     public static let currentSchemaVersion = 1
-    /// Hard cap so a corrupt remote file can't blow up the loader.
-    /// 64 KB is ~150× the current bundled JSON's size.
-    public static let maxBytes = 64 * 1024
+    /// Hard cap on a cached / bundled `PricingDataSet` so a corrupt
+    /// file can't blow up the loader. The LiteLLM-overlaid cache the
+    /// refresher writes is ~40 KB; 256 KB leaves room for upstream
+    /// growth. The raw LiteLLM download is capped separately by
+    /// `PricingRefresher.maxFetchBytes`.
+    public static let maxBytes = 256 * 1024
 
     public let schemaVersion: Int
     public let updatedAt: String
@@ -71,12 +74,17 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let input: Double
         public let output: Double
         public let cacheRead: Double?
+        /// Multiplier applied to the whole cost when the request ran on
+        /// the "fast"/"priority" Codex service tier (resolved once per
+        /// scan from `~/.codex/config.toml`). `nil` means no premium (×1).
+        public let fastMultiplier: Double?
         public let displayLabel: String?
 
-        public init(input: Double, output: Double, cacheRead: Double?, displayLabel: String? = nil) {
+        public init(input: Double, output: Double, cacheRead: Double?, fastMultiplier: Double? = nil, displayLabel: String? = nil) {
             self.input = input
             self.output = output
             self.cacheRead = cacheRead
+            self.fastMultiplier = fastMultiplier
             self.displayLabel = displayLabel
         }
     }
@@ -91,6 +99,10 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let outputAboveThreshold: Double?
         public let cacheCreationAboveThreshold: Double?
         public let cacheReadAboveThreshold: Double?
+        /// Multiplier applied to the whole cost when the assistant
+        /// message was billed on the "fast"/"priority" tier
+        /// (`message.usage.speed == "fast"`). `nil` means no premium (×1).
+        public let fastMultiplier: Double?
 
         public init(
             input: Double, output: Double,
@@ -99,7 +111,8 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
             inputAboveThreshold: Double? = nil,
             outputAboveThreshold: Double? = nil,
             cacheCreationAboveThreshold: Double? = nil,
-            cacheReadAboveThreshold: Double? = nil
+            cacheReadAboveThreshold: Double? = nil,
+            fastMultiplier: Double? = nil
         ) {
             self.input = input
             self.output = output
@@ -110,6 +123,7 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
             self.outputAboveThreshold = outputAboveThreshold
             self.cacheCreationAboveThreshold = cacheCreationAboveThreshold
             self.cacheReadAboveThreshold = cacheReadAboveThreshold
+            self.fastMultiplier = fastMultiplier
         }
     }
 

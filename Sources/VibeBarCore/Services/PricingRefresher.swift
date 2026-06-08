@@ -1,27 +1,38 @@
 import Foundation
 
-/// Periodically pulls `pricing.json` from the canonical GitHub raw
-/// URL and writes it to `~/.vibebar/pricing_cache.json` so the
-/// `PricingResolver` picks up new model rates without a rebuild.
+/// Periodically pulls LiteLLM's community-maintained model price map,
+/// transforms it into our schema (overlaid on the bundled floor via
+/// `LiteLLMPricingTransformer`), and writes the result to
+/// `~/.vibebar/pricing_cache.json` so `PricingResolver` picks up new
+/// model rates without a rebuild — and without anyone hand-editing
+/// `pricing.json` for every new model.
 ///
 /// Refresh policy: best-effort, never blocking. The cache file's
 /// mtime gates whether a fresh fetch is worth attempting — the
 /// default 24-hour window keeps quiet machines off GitHub's rate
 /// limits without pinning to a stale snapshot for weeks. The remote
-/// fetch is HTTPS-only, size-capped (`PricingDataSet.maxBytes`), and
-/// schema-validated; any failure leaves the previous cache in place
-/// instead of replacing it with garbage.
+/// fetch is HTTPS-only and size-capped (`maxFetchBytes`); the
+/// transformed payload we persist is re-capped at
+/// `PricingDataSet.maxBytes`. Any failure leaves the previous cache in
+/// place instead of replacing it with garbage.
 ///
 /// Because `PricingResolver.cachedActive` snapshots on first read,
 /// a successful refresh only takes effect on the *next* app launch.
 /// That keeps cost calculations stable mid-process and avoids
 /// re-aggregating today's data with mid-flight rate changes.
 public enum PricingRefresher {
-    /// Bundled JSON is the floor; the remote pulls from the same
-    /// repository so updates ship by editing one file and merging.
+    /// Upstream source of truth: LiteLLM's
+    /// `model_prices_and_context_window.json`. The bundled
+    /// `pricing.json` is only the offline floor that this overlays.
     public static let remoteURL = URL(
-        string: "https://raw.githubusercontent.com/AstroQore/vibe-bar/main/Sources/VibeBarCore/Resources/pricing.json"
+        string: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
     )!
+
+    /// Cap for the raw LiteLLM download (~1.5 MB today). Generous
+    /// headroom for upstream growth while still rejecting a runaway or
+    /// garbage response. The transformed cache we actually persist stays
+    /// small and is re-checked against `PricingDataSet.maxBytes`.
+    public static let maxFetchBytes = 8 * 1024 * 1024
 
     /// Minimum time between fetches — equivalent to "refresh at most
     /// once per app session per day". Override in tests.
@@ -103,24 +114,36 @@ public enum PricingRefresher {
         guard http.statusCode == 200 else {
             return .networkFailure
         }
-        guard data.count > 0, data.count <= PricingDataSet.maxBytes else {
+        guard data.count > 0, data.count <= Self.maxFetchBytes else {
             return .oversized
         }
-        let decoded: PricingDataSet
-        do {
-            decoded = try JSONDecoder().decode(PricingDataSet.self, from: data)
-        } catch {
-            SafeLog.warn("PricingRefresher decode: \(SafeLog.sanitize(error.localizedDescription))")
+        // Transform LiteLLM's flat price map into our schema, overlaid on
+        // the bundled floor so models LiteLLM omits (AntiGravity, anything
+        // it prices as null) survive.
+        let base = PricingResolver.loadBundled() ?? PricingHardcoded.fallback
+        guard let dataSet = LiteLLMPricingTransformer.transform(
+            data,
+            base: base,
+            updatedAt: Self.updatedAtString(for: now)
+        ) else {
+            SafeLog.warn("PricingRefresher transform: LiteLLM payload not usable")
             return .parseFailure
         }
-        guard decoded.schemaVersion == PricingDataSet.currentSchemaVersion else {
-            return .schemaMismatch
+        let encoded: Data
+        do {
+            encoded = try JSONEncoder().encode(dataSet)
+        } catch {
+            SafeLog.warn("PricingRefresher encode: \(SafeLog.sanitize(error.localizedDescription))")
+            return .parseFailure
+        }
+        guard encoded.count <= PricingDataSet.maxBytes else {
+            return .oversized
         }
 
         do {
             let parent = cacheURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
-            try data.write(to: cacheURL, options: .atomic)
+            try encoded.write(to: cacheURL, options: .atomic)
             try FileManager.default.setAttributes(
                 [.posixPermissions: NSNumber(value: Int16(0o600))],
                 ofItemAtPath: cacheURL.path
@@ -130,5 +153,13 @@ public enum PricingRefresher {
             return .networkFailure
         }
         return .fetched
+    }
+
+    private static func updatedAtString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }

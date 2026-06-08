@@ -26,6 +26,17 @@ public enum CostUsagePricing {
         PricingResolver.active.calculationVersion
     }
 
+    /// Resolves the cost multiplier for a request: `1.0` unless it ran
+    /// on the fast/priority tier, in which case the model's
+    /// `fastMultiplier` applies (defaulting to `1.0` when the model has
+    /// no published premium). Mirrors ccusage's `fast_multiplier`
+    /// semantics so cost totals line up on fast-tier usage.
+    static func fastFactor(_ isFast: Bool, _ fastMultiplier: Double?) -> Double {
+        guard isFast else { return 1.0 }
+        let multiplier = fastMultiplier ?? 1.0
+        return multiplier > 0 ? multiplier : 1.0
+    }
+
     // MARK: - Codex
 
     static func normalizeCodexModel(_ raw: String) -> String {
@@ -51,16 +62,18 @@ public enum CostUsagePricing {
         model: String,
         inputTokens: Int,
         cachedInputTokens: Int,
-        outputTokens: Int
+        outputTokens: Int,
+        isFast: Bool = false
     ) -> Double? {
         let codex = PricingResolver.active.providers.codex.models
         guard let pricing = codex[normalizeCodexModel(model)] else { return nil }
         let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
         let nonCached = max(0, inputTokens - cached)
         let cachedRate = pricing.cacheRead ?? pricing.input
-        return Double(nonCached) * pricing.input
+        let base = Double(nonCached) * pricing.input
             + Double(cached) * cachedRate
             + Double(max(0, outputTokens)) * pricing.output
+        return base * fastFactor(isFast, pricing.fastMultiplier)
     }
 
     // MARK: - Claude
@@ -94,7 +107,8 @@ public enum CostUsagePricing {
         inputTokens: Int,
         cacheReadInputTokens: Int,
         cacheCreationInputTokens: Int,
-        outputTokens: Int
+        outputTokens: Int,
+        isFast: Bool = false
     ) -> Double? {
         let claude = PricingResolver.active.providers.claude.models
         guard let pricing = claude[normalizeClaudeModel(model)] else { return nil }
@@ -106,7 +120,7 @@ public enum CostUsagePricing {
             return Double(below) * base + Double(over) * above
         }
 
-        return tiered(
+        let base = tiered(
             max(0, inputTokens),
             base: pricing.input,
             above: pricing.inputAboveThreshold,
@@ -126,6 +140,7 @@ public enum CostUsagePricing {
                 base: pricing.output,
                 above: pricing.outputAboveThreshold,
                 threshold: pricing.thresholdTokens)
+        return base * fastFactor(isFast, pricing.fastMultiplier)
     }
 
     // MARK: - Gemini
