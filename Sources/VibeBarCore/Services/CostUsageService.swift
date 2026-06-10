@@ -92,6 +92,12 @@ public final class CostUsageService: ObservableObject {
             return
         }
 
+        // Adopt any pricing table PricingRefresher has written since the
+        // last pass. Swapping here — at the pass boundary, before any scan
+        // starts — keeps every scan below on one consistent table while
+        // letting new model rates land without an app relaunch.
+        PricingResolver.reloadIfChanged()
+
         var results: [ToolType: CostSnapshot] = [:]
         let home = homeDirectory
         for tool in ToolType.allCases where tool.supportsTokenCost {

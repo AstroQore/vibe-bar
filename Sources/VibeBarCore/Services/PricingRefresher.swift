@@ -16,10 +16,11 @@ import Foundation
 /// `PricingDataSet.maxBytes`. Any failure leaves the previous cache in
 /// place instead of replacing it with garbage.
 ///
-/// Because `PricingResolver.cachedActive` snapshots on first read,
-/// a successful refresh only takes effect on the *next* app launch.
-/// That keeps cost calculations stable mid-process and avoids
-/// re-aggregating today's data with mid-flight rate changes.
+/// A successful refresh takes effect at the next cost re-scan:
+/// `CostUsageService.refreshAll()` re-adopts the rewritten cache via
+/// `PricingResolver.reloadIfChanged()` at the start of each pass — a
+/// pass boundary — so new rates land without an app relaunch while any
+/// single aggregation still runs against one consistent table.
 public enum PricingRefresher {
     /// Upstream source of truth: LiteLLM's
     /// `model_prices_and_context_window.json`. The bundled
