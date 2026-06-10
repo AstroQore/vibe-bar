@@ -38,6 +38,7 @@ final class AppEnvironment: ObservableObject {
     private var browserOpenAICookieImportInFlight = false
     private var browserGeminiCookieImportInFlight = false
     private var browserGrokCookieImportInFlight = false
+    private var pricingRefreshTask: Task<Void, Never>?
 
     init() {
         let settings = SettingsStore()
@@ -181,14 +182,28 @@ final class AppEnvironment: ObservableObject {
             await costService.refreshAll()
         }
 
-        // Best-effort pricing refresh: fetches the latest pricing.json from
-        // GitHub raw and updates ~/.vibebar/pricing_cache.json so the *next*
-        // launch picks up new model rates without a rebuild. Failures are
-        // silent — the bundled fallback keeps the current session usable.
-        // The 24-hour freshness window inside PricingRefresher short-circuits
-        // the network call when the cache is still recent.
-        Task.detached(priority: .utility) {
-            await PricingRefresher.refresh()
+        // Best-effort pricing refresh loop: polls LiteLLM's pricing map on
+        // GitHub raw and rewrites ~/.vibebar/pricing_cache.json when it
+        // changes. The 24-hour freshness window inside PricingRefresher
+        // reduces most wake-ups to a stat() call, so the loop can re-check
+        // every few hours and a menu-bar app that stays up for weeks still
+        // follows new model rates. After a fetch lands a new table, nudge a
+        // re-scan — refreshAll() adopts the table at the start of its next
+        // pass, so a brand-new model stops pricing at $0 without an app
+        // relaunch. Failures stay silent: the previous cache (or the
+        // bundled fallback) keeps the session usable.
+        pricingRefreshTask = Task.detached(priority: .utility) {
+            while !Task.isCancelled {
+                let outcome = await PricingRefresher.refresh()
+                if outcome == .fetched {
+                    await costService.refreshAll()
+                }
+                do {
+                    try await Task.sleep(for: .seconds(6 * 60 * 60))
+                } catch {
+                    break
+                }
+            }
         }
         importPersistentClaudeCookiesAndRefreshIfNeeded()
         importClaudeBrowserCookiesAndRefreshIfNeeded()
@@ -210,6 +225,10 @@ final class AppEnvironment: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+    }
+
+    deinit {
+        pricingRefreshTask?.cancel()
     }
 
     func account(for tool: ToolType) -> AccountIdentity? {

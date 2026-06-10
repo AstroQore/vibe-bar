@@ -151,4 +151,98 @@ final class PricingResolverTests: XCTestCase {
         defer { PricingResolver.testOverride = nil }
         XCTAssertEqual(PricingResolver.active.updatedAt, "test-override")
     }
+
+    // MARK: - reloadIfChanged (hot reload without relaunch)
+
+    /// A data set distinguishable from anything the real machine or the
+    /// bundle could provide: a sentinel Claude model whose output rate
+    /// varies per call site.
+    private func hotReloadDataSet(updatedAt: String, sentinelOutput: Double) -> PricingDataSet {
+        let base = PricingHardcoded.fallback
+        var claudeModels = base.providers.claude.models
+        claudeModels["test-hot-reload-sentinel"] = PricingDataSet.ClaudeEntry(
+            input: 0.000001,
+            output: sentinelOutput,
+            cacheCreation: 0.00000125,
+            cacheRead: 0.0000001
+        )
+        return PricingDataSet(
+            schemaVersion: PricingDataSet.currentSchemaVersion,
+            updatedAt: updatedAt,
+            calculationVersion: base.calculationVersion,
+            providers: PricingDataSet.Providers(
+                codex: base.providers.codex,
+                claude: PricingDataSet.ProviderTable(
+                    displayName: base.providers.claude.displayName,
+                    models: claudeModels
+                ),
+                gemini: base.providers.gemini,
+                grok: base.providers.grok,
+                antigravity: base.providers.antigravity
+            )
+        )
+    }
+
+    func testReloadIfChangedAdoptsRewrittenCacheWithoutRelaunch() throws {
+        let home = try makeTempHome()
+        PricingResolver.forgetCachedStateForTests()
+        defer {
+            PricingResolver.forgetCachedStateForTests()
+            cleanup(home)
+        }
+
+        try writeCache(to: home, dataSet: hotReloadDataSet(updatedAt: "2099-01-01", sentinelOutput: 0.00005))
+        // First load primes the table; nothing was loaded before, so it
+        // does not count as a change.
+        XCTAssertFalse(PricingResolver.reloadIfChanged(homeDirectory: home.path))
+        XCTAssertEqual(PricingResolver.active.updatedAt, "2099-01-01")
+
+        // Simulate PricingRefresher rewriting the cache mid-process.
+        try writeCache(to: home, dataSet: hotReloadDataSet(updatedAt: "2099-01-02", sentinelOutput: 0.0001))
+        XCTAssertTrue(PricingResolver.reloadIfChanged(homeDirectory: home.path))
+        XCTAssertEqual(PricingResolver.active.updatedAt, "2099-01-02")
+        XCTAssertEqual(
+            PricingResolver.active.providers.claude.models["test-hot-reload-sentinel"]?.output,
+            0.0001
+        )
+    }
+
+    func testReloadIfChangedReportsNoChangeForIdenticalCache() throws {
+        let home = try makeTempHome()
+        PricingResolver.forgetCachedStateForTests()
+        defer {
+            PricingResolver.forgetCachedStateForTests()
+            cleanup(home)
+        }
+
+        try writeCache(to: home, dataSet: hotReloadDataSet(updatedAt: "2099-01-01", sentinelOutput: 0.00005))
+        _ = PricingResolver.reloadIfChanged(homeDirectory: home.path)
+        XCTAssertFalse(PricingResolver.reloadIfChanged(homeDirectory: home.path))
+        // The already-loaded table stays active either way.
+        XCTAssertEqual(PricingResolver.active.updatedAt, "2099-01-01")
+    }
+
+    func testReloadIfChangedIsNoOpUnderTestOverride() throws {
+        let home = try makeTempHome()
+        PricingResolver.forgetCachedStateForTests()
+        defer {
+            PricingResolver.testOverride = nil
+            PricingResolver.forgetCachedStateForTests()
+            cleanup(home)
+        }
+
+        PricingResolver.testOverride = PricingDataSet(
+            schemaVersion: 1,
+            updatedAt: "test-override",
+            calculationVersion: 1,
+            providers: PricingHardcoded.fallback.providers
+        )
+        try writeCache(to: home, dataSet: hotReloadDataSet(updatedAt: "2099-01-03", sentinelOutput: 0.00005))
+        XCTAssertFalse(PricingResolver.reloadIfChanged(homeDirectory: home.path))
+        XCTAssertEqual(PricingResolver.active.updatedAt, "test-override")
+
+        // Dropping the override must not reveal a leaked temp-home table.
+        PricingResolver.testOverride = nil
+        XCTAssertNotEqual(PricingResolver.active.updatedAt, "2099-01-03")
+    }
 }
