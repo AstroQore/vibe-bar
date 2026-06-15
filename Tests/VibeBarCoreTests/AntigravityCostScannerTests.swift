@@ -240,15 +240,19 @@ final class AntigravityCostScannerTests: XCTestCase {
         XCTAssertGreaterThan(snap.allTimeCostUSD, 0)
     }
 
-    func testScannerSkipsNonDatabaseFiles() async throws {
+    func testScannerIgnoresUnrelatedExtensions() async throws {
+        // Only `.db` and `.pb` conversation files are recognized; other
+        // files in the conversations directory (transcripts, SQLite
+        // sidecars) are ignored and contribute nothing.
         let home = try makeTempHome()
         defer { cleanup(home) }
         let convDir = home
             .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
         try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
 
-        try Data([0x00, 0x01, 0x02]).write(to: convDir.appendingPathComponent("foo.pb"))
         try Data().write(to: convDir.appendingPathComponent("bar.txt"))
+        try Data("{}".utf8).write(to: convDir.appendingPathComponent("notes.json"))
+        try Data().write(to: convDir.appendingPathComponent("trajectory.db-wal"))
 
         let snapshot = await CostUsageScanner.scan(
             tool: .antigravity,
@@ -258,6 +262,65 @@ final class AntigravityCostScannerTests: XCTestCase {
         let snap = try XCTUnwrap(snapshot)
         XCTAssertEqual(snap.jsonlFilesFound, 0)
         XCTAssertEqual(snap.allTimeTokens, 0)
+    }
+
+    func testScansDatabaseInCliConversationsDir() async throws {
+        // CLI conversations live under `antigravity-cli/conversations`,
+        // which the scanner now covers alongside the IDE directory.
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        let convDir = home
+            .appendingPathComponent(".gemini/antigravity-cli/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let base = UInt64(now.addingTimeInterval(-600).timeIntervalSince1970)
+        try writeAntigravityDB(at: convDir.appendingPathComponent("cli-trajectory.db"), turns: [
+            TurnSpec(idx: 0, blob: encodeTurnBlob(
+                seconds: base, input: 1_000, output: 200, cumulativeCache: 0
+            ))
+        ])
+
+        let snapshot = await CostUsageScanner.scan(
+            tool: .antigravity,
+            homeDirectory: home.path,
+            now: now
+        )
+        let snap = try XCTUnwrap(snapshot)
+        XCTAssertEqual(snap.jsonlFilesFound, 1)
+        XCTAssertEqual(snap.allTimeTokens, 1_200)
+        XCTAssertGreaterThan(snap.allTimeCostUSD, 0)
+    }
+
+    func testPrefersDatabaseOverProtobufSibling() async throws {
+        // When a cascade has both a populated `.db` and a `.pb` sibling
+        // (the 0-byte-db / large-pb shape never happens here because the
+        // db has turns), the offline decode wins and the `.pb` is not
+        // probed — no double counting, no language-server round trip.
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        let convDir = home
+            .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let base = UInt64(now.addingTimeInterval(-600).timeIntervalSince1970)
+        try writeAntigravityDB(at: convDir.appendingPathComponent("paired.db"), turns: [
+            TurnSpec(idx: 0, blob: encodeTurnBlob(
+                seconds: base, input: 4_000, output: 600, cumulativeCache: 0
+            ))
+        ])
+        try Data([0x00, 0x01, 0x02]).write(to: convDir.appendingPathComponent("paired.pb"))
+
+        let snapshot = await CostUsageScanner.scan(
+            tool: .antigravity,
+            homeDirectory: home.path,
+            now: now
+        )
+        let snap = try XCTUnwrap(snapshot)
+        // Only the `.db` is counted; the `.pb` sibling is skipped.
+        XCTAssertEqual(snap.jsonlFilesFound, 1)
+        XCTAssertEqual(snap.allTimeTokens, 4_600)
     }
 
     func testAntigravityCostUsesSonnetRatesForDefault() throws {
