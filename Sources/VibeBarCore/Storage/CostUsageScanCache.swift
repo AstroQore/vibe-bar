@@ -115,6 +115,16 @@ public struct CostUsageScanCache: Codable, Sendable {
         return entry.events
     }
 
+    /// Last cached events for `path`, ignoring the file fingerprint.
+    /// Used as a stale-data fallback when a fresh parse / RPC is
+    /// impossible — e.g. an AntiGravity `.pb` cascade whose tokens can
+    /// only be re-fetched from the language server, which isn't running
+    /// right now. Returns whatever was cached on a previous successful
+    /// fetch so usage doesn't blink out while Antigravity is closed.
+    public func lastKnownEvents(for path: String) -> [ParsedEvent]? {
+        entries[Self.entryKey(for: path)]?.events
+    }
+
     public mutating func store(_ events: [ParsedEvent], for path: String, mtime: Date, size: Int64) {
         entries[entryKey(for: path)] = FileEntry(mtime: mtime, size: size, events: events)
     }

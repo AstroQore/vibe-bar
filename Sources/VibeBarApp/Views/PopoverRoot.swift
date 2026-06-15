@@ -443,16 +443,24 @@ private struct OverviewWaterfall: View {
                 // (`GeminiCombinedCard`). Grok stays on its own card.
                 GeminiCombinedCard(density: density)
                 ProviderQuotaCard(tool: .grok, density: density, compact: false)
-                // Google AI (Gemini + Antigravity) cost is intentionally
-                // omitted while the IDE/CLI cost story is incomplete
-                // (`~/.gemini/antigravity-cli/conversations/*.pb` is
-                // encrypted and the IDE side mixes Google-vs-third-party
-                // model rates that we haven't validated end-to-end). The
-                // dedicated Google AI sub-page surfaces a placeholder
-                // explaining the gap.
                 ForEach(overviewCostProviders, id: \.self) { tool in
                     OverviewCostCard(tool: tool, density: density)
                 }
+                // Google AI (Gemini + AntiGravity) cost, surfaced as the
+                // single "Gemini" platform aligned with the other three.
+                // AntiGravity is now the only live Google/Gemini usage
+                // source (Gemini CLI no longer writes local telemetry);
+                // its `.pb`-only cascades are filled via the
+                // language-server RPC in CostUsageScanner.scanAntigravity.
+                OverviewCostCard(
+                    tool: .antigravity,
+                    density: density,
+                    snapshotOverride: googleAICostSnapshot,
+                    titleOverride: "Gemini Cost",
+                    emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
+                    toolNameOverride: "Gemini",
+                    heatmapTitleOverride: "When you use Gemini"
+                )
                 if hasCostData {
                     ModelRankingList(
                         breakdowns: combinedModels,
@@ -474,19 +482,33 @@ private struct OverviewWaterfall: View {
         }
     }
 
-    /// Cost providers that contribute to the overview totals and the
-    /// per-provider OverviewCostCard. Google AI (Gemini + Antigravity)
-    /// is deliberately excluded while the local cost story is
-    /// incomplete — see the GoogleAIDualPage right column for the
-    /// user-facing explanation.
+    /// Cost providers rendered as their own per-provider
+    /// `OverviewCostCard` in the grid. Google AI is rendered separately
+    /// (combined Gemini + AntiGravity) via `googleAICostSnapshot`, so it
+    /// isn't listed here.
     private var overviewCostProviders: [ToolType] {
         [.codex, .claude, .grok]
     }
 
+    /// Combined Gemini + AntiGravity cost, surfaced as the single
+    /// "Gemini" (Google AI) platform. Gemini CLI no longer writes local
+    /// usage, so in practice this is the AntiGravity IDE/CLI data; the
+    /// combine keeps any residual Gemini telemetry counted too. Returns
+    /// an empty snapshot (no files) when neither has data, which the
+    /// card renders as an empty state.
+    private var googleAICostSnapshot: CostSnapshot {
+        let parts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
+        return CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: parts)
+    }
+
+    /// Snapshots feeding the "All providers" rollups (model ranking,
+    /// heatmaps). Includes the combined Google AI snapshot when it has
+    /// data so Gemini / AntiGravity usage shows up there too.
     private var overviewCostSnapshots: [CostSnapshot] {
-        overviewCostProviders.compactMap { tool in
-            environment.costService.snapshot(for: tool)
-        }
+        var snaps = overviewCostProviders.compactMap { environment.costService.snapshot(for: $0) }
+        let googleAI = googleAICostSnapshot
+        if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
+        return snaps
     }
 }
 
@@ -689,7 +711,7 @@ private struct GeminiTabPage: View {
                 alignment: .topLeading
             )
 
-            GeminiComingSoonCard(density: density)
+            GeminiCostColumn(density: density)
                 .frame(minWidth: geminiRightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
         }
     }
@@ -711,13 +733,40 @@ private struct GeminiTabPage: View {
     }
 }
 
-/// Right-column placeholder on the Gemini sub-page. Mirrors the
-/// shape of the OpenAI/Claude cost panels (rounded card, padded
-/// section title) so the dedicated Gemini page reads the same as
-/// the other primary sub-pages while the cost story is still
-/// blocked on the encrypted `.pb` conversation files and unverified
-/// IDE-side rates.
-private struct GeminiComingSoonCard: View {
+/// Right-column cost panel on the Gemini sub-page: the combined
+/// Gemini + AntiGravity cost, presented as one "Gemini" surface so the
+/// page matches the OpenAI / Claude sub-page cost columns. AntiGravity
+/// is the live Google/Gemini usage source today; the data comes from
+/// `CostUsageScanner.scanAntigravity` (offline `.db` + language-server
+/// RPC for the encrypted `.pb` cascades).
+private struct GeminiCostColumn: View {
+    let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+
+    var body: some View {
+        let parts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
+        let snapshot = CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: parts)
+        if snapshot.jsonlFilesFound > 0 {
+            ProviderCostStack(
+                tool: .antigravity,
+                snapshot: snapshot,
+                density: density,
+                titleOverride: "Gemini Cost",
+                toolNameOverride: "Gemini",
+                heatmapTitleOverride: "When you use Gemini"
+            )
+        } else {
+            GeminiCostEmptyCard(density: density)
+        }
+    }
+}
+
+/// Empty state for the Gemini sub-page cost column. AntiGravity's
+/// `.pb`-only cascades are fetched from the running language server, so
+/// the first sync needs AntiGravity open; the result is then cached and
+/// survives Antigravity quitting.
+private struct GeminiCostEmptyCard: View {
     let density: Theme.Density
 
     var body: some View {
@@ -726,7 +775,7 @@ private struct GeminiComingSoonCard: View {
                 ProviderSectionTitle(
                     tool: .gemini,
                     title: "\(ToolType.gemini.productName) Cost",
-                    subtitle: "Coming soon",
+                    subtitle: "No usage yet",
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16,
@@ -735,10 +784,10 @@ private struct GeminiComingSoonCard: View {
                 Spacer(minLength: 4)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Cost tracking for Gemini Web + AntiGravity is on the roadmap but not yet accurate enough to surface.")
+                Text("No Gemini or AntiGravity usage found yet.")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
-                Text("AntiGravity CLI conversations live in encrypted `.pb` files we can't yet parse, and the IDE-side pricing mixes Google-owned and third-party model rates we haven't validated end-to-end. Quota readings on the left are unaffected.")
+                Text("AntiGravity is the live Google/Gemini source. Open AntiGravity at least once while Vibe Bar is running so it can sync cascade usage from the language server; cached results then persist after you quit it.")
                     .font(.system(size: max(10, density.subtitleFontSize - 1)))
                     .foregroundStyle(.tertiary)
                     .lineLimit(nil)
@@ -805,12 +854,11 @@ private struct CombinedTotalsRow: View {
     private let summaryHeight: CGFloat = 178
 
     var body: some View {
-        // Skip Google AI snapshots here so the headline totals don't
-        // get polluted by unreliable Gemini/Antigravity cost numbers.
-        // See OverviewWaterfall.overviewCostProviders for the parallel
-        // exclusion in the per-provider cost grid.
+        // Headline totals span every cost-aware provider, including
+        // Google AI (Gemini + AntiGravity): AntiGravity usage is now
+        // captured offline (`.db`) and via the language-server RPC
+        // (`.pb`), so it's reliable enough to roll up here.
         let snapshots = ToolType.costAwareProviders
-            .filter { !ToolType.googleAIPair.contains($0) }
             .compactMap { environment.costService.snapshot(for: $0) }
         let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }

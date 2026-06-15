@@ -875,92 +875,156 @@ public enum CostUsageScanner {
         return current ?? timeline.first?.model ?? fallback
     }
 
-    // MARK: - AntiGravity (per-trajectory SQLite + protobuf blobs)
+    // MARK: - AntiGravity (per-trajectory SQLite + protobuf blobs / live RPC)
     //
-    // The AntiGravity IDE writes one SQLite database per conversation
-    // under `~/.gemini/antigravity/conversations/<UUID>.db`. The
-    // `gen_metadata` table holds one row per model call; its `data`
-    // BLOB is a protobuf message we read with a raw varint scanner
-    // (no SwiftProtobuf dependency). Per-row token fields under path
-    // `1.4`:
+    // The AntiGravity IDE / CLI write one conversation file per cascade
+    // under `~/.gemini/antigravity{,-cli,-ide}/conversations/<UUID>.{db,pb}`.
+    //
+    // `.db` is a SQLite store whose `gen_metadata.data` BLOB is a
+    // protobuf message we decode offline with a raw varint scanner
+    // (`AntigravitySessionReader`, no SwiftProtobuf dependency). Per-row
+    // token fields under path `1.4`:
     //   - field 1: constant system-prompt size (cached after turn 1)
     //   - field 2: non-cached input tokens this turn
     //   - field 3: output tokens this turn
     //   - field 5: cumulative cache-read pool size
     //   - field 9: reasoning / thinking tokens (counted as output)
     //   - field 10: tool tokens (counted as output)
-    // Model id lives at path `1.19`.
-    // Timestamp lives at path `1.9.4` (seconds + nanos).
+    // Model id lives at path `1.19`, timestamp at `1.9.4` (sec + nanos).
     //
-    // The CLI-only `~/.gemini/antigravity-cli/conversations/*.pb`
-    // container is an unidentified binary format, and the companion
-    // transcript/history JSONL files do not carry token counts. CLI-only
-    // AntiGravity usage stays dark until that format is reverse-engineered.
+    // `.pb` is an encrypted / opaque container we can't decode offline
+    // (neither can codeburn). For those cascades we fall back to the
+    // running language server's `GetCascadeTrajectoryGeneratorMetadata`
+    // RPC (`AntigravityCascadeUsageFetcher`) and cache the result so it
+    // survives Antigravity being closed. `.db` is always preferred when
+    // it yields turns — it's authoritative and carries cache tokens the
+    // RPC doesn't expose.
+
+    /// Conversation roots scanned for AntiGravity usage. All three may
+    /// coexist on one machine (IDE, CLI, and the legacy `-ide` layout).
+    private static let antigravityConversationDirs = [
+        ".gemini/antigravity/conversations",
+        ".gemini/antigravity-cli/conversations",
+        ".gemini/antigravity-ide/conversations"
+    ]
 
     private static func scanAntigravity(
         homeDirectory: String,
         now: Date,
         retentionDays: Int?
     ) async -> CostSnapshot {
-        let root = URL(fileURLWithPath: homeDirectory)
-            .appendingPathComponent(".gemini/antigravity/conversations")
-        let dbFiles = collectAntigravityConversationFiles(under: root)
+        let roots = antigravityConversationDirs.map {
+            URL(fileURLWithPath: homeDirectory).appendingPathComponent($0)
+        }
+        let cascades = collectAntigravityCascades(under: roots)
         var aggregator = CostAggregator(tool: .antigravity, now: now)
         var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .antigravity, retentionDays: retentionDays)
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
-        for file in dbFiles {
-            let (mtime, size) = fileFingerprint(file)
-            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
-                let retained = retainedEvents(cached, cutoff: cutoff)
-                if retained.count != cached.count {
-                    cache.store(retained, for: file.path, mtime: mtime, size: size)
-                }
-                for event in retained {
-                    let cost = costUSD(tool: .antigravity, event: event)
-                    aggregator.add(at: event.date, model: event.model, input: event.input,
-                                   output: event.output, cache: event.cache, costUSD: cost)
-                }
-                continue
-            }
+        // The language server is probed lazily — only if a `.pb`-only
+        // cascade actually needs an RPC, and at most once per scan.
+        let lsClient = AntigravityLanguageServerClient()
+        var endpoints: [AntigravityLanguageServerClient.Endpoint]?
+        var serverUnavailable = false
 
-            let turns = AntigravitySessionReader.readGenMetadata(at: file)
-            var parsed: [CostUsageScanCache.ParsedEvent] = []
-            parsed.reserveCapacity(turns.count)
-            var previousCacheCumulative = 0
-            let sessionId = file.deletingPathExtension().lastPathComponent
-            for turn in turns {
-                let cacheCreation = max(0, turn.cumulativeCacheReadTokens - previousCacheCumulative)
-                let cacheRead = max(0, previousCacheCumulative)
-                previousCacheCumulative = turn.cumulativeCacheReadTokens
-                let input = turn.inputTokens
-                // Reasoning + tool tokens are billed at output rates by
-                // Claude / Gemini, so fold them into output here.
-                let output = turn.outputTokens + turn.thoughtsTokens + turn.toolTokens
-                guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { continue }
-                let model = normalizedNonEmpty(turn.model) ?? "antigravity-default"
-                let parsedEvent = CostUsageScanCache.ParsedEvent(
-                    date: turn.date,
-                    model: model,
-                    input: input,
-                    output: output,
-                    cache: cacheRead + cacheCreation,
-                    cacheCreation: cacheCreation,
-                    sessionId: sessionId,
-                    messageId: turn.requestId
-                )
-                guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
-                parsed.append(parsedEvent)
-                let cost = costUSD(tool: .antigravity, event: parsedEvent)
-                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
-                               input: parsedEvent.input, output: parsedEvent.output,
-                               cache: parsedEvent.cache, costUSD: cost)
+        var knownPaths: Set<String> = []
+        var fileCount = 0
+
+        for cascade in cascades {
+            // 1. Prefer the offline `.db` decode.
+            var handledByDB = false
+            for dbFile in cascade.dbFiles {
+                fileCount += 1
+                knownPaths.insert(dbFile.path)
+                let (mtime, size) = fileFingerprint(dbFile)
+                if let cached = cache.reusable(for: dbFile.path, mtime: mtime, size: size) {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    if retained.count != cached.count {
+                        cache.store(retained, for: dbFile.path, mtime: mtime, size: size)
+                    }
+                    aggregateAntigravity(retained, into: &aggregator)
+                    if !cached.isEmpty { handledByDB = true }
+                    continue
+                }
+                let turns = AntigravitySessionReader.readGenMetadata(at: dbFile)
+                let parsed = antigravityEvents(fromDB: turns, sessionId: cascade.id, cutoff: cutoff)
+                cache.store(parsed, for: dbFile.path, mtime: mtime, size: size)
+                aggregateAntigravity(parsed, into: &aggregator)
+                if !turns.isEmpty { handledByDB = true }
             }
-            cache.store(parsed, for: file.path, mtime: mtime, size: size)
+            if handledByDB { continue }
+
+            // 2. `.pb`-only (or empty `.db`): live-RPC fallback, cached
+            //    so it persists across Antigravity restarts.
+            for pbFile in cascade.pbFiles {
+                fileCount += 1
+                knownPaths.insert(pbFile.path)
+                let (mtime, size) = fileFingerprint(pbFile)
+                if let cached = cache.reusable(for: pbFile.path, mtime: mtime, size: size) {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    if retained.count != cached.count {
+                        cache.store(retained, for: pbFile.path, mtime: mtime, size: size)
+                    }
+                    aggregateAntigravity(retained, into: &aggregator)
+                    continue
+                }
+                if endpoints == nil && !serverUnavailable {
+                    do { endpoints = try await lsClient.connectedEndpoints() }
+                    catch { serverUnavailable = true }
+                }
+                if let endpoints, !serverUnavailable,
+                   let turns = try? await AntigravityCascadeUsageFetcher.fetchTurns(
+                       cascadeId: cascade.id, client: lsClient, endpoints: endpoints
+                   ) {
+                    let parsed = antigravityEvents(
+                        fromRPC: turns,
+                        sessionId: cascade.id,
+                        fallbackDate: fileMTime(pbFile) ?? now,
+                        cutoff: cutoff
+                    )
+                    cache.store(parsed, for: pbFile.path, mtime: mtime, size: size)
+                    aggregateAntigravity(parsed, into: &aggregator)
+                    continue
+                }
+                // 3. RPC unavailable / failed → reuse the last good fetch
+                //    (ignoring the fingerprint) so usage doesn't vanish
+                //    while Antigravity is closed.
+                if let stale = cache.lastKnownEvents(for: pbFile.path) {
+                    aggregateAntigravity(retainedEvents(stale, cutoff: cutoff), into: &aggregator)
+                }
+            }
         }
-        cache.prune(known: Set(dbFiles.map(\.path)))
+        cache.prune(known: knownPaths)
         cache.save(homeDirectory: homeDirectory, tool: .antigravity)
-        return aggregator.snapshot(jsonlFilesFound: dbFiles.count)
+        return aggregator.snapshot(jsonlFilesFound: fileCount)
+    }
+
+    /// One cascade (conversation), grouping the `.db` and `.pb` files
+    /// that share a `<UUID>` filename across the AntiGravity roots.
+    private struct AntigravityCascade {
+        let id: String
+        var dbFiles: [URL]
+        var pbFiles: [URL]
+    }
+
+    private static func collectAntigravityCascades(under roots: [URL]) -> [AntigravityCascade] {
+        var byID: [String: AntigravityCascade] = [:]
+        var order: [String] = []
+        for root in roots {
+            for file in collectAntigravityConversationFiles(under: root) {
+                let id = file.deletingPathExtension().lastPathComponent
+                if byID[id] == nil {
+                    byID[id] = AntigravityCascade(id: id, dbFiles: [], pbFiles: [])
+                    order.append(id)
+                }
+                if file.pathExtension == "db" {
+                    byID[id]?.dbFiles.append(file)
+                } else {
+                    byID[id]?.pbFiles.append(file)
+                }
+            }
+        }
+        return order.compactMap { byID[$0] }
     }
 
     private static func collectAntigravityConversationFiles(under root: URL) -> [URL] {
@@ -971,11 +1035,90 @@ public enum CostUsageScanner {
             options: [.skipsHiddenFiles]
         ) else { return [] }
         return entries.filter { url in
-            guard url.pathExtension == "db" else { return false }
+            guard url.pathExtension == "db" || url.pathExtension == "pb" else { return false }
             let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
             if values?.isSymbolicLink == true { return false }
             if values?.isRegularFile == false { return false }
             return true
+        }
+    }
+
+    /// Convert decoded `.db` turns into cache events, resolving the
+    /// cumulative cache-read pool into per-turn cache-read /
+    /// cache-creation splits.
+    private static func antigravityEvents(
+        fromDB turns: [AntigravitySessionReader.Turn],
+        sessionId: String,
+        cutoff: Date?
+    ) -> [CostUsageScanCache.ParsedEvent] {
+        var parsed: [CostUsageScanCache.ParsedEvent] = []
+        parsed.reserveCapacity(turns.count)
+        var previousCacheCumulative = 0
+        for turn in turns {
+            let cacheCreation = max(0, turn.cumulativeCacheReadTokens - previousCacheCumulative)
+            let cacheRead = max(0, previousCacheCumulative)
+            previousCacheCumulative = turn.cumulativeCacheReadTokens
+            let input = turn.inputTokens
+            // Reasoning + tool tokens are billed at output rates by
+            // Claude / Gemini, so fold them into output here.
+            let output = turn.outputTokens + turn.thoughtsTokens + turn.toolTokens
+            guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { continue }
+            let model = normalizedNonEmpty(turn.model) ?? "antigravity-default"
+            let event = CostUsageScanCache.ParsedEvent(
+                date: turn.date,
+                model: model,
+                input: input,
+                output: output,
+                cache: cacheRead + cacheCreation,
+                cacheCreation: cacheCreation,
+                sessionId: sessionId,
+                messageId: turn.requestId
+            )
+            guard isRetained(event.date, cutoff: cutoff) else { continue }
+            parsed.append(event)
+        }
+        return parsed
+    }
+
+    /// Convert RPC-fetched turns into cache events. The RPC exposes no
+    /// cache tokens (`cache = 0`) and already folds thinking into
+    /// `output`. A turn with no timestamp falls back to the `.pb` file's
+    /// mtime so it still lands on a real day.
+    private static func antigravityEvents(
+        fromRPC turns: [AntigravityCascadeUsageFetcher.Turn],
+        sessionId: String,
+        fallbackDate: Date,
+        cutoff: Date?
+    ) -> [CostUsageScanCache.ParsedEvent] {
+        var parsed: [CostUsageScanCache.ParsedEvent] = []
+        parsed.reserveCapacity(turns.count)
+        for turn in turns {
+            guard turn.input > 0 || turn.output > 0 else { continue }
+            let model = normalizedNonEmpty(turn.model) ?? "antigravity-default"
+            let event = CostUsageScanCache.ParsedEvent(
+                date: turn.date ?? fallbackDate,
+                model: model,
+                input: turn.input,
+                output: turn.output,
+                cache: 0,
+                cacheCreation: nil,
+                sessionId: sessionId,
+                messageId: turn.responseId
+            )
+            guard isRetained(event.date, cutoff: cutoff) else { continue }
+            parsed.append(event)
+        }
+        return parsed
+    }
+
+    private static func aggregateAntigravity(
+        _ events: [CostUsageScanCache.ParsedEvent],
+        into aggregator: inout CostAggregator
+    ) {
+        for event in events {
+            let cost = costUSD(tool: .antigravity, event: event)
+            aggregator.add(at: event.date, model: event.model, input: event.input,
+                           output: event.output, cache: event.cache, costUSD: cost)
         }
     }
 
