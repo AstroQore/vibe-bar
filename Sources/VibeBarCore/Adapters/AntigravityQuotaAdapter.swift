@@ -76,6 +76,9 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
                     body: body
                 )
                 let snapshot = try AntigravityResponseParser.parseUserStatus(data: data)
+                // Keep the id → label map fresh so the cost scanner can
+                // resolve placeholder model ids to real names and rates.
+                AntigravityModelLabelStore.merge(snapshot.modelLabels)
                 return AccountQuota(
                     accountId: account.id,
                     tool: .antigravity,
@@ -125,6 +128,12 @@ enum AntigravityResponseParser {
         var buckets: [QuotaBucket]
         var planName: String?
         var email: String?
+        /// `modelOrAlias.model → label` for every config (e.g.
+        /// `MODEL_PLACEHOLDER_M132 → "Gemini 3.5 Flash (High)"`),
+        /// regardless of whether the config carried quota. Fed into
+        /// `AntigravityModelLabelStore` so the cost scanner can resolve
+        /// real model names and rates.
+        var modelLabels: [String: String] = [:]
     }
 
     static func parseUserStatus(data: Data) throws -> Snapshot {
@@ -143,7 +152,15 @@ enum AntigravityResponseParser {
 
         let modelConfigs = userStatus.cascadeModelConfigData?.clientModelConfigs ?? []
         var buckets: [QuotaBucket] = []
+        var modelLabels: [String: String] = [:]
         for config in modelConfigs {
+            // Capture the id → label mapping for every config (even ones
+            // without quota), so placeholder model ids in the cost data
+            // can later be resolved to real names / rates.
+            if let rawModel = config.modelOrAlias?.model {
+                let trimmed = rawModel.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { modelLabels[trimmed] = config.label }
+            }
             guard let quota = config.quotaInfo else { continue }
             // Google's wire format omits `remainingFraction` when the
             // model's quota is fully spent (proto3 zero-default). The
@@ -169,7 +186,7 @@ enum AntigravityResponseParser {
         }
 
         let plan = userStatus.userTier?.preferredName ?? userStatus.planStatus?.planInfo?.preferredName
-        return Snapshot(buckets: buckets, planName: plan, email: userStatus.email)
+        return Snapshot(buckets: buckets, planName: plan, email: userStatus.email, modelLabels: modelLabels)
     }
 
     private static func parseDate(_ raw: String) -> Date? {
