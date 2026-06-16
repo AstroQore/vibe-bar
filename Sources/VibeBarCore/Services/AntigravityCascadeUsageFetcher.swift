@@ -41,15 +41,25 @@ enum AntigravityCascadeUsageFetcher {
     ) async throws -> [Turn] {
         let body = try JSONSerialization.data(withJSONObject: ["cascadeId": cascadeId])
         var lastError: Error?
+        var sawSuccess = false
+        // Only one server owns a given cascade; the others answer HTTP
+        // 500 "trajectory not found" (→ caught, continue). Try them all
+        // and take the first non-empty result. A 200-but-empty response
+        // (cascade genuinely has no turns) is remembered so we return []
+        // rather than throwing — only an all-errors sweep throws, so the
+        // scanner falls back to its cache.
         for endpoint in endpoints {
             do {
                 let data = try await client.postLocal(endpoint: endpoint, path: methodPath, body: body)
-                return parse(data: data)
+                sawSuccess = true
+                let turns = parse(data: data)
+                if !turns.isEmpty { return turns }
             } catch {
                 lastError = error
                 continue
             }
         }
+        if sawSuccess { return [] }
         throw lastError ?? QuotaError.network("Antigravity cascade RPC unreachable.")
     }
 

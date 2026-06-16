@@ -920,6 +920,9 @@ public enum CostUsageScanner {
         var aggregator = CostAggregator(tool: .antigravity, now: now)
         var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .antigravity, retentionDays: retentionDays)
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+        // Resolve placeholder model ids (e.g. MODEL_PLACEHOLDER_M132) to
+        // real names + rates using labels learned from GetUserStatus.
+        let labels = AntigravityModelLabelStore.load(homeDirectory: homeDirectory)
 
         // The language server is probed lazily — only if a `.pb`-only
         // cascade actually needs an RPC, and at most once per scan.
@@ -942,14 +945,14 @@ public enum CostUsageScanner {
                     if retained.count != cached.count {
                         cache.store(retained, for: dbFile.path, mtime: mtime, size: size)
                     }
-                    aggregateAntigravity(retained, into: &aggregator)
+                    aggregateAntigravity(retained, labels: labels, into: &aggregator)
                     if !cached.isEmpty { handledByDB = true }
                     continue
                 }
                 let turns = AntigravitySessionReader.readGenMetadata(at: dbFile)
                 let parsed = antigravityEvents(fromDB: turns, sessionId: cascade.id, cutoff: cutoff)
                 cache.store(parsed, for: dbFile.path, mtime: mtime, size: size)
-                aggregateAntigravity(parsed, into: &aggregator)
+                aggregateAntigravity(parsed, labels: labels, into: &aggregator)
                 if !turns.isEmpty { handledByDB = true }
             }
             if handledByDB { continue }
@@ -965,7 +968,7 @@ public enum CostUsageScanner {
                     if retained.count != cached.count {
                         cache.store(retained, for: pbFile.path, mtime: mtime, size: size)
                     }
-                    aggregateAntigravity(retained, into: &aggregator)
+                    aggregateAntigravity(retained, labels: labels, into: &aggregator)
                     continue
                 }
                 if endpoints == nil && !serverUnavailable {
@@ -983,14 +986,14 @@ public enum CostUsageScanner {
                         cutoff: cutoff
                     )
                     cache.store(parsed, for: pbFile.path, mtime: mtime, size: size)
-                    aggregateAntigravity(parsed, into: &aggregator)
+                    aggregateAntigravity(parsed, labels: labels, into: &aggregator)
                     continue
                 }
                 // 3. RPC unavailable / failed → reuse the last good fetch
                 //    (ignoring the fingerprint) so usage doesn't vanish
                 //    while Antigravity is closed.
                 if let stale = cache.lastKnownEvents(for: pbFile.path) {
-                    aggregateAntigravity(retainedEvents(stale, cutoff: cutoff), into: &aggregator)
+                    aggregateAntigravity(retainedEvents(stale, cutoff: cutoff), labels: labels, into: &aggregator)
                 }
             }
         }
@@ -1113,12 +1116,29 @@ public enum CostUsageScanner {
 
     private static func aggregateAntigravity(
         _ events: [CostUsageScanCache.ParsedEvent],
+        labels: AntigravityModelLabelStore,
         into aggregator: inout CostAggregator
     ) {
         for event in events {
-            let cost = costUSD(tool: .antigravity, event: event)
-            aggregator.add(at: event.date, model: event.model, input: event.input,
-                           output: event.output, cache: event.cache, costUSD: cost)
+            // Resolve the raw model id to its real label (when known),
+            // then price + group under that name. A placeholder id
+            // normalizes to `antigravity-default` (Sonnet rate); the
+            // resolved label (e.g. "Gemini 3.5 Flash") normalizes to the
+            // correct — usually much cheaper — rate.
+            let name = labels.resolve(event.model)
+            let resolved = name == event.model ? event : CostUsageScanCache.ParsedEvent(
+                date: event.date,
+                model: name,
+                input: event.input,
+                output: event.output,
+                cache: event.cache,
+                cacheCreation: event.cacheCreation,
+                sessionId: event.sessionId,
+                messageId: event.messageId
+            )
+            let cost = costUSD(tool: .antigravity, event: resolved)
+            aggregator.add(at: resolved.date, model: resolved.model, input: resolved.input,
+                           output: resolved.output, cache: resolved.cache, costUSD: cost)
         }
     }
 

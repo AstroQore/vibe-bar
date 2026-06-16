@@ -48,17 +48,30 @@ struct AntigravityLanguageServerClient {
 
     // MARK: - High-level
 
-    /// Detect the running server and return its candidate endpoints.
-    /// Throws `QuotaError.noCredential` when Antigravity isn't running.
+    /// Detect ALL running AntiGravity language servers and return every
+    /// server's candidate endpoints. A machine commonly runs more than
+    /// one — the IDE's `antigravity` / `antigravity-ide` servers, and,
+    /// while a CLI session is live, an `antigravity-cli` one. Each owns a
+    /// different set of conversations (a cascade fetched from the wrong
+    /// server returns "trajectory not found"), so callers must try a
+    /// cascade against every endpoint. Throws `QuotaError.noCredential`
+    /// when none is running.
     func connectedEndpoints() async throws -> [Endpoint] {
-        let process = try await detectProcessInfo()
-        let ports = try await listeningPorts(pid: process.pid)
-        return endpointCandidates(for: process, ports: ports)
+        let infos = try await detectAllProcessInfos()
+        var endpoints: [Endpoint] = []
+        for info in infos {
+            let ports = (try? await listeningPorts(pid: info.pid)) ?? []
+            endpoints.append(contentsOf: endpointCandidates(for: info, ports: ports))
+        }
+        if endpoints.isEmpty {
+            throw QuotaError.parseFailure("Antigravity is running but no listening ports found yet — wait a few seconds and retry.")
+        }
+        return endpoints
     }
 
     // MARK: - Process detection
 
-    func detectProcessInfo() async throws -> ProcessInfo {
+    func detectAllProcessInfos() async throws -> [ProcessInfo] {
         let result: ProcessRunner.Result
         do {
             result = try await ProcessRunner.run(
@@ -70,25 +83,45 @@ struct AntigravityLanguageServerClient {
         } catch {
             throw QuotaError.unknown("Could not list processes: \(error.localizedDescription)")
         }
+        let infos = Self.parseProcessInfos(psOutput: result.stdout)
+        if infos.isEmpty {
+            if Self.sawAntigravityProcess(psOutput: result.stdout) {
+                throw QuotaError.parseFailure("Antigravity is running but its CSRF token is missing — restart Antigravity and retry.")
+            }
+            throw QuotaError.noCredential
+        }
+        return infos
+    }
 
-        var foundAntigravity = false
-        for line in result.stdout.split(separator: "\n") {
+    /// Pure parse of `ps -ax -o pid=,command=` output into one
+    /// `ProcessInfo` per AntiGravity language server that exposes a CSRF
+    /// token. Split out so multi-server detection is unit-testable
+    /// without shelling out.
+    static func parseProcessInfos(psOutput: String) -> [ProcessInfo] {
+        var infos: [ProcessInfo] = []
+        for line in psOutput.split(separator: "\n") {
             guard let match = AntigravityProcessLine.parse(String(line)) else { continue }
-            let lower = match.command.lowercased()
-            guard Self.matchesAntigravityProcess(lowercasedCommand: lower) else { continue }
-            foundAntigravity = true
+            guard matchesAntigravityProcess(lowercasedCommand: match.command.lowercased()) else { continue }
             guard let csrf = extractFlag("--csrf_token", from: match.command) else { continue }
-            return ProcessInfo(
+            infos.append(ProcessInfo(
                 pid: match.pid,
                 csrfToken: csrf,
                 extensionPort: extractFlag("--extension_server_port", from: match.command).flatMap { Int($0) },
                 extensionCSRFToken: extractFlag("--extension_server_csrf_token", from: match.command)
-            )
+            ))
         }
-        if foundAntigravity {
-            throw QuotaError.parseFailure("Antigravity is running but its CSRF token is missing — restart Antigravity and retry.")
+        return infos
+    }
+
+    /// Whether any AntiGravity language server is present at all (even
+    /// without a readable CSRF token) — drives the "running but no CSRF"
+    /// vs "not running" error distinction.
+    static func sawAntigravityProcess(psOutput: String) -> Bool {
+        for line in psOutput.split(separator: "\n") {
+            guard let match = AntigravityProcessLine.parse(String(line)) else { continue }
+            if matchesAntigravityProcess(lowercasedCommand: match.command.lowercased()) { return true }
         }
-        throw QuotaError.noCredential
+        return false
     }
 
     /// Whether a process-list line looks like an AntiGravity language
@@ -107,7 +140,7 @@ struct AntigravityLanguageServerClient {
         return false
     }
 
-    private func extractFlag(_ flag: String, from command: String) -> String? {
+    private static func extractFlag(_ flag: String, from command: String) -> String? {
         let pattern = "\(NSRegularExpression.escapedPattern(for: flag))[=\\s]+([^\\s]+)"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
             return nil

@@ -335,4 +335,52 @@ final class AntigravityCostScannerTests: XCTestCase {
         ))
         XCTAssertEqual(cost, 3.0, accuracy: 1e-9)
     }
+
+    func testResolvesPlaceholderModelNameAndReprices() async throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        // Seed the label store: placeholder id -> real Flash label.
+        AntigravityModelLabelStore(labels: ["MODEL_PLACEHOLDER_M132": "Gemini 3.5 Flash (High)"])
+            .save(homeDirectory: home.path)
+
+        let convDir = home
+            .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let base = UInt64(now.addingTimeInterval(-600).timeIntervalSince1970)
+        try writeAntigravityDB(at: convDir.appendingPathComponent("conv.db"), turns: [
+            TurnSpec(idx: 0, blob: encodeTurnBlob(
+                seconds: base, input: 1_000_000, output: 0, cumulativeCache: 0,
+                model: "MODEL_PLACEHOLDER_M132"
+            ))
+        ])
+
+        let snapshot = await CostUsageScanner.scan(tool: .antigravity, homeDirectory: home.path, now: now)
+        let snap = try XCTUnwrap(snapshot)
+        // Name resolved to the real label, not the raw placeholder.
+        XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["Gemini 3.5 Flash (High)"])
+        // Re-priced at the Flash rate — strictly cheaper than the
+        // antigravity-default ($3 / Mtok) the bare placeholder would hit.
+        XCTAssertGreaterThan(snap.allTimeCostUSD, 0)
+        XCTAssertLessThan(snap.allTimeCostUSD, 3.0)
+    }
+
+    func testKeepsRawModelIdWhenNoLabelKnown() async throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        let convDir = home
+            .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let base = UInt64(now.addingTimeInterval(-600).timeIntervalSince1970)
+        try writeAntigravityDB(at: convDir.appendingPathComponent("conv.db"), turns: [
+            TurnSpec(idx: 0, blob: encodeTurnBlob(
+                seconds: base, input: 1_000, output: 100, cumulativeCache: 0,
+                model: "MODEL_PLACEHOLDER_M999"
+            ))
+        ])
+        let snapshot = await CostUsageScanner.scan(tool: .antigravity, homeDirectory: home.path, now: now)
+        let snap = try XCTUnwrap(snapshot)
+        XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["MODEL_PLACEHOLDER_M999"])
+    }
 }

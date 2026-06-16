@@ -306,4 +306,33 @@ final class AntigravityParserTests: XCTestCase {
             )
         )
     }
+
+    // MARK: - Multi-server process parsing
+
+    func testParseProcessInfosFindsEveryAntigravityServer() {
+        let ps = """
+        83055 /Applications/Antigravity.app/Contents/Resources/bin/language_server --app_data_dir antigravity --csrf_token AAA --extension_server_port 1234 --extension_server_csrf_token EXT
+        83474 /Applications/Antigravity IDE.app/Contents/Resources/app/extensions/antigravity/bin/language_server_macos_arm --app_data_dir antigravity-ide --csrf_token BBB
+        99999 /Users/example/.local/bin/agy-language_server --app_data_dir antigravity-cli --csrf_token CCC
+        42 /usr/bin/some_other_language_server --not-antigravity
+        7 /usr/bin/unrelated
+        """
+        let infos = AntigravityLanguageServerClient.parseProcessInfos(psOutput: ps)
+        XCTAssertEqual(infos.count, 3)
+        XCTAssertEqual(Set(infos.map(\.csrfToken)), ["AAA", "BBB", "CCC"])
+        XCTAssertEqual(Set(infos.map(\.pid)), [83055, 83474, 99999])
+        let hub = infos.first { $0.pid == 83055 }
+        XCTAssertEqual(hub?.extensionPort, 1234)
+        XCTAssertEqual(hub?.extensionCSRFToken, "EXT")
+        XCTAssertTrue(AntigravityLanguageServerClient.sawAntigravityProcess(psOutput: ps))
+    }
+
+    func testParseProcessInfosEmptyWhenNoAntigravityServer() {
+        let ps = """
+        1 /usr/bin/foo
+        2 /usr/bin/language_server --app_data_dir somethingelse --csrf_token X
+        """
+        XCTAssertTrue(AntigravityLanguageServerClient.parseProcessInfos(psOutput: ps).isEmpty)
+        XCTAssertFalse(AntigravityLanguageServerClient.sawAntigravityProcess(psOutput: ps))
+    }
 }
