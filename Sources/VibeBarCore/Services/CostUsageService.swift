@@ -21,6 +21,12 @@ public final class CostUsageService: ObservableObject {
         else { extrasByTool.removeValue(forKey: tool) }
     }
 
+    /// Hard per-provider scan budget. Generous enough never to clip a
+    /// healthy scan (local file walks finish in well under a second; even
+    /// the AntiGravity language-server RPC is normally a few seconds), but
+    /// it bounds a pathological stall so one provider can't wedge the pass.
+    private static let perToolScanTimeoutSeconds: Double = 30
+
     private let homeDirectory: String
     private let mockProvider: () -> Bool
     private let costDataSettingsProvider: () -> CostDataSettings
@@ -106,14 +112,29 @@ public final class CostUsageService: ObservableObject {
             // this hop, `nonisolated async` callees still run inline on the
             // calling actor and can stutter the menu bar UI for hundreds of
             // milliseconds when the user has accumulated many session files.
-            let scanned: CostSnapshot? = await Task.detached(priority: .utility) {
+            //
+            // Bound each scan: a single stalled provider (historically the
+            // AntiGravity language-server probe wedged on `lsof`) must never
+            // hang the loop. A wedge there used to leave `isRefreshing` stuck
+            // forever, freezing cost/usage for ALL providers. On timeout we
+            // keep the tool's last-known snapshot and move on, so the loop
+            // always completes and the refresh self-heals next pass.
+            let outcome = await AsyncTimeout.run(seconds: Self.perToolScanTimeoutSeconds) {
                 await CostUsageScanner.scan(
                     tool: tool,
                     homeDirectory: home,
                     now: now,
                     retentionDays: retentionDays
                 )
-            }.value
+            }
+            let scanned: CostSnapshot?
+            switch outcome {
+            case .completed(let snapshot):
+                scanned = snapshot
+            case .timedOut:
+                if let previous = snapshots[tool] { results[tool] = previous }
+                continue
+            }
             if let scanned {
                 guard !costDataSettingsProvider().privacyModeEnabled else {
                     await eraseLocalCostData()

@@ -28,6 +28,10 @@ public enum ProcessRunner {
         }
     }
 
+    /// Grace given to a child to honor SIGTERM before `run` escalates to
+    /// SIGKILL once the `timeout` has elapsed.
+    private static let killGraceNanoseconds: UInt64 = 500_000_000
+
     /// Run `binary` with `arguments`, capture stdout/stderr, kill
     /// the child if it exceeds `timeout`. Returns even when the
     /// process exits non-zero — adapters decide what to do with the
@@ -62,7 +66,16 @@ public enum ProcessRunner {
 
         let killTask = Task {
             try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            if process.isRunning { process.terminate() }
+            guard process.isRunning else { return }
+            // Ask politely first: a well-behaved child exits on SIGTERM and
+            // closes its pipes, which unblocks the `readPipe` loop below.
+            process.terminate()
+            // If it ignores SIGTERM, escalate to SIGKILL after a short grace
+            // so the kernel force-closes its fds. Without this the read loop
+            // waits for an EOF that never arrives and `run` hangs forever —
+            // exactly how a wedged `lsof` froze the whole cost-refresh loop.
+            try await Task.sleep(nanoseconds: Self.killGraceNanoseconds)
+            if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
         }
 
         let outData = await readPipe(stdout)
