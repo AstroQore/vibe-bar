@@ -65,6 +65,7 @@ public enum ProviderHierarchyCatalog {
     public static let tencentHunyuan   = ProviderHierarchy(vendor: "Tencent",    product: "Hunyuan",     tool: "Hunyuan Coding Plan")
     public static let tencentTokenPlan = ProviderHierarchy(vendor: "Tencent",    product: "Hunyuan",     tool: "Hunyuan Token Plan")
     public static let volcengine       = ProviderHierarchy(vendor: "ByteDance",  product: "Doubao",      tool: "Doubao Coding Plan")
+    public static let volcengineAgentPlan = ProviderHierarchy(vendor: "ByteDance",  product: "Doubao",   tool: "Doubao Agent Plan")
     public static let baiduQianfan     = ProviderHierarchy(vendor: "Baidu",      product: "Qianfan",     tool: "Qianfan Coding Plan")
     public static let openCodeGo       = ProviderHierarchy(vendor: "OpenCode",   product: "OpenCode Go", tool: "OpenCode Go")
     public static let kilo             = ProviderHierarchy(vendor: "Kilo",       product: "Kilo",        tool: "Kilo")

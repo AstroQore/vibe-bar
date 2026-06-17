@@ -26,7 +26,7 @@ public actor ServiceStatusClient {
             return try await fetchGoogleAppsStatus(tool: tool, dayCount: dayCount, now: now)
         case .grok:
             return try await fetchXAIStatus(dayCount: dayCount, now: now)
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
             // upstream callers should already be filtering to primary

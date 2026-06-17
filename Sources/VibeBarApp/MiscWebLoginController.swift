@@ -674,6 +674,26 @@ final class MiscWebLoginRegistry {
                 savedConfirmation: "Doubao cookies saved.",
                 setupHint: "Sign in to Volcengine console (sub-user works), then click Save Cookies."
             )
+        case .volcengineAgentPlan:
+            // Same Volcengine console login as the Coding Plan card; we
+            // just land on the Agent Plan tab and stash the captured jar
+            // under the Agent Plan slot.
+            return MiscWebLoginController.Config(
+                tool: .volcengineAgentPlan,
+                loginURL: URL(string: "https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement?advancedActiveKey=agentPlan")!,
+                cookieDomainSuffixes: ["volcengine.com"],
+                requiredCookieNames: [],  // ship full jar
+                trustedAuthHostSuffixes: [
+                    "volcengine.com",
+                    "volccdn.com",
+                    "zijieapi.com",       // Bytedance internal monitoring CDN
+                    "douyincdn.com",
+                    "bytedance.com"
+                ],
+                windowTitle: "Volcengine Doubao Login",
+                savedConfirmation: "Doubao cookies saved.",
+                setupHint: "Sign in to Volcengine console (sub-user works), then click Save Cookies."
+            )
         case .tencentHunyuan:
             return MiscWebLoginController.Config(
                 tool: .tencentHunyuan,

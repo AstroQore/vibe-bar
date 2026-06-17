@@ -30,7 +30,7 @@ public enum CostUsageScanner {
             return await scanGrok(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
         case .antigravity:
             return await scanAntigravity(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays)
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose token-level cost data through
             // any documented public protocol. The cost-history pipeline
             // is gated by `tool.supportsTokenCost` upstream. Returning
@@ -1240,7 +1240,7 @@ public enum CostUsageScanner {
                 cacheCreationInputTokens: cacheCreation,
                 outputTokens: event.output
             ) ?? 0
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 0
         }
     }

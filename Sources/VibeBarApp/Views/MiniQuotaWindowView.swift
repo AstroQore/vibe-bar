@@ -388,6 +388,7 @@ private func providerAccent(for tool: ToolType) -> Color {
     case .tencentHunyuan:   return Color(red: 0.00, green: 0.49, blue: 0.91)  // tencent blue
     case .tencentTokenPlan: return Color(red: 0.18, green: 0.62, blue: 0.96)  // tencent token blue
     case .volcengine:  return Color(red: 0.92, green: 0.30, blue: 0.30)  // doubao red
+    case .volcengineAgentPlan: return Color(red: 0.96, green: 0.45, blue: 0.22)  // doubao agent amber
     case .baiduQianfan: return Color(red: 0.16, green: 0.40, blue: 0.93)  // baidu blue
     case .openCodeGo:  return Color(red: 0.22, green: 0.66, blue: 0.50)  // green
     case .kilo:        return Color(red: 0.47, green: 0.37, blue: 0.93)  // purple
@@ -417,6 +418,7 @@ private func providerTitle(for tool: ToolType) -> String {
     case .tencentHunyuan:   return "HUNYUAN"
     case .tencentTokenPlan: return "HUNYUAN TP"
     case .volcengine:  return "DOUBAO"
+    case .volcengineAgentPlan: return "DOUBAO AP"
     case .baiduQianfan: return "QIANFAN"
     case .openCodeGo:  return "OPENCODE"
     case .kilo:        return "KILO"
