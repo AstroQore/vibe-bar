@@ -7,7 +7,7 @@ public enum ProviderPlanDisplay {
             return codexDisplayName(rawPlan)
         case .claude:
             return claudeDisplayName(rawPlan)
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers feed `plan` straight through. Each adapter
             // is responsible for normalizing the raw API response
             // (e.g. `Pro Coding` → `Pro`) before it reaches this map.

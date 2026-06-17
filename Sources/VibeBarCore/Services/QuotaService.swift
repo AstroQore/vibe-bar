@@ -66,6 +66,7 @@ public final class QuotaService: ObservableObject {
                 .tencentHunyuan: TencentHunyuanQuotaAdapter(),
                 .tencentTokenPlan: TencentTokenPlanQuotaAdapter(),
                 .volcengine: VolcengineQuotaAdapter(),
+                .volcengineAgentPlan: VolcengineAgentPlanQuotaAdapter(),
                 .baiduQianfan: BaiduQianfanQuotaAdapter(),
                 .openCodeGo: OpenCodeGoQuotaAdapter(),
                 .kilo: KiloQuotaAdapter(),

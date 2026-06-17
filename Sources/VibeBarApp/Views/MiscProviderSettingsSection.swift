@@ -236,6 +236,20 @@ struct MiscProviderSettingsSection: View {
                     helpText: "Volcengine console session cookies expire after a few hours. When the card flips to \"Needs re-login\", click here to refresh."
                 )
             }
+        case .volcengineAgentPlan:
+            VStack(alignment: .leading, spacing: 4) {
+                CookieSourceControls(
+                    tool: .volcengineAgentPlan,
+                    instanceID: instanceID,
+                    spec: VolcengineAgentPlanQuotaAdapter.cookieSpec,
+                    manualPrompt: "Paste console.volcengine.com Cookie header (csrfToken=…; AccountID=…; …)"
+                )
+                MiscWebLoginRow(
+                    tool: .volcengineAgentPlan,
+                    instanceID: instanceID,
+                    helpText: "Same Volcengine console login as the Coding Plan card. With browser auto-import on, signing in once covers both cards."
+                )
+            }
         case .baiduQianfan:
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(
