@@ -283,7 +283,11 @@ enum MiniMaxResponseParser {
         var buckets: [QuotaBucket] = []
         var addedWeekly = false
         for (index, row) in rows.enumerated() {
-            guard (row.currentIntervalTotalCount ?? 0) > 0 else { continue }
+            // A row counts if it has either a count-based interval quota
+            // or the newer percentage-based one. The old `> 0` gate alone
+            // dropped TokenPlanMax's percentage-metered "general" model
+            // (whose count fields are zeroed) — the core of this bug.
+            guard (row.currentIntervalTotalCount ?? 0) > 0 || row.currentIntervalRemainingPercent != nil else { continue }
             buckets.append(modelBucket(from: row, index: index, now: now))
             if !addedWeekly, let weekly = weeklyBucket(from: row, now: now) {
                 buckets.append(weekly)
@@ -295,44 +299,74 @@ enum MiniMaxResponseParser {
 
     private static func modelBucket(from row: MiniMaxModelRemains, index: Int = 0, now: Date) -> QuotaBucket {
         let total = row.currentIntervalTotalCount ?? 0
-        let used = max(0, row.currentIntervalUsageCount ?? 0)
-        let remaining = max(0, total - used)
         let windowLabel = windowLabel(startTime: row.startTime, endTime: row.endTime) ?? "5 hours"
         let title = serviceTitle(displayName: row.displayName, modelName: row.modelName) ?? "5 Hours"
+        let usage = usage(total: total, usageCount: row.currentIntervalUsageCount, remainingPercent: row.currentIntervalRemainingPercent, windowLabel: windowLabel)
         return quotaBucket(
             id: "minimax.coding.\(index).\(slug(row.modelName ?? title))",
             title: title,
             shortLabel: "5h",
-            used: used,
+            used: usage.used,
             total: total,
             percent: nil,
+            usedPercentOverride: usage.usedPercent,
             startTime: row.startTime,
             endTime: row.endTime,
             remainsTime: row.remainsTime,
             windowSeconds: 5 * 3600,
             now: now,
-            groupTitle: "\(remaining)/\(total) · \(windowLabel)"
+            groupTitle: usage.groupTitle
         )
     }
 
-    private static func weeklyBucket(from row: MiniMaxModelRemains, now: Date) -> QuotaBucket? {
-        guard (row.currentWeeklyTotalCount ?? 0) > 0 else { return nil }
-        let total = row.currentWeeklyTotalCount ?? 0
-        let used = max(0, row.currentWeeklyUsageCount ?? 0)
+    /// Resolve a window's usage. The newer TokenPlanMax shape carries the
+    /// real figure in `*_remaining_percent` (counts are zeroed for the
+    /// percentage-metered "general" model, and for count-metered bonus
+    /// rows the raw `usage_count` is *not* the used count) — so when a
+    /// remaining-percent is present it is authoritative: used% = 100 - it,
+    /// and any count display is derived from it. Older count-only shapes
+    /// fall back to `usage_count` as the used count.
+    private static func usage(
+        total: Int,
+        usageCount: Int?,
+        remainingPercent: Int?,
+        windowLabel: String
+    ) -> (used: Int, usedPercent: Double?, groupTitle: String?) {
+        if let remainingPercent {
+            let remainingFraction = max(0, min(100, Double(remainingPercent))) / 100
+            let usedPercent = max(0, min(100, 100 - Double(remainingPercent)))
+            if total > 0 {
+                let remainingCount = Int((Double(total) * remainingFraction).rounded())
+                let used = max(0, total - remainingCount)
+                return (used, usedPercent, "\(remainingCount)/\(total) · \(windowLabel)")
+            }
+            return (0, usedPercent, "\(remainingPercent)% left · \(windowLabel)")
+        }
+        let used = max(0, usageCount ?? 0)
         let remaining = max(0, total - used)
+        return (used, nil, "\(remaining)/\(total) · \(windowLabel)")
+    }
+
+    private static func weeklyBucket(from row: MiniMaxModelRemains, now: Date) -> QuotaBucket? {
+        let total = row.currentWeeklyTotalCount ?? 0
+        // Newer plans zero the weekly count and report only a percentage,
+        // so a present `current_weekly_remaining_percent` also qualifies.
+        guard total > 0 || row.currentWeeklyRemainingPercent != nil else { return nil }
+        let usage = usage(total: total, usageCount: row.currentWeeklyUsageCount, remainingPercent: row.currentWeeklyRemainingPercent, windowLabel: "weekly")
         return quotaBucket(
             id: "minimax.weekly",
             title: "Weekly",
             shortLabel: "Wk",
-            used: used,
+            used: usage.used,
             total: total,
             percent: nil,
+            usedPercentOverride: usage.usedPercent,
             startTime: row.weeklyStartTime,
             endTime: row.weeklyEndTime,
             remainsTime: row.weeklyRemainsTime,
             windowSeconds: 7 * 86_400,
             now: now,
-            groupTitle: "\(remaining)/\(total) · weekly"
+            groupTitle: usage.groupTitle
         )
     }
 
@@ -367,6 +401,7 @@ enum MiniMaxResponseParser {
         used: Int,
         total: Int,
         percent: Double?,
+        usedPercentOverride: Double? = nil,
         startTime: Int?,
         endTime: Int?,
         remainsTime: Int?,
@@ -375,7 +410,11 @@ enum MiniMaxResponseParser {
         groupTitle: String? = nil
     ) -> QuotaBucket {
         let usedPercent: Double
-        if let percent {
+        if let usedPercentOverride {
+            // Authoritative 0–100 value (e.g. derived from the API's own
+            // `*_remaining_percent`); skip the count / fraction heuristics.
+            usedPercent = usedPercentOverride
+        } else if let percent {
             usedPercent = percent <= 1 ? percent * 100 : percent
         } else if total > 0 {
             usedPercent = Double(max(0, used)) / Double(total) * 100
@@ -686,6 +725,10 @@ private struct MiniMaxModelRemains: Decodable {
     let weeklyStartTime: Int?
     let weeklyEndTime: Int?
     let weeklyRemainsTime: Int?
+    /// TokenPlanMax-era fields: the percentage of the window's allowance
+    /// still available (0–100). Authoritative when present.
+    let currentIntervalRemainingPercent: Int?
+    let currentWeeklyRemainingPercent: Int?
 
     enum CodingKeys: String, CodingKey {
         case modelName = "model_name"
@@ -705,6 +748,8 @@ private struct MiniMaxModelRemains: Decodable {
         case weeklyStartTime = "weekly_start_time"
         case weeklyEndTime = "weekly_end_time"
         case weeklyRemainsTime = "weekly_remains_time"
+        case currentIntervalRemainingPercent = "current_interval_remaining_percent"
+        case currentWeeklyRemainingPercent = "current_weekly_remaining_percent"
     }
 
     init(from decoder: Decoder) throws {
@@ -729,6 +774,8 @@ private struct MiniMaxModelRemains: Decodable {
         weeklyStartTime = MiniMaxQuotaDecoding.int(c, forKey: .weeklyStartTime)
         weeklyEndTime = MiniMaxQuotaDecoding.int(c, forKey: .weeklyEndTime)
         weeklyRemainsTime = MiniMaxQuotaDecoding.int(c, forKey: .weeklyRemainsTime)
+        currentIntervalRemainingPercent = MiniMaxQuotaDecoding.int(c, forKey: .currentIntervalRemainingPercent)
+        currentWeeklyRemainingPercent = MiniMaxQuotaDecoding.int(c, forKey: .currentWeeklyRemainingPercent)
     }
 }
 
