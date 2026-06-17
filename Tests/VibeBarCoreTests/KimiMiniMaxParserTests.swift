@@ -200,6 +200,64 @@ final class MiniMaxParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
     }
 
+    /// New TokenPlanMax shape (captured live from coding_plan/remains).
+    /// The primary "general" model reports usage via
+    /// `current_*_remaining_percent`, with the legacy `*_count` fields
+    /// zeroed. A bonus "video" row keeps count fields but its real usage
+    /// also lives in `remaining_percent` (100 = nothing used) — the raw
+    /// `usage_count` is NOT "used" here. The old parser skipped the
+    /// zero-count general row and rendered the video row at 100%.
+    func testNewTokenPlanMaxRemainingPercentShape() throws {
+        let json = """
+        {
+          "model_remains": [
+            {
+              "start_time": 1781697600000, "end_time": 1781712000000, "remains_time": 6989144,
+              "current_interval_total_count": 0, "current_interval_usage_count": 0,
+              "model_name": "general",
+              "current_weekly_total_count": 0, "current_weekly_usage_count": 0,
+              "weekly_start_time": 1781452800000, "weekly_end_time": 1782057600000, "weekly_remains_time": 352589144,
+              "current_interval_status": 1, "current_interval_remaining_percent": 88,
+              "current_weekly_status": 1, "current_weekly_remaining_percent": 82,
+              "weekly_boost_permille": 1500
+            },
+            {
+              "start_time": 1781625600000, "end_time": 1781712000000, "remains_time": 6989144,
+              "current_interval_total_count": 3, "current_interval_usage_count": 3,
+              "model_name": "video",
+              "current_weekly_total_count": 21, "current_weekly_usage_count": 21,
+              "weekly_start_time": 1781452800000, "weekly_end_time": 1782057600000,
+              "current_interval_status": 1, "current_interval_remaining_percent": 100,
+              "current_weekly_status": 1, "current_weekly_remaining_percent": 100
+            }
+          ],
+          "base_resp": {"status_code": 0, "status_msg": "success"}
+        }
+        """
+        let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
+
+        // The general row must NOT be skipped, and nothing should render
+        // as ~100% (the old bug surfaced the video count row at 100%).
+        XCTAssertFalse(
+            snap.buckets.contains { $0.usedPercent >= 99 },
+            "no window is near-exhausted; got \(snap.buckets.map(\.usedPercent))"
+        )
+
+        // Weekly = 100 - current_weekly_remaining_percent (82) = 18%.
+        let weekly = snap.buckets.first { $0.rawWindowSeconds == 7 * 86_400 }
+        XCTAssertNotNil(weekly, "weekly bucket should come from the general row")
+        XCTAssertEqual(weekly?.usedPercent ?? -1, 18, accuracy: 0.5)
+
+        // Two 5-hour buckets: general text (100-88 = 12%) and video bonus (0%).
+        let fiveHourUsed = snap.buckets
+            .filter { $0.rawWindowSeconds == 5 * 3600 }
+            .map(\.usedPercent)
+            .sorted()
+        XCTAssertEqual(fiveHourUsed.count, 2)
+        XCTAssertEqual(fiveHourUsed.first ?? -1, 0, accuracy: 0.5)   // video: 100% remaining
+        XCTAssertEqual(fiveHourUsed.last ?? -1, 12, accuracy: 0.5)   // general text: 12% used
+    }
+
     func testPrefersChatModelRemainsOverMediaRows() throws {
         let json = """
         {
