@@ -26,26 +26,35 @@ public actor CostHistoryStore {
     private struct Storage: Codable {
         var schemaVersion: Int
         var calculationVersion: Int?
+        /// One-time data corrections already applied (see
+        /// `applyHistoryCorrectionsIfNeeded`). Distinct from
+        /// `calculationVersion`: those corrections fix bad *stored* values a
+        /// re-scan can't lower under max-merge, without wiping every tool the
+        /// way a `calculationVersion` bump does. `nil` on pre-correction files.
+        var historyCorrectionVersion: Int?
         var entries: [Entry]
 
         init(
             schemaVersion: Int = CostHistoryStore.storageSchemaVersion,
             calculationVersion: Int? = CostUsagePricing.calculationVersion,
+            historyCorrectionVersion: Int? = CostHistoryStore.currentHistoryCorrectionVersion,
             entries: [Entry]
         ) {
             self.schemaVersion = schemaVersion
             self.calculationVersion = calculationVersion
+            self.historyCorrectionVersion = historyCorrectionVersion
             self.entries = entries
         }
 
         private enum CodingKeys: String, CodingKey {
-            case schemaVersion, calculationVersion, entries
+            case schemaVersion, calculationVersion, historyCorrectionVersion, entries
         }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
             self.calculationVersion = try c.decodeIfPresent(Int.self, forKey: .calculationVersion)
+            self.historyCorrectionVersion = try c.decodeIfPresent(Int.self, forKey: .historyCorrectionVersion)
             self.entries = try c.decode([Entry].self, forKey: .entries)
         }
     }
@@ -74,6 +83,10 @@ public actor CostHistoryStore {
     /// enough that a typical refresh round writes the file at most once.
     private static let saveThrottleInterval: TimeInterval = 30
     private static let storageSchemaVersion = 2
+    /// Bumped to run a new one-time history correction on the next load.
+    /// v1: drop legacy AntiGravity entries inflated by the cumulative
+    /// cache-read over-count, so a corrected re-scan rebuilds them clean.
+    private static let currentHistoryCorrectionVersion = 1
 
     init(fileURL: URL = CostHistoryStore.defaultFileURL()) {
         self.fileURL = fileURL
@@ -290,8 +303,31 @@ public actor CostHistoryStore {
         if migrateLegacyStorageIfNeeded(&storage) {
             persist(storage)
         }
+        if applyHistoryCorrectionsIfNeeded(&storage) {
+            persist(storage)
+        }
         cachedStorage = storage
         return storage
+    }
+
+    /// Run any pending one-time history corrections. Unlike a
+    /// `calculationVersion` bump (which wipes every tool's history so
+    /// nothing recomputable from rotated-away logs survives), this targets
+    /// only the specific bad data a correction addresses.
+    private func applyHistoryCorrectionsIfNeeded(_ storage: inout Storage) -> Bool {
+        guard storage.historyCorrectionVersion != Self.currentHistoryCorrectionVersion else {
+            return false
+        }
+        // v1: the AntiGravity `.db` decoder used to re-sum the cumulative
+        // cache-read counter per turn, so historical antigravity cost +
+        // tokens were inflated and max-merge pinned the bad peak forever.
+        // Drop only the antigravity entries; the corrected scanner rebuilds
+        // them from the persistent `.db`/`.pb` conversations on the next
+        // scan. Other tools' history is untouched.
+        let antigravityKey = ToolType.antigravity.rawValue
+        storage.entries.removeAll { $0.tool == antigravityKey }
+        storage.historyCorrectionVersion = Self.currentHistoryCorrectionVersion
+        return true
     }
 
     private func save(_ storage: Storage) {
