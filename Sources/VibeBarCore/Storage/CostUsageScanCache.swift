@@ -150,7 +150,10 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// v3 adds `ParsedEvent.serviceTier` (Claude fast-tier billing) and
     /// fast-multiplier cost semantics; bumping forces a one-time
     /// re-parse so historical events pick up the new field.
-    public static let currentSchemaVersion = 3
+    /// v4 fixes the AntiGravity `.db` decoder re-summing the cumulative
+    /// cache-read counter per turn; bumping forces a re-parse so cached
+    /// events drop the inflated cache tokens.
+    public static let currentSchemaVersion = 4
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)

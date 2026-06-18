@@ -1058,22 +1058,29 @@ public enum CostUsageScanner {
         parsed.reserveCapacity(turns.count)
         var previousCacheCumulative = 0
         for turn in turns {
-            let cacheCreation = max(0, turn.cumulativeCacheReadTokens - previousCacheCumulative)
-            let cacheRead = max(0, previousCacheCumulative)
+            // `cumulativeCacheReadTokens` is a running total across the
+            // conversation, so this turn's cache read is its increment.
+            // Storing the running total (or the prior cumulative) per turn
+            // re-counts every earlier turn's reads, ballooning a long
+            // conversation's tokens and cost quadratically. The `.db`
+            // exposes cache *reads* only — there's no cache-creation field —
+            // so creation stays nil. Deltas telescope back to the final
+            // cumulative, i.e. the conversation's true cache-read total.
+            let cacheReadThisTurn = max(0, turn.cumulativeCacheReadTokens - previousCacheCumulative)
             previousCacheCumulative = turn.cumulativeCacheReadTokens
             let input = turn.inputTokens
             // Reasoning + tool tokens are billed at output rates by
             // Claude / Gemini, so fold them into output here.
             let output = turn.outputTokens + turn.thoughtsTokens + turn.toolTokens
-            guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { continue }
+            guard input > 0 || output > 0 || cacheReadThisTurn > 0 else { continue }
             let model = normalizedNonEmpty(turn.model) ?? "antigravity-default"
             let event = CostUsageScanCache.ParsedEvent(
                 date: turn.date,
                 model: model,
                 input: input,
                 output: output,
-                cache: cacheRead + cacheCreation,
-                cacheCreation: cacheCreation,
+                cache: cacheReadThisTurn,
+                cacheCreation: nil,
                 sessionId: sessionId,
                 messageId: turn.requestId
             )

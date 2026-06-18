@@ -228,16 +228,49 @@ final class AntigravityCostScannerTests: XCTestCase {
         )
         let snap = try XCTUnwrap(snapshot)
         XCTAssertEqual(snap.jsonlFilesFound, 1)
-        // Per-turn token totals fed to aggregator:
-        //   idx 0: input 16738, output 780+705+75 = 1560, cache 0
-        //   idx 1: input  2056, output 245+158+87 =  490, cache 16284 (15284 creation + 0 read)
-        //   idx 2: input  9203, output 250+175+75 =  500, cache 16306 (   22 creation + 16284 read)
-        // Total tokens (input+output+cache): 16738+1560 + 2056+490+16284 + 9203+500+16306 = 63137
-        XCTAssertEqual(snap.allTimeTokens, 63_137)
+        // Per-turn token totals fed to aggregator. `cumulativeCacheReadTokens`
+        // is a running total, so per-turn cache read is its increment:
+        //   idx 0: input 16738, output 780+705+75 = 1560, cache 0     (cum 0)
+        //   idx 1: input  2056, output 245+158+87 =  490, cache 16284 (cum 16284, +16284)
+        //   idx 2: input  9203, output 250+175+75 =  500, cache 22    (cum 16306, +22)
+        // Cache deltas sum to the final cumulative (16306) — not the
+        // re-summed running totals (0+16284+16306) that double-counted it.
+        // Total tokens (input+output+cache): 18298 + 18830 + 9725 = 46853
+        XCTAssertEqual(snap.allTimeTokens, 46_853)
         // All turns are within the last 7 days from `now`.
-        XCTAssertEqual(snap.last7DaysTokens, 63_137)
+        XCTAssertEqual(snap.last7DaysTokens, 46_853)
         XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["gemini-3-flash-a"])
         XCTAssertGreaterThan(snap.allTimeCostUSD, 0)
+    }
+
+    func testCumulativeCacheReadCountedOnceNotResummedPerTurn() async throws {
+        // `cumulativeCacheReadTokens` is a running total. The per-turn cache
+        // read is its increment, so a day's cache must equal the final
+        // cumulative — not the sum of every turn's running total, which grows
+        // quadratically and once exploded long conversations to hundreds of
+        // millions of phantom tokens.
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        let convDir = home
+            .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let base = UInt64(now.addingTimeInterval(-600).timeIntervalSince1970)
+        try writeAntigravityDB(at: convDir.appendingPathComponent("long.db"), turns: [
+            TurnSpec(idx: 0, blob: encodeTurnBlob(seconds: base + 0, input: 1, output: 0, cumulativeCache: 100)),
+            TurnSpec(idx: 1, blob: encodeTurnBlob(seconds: base + 1, input: 1, output: 0, cumulativeCache: 200)),
+            TurnSpec(idx: 2, blob: encodeTurnBlob(seconds: base + 2, input: 1, output: 0, cumulativeCache: 300)),
+            TurnSpec(idx: 3, blob: encodeTurnBlob(seconds: base + 3, input: 1, output: 0, cumulativeCache: 400)),
+            TurnSpec(idx: 4, blob: encodeTurnBlob(seconds: base + 4, input: 1, output: 0, cumulativeCache: 500))
+        ])
+
+        let snapshot = await CostUsageScanner.scan(
+            tool: .antigravity, homeDirectory: home.path, now: now
+        )
+        let snap = try XCTUnwrap(snapshot)
+        // input 5×1 = 5; cache = final cumulative 500, NOT 100+200+300+400+500 = 1500.
+        XCTAssertEqual(snap.allTimeTokens, 505)
     }
 
     func testScannerIgnoresUnrelatedExtensions() async throws {

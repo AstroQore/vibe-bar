@@ -94,6 +94,38 @@ final class CostHistoryStoreTests: XCTestCase {
         XCTAssertEqual(history.days.first?.totalTokens, 700)
     }
 
+    func testOneTimeCorrectionDropsLegacyAntigravityHistoryButKeepsOtherTools() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryAntigravityCorrection-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        // A pre-correction file (no `historyCorrectionVersion`) carrying the
+        // inflated antigravity day that max-merge pinned, alongside a codex
+        // day. `calculationVersion` matches the current value so the
+        // calc-version wipe doesn't fire and confound the assertion.
+        let url = directory.appendingPathComponent("cost_history.json")
+        let json = """
+        {"schemaVersion":2,"calculationVersion":\(CostUsagePricing.calculationVersion),"entries":[\
+        {"tool":"antigravity","date":"2026-05-28","costUSD":45.36,"totalTokens":395000000},\
+        {"tool":"codex","date":"2026-05-28","costUSD":1.5,"totalTokens":1000}]}
+        """
+        try json.write(to: url, atomically: true, encoding: .utf8)
+
+        let store = CostHistoryStore(fileURL: url)
+        let antigravity = await store.history(
+            for: .antigravity, days: nil, retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        let codex = await store.history(
+            for: .codex, days: nil, retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        XCTAssertTrue(antigravity.days.isEmpty, "stuck antigravity history should be cleared once")
+        XCTAssertEqual(codex.days.count, 1, "other tools' history must be preserved")
+        XCTAssertEqual(codex.days.first?.totalTokens, 1000)
+    }
+
     func testRetentionPrunesOldHistory() async throws {
         let fileManager = FileManager.default
         let directory = fileManager.temporaryDirectory
