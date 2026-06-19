@@ -21,11 +21,16 @@ public final class CostUsageService: ObservableObject {
         else { extrasByTool.removeValue(forKey: tool) }
     }
 
-    /// Hard per-provider scan budget. Generous enough never to clip a
-    /// healthy scan (local file walks finish in well under a second; even
-    /// the AntiGravity language-server RPC is normally a few seconds), but
-    /// it bounds a pathological stall so one provider can't wedge the pass.
-    private static let perToolScanTimeoutSeconds: Double = 30
+    /// Hard per-provider scan budget — a backstop against a stalled scan
+    /// wedging the whole pass, NOT a performance cap. It must clear the
+    /// slowest *legitimate* scan, which is a one-time full re-parse of a
+    /// large local history after a scan-cache schema bump: a multi-GB
+    /// `~/.codex/sessions` tree can take a few minutes cold (warm scans
+    /// are sub-second). 30s clipped that, so codex silently never updated
+    /// while every smaller provider did. Genuine subprocess hangs (the
+    /// AntiGravity `lsof`/RPC probe) are bounded separately by
+    /// `ProcessRunner`, so this can be generous without risking a freeze.
+    private static let perToolScanTimeoutSeconds: Double = 300
 
     private let homeDirectory: String
     private let mockProvider: () -> Bool
