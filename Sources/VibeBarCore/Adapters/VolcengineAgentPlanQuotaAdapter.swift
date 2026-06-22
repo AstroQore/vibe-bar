@@ -42,6 +42,7 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
 
     private let session: URLSession
     private let now: @Sendable () -> Date
+    private let environment: [String: String]
 
     public static let cookieSpec = MiscCookieResolver.Spec(
         tool: .volcengineAgentPlan,
@@ -58,17 +59,55 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
 
     public init(
         session: URLSession = .shared,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.session = session
         self.now = now
+        self.environment = environment
+    }
+
+    /// AK/SK pair for the signed-OpenAPI path — an alternative to the
+    /// console cookie jar.
+    struct APICredentials {
+        let accessKeyID: String
+        let secretAccessKey: String
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let resolutions = MiscCookieResolver.resolveAll(for: VolcengineAgentPlanQuotaAdapter.cookieSpec, account: account)
-        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
-
+        let instanceID = AccountStore.miscInstanceID(
+            fromAccountID: account.id, fallbackTool: .volcengineAgentPlan
+        )
+        let settings = MiscProviderSettings.current(for: .volcengineAgentPlan, instanceID: instanceID)
         let queriedAt = now()
+
+        let credentials = Self.resolveCredentials(environment: environment, instanceID: instanceID)
+        let resolutions = MiscCookieResolver.resolveAll(
+            for: VolcengineAgentPlanQuotaAdapter.cookieSpec, account: account
+        )
+
+        // Path 1: signed OpenAPI with the user's AK/SK (preferred when
+        // configured). The official `GetAFPUsage` returns the same
+        // `Result` block as the console BFF, so the parser is shared.
+        // Fall through to the cookie path only on auth-style failures.
+        if settings.allowsAPIOrOAuthAccess, let credentials {
+            do {
+                return try await fetchViaSignature(
+                    credentials: credentials, account: account, queriedAt: queriedAt
+                )
+            } catch let error as QuotaError {
+                switch error {
+                case .needsLogin, .noCredential:
+                    if resolutions.isEmpty { throw error }
+                    // else: fall through to the cookie path below.
+                default:
+                    throw error
+                }
+            }
+        }
+
+        // Path 2: console cookies (the original behaviour).
+        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
         let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
             try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
         }
@@ -78,6 +117,120 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
             results: results,
             queriedAt: queriedAt
         )
+    }
+
+    /// Keychain AK/SK (preferred), falling back to `VOLC_ACCESSKEY` /
+    /// `VOLC_SECRETKEY` (or the `VOLCENGINE_ACCESS_KEY` / `_SECRET_KEY`
+    /// aliases) in the environment.
+    static func resolveCredentials(
+        environment: [String: String], instanceID: String
+    ) -> APICredentials? {
+        let ak = MiscCredentialStore.readString(
+            tool: .volcengineAgentPlan, kind: .accessKeyID, instanceID: instanceID
+        )
+        let sk = MiscCredentialStore.readString(
+            tool: .volcengineAgentPlan, kind: .secretAccessKey, instanceID: instanceID
+        )
+        if let ak, !ak.isEmpty, let sk, !sk.isEmpty {
+            return APICredentials(accessKeyID: ak, secretAccessKey: sk)
+        }
+        return credentialsFromEnvironment(environment)
+    }
+
+    static func credentialsFromEnvironment(_ environment: [String: String]) -> APICredentials? {
+        func value(_ keys: [String]) -> String? {
+            for key in keys {
+                if let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !raw.isEmpty {
+                    return raw
+                }
+            }
+            return nil
+        }
+        guard let ak = value(["VOLC_ACCESSKEY", "VOLCENGINE_ACCESS_KEY"]),
+              let sk = value(["VOLC_SECRETKEY", "VOLCENGINE_SECRET_KEY"]) else {
+            return nil
+        }
+        return APICredentials(accessKeyID: ak, secretAccessKey: sk)
+    }
+
+    private func fetchViaSignature(
+        credentials: APICredentials,
+        account: AccountIdentity,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
+        let data = try await callSignedOpenAPI(credentials: credentials, date: queriedAt)
+        let parsed = try VolcengineAgentPlanResponseParser.parseUsage(data: data)
+        return AccountQuota(
+            accountId: account.id,
+            tool: .volcengineAgentPlan,
+            buckets: parsed.buckets,
+            plan: parsed.planName,
+            email: account.email,
+            queriedAt: queriedAt,
+            error: nil
+        )
+    }
+
+    private func callSignedOpenAPI(credentials: APICredentials, date: Date) async throws -> Data {
+        let action = "GetAFPUsage"
+        let version = "2024-01-01"
+        let body = Data("{}".utf8)
+        let signer = VolcengineSignerV4(
+            accessKeyID: credentials.accessKeyID,
+            secretAccessKey: credentials.secretAccessKey,
+            region: Self.region,
+            service: Self.service
+        )
+        let signed = signer.headers(
+            host: Self.openAPIHost,
+            query: [("Action", action), ("Version", version)],
+            body: body,
+            date: date
+        )
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = Self.openAPIHost
+        components.path = "/"
+        components.queryItems = [
+            URLQueryItem(name: "Action", value: action),
+            URLQueryItem(name: "Version", value: version)
+        ]
+        guard let url = components.url else {
+            throw QuotaError.network("Volcengine Agent Plan: could not build OpenAPI URL")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        for (name, value) in signed {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        request.httpBody = body
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await self.session.data(for: request)
+        } catch {
+            throw QuotaError.network("Volcengine Agent Plan network error: \(error.localizedDescription)")
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw QuotaError.network("Volcengine Agent Plan: invalid response object")
+        }
+        guard http.statusCode == 200 else {
+            if http.statusCode == 401 || http.statusCode == 403 {
+                // A bad/expired AK/SK looks like an auth failure; let the
+                // caller fall back to cookies if any are present.
+                throw QuotaError.needsLogin
+            }
+            if http.statusCode == 429 {
+                throw QuotaError.rateLimited
+            }
+            throw QuotaError.network("Volcengine Agent Plan OpenAPI returned HTTP \(http.statusCode).")
+        }
+        return data
     }
 
     private func fetchOneSlot(
@@ -146,6 +299,12 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
     private static let getAgentPlanAFPUsageURL = URL(string:
         "https://console.volcengine.com/api/top/ark/cn-beijing/2024-01-01/GetAgentPlanAFPUsage"
     )!
+
+    // Signed OpenAPI ("OpenTOP") coordinates — the public twin of the
+    // console BFF above. Service `ark`, region `cn-beijing`.
+    private static let openAPIHost = "ark.cn-beijing.volces.com"
+    private static let region = "cn-beijing"
+    private static let service = "ark"
 }
 
 // MARK: - Response parsing

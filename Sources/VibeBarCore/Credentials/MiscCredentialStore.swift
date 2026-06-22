@@ -21,6 +21,11 @@ public enum MiscCredentialStore {
         case oauthAccessToken
         case oauthRefreshToken
         case oauthExpiry
+        // Volcengine signs its OpenAPI with an AK/SK pair (Signature V4),
+        // not a single bearer token — so it needs two slots. See
+        // `VolcengineSignerV4` and the Volcengine adapters.
+        case accessKeyID
+        case secretAccessKey
     }
 
     public static func keychainAccount(tool: ToolType, kind: Kind) -> String {
