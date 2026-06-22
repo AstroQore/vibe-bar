@@ -156,13 +156,17 @@ public enum ClaudeResponseParser {
 
     private static func routineBucket(from root: [String: Any]) -> QuotaBucket? {
         for key in routineAliases {
-            guard root.keys.contains(key) else { continue }
-            let entry = root[key] as? [String: Any]
-            let utilization = numberValue(entry?["utilization"])
-                ?? numberValue(entry?["used_percent"])
-                ?? 0
-            let resetDate = parseDate(entry?["resets_at"])
-                ?? parseDate(entry?["reset_at"])
+            // Only surface Daily Routines when the alias carries a real
+            // utilization number. A present-but-null key (e.g.
+            // `"seven_day_cowork": null`) must not synthesize a misleading
+            // "0% used" routines section — Claude dropped Daily Routines from
+            // the usage payload, so absence means "don't show it".
+            guard let entry = root[key] as? [String: Any] else { continue }
+            guard let utilization = numberValue(entry["utilization"])
+                ?? numberValue(entry["used_percent"])
+            else { continue }
+            let resetDate = parseDate(entry["resets_at"])
+                ?? parseDate(entry["reset_at"])
             return QuotaBucket(
                 id: "daily_routines",
                 title: "Weekly",

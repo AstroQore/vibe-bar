@@ -91,7 +91,10 @@ final class ClaudeParserTests: XCTestCase {
         XCTAssertEqual(buckets.count, 3)
     }
 
-    func testNullRoutineAliasStillShowsRoutineFallback() throws {
+    /// A present-but-null routine alias must NOT synthesize a misleading
+    /// "0% used" Daily Routines section. Claude dropped Daily Routines from the
+    /// usage payload, so absence of a real number means "don't show it".
+    func testNullRoutineAliasDoesNotShowRoutineFallback() throws {
         let json = """
         {
           "five_hour": {"utilization": 5},
@@ -100,12 +103,8 @@ final class ClaudeParserTests: XCTestCase {
         }
         """
         let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
-        let routine = buckets.first { $0.id == "daily_routines" }!
-        XCTAssertEqual(routine.usedPercent, 0)
-        XCTAssertEqual(routine.title, "Weekly")
-        XCTAssertEqual(routine.shortLabel, "Routine wk")
-        XCTAssertEqual(routine.rawWindowSeconds, 604_800)
-        XCTAssertEqual(routine.groupTitle, "Daily Routines")
+        XCTAssertNil(buckets.first { $0.id == "daily_routines" })
+        XCTAssertEqual(buckets.count, 2)
     }
 
     func testRoutinesFetcherParsesStringFields() {
@@ -227,10 +226,10 @@ final class ClaudeParserTests: XCTestCase {
         XCTAssertEqual(design.usedPercent, 42)
         XCTAssertNotNil(design.resetAt)
 
-        // Null routine-like keys still keep the Daily Routines group visible.
-        let routine = buckets.first { $0.id == "daily_routines" }!
-        XCTAssertEqual(routine.usedPercent, 0)
-        XCTAssertEqual(routine.groupTitle, "Daily Routines")
+        // Null routine-like keys (e.g. `seven_day_cowork: null`) no longer
+        // synthesize a placeholder Daily Routines section — only a real
+        // utilization number surfaces the group.
+        XCTAssertNil(buckets.first { $0.id == "daily_routines" })
     }
 
     func testParseExtraUsageDecodesCentToDollar() {
