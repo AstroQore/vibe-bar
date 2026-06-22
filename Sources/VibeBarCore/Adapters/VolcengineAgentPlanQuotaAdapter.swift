@@ -8,15 +8,17 @@ import Foundation
 /// it under a dedicated tab next to Coding Plan:
 /// `console.volcengine.com/ark/region:ark+cn-beijing/openManagement?advancedActiveKey=agentPlan`.
 ///
-/// Auth: identical to the Coding Plan card — the full `*.volcengine.com`
-/// console jar with the `csrfToken` cookie mirrored into `X-Csrf-Token`.
-/// Both cards therefore ride the same Volcengine login; the default
-/// browser-cookie auto-import (keyed by domain) populates both at once,
-/// so the user signs in once and both refresh.
+/// Auth: the user's Volcengine **AK/SK** (Access Key ID + Secret Access
+/// Key), signed with Volcengine Signature V4 (see `VolcengineSignerV4`).
+/// This card is AK/SK-only — there is no cookie path. The `GetAFPUsage`
+/// management action requires an AK/SK-signed request; the `sk-…` Ark
+/// inference API key and the console cookie jar do not authenticate it.
+/// AK/SK lives in Keychain (or `VOLC_ACCESSKEY` / `VOLC_SECRETKEY`).
 ///
 /// Endpoint:
-/// `POST .../2024-01-01/GetAgentPlanAFPUsage` returns one richer block
-/// than Coding Plan's percent-only `GetCodingPlanUsage`:
+/// `POST https://open.volcengineapi.com/?Action=GetAFPUsage&Version=2024-01-01`
+/// (service `ark`, region `cn-beijing`) returns one richer block than
+/// Coding Plan's percent-only `GetCodingPlanUsage`:
 ///
 ///     Result.PlanType            "medium" / "small" / "large" / …
 ///     Result.AFPFiveHour         { Quota, Used, SubscribeTime, ResetTime }
@@ -44,19 +46,6 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
     private let now: @Sendable () -> Date
     private let environment: [String: String]
 
-    public static let cookieSpec = MiscCookieResolver.Spec(
-        tool: .volcengineAgentPlan,
-        domains: [
-            "console.volcengine.com",
-            "volcengine.com",
-            ".volcengine.com"
-        ],
-        // Same trade-off as the Coding Plan jar: Volcengine's BFF stitches
-        // identity from HttpOnly session keys we can't enumerate from JS,
-        // so we ship the entire `*.volcengine.com` jar.
-        requiredNames: []
-    )
-
     public init(
         session: URLSession = .shared,
         now: @escaping @Sendable () -> Date = { Date() },
@@ -78,44 +67,15 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
         let instanceID = AccountStore.miscInstanceID(
             fromAccountID: account.id, fallbackTool: .volcengineAgentPlan
         )
-        let settings = MiscProviderSettings.current(for: .volcengineAgentPlan, instanceID: instanceID)
+        // Agent Plan is AK/SK-only: the official `GetAFPUsage` management
+        // action is signed with the user's Access Key, not cookies. No
+        // cookie fallback.
+        guard let credentials = Self.resolveCredentials(environment: environment, instanceID: instanceID) else {
+            throw QuotaError.noCredential
+        }
         let queriedAt = now()
-
-        let credentials = Self.resolveCredentials(environment: environment, instanceID: instanceID)
-        let resolutions = MiscCookieResolver.resolveAll(
-            for: VolcengineAgentPlanQuotaAdapter.cookieSpec, account: account
-        )
-
-        // Path 1: signed OpenAPI with the user's AK/SK (preferred when
-        // configured). The official `GetAFPUsage` returns the same
-        // `Result` block as the console BFF, so the parser is shared.
-        // Fall through to the cookie path only on auth-style failures.
-        if settings.allowsAPIOrOAuthAccess, let credentials {
-            do {
-                return try await fetchViaSignature(
-                    credentials: credentials, account: account, queriedAt: queriedAt
-                )
-            } catch let error as QuotaError {
-                switch error {
-                case .needsLogin, .noCredential:
-                    if resolutions.isEmpty { throw error }
-                    // else: fall through to the cookie path below.
-                default:
-                    throw error
-                }
-            }
-        }
-
-        // Path 2: console cookies (the original behaviour).
-        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
-        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
-            try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
-        }
-        return MiscQuotaAggregator.aggregate(
-            tool: .volcengineAgentPlan,
-            account: account,
-            results: results,
-            queriedAt: queriedAt
+        return try await fetchViaSignature(
+            credentials: credentials, account: account, queriedAt: queriedAt
         )
     }
 
@@ -172,9 +132,12 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
         )
     }
 
-    private func callSignedOpenAPI(credentials: APICredentials, date: Date) async throws -> Data {
-        let action = "GetAFPUsage"
-        let version = "2024-01-01"
+    /// Builds the signed `GetAFPUsage` request. Extracted so a unit test
+    /// can pin the host and signature headers without hitting the network:
+    /// the OpenTOP management host (`open.volcengineapi.com`) is
+    /// load-bearing — the Ark *inference* host (`ark.cn-beijing.volces.com`)
+    /// 401s these management actions.
+    func makeSignedRequest(credentials: APICredentials, date: Date) -> URLRequest {
         let body = Data("{}".utf8)
         let signer = VolcengineSignerV4(
             accessKeyID: credentials.accessKeyID,
@@ -184,24 +147,11 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
         )
         let signed = signer.headers(
             host: Self.openAPIHost,
-            query: [("Action", action), ("Version", version)],
+            query: [("Action", Self.afpUsageAction), ("Version", Self.apiVersion)],
             body: body,
             date: date
         )
-
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = Self.openAPIHost
-        components.path = "/"
-        components.queryItems = [
-            URLQueryItem(name: "Action", value: action),
-            URLQueryItem(name: "Version", value: version)
-        ]
-        guard let url = components.url else {
-            throw QuotaError.network("Volcengine Agent Plan: could not build OpenAPI URL")
-        }
-
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: Self.getAFPUsageURL)
         request.httpMethod = "POST"
         request.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
@@ -209,7 +159,11 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
             request.setValue(value, forHTTPHeaderField: name)
         }
         request.httpBody = body
+        return request
+    }
 
+    private func callSignedOpenAPI(credentials: APICredentials, date: Date) async throws -> Data {
+        let request = makeSignedRequest(credentials: credentials, date: date)
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await self.session.data(for: request)
@@ -221,8 +175,6 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                // A bad/expired AK/SK looks like an auth failure; let the
-                // caller fall back to cookies if any are present.
                 throw QuotaError.needsLogin
             }
             if http.statusCode == 429 {
@@ -233,78 +185,19 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
         return data
     }
 
-    private func fetchOneSlot(
-        _ resolution: MiscCookieResolver.Resolution,
-        account: AccountIdentity,
-        queriedAt: Date
-    ) async throws -> AccountQuota {
-        let pairs = CookieHeaderNormalizer.pairs(from: resolution.header)
-        guard let csrfToken = pairs.first(where: { $0.name == "csrfToken" })?.value, !csrfToken.isEmpty else {
-            // No `csrfToken` means the user logged in at the
-            // volcengine.com website level but never opened the console
-            // (the cookie is set by the first console request).
-            throw QuotaError.needsLogin
-        }
-
-        let data = try await callBFF(cookieHeader: resolution.header, csrfToken: csrfToken)
-        let parsed = try VolcengineAgentPlanResponseParser.parseUsage(data: data)
-        return AccountQuota(
-            accountId: account.id,
-            tool: .volcengineAgentPlan,
-            buckets: parsed.buckets,
-            plan: parsed.planName,
-            email: account.email,
-            queriedAt: queriedAt,
-            error: nil
-        )
-    }
-
-    private func callBFF(cookieHeader: String, csrfToken: String) async throws -> Data {
-        var request = URLRequest(url: Self.getAgentPlanAFPUsageURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        request.setValue(csrfToken, forHTTPHeaderField: "X-Csrf-Token")
-        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-        request.setValue("zh", forHTTPHeaderField: "Accept-Language")
-        request.setValue("https://console.volcengine.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://console.volcengine.com/", forHTTPHeaderField: "Referer")
-        request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-            forHTTPHeaderField: "User-Agent"
-        )
-        request.httpBody = try JSONSerialization.data(withJSONObject: [:])
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await self.session.data(for: request)
-        } catch {
-            throw QuotaError.network("Volcengine Agent Plan network error: \(error.localizedDescription)")
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw QuotaError.network("Volcengine Agent Plan: invalid response object")
-        }
-        guard http.statusCode == 200 else {
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw QuotaError.needsLogin
-            }
-            if http.statusCode == 429 {
-                throw QuotaError.rateLimited
-            }
-            throw QuotaError.network("Volcengine Agent Plan returned HTTP \(http.statusCode).")
-        }
-        return data
-    }
-
-    private static let getAgentPlanAFPUsageURL = URL(string:
-        "https://console.volcengine.com/api/top/ark/cn-beijing/2024-01-01/GetAgentPlanAFPUsage"
-    )!
-
-    // Signed OpenAPI ("OpenTOP") coordinates — the public twin of the
-    // console BFF above. Service `ark`, region `cn-beijing`.
-    private static let openAPIHost = "ark.cn-beijing.volces.com"
+    // Signed OpenAPI ("OpenTOP") coordinates for the `GetAFPUsage`
+    // management action. The host is `open.volcengineapi.com` — the public
+    // OpenAPI gateway — NOT the Ark inference host
+    // `ark.cn-beijing.volces.com`, which rejects these management actions
+    // with HTTP 401. Service `ark`, region `cn-beijing`.
+    private static let openAPIHost = "open.volcengineapi.com"
     private static let region = "cn-beijing"
     private static let service = "ark"
+    private static let afpUsageAction = "GetAFPUsage"
+    private static let apiVersion = "2024-01-01"
+    private static let getAFPUsageURL = URL(string:
+        "https://open.volcengineapi.com/?Action=GetAFPUsage&Version=2024-01-01"
+    )!
 }
 
 // MARK: - Response parsing

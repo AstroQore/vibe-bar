@@ -238,21 +238,10 @@ struct MiscProviderSettingsSection: View {
             }
         case .volcengineAgentPlan:
             VStack(alignment: .leading, spacing: 4) {
-                CookieSourceControls(
-                    tool: .volcengineAgentPlan,
-                    instanceID: instanceID,
-                    spec: VolcengineAgentPlanQuotaAdapter.cookieSpec,
-                    manualPrompt: "Paste console.volcengine.com Cookie header (csrfToken=…; AccountID=…; …)"
-                )
-                MiscWebLoginRow(
-                    tool: .volcengineAgentPlan,
-                    instanceID: instanceID,
-                    helpText: "Same Volcengine console login as the Coding Plan card. With browser auto-import on, signing in once covers both cards."
-                )
                 AkSkField(
                     tool: .volcengineAgentPlan,
                     instanceID: instanceID,
-                    helpText: "Optional: read Agent Plan usage via Volcengine's official signed API instead of cookies (stable — survives console re-logins). Create an Access Key in the Volcengine console under Access Control / 访问控制 → API Access Key."
+                    helpText: "Agent Plan reads usage via Volcengine's official signed API — paste an AK/SK. Create an Access Key in the Volcengine console under Access Control / 访问控制 → API Access Key (a sub-user key with Ark read access works)."
                 )
             }
         case .baiduQianfan:

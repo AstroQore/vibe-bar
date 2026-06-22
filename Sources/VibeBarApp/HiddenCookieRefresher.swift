@@ -60,11 +60,12 @@ final class HiddenCookieRefresher {
                     requiredCookieNames: [],
                     postLoadWait: 8
                 )
-            case .volcengine, .volcengineAgentPlan:
-                // Both Volcengine cards share one console session, so the
-                // same IAM keepalive refreshes either slot.
+            case .volcengine:
+                // Coding Plan rides the Volcengine console cookie jar; an
+                // IAM keepalive refreshes it. (Agent Plan is AK/SK-only and
+                // needs no cookie refresh.)
                 return Config(
-                    tool: tool,
+                    tool: .volcengine,
                     refreshURL: URL(string: "https://console.volcengine.com/iam/")!,
                     cookieDomainSuffixes: ["volcengine.com"],
                     requiredCookieNames: [],
@@ -133,7 +134,7 @@ final class HiddenCookieRefresher {
             }
         }
 
-        static let supportedTools: [ToolType] = [.tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .alibaba, .alibabaTokenPlan, .baiduQianfan]
+        static let supportedTools: [ToolType] = [.tencentHunyuan, .tencentTokenPlan, .volcengine, .alibaba, .alibabaTokenPlan, .baiduQianfan]
     }
 
     private var inflight: [ToolType: Task<Bool, Never>] = [:]
