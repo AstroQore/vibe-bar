@@ -6,13 +6,33 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
     private let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let session: URLSession
     private let credentialResolver: @Sendable (CredentialSource, AccountIdentity) throws -> ClaudeCredential
+    /// Best-effort refresh of the stored claude.ai cookie from the user's
+    /// browser, used to self-heal an expired sessionKey on the web path.
+    /// Returns true when a fresh cookie was imported. Injectable for tests.
+    private let reimportWebCookieOnStale: @Sendable () async -> Bool
 
     public init(
         session: URLSession = .shared,
-        credentialResolver: (@Sendable (CredentialSource, AccountIdentity) throws -> ClaudeCredential)? = nil
+        credentialResolver: (@Sendable (CredentialSource, AccountIdentity) throws -> ClaudeCredential)? = nil,
+        reimportWebCookieOnStale: (@Sendable () async -> Bool)? = nil
     ) {
         self.session = session
         self.credentialResolver = credentialResolver ?? Self.defaultResolver
+        self.reimportWebCookieOnStale = reimportWebCookieOnStale ?? Self.defaultWebCookieReimporter
+    }
+
+    /// Default cookie re-import: pull a fresh claude.ai sessionKey from the
+    /// user's browser into the keychain store. Gated by
+    /// `BrowserCookieAccessGate`, so it silently returns false (never prompts)
+    /// when keychain access isn't granted — a user-initiated import still
+    /// forces the prompt. Offloaded to a detached task to keep the SQLite /
+    /// Keychain reads off the fetch's executor.
+    @Sendable
+    private static func defaultWebCookieReimporter() async -> Bool {
+        await Task.detached(priority: .utility) {
+            let imported = (try? ClaudeBrowserCookieImporter.importAndStoreFromBrowsers()) ?? nil
+            return imported != nil
+        }.value
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
@@ -83,13 +103,12 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
             throw QuotaError.parseFailure(String(describing: error))
         }
         // Daily Routines lives on a different endpoint (claude.ai web cookie).
-        // Fold it in opportunistically. If the call fails or no cookies work,
-        // keep a visible placeholder so the Claude card still exposes the
-        // Daily Routines slot.
+        // Fold it in only when the budget call actually returns data — Claude
+        // dropped Daily Routines from the usage surface, so a forced placeholder
+        // would just show a misleading "100%".
         if let routines = await ClaudeRoutinesFetcher.fetch(session: session) {
             replaceRoutinesBucket(in: &buckets, with: routinesBucket(from: routines))
         }
-        ensureRoutinesBucketVisible(in: &buckets)
         let extras = ClaudeResponseParser.parseExtraUsage(data: data)
 
         return AccountQuota(
@@ -124,20 +143,20 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
         buckets.append(bucket)
     }
 
-    private func ensureRoutinesBucketVisible(in buckets: inout [QuotaBucket]) {
-        guard !buckets.contains(where: { $0.id == "daily_routines" }) else { return }
-        buckets.append(QuotaBucket(
-            id: "daily_routines",
-            title: "Today · -- / --",
-            shortLabel: "Routine",
-            usedPercent: 0,
-            resetAt: Self.nextRoutineResetDate(),
-            rawWindowSeconds: 86_400,
-            groupTitle: "Daily Routines"
-        ))
+    /// Preferred Claude path. On `needsLogin` (a stale / expired sessionKey) we
+    /// re-import a fresh cookie from the browser once and retry, so the web
+    /// path self-heals instead of silently falling through to the
+    /// rate-limited OAuth endpoint and pinning stale data.
+    private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
+        do {
+            return try await fetchWithWebCookiesOnce(for: account)
+        } catch QuotaError.needsLogin {
+            guard await reimportWebCookieOnStale() else { throw QuotaError.needsLogin }
+            return try await fetchWithWebCookiesOnce(for: account)
+        }
     }
 
-    private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
+    private func fetchWithWebCookiesOnce(for account: AccountIdentity) async throws -> AccountQuota {
         let cookieHeader = try ClaudeWebCookieStore.readCookieHeader()
         let organization = try await organizationID(cookieHeader: cookieHeader)
         let webAccount = await webAccountInfo(organizationID: organization.id, cookieHeader: cookieHeader)
@@ -168,7 +187,6 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
         if let routines {
             replaceRoutinesBucket(in: &buckets, with: routinesBucket(from: routines))
         }
-        ensureRoutinesBucketVisible(in: &buckets)
         let extras = ClaudeResponseParser.parseExtraUsage(data: data)
 
         return AccountQuota(
