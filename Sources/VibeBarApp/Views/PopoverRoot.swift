@@ -1645,6 +1645,9 @@ struct ProviderQuotaCard: View {
 
             if let quota, !quota.buckets.isEmpty {
                 bucketContent(quota.buckets)
+                if tool == .codex, let credits = quota.resetCredits, credits.availableCount > 0 {
+                    ResetCreditsRow(credits: credits, density: density)
+                }
                 if let liveError {
                     messageRow(text: "Update failed: \(liveError.userFacingMessage)", color: .orange)
                 }
@@ -1744,6 +1747,42 @@ struct ProviderQuotaCard: View {
             return error
         }
         return nil
+    }
+}
+
+/// Codex "Limit reset credits" — manual rate-limit resets the user can spend,
+/// with the next expiry when the dedicated endpoint surfaced it. Only rendered
+/// when at least one reset is available.
+private struct ResetCreditsRow: View {
+    let credits: CodexResetCredits
+    let density: Theme.Density
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: density.resetCountdownFontSize))
+                    .foregroundStyle(.secondary)
+                Text("Limit reset credits")
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                Spacer(minLength: 6)
+                Text("\(credits.availableCount)")
+                    .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.green)
+            }
+            Text(subtitle)
+                .font(.system(size: density.resetCountdownFontSize))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var subtitle: String {
+        let noun = credits.availableCount == 1 ? "manual reset available" : "manual resets available"
+        if let expiry = credits.nextExpiresAt,
+           let countdown = ResetCountdownFormatter.string(from: expiry, now: Date()) {
+            return "\(credits.availableCount) \(noun) · next expires in \(countdown)"
+        }
+        return "\(credits.availableCount) \(noun)"
     }
 }
 
