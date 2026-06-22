@@ -249,6 +249,11 @@ struct MiscProviderSettingsSection: View {
                     instanceID: instanceID,
                     helpText: "Same Volcengine console login as the Coding Plan card. With browser auto-import on, signing in once covers both cards."
                 )
+                AkSkField(
+                    tool: .volcengineAgentPlan,
+                    instanceID: instanceID,
+                    helpText: "Optional: read Agent Plan usage via Volcengine's official signed API instead of cookies (stable — survives console re-logins). Create an Access Key in the Volcengine console under Access Control / 访问控制 → API Access Key."
+                )
             }
         case .baiduQianfan:
             VStack(alignment: .leading, spacing: 4) {
@@ -430,6 +435,89 @@ struct ApiKeyField: View {
 
     private func clear() {
         MiscCredentialStore.delete(tool: tool, kind: .apiKey, instanceID: instanceID)
+        hasStored = false
+        triggerRefresh()
+    }
+
+    private func triggerRefresh() {
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
+        Task { _ = await quotaService.refresh(account) }
+    }
+}
+
+/// Two-field AK/SK entry for Volcengine's signed OpenAPI — an optional
+/// alternative to the console cookie jar. The Access Key ID and Secret
+/// Access Key both persist in Keychain (`MiscCredentialStore`), never in
+/// `~/.vibebar/settings.json`. Saving triggers a one-shot refresh.
+struct AkSkField: View {
+    let tool: ToolType
+    let instanceID: String
+    let helpText: String
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
+    @State private var akDraft: String = ""
+    @State private var skDraft: String = ""
+    @State private var hasStored: Bool = false
+    @State private var saveError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Access Key ID (AKLT…)", text: $akDraft)
+                .textFieldStyle(.roundedBorder)
+            HStack(spacing: 6) {
+                SecureField("Secret Access Key", text: $skDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(save)
+                Button("Save", action: save)
+                    .disabled(akDraft.isEmpty || skDraft.isEmpty)
+                if hasStored {
+                    Button(role: .destructive, action: clear) {
+                        Image(systemName: "trash")
+                    }
+                    .help("Remove stored \(tool.menuTitle) AK/SK")
+                }
+            }
+            HStack(spacing: 4) {
+                Image(systemName: hasStored ? "checkmark.circle.fill" : "info.circle")
+                    .foregroundStyle(hasStored ? Color.green : Color.secondary)
+                    .font(.caption)
+                Text(hasStored ? "AK/SK saved in Keychain." : helpText)
+                    .font(.caption)
+                    .foregroundStyle(hasStored ? .secondary : .tertiary)
+            }
+            if let saveError {
+                Text(saveError)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .onAppear {
+            hasStored = MiscCredentialStore.hasValue(tool: tool, kind: .accessKeyID, instanceID: instanceID)
+                && MiscCredentialStore.hasValue(tool: tool, kind: .secretAccessKey, instanceID: instanceID)
+        }
+    }
+
+    private func save() {
+        let ak = akDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sk = skDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ak.isEmpty, !sk.isEmpty else { return }
+        let savedAK = MiscCredentialStore.writeString(ak, tool: tool, kind: .accessKeyID, instanceID: instanceID)
+        let savedSK = MiscCredentialStore.writeString(sk, tool: tool, kind: .secretAccessKey, instanceID: instanceID)
+        if savedAK && savedSK {
+            saveError = nil
+            hasStored = true
+            akDraft = ""
+            skDraft = ""
+            triggerRefresh()
+        } else {
+            saveError = "Could not save to Keychain."
+        }
+    }
+
+    private func clear() {
+        MiscCredentialStore.delete(tool: tool, kind: .accessKeyID, instanceID: instanceID)
+        MiscCredentialStore.delete(tool: tool, kind: .secretAccessKey, instanceID: instanceID)
         hasStored = false
         triggerRefresh()
     }
