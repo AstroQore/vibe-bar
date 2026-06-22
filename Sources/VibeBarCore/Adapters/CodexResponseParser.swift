@@ -64,6 +64,23 @@ public enum CodexResponseParser {
         return buckets
     }
 
+    /// Available manual rate-limit reset count inlined in the `/wham/usage`
+    /// payload under `rate_limit_reset_credits.available_count`. This is the
+    /// free, no-extra-request source for the headline number; the dedicated
+    /// `CodexResetCreditsFetcher` enriches it with the next expiry. Returns nil
+    /// when the block is absent (older API or web-cookie payloads).
+    public static func parseResetCreditsAvailableCount(data: Data) -> Int? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+            let block = root["rate_limit_reset_credits"] as? [String: Any],
+            let count = numberValue(block["available_count"]),
+            count >= 0
+        else {
+            return nil
+        }
+        return Int(count)
+    }
+
     public static func planType(data: Data) -> String? {
         guard
             let root = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],

@@ -9,6 +9,9 @@ public struct AccountQuota: Codable, Hashable, Sendable {
     public var queriedAt: Date
     public var error: QuotaError?
     public var providerExtras: ProviderExtras?
+    /// Codex manual rate-limit reset credits (count + next expiry). Nil for
+    /// non-Codex tools and when the account has no reset-credit data.
+    public var resetCredits: CodexResetCredits?
 
     public init(
         accountId: String,
@@ -18,7 +21,8 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         email: String? = nil,
         queriedAt: Date = Date(),
         error: QuotaError? = nil,
-        providerExtras: ProviderExtras? = nil
+        providerExtras: ProviderExtras? = nil,
+        resetCredits: CodexResetCredits? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -28,6 +32,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         self.queriedAt = queriedAt
         self.error = error
         self.providerExtras = providerExtras
+        self.resetCredits = resetCredits
     }
 
     public func bucket(id: String) -> QuotaBucket? {
@@ -43,7 +48,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case accountId, tool, buckets, plan, email, queriedAt, error, providerExtras
+        case accountId, tool, buckets, plan, email, queriedAt, error, providerExtras, resetCredits
     }
 
     public init(from decoder: Decoder) throws {
@@ -55,6 +60,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         email = try c.decodeIfPresent(String.self, forKey: .email)
         queriedAt = try c.decode(Date.self, forKey: .queriedAt)
         providerExtras = try c.decodeIfPresent(ProviderExtras.self, forKey: .providerExtras)
+        resetCredits = try c.decodeIfPresent(CodexResetCredits.self, forKey: .resetCredits)
         error = nil
     }
 
@@ -67,5 +73,6 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         try c.encodeIfPresent(email, forKey: .email)
         try c.encode(queriedAt, forKey: .queriedAt)
         try c.encodeIfPresent(providerExtras, forKey: .providerExtras)
+        try c.encodeIfPresent(resetCredits, forKey: .resetCredits)
     }
 }

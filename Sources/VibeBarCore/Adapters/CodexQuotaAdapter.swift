@@ -86,6 +86,12 @@ public struct CodexQuotaAdapter: QuotaAdapter {
             throw QuotaError.parseFailure(String(describing: error))
         }
 
+        let resetCredits = await resolveResetCredits(
+            usageData: data,
+            accessToken: credential.accessToken,
+            accountId: credential.accountId
+        )
+
         return AccountQuota(
             accountId: account.id,
             tool: .codex,
@@ -93,8 +99,32 @@ public struct CodexQuotaAdapter: QuotaAdapter {
             plan: CodexResponseParser.planType(data: data) ?? credential.plan ?? account.plan,
             email: credential.email ?? account.email,
             queriedAt: Date(),
-            error: nil
+            error: nil,
+            resetCredits: resetCredits
         )
+    }
+
+    /// Resolve Codex manual reset credits. The inline `available_count` from the
+    /// usage payload is free; when it's >= 1 we make a best-effort call to the
+    /// dedicated endpoint to learn the next expiry. Returns nil when there's no
+    /// reset-credit data at all, so the UI simply omits the row.
+    private func resolveResetCredits(
+        usageData: Data,
+        accessToken: String,
+        accountId: String?
+    ) async -> CodexResetCredits? {
+        guard let inlineCount = CodexResponseParser.parseResetCreditsAvailableCount(data: usageData) else {
+            return nil
+        }
+        guard inlineCount > 0 else { return CodexResetCredits(availableCount: 0) }
+        if let enriched = await CodexResetCreditsFetcher.fetch(
+            accessToken: accessToken,
+            accountId: accountId,
+            session: session
+        ) {
+            return enriched
+        }
+        return CodexResetCredits(availableCount: inlineCount)
     }
 
     private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
@@ -140,6 +170,12 @@ public struct CodexQuotaAdapter: QuotaAdapter {
             throw QuotaError.parseFailure(String(describing: error))
         }
 
+        // Web-cookie path has no Bearer token for the dedicated reset-credits
+        // endpoint, so surface just the inline count when the usage payload
+        // carries it.
+        let resetCredits = CodexResponseParser.parseResetCreditsAvailableCount(data: data)
+            .map { CodexResetCredits(availableCount: $0) }
+
         return AccountQuota(
             accountId: account.id,
             tool: .codex,
@@ -147,7 +183,8 @@ public struct CodexQuotaAdapter: QuotaAdapter {
             plan: CodexResponseParser.planType(data: data) ?? account.plan,
             email: account.email,
             queriedAt: Date(),
-            error: nil
+            error: nil,
+            resetCredits: resetCredits
         )
     }
 
