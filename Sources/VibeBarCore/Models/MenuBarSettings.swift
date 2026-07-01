@@ -156,6 +156,7 @@ public enum MenuBarFieldCatalog {
         option(.claude, "weekly_design", "Designs · Weekly", "Design wk"),
         option(.claude, "daily_routines", "Daily Routines", "Routines"),
         option(.claude, "weekly_opus", "Opus · Weekly", "Opus wk"),
+        option(.claude, "weekly_fable", "Fable · Weekly", "Fable wk"),
         option(.claude, "weekly_oauth_apps", "OAuth Apps · Weekly", "OAuth wk")
     ]
 

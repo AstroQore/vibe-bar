@@ -53,7 +53,8 @@ final class ClaudeParserTests: XCTestCase {
           "seven_day": {"utilization": 20},
           "seven_day_opus": {"utilization": 30, "resets_at": "2026-05-01T00:00:00Z"},
           "seven_day_sonnet": {"utilization": 40, "resets_at": "2026-05-01T00:00:00Z"},
-          "seven_day_omelette": {"utilization": 50, "resets_at": "2026-05-01T00:00:00Z"}
+          "seven_day_omelette": {"utilization": 50, "resets_at": "2026-05-01T00:00:00Z"},
+          "seven_day_fable": {"utilization": 60, "resets_at": "2026-05-01T00:00:00Z"}
         }
         """
         let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
@@ -69,6 +70,12 @@ final class ClaudeParserTests: XCTestCase {
         let opus = buckets.first { $0.id == "weekly_opus" }!
         XCTAssertEqual(opus.usedPercent, 30)
         XCTAssertEqual(opus.groupTitle, "Opus")
+
+        let fable = buckets.first { $0.id == "weekly_fable" }!
+        XCTAssertEqual(fable.usedPercent, 60)
+        XCTAssertEqual(fable.groupTitle, "Fable")
+        XCTAssertEqual(fable.shortLabel, "Fable wk")
+        XCTAssertEqual(fable.rawWindowSeconds, 604_800)
     }
 
     /// `seven_day_cowork` is kept as a visible fallback for Daily Routines
@@ -194,6 +201,7 @@ final class ClaudeParserTests: XCTestCase {
           },
           "seven_day_oauth_apps": null,
           "seven_day_opus": null,
+          "seven_day_fable": null,
           "seven_day_sonnet": {
             "utilization": 1.0,
             "resets_at": "2026-04-30T20:00:00.765522+00:00"
@@ -230,6 +238,10 @@ final class ClaudeParserTests: XCTestCase {
         // synthesize a placeholder Daily Routines section — only a real
         // utilization number surfaces the group.
         XCTAssertNil(buckets.first { $0.id == "daily_routines" })
+
+        // A present-but-null `seven_day_fable` (model exists in the schema but
+        // is unused on this account) must not synthesize a bogus 0% section.
+        XCTAssertNil(buckets.first { $0.id == "weekly_fable" })
     }
 
     func testParseExtraUsageDecodesCentToDollar() {

@@ -10,7 +10,14 @@ import Foundation
 ///   - `seven_day_sonnet`       → "Sonnet" (own section)
 ///   - `seven_day_omelette`     → "Designs" (own section)
 ///   - `seven_day_opus`         → "Opus" (own section, when present)
+///   - `seven_day_fable`        → "Fable" (own section, when present)
 ///   - `seven_day_oauth_apps`   → "OAuth Apps" (own section, when present)
+///
+/// Adding a new per-model dimension is a checklist, not a one-liner: see
+/// `AGENTS.md` § "Adding a new Claude usage-limit model". The
+/// `ClaudeModelBucketParityTests` suite fails `swift test` if a `knownBuckets`
+/// entry with a `groupTitle` has no matching menu-bar field, so the
+/// correctness-critical half of that checklist is self-enforcing.
 ///
 /// Daily Routines has a dedicated endpoint — see `ClaudeRoutinesFetcher` and
 /// `ClaudeQuotaAdapter` — but the OAuth/Web usage payload also exposes a set of
@@ -41,8 +48,18 @@ public enum ClaudeResponseParser {
         .init(key: "seven_day_sonnet", id: "weekly_sonnet", title: "Weekly", shortLabel: "Sonnet wk", windowSeconds: 604_800, groupTitle: "Sonnet"),
         .init(key: "seven_day_omelette", id: "weekly_design", title: "Weekly", shortLabel: "Designs", windowSeconds: 604_800, groupTitle: "Designs"),
         .init(key: "seven_day_opus", id: "weekly_opus", title: "Weekly", shortLabel: "Opus wk", windowSeconds: 604_800, groupTitle: "Opus"),
+        .init(key: "seven_day_fable", id: "weekly_fable", title: "Weekly", shortLabel: "Fable wk", windowSeconds: 604_800, groupTitle: "Fable"),
         .init(key: "seven_day_oauth_apps", id: "weekly_oauth_apps", title: "Weekly", shortLabel: "OAuth wk", windowSeconds: 604_800, groupTitle: "OAuth Apps")
     ]
+
+    /// Bucket ids for Claude's per-model weekly dimensions — every
+    /// `knownBuckets` entry that carries a `groupTitle`. Exposed read-only so
+    /// `ClaudeModelBucketParityTests` can assert the menu-bar field catalog
+    /// stays in lockstep with the parser: adding a model here without a
+    /// matching `MenuBarFieldCatalog.claudeFields` entry fails the suite.
+    public static var perModelBucketIDs: [String] {
+        knownBuckets.compactMap { $0.groupTitle == nil ? nil : $0.id }
+    }
 
     /// Aliases the API may use for the same logical key. Tried in order.
     private static let bucketAliases: [String: [String]] = [

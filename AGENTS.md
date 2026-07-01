@@ -637,6 +637,65 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
   `CFBundleShortVersionString` and `CFBundleVersion` in
   `Resources/Info.plist`.
 
+### 11.1 Adding a new Claude usage-limit model
+
+Anthropic periodically adds a per-model dimension to the
+`/api/oauth/usage` payload (a new `seven_day_<model>` key — this is how
+Sonnet, Opus, and Fable each arrived). When you see one — in the API
+response, in logs, or because AQ points it out — add it end-to-end
+using this checklist. Do **not** stop at the parser; a half-added model
+parses but never becomes selectable.
+
+Use consistent ids for a model `<x>` (e.g. `fable`):
+
+| Layer | Value |
+|-------|-------|
+| API payload key | `seven_day_<x>` |
+| `QuotaBucket.id` | `weekly_<x>` |
+| Mini-window group key | `claude.<x>` |
+| Menu-bar field id | `claude.weekly_<x>` (built from the two above) |
+
+**Required (correctness — without these the model is invisible):**
+
+1. `Sources/VibeBarCore/Adapters/ClaudeResponseParser.swift` —
+   add a `BucketSpec` to `knownBuckets`
+   (`key: "seven_day_<x>", id: "weekly_<x>", …, groupTitle: "<X>"`) and
+   the doc-comment line. Unknown payload keys are silently dropped, so
+   this is the one edit that actually surfaces the data.
+2. `Sources/VibeBarCore/Models/MenuBarSettings.swift` —
+   add `option(.claude, "weekly_<x>", "<X> · Weekly", "<X> wk")` to
+   `claudeFields` so the bucket is selectable in the menu bar / mini
+   window. The `ClaudeModelBucketParityTests` suite **fails `swift test`**
+   if you skip this, so it's the backstop for the required half of this
+   list.
+
+**Mini-window polish (degrades gracefully via `groupTitle` fallbacks,
+but add for parity so the labels look hand-tuned):**
+
+3. `Sources/VibeBarApp/Views/MiniWindowGroupLabelCatalog.swift` —
+   add `.init(id: "claude.<x>", title: "CLAUDE · <X>", defaultLabel: "<X>")`.
+4. `Sources/VibeBarApp/Views/MiniQuotaWindowView.swift` — four switches:
+   `isBranchField`, `MiniBranchCell.defaultTitle` (use `"wk"`),
+   `.groupKey` (→ `"claude.<x>"`), `.defaultGroupTitle` (→ `"<X>"`).
+5. `Sources/VibeBarApp/MiniQuotaWindowController.swift` —
+   `miniBranchGroupKey` (→ `"claude.<x>"`), keeps AppKit panel sizing in
+   sync with the SwiftUI layout.
+
+**Nice to have:**
+
+6. `Sources/VibeBarCore/Services/MockDataProvider.swift` — add a sample
+   `weekly_<x>` bucket to the `.claude` branch so mock mode is
+   representative.
+7. `Tests/VibeBarCoreTests/ClaudeParserTests.swift` — extend
+   `testEachModelGetsItsOwnGroup` (present) and
+   `testWebUsageBucketsIncludeDesignWhenPresent` (null) fixtures.
+
+**Already automatic — do not add per-model code here:** the main popover
+(`PopoverRoot`), the status item, `OverallFillRate`,
+`SubscriptionUtilizationView`, and the Misc page all group Claude
+buckets by `QuotaBucket.groupTitle`, so a new model appears there the
+moment step 1 lands.
+
 ## 12. Releases
 
 - Bundle ID is `com.astroqore.VibeBar`. Bump

@@ -112,6 +112,7 @@ struct MiniQuotaWindowView: View {
              "weekly_design",
              "daily_routines",
              "weekly_opus",
+             "weekly_fable",
              "weekly_oauth_apps":
             return true
         default:
@@ -272,6 +273,7 @@ private struct MiniBranchCell: Identifiable {
         case "weekly_design": return "wk"
         case "daily_routines": return "Daily"
         case "weekly_opus": return "Opus"
+        case "weekly_fable": return "wk"
         case "weekly_oauth_apps": return "OAuth"
         case let id where tool == .antigravity && id.contains("gpt-oss"):
             return "GPT"
@@ -305,6 +307,8 @@ private struct MiniBranchCell: Identifiable {
             return "claude.routine"
         case "weekly_opus":
             return "claude.opus"
+        case "weekly_fable":
+            return "claude.fable"
         case "weekly_oauth_apps":
             return "claude.oauth"
         case let id where tool == .gemini && id.contains("flash-lite"):
@@ -343,6 +347,8 @@ private struct MiniBranchCell: Identifiable {
             return "Routine"
         case "weekly_opus":
             return "Opus"
+        case "weekly_fable":
+            return "Fable"
         case "weekly_oauth_apps":
             return "OAuth"
         case let id where tool == .gemini && id.contains("flash-lite"):
