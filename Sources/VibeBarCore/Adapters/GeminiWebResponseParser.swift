@@ -131,7 +131,7 @@ enum GeminiWebResponseParser {
                 shortLabel: descriptor.shortLabel,
                 usedPercent: usedPercent,
                 resetAt: resetAt,
-                rawWindowSeconds: nil,
+                rawWindowSeconds: descriptor.windowSeconds,
                 groupTitle: nil
             ))
         }
@@ -161,19 +161,25 @@ enum GeminiWebResponseParser {
         let id: String
         let title: String
         let shortLabel: String
+        /// Fixed window length for `UsagePace`. Google's jSf9Qc payload
+        /// carries reset timestamps but no window duration, so the two
+        /// known bucket types get the same 5h / 7d constants Codex and
+        /// Claude use. Unknown types stay nil (no pace caption).
+        let windowSeconds: Int?
     }
 
     private static func bucketDescriptor(forType type: Int) -> BucketDescriptor {
         switch type {
         case 1:
-            return BucketDescriptor(id: currentUsageBucketId, title: "5 Hours", shortLabel: "5h")
+            return BucketDescriptor(id: currentUsageBucketId, title: "5 Hours", shortLabel: "5h", windowSeconds: 18_000)
         case 2:
-            return BucketDescriptor(id: weeklyUsageBucketId,  title: "Weekly",  shortLabel: "Wk")
+            return BucketDescriptor(id: weeklyUsageBucketId,  title: "Weekly",  shortLabel: "Wk", windowSeconds: 604_800)
         default:
             return BucketDescriptor(
                 id: "gemini.bucket\(type)",
                 title: "Bucket \(type)",
-                shortLabel: "B\(type)"
+                shortLabel: "B\(type)",
+                windowSeconds: nil
             )
         }
     }
