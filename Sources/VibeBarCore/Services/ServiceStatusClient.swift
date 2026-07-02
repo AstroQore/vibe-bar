@@ -508,7 +508,7 @@ public actor ServiceStatusClient {
         let summary = try await fetchJSON(SummaryDTO.self, from: ToolType.claude.statusSummaryAPI)
         let incidentsDTO = try await fetchJSON(IncidentsDTO.self, from: ToolType.claude.statusIncidentsAPI)
 
-        let uptimeMap = parseClaudeUptimeData(html: html)
+        let uptimeMap = Self.parseClaudeUptimeData(html: html)
         let groups: [ServiceComponentGroup] = []  // claude.com is flat, no groups
 
         var components: [ServiceComponentSummary] = []
@@ -823,16 +823,27 @@ public actor ServiceStatusClient {
 
     // MARK: - Claude HTML scraping
 
-    private nonisolated func parseClaudeUptimeData(html: String) -> [String: ClaudeUptimeEntry] {
-        guard let range = html.range(of: "var uptimeData = ") else { return [:] }
-        let after = html[range.upperBound...]
-        guard let json = ServiceStatusClient.extractJSONObject(in: after) else { return [:] }
-        guard let data = json.data(using: .utf8) else { return [:] }
-        do {
-            return try JSONDecoder().decode([String: ClaudeUptimeEntry].self, from: data)
-        } catch {
-            return [:]
+    /// status.claude.com used to inline `var uptimeData = {…}`; it now ships
+    /// `window.uptimeData = {…}` with `var uptimeData = window.uptimeData;`
+    /// as an alias, which made the old single-anchor scrape silently return
+    /// empty — every component rendered 100% all-green while the official
+    /// page showed a month of degraded days. Try both anchors and accept the
+    /// first occurrence that decodes to a non-empty map.
+    nonisolated static func parseClaudeUptimeData(html: String) -> [String: ClaudeUptimeEntry] {
+        for anchor in ["window.uptimeData = ", "var uptimeData = "] {
+            var search = html.startIndex..<html.endIndex
+            while let range = html.range(of: anchor, range: search) {
+                let after = html[range.upperBound...]
+                if let json = ServiceStatusClient.extractJSONObject(in: after),
+                   let data = json.data(using: .utf8),
+                   let decoded = try? JSONDecoder().decode([String: ClaudeUptimeEntry].self, from: data),
+                   !decoded.isEmpty {
+                    return decoded
+                }
+                search = range.upperBound..<html.endIndex
+            }
         }
+        return [:]
     }
 
     private nonisolated static func extractJSONObject(in input: Substring) -> String? {
@@ -1087,17 +1098,17 @@ private struct IncidentsDTO: Decodable {
 
 // MARK: - Claude scraped uptime DTOs
 
-private struct ClaudeUptimeEntry: Decodable {
+struct ClaudeUptimeEntry: Decodable {
     let component: ClaudeComponentMeta
     let days: [ClaudeDay]
 }
 
-private struct ClaudeComponentMeta: Decodable {
+struct ClaudeComponentMeta: Decodable {
     let code: String
     let name: String
 }
 
-private struct ClaudeDay: Decodable {
+struct ClaudeDay: Decodable {
     let date: String
     let outages: [String: Int]
 }

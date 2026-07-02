@@ -132,3 +132,40 @@ final class ServiceStatusIncidentTests: XCTestCase {
         XCTAssertEqual(decoded.tool, .claude)
     }
 }
+
+/// status.claude.com moved the uptime blob from `var uptimeData = {…}` to
+/// `window.uptimeData = {…}` (leaving `var uptimeData = window.uptimeData;`
+/// as an alias), which silently emptied the old scrape — the card showed
+/// 100% all-green while the official page had a month of degraded days.
+final class ClaudeUptimeScrapeTests: XCTestCase {
+    private let blob = """
+    {"abc123":{"component":{"code":"abc123","name":"Claude Code","startDate":"2023-07-11"},\
+    "days":[{"date":"2026-06-23","outages":{"p":5100}},{"date":"2026-06-24","outages":{}}]}}
+    """
+
+    func testParsesNewWindowUptimeDataAnchor() {
+        let html = """
+        <script>
+        var uptimeData = window.uptimeData;
+        var monthStrings = ['Jan'];
+        </script>
+        <script>window.uptimeData = \(blob);</script>
+        """
+        let map = ServiceStatusClient.parseClaudeUptimeData(html: html)
+        XCTAssertEqual(map.count, 1)
+        XCTAssertEqual(map["abc123"]?.days.count, 2)
+        XCTAssertEqual(map["abc123"]?.days.first?.outages["p"], 5100)
+    }
+
+    func testParsesLegacyVarUptimeDataAnchor() {
+        let html = "<script>var uptimeData = \(blob);</script>"
+        let map = ServiceStatusClient.parseClaudeUptimeData(html: html)
+        XCTAssertEqual(map.count, 1)
+        XCTAssertEqual(map["abc123"]?.component.name, "Claude Code")
+    }
+
+    func testReturnsEmptyWhenNoBlobDecodes() {
+        let html = "<script>var uptimeData = window.uptimeData; var x = {\"a\": 1};</script>"
+        XCTAssertTrue(ServiceStatusClient.parseClaudeUptimeData(html: html).isEmpty)
+    }
+}

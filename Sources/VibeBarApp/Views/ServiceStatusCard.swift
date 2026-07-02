@@ -132,14 +132,6 @@ private struct ServiceStatusRow: View {
             )
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                let ungrouped = snapshot.components(in: nil)
-                if !ungrouped.isEmpty {
-                    ComponentGroupBlock(
-                        title: "Other",
-                        components: ungrouped,
-                        defaultExpanded: defaultExpanded(forGroupName: "Other")
-                    )
-                }
                 ForEach(snapshot.groups) { group in
                     let comps = snapshot.components(in: group)
                     if !comps.isEmpty {
@@ -149,6 +141,19 @@ private struct ServiceStatusRow: View {
                             defaultExpanded: defaultExpanded(forGroupName: group.name)
                         )
                     }
+                }
+                // Ungrouped components go last: they're usually brand-new
+                // entries the provider hasn't filed yet (e.g. OpenAI's Ads
+                // API / Ads Manager showed up ungrouped in 2026-07) and
+                // shouldn't push the groups AQ actually watches below the
+                // fold.
+                let ungrouped = snapshot.components(in: nil)
+                if !ungrouped.isEmpty {
+                    ComponentGroupBlock(
+                        title: "Other",
+                        components: ungrouped,
+                        defaultExpanded: false
+                    )
                 }
             }
         }
