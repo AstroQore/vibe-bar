@@ -67,6 +67,10 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("subscription_history.json")
     }
 
+    public static var fillTimelineURL: URL {
+        baseDirectory.appendingPathComponent("fill_timeline.json")
+    }
+
     /// Mini-window geometry is persisted out-of-band from `AppSettings` so a
     /// drag-to-move (which fires didMove repeatedly) doesn't rewrite the
     /// whole settings JSON or fan out through every Combine subscriber on

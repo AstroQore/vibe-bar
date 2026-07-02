@@ -19,6 +19,17 @@ import Foundation
 /// entry with a `groupTitle` has no matching menu-bar field, so the
 /// correctness-critical half of that checklist is self-enforcing.
 ///
+/// **`limits[]` (2026-07 schema).** Anthropic moved per-model limits out of
+/// the legacy `seven_day_<model>` keys (which now come back `null`) into a
+/// structured `limits` array whose scoped entries carry the model's display
+/// name, e.g. `{"kind": "weekly_scoped", "group": "weekly", "percent": 1,
+/// "scope": {"model": {"display_name": "Fable"}}}`. `parseLimitsArray`
+/// surfaces every scoped entry as its own section and derives the bucket id
+/// from the display name (`Fable` → `weekly_fable`), so a brand-new model
+/// shows up in the popover with zero code changes; the checklist above is
+/// then only needed to make it selectable in the menu bar / mini window.
+/// Legacy keys still win when both are present, keeping ids stable.
+///
 /// Daily Routines has a dedicated endpoint — see `ClaudeRoutinesFetcher` and
 /// `ClaudeQuotaAdapter` — but the OAuth/Web usage payload also exposes a set of
 /// routine aliases on some accounts. We keep that as a visible fallback so the
@@ -114,6 +125,8 @@ public enum ClaudeResponseParser {
             ))
         }
 
+        appendLimitsArrayBuckets(from: root, to: &out)
+
         if let routine = routineBucket(from: root) {
             out.append(routine)
         }
@@ -122,6 +135,88 @@ public enum ClaudeResponseParser {
             throw QuotaError.parseFailure("no recognized buckets")
         }
         return out
+    }
+
+    // MARK: - `limits[]` array (2026-07 schema)
+
+    /// Surface entries of the structured `limits` array that the legacy
+    /// top-level keys no longer carry. Scoped entries (per-model / per-surface)
+    /// each get their own section; headline `session` / `weekly_all` entries
+    /// are used only as a fallback when the legacy `five_hour` / `seven_day`
+    /// keys are missing, so ids stay stable during Anthropic's migration.
+    private static func appendLimitsArrayBuckets(
+        from root: [String: Any],
+        to out: inout [QuotaBucket]
+    ) {
+        guard let rawEntries = root["limits"] as? [Any] else { return }
+        let entries = rawEntries.compactMap { $0 as? [String: Any] }
+        var existingIDs = Set(out.map(\.id))
+        for entry in entries {
+            guard let percent = numberValue(entry["percent"])
+                ?? numberValue(entry["utilization"])
+            else { continue }
+            let kind = (entry["kind"] as? String) ?? ""
+            let group = (entry["group"] as? String) ?? kind
+            let resetDate = parseDate(entry["resets_at"]) ?? parseDate(entry["reset_at"])
+            let isSession = group == "session"
+            let windowSeconds = isSession ? 18_000 : 604_800
+            let idPrefix = isSession ? "session" : "weekly"
+
+            let scope = entry["scope"] as? [String: Any]
+            let model = scope?["model"] as? [String: Any]
+            let scopeName = ((model?["display_name"] as? String)
+                ?? (scope?["surface"] as? String))?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let bucket: QuotaBucket
+            if let scopeName, !scopeName.isEmpty {
+                // Scoped limit → its own section, id derived from the name so
+                // known models land on their existing ids (Fable →
+                // weekly_fable) and unknown ones still render via groupTitle.
+                let id = "\(idPrefix)_\(slug(scopeName))"
+                guard !existingIDs.contains(id) else { continue }
+                bucket = QuotaBucket(
+                    id: id,
+                    title: isSession ? "5 Hours" : "Weekly",
+                    shortLabel: isSession ? "\(scopeName) 5h" : "\(scopeName) wk",
+                    usedPercent: percent,
+                    resetAt: resetDate,
+                    rawWindowSeconds: windowSeconds,
+                    groupTitle: scopeName
+                )
+            } else if group == "session" || group == "weekly" {
+                // Headline limit — fallback only, legacy keys win.
+                let id = isSession ? "five_hour" : "weekly"
+                guard !existingIDs.contains(id) else { continue }
+                bucket = QuotaBucket(
+                    id: id,
+                    title: isSession ? "5 Hours" : "Weekly",
+                    shortLabel: isSession ? "5h" : "All models",
+                    usedPercent: percent,
+                    resetAt: resetDate,
+                    rawWindowSeconds: windowSeconds,
+                    groupTitle: nil
+                )
+            } else {
+                continue
+            }
+            existingIDs.insert(bucket.id)
+            out.append(bucket)
+        }
+    }
+
+    /// "Fable" → "fable", "Opus 4.8" → "opus_4_8". Keeps derived bucket ids
+    /// aligned with the legacy `weekly_<model>` naming.
+    private static func slug(_ name: String) -> String {
+        let scalars = name.lowercased().unicodeScalars.map { scalar in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : "_"
+        }
+        var result = ""
+        for ch in scalars {
+            if ch == "_", result.last == "_" { continue }
+            result.append(ch)
+        }
+        return result.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
     }
 
     /// Pull the raw `extra_usage` block out of the OAuth usage response so the

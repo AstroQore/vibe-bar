@@ -646,6 +646,18 @@ response, in logs, or because AQ points it out — add it end-to-end
 using this checklist. Do **not** stop at the parser; a half-added model
 parses but never becomes selectable.
 
+**2026-07 schema note.** The legacy `seven_day_<model>` keys now come
+back `null`; per-model limits moved into a structured `limits` array
+whose scoped entries carry the model's display name
+(`{"kind": "weekly_scoped", "scope": {"model": {"display_name":
+"Fable"}}}`). `ClaudeResponseParser.appendLimitsArrayBuckets` derives
+the bucket id from that name (`Fable` → `weekly_fable`), so a
+brand-new model **auto-surfaces in the popover with zero code
+changes**. This checklist is still required to make the model
+selectable in the menu bar / mini window and to give it hand-tuned
+labels — but the "invisible until someone edits the parser" failure
+mode is gone.
+
 Use consistent ids for a model `<x>` (e.g. `fable`):
 
 | Layer | Value |

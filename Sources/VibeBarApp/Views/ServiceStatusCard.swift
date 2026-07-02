@@ -72,13 +72,13 @@ private struct ServiceStatusRow: View {
                 ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
                 Text(displayName)
                     .font(.system(size: 13, weight: .semibold))
-                StatusPill(indicator: snapshot?.indicator, description: snapshot?.description)
+                StatusPill(indicator: snapshot?.effectiveIndicator, description: snapshot?.effectiveDescription)
                 Spacer(minLength: 6)
                 if inFlight {
                     ProgressView().controlSize(.mini)
                 }
                 if let snapshot {
-                    let agg = snapshot.aggregateUptimePercent
+                    let agg = snapshot.displayUptimePercent
                     if agg > 0 {
                         Text(String(format: "%.2f%% uptime", agg))
                             .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
@@ -126,18 +126,12 @@ private struct ServiceStatusRow: View {
             ComponentGroupBlock(
                 title: "Components",
                 components: snapshot.components,
-                defaultExpanded: true
+                defaultExpanded: true,
+                incidentDays: snapshot.incidentDays,
+                incidentAdjustedUptime: snapshot.incidentAdjustedUptimePercent
             )
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                let ungrouped = snapshot.components(in: nil)
-                if !ungrouped.isEmpty {
-                    ComponentGroupBlock(
-                        title: "Other",
-                        components: ungrouped,
-                        defaultExpanded: defaultExpanded(forGroupName: "Other")
-                    )
-                }
                 ForEach(snapshot.groups) { group in
                     let comps = snapshot.components(in: group)
                     if !comps.isEmpty {
@@ -147,6 +141,19 @@ private struct ServiceStatusRow: View {
                             defaultExpanded: defaultExpanded(forGroupName: group.name)
                         )
                     }
+                }
+                // Ungrouped components go last: they're usually brand-new
+                // entries the provider hasn't filed yet (e.g. OpenAI's Ads
+                // API / Ads Manager showed up ungrouped in 2026-07) and
+                // shouldn't push the groups AQ actually watches below the
+                // fold.
+                let ungrouped = snapshot.components(in: nil)
+                if !ungrouped.isEmpty {
+                    ComponentGroupBlock(
+                        title: "Other",
+                        components: ungrouped,
+                        defaultExpanded: false
+                    )
                 }
             }
         }
@@ -173,15 +180,25 @@ private struct ServiceStatusRow: View {
 private struct ComponentGroupBlock: View {
     let title: String
     let components: [ServiceComponentSummary]
+    /// Provider-level incident overlay (see `ServiceStatusSnapshot.incidentDays`)
+    /// — merged into the summary strip so incident-only providers
+    /// (Anthropic) don't render an all-green wall next to their own
+    /// incident footer.
+    let incidentDays: [DayUptime]?
+    let incidentAdjustedUptime: Double?
     @State private var expanded: Bool
 
     init(
         title: String,
         components: [ServiceComponentSummary],
-        defaultExpanded: Bool = false
+        defaultExpanded: Bool = false,
+        incidentDays: [DayUptime]? = nil,
+        incidentAdjustedUptime: Double? = nil
     ) {
         self.title = title
         self.components = components
+        self.incidentDays = incidentDays
+        self.incidentAdjustedUptime = incidentAdjustedUptime
         self._expanded = State(initialValue: defaultExpanded)
     }
 
@@ -238,23 +255,32 @@ private struct ComponentGroupBlock: View {
 
     private var aggregateUptime: Double? {
         let values = components.compactMap(\.uptimePercent)
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +) / Double(values.count)
+        guard !values.isEmpty else { return incidentAdjustedUptime }
+        let official = values.reduce(0, +) / Double(values.count)
+        guard let adjusted = incidentAdjustedUptime else { return official }
+        return min(official, adjusted)
     }
 
     private var summaryDays: [DayUptime] {
         var dates: Set<Date> = []
         var impactByDate: [Date: IncidentImpact] = [:]
+        var mergeDay: (DayUptime) -> Void = { _ in }
+        mergeDay = { day in
+            dates.insert(day.date)
+            guard let impact = day.worstImpact else { return }
+            if let existing = impactByDate[day.date] {
+                impactByDate[day.date] = worseImpact(existing, impact)
+            } else {
+                impactByDate[day.date] = impact
+            }
+        }
         for component in components {
             for day in component.recentDays {
-                dates.insert(day.date)
-                guard let impact = day.worstImpact else { continue }
-                if let existing = impactByDate[day.date] {
-                    impactByDate[day.date] = worseImpact(existing, impact)
-                } else {
-                    impactByDate[day.date] = impact
-                }
+                mergeDay(day)
             }
+        }
+        for day in incidentDays ?? [] {
+            mergeDay(day)
         }
         return dates.sorted().map { date in
             DayUptime(date: date, worstImpact: impactByDate[date])

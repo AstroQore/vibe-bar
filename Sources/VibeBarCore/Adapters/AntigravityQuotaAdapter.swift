@@ -179,7 +179,11 @@ enum AntigravityResponseParser {
                 shortLabel: AntigravityResponseParser.shortLabel(for: config.label, modelId: modelId),
                 usedPercent: max(0, min(100, (1 - fraction) * 100)),
                 resetAt: resetAt,
-                rawWindowSeconds: nil
+                // Antigravity's per-model quotas run on the same 5-hour
+                // rolling window as the rest of Google's Gemini plans;
+                // the protobuf only exposes the reset timestamp, so the
+                // window length is assumed. Enables `UsagePace` captions.
+                rawWindowSeconds: 18_000
             )
             bucket.groupTitle = AntigravityResponseParser.groupTitle(for: config.label, modelId: modelId)
             buckets.append(bucket)

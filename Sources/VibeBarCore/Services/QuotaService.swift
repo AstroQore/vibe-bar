@@ -14,6 +14,10 @@ public final class QuotaService: ObservableObject {
     /// kept in sync as each `refresh` succeeds; views read this
     /// dictionary directly via the `@Published` projection.
     @Published public private(set) var historyByAccountBucket: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
+    /// Per-(accountId, bucketId) fill timeline (hourly point-in-time samples)
+    /// from `UsageFillTimelineStore`, powering the CodexBar-style fill chart.
+    /// Points are oldest-first.
+    @Published public private(set) var fillTimelineByAccountBucket: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
 
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
@@ -39,6 +43,8 @@ public final class QuotaService: ObservableObject {
         Task { @MainActor [weak self] in
             let samples = await SubscriptionHistoryStore.shared.allSamples()
             self?.applyInitialSubscriptionHistory(samples)
+            let points = await UsageFillTimelineStore.shared.allPoints()
+            self?.applyInitialFillTimeline(points)
         }
     }
 
@@ -162,6 +168,35 @@ public final class QuotaService: ObservableObject {
         Task { [weak self] in
             await SubscriptionHistoryStore.shared.observe(quota, retentionDays: retention)
             await self?.refreshSubscriptionHistory(for: quota)
+            await UsageFillTimelineStore.shared.observe(quota, retentionDays: retention)
+            await self?.refreshFillTimeline(for: quota)
+        }
+    }
+
+    private func applyInitialFillTimeline(_ points: [FillTimelinePoint]) {
+        var grouped: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
+        for point in points {
+            let key = SubscriptionHistoryKey(accountId: point.accountId, bucketId: point.bucketId)
+            grouped[key, default: []].append(point)
+        }
+        for key in grouped.keys {
+            grouped[key]?.sort { $0.slotStart < $1.slotStart }
+        }
+        fillTimelineByAccountBucket = grouped
+    }
+
+    private func refreshFillTimeline(for quota: AccountQuota) async {
+        var updates: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
+        for bucket in quota.buckets where bucket.groupTitle == nil {
+            let points = await UsageFillTimelineStore.shared.points(
+                accountId: quota.accountId,
+                bucketId: bucket.id
+            )
+            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
+            updates[key] = points
+        }
+        for (key, points) in updates {
+            fillTimelineByAccountBucket[key] = points
         }
     }
 

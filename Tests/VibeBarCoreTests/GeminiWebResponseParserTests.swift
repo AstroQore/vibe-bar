@@ -97,13 +97,16 @@ final class GeminiWebResponseParserTests: XCTestCase {
         XCTAssertEqual(current.shortLabel, "5h")
         XCTAssertEqual(current.usedPercent, 25.0, accuracy: 0.0001)
         XCTAssertEqual(current.resetAt?.timeIntervalSince1970 ?? 0, 1779469511.884512, accuracy: 0.001)
-        XCTAssertNil(current.rawWindowSeconds)
+        // Fixed window lengths let `UsagePace` render reserve/deficit
+        // captions for Gemini like it does for Codex/Claude.
+        XCTAssertEqual(current.rawWindowSeconds, 18_000)
 
         let weekly = try XCTUnwrap(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.weeklyUsageBucketId }))
         XCTAssertEqual(weekly.title, "Weekly")
         XCTAssertEqual(weekly.shortLabel, "Wk")
         XCTAssertEqual(weekly.usedPercent, 10.0, accuracy: 0.0001)
         XCTAssertEqual(weekly.resetAt?.timeIntervalSince1970 ?? 0, 1779815111.884621, accuracy: 0.001)
+        XCTAssertEqual(weekly.rawWindowSeconds, 604_800)
     }
 
     func testParseTolerantOfBucketOrderingInResponse() throws {

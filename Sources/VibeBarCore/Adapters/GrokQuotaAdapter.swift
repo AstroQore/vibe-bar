@@ -104,7 +104,11 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             shortLabel: "Monthly",
             usedPercent: snapshot.usedPercent,
             resetAt: snapshot.resetsAt,
-            rawWindowSeconds: nil
+            // Calendar-month credits window. 31 days covers the longest
+            // month so `UsagePace` never rejects a fresh cycle
+            // (its guard requires time-until-reset <= window); short
+            // months just skew the expected line slightly early.
+            rawWindowSeconds: 2_678_400
         )
         return AccountQuota(
             accountId: account.id,

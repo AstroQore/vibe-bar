@@ -508,7 +508,7 @@ public actor ServiceStatusClient {
         let summary = try await fetchJSON(SummaryDTO.self, from: ToolType.claude.statusSummaryAPI)
         let incidentsDTO = try await fetchJSON(IncidentsDTO.self, from: ToolType.claude.statusIncidentsAPI)
 
-        let uptimeMap = parseClaudeUptimeData(html: html)
+        let uptimeMap = Self.parseClaudeUptimeData(html: html)
         let groups: [ServiceComponentGroup] = []  // claude.com is flat, no groups
 
         var components: [ServiceComponentSummary] = []
@@ -542,6 +542,30 @@ public actor ServiceStatusClient {
                 )
             }
 
+        // Anthropic posts incidents ("Elevated errors on …") without ever
+        // flipping a component to degraded, so the scraped uptimeData stays
+        // 100% green wall-to-wall. Fold the incident feed into a
+        // provider-level day overlay + an incident-aware uptime so the card
+        // reflects the week's incidents instead of contradicting its own
+        // incident footer. Uses the full incidents feed, not the 4-item
+        // `recent` slice, so older incidents inside the window still count.
+        let incidentIntervals: [(start: Date, end: Date, impact: IncidentImpact)] =
+            incidentsDTO.incidents.compactMap { incident in
+                guard incident.impact.severity > IncidentImpact.none.severity else { return nil }
+                return (
+                    start: incident.created_at,
+                    end: incident.resolved_at ?? now,
+                    impact: incident.impact
+                )
+            }
+        let incidentDays = buildDayBuckets(from: incidentIntervals, dayCount: dayCount, now: now)
+        let adjustedUptime = Self.incidentAdjustedUptime(
+            officialPercent: components.compactMap(\.uptimePercent).min(),
+            intervals: incidentIntervals.map { (start: $0.start, end: $0.end) },
+            dayCount: dayCount,
+            now: now
+        )
+
         return ServiceStatusSnapshot(
             tool: .claude,
             indicator: summary.status.indicator,
@@ -549,8 +573,48 @@ public actor ServiceStatusClient {
             updatedAt: summary.page.updated_at,
             groups: groups,
             components: components,
-            recentIncidents: Array(recent)
+            recentIncidents: Array(recent),
+            incidentDays: incidentDays.contains(where: { $0.worstImpact != nil }) ? incidentDays : nil,
+            incidentAdjustedUptimePercent: adjustedUptime
         )
+    }
+
+    /// 100% minus the merged (union) incident downtime over the window,
+    /// capped by the official component uptime when that is lower. Overlap
+    /// between concurrent incidents is only counted once.
+    nonisolated static func incidentAdjustedUptime(
+        officialPercent: Double?,
+        intervals: [(start: Date, end: Date)],
+        dayCount: Int,
+        now: Date
+    ) -> Double? {
+        let windowSeconds = Double(dayCount) * 86_400
+        guard windowSeconds > 0 else { return nil }
+        let windowStart = now.addingTimeInterval(-windowSeconds)
+        let clamped = intervals.compactMap { interval -> (Date, Date)? in
+            let start = max(interval.start, windowStart)
+            let end = min(interval.end, now)
+            guard end > start else { return nil }
+            return (start, end)
+        }
+        .sorted { $0.0 < $1.0 }
+        guard !clamped.isEmpty else { return nil }
+        var downtime: TimeInterval = 0
+        var currentStart = clamped[0].0
+        var currentEnd = clamped[0].1
+        for (start, end) in clamped.dropFirst() {
+            if start <= currentEnd {
+                currentEnd = max(currentEnd, end)
+            } else {
+                downtime += currentEnd.timeIntervalSince(currentStart)
+                currentStart = start
+                currentEnd = end
+            }
+        }
+        downtime += currentEnd.timeIntervalSince(currentStart)
+        let incidentUptime = max(0, min(100, (1 - downtime / windowSeconds) * 100))
+        guard let officialPercent else { return incidentUptime }
+        return min(officialPercent, incidentUptime)
     }
 
     // MARK: - OpenAI (incident.io with embedded streaming chunks)
@@ -759,16 +823,27 @@ public actor ServiceStatusClient {
 
     // MARK: - Claude HTML scraping
 
-    private nonisolated func parseClaudeUptimeData(html: String) -> [String: ClaudeUptimeEntry] {
-        guard let range = html.range(of: "var uptimeData = ") else { return [:] }
-        let after = html[range.upperBound...]
-        guard let json = ServiceStatusClient.extractJSONObject(in: after) else { return [:] }
-        guard let data = json.data(using: .utf8) else { return [:] }
-        do {
-            return try JSONDecoder().decode([String: ClaudeUptimeEntry].self, from: data)
-        } catch {
-            return [:]
+    /// status.claude.com used to inline `var uptimeData = {…}`; it now ships
+    /// `window.uptimeData = {…}` with `var uptimeData = window.uptimeData;`
+    /// as an alias, which made the old single-anchor scrape silently return
+    /// empty — every component rendered 100% all-green while the official
+    /// page showed a month of degraded days. Try both anchors and accept the
+    /// first occurrence that decodes to a non-empty map.
+    nonisolated static func parseClaudeUptimeData(html: String) -> [String: ClaudeUptimeEntry] {
+        for anchor in ["window.uptimeData = ", "var uptimeData = "] {
+            var search = html.startIndex..<html.endIndex
+            while let range = html.range(of: anchor, range: search) {
+                let after = html[range.upperBound...]
+                if let json = ServiceStatusClient.extractJSONObject(in: after),
+                   let data = json.data(using: .utf8),
+                   let decoded = try? JSONDecoder().decode([String: ClaudeUptimeEntry].self, from: data),
+                   !decoded.isEmpty {
+                    return decoded
+                }
+                search = range.upperBound..<html.endIndex
+            }
         }
+        return [:]
     }
 
     private nonisolated static func extractJSONObject(in input: Substring) -> String? {
@@ -1023,17 +1098,17 @@ private struct IncidentsDTO: Decodable {
 
 // MARK: - Claude scraped uptime DTOs
 
-private struct ClaudeUptimeEntry: Decodable {
+struct ClaudeUptimeEntry: Decodable {
     let component: ClaudeComponentMeta
     let days: [ClaudeDay]
 }
 
-private struct ClaudeComponentMeta: Decodable {
+struct ClaudeComponentMeta: Decodable {
     let code: String
     let name: String
 }
 
-private struct ClaudeDay: Decodable {
+struct ClaudeDay: Decodable {
     let date: String
     let outages: [String: Int]
 }

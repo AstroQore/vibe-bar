@@ -38,6 +38,16 @@ struct SubscriptionUtilizationView: View {
                 ForEach(relevantBuckets) { bucket in
                     row(for: bucket)
                 }
+                if let accountId = environment.account(for: tool)?.id {
+                    FillTimelineChart(
+                        tool: tool,
+                        buckets: relevantBuckets,
+                        accountId: accountId,
+                        mode: mode,
+                        density: density,
+                        now: now
+                    )
+                }
             }
         }
         .padding(density.cardPadding)
@@ -141,24 +151,6 @@ struct SubscriptionUtilizationView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-            }
-            sparkline(for: bucket)
-        }
-    }
-
-    @ViewBuilder
-    private func sparkline(for bucket: QuotaBucket) -> some View {
-        if let accountId = environment.account(for: tool)?.id {
-            let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
-            let samples = quotaService.historyByAccountBucket[key] ?? []
-            if bucket.resetAt != nil || !samples.isEmpty {
-                SubscriptionWindowSparkline(
-                    samples: samples,
-                    currentResetAt: bucket.resetAt,
-                    currentUsedPercent: bucket.usedPercent,
-                    mode: mode,
-                    density: density
-                )
             }
         }
     }
