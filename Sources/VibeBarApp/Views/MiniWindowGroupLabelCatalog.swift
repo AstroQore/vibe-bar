@@ -13,6 +13,7 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "claude.design", title: "CLAUDE · Design", defaultLabel: "Design"),
         .init(id: "claude.routine", title: "CLAUDE · Routine", defaultLabel: "Routine"),
         .init(id: "claude.opus", title: "CLAUDE · Opus", defaultLabel: "Opus"),
+        .init(id: "claude.fable", title: "CLAUDE · Fable", defaultLabel: "Fable"),
         .init(id: "claude.oauth", title: "CLAUDE · OAuth", defaultLabel: "OAuth"),
         .init(id: "gemini.pro", title: "GEMINI · Pro", defaultLabel: "Pro"),
         .init(id: "gemini.flash", title: "GEMINI · Flash", defaultLabel: "Flash"),

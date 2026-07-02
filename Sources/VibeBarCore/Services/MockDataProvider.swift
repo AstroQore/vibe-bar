@@ -214,7 +214,9 @@ public enum MockDataProvider {
                 QuotaBucket(id: "daily_routines", title: "Today", shortLabel: "Routines",
                             usedPercent: 47, resetAt: dayReset, rawWindowSeconds: 86_400, groupTitle: "Daily Routines"),
                 QuotaBucket(id: "weekly_opus", title: "Weekly", shortLabel: "Opus wk",
-                            usedPercent: 18, resetAt: weeklyReset, rawWindowSeconds: 604_800, groupTitle: "Opus")
+                            usedPercent: 18, resetAt: weeklyReset, rawWindowSeconds: 604_800, groupTitle: "Opus"),
+                QuotaBucket(id: "weekly_fable", title: "Weekly", shortLabel: "Fable wk",
+                            usedPercent: 15, resetAt: weeklyReset, rawWindowSeconds: 604_800, groupTitle: "Fable")
             ]
         case .gemini:
             // Partial-primary mock: per-model buckets keep the Google

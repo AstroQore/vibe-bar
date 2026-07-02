@@ -226,6 +226,8 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             return "claude.routine"
         case "weekly_opus":
             return "claude.opus"
+        case "weekly_fable":
+            return "claude.fable"
         case "weekly_oauth_apps":
             return "claude.oauth"
         default:
