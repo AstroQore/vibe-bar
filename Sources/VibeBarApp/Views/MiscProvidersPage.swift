@@ -364,6 +364,18 @@ private struct MiscQuotaBody: View {
     private func miscBucketRow(_ bucket: QuotaBucket) -> some View {
         let mode = settingsStore.settings.displayMode
         let percent = bucket.displayPercent(mode)
+        // Most misc adapters (Z.ai, Volcengine, Kimi, MiniMax, …) already
+        // emit rawWindowSeconds + resetAt, so the same pace treatment the
+        // dedicated cards get works here too; buckets without window data
+        // just fall back to the plain bar.
+        let now = Date()
+        let pace = UsagePace.compute(bucket: bucket, now: now)
+        let expectedDisplayed = pace.map { p -> Double in
+            switch mode {
+            case .used:      return p.expectedUsedPercent
+            case .remaining: return 100 - p.expectedUsedPercent
+            }
+        }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
@@ -380,11 +392,27 @@ private struct MiscQuotaBody: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
             }
-            QuotaBarShape(
-                percent: percent,
-                mode: mode,
-                height: max(3, density.bucketBarHeight - (isCompact ? 1 : 0))
-            )
+            if let expectedDisplayed {
+                PaceMarkerCapsule(
+                    usedPercent: percent,
+                    expectedPercent: expectedDisplayed,
+                    mode: mode,
+                    height: max(3, density.bucketBarHeight - (isCompact ? 1 : 0))
+                )
+            } else {
+                QuotaBarShape(
+                    percent: percent,
+                    mode: mode,
+                    height: max(3, density.bucketBarHeight - (isCompact ? 1 : 0))
+                )
+            }
+            if let pace {
+                UsagePaceRow(
+                    pace: pace,
+                    now: now,
+                    fontSize: density.resetCountdownFontSize - (isCompact ? 1 : 0)
+                )
+            }
             if let group = bucket.groupTitle, !group.isEmpty, group != bucket.title {
                 Text(group)
                     .font(.system(size: density.resetCountdownFontSize))
