@@ -78,6 +78,103 @@ final class ClaudeParserTests: XCTestCase {
         XCTAssertEqual(fable.rawWindowSeconds, 604_800)
     }
 
+    /// Mirrors the live 2026-07 payload: legacy `seven_day_<model>` keys all
+    /// null, per-model limits moved into the `limits` array. The Fable scoped
+    /// entry must surface as `weekly_fable` with its own group.
+    func testLimitsArraySurfacesScopedModel() throws {
+        let json = """
+        {
+          "five_hour": {"utilization": 23.0, "resets_at": "2026-07-02T07:30:00Z"},
+          "seven_day": {"utilization": 7.0, "resets_at": "2026-07-02T20:00:00Z"},
+          "seven_day_opus": null,
+          "seven_day_sonnet": null,
+          "limits": [
+            {"kind": "session", "group": "session", "percent": 23, "severity": "normal",
+             "resets_at": "2026-07-02T07:30:00Z", "scope": null, "is_active": true},
+            {"kind": "weekly_all", "group": "weekly", "percent": 7, "severity": "normal",
+             "resets_at": "2026-07-02T20:00:00Z", "scope": null, "is_active": false},
+            {"kind": "weekly_scoped", "group": "weekly", "percent": 1, "severity": "normal",
+             "resets_at": "2026-07-02T20:00:01Z",
+             "scope": {"model": {"id": null, "display_name": "Fable"}, "surface": null},
+             "is_active": false}
+          ]
+        }
+        """
+        let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
+
+        // Legacy headline keys win — no duplicates from limits[].
+        XCTAssertEqual(buckets.filter { $0.id == "five_hour" }.count, 1)
+        XCTAssertEqual(buckets.filter { $0.id == "weekly" }.count, 1)
+        XCTAssertEqual(buckets.first { $0.id == "five_hour" }?.usedPercent, 23.0)
+
+        let fable = buckets.first { $0.id == "weekly_fable" }
+        XCTAssertNotNil(fable)
+        XCTAssertEqual(fable?.usedPercent, 1)
+        XCTAssertEqual(fable?.groupTitle, "Fable")
+        XCTAssertEqual(fable?.shortLabel, "Fable wk")
+        XCTAssertEqual(fable?.rawWindowSeconds, 604_800)
+        XCTAssertNotNil(fable?.resetAt)
+    }
+
+    /// When the legacy keys disappear entirely, the headline session /
+    /// weekly_all entries in limits[] synthesize five_hour / weekly.
+    func testLimitsArrayHeadlineFallback() throws {
+        let json = """
+        {
+          "limits": [
+            {"kind": "session", "group": "session", "percent": 41, "resets_at": "2026-07-02T07:30:00Z"},
+            {"kind": "weekly_all", "group": "weekly", "percent": 12, "resets_at": "2026-07-02T20:00:00Z"}
+          ]
+        }
+        """
+        let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
+        let five = buckets.first { $0.id == "five_hour" }
+        XCTAssertEqual(five?.usedPercent, 41)
+        XCTAssertEqual(five?.rawWindowSeconds, 18_000)
+        XCTAssertNil(five?.groupTitle)
+        let weekly = buckets.first { $0.id == "weekly" }
+        XCTAssertEqual(weekly?.usedPercent, 12)
+        XCTAssertEqual(weekly?.shortLabel, "All models")
+    }
+
+    /// A scoped model Vibe Bar has never heard of still surfaces with a
+    /// derived id and its display name as the group — zero code changes.
+    func testLimitsArrayAutoSurfacesUnknownModel() throws {
+        let json = """
+        {
+          "five_hour": {"utilization": 5},
+          "seven_day": {"utilization": 6},
+          "limits": [
+            {"kind": "weekly_scoped", "group": "weekly", "percent": 33,
+             "resets_at": "2026-07-02T20:00:01Z",
+             "scope": {"model": {"id": "claude-zephyr-9", "display_name": "Zephyr 9"}, "surface": null}}
+          ]
+        }
+        """
+        let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
+        let zephyr = buckets.first { $0.id == "weekly_zephyr_9" }
+        XCTAssertEqual(zephyr?.usedPercent, 33)
+        XCTAssertEqual(zephyr?.groupTitle, "Zephyr 9")
+    }
+
+    /// Malformed / percent-less limits entries are skipped without throwing.
+    func testLimitsArrayToleratesMalformedEntries() throws {
+        let json = """
+        {
+          "five_hour": {"utilization": 5},
+          "limits": [
+            {"kind": "weekly_scoped", "group": "weekly",
+             "scope": {"model": {"display_name": "Fable"}}},
+            {"kind": 12},
+            "not an object"
+          ]
+        }
+        """
+        let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
+        XCTAssertNil(buckets.first { $0.id == "weekly_fable" })
+        XCTAssertEqual(buckets.first { $0.id == "five_hour" }?.usedPercent, 5)
+    }
+
     /// `seven_day_cowork` is kept as a visible fallback for Daily Routines
     /// when the dedicated `/v1/code/routines/run-budget` cookie fetch fails.
     func testCoworkKeyProducesRoutineFallback() throws {
