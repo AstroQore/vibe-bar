@@ -125,7 +125,7 @@ final class GrokWebBillingCookieFetchTests: XCTestCase {
         let quota = try await adapter.fetch(for: account)
 
         XCTAssertEqual(quota.buckets.count, 1)
-        XCTAssertEqual(quota.buckets[0].id, "monthly")
+        XCTAssertEqual(quota.buckets[0].id, "weekly")
         XCTAssertNil(quota.buckets[0].groupTitle)
     }
 

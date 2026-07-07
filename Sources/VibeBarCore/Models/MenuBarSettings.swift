@@ -183,7 +183,7 @@ public enum MenuBarFieldCatalog {
     ]
 
     public static let grokFields: [MenuBarFieldOption] = [
-        option(.grok, "monthly", "Monthly Credits", "Mo")
+        option(.grok, "weekly", "Weekly Credits", "wk")
     ]
 
     public static let allFields: [MenuBarFieldOption] =
@@ -275,6 +275,7 @@ public enum MenuBarFieldCatalog {
             "antigravity.gemini-3.5-flash-high",
             "antigravity.gemini-3.5-flash-medium"
         ],
-        "antigravity.gemini-2.5-flash-lite": []
+        "antigravity.gemini-2.5-flash-lite": [],
+        "grok.monthly": ["grok.weekly"]
     ]
 }

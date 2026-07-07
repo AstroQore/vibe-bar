@@ -17,7 +17,7 @@ final class MenuBarFieldCatalogTests: XCTestCase {
             "antigravity.gemini-3.5-flash-medium",
             "antigravity.gemini-3.1-pro-high",
             "antigravity.gemini-3.1-pro-low",
-            "grok.monthly"
+            "grok.weekly"
         ]
 
         for id in expected {
@@ -31,7 +31,7 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         XCTAssertTrue(selected.contains("gemini.weekly"))
         XCTAssertTrue(selected.contains("antigravity.gemini-3.5-flash-high"))
         XCTAssertTrue(selected.contains("antigravity.claude-sonnet-4.6-thinking"))
-        XCTAssertTrue(selected.contains("grok.monthly"))
+        XCTAssertTrue(selected.contains("grok.weekly"))
     }
 
     func testGeminiCLIModelIdsMigrateToWebBuckets() {

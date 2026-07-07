@@ -14,9 +14,9 @@ import Foundation
 ///    user signed in to grok.com on the web but never ran
 ///    `grok login` — the case that Codex Bar already handles.
 ///
-/// The response is a tiny protobuf payload carrying the monthly
+/// The response is a tiny protobuf payload carrying the weekly
 /// used-percent and the next reset timestamp; both fields surface as
-/// a single `QuotaBucket(id: "monthly", ...)` on the card.
+/// a single `QuotaBucket(id: "weekly", ...)` on the card.
 public struct GrokQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .grok
 
@@ -99,16 +99,15 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         email: String?
     ) -> AccountQuota {
         let bucket = QuotaBucket(
-            id: "monthly",
-            title: "Monthly",
-            shortLabel: "Monthly",
+            id: "weekly",
+            title: "Weekly",
+            shortLabel: "Weekly",
             usedPercent: snapshot.usedPercent,
             resetAt: snapshot.resetsAt,
-            // Calendar-month credits window. 31 days covers the longest
-            // month so `UsagePace` never rejects a fresh cycle
-            // (its guard requires time-until-reset <= window); short
-            // months just skew the expected line slightly early.
-            rawWindowSeconds: 2_678_400
+            // Seven-day credits window. Matches xAI's weekly reset cadence
+            // and keeps `UsagePace` from rejecting a fresh cycle (its guard
+            // requires time-until-reset <= window).
+            rawWindowSeconds: 604_800
         )
         return AccountQuota(
             accountId: account.id,

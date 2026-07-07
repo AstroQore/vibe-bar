@@ -25,7 +25,7 @@ final class GrokWebBillingFetcherTests: XCTestCase {
         payload.append(0x4D)
         var unrelated = Float(7).bitPattern.littleEndian
         withUnsafeBytes(of: &unrelated) { payload.append(contentsOf: $0) }
-        // Field 1, fixed32 — the real monthly used-percent.
+        // Field 1, fixed32 — the real weekly used-percent.
         payload.append(0x0D)
         var usage = Float(42).bitPattern.littleEndian
         withUnsafeBytes(of: &usage) { payload.append(contentsOf: $0) }
@@ -66,7 +66,7 @@ final class GrokWebBillingFetcherTests: XCTestCase {
         // Golden bytes captured from a brand-new SuperGrok account — no
         // fixed32 usage field, but a future-dated reset timestamp and
         // the `[1, 6, ...]` "future allotments" marker xAI sends to
-        // signal "monthly budget known but not consumed yet".
+        // signal "weekly budget known but not consumed yet".
         let data = Data([
             0x00, 0x00, 0x00, 0x00, 0x37, 0x0A, 0x35, 0x12,
             0x00, 0x1A, 0x00, 0x22, 0x06, 0x08, 0x80, 0xDA,

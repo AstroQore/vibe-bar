@@ -192,23 +192,23 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
         XCTAssertTrue(all.isEmpty, "5h buckets should be ignored")
     }
 
-    func testGrokMonthlyWithoutWindowSecondsAllowed() async throws {
+    func testGrokWeeklyBucketIsTracked() async throws {
         let (store, _, cleanup) = try makeTempStore()
         defer { cleanup() }
         let now = Date()
-        let reset = now.addingTimeInterval(20 * 86_400)
+        let reset = now.addingTimeInterval(4 * 86_400)
         await store.observe(
             quota(tool: .grok, buckets: [
-                bucket(id: "monthly", usedPercent: 55, resetAt: reset, rawWindowSeconds: nil)
+                bucket(id: "weekly", usedPercent: 55, resetAt: reset, rawWindowSeconds: 604_800)
             ]),
             now: now,
             retentionDays: 30
         )
-        let samples = await store.samples(accountId: "acct-test", bucketId: "monthly")
+        let samples = await store.samples(accountId: "acct-test", bucketId: "weekly")
         XCTAssertEqual(samples.count, 1)
         let sample = try XCTUnwrap(samples.first)
         XCTAssertEqual(sample.peakUsedPercent, 55, accuracy: 0.001)
         XCTAssertEqual(sample.lastUsedPercent, 55, accuracy: 0.001)
-        XCTAssertNil(sample.windowStart, "windowStart should be nil when rawWindowSeconds is nil")
+        XCTAssertNotNil(sample.windowStart)
     }
 }

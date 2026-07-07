@@ -3,7 +3,7 @@ import Foundation
 /// Decoded usage snapshot from grok.com's billing endpoint. The wire
 /// format is a gRPC-web `connect-es` response carrying a protobuf
 /// payload. We don't depend on a generated proto stub — instead a
-/// best-effort scanner pulls the monthly used-percent (`fixed32` field)
+/// best-effort scanner pulls the weekly used-percent (`fixed32` field)
 /// and the next reset timestamp (`varint` seconds since epoch) out of
 /// the bytes.
 public struct GrokWebBillingSnapshot: Sendable, Equatable {
@@ -227,7 +227,7 @@ public enum GrokWebBillingFetcher {
         }
 
         // The smallest "field number 1" fixed32 in the payload is the
-        // monthly used-percent. Picking the shallowest path keeps us
+        // weekly used-percent. Picking the shallowest path keeps us
         // pointed at the top-level usage object instead of a nested
         // sub-bucket that happens to share field=1.
         let parsedPercent = scan.fixed32Fields

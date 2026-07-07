@@ -9,8 +9,8 @@ import Foundation
 ///   - "2h 35m of 5h · 7% used"           — sub-day windows (5-hour)
 ///   - "Resets soon · 99% used"           — reset has technically passed
 ///   - "42% used"                         — no resetAt or no
-///                                          rawWindowSeconds (Grok
-///                                          monthly, Gemini per-model)
+///                                          rawWindowSeconds (Gemini
+///                                          per-model when unset)
 public enum SubscriptionWindowProgress {
     public static func summary(
         usedPercent: Double,
