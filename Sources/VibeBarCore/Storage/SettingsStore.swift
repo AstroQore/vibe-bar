@@ -50,7 +50,8 @@ public final class SettingsStore: ObservableObject {
         let bucketIdMigrations: [String: String?] = [
             "claude.weekly_cowork":      "claude.daily_routines",
             "claude.design_promotional": nil,    // dropped — never showed up in real responses
-            "claude.extra_usage":        nil     // promoted out of buckets, surfaced as ProviderExtras now
+            "claude.extra_usage":        nil,    // promoted out of buckets, surfaced as ProviderExtras now
+            "grok.monthly":              "grok.weekly"
         ]
         var menuItems = migrated.menuBarItems
         for index in menuItems.indices {

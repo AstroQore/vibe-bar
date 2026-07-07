@@ -9,7 +9,7 @@ import Foundation
 ///               like weekly_sonnet/weekly_opus are ignored to avoid
 ///               double-counting Claude's plan).
 ///   - Codex   → bucket id "weekly".
-///   - Grok    → bucket id "monthly".
+///   - Grok    → bucket id "weekly".
 ///   - Gemini  → arithmetic mean of all of that account's buckets
 ///               (per-model dailies).
 ///
@@ -45,7 +45,7 @@ public enum OverallFillRate {
                 .flatMap { $0.usedPercent.isFinite ? $0.usedPercent : nil }
         case .grok:
             return quota.buckets
-                .first(where: { $0.id == "monthly" })
+                .first(where: { $0.id == "weekly" })
                 .flatMap { $0.usedPercent.isFinite ? $0.usedPercent : nil }
         case .gemini:
             let valid = quota.buckets.filter { $0.usedPercent.isFinite }

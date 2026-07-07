@@ -576,6 +576,14 @@ Match what `git log` shows on `main`:
 - Body wraps at ~72 chars, explains *why* and any non-obvious *how*.
   Skip the body for trivial changes.
 - Mention `Co-Authored-By:` trailers at the end if you collaborated.
+  Use the **runtime agent's** trailer — detect from your harness, don't
+  guess a model name from product branding or stale examples:
+
+  | Agent | Trailer |
+  | --- | --- |
+  | Claude Code | `Co-Authored-By: Claude <runtime model name> <noreply@anthropic.com>` — e.g. `Claude Opus 4.8 <noreply@anthropic.com>` |
+  | Codex | `Co-Authored-By: Codex <noreply@openai.com>` (read `commit_attribution` from `~/.codex/config.toml` if present) |
+  | Grok Build (Cursor) | `Co-Authored-By: Grok Composer 2.5 Fast (xAI) <noreply@x.ai>` |
 
 Example:
 
@@ -587,7 +595,7 @@ so the dynamic color resolved against whatever appearance happened to
 be current when the off-screen NSImage rendered. Forward the matching
 .darkAqua / .aqua appearance so labelColor resolves correctly.
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 ```
 
 ### 9.5 After the PR is open

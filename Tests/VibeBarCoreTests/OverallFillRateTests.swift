@@ -28,7 +28,7 @@ final class OverallFillRateTests: XCTestCase {
                 bucket(id: "weekly", usedPercent: 70)
             ]),
             "acct-grok": quota(accountId: "acct-grok", tool: .grok, buckets: [
-                bucket(id: "monthly", usedPercent: 30)
+                bucket(id: "weekly", usedPercent: 30)
             ]),
             "acct-gemini": quota(accountId: "acct-gemini", tool: .gemini, buckets: [
                 bucket(id: "gemini-2.5-pro", usedPercent: 60),
@@ -38,7 +38,7 @@ final class OverallFillRateTests: XCTestCase {
         let mean = try? XCTUnwrap(OverallFillRate.average(quotas))
         // Claude weekly headline = 50, sub-buckets ignored.
         // Codex weekly = 70.
-        // Grok monthly = 30.
+        // Grok weekly = 30.
         // Gemini = (60 + 40) / 2 = 50.
         // Overall = (50 + 70 + 30 + 50) / 4 = 50.
         XCTAssertEqual(mean ?? -1, 50, accuracy: 0.001)
@@ -54,7 +54,7 @@ final class OverallFillRateTests: XCTestCase {
                 bucket(id: "weekly", usedPercent: 80)
             ]),
             "acct-grok": quota(accountId: "acct-grok", tool: .grok, buckets: [
-                bucket(id: "monthly", usedPercent: 20)
+                bucket(id: "weekly", usedPercent: 20)
             ])
         ]
         let mean = try? XCTUnwrap(OverallFillRate.average(quotas))
@@ -68,7 +68,7 @@ final class OverallFillRateTests: XCTestCase {
                 bucket(id: "weekly_sonnet", usedPercent: 90, groupTitle: "Sonnet")
             ]),
             "acct-grok": quota(accountId: "acct-grok", tool: .grok, buckets: [
-                bucket(id: "monthly", usedPercent: 20)
+                bucket(id: "weekly", usedPercent: 20)
             ])
         ]
         let mean = try? XCTUnwrap(OverallFillRate.average(quotas))

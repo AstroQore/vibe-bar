@@ -245,18 +245,18 @@ public enum MockDataProvider {
                             rawWindowSeconds: nil, groupTitle: "Claude")
             ]
         case .grok:
-            // Partial-primary mock: single monthly bucket so the
+            // Partial-primary mock: single weekly bucket so the
             // dedicated Grok sub-page renders the expected card
             // during mock mode.
-            let monthlyReset = now.addingTimeInterval(18 * 24 * 3600)
+            let weeklyReset = now.addingTimeInterval(4 * 24 * 3600)
             buckets = [
                 QuotaBucket(
-                    id: "monthly",
-                    title: "Monthly",
-                    shortLabel: "Monthly",
+                    id: "weekly",
+                    title: "Weekly",
+                    shortLabel: "Weekly",
                     usedPercent: 45,
-                    resetAt: monthlyReset,
-                    rawWindowSeconds: nil
+                    resetAt: weeklyReset,
+                    rawWindowSeconds: 604_800
                 )
             ]
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
