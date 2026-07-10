@@ -260,12 +260,22 @@ public enum GrokWebBillingFetcher {
             .map(\.date)
             .min()
 
-        // Brand-new accounts have no usage yet — the percent fixed32 is
-        // missing but a reset timestamp is present. Treat that as 0%.
+        // Accounts at exactly 0% omit the default-valued percent fixed32.
+        // xAI's older payloads carried allotments under field 6; current
+        // payloads repeat the weekly reset under `[1, 8, 3, 1]`. Require one
+        // of those known billing markers plus a future reset so an unrelated
+        // reset-only protobuf is not mistaken for zero usage.
+        let hasLegacyAllotmentMarker = scan.varintFields.contains {
+            $0.path.starts(with: [1, 6])
+        }
+        let hasWeeklyWindowMarker = scan.varintFields.contains { field in
+            guard field.path == [1, 8, 3, 1], let reset else { return false }
+            return reset == Date(timeIntervalSince1970: TimeInterval(field.value))
+        }
         let noUsageYet = parsedPercent == nil
             && scan.fixed32Fields.isEmpty
             && reset != nil
-            && scan.varintFields.contains { $0.path.starts(with: [1, 6]) }
+            && (hasLegacyAllotmentMarker || hasWeeklyWindowMarker)
         guard let percent = parsedPercent ?? (noUsageYet ? 0 : nil) else {
             throw QuotaError.parseFailure("Grok billing protobuf had no usage field.")
         }
