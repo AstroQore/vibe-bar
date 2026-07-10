@@ -88,9 +88,53 @@ final class GrokWebBillingFetcherTests: XCTestCase {
         XCTAssertEqual(snapshot.resetsAt, Date(timeIntervalSince1970: 1_780_272_000))
     }
 
+    func testParsesNoUsageResponseWithWeeklyWindowMetadataAsZeroPercent() throws {
+        // Current xAI responses omit the default-valued fixed32 percent at
+        // 0% usage and describe the active weekly window under field 8.
+        // Older responses used repeated field 6 allotment entries instead.
+        let windowStart: UInt64 = 1_800_000_000
+        let windowEnd: UInt64 = 1_800_604_800
+
+        var billing = Data()
+        billing.append(Self.lengthDelimitedField(number: 2, payload: Data()))
+        billing.append(Self.lengthDelimitedField(number: 3, payload: Data()))
+        billing.append(Self.lengthDelimitedField(
+            number: 4,
+            payload: Self.varintField(number: 1, value: windowStart)
+        ))
+        billing.append(Self.lengthDelimitedField(
+            number: 5,
+            payload: Self.varintField(number: 1, value: windowEnd)
+        ))
+
+        var weeklyWindow = Data()
+        weeklyWindow.append(Self.varintField(number: 1, value: 2))
+        weeklyWindow.append(Self.lengthDelimitedField(
+            number: 2,
+            payload: Self.varintField(number: 1, value: windowStart)
+        ))
+        weeklyWindow.append(Self.lengthDelimitedField(
+            number: 3,
+            payload: Self.varintField(number: 1, value: windowEnd)
+        ))
+        billing.append(Self.lengthDelimitedField(number: 8, payload: weeklyWindow))
+        billing.append(Self.varintField(number: 11, value: 1))
+        billing.append(Self.lengthDelimitedField(number: 12, payload: Data()))
+        billing.append(Self.varintField(number: 13, value: 1))
+
+        let payload = Self.lengthDelimitedField(number: 1, payload: billing)
+        let snapshot = try GrokWebBillingFetcher.parseGRPCWebResponse(
+            Self.grpcFrame(payload),
+            now: now
+        )
+
+        XCTAssertEqual(snapshot.usedPercent, 0)
+        XCTAssertEqual(snapshot.resetsAt, Date(timeIntervalSince1970: TimeInterval(windowEnd)))
+    }
+
     func testRejectsResetOnlyPayloadThatLacksUsageAndNoUsageMarker() {
         var payload = Data()
-        // Only a reset timestamp — no usage field, no `[1, 6]` marker.
+        // Only a reset timestamp — no usage field or known zero-usage marker.
         payload.append(0x10)
         payload.append(contentsOf: Self.varint(1_800_000_001))
 
@@ -142,6 +186,19 @@ final class GrokWebBillingFetcherTests: XCTestCase {
         var data = Data([flags])
         let length = UInt32(payload.count).bigEndian
         withUnsafeBytes(of: length) { data.append(contentsOf: $0) }
+        data.append(payload)
+        return data
+    }
+
+    private static func varintField(number: UInt64, value: UInt64) -> Data {
+        var data = Data(varint(number << 3))
+        data.append(contentsOf: varint(value))
+        return data
+    }
+
+    private static func lengthDelimitedField(number: UInt64, payload: Data) -> Data {
+        var data = Data(varint((number << 3) | 2))
+        data.append(contentsOf: varint(UInt64(payload.count)))
         data.append(payload)
         return data
     }
