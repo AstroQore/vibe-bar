@@ -8,10 +8,11 @@ import Foundation
 /// miVerify slider captcha so headless username/password login is not viable;
 /// users sign in once in their browser and Vibe Bar imports the cookies.
 ///
-/// Endpoint:
-/// `GET https://platform.xiaomimimo.com/api/v1/tokenPlan/usage`
-/// returns the monthly Token Plan counter the console renders on its
-/// Subscription page. The `monthUsage.items[name=month_total_token]` entry is
+/// Endpoints:
+/// - `/api/v1/tokenPlan/usage` returns the monthly Token Plan counter.
+/// - `/api/v1/tokenPlan/detail` returns the plan name and current-period end.
+///
+/// The `monthUsage.items[name=month_total_token]` entry is
 /// preferred over the alternative `usage.items[name=plan_total_token]` because
 /// it matches the headline number on the console exactly.
 ///
@@ -41,8 +42,11 @@ public struct MimoQuotaAdapter: QuotaAdapter {
         requiredNames: ["userId", "api-platform_slh", "api-platform_ph", "api-platform_serviceToken"]
     )
 
-    private static let endpoint = URL(string:
+    private static let usageEndpoint = URL(string:
         "https://platform.xiaomimimo.com/api/v1/tokenPlan/usage"
+    )!
+    private static let detailEndpoint = URL(string:
+        "https://platform.xiaomimimo.com/api/v1/tokenPlan/detail"
     )!
 
     public init(
@@ -74,7 +78,39 @@ public struct MimoQuotaAdapter: QuotaAdapter {
         account: AccountIdentity,
         queriedAt: Date
     ) async throws -> AccountQuota {
-        var request = URLRequest(url: MimoQuotaAdapter.endpoint)
+        let usageData = try await fetchData(
+            from: MimoQuotaAdapter.usageEndpoint,
+            using: resolution
+        )
+        // Detail enriches the card with the subscription expiry and
+        // plan name. Keep usage available if Xiaomi temporarily rolls
+        // this newer endpoint back or changes its response envelope.
+        let detailData = try? await fetchData(
+            from: MimoQuotaAdapter.detailEndpoint,
+            using: resolution
+        )
+
+        let snapshot = try MimoResponseParser.parse(
+            usageData: usageData,
+            detailData: detailData,
+            now: queriedAt
+        )
+        return AccountQuota(
+            accountId: account.id,
+            tool: .mimo,
+            buckets: snapshot.buckets,
+            plan: snapshot.planName,
+            email: account.email,
+            queriedAt: queriedAt,
+            error: nil
+        )
+    }
+
+    private func fetchData(
+        from endpoint: URL,
+        using resolution: MiscCookieResolver.Resolution
+    ) async throws -> Data {
+        var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.setValue(resolution.header, forHTTPHeaderField: "Cookie")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
@@ -105,16 +141,7 @@ public struct MimoQuotaAdapter: QuotaAdapter {
             throw QuotaError.network("MiMo returned HTTP \(http.statusCode).")
         }
 
-        let snapshot = try MimoResponseParser.parse(data: data, now: queriedAt)
-        return AccountQuota(
-            accountId: account.id,
-            tool: .mimo,
-            buckets: snapshot.buckets,
-            plan: snapshot.planName,
-            email: account.email,
-            queriedAt: queriedAt,
-            error: nil
-        )
+        return data
     }
 }
 
@@ -127,12 +154,16 @@ enum MimoResponseParser {
     }
 
     static func parse(data: Data, now: Date) throws -> Snapshot {
-        guard !data.isEmpty else {
+        try parse(usageData: data, detailData: nil, now: now)
+    }
+
+    static func parse(usageData: Data, detailData: Data?, now: Date) throws -> Snapshot {
+        guard !usageData.isEmpty else {
             throw QuotaError.parseFailure("MiMo returned an empty body.")
         }
         let response: MimoAPIResponse
         do {
-            response = try JSONDecoder().decode(MimoAPIResponse.self, from: data)
+            response = try JSONDecoder().decode(MimoAPIResponse.self, from: usageData)
         } catch {
             throw QuotaError.parseFailure("MiMo response not parseable: \(error.localizedDescription)")
         }
@@ -175,20 +206,52 @@ enum MimoResponseParser {
             percent = 0
         }
 
+        let detail = detailData.flatMap(parseDetail)
         let bucket = QuotaBucket(
             id: "mimo.month",
             title: "Monthly",
             shortLabel: "Month",
             usedPercent: percent,
-            resetAt: nil,
+            resetAt: detail?.periodEnd,
             rawWindowSeconds: 30 * 86_400
         )
 
-        return Snapshot(buckets: [bucket], planName: nil)
+        return Snapshot(buckets: [bucket], planName: detail?.planName)
     }
 
     private static func pickItem(in items: [MimoAPIItem]?, name: String) -> MimoAPIItem? {
         items?.first(where: { $0.name == name })
+    }
+
+    private static func parseDetail(_ data: Data) -> (periodEnd: Date?, planName: String?)? {
+        guard !data.isEmpty,
+              let response = try? JSONDecoder().decode(MimoPlanDetailResponse.self, from: data),
+              response.code == nil || response.code == 0,
+              let detail = response.data else {
+            return nil
+        }
+        return (
+            periodEnd: parsePeriodEnd(detail.currentPeriodEnd),
+            planName: detail.planName?.trimmed
+        )
+    }
+
+    /// The MiMo console labels `currentPeriodEnd` as UTC even though
+    /// the server serializes it without an offset.
+    private static func parsePeriodEnd(_ raw: String?) -> Date? {
+        guard let value = raw?.trimmed else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        if let date = formatter.date(from: value) { return date }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: value) { return date }
+        iso.formatOptions = [.withInternetDateTime]
+        return iso.date(from: value)
     }
 }
 
@@ -212,6 +275,24 @@ private struct MimoAPIResponse: Decodable {
 private struct MimoAPIData: Decodable {
     let monthUsage: MimoAPIBucket?
     let usage: MimoAPIBucket?
+}
+
+private struct MimoPlanDetailResponse: Decodable {
+    let code: Int?
+    let data: MimoPlanDetail?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        code = MimoQuotaDecoding.int(c, forKey: .code)
+        data = try c.decodeIfPresent(MimoPlanDetail.self, forKey: .data)
+    }
+
+    enum CodingKeys: String, CodingKey { case code, data }
+}
+
+private struct MimoPlanDetail: Decodable {
+    let planName: String?
+    let currentPeriodEnd: String?
 }
 
 private struct MimoAPIBucket: Decodable {

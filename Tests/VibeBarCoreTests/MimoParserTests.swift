@@ -90,6 +90,67 @@ final class MimoParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[0].usedPercent, 42.0, accuracy: 0.01)
     }
 
+    func testPlanDetailAddsUTCExpiryAndPlanName() throws {
+        let usage = """
+        {
+          "code": 0,
+          "data": {
+            "monthUsage": {
+              "items": [
+                {"name": "month_total_token", "used": 25, "limit": 100}
+              ]
+            }
+          }
+        }
+        """
+        let detail = """
+        {
+          "code": 0,
+          "data": {
+            "planCode": "pro",
+            "planName": "Pro",
+            "currentPeriodEnd": "2026-08-02 23:59:59",
+            "expired": false
+          }
+        }
+        """
+
+        let snap = try MimoResponseParser.parse(
+            usageData: Data(usage.utf8),
+            detailData: Data(detail.utf8),
+            now: now
+        )
+        XCTAssertEqual(snap.planName, "Pro")
+        XCTAssertEqual(
+            snap.buckets[0].resetAt?.timeIntervalSince1970 ?? 0,
+            1_785_715_199,
+            accuracy: 0.5
+        )
+    }
+
+    func testMalformedPlanDetailDoesNotHideUsage() throws {
+        let usage = """
+        {
+          "code": 0,
+          "data": {
+            "monthUsage": {
+              "items": [
+                {"name": "month_total_token", "used": 25, "limit": 100}
+              ]
+            }
+          }
+        }
+        """
+        let snap = try MimoResponseParser.parse(
+            usageData: Data(usage.utf8),
+            detailData: Data("not json".utf8),
+            now: now
+        )
+        XCTAssertEqual(snap.buckets[0].usedPercent, 25)
+        XCTAssertNil(snap.buckets[0].resetAt)
+        XCTAssertNil(snap.planName)
+    }
+
     func testMissingDataThrowsParseFailure() {
         let json = "{\"code\": 0}"
         XCTAssertThrowsError(try MimoResponseParser.parse(data: Data(json.utf8), now: now)) { error in

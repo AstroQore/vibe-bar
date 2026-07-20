@@ -16,6 +16,7 @@ final class MiscProviderSettingsTests: XCTestCase {
             sourceMode: .browserOnly,
             cookieSource: .manual,
             region: "cn-beijing",
+            planVariant: "personal",
             enterpriseHost: URL(string: "https://copilot.example.com/")!,
             workspaceID: "wrk_demo",
             preferredBrowser: .brave,
@@ -34,6 +35,7 @@ final class MiscProviderSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.sourceMode, .auto)
         XCTAssertEqual(decoded.cookieSource, .auto)
         XCTAssertNil(decoded.region)
+        XCTAssertNil(decoded.planVariant)
         XCTAssertNil(decoded.enterpriseHost)
         XCTAssertNil(decoded.workspaceID)
         XCTAssertNil(decoded.preferredBrowser)
@@ -67,6 +69,7 @@ final class MiscProviderSettingsTests: XCTestCase {
         XCTAssertFalse(MiscProviderSettings.looksSensitive("sourceMode"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("cookieSource"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("region"))
+        XCTAssertFalse(MiscProviderSettings.looksSensitive("planVariant"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("enterpriseHost"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("workspaceID"))
         XCTAssertFalse(MiscProviderSettings.looksSensitive("preferredBrowser"))

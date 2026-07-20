@@ -5,6 +5,14 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_715_000_000)
     private let cnProductCode = "sfm_tokenplanteams_dp_cn"
 
+    func testEditionDefaultsToTeamForExistingSettings() {
+        XCTAssertEqual(AlibabaTokenPlanVariant.from(settingsValue: nil), .team)
+        XCTAssertEqual(AlibabaTokenPlanVariant.from(settingsValue: ""), .team)
+        XCTAssertEqual(AlibabaTokenPlanVariant.from(settingsValue: "team"), .team)
+        XCTAssertEqual(AlibabaTokenPlanVariant.from(settingsValue: "personal"), .personal)
+        XCTAssertEqual(AlibabaTokenPlanVariant.from(settingsValue: "solo"), .personal)
+    }
+
     // MARK: - Happy path (captured from the live console)
 
     func testParsesSeatSubscriptionSummaryWithStandardCredits() throws {
@@ -55,6 +63,7 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
         let bucket = snap.buckets[0]
         XCTAssertEqual(bucket.id, "alibabaTokenPlan.\(cnProductCode).standard")
         XCTAssertEqual(bucket.groupTitle, "Standard")
+        XCTAssertEqual(snap.planName, "Token Plan · Team · Standard")
         // (25000 - 24999.5534) / 25000 * 100 ≈ 0.001786
         XCTAssertEqual(bucket.usedPercent, 0.001786, accuracy: 0.001)
         XCTAssertNotNil(bucket.resetAt)
@@ -237,6 +246,86 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
         XCTAssertEqual(
             AlibabaTokenPlanRegion.international.productCode,
             "sfm_tokenplanteams_dp_intl"
+        )
+    }
+
+    // MARK: - Personal edition
+
+    func testParsesPersonalRollingWindowsAndTier() throws {
+        let subscription = #"""
+        {
+          "code": "200",
+          "DataV2": "{\"data\":{\"data\":{\"specCode\":\"tokenplansolo_standard_cn\",\"remainingDays\":14,\"startTime\":1770000000000,\"endTime\":1771209600000,\"status\":\"ACTIVE\"}}}",
+          "httpStatusCode": "200",
+          "successResponse": true
+        }
+        """#
+        let usage = #"""
+        {
+          "code": "200",
+          "DataV2": "{\"data\":{\"data\":{\"per5HourPercentage\":0.25,\"per1WeekPercentage\":37.5}}}",
+          "httpStatusCode": "200",
+          "successResponse": true
+        }
+        """#
+
+        let snap = try AlibabaTokenPlanPersonalResponseParser.parse(
+            subscriptionData: Data(subscription.utf8),
+            usageData: Data(usage.utf8),
+            now: now
+        )
+        XCTAssertEqual(snap.planName, "Token Plan · Personal · Standard")
+        XCTAssertEqual(snap.buckets.map(\.id), [
+            "alibabaTokenPlan.personal.fiveHour",
+            "alibabaTokenPlan.personal.weekly"
+        ])
+        XCTAssertEqual(snap.buckets[0].usedPercent, 25, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3_600)
+        XCTAssertEqual(snap.buckets[1].usedPercent, 37.5, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 7 * 86_400)
+        XCTAssertNil(snap.buckets[0].resetAt)
+    }
+
+    func testPersonalUsageWithoutWindowsThrowsParseFailure() {
+        let subscription = "{\"code\":\"200\",\"successResponse\":true}"
+        let usage = "{\"code\":\"200\",\"successResponse\":true,\"data\":{}}"
+        XCTAssertThrowsError(try AlibabaTokenPlanPersonalResponseParser.parse(
+            subscriptionData: Data(subscription.utf8),
+            usageData: Data(usage.utf8),
+            now: now
+        )) { error in
+            guard let quotaError = error as? QuotaError, case .parseFailure = quotaError else {
+                return XCTFail("Expected parseFailure, got \(error)")
+            }
+        }
+    }
+
+    func testPersonalEndpointWiringMatchesConsoleContract() {
+        let subscriptionURL = AlibabaTokenPlanPersonalEndpoint.subscription.consoleRPCURL
+        let usageURL = AlibabaTokenPlanPersonalEndpoint.usage.consoleRPCURL
+        XCTAssertEqual(subscriptionURL.host, "bailian-cs.console.aliyun.com")
+        XCTAssertEqual(usageURL.host, "bailian-cs.console.aliyun.com")
+        let subscriptionQuery = URLComponents(
+            url: subscriptionURL,
+            resolvingAgainstBaseURL: false
+        )?.queryItems ?? []
+        let usageQuery = URLComponents(
+            url: usageURL,
+            resolvingAgainstBaseURL: false
+        )?.queryItems ?? []
+        XCTAssertTrue(subscriptionQuery.contains {
+            $0.name == "action" && $0.value == "BroadScopeAspnGateway"
+        })
+        XCTAssertTrue(subscriptionQuery.contains {
+            $0.name == "api" && $0.value?.hasSuffix("/tokenplan/personal/api/v2/subscription") == true
+        })
+        XCTAssertTrue(usageQuery.contains {
+            $0.name == "api" && $0.value?.hasSuffix("/tokenplan/personal/api/v2/usage") == true
+        })
+        XCTAssertTrue(
+            AlibabaTokenPlanVariant.personal.dashboardURL.absoluteString.hasSuffix(
+                "/token-plan/personal"
+            )
         )
     }
 }
