@@ -56,7 +56,7 @@ struct TopModelTile: View {
                 }
             }
             .padding(.horizontal, density.cardPadding - 2)
-            .padding(.vertical, 8)
+            .padding(.vertical, density.popoverDensity == .compact ? 6 : 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)

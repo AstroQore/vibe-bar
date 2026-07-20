@@ -490,7 +490,7 @@ private struct OverviewWaterfall: View {
                         tool: .codex,
                         snapshot: combinedCostSnapshot,
                         density: density,
-                        chartHeight: 190,
+                        chartHeight: overviewCostHistoryHeight,
                         titleOverride: "All Providers Cost History"
                     )
                     .overviewMasonryItem(id: "cost-all-providers", phase: .cost)
@@ -547,6 +547,13 @@ private struct OverviewWaterfall: View {
     /// isn't listed here.
     private var overviewCostProviders: [ToolType] {
         [.codex, .claude, .grok].filter(isVisible)
+    }
+
+    /// Compact Overview already exposes one all-provider chart, so it should
+    /// stay useful without consuming the height of a full analytics card.
+    /// Regular and spacious layouts retain the established chart height.
+    private var overviewCostHistoryHeight: CGFloat {
+        density.popoverDensity == .compact ? 140 : 190
     }
 
     private func isVisible(_ tool: ToolType) -> Bool {
@@ -1340,9 +1347,10 @@ private enum OverviewStatusState {
     }
 }
 
-/// Cost card for the Overview right column — full Cost History bar chart with
-/// timeframe picker, plus a 4-column summary header. Tall enough to roughly
-/// match the height of the left-column quota cards (~280pt by default).
+/// Cost card for the Overview waterfall. Compact density keeps these as
+/// summary cards because the same surface already has the all-provider Cost
+/// History chart; the expand action exposes the provider's full charts.
+/// Regular and spacious densities retain the inline provider history.
 private struct OverviewCostCard: View {
     let tool: ToolType
     let density: Theme.Density
@@ -1407,8 +1415,10 @@ private struct OverviewCostCard: View {
             if let snapshot, snapshot.jsonlFilesFound > 0 {
                 CostSummaryRow(snapshot: snapshot, density: density)
                 TopModelTile(snapshot: snapshot, density: density)
-                CostHistoryView(tool: tool, snapshot: snapshot, density: density, chartHeight: 160)
-                    .padding(.top, 2)
+                if density.popoverDensity != .compact {
+                    CostHistoryView(tool: tool, snapshot: snapshot, density: density, chartHeight: 160)
+                        .padding(.top, 2)
+                }
             } else {
                 Text(emptyMessageOverride ?? emptyMessage)
                     .font(.system(size: density.subtitleFontSize))
@@ -1446,8 +1456,8 @@ private struct OverviewCostCard: View {
 }
 
 /// Detail popover surfaced when the user clicks the expand button on an
-/// Overview cost card. Contains the yearly contribution heatmap + weekday-hour
-/// heatmap + hourly burn rate.
+/// Overview cost card. Compact Overview moves the provider-specific Cost
+/// History here; the same popover also contains the longer-range analytics.
 private struct CostDetailPopoverContent: View {
     let tool: ToolType
     let density: Theme.Density
@@ -1479,6 +1489,12 @@ private struct CostDetailPopoverContent: View {
                     }
                 }
                 if let snap = snapshot {
+                    CostHistoryView(
+                        tool: tool,
+                        snapshot: snap,
+                        density: density,
+                        chartHeight: 180
+                    )
                     YearlyContributionHeatmapView(
                         history: snap.dailyHistory,
                         density: density,
