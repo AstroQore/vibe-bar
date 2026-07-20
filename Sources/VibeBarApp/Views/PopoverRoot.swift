@@ -230,9 +230,9 @@ struct PopoverRoot: View {
         let key = autoRefreshKey
         guard !autoRefreshedPageKeys.contains(key) else { return }
         let accounts = visibleAccounts
+        let refreshAge = TimeInterval(max(60, settingsStore.settings.refreshIntervalSeconds))
         let missing = accounts.filter { account in
-            quotaService.cachedQuota(for: account.id) == nil
-                && quotaService.lastErrorByAccount[account.id] == nil
+            quotaService.needsRefresh(accountId: account.id, maxAge: refreshAge)
                 && !quotaService.inFlightAccountIds.contains(account.id)
         }
         guard !missing.isEmpty else { return }
@@ -408,14 +408,11 @@ private struct OverviewSwitchIcon: View {
 
 /// Overview popover content, top-to-bottom:
 ///   1. `CombinedTotalsRow` — cost+token grid plus live service status.
-///   2. A `ColumnMasonryLayout` covering everything else. The first two
-///      subviews — OpenAI Quota and Claude Quota — are anchored to the top
-///      of columns 0 and 1 respectively (AQ wants the quota cards locked in
-///      place). Every subsequent card flows into whichever column is
-///      currently shorter, so the empty space below the shorter quota card
-///      gets filled by Cost / Model Ranking / heatmap cards instead of left
-///      blank. The cost and summary cards therefore drift between columns
-///      based on how the heights work out — this is intentional.
+///   2. A live-measured `ColumnMasonryLayout` covering everything else. It
+///      globally balances the four quota cards first, then places Cost cards
+///      from those seeded column heights, and finally fills the shorter side
+///      with supporting analytics. Quota rows can grow or shrink after every
+///      refresh without leaving a permanently sparse column.
 private struct OverviewWaterfall: View {
     let density: Theme.Density
 
@@ -427,24 +424,42 @@ private struct OverviewWaterfall: View {
         let combinedHeatmap = CostSnapshotAggregator.combinedHeatmap(snapshots)
         let combinedModels = CostSnapshotAggregator.combinedModelBreakdowns(snapshots)
         let hasCostData = snapshots.contains { $0.jsonlFilesFound > 0 }
+        let combinedCostSnapshot = CostSnapshotAggregator.combinedSnapshot(
+            tool: .codex,
+            snapshots: snapshots
+        )
 
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             CombinedTotalsRow(density: density)
             ColumnMasonryLayout(
                 columns: 2,
-                spacing: density.interSectionSpacing,
-                anchoredItems: 2
+                spacing: density.interSectionSpacing
             ) {
                 ProviderQuotaCard(tool: .codex, density: density, compact: false)
+                    .overviewMasonryItem(id: "quota-codex", phase: .quota)
                 ProviderQuotaCard(tool: .claude, density: density, compact: false)
+                    .overviewMasonryItem(id: "quota-claude", phase: .quota)
                 // Gemini Web and AntiGravity both roll up to the
                 // Gemini product, so the Overview surface shows them
                 // as a single L2 "Gemini" card with two L3 sub-sections
                 // (`GeminiCombinedCard`). Grok stays on its own card.
                 GeminiCombinedCard(density: density)
+                    .overviewMasonryItem(id: "quota-gemini", phase: .quota)
                 ProviderQuotaCard(tool: .grok, density: density, compact: false)
+                    .overviewMasonryItem(id: "quota-grok", phase: .quota)
+                if hasCostData {
+                    CostHistoryView(
+                        tool: .codex,
+                        snapshot: combinedCostSnapshot,
+                        density: density,
+                        chartHeight: 190,
+                        titleOverride: "All Providers Cost History"
+                    )
+                    .overviewMasonryItem(id: "cost-all-providers", phase: .cost)
+                }
                 ForEach(overviewCostProviders, id: \.self) { tool in
                     OverviewCostCard(tool: tool, density: density)
+                        .overviewMasonryItem(id: "cost-\(tool.rawValue)", phase: .cost)
                 }
                 // Google AI (Gemini + AntiGravity) cost, surfaced as the
                 // single "Gemini" platform aligned with the other three.
@@ -461,22 +476,26 @@ private struct OverviewWaterfall: View {
                     toolNameOverride: "Gemini",
                     heatmapTitleOverride: "When you use Gemini"
                 )
+                .overviewMasonryItem(id: "cost-gemini", phase: .cost)
                 if hasCostData {
                     ModelRankingList(
                         breakdowns: combinedModels,
                         density: density,
                         subtitle: "All providers · all time"
                     )
+                    .overviewMasonryItem(id: "analytics-model-ranking", phase: .auxiliary)
                     YearlyContributionHeatmapView(
                         history: combinedHistory,
                         density: density,
                         toolName: "All providers"
                     )
+                    .overviewMasonryItem(id: "analytics-year", phase: .auxiliary)
                     UsageActivityView(
                         heatmap: combinedHeatmap,
                         density: density,
                         titleOverride: "When you use everything"
                     )
+                    .overviewMasonryItem(id: "analytics-activity", phase: .auxiliary)
                 }
             }
         }
@@ -687,20 +706,27 @@ private struct GeminiTabPage: View {
         let geminiAccounts = environment.accountStore
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
+        let antigravityAccount = environment.account(for: .antigravity)
+        let antigravityHistorySeries: [FillTimelineSeries] = antigravityAccount.map { account in
+            (quotaService.cachedQuota(for: account.id)?.buckets ?? []).map {
+                FillTimelineSeries(tool: .antigravity, accountId: account.id, bucket: $0)
+            }
+        } ?? []
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 GeminiCombinedCard(density: density)
-                if let geminiAccount = geminiAccounts.first {
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        SubscriptionUtilizationView(
-                            tool: .gemini,
-                            buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
-                            mode: settingsStore.displayMode,
-                            density: density,
-                            now: context.date
-                        )
-                    }
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    SubscriptionUtilizationView(
+                        tool: .gemini,
+                        buckets: geminiAccounts.first.flatMap {
+                            quotaService.cachedQuota(for: $0.id)?.buckets
+                        } ?? [],
+                        mode: settingsStore.displayMode,
+                        density: density,
+                        now: context.date,
+                        additionalHistorySeries: antigravityHistorySeries
+                    )
                 }
                 ServiceStatusCard(tools: [.gemini])
             }

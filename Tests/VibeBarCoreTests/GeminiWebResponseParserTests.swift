@@ -123,6 +123,18 @@ final class GeminiWebResponseParserTests: XCTestCase {
         XCTAssertNotNil(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.weeklyUsageBucketId }))
     }
 
+    func testCurrentUltraPayloadMapsTierSixAndDropsInternalSentinel() throws {
+        let inner =
+            "[6,[" +
+            "[9999,0,4,null,null,[[[2,0]],4]]," +
+            "[238022,0.01611225,2,[[1784689500,0]]]," +
+            "[8187,0.32,1,[[1784557500,0]]]" +
+            "],false]"
+        let snapshot = try GeminiWebResponseParser.parse(data: Self.wireFormat(inner: inner))
+        XCTAssertEqual(snapshot.planName, "Ultra")
+        XCTAssertEqual(snapshot.buckets.map(\.id).sorted(), ["five_hour", "weekly"])
+    }
+
     func testParseClampsUsedPercentToZeroToHundred() throws {
         // Bogus fractions outside 0..1 should clamp to 0..100.
         let inner =

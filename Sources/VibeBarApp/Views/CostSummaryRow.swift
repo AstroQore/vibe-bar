@@ -1,7 +1,7 @@
 import SwiftUI
 import VibeBarCore
 
-/// 4-column timeframe summary: Today / 7d / 30d / All. Hidden when no JSONL
+/// 5-column timeframe summary: Today / Yesterday / 7d / 30d / All.
 /// session logs were found (otherwise we'd mislead web-only users into
 /// thinking they spent $0 this month).
 struct CostSummaryRow: View {

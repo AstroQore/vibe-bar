@@ -1,25 +1,40 @@
 import SwiftUI
+import VibeBarCore
 
-/// Two-column "shortest column wins" masonry. Used by the Overview to lay out
-/// cost cards plus the four combined summary cards (Model Ranking, Past Year,
-/// When You Use, Hourly Burn Rate) without one column ending up dramatically
-/// taller than the other.
-///
-/// Each column is the same width (`(totalWidth - spacing) / columns`). For
-/// each subview we measure the height it would take at that width, then place
-/// it in whichever column currently has the shortest stack. Ties always
-/// resolve to the leftmost shorter column, which keeps the layout
-/// deterministic across redraws.
+enum OverviewMasonryPhase: Int {
+    case quota
+    case cost
+    case auxiliary
+
+    var corePhase: OverviewMasonryPlanner.Phase {
+        switch self {
+        case .quota: .quota
+        case .cost: .cost
+        case .auxiliary: .auxiliary
+        }
+    }
+}
+
+private struct OverviewMasonryPhaseKey: LayoutValueKey {
+    static let defaultValue = OverviewMasonryPhase.auxiliary
+}
+
+private struct OverviewMasonryIDKey: LayoutValueKey {
+    static let defaultValue = ""
+}
+
+extension View {
+    func overviewMasonryItem(id: String, phase: OverviewMasonryPhase) -> some View {
+        layoutValue(key: OverviewMasonryIDKey.self, value: id)
+            .layoutValue(key: OverviewMasonryPhaseKey.self, value: phase)
+    }
+}
+
+/// A live-measured waterfall whose policy is quota-first, then Cost, then
+/// supporting analytics. See `OverviewMasonryPlanner` for the tested optimizer.
 struct ColumnMasonryLayout: Layout {
     var columns: Int = 2
     var spacing: CGFloat = 12
-    /// The first `anchoredItems` subviews are pinned to columns 0…N-1 in
-    /// declaration order, regardless of column height. Everything after
-    /// fills whichever column is currently shortest. This lets the Overview
-    /// keep OpenAI Quota / Claude Quota locked to their respective columns
-    /// while the cost + summary cards below flow into the empty space under
-    /// whichever provider's quota came up shorter.
-    var anchoredItems: Int = 0
 
     func sizeThatFits(
         proposal: ProposedViewSize,
@@ -27,10 +42,8 @@ struct ColumnMasonryLayout: Layout {
         cache: inout Void
     ) -> CGSize {
         let totalWidth = proposal.width ?? 0
-        let columnWidth = columnWidth(for: totalWidth)
-        let placement = placements(for: subviews, columnWidth: columnWidth)
-        let totalHeight = placement.columnHeights.max() ?? 0
-        return CGSize(width: totalWidth, height: totalHeight)
+        let plan = placementPlan(for: subviews, columnWidth: columnWidth(for: totalWidth))
+        return CGSize(width: totalWidth, height: CGFloat(plan.columnHeights.max() ?? 0))
     }
 
     func placeSubviews(
@@ -39,63 +52,46 @@ struct ColumnMasonryLayout: Layout {
         subviews: Subviews,
         cache: inout Void
     ) {
-        let columnWidth = columnWidth(for: bounds.width)
-        let placement = placements(for: subviews, columnWidth: columnWidth)
-        for (index, slot) in placement.slots.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + slot.x, y: bounds.minY + slot.y),
+        let width = columnWidth(for: bounds.width)
+        let plan = placementPlan(for: subviews, columnWidth: width)
+        for (index, subview) in subviews.enumerated() {
+            let id = stableID(for: subview, index: index)
+            guard let position = plan.positions[id] else { continue }
+            let size = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+            subview.place(
+                at: CGPoint(
+                    x: bounds.minX + CGFloat(position.column) * (width + spacing),
+                    y: bounds.minY + CGFloat(position.y)
+                ),
                 anchor: .topLeading,
-                proposal: ProposedViewSize(width: columnWidth, height: slot.height)
+                proposal: ProposedViewSize(width: width, height: size.height)
             )
         }
     }
 
-    private struct Slot {
-        let x: CGFloat
-        let y: CGFloat
-        let height: CGFloat
-    }
-
-    private struct Placement {
-        let slots: [Slot]
-        let columnHeights: [CGFloat]
-    }
-
-    private func placements(for subviews: Subviews, columnWidth: CGFloat) -> Placement {
-        let columnCount = max(1, columns)
-        let anchorLimit = max(0, min(anchoredItems, columnCount))
-        var heights = Array(repeating: CGFloat(0), count: columnCount)
-        var slots: [Slot] = []
-        slots.reserveCapacity(subviews.count)
-        for (index, subview) in subviews.enumerated() {
-            let proposed = ProposedViewSize(width: columnWidth, height: nil)
-            let size = subview.sizeThatFits(proposed)
-            let column = index < anchorLimit ? index : shortestColumn(in: heights)
-            let needsLeadingSpacing = heights[column] > 0
-            let y = heights[column] + (needsLeadingSpacing ? spacing : 0)
-            let x = CGFloat(column) * (columnWidth + spacing)
-            slots.append(Slot(x: x, y: y, height: size.height))
-            heights[column] = y + size.height
+    private func placementPlan(for subviews: Subviews, columnWidth: CGFloat) -> OverviewMasonryPlanner.Plan {
+        let proposal = ProposedViewSize(width: columnWidth, height: nil)
+        let items = subviews.enumerated().map { index, subview in
+            OverviewMasonryPlanner.Item(
+                id: stableID(for: subview, index: index),
+                height: Double(subview.sizeThatFits(proposal).height),
+                phase: subview[OverviewMasonryPhaseKey.self].corePhase
+            )
         }
-        return Placement(slots: slots, columnHeights: heights)
+        return OverviewMasonryPlanner.plan(
+            items: items,
+            columns: columns,
+            spacing: Double(spacing)
+        )
     }
 
-    /// Leftmost column whose running height is the smallest. Ties prefer the
-    /// earlier index — important so re-runs of `sizeThatFits` and
-    /// `placeSubviews` agree on placement when several columns are at zero.
-    private func shortestColumn(in heights: [CGFloat]) -> Int {
-        var bestIndex = 0
-        var bestHeight = heights[0]
-        for index in 1..<heights.count where heights[index] < bestHeight {
-            bestHeight = heights[index]
-            bestIndex = index
-        }
-        return bestIndex
+    private func stableID(for subview: Subviews.Element, index: Int) -> String {
+        let supplied = subview[OverviewMasonryIDKey.self]
+        return supplied.isEmpty ? "overview-item-\(index)" : supplied
     }
 
     private func columnWidth(for totalWidth: CGFloat) -> CGFloat {
         let columnCount = max(1, columns)
-        let totalSpacing = spacing * CGFloat(columnCount - 1)
-        return max(0, (totalWidth - totalSpacing) / CGFloat(columnCount))
+        return max(0, (totalWidth - spacing * CGFloat(columnCount - 1)) / CGFloat(columnCount))
     }
 }

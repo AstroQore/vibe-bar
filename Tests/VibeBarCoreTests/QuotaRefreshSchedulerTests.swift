@@ -46,13 +46,41 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         XCTAssertNil(second.error)
         XCTAssertNil(service.lastErrorByAccount[account.id])
     }
+
+    func testCredentialFailureSurfacesWhenCachedQuotaIsStale() async {
+        let account = AccountIdentity(id: "stale-gemini", tool: .gemini, source: .webCookie)
+        let staleDate = Date().addingTimeInterval(-2 * 3_600)
+        let service = QuotaService(
+            adapters: [.gemini: SequenceAdapter(tool: .gemini, results: [
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .gemini,
+                    buckets: [
+                        QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "Wk", usedPercent: 1)
+                    ],
+                    queriedAt: staleDate
+                )),
+                .failure(.needsLogin)
+            ])],
+            mockProvider: { false }
+        )
+
+        _ = await service.refresh(account)
+        XCTAssertTrue(service.needsRefresh(accountId: account.id, maxAge: 600))
+        let fallback = await service.refresh(account)
+
+        XCTAssertEqual(fallback.error, .needsLogin)
+        XCTAssertEqual(service.lastErrorByAccount[account.id], .needsLogin)
+        XCTAssertEqual(fallback.buckets.count, 1)
+    }
 }
 
 private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {
-    let tool: ToolType = .claude
+    let tool: ToolType
     private var results: [Result<AccountQuota, QuotaError>]
 
-    init(results: [Result<AccountQuota, QuotaError>]) {
+    init(tool: ToolType = .claude, results: [Result<AccountQuota, QuotaError>]) {
+        self.tool = tool
         self.results = results
     }
 

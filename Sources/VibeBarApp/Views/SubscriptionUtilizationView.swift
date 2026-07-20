@@ -12,6 +12,7 @@ struct SubscriptionUtilizationView: View {
     let mode: DisplayMode
     let density: Theme.Density
     let now: Date
+    var additionalHistorySeries: [FillTimelineSeries] = []
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
@@ -29,20 +30,18 @@ struct SubscriptionUtilizationView: View {
                     environment.refresh(tool)
                 }
             }
-            if relevantBuckets.isEmpty {
+            if paceBuckets.isEmpty && historySeries.isEmpty {
                 Text("No utilization data — try refreshing.")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 8)
             } else {
-                ForEach(relevantBuckets) { bucket in
+                ForEach(paceBuckets) { bucket in
                     row(for: bucket)
                 }
-                if let accountId = environment.account(for: tool)?.id {
+                if !historySeries.isEmpty {
                     FillTimelineChart(
-                        tool: tool,
-                        buckets: relevantBuckets,
-                        accountId: accountId,
+                        series: historySeries,
                         mode: mode,
                         density: density,
                         now: now
@@ -62,8 +61,20 @@ struct SubscriptionUtilizationView: View {
     }
 
     /// Pick the headline buckets only (no per-model groups).
-    private var relevantBuckets: [QuotaBucket] {
+    private var paceBuckets: [QuotaBucket] {
         buckets.filter { $0.groupTitle == nil }
+    }
+
+    /// Every bucket participates in reset-cycle history, including per-model
+    /// dimensions and additional accounts combined into the same product page.
+    private var historySeries: [FillTimelineSeries] {
+        let primary: [FillTimelineSeries]
+        if let accountId = environment.account(for: tool)?.id {
+            primary = buckets.map { FillTimelineSeries(tool: tool, accountId: accountId, bucket: $0) }
+        } else {
+            primary = []
+        }
+        return primary + additionalHistorySeries
     }
 
     private var isRefreshing: Bool {

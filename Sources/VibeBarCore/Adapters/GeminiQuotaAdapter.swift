@@ -33,7 +33,23 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             throw QuotaError.noCredential
         }
         let fetcher = GeminiWebQuotaFetcher(session: session, now: now)
-        let snapshot = try await fetcher.fetch(cookieHeader: header)
+        let snapshot: GeminiResponseParser.Snapshot
+        do {
+            snapshot = try await fetcher.fetch(cookieHeader: header)
+        } catch let initialError as QuotaError {
+            // Google rotates the browser session more often than Vibe Bar's
+            // persisted Keychain copy. Refresh it directly from an installed
+            // browser once before surfacing a login error; this keeps the
+            // source purely gemini.google.com and never falls back to CLI
+            // OAuth quota.
+            guard let imported = GeminiBrowserCookieImporter.importFromBrowsers(
+                allowKeychainPrompt: false
+            ), imported.header != header else {
+                throw initialError
+            }
+            snapshot = try await fetcher.fetch(cookieHeader: imported.header)
+            try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+        }
         return AccountQuota(
             accountId: account.id,
             tool: .gemini,
@@ -44,7 +60,6 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             error: nil
         )
     }
-
 }
 
 // MARK: - Response parsing

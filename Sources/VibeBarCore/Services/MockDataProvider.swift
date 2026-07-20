@@ -28,6 +28,7 @@ public enum MockDataProvider {
         let days: Int
         switch timeframe {
         case .today: days = 1
+        case .yesterday: days = 1
         case .week:  days = 7
         case .month: days = 30
         case .all:   days = 120
@@ -37,7 +38,8 @@ public enum MockDataProvider {
         let baseCost: Double = (tool == .codex) ? 0.7 : 1.1
         var points: [DailyCostPoint] = []
         for offset in stride(from: days - 1, through: 0, by: -1) {
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let adjustedOffset = timeframe == .yesterday ? offset + 1 : offset
+            guard let day = calendar.date(byAdding: .day, value: -adjustedOffset, to: today) else { continue }
             let weekday = calendar.component(.weekday, from: day)
             let weekendDip = (weekday == 1 || weekday == 7) ? 0.45 : 1.0
             let oscillation = 0.6 + 0.5 * Double((offset * 7) % 13) / 13.0

@@ -662,14 +662,15 @@ enum AlibabaTokenPlanResponseParser {
         let nextFlush = parseDate(group["NextCycleFlushTime"] ?? group["nextCycleFlushTime"])
 
         let specLabel = displaySpecLabel(specType)
+        let groupLabel = productCode.contains("teams") ? "Team · \(specLabel)" : specLabel
         return QuotaBucket(
             id: "alibabaTokenPlan.\(productCode).\(specType)",
-            title: "\(specLabel) Credits",
-            shortLabel: "\(specLabel) credits",
+            title: "Monthly",
+            shortLabel: "Month",
             usedPercent: percent,
             resetAt: nextFlush,
-            rawWindowSeconds: nil,
-            groupTitle: specLabel
+            rawWindowSeconds: 30 * 86_400,
+            groupTitle: groupLabel
         )
     }
 
@@ -682,11 +683,12 @@ enum AlibabaTokenPlanResponseParser {
         let reset = parseDate(summary["NearestExpireDate"] ?? summary["nearestExpireDate"])
         return QuotaBucket(
             id: "alibabaTokenPlan.\(productCode).summary",
-            title: "Token Plan Credits",
-            shortLabel: "Credits",
+            title: "Monthly",
+            shortLabel: "Month",
             usedPercent: percent,
             resetAt: reset,
-            rawWindowSeconds: nil
+            rawWindowSeconds: 30 * 86_400,
+            groupTitle: productCode.contains("teams") ? "Team" : "Token Plan"
         )
     }
 
@@ -712,7 +714,14 @@ enum AlibabaTokenPlanResponseParser {
 
     private static func bucketGroupName(for productCode: String, suffix: String?) -> String? {
         guard let suffix, !suffix.isEmpty else { return nil }
-        return "\(familyDisplayName(for: productCode)) · \(suffix)"
+        let family = familyDisplayName(for: productCode)
+        let normalizedSuffix: String
+        if productCode.contains("teams"), suffix.hasPrefix("Team · ") {
+            normalizedSuffix = String(suffix.dropFirst("Team · ".count))
+        } else {
+            normalizedSuffix = suffix
+        }
+        return "\(family) · \(normalizedSuffix)"
     }
 
     // MARK: - Tree helpers
