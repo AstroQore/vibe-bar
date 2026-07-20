@@ -18,10 +18,8 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "gemini.pro", title: "GEMINI · Pro", defaultLabel: "Pro"),
         .init(id: "gemini.flash", title: "GEMINI · Flash", defaultLabel: "Flash"),
         .init(id: "gemini.flash-lite", title: "GEMINI · Flash Lite", defaultLabel: "Lite"),
-        .init(id: "antigravity.claude", title: "ANTIGRAVITY · Claude", defaultLabel: "Claude"),
-        .init(id: "antigravity.gemini-pro", title: "ANTIGRAVITY · Gemini Pro", defaultLabel: "G Pro"),
-        .init(id: "antigravity.gemini-flash", title: "ANTIGRAVITY · Gemini Flash", defaultLabel: "G Flash"),
-        .init(id: "antigravity.gemini-flash-lite", title: "ANTIGRAVITY · Gemini Flash Lite", defaultLabel: "G Lite")
+        .init(id: "antigravity.gemini-models", title: "ANTIGRAVITY · Gemini Models", defaultLabel: "Gemini"),
+        .init(id: "antigravity.claude-gpt-models", title: "ANTIGRAVITY · Claude + GPT Models", defaultLabel: "C+G")
     ]
 
     static func defaultLabel(for id: String) -> String? {

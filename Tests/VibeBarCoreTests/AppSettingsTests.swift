@@ -160,16 +160,12 @@ final class AppSettingsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(MiniWindowSettings.self, from: Data(json.utf8))
 
         XCTAssertEqual(decoded.selectedFieldIds, [
-            "antigravity.gemini-3.5-flash-high",
-            "antigravity.gemini-3.5-flash-medium",
-            "antigravity.gemini-3.1-pro-high",
-            "antigravity.gemini-3.1-pro-low",
-            "antigravity.claude-sonnet-4.6-thinking"
+            "antigravity.gemini_five_hour",
+            "antigravity.claude_gpt_five_hour"
         ])
         XCTAssertEqual(decoded.compactSelectedFieldIds, [
-            "antigravity.claude-sonnet-4.6-thinking",
-            "antigravity.gemini-3.1-pro-high",
-            "antigravity.gemini-3.1-pro-low"
+            "antigravity.claude_gpt_five_hour",
+            "antigravity.gemini_five_hour"
         ])
     }
 
@@ -200,9 +196,8 @@ final class AppSettingsTests: XCTestCase {
         let compact = settings.menuBarItem(.compact)
 
         XCTAssertEqual(compact.selectedFieldIds, [
-            "antigravity.gemini-3.5-flash-high",
-            "antigravity.gemini-3.5-flash-medium",
-            "antigravity.claude-sonnet-4.6-thinking"
+            "antigravity.gemini_five_hour",
+            "antigravity.claude_gpt_five_hour"
         ])
     }
 

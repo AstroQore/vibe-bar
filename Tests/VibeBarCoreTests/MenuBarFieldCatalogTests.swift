@@ -10,13 +10,10 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         let expected = [
             "gemini.five_hour",
             "gemini.weekly",
-            "antigravity.claude-sonnet-4.6-thinking",
-            "antigravity.claude-opus-4.6-thinking",
-            "antigravity.gpt-oss-120b-medium",
-            "antigravity.gemini-3.5-flash-high",
-            "antigravity.gemini-3.5-flash-medium",
-            "antigravity.gemini-3.1-pro-high",
-            "antigravity.gemini-3.1-pro-low",
+            "antigravity.gemini_five_hour",
+            "antigravity.gemini_weekly",
+            "antigravity.claude_gpt_five_hour",
+            "antigravity.claude_gpt_weekly",
             "grok.weekly"
         ]
 
@@ -29,8 +26,10 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         let selected = Set(AppSettings.defaultMiniWindow.selectedFieldIds)
         XCTAssertTrue(selected.contains("gemini.five_hour"))
         XCTAssertTrue(selected.contains("gemini.weekly"))
-        XCTAssertTrue(selected.contains("antigravity.gemini-3.5-flash-high"))
-        XCTAssertTrue(selected.contains("antigravity.claude-sonnet-4.6-thinking"))
+        XCTAssertTrue(selected.contains("antigravity.gemini_five_hour"))
+        XCTAssertTrue(selected.contains("antigravity.gemini_weekly"))
+        XCTAssertTrue(selected.contains("antigravity.claude_gpt_five_hour"))
+        XCTAssertTrue(selected.contains("antigravity.claude_gpt_weekly"))
         XCTAssertTrue(selected.contains("grok.weekly"))
     }
 
@@ -51,5 +50,18 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         ]
         let migrated = MenuBarFieldCatalog.migratedFieldIds(legacy)
         XCTAssertEqual(migrated, ["gemini.five_hour"])
+    }
+
+    func testAntigravityPerModelIdsMigrateToSharedFiveHourPools() {
+        let legacy = [
+            "antigravity.gemini-3.5-flash-high",
+            "antigravity.gemini-3.1-pro-low",
+            "antigravity.claude-sonnet-4.6-thinking",
+            "antigravity.gpt-oss-120b-medium"
+        ]
+        XCTAssertEqual(MenuBarFieldCatalog.migratedFieldIds(legacy), [
+            "antigravity.gemini_five_hour",
+            "antigravity.claude_gpt_five_hour"
+        ])
     }
 }

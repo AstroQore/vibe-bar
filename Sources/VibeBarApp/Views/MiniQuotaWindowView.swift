@@ -94,9 +94,9 @@ struct MiniQuotaWindowView: View {
     }
 
     private func isBranchField(_ field: MenuBarFieldOption) -> Bool {
-        // AntiGravity rows are always branch-style (one ring per
-        // per-model bucket, each carrying a `groupTitle` set by the
-        // parser). Gemini USED to be in this carve-out too — that
+        // Antigravity rows are branch-style because its four quota
+        // lanes are split across the Gemini and Claude/GPT groups.
+        // Gemini USED to be in this carve-out too — that
         // was a leftover from the per-model CLI adapter. After
         // PR #57 the Gemini Web parser emits two flat primary
         // buckets (`five_hour` / `weekly`) with `groupTitle == nil`,
@@ -269,6 +269,10 @@ private struct MiniBranchCell: Identifiable {
         switch bucket.id {
         case "gpt_5_3_codex_spark_five_hour": return "5h"
         case "gpt_5_3_codex_spark_weekly": return "wk"
+        case "gemini_five_hour", "claude_gpt_five_hour" where tool == .antigravity:
+            return "5h"
+        case "gemini_weekly", "claude_gpt_weekly" where tool == .antigravity:
+            return "wk"
         case "weekly_sonnet": return "wk"
         case "weekly_design": return "wk"
         case "daily_routines": return "Daily"
@@ -311,6 +315,10 @@ private struct MiniBranchCell: Identifiable {
             return "claude.fable"
         case "weekly_oauth_apps":
             return "claude.oauth"
+        case "gemini_five_hour", "gemini_weekly" where tool == .antigravity:
+            return "antigravity.gemini-models"
+        case "claude_gpt_five_hour", "claude_gpt_weekly" where tool == .antigravity:
+            return "antigravity.claude-gpt-models"
         case let id where tool == .gemini && id.contains("flash-lite"):
             return "gemini.flash-lite"
         case let id where tool == .gemini && id.contains("flash"):
@@ -351,6 +359,10 @@ private struct MiniBranchCell: Identifiable {
             return "Fable"
         case "weekly_oauth_apps":
             return "OAuth"
+        case "gemini_five_hour", "gemini_weekly" where tool == .antigravity:
+            return "Gemini"
+        case "claude_gpt_five_hour", "claude_gpt_weekly" where tool == .antigravity:
+            return "C+G"
         case let id where tool == .gemini && id.contains("flash-lite"):
             return "Lite"
         case let id where tool == .gemini && id.contains("flash"):

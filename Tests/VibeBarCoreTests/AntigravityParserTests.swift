@@ -2,7 +2,202 @@ import XCTest
 @testable import VibeBarCore
 
 final class AntigravityParserTests: XCTestCase {
-    func testParsesUserStatusWithModelQuotas() throws {
+    func testParsesQuotaSummaryIntoFourStableBuckets() throws {
+        let json = """
+        {
+          "response": {
+            "groups": [
+              {
+                "displayName": "Claude and GPT models",
+                "buckets": [
+                  {
+                    "bucketId": "3p-weekly",
+                    "displayName": "Weekly Limit",
+                    "remaining": {"remainingFraction": 0.64},
+                    "resetTime": "2026-06-20T00:39:54Z"
+                  },
+                  {
+                    "bucketId": "3p-5h",
+                    "displayName": "Five Hour Limit",
+                    "remaining": {"remainingFraction": 0.73},
+                    "resetTime": "2026-06-15T12:52:10Z"
+                  }
+                ]
+              },
+              {
+                "displayName": "Gemini Models",
+                "buckets": [
+                  {
+                    "bucketId": "gemini-weekly",
+                    "displayName": "Weekly Limit",
+                    "remaining": {"remainingFraction": 0.82},
+                    "resetTime": "2026-06-19T08:45:39Z"
+                  },
+                  {
+                    "bucketId": "gemini-5h",
+                    "displayName": "Five Hour Limit",
+                    "remaining": {"remainingFraction": 0.91},
+                    "resetTime": "2026-06-15T11:39:34Z"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """
+        let snap = try AntigravityResponseParser.parseQuotaSummary(data: Data(json.utf8))
+
+        XCTAssertEqual(snap.buckets.map(\.id), [
+            "gemini_five_hour",
+            "gemini_weekly",
+            "claude_gpt_five_hour",
+            "claude_gpt_weekly"
+        ])
+        XCTAssertEqual(snap.buckets.map(\.title), ["5 Hours", "Weekly", "5 Hours", "Weekly"])
+        XCTAssertEqual(snap.buckets.map(\.shortLabel), ["G 5h", "G wk", "C+G 5h", "C+G wk"])
+        XCTAssertEqual(snap.buckets.map(\.groupTitle), [
+            "Gemini Models",
+            "Gemini Models",
+            "Claude and GPT Models",
+            "Claude and GPT Models"
+        ])
+        XCTAssertEqual(snap.buckets.map(\.rawWindowSeconds), [18_000, 604_800, 18_000, 604_800])
+        XCTAssertEqual(snap.buckets[0].remainingPercent, 91, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[1].remainingPercent, 82, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[2].remainingPercent, 73, accuracy: 0.01)
+        XCTAssertEqual(snap.buckets[3].remainingPercent, 64, accuracy: 0.01)
+        XCTAssertTrue(snap.buckets.allSatisfy { $0.resetAt != nil })
+    }
+
+    func testParsesSupportedRemainingFractionShapesAndSnakeCase() throws {
+        let json = """
+        {
+          "groups": [
+            {
+              "display_name": "Gemini Models",
+              "buckets": [
+                {
+                  "bucket_id": "gemini_session",
+                  "display_name": "Session",
+                  "remaining_fraction": 0.5
+                },
+                {
+                  "bucketId": "gemini-weekly",
+                  "displayName": "Weekly Limit",
+                  "remaining": {"case": "remainingFraction", "value": 0.25}
+                }
+              ]
+            },
+            {
+              "displayName": "Claude and GPT models",
+              "buckets": [
+                {
+                  "bucketId": "3p-five-hour",
+                  "displayName": "Five Hour Limit",
+                  "remaining": {"remainingFraction": 0.75}
+                },
+                {
+                  "bucketId": "3p-weekly",
+                  "displayName": "Weekly Limit",
+                  "remainingFraction": 0.0
+                }
+              ]
+            }
+          ]
+        }
+        """
+        let snap = try AntigravityResponseParser.parseQuotaSummary(data: Data(json.utf8))
+        XCTAssertEqual(snap.buckets.map(\.remainingPercent), [50, 25, 75, 0])
+    }
+
+    func testSkipsUnknownDisabledAndFractionlessQuotaSummaryBuckets() throws {
+        let json = """
+        {
+          "groups": [
+            {
+              "displayName": "Gemini Models",
+              "buckets": [
+                {
+                  "bucketId": "gemini-5h",
+                  "displayName": "Five Hour Limit",
+                  "remaining": {"remainingFraction": 0.9}
+                },
+                {
+                  "bucketId": "gemini-weekly",
+                  "displayName": "Weekly Limit"
+                },
+                {
+                  "bucketId": "gemini-monthly",
+                  "displayName": "Monthly Limit",
+                  "remaining": {"remainingFraction": 0.8}
+                },
+                {
+                  "bucketId": "gemini-session-disabled",
+                  "displayName": "Session",
+                  "disabled": true,
+                  "remaining": {"remainingFraction": 0.7}
+                }
+              ]
+            }
+          ]
+        }
+        """
+        let snap = try AntigravityResponseParser.parseQuotaSummary(data: Data(json.utf8))
+        XCTAssertEqual(snap.buckets.map(\.id), ["gemini_five_hour"])
+    }
+
+    func testQuotaSummaryWithoutUsableKnownBucketsThrows() {
+        let json = """
+        {
+          "groups": [
+            {
+              "displayName": "Gemini Models",
+              "buckets": [
+                {"bucketId": "gemini-weekly", "displayName": "Weekly Limit"}
+              ]
+            }
+          ]
+        }
+        """
+        XCTAssertThrowsError(try AntigravityResponseParser.parseQuotaSummary(data: Data(json.utf8)))
+    }
+
+    func testFetchLocalSnapshotUsesSummaryThenMergesIdentity() async throws {
+        var paths: [String] = []
+        var bodies: [String] = []
+        let snapshot = try await AntigravityQuotaAdapter.fetchLocalSnapshot { path, body in
+            paths.append(path)
+            bodies.append(String(decoding: body, as: UTF8.self))
+            if path.contains("RetrieveUserQuotaSummary") {
+                return Data(Self.fourBucketQuotaSummaryJSON.utf8)
+            }
+            return Data(Self.userStatusIdentityJSON.utf8)
+        }
+
+        XCTAssertEqual(paths, [
+            "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary",
+            "/exa.language_server_pb.LanguageServerService/GetUserStatus"
+        ])
+        XCTAssertEqual(bodies, [#"{"forceRefresh":true}"#, "{}"])
+        XCTAssertEqual(snapshot.buckets.count, 4)
+        XCTAssertEqual(snapshot.email, "user@example.com")
+        XCTAssertEqual(snapshot.planName, "Ultra Lite")
+        XCTAssertEqual(snapshot.modelLabels["MODEL_PLACEHOLDER_M132"], "Gemini Flash")
+    }
+
+    func testFetchLocalSnapshotKeepsFourBucketsWhenIdentityFails() async throws {
+        let snapshot = try await AntigravityQuotaAdapter.fetchLocalSnapshot { path, _ in
+            if path.contains("RetrieveUserQuotaSummary") {
+                return Data(Self.fourBucketQuotaSummaryJSON.utf8)
+            }
+            throw QuotaError.network("identity unavailable")
+        }
+        XCTAssertEqual(snapshot.buckets.count, 4)
+        XCTAssertNil(snapshot.email)
+        XCTAssertNil(snapshot.planName)
+    }
+
+    func testUserStatusProvidesIdentityAndLabelsButNoLegacyQuotaRows() throws {
         let json = """
         {
           "code": 0,
@@ -12,19 +207,9 @@ final class AntigravityParserTests: XCTestCase {
             "cascadeModelConfigData": {
               "clientModelConfigs": [
                 {
-                  "label": "Claude Sonnet 4",
-                  "modelOrAlias": {"model": "claude-sonnet-4-20250514"},
-                  "quotaInfo": {"remainingFraction": 0.42, "resetTime": "2026-06-01T00:00:00Z"}
-                },
-                {
-                  "label": "Gemini 2.5 Pro",
-                  "modelOrAlias": {"model": "gemini-2.5-pro"},
-                  "quotaInfo": {"remainingFraction": 0.78}
-                },
-                {
-                  "label": "Gemini Flash Lite",
-                  "modelOrAlias": {"model": "gemini-2.5-flash-lite"},
-                  "quotaInfo": {"remainingFraction": 0.95}
+                  "label": "Gemini Flash",
+                  "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M132"},
+                  "quotaInfo": {"remainingFraction": 0.42}
                 }
               ]
             }
@@ -34,152 +219,8 @@ final class AntigravityParserTests: XCTestCase {
         let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
         XCTAssertEqual(snap.email, "user@example.com")
         XCTAssertEqual(snap.planName, "Pro")
-        XCTAssertEqual(snap.buckets.count, 3)
-        XCTAssertEqual(snap.buckets[0].title, "Claude Sonnet 4")
-        XCTAssertEqual(snap.buckets[0].usedPercent, 58.0, accuracy: 0.01)
-        XCTAssertNotNil(snap.buckets[0].resetAt)
-        XCTAssertEqual(snap.buckets[0].groupTitle, "Claude")
-
-        XCTAssertEqual(snap.buckets[1].usedPercent, 22.0, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[1].groupTitle, "Gemini Pro")
-
-        XCTAssertEqual(snap.buckets[2].usedPercent, 5.0, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[2].groupTitle, "Gemini Flash Lite")
-    }
-
-    /// Google's wire format omits `remainingFraction` (proto3 zero
-    /// default) when a model's per-window quota is fully spent. The
-    /// older parser dropped those entries entirely, hiding the
-    /// exhausted state from the user — they would just stop seeing
-    /// the affected model in Vibe Bar's card while still seeing the
-    /// reset countdown in the official Antigravity dashboard.
-    /// Treat a missing fraction as 0 so the bucket stays visible.
-    func testKeepsDepletedModelsWithMissingRemainingFraction() throws {
-        let json = """
-        {
-          "code": 0,
-          "userStatus": {
-            "cascadeModelConfigData": {
-              "clientModelConfigs": [
-                {
-                  "label": "Gemini 3.5 Flash (High)",
-                  "modelOrAlias": {"model": "gemini-3.5-flash-high"},
-                  "quotaInfo": {"resetTime": "2026-05-23T01:05:00Z"}
-                },
-                {
-                  "label": "Gemini 3.5 Flash (Medium)",
-                  "modelOrAlias": {"model": "gemini-3.5-flash-medium"},
-                  "quotaInfo": {"remainingFraction": 0.0, "resetTime": "2026-05-23T01:05:00Z"}
-                },
-                {
-                  "label": "Claude Sonnet 4.6 (Thinking)",
-                  "modelOrAlias": {"model": "claude-sonnet-4-6"},
-                  "quotaInfo": {"remainingFraction": 0.42, "resetTime": "2026-05-23T05:55:00Z"}
-                }
-              ]
-            }
-          }
-        }
-        """
-        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
-        XCTAssertEqual(snap.buckets.count, 3, "All three models must surface — including the two depleted Gemini variants.")
-
-        let flashHigh = try XCTUnwrap(snap.buckets.first { $0.title == "Gemini 3.5 Flash (High)" })
-        XCTAssertEqual(flashHigh.usedPercent, 100.0, accuracy: 0.01, "Missing remainingFraction should map to 100% used.")
-        XCTAssertNotNil(flashHigh.resetAt, "Reset countdown should still surface.")
-
-        let flashMed = try XCTUnwrap(snap.buckets.first { $0.title == "Gemini 3.5 Flash (Medium)" })
-        XCTAssertEqual(flashMed.usedPercent, 100.0, accuracy: 0.01, "Explicit zero fraction should also be 100% used.")
-
-        let sonnet = try XCTUnwrap(snap.buckets.first { $0.title == "Claude Sonnet 4.6 (Thinking)" })
-        XCTAssertEqual(sonnet.usedPercent, 58.0, accuracy: 0.01, "Non-depleted models continue to compute as before.")
-    }
-
-    /// Entries with no quotaInfo at all stay filtered out — without
-    /// any quota object, we can't say anything meaningful about the
-    /// model's usage and dragging a "no data" pill into the card is
-    /// worse than omitting it.
-    func testStillSkipsModelsWithoutQuotaInfo() throws {
-        let json = """
-        {
-          "code": 0,
-          "userStatus": {
-            "cascadeModelConfigData": {
-              "clientModelConfigs": [
-                {"label": "Unknown Model A", "modelOrAlias": {"model": "unknown-a"}},
-                {"label": "Claude Sonnet 4.6 (Thinking)", "modelOrAlias": {"model": "claude-sonnet"}, "quotaInfo": {"remainingFraction": 0.5}}
-              ]
-            }
-          }
-        }
-        """
-        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
-        XCTAssertEqual(snap.buckets.count, 1)
-        XCTAssertEqual(snap.buckets[0].title, "Claude Sonnet 4.6 (Thinking)")
-    }
-
-    func testFallsBackToPlanInfoWhenUserTierMissing() throws {
-        let json = """
-        {
-          "code": 0,
-          "userStatus": {
-            "email": null,
-            "planStatus": {
-              "planInfo": {"planDisplayName": "Pro Trial", "productName": "AntiGravity"}
-            },
-            "cascadeModelConfigData": {
-              "clientModelConfigs": [
-                {"label": "x", "modelOrAlias": {"model": "x"}, "quotaInfo": {"remainingFraction": 1.0}}
-              ]
-            }
-          }
-        }
-        """
-        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
-        XCTAssertEqual(snap.planName, "Pro Trial")
-        XCTAssertEqual(snap.buckets.count, 1)
-        XCTAssertEqual(snap.buckets[0].usedPercent, 0.0, accuracy: 0.01)
-    }
-
-    func testNormalizesCurrentPlaceholderModelsFromLabels() throws {
-        let json = """
-        {
-          "code": 0,
-          "userStatus": {
-            "cascadeModelConfigData": {
-              "clientModelConfigs": [
-                {
-                  "label": "Gemini 3.5 Flash (High)",
-                  "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M132"},
-                  "quotaInfo": {"remainingFraction": 0.0}
-                },
-                {
-                  "label": "Claude Sonnet 4.6 (Thinking)",
-                  "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M35"},
-                  "quotaInfo": {"remainingFraction": 1.0}
-                },
-                {
-                  "label": "GPT-OSS 120B (Medium)",
-                  "modelOrAlias": {"model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM"},
-                  "quotaInfo": {"remainingFraction": 0.25}
-                }
-              ]
-            }
-          }
-        }
-        """
-        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
-
-        XCTAssertEqual(snap.buckets.map(\.id), [
-            "gemini-3.5-flash-high",
-            "claude-sonnet-4.6-thinking",
-            "gpt-oss-120b-medium"
-        ])
-        XCTAssertEqual(snap.buckets[0].usedPercent, 100.0, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[0].remainingPercent, 0.0, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[0].groupTitle, "Gemini Flash")
-        XCTAssertEqual(snap.buckets[1].shortLabel, "Sonnet")
-        XCTAssertEqual(snap.buckets[2].groupTitle, "GPT-OSS")
+        XCTAssertTrue(snap.buckets.isEmpty, "GetUserStatus must no longer restore per-model quota rows.")
+        XCTAssertEqual(snap.modelLabels["MODEL_PLACEHOLDER_M132"], "Gemini Flash")
     }
 
     func testMissingUserStatusThrowsParseFailure() {
@@ -213,23 +254,43 @@ final class AntigravityParserTests: XCTestCase {
         }
     }
 
-    func testCodeOKStringIsAcceptedAsSuccess() throws {
-        let json = """
-        {
-          "code": "OK",
-          "userStatus": {
-            "cascadeModelConfigData": {
-              "clientModelConfigs": [
-                {"label": "Pro", "modelOrAlias": {"model": "x"}, "quotaInfo": {"remainingFraction": 0.6}}
-              ]
-            }
+    private static let fourBucketQuotaSummaryJSON = """
+    {
+      "response": {
+        "groups": [
+          {
+            "displayName": "Gemini Models",
+            "buckets": [
+              {"bucketId": "gemini-5h", "displayName": "Five Hour Limit", "remaining": {"remainingFraction": 0.91}},
+              {"bucketId": "gemini-weekly", "displayName": "Weekly Limit", "remaining": {"remainingFraction": 0.82}}
+            ]
+          },
+          {
+            "displayName": "Claude and GPT models",
+            "buckets": [
+              {"bucketId": "3p-5h", "displayName": "Five Hour Limit", "remaining": {"remainingFraction": 0.73}},
+              {"bucketId": "3p-weekly", "displayName": "Weekly Limit", "remaining": {"remainingFraction": 0.64}}
+            ]
           }
-        }
-        """
-        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
-        XCTAssertEqual(snap.buckets.count, 1)
-        XCTAssertEqual(snap.buckets[0].usedPercent, 40.0, accuracy: 0.01)
+        ]
+      }
     }
+    """
+
+    private static let userStatusIdentityJSON = """
+    {
+      "code": "OK",
+      "userStatus": {
+        "email": "user@example.com",
+        "userTier": {"id": "g1-ultra-lite-tier", "name": "Ultra Lite"},
+        "cascadeModelConfigData": {
+          "clientModelConfigs": [
+            {"label": "Gemini Flash", "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M132"}}
+          ]
+        }
+      }
+    }
+    """
 
     func testProcessLineParse() {
         let line = "  12345 /Applications/Antigravity/Resources/.../language_server_macos --csrf_token=abc --extension_server_port=44567"

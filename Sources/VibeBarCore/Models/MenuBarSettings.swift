@@ -173,13 +173,10 @@ public enum MenuBarFieldCatalog {
     ]
 
     public static let antigravityFields: [MenuBarFieldOption] = [
-        option(.antigravity, "claude-sonnet-4.6-thinking", "Claude Sonnet 4.6 Thinking", "Sonnet"),
-        option(.antigravity, "claude-opus-4.6-thinking", "Claude Opus 4.6 Thinking", "Opus"),
-        option(.antigravity, "gpt-oss-120b-medium", "GPT-OSS 120B Medium", "GPT"),
-        option(.antigravity, "gemini-3.5-flash-high", "Gemini 3.5 Flash High", "Flash H"),
-        option(.antigravity, "gemini-3.5-flash-medium", "Gemini 3.5 Flash Medium", "Flash M"),
-        option(.antigravity, "gemini-3.1-pro-high", "Gemini 3.1 Pro High", "Pro H"),
-        option(.antigravity, "gemini-3.1-pro-low", "Gemini 3.1 Pro Low", "Pro L")
+        option(.antigravity, "gemini_five_hour", "Gemini Models · 5 Hours", "G 5h"),
+        option(.antigravity, "gemini_weekly", "Gemini Models · Weekly", "G wk"),
+        option(.antigravity, "claude_gpt_five_hour", "Claude and GPT Models · 5 Hours", "C+G 5h"),
+        option(.antigravity, "claude_gpt_weekly", "Claude and GPT Models · Weekly", "C+G wk")
     ]
 
     public static let grokFields: [MenuBarFieldOption] = [
@@ -257,25 +254,24 @@ public enum MenuBarFieldCatalog {
         "gemini.gemini-2.5-flash-lite":  ["gemini.five_hour"],
         "gemini.gemini-3-pro":           ["gemini.five_hour"],
         "gemini.gemini-3-flash":         ["gemini.five_hour"],
-        "antigravity.claude-sonnet-4-20250514": ["antigravity.claude-sonnet-4.6-thinking"],
-        "antigravity.claude-sonnet-4-5": ["antigravity.claude-sonnet-4.6-thinking"],
-        "antigravity.gemini-2.5-pro": [
-            "antigravity.gemini-3.1-pro-high",
-            "antigravity.gemini-3.1-pro-low"
-        ],
-        "antigravity.gemini-3-pro": [
-            "antigravity.gemini-3.1-pro-high",
-            "antigravity.gemini-3.1-pro-low"
-        ],
-        "antigravity.gemini-2.5-flash": [
-            "antigravity.gemini-3.5-flash-high",
-            "antigravity.gemini-3.5-flash-medium"
-        ],
-        "antigravity.gemini-3-flash": [
-            "antigravity.gemini-3.5-flash-high",
-            "antigravity.gemini-3.5-flash-medium"
-        ],
-        "antigravity.gemini-2.5-flash-lite": [],
+        // Antigravity 2.x reports two shared pools, each with a 5-hour
+        // and weekly lane. Every legacy per-model selection therefore
+        // migrates to the matching pool's 5-hour lane; the weekly lane
+        // remains independently selectable beside it.
+        "antigravity.claude-sonnet-4-20250514": ["antigravity.claude_gpt_five_hour"],
+        "antigravity.claude-sonnet-4-5": ["antigravity.claude_gpt_five_hour"],
+        "antigravity.claude-sonnet-4.6-thinking": ["antigravity.claude_gpt_five_hour"],
+        "antigravity.claude-opus-4.6-thinking": ["antigravity.claude_gpt_five_hour"],
+        "antigravity.gpt-oss-120b-medium": ["antigravity.claude_gpt_five_hour"],
+        "antigravity.gemini-2.5-pro": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-3-pro": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-3.1-pro-high": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-3.1-pro-low": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-2.5-flash": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-3-flash": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-3.5-flash-high": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-3.5-flash-medium": ["antigravity.gemini_five_hour"],
+        "antigravity.gemini-2.5-flash-lite": ["antigravity.gemini_five_hour"],
         "grok.monthly": ["grok.weekly"]
     ]
 }

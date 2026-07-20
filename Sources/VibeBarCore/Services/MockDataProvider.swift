@@ -231,18 +231,21 @@ public enum MockDataProvider {
                             usedPercent: 9, resetAt: weeklyReset, rawWindowSeconds: nil, groupTitle: "Flash Lite")
             ]
         case .antigravity:
-            // Partial-primary mock: the live Antigravity LSP groups
-            // buckets by Gemini Pro / Flash / Claude variants.
+            // Antigravity 2.x exposes two shared pools, each with a
+            // 5-hour and weekly lane.
             buckets = [
-                QuotaBucket(id: "gemini-3-pro", title: "Gemini Pro",
-                            shortLabel: "Pro", usedPercent: 41, resetAt: fiveHourReset,
-                            rawWindowSeconds: nil, groupTitle: "Gemini Pro"),
-                QuotaBucket(id: "gemini-3-flash", title: "Gemini Flash",
-                            shortLabel: "Flash", usedPercent: 17, resetAt: fiveHourReset,
-                            rawWindowSeconds: nil, groupTitle: "Gemini Flash"),
-                QuotaBucket(id: "claude-sonnet-4-5", title: "Claude Sonnet 4.5",
-                            shortLabel: "Sonnet", usedPercent: 71, resetAt: fiveHourReset,
-                            rawWindowSeconds: nil, groupTitle: "Claude")
+                QuotaBucket(id: "gemini_five_hour", title: "5 Hours",
+                            shortLabel: "G 5h", usedPercent: 41, resetAt: fiveHourReset,
+                            rawWindowSeconds: 18_000, groupTitle: "Gemini Models"),
+                QuotaBucket(id: "gemini_weekly", title: "Weekly",
+                            shortLabel: "G wk", usedPercent: 17, resetAt: weeklyReset,
+                            rawWindowSeconds: 604_800, groupTitle: "Gemini Models"),
+                QuotaBucket(id: "claude_gpt_five_hour", title: "5 Hours",
+                            shortLabel: "C+G 5h", usedPercent: 71, resetAt: fiveHourReset,
+                            rawWindowSeconds: 18_000, groupTitle: "Claude and GPT Models"),
+                QuotaBucket(id: "claude_gpt_weekly", title: "Weekly",
+                            shortLabel: "C+G wk", usedPercent: 28, resetAt: weeklyReset,
+                            rawWindowSeconds: 604_800, groupTitle: "Claude and GPT Models")
             ]
         case .grok:
             // Partial-primary mock: single weekly bucket so the
