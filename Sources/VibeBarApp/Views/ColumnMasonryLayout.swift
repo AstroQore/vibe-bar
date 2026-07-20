@@ -31,27 +31,32 @@ extension View {
 }
 
 /// A live-measured waterfall whose policy is quota-first, then Cost, then
-/// supporting analytics. Quota height changes trigger a fresh optimization;
-/// transient height changes below the quota block keep the current columns and
-/// only move later cards down within their existing column. This lets inline
-/// Cost History inspection expand naturally without reshuffling the Overview.
+/// supporting analytics. It optimizes column assignment once for this layout
+/// lifetime, then keeps every existing card on that side until the Overview is
+/// entered again. Refreshes and inline expansion may move later cards down,
+/// but never reshuffle the visible dashboard.
 struct ColumnMasonryLayout: Layout {
-    var columns: Int = 2
-    var spacing: CGFloat = 12
-
-    struct Cache {
+    /// Owned by `OverviewWaterfall` for exactly one visible Overview session.
+    /// Keeping assignments outside SwiftUI's disposable Layout cache prevents
+    /// a live subview-set change from silently triggering a second shuffle.
+    final class Session {
         var columnsByID: [String: Int] = [:]
-        var structureKey: [String] = []
-        var quotaHeightKey: [String: Int] = [:]
-        var columnWidthKey: Int?
     }
 
-    func makeCache(subviews: Subviews) -> Cache { Cache() }
+    var columns: Int = 2
+    var spacing: CGFloat = 12
+    let session: Session
+
+    init(columns: Int = 2, spacing: CGFloat = 12, session: Session = Session()) {
+        self.columns = columns
+        self.spacing = spacing
+        self.session = session
+    }
 
     func sizeThatFits(
         proposal: ProposedViewSize,
         subviews: Subviews,
-        cache: inout Cache
+        cache: inout Void
     ) -> CGSize {
         let totalWidth = proposal.width ?? 0
         let plan = placementPlan(
@@ -66,7 +71,7 @@ struct ColumnMasonryLayout: Layout {
         in bounds: CGRect,
         proposal: ProposedViewSize,
         subviews: Subviews,
-        cache: inout Cache
+        cache: inout Void
     ) {
         let width = columnWidth(for: bounds.width)
         let plan = placementPlan(for: subviews, columnWidth: width, cache: &cache)
@@ -88,7 +93,7 @@ struct ColumnMasonryLayout: Layout {
     private func placementPlan(
         for subviews: Subviews,
         columnWidth: CGFloat,
-        cache: inout Cache
+        cache: inout Void
     ) -> OverviewMasonryPlanner.Plan {
         let proposal = ProposedViewSize(width: columnWidth, height: nil)
         let items = subviews.enumerated().map { index, subview in
@@ -98,31 +103,27 @@ struct ColumnMasonryLayout: Layout {
                 phase: subview[OverviewMasonryPhaseKey.self].corePhase
             )
         }
-        let structureKey = items.map { "\($0.phase.rawValue):\($0.id)" }
-        let quotaHeightKey = Dictionary(uniqueKeysWithValues:
-            items.filter { $0.phase == .quota }.map { item in
-                (item.id, Int((item.height * 2).rounded()))
-            }
-        )
-        let columnWidthKey = Int((columnWidth * 2).rounded())
-        if cache.columnsByID.isEmpty
-            || cache.structureKey != structureKey
-            || cache.quotaHeightKey != quotaHeightKey
-            || cache.columnWidthKey != columnWidthKey
-        {
+        // A zero-width speculative pass is not a real Overview placement.
+        // Wait for the first usable proposal, optimize once, then lock the
+        // assignment for the lifetime of this visible Overview session.
+        if session.columnsByID.isEmpty, columnWidth > 0, !items.isEmpty {
             let optimized = OverviewMasonryPlanner.plan(
                 items: items,
                 columns: columns,
                 spacing: Double(spacing)
             )
-            cache.columnsByID = optimized.positions.mapValues(\.column)
-            cache.structureKey = structureKey
-            cache.quotaHeightKey = quotaHeightKey
-            cache.columnWidthKey = columnWidthKey
+            session.columnsByID = optimized.positions.mapValues(\.column)
+        }
+        if session.columnsByID.isEmpty {
+            return OverviewMasonryPlanner.plan(
+                items: items,
+                columns: columns,
+                spacing: Double(spacing)
+            )
         }
         return OverviewMasonryPlanner.plan(
             items: items,
-            fixedColumns: cache.columnsByID,
+            fixedColumns: session.columnsByID,
             columns: columns,
             spacing: Double(spacing)
         )

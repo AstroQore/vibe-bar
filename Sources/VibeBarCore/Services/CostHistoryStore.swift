@@ -191,12 +191,14 @@ public actor CostHistoryStore {
             allTimeTokens: allTokens,
             dailyHistory: dailyPoints,
             todayHourlyHistory: snapshot.todayHourlyHistory,
+            yesterdayHourlyHistory: snapshot.yesterdayHourlyHistory,
             heatmap: snapshot.heatmap,
             modelBreakdowns: snapshot.modelBreakdowns,
             last7DaysModelBreakdowns: snapshot.last7DaysModelBreakdowns,
             // Per-day model breakdown is in-memory only; preserve whatever
             // the live scan produced. Persisted historical days won't have it.
             dailyModelBreakdown: snapshot.dailyModelBreakdown,
+            hourlyModelBreakdown: snapshot.hourlyModelBreakdown,
             jsonlFilesFound: snapshot.jsonlFilesFound,
             updatedAt: snapshot.updatedAt
         )

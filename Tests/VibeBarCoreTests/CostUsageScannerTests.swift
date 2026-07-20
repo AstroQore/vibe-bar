@@ -100,6 +100,43 @@ final class CostUsageScannerTests: XCTestCase {
         XCTAssertEqual(snapshot.todayHourlyHistory.reduce(0) { $0 + $1.totalTokens }, 300_000)
     }
 
+    func testCodexScanKeepsEveryPerHourAndPerDayModel() async throws {
+        let fileManager = FileManager.default
+        let home = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostUsageAllModels-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: home) }
+
+        let sessions = home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try fileManager.createDirectory(at: sessions, withIntermediateDirectories: true)
+
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: Date())
+        let hour = try XCTUnwrap(calendar.date(byAdding: .hour, value: 12, to: day))
+        let now = try XCTUnwrap(calendar.date(byAdding: .hour, value: 1, to: hour))
+        let lines = (0..<24).map { index in
+            codexTokenCountLine(
+                timestamp: hour.addingTimeInterval(Double(index)),
+                model: "gpt-model-\(index)",
+                input: (index + 1) * 1_000,
+                cached: 0,
+                output: 0
+            )
+        }
+        try lines.joined(separator: "\n").write(
+            to: sessions.appendingPathComponent("session.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let scanned = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let snapshot = try XCTUnwrap(scanned)
+
+        XCTAssertEqual(snapshot.topModels(forHour: hour, limit: .max).count, 24)
+        XCTAssertEqual(snapshot.topModels(for: day, limit: .max).count, 24)
+    }
+
     func testCodexScanUsesLastTokenUsageWhenTotalsAreMissing() async throws {
         let fileManager = FileManager.default
         let home = fileManager.temporaryDirectory

@@ -50,39 +50,44 @@ struct FillTimelineChart: View {
                         .foregroundStyle(.quaternary)
                 }
                 if tabs.count > 1 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 2) {
-                            ForEach(tabs, id: \.id) { tab in
-                                let isSelected = tab.id == activeSeriesId
-                                Button {
-                                    selectedBucketId = tab.id
-                                    hoveredIndex = nil
-                                } label: {
-                                    Text(tab.label)
-                                        .font(.system(
-                                            size: max(8.5, density.subtitleFontSize - 2),
-                                            weight: .semibold,
-                                            design: .rounded
-                                        ))
-                                        .foregroundStyle(isSelected ? Color.white : Color.secondary)
-                                        .lineLimit(1)
-                                        .padding(.horizontal, 9)
-                                        .frame(height: 22)
-                                        .background {
-                                            if isSelected {
-                                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                    .fill(Color.accentColor)
+                    GeometryReader { geometry in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 2) {
+                                ForEach(tabs, id: \.id) { tab in
+                                    let isSelected = tab.id == activeSeriesId
+                                    Button {
+                                        selectedBucketId = tab.id
+                                        hoveredIndex = nil
+                                    } label: {
+                                        Text(tab.label)
+                                            .font(.system(
+                                                size: max(8.5, density.subtitleFontSize - 2),
+                                                weight: .semibold,
+                                                design: .rounded
+                                            ))
+                                            .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                                            .lineLimit(1)
+                                            .padding(.horizontal, 9)
+                                            .frame(height: 22)
+                                            .background {
+                                                if isSelected {
+                                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                        .fill(Color.accentColor)
+                                                }
                                             }
-                                        }
-                                        .contentShape(Rectangle())
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .focusable(false)
+                                    .accessibilityLabel("Show \(tab.label) utilization history")
                                 }
-                                .buttonStyle(.plain)
-                                .focusable(false)
-                                .accessibilityLabel("Show \(tab.label) utilization history")
                             }
+                            .padding(2)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: geometry.size.width, alignment: .trailing)
                         }
-                        .padding(2)
                     }
+                    .frame(height: 26)
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(Color.primary.opacity(0.08))

@@ -2,6 +2,65 @@ import XCTest
 @testable import VibeBarCore
 
 final class CostHistoryStoreTests: XCTestCase {
+    func testMergeAndAugmentPreservesHourlyHistoryAndModelDetails() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryHourlyDetails-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let todayHour = try XCTUnwrap(calendar.date(byAdding: .hour, value: 10, to: today))
+        let yesterday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: today))
+        let yesterdayHour = try XCTUnwrap(calendar.date(byAdding: .hour, value: 17, to: yesterday))
+        let todayModels = [
+            CostSnapshot.ModelBreakdown(modelName: "gpt-today", costUSD: 1.5, totalTokens: 1_500)
+        ]
+        let yesterdayModels = [
+            CostSnapshot.ModelBreakdown(modelName: "gpt-yesterday", costUSD: 2.5, totalTokens: 2_500)
+        ]
+        let snapshot = CostSnapshot(
+            tool: .codex,
+            todayCostUSD: 1.5,
+            last7DaysCostUSD: 4,
+            last30DaysCostUSD: 4,
+            allTimeCostUSD: 4,
+            todayTokens: 1_500,
+            last7DaysTokens: 4_000,
+            last30DaysTokens: 4_000,
+            allTimeTokens: 4_000,
+            dailyHistory: [
+                DailyCostPoint(date: yesterday, costUSD: 2.5, totalTokens: 2_500),
+                DailyCostPoint(date: today, costUSD: 1.5, totalTokens: 1_500)
+            ],
+            todayHourlyHistory: [
+                HourlyCostPoint(date: todayHour, costUSD: 1.5, totalTokens: 1_500)
+            ],
+            yesterdayHourlyHistory: [
+                HourlyCostPoint(date: yesterdayHour, costUSD: 2.5, totalTokens: 2_500)
+            ],
+            heatmap: .empty(tool: .codex),
+            modelBreakdowns: todayModels + yesterdayModels,
+            dailyModelBreakdown: [today: todayModels, yesterday: yesterdayModels],
+            hourlyModelBreakdown: [todayHour: todayModels, yesterdayHour: yesterdayModels],
+            jsonlFilesFound: 1,
+            updatedAt: now
+        )
+        let store = CostHistoryStore(fileURL: directory.appendingPathComponent("cost_history.json"))
+
+        let merged = await store.mergeAndAugment(
+            snapshot,
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        XCTAssertEqual(merged.todayHourlyHistory, snapshot.todayHourlyHistory)
+        XCTAssertEqual(merged.yesterdayHourlyHistory, snapshot.yesterdayHourlyHistory)
+        XCTAssertEqual(merged.topModels(forHour: todayHour, limit: .max), todayModels)
+        XCTAssertEqual(merged.topModels(forHour: yesterdayHour, limit: .max), yesterdayModels)
+    }
+
     func testMergeAndAugmentKeepsLocalTodayWhenTimeZoneIsAheadOfUTC() async throws {
         let previousTimeZone = NSTimeZone.default
         let shanghai = TimeZone(secondsFromGMT: 8 * 3600)!

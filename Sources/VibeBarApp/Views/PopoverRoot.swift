@@ -445,6 +445,7 @@ private struct OverviewWaterfall: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
+    @State private var masonrySession = ColumnMasonryLayout.Session()
 
     var body: some View {
         let snapshots = overviewCostSnapshots
@@ -461,7 +462,8 @@ private struct OverviewWaterfall: View {
             CombinedTotalsRow(density: density)
             ColumnMasonryLayout(
                 columns: 2,
-                spacing: density.interSectionSpacing
+                spacing: density.interSectionSpacing,
+                session: masonrySession
             ) {
                 if isVisible(.codex) {
                     ProviderQuotaCard(tool: .codex, density: density, compact: false)

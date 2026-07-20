@@ -1441,20 +1441,18 @@ public enum CostUsageScanner {
                 .sorted { $0.value.cost > $1.value.cost }
                 .prefix(20)
                 .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
-            // Keep enough entries for the compact top-three hover plus the
-            // click-to-pin expanded list (up to ten models).
+            // Keep every per-period model. Hover remains intentionally compact,
+            // while the inline inspector can show the complete model mix.
             var perDayModels: [Date: [CostSnapshot.ModelBreakdown]] = [:]
             for (day, models) in byDayModel {
                 perDayModels[day] = models
                     .sorted { $0.value.cost > $1.value.cost }
-                    .prefix(20)
                     .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
             }
             var perHourModels: [Date: [CostSnapshot.ModelBreakdown]] = [:]
             for (hour, models) in byHourModel {
                 perHourModels[hour] = models
                     .sorted { $0.value.cost > $1.value.cost }
-                    .prefix(20)
                     .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
             }
             return CostSnapshot(

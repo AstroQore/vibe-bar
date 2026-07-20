@@ -251,9 +251,6 @@ struct CostHistoryView: View {
                     Text("Models · \(tooltipDate(point.date))")
                         .font(.system(size: 10, weight: .semibold))
                     Spacer(minLength: 8)
-                    Text("Top \(min(10, point.models.count)) of \(point.models.count)")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
                     Button {
                         inspectedPoint = nil
                     } label: {
@@ -278,7 +275,7 @@ struct CostHistoryView: View {
                         alignment: .leading,
                         spacing: 4
                     ) {
-                        ForEach(point.models.prefix(10)) { model in
+                        ForEach(point.models) { model in
                             inspectedModelRow(model)
                         }
                     }
@@ -343,7 +340,7 @@ struct CostHistoryView: View {
                     date: point.date,
                     costUSD: point.costUSD,
                     totalTokens: point.totalTokens,
-                    models: snapshot.topModels(forHour: point.date, limit: 20)
+                    models: snapshot.topModels(forHour: point.date, limit: .max)
                 )
             }
         }
@@ -355,7 +352,7 @@ struct CostHistoryView: View {
                     date: point.date,
                     costUSD: point.costUSD,
                     totalTokens: point.totalTokens,
-                    models: snapshot.topModels(for: point.date, limit: 20)
+                    models: snapshot.topModels(for: point.date, limit: .max)
                 )
             }
         }
@@ -390,7 +387,7 @@ struct CostHistoryView: View {
             var value = totals[key] ?? (0, 0, [:])
             value.cost += day.costUSD
             value.tokens += day.totalTokens
-            for model in snapshot.topModels(for: day.date, limit: 20) {
+            for model in snapshot.topModels(for: day.date, limit: .max) {
                 let current = value.models[model.modelName] ?? (0, 0)
                 value.models[model.modelName] = (current.0 + model.costUSD, current.1 + model.totalTokens)
             }
