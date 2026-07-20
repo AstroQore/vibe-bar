@@ -73,8 +73,7 @@ public enum GeminiBrowserCookieImporter {
             }
 
             for store in stores {
-                let pairs = store.records.map { (name: $0.name, value: $0.value) }
-                guard let header = sessionHeader(from: pairs) else { continue }
+                guard let header = sessionHeader(from: store.records) else { continue }
                 let label = "\(browser.displayName) (\(store.store.profile.name))"
                 return Result(
                     header: header,
@@ -95,5 +94,38 @@ public enum GeminiBrowserCookieImporter {
             .map { "\($0.name)=\($0.value)" }
             .joined(separator: "; ")
         return GeminiWebCookieStore.minimizedCookieHeader(from: raw)
+    }
+
+    /// Builds the exact Cookie header a browser would send to Gemini's Usage
+    /// page. A flat name/value projection is not sufficient because Chrome
+    /// may contain the same cookie name for the host, parent domain, and
+    /// multiple paths. Choosing the most-specific matching record first is
+    /// what made the live Web quota request authenticate reliably.
+    static func sessionHeader(
+        from records: [BrowserCookieRecord],
+        host: String = "gemini.google.com",
+        path: String = "/usage"
+    ) -> String? {
+        let matching = records.filter { record in
+            let domain = record.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            let cookiePath = record.path.isEmpty ? "/" : record.path
+            return (host == domain || host.hasSuffix(".\(domain)"))
+                && path.hasPrefix(cookiePath)
+                && !record.value.isEmpty
+        }
+        let ordered = matching.sorted { lhs, rhs in
+            let lhsPath = lhs.path.isEmpty ? "/" : lhs.path
+            let rhsPath = rhs.path.isEmpty ? "/" : rhs.path
+            if lhsPath.count != rhsPath.count { return lhsPath.count > rhsPath.count }
+            if lhs.domain.count != rhs.domain.count { return lhs.domain.count > rhs.domain.count }
+            return lhs.name < rhs.name
+        }
+
+        var names: Set<String> = []
+        let pairs = ordered.compactMap { record -> (name: String, value: String)? in
+            guard names.insert(record.name).inserted else { return nil }
+            return (record.name, record.value)
+        }
+        return sessionHeader(from: pairs)
     }
 }

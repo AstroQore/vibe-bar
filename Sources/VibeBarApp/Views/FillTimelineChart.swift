@@ -115,10 +115,16 @@ struct FillTimelineChart: View {
         let bucket = series.bucket
         let window: String
         switch bucket.rawWindowSeconds {
-        case 18_000: window = "5h"
-        case 604_800: window = "Wk"
-        case 2_592_000: window = "Mo"
-        default: window = bucket.shortLabel
+        case 18_000: window = "5 Hours"
+        case 604_800: window = "Weekly"
+        case 2_592_000: window = "Monthly"
+        default:
+            switch bucket.shortLabel.lowercased() {
+            case "5h", "5 hr", "5 hrs": window = "5 Hours"
+            case "wk", "1w": window = "Weekly"
+            case "mo", "1m": window = "Monthly"
+            default: window = bucket.title
+            }
         }
         let group = bucket.groupTitle?.replacingOccurrences(of: " Models", with: "")
         let owner = group ?? (includeTool ? series.tool.toolName : nil)

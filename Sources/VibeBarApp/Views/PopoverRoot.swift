@@ -867,10 +867,10 @@ private struct ProviderCostStack: View {
     }
 }
 
-/// Sits above the per-provider columns: eight usage metrics in two rows on the
-/// left and current provider status on the right. Both halves get their own
-/// refresh button so the user can pull just-this-card data without firing the
-/// global header refresh.
+/// Sits above the per-provider columns: cost and token summary on the left,
+/// current provider status on the right. Cost intentionally gets more width
+/// because its metrics are denser while the four compact status tiles fit in
+/// the narrower column.
 private struct CombinedTotalsRow: View {
     let density: Theme.Density
 
@@ -889,10 +889,12 @@ private struct CombinedTotalsRow: View {
         let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
         let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
+        let yesterdayCost = snapshots.reduce(0.0) { $0 + CostTimeframe.yesterday.cost(in: $1) }
         let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
         let monthCost = snapshots.reduce(0.0) { $0 + $1.last30DaysCostUSD }
         let totalTokens = snapshots.reduce(0) { $0 + $1.allTimeTokens }
         let todayTokens = snapshots.reduce(0) { $0 + $1.todayTokens }
+        let yesterdayTokens = snapshots.reduce(0) { $0 + CostTimeframe.yesterday.tokens(in: $1) }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
         let overallFill = OverallFillRate.average(quotaService.lastSuccessByAccount)
@@ -919,8 +921,13 @@ private struct CombinedTotalsRow: View {
         }()
         let tokensPerMinute = Int((Double(todayTokens) / elapsedMinutesToday).rounded())
 
-        HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            VStack(alignment: .leading, spacing: 8) {
+        GeometryReader { geometry in
+            let spacing = density.interSectionSpacing
+            let availableWidth = max(0, geometry.size.width - spacing)
+            let costWidth = availableWidth * 0.62
+
+            HStack(alignment: .top, spacing: spacing) {
+                VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Cost")
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
@@ -940,48 +947,66 @@ private struct CombinedTotalsRow: View {
                     }
                     .disabled(costService.isRefreshing)
                 }
-                HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
-                    divider
-                    metric(label: "TODAY", value: formatCost(todayCost))
-                    divider
-                    metric(label: "7-DAY", value: formatCost(weekCost))
-                    divider
-                    metric(label: "30-DAY", value: formatCost(monthCost))
+                    HStack(alignment: .top, spacing: 0) {
+                        metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
+                        divider
+                        metric(label: "TODAY", value: formatCost(todayCost))
+                        divider
+                        metric(label: "YESTERDAY", value: formatCost(yesterdayCost))
+                        divider
+                        metric(label: "7-DAY", value: formatCost(weekCost))
+                        divider
+                        metric(label: "30-DAY", value: formatCost(monthCost))
+                    }
+                    HStack(alignment: .top, spacing: 0) {
+                        metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
+                        divider
+                        metric(label: "TODAY TOK", value: formatTokens(todayTokens))
+                        divider
+                        metric(label: "YESTERDAY TOK", value: formatTokens(yesterdayTokens))
+                        divider
+                        metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
+                        divider
+                        metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
+                    }
+                    HStack(alignment: .top, spacing: 0) {
+                        metric(label: "PEAK DAY", value: formatCost(peakDayCost))
+                        divider
+                        metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
+                        divider
+                        metric(label: "TPM", value: formatTokens(tokensPerMinute))
+                        divider
+                        metric(label: "FILL", value: formatFillPercent(overallFill))
+                    }
                 }
-                HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
-                    divider
-                    metric(label: "TODAY TOK", value: formatTokens(todayTokens))
-                    divider
-                    metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
-                    divider
-                    metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
-                }
-                HStack(alignment: .top, spacing: 0) {
-                    metric(label: "PEAK DAY", value: formatCost(peakDayCost))
-                    divider
-                    metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
-                    divider
-                    metric(label: "TPM", value: formatTokens(tokensPerMinute))
-                    divider
-                    metric(label: "FILL", value: formatFillPercent(overallFill))
-                }
-            }
-            .padding(density.cardPadding)
-            .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                    .fill(.background.tertiary.opacity(0.6))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                    .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-            )
+                .padding(density.cardPadding)
+                .frame(
+                    minWidth: costWidth,
+                    idealWidth: costWidth,
+                    maxWidth: costWidth,
+                    minHeight: summaryHeight,
+                    alignment: .topLeading
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .fill(.background.tertiary.opacity(0.6))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+                )
 
-            OverviewStatusSummaryCard(density: density)
-                .frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
+                OverviewStatusSummaryCard(density: density)
+                    .frame(
+                        minWidth: availableWidth - costWidth,
+                        idealWidth: availableWidth - costWidth,
+                        maxWidth: availableWidth - costWidth,
+                        minHeight: summaryHeight,
+                        alignment: .topLeading
+                    )
+            }
         }
+        .frame(height: summaryHeight)
     }
 
     private var divider: some View {
