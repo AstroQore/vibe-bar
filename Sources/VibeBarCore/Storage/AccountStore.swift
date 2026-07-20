@@ -58,9 +58,7 @@ public final class AccountStore: ObservableObject {
         }
 
         // Misc provider instances always present, regardless of credentials.
-        for instance in miscProviderInstances {
-            detected.append(miscPlaceholder(for: instance))
-        }
+        detected.append(contentsOf: Self.miscAccounts(for: miscProviderInstances))
 
         self.accounts = detected
     }
@@ -88,6 +86,24 @@ public final class AccountStore: ObservableObject {
             return fallbackTool.rawValue
         }
         return String(accountID.dropFirst(prefix.count))
+    }
+
+    /// Builds the stable placeholder identities for misc-provider instances
+    /// without probing any primary-provider credentials or the Keychain.
+    nonisolated static func miscAccounts(
+        for instances: [MiscProviderInstance],
+        now: Date = Date()
+    ) -> [AccountIdentity] {
+        instances.map { instance in
+            AccountIdentity(
+                id: miscAccountId(forInstanceID: instance.id),
+                tool: instance.tool,
+                alias: instance.displayName ?? instance.tool.menuTitle,
+                source: .notConfigured,
+                createdAt: now,
+                updatedAt: now
+            )
+        }
     }
 
     // MARK: - CLI auto detection
@@ -315,19 +331,4 @@ public final class AccountStore: ObservableObject {
         )
     }
 
-    /// Stable placeholder for misc providers regardless of credential
-    /// presence. The `source` defaults to `.notConfigured`; once an
-    /// adapter actually fetches successfully, `QuotaService` updates
-    /// the snapshot's metadata — the placeholder identity is mainly a
-    /// hook for the UI to render a card and route to Settings.
-    private func miscPlaceholder(for instance: MiscProviderInstance) -> AccountIdentity {
-        AccountIdentity(
-            id: AccountStore.miscAccountId(forInstanceID: instance.id),
-            tool: instance.tool,
-            alias: instance.displayName ?? instance.tool.menuTitle,
-            source: .notConfigured,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-    }
 }

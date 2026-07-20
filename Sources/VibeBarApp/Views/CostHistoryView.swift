@@ -19,8 +19,8 @@ private struct CostChartPoint: Identifiable, Equatable {
 }
 
 /// Cost history with hour/day/week/month grouping, model-aware hover detail,
-/// and a click-to-pin model inspector presented in a fixed-size popover so
-/// inspecting a bar never changes the card height or reflows the masonry.
+/// and a click-to-pin model inspector drawn inside the card so inspecting a
+/// bar never creates a separate AppKit popover or reflows the masonry.
 struct CostHistoryView: View {
     let tool: ToolType
     let snapshot: CostSnapshot?
@@ -31,7 +31,7 @@ struct CostHistoryView: View {
     @State private var timeframe: CostTimeframe = .month
     @State private var granularity: CostHistoryGranularity = .day
     @State private var hoveredDate: Date?
-    @State private var pinnedDate: Date?
+    @State private var inspectedPoint: CostChartPoint?
 
     @EnvironmentObject var environment: AppEnvironment
 
@@ -55,39 +55,20 @@ struct CostHistoryView: View {
                     Spacer(minLength: 0)
                     CostTimeframeSelector(selection: $timeframe, density: density)
                         .fixedSize(horizontal: true, vertical: false)
-                    if availableGranularities.count > 1 {
-                        Menu {
-                            ForEach(availableGranularities) { option in
-                                Button {
-                                    granularity = option
-                                    clearSelection()
-                                } label: {
-                                    if option == granularity {
-                                        Label(option.rawValue, systemImage: "checkmark")
-                                    } else {
-                                        Text(option.rawValue)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Text("By \(granularity.rawValue)")
-                                .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
-                        }
-                        .menuStyle(.borderlessButton)
-                        .focusable(false)
-                        .fixedSize()
-                    }
+                    granularityControl
                 }
             }
 
-            chart(points: points, average: average)
-                .popover(isPresented: pinnedPopoverBinding(points: points), arrowEdge: .top) {
-                    if let pinned = pinnedPoint(in: points) {
-                        pinnedModelPanel(pinned)
-                            .frame(width: 300)
-                            .padding(10)
-                    }
+            ZStack(alignment: .topTrailing) {
+                chart(points: points, average: average)
+                if let inspectedPoint {
+                    inspectedModelPanel(inspectedPoint)
+                        .frame(width: 300)
+                        .padding(.top, 4)
+                        .padding(.trailing, 4)
+                        .zIndex(2)
                 }
+            }
 
             HStack(spacing: 16) {
                 metric(label: "Total", value: formatCost(total))
@@ -221,11 +202,11 @@ struct CostHistoryView: View {
                         }
                     }
                     .onTapGesture {
-                        guard let hoveredDate else { return }
-                        pinnedDate = pinnedDate == hoveredDate ? nil : hoveredDate
+                        guard let hovered = hoveredPoint(in: points) else { return }
+                        inspectedPoint = inspectedPoint?.date == hovered.date ? nil : hovered
                     }
 
-                if let hovered = hoveredPoint(in: points), pinnedDate == nil {
+                if let hovered = hoveredPoint(in: points), inspectedPoint == nil {
                     compactTooltip(hovered)
                         .offset(x: tooltipX(for: hovered.date, proxy: proxy, geometry: geometry))
                 }
@@ -262,7 +243,7 @@ struct CostHistoryView: View {
         .allowsHitTesting(false)
     }
 
-    private func pinnedModelPanel(_ point: CostChartPoint) -> some View {
+    private func inspectedModelPanel(_ point: CostChartPoint) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text("Models · \(tooltipDate(point.date))")
@@ -272,7 +253,7 @@ struct CostHistoryView: View {
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
                 Button {
-                    pinnedDate = nil
+                    inspectedPoint = nil
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
@@ -306,8 +287,9 @@ struct CostHistoryView: View {
             }
         }
         .padding(8)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
+        .background(RoundedRectangle(cornerRadius: 7).fill(.background))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(.separator.opacity(0.35), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
     }
 
     private func modelRow(_ model: CostSnapshot.ModelBreakdown) -> some View {
@@ -417,6 +399,50 @@ struct CostHistoryView: View {
 
     // MARK: - Presentation helpers
 
+    @ViewBuilder
+    private var granularityControl: some View {
+        if availableGranularities.count > 1 {
+            Menu {
+                ForEach(availableGranularities) { option in
+                    Button {
+                        granularity = option
+                        clearSelection()
+                    } label: {
+                        if option == granularity {
+                            Label(option.rawValue, systemImage: "checkmark")
+                        } else {
+                            Text(option.rawValue)
+                        }
+                    }
+                }
+            } label: {
+                granularityLabel
+            }
+            .menuStyle(.borderlessButton)
+            .focusable(false)
+            .accessibilityLabel("Group cost history by \(granularity.rawValue.lowercased())")
+        } else {
+            granularityLabel
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Cost history grouped by \(granularity.rawValue.lowercased())")
+        }
+    }
+
+    private var granularityLabel: some View {
+        HStack(spacing: 3) {
+            Text("By \(granularity.rawValue)")
+                .lineLimit(1)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 7, weight: .bold))
+                .opacity(availableGranularities.count > 1 ? 1 : 0)
+        }
+        .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+        .frame(width: 72, height: 22)
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
+        .contentShape(Rectangle())
+    }
+
     private var chartCalendarComponent: Calendar.Component {
         switch granularity {
         case .hour: .hour
@@ -487,25 +513,12 @@ struct CostHistoryView: View {
         hoveredDate.flatMap { date in points.first { $0.date == date } }
     }
 
-    private func pinnedPoint(in points: [CostChartPoint]) -> CostChartPoint? {
-        pinnedDate.flatMap { date in points.first { $0.date == date } }
-    }
-
-    private func pinnedPopoverBinding(points: [CostChartPoint]) -> Binding<Bool> {
-        Binding(
-            get: { pinnedPoint(in: points) != nil },
-            set: { isPresented in
-                if !isPresented { pinnedDate = nil }
-            }
-        )
-    }
-
     private func nearestPoint(to date: Date, in points: [CostChartPoint]) -> CostChartPoint? {
         points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
     }
 
     private func pointOpacity(_ point: CostChartPoint) -> Double {
-        guard let selected = pinnedDate ?? hoveredDate else { return 1 }
+        guard let selected = inspectedPoint?.date ?? hoveredDate else { return 1 }
         return point.date == selected ? 1 : 0.55
     }
 
@@ -517,7 +530,7 @@ struct CostHistoryView: View {
 
     private func clearSelection() {
         hoveredDate = nil
-        pinnedDate = nil
+        inspectedPoint = nil
     }
 
     private func timeframeNote(pointCount: Int) -> String {

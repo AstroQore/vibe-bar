@@ -897,6 +897,7 @@ private struct CombinedTotalsRow: View {
         let yesterdayTokens = snapshots.reduce(0) { $0 + CostTimeframe.yesterday.tokens(in: $1) }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
+        let monthAverageCost = monthCost / 30
         let overallFill = OverallFillRate.average(quotaService.lastSuccessByAccount)
         // Pick the single day with the highest cost across all
         // providers, then surface both its cost and token totals so
@@ -924,7 +925,9 @@ private struct CombinedTotalsRow: View {
         GeometryReader { geometry in
             let spacing = density.interSectionSpacing
             let availableWidth = max(0, geometry.size.width - spacing)
-            let costWidth = availableWidth * 0.62
+            // Five cost columns next to the status card's four logical
+            // columns: enough room for Yesterday without over-expanding Cost.
+            let costWidth = availableWidth * (5.0 / 9.0)
 
             HStack(alignment: .top, spacing: spacing) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -973,6 +976,8 @@ private struct CombinedTotalsRow: View {
                         metric(label: "PEAK DAY", value: formatCost(peakDayCost))
                         divider
                         metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
+                        divider
+                        metric(label: "30D AVG/DAY", value: formatCost(monthAverageCost))
                         divider
                         metric(label: "TPM", value: formatTokens(tokensPerMinute))
                         divider

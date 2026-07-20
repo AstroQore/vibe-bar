@@ -285,15 +285,14 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         XCTAssertEqual(settings.miscProviderInstance(id: ToolType.minimax.rawValue)?.settings.region, "global")
     }
 
-    @MainActor
     func testAccountStoreCreatesSeparateAccountsForMiscProviderInstances() {
         var settings = AppSettings.default
         guard let clone = settings.cloneMiscProviderInstance(id: ToolType.volcengine.rawValue) else {
             return XCTFail("expected Volcengine clone")
         }
 
-        let accounts = AccountStore(miscProviderInstances: settings.miscProviderInstances)
-        let volcengineAccounts = accounts.accounts(for: .volcengine)
+        let accounts = AccountStore.miscAccounts(for: settings.miscProviderInstances)
+        let volcengineAccounts = accounts.filter { $0.tool == .volcengine }
 
         XCTAssertEqual(volcengineAccounts.map(\.id), [
             AccountStore.miscAccountId(forInstanceID: ToolType.volcengine.rawValue),

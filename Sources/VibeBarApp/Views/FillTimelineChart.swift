@@ -40,31 +40,32 @@ struct FillTimelineChart: View {
             let activeSeries = tabs.first(where: { $0.id == activeSeriesId })!.series
             let cycles = visibleCycles(series: activeSeries)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Utilization by reset")
-                            .font(.system(size: max(9, density.subtitleFontSize - 2)))
-                            .foregroundStyle(.tertiary)
-                        Text("Each bar is one quota cycle")
-                            .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
-                            .foregroundStyle(.quaternary)
-                    }
-                    Spacer(minLength: 4)
-                    if tabs.count > 1 {
-                        if tabs.count <= 3 {
-                            Picker("", selection: Binding(
-                                get: { activeSeriesId },
-                                set: { selectedBucketId = $0; hoveredIndex = nil }
-                            )) {
-                                ForEach(tabs, id: \.id) { tab in
-                                    Text(tab.label).tag(tab.id)
-                                }
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Utilization by reset")
+                        .font(.system(size: max(9, density.subtitleFontSize - 2)))
+                        .foregroundStyle(.tertiary)
+                    Spacer(minLength: 8)
+                    Text("Each bar is one quota cycle")
+                        .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
+                        .foregroundStyle(.quaternary)
+                }
+                if tabs.count > 1 {
+                    if tabs.count <= 3 {
+                        Picker("", selection: Binding(
+                            get: { activeSeriesId },
+                            set: { selectedBucketId = $0; hoveredIndex = nil }
+                        )) {
+                            ForEach(tabs, id: \.id) { tab in
+                                Text(tab.label).tag(tab.id)
                             }
-                            .pickerStyle(.segmented)
-                            .controlSize(.mini)
-                            .labelsHidden()
-                            .fixedSize()
-                        } else {
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.mini)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        HStack {
+                            Spacer(minLength: 0)
                             Menu {
                                 ForEach(tabs, id: \.id) { tab in
                                     Button {
