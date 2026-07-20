@@ -1171,13 +1171,19 @@ private struct OverviewStatusSummaryCard: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
+                let columnCount = min(2, max(1, tools.count))
+                let rowCount = Int(ceil(Double(tools.count) / Double(columnCount)))
+                let tileHeight = statusTileHeight(rowCount: rowCount)
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .top)],
+                    columns: Array(
+                        repeating: GridItem(.flexible(), spacing: 8, alignment: .top),
+                        count: columnCount
+                    ),
                     alignment: .leading,
                     spacing: 8
                 ) {
                     ForEach(tools, id: \.self) { tool in
-                        providerStatusTile(tool)
+                        providerStatusTile(tool, height: tileHeight)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -1195,19 +1201,32 @@ private struct OverviewStatusSummaryCard: View {
         )
     }
 
-    private func providerStatusTile(_ tool: ToolType) -> some View {
+    private func statusTileHeight(rowCount: Int) -> CGFloat {
+        let rows = max(1, rowCount)
+        let headerHeight = max(18, density.bucketTitleFontSize + 6)
+        let gridSpacing = CGFloat(max(0, rows - 1)) * 8
+        let available = minHeight
+            - density.cardPadding * 2
+            - headerHeight
+            - 8
+            - gridSpacing
+        return max(58, available / CGFloat(rows))
+    }
+
+    private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
         let state = statusState(for: tool)
         let snapshot = statusSnapshot(for: tool)
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
                 Image(systemName: state.iconName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(state.color)
-                ToolBrandIconView(tool: tool, size: 16)
+                    .frame(width: 17, height: 17)
+                ToolBrandIconView(tool: tool, size: 20)
                     .opacity(0.9)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 22, height: 22)
                 Text(statusTitle(for: tool))
-                    .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
+                    .font(.system(size: density.subtitleFontSize + 1, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
@@ -1230,9 +1249,9 @@ private struct OverviewStatusSummaryCard: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(minHeight: 54, alignment: .center)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(minHeight: height, maxHeight: height, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(state.color.opacity(0.12))
