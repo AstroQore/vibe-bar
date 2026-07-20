@@ -4,27 +4,32 @@ import VibeBarCore
 
 struct ServiceStatusCard: View {
     let tools: [ToolType]
+    let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
-    init(tools: [ToolType] = ToolType.allCases.filter(\.supportsStatusPage)) {
+    init(
+        tools: [ToolType] = ToolType.allCases.filter(\.supportsStatusPage),
+        density: Theme.Density
+    ) {
         // Misc providers don't expose Atlassian-style status pages, so
         // they never belong in this card. Default to the providers
         // that actually publish a status feed; callers can still pass
         // an explicit subset (e.g. just `.codex` or `.claude`).
         self.tools = tools.filter(\.supportsStatusPage)
+        self.density = density
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: density.statusGroupSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Service Status")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let last = serviceStatus.lastFetched {
                     Text(timeAgo(last))
-                        .font(.system(size: 10))
+                        .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                 }
                 BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh service status") {
@@ -32,19 +37,19 @@ struct ServiceStatusCard: View {
                 }
             }
 
-            VStack(spacing: 16) {
+            VStack(spacing: density.statusGroupSpacing + 4) {
                 ForEach(tools, id: \.self) { tool in
-                    ServiceStatusRow(tool: tool)
+                    ServiceStatusRow(tool: tool, density: density)
                 }
             }
         }
-        .padding(12)
+        .padding(density.cardPadding)
         .background(
-            RoundedRectangle(cornerRadius: Theme.sectionCornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: Theme.sectionCornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .stroke(.separator.opacity(0.5), lineWidth: 0.5)
         )
     }
@@ -59,6 +64,7 @@ struct ServiceStatusCard: View {
 
 private struct ServiceStatusRow: View {
     let tool: ToolType
+    let density: Theme.Density
 
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
@@ -67,12 +73,20 @@ private struct ServiceStatusRow: View {
         let inFlight = serviceStatus.inFlight.contains(tool)
         let error = serviceStatus.errorByTool[tool]
 
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: density.statusComponentSpacing + 2) {
             HStack(alignment: .center, spacing: 8) {
-                ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
+                ToolBrandBadge(
+                    tool: tool,
+                    iconSize: density.bucketTitleFontSize + 3,
+                    containerSize: density.bucketTitleFontSize + 10
+                )
                 Text(displayName)
-                    .font(.system(size: 13, weight: .semibold))
-                StatusPill(indicator: snapshot?.effectiveIndicator, description: snapshot?.effectiveDescription)
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                StatusPill(
+                    indicator: snapshot?.effectiveIndicator,
+                    description: snapshot?.effectiveDescription,
+                    density: density
+                )
                 Spacer(minLength: 6)
                 if inFlight {
                     ProgressView().controlSize(.mini)
@@ -81,7 +95,7 @@ private struct ServiceStatusRow: View {
                     let agg = snapshot.displayUptimePercent
                     if agg > 0 {
                         Text(String(format: "%.2f%% uptime", agg))
-                            .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                            .font(.system(size: density.resetCountdownFontSize, weight: .medium, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -100,14 +114,14 @@ private struct ServiceStatusRow: View {
 
             if let error {
                 Text(error)
-                    .font(.system(size: 10))
+                    .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.orange)
                     .lineLimit(2)
             } else if let snapshot, let latest = snapshot.recentIncidents.first {
-                IncidentRow(incident: latest)
+                IncidentRow(incident: latest, density: density)
             } else if snapshot != nil {
                 Text("No incidents in the last 90 days")
-                    .font(.system(size: 10))
+                    .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -126,16 +140,18 @@ private struct ServiceStatusRow: View {
             ComponentGroupBlock(
                 title: "Components",
                 components: snapshot.components,
-                defaultExpanded: true
+                density: density,
+                defaultExpanded: defaultExpanded(forGroupName: "Components")
             )
         } else {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: density.statusGroupSpacing) {
                 ForEach(snapshot.groups) { group in
                     let comps = snapshot.components(in: group)
                     if !comps.isEmpty {
                         ComponentGroupBlock(
                             title: group.name,
                             components: comps,
+                            density: density,
                             defaultExpanded: defaultExpanded(forGroupName: group.name)
                         )
                     }
@@ -150,6 +166,7 @@ private struct ServiceStatusRow: View {
                     ComponentGroupBlock(
                         title: "Other",
                         components: ungrouped,
+                        density: density,
                         defaultExpanded: false
                     )
                 }
@@ -160,6 +177,8 @@ private struct ServiceStatusRow: View {
     /// Per-tool selective default-expand rule. Codex page opens only
     /// the "Codex" group; everything else opens every group.
     private func defaultExpanded(forGroupName name: String) -> Bool {
+        if density.profile == .compact { return false }
+        if density.profile == .spacious { return true }
         if tool == .codex {
             return name.localizedCaseInsensitiveContains("codex")
         }
@@ -178,6 +197,7 @@ private struct ServiceStatusRow: View {
 private struct ComponentGroupBlock: View {
     let title: String
     let components: [ServiceComponentSummary]
+    let density: Theme.Density
     /// Provider-level incident overlay (see `ServiceStatusSnapshot.incidentDays`)
     /// — merged into the summary strip so incident-only providers
     /// (Anthropic) don't render an all-green wall next to their own
@@ -189,31 +209,33 @@ private struct ComponentGroupBlock: View {
     init(
         title: String,
         components: [ServiceComponentSummary],
+        density: Theme.Density,
         defaultExpanded: Bool = false,
         incidentDays: [DayUptime]? = nil,
         incidentAdjustedUptime: Double? = nil
     ) {
         self.title = title
         self.components = components
+        self.density = density
         self.incidentDays = incidentDays
         self.incidentAdjustedUptime = incidentAdjustedUptime
         self._expanded = State(initialValue: defaultExpanded)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: density.statusComponentSpacing) {
             BorderlessRowButton(action: {
                 withAnimation(.easeInOut(duration: 0.18)) { expanded.toggle() }
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: statusIcon)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: density.resetCountdownFontSize, weight: .semibold))
                         .foregroundStyle(componentColor(aggregateStatus))
                     Text(title)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: density.subtitleFontSize, weight: .semibold))
                         .foregroundStyle(.primary)
                     Text("\(components.count) component\(components.count == 1 ? "" : "s")")
-                        .font(.system(size: 10))
+                        .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.secondary)
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 8, weight: .semibold))
@@ -221,7 +243,7 @@ private struct ComponentGroupBlock: View {
                     Spacer(minLength: 6)
                     if let uptime = aggregateUptime {
                         Text(String(format: "%.2f%% uptime", uptime))
-                            .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                            .font(.system(size: density.resetCountdownFontSize, weight: .medium, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -229,7 +251,7 @@ private struct ComponentGroupBlock: View {
 
             if !summaryDays.isEmpty {
                 UptimeStrip(days: summaryDays, currentImpact: impact(for: aggregateStatus))
-                    .frame(height: 12)
+                    .frame(height: density.statusStripHeight)
             } else {
                 Capsule()
                     .fill(Color.primary.opacity(0.05))
@@ -237,9 +259,9 @@ private struct ComponentGroupBlock: View {
             }
 
             if expanded {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: density.statusComponentSpacing) {
                     ForEach(components) { component in
-                        ComponentBar(component: component)
+                        ComponentBar(component: component, density: density)
                     }
                 }
                 .padding(.leading, 4)
@@ -298,33 +320,34 @@ private struct ComponentGroupBlock: View {
 
 private struct ComponentBar: View {
     let component: ServiceComponentSummary
+    let density: Theme.Density
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: max(3, density.statusComponentSpacing - 2)) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: statusIcon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: density.resetCountdownFontSize, weight: .semibold))
                     .foregroundStyle(componentColor(component.status))
                 Text(component.name)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: density.subtitleFontSize, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 4)
                 if component.status != .operational {
                     Text(componentLabel(component.status))
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: max(8, density.resetCountdownFontSize - 1), weight: .semibold))
                         .foregroundStyle(componentColor(component.status))
                 }
                 if let uptime = component.uptimePercent {
                     Text(String(format: "%.2f%% uptime", uptime))
-                        .font(.system(size: 9, weight: .medium, design: .rounded).monospacedDigit())
+                        .font(.system(size: max(8, density.resetCountdownFontSize - 1), weight: .medium, design: .rounded).monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
             }
             if !component.recentDays.isEmpty {
                 UptimeStrip(days: component.recentDays, currentImpact: currentImpact)
-                    .frame(height: 12)
+                    .frame(height: density.statusStripHeight)
             } else {
                 Capsule()
                     .fill(Color.primary.opacity(0.05))
@@ -385,6 +408,7 @@ private func componentLabel(_ status: ComponentStatusLevel) -> String {
 private struct StatusPill: View {
     let indicator: StatusIndicator?
     let description: String?
+    let density: Theme.Density
 
     var body: some View {
         HStack(spacing: 5) {
@@ -392,7 +416,7 @@ private struct StatusPill: View {
                 .fill(color)
                 .frame(width: 6, height: 6)
             Text(text)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: density.resetCountdownFontSize, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
@@ -460,14 +484,15 @@ private func uptimeColor(for impact: IncidentImpact?) -> Color {
 
 private struct IncidentRow: View {
     let incident: IncidentSummary
+    let density: Theme.Density
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: incident.isResolved ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: density.resetCountdownFontSize, weight: .semibold))
                 .foregroundStyle(incident.isResolved ? .secondary : impactColor(incident.impact))
             Text(incident.name)
-                .font(.system(size: 10))
+                .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             Spacer(minLength: 4)

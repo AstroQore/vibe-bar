@@ -2,41 +2,15 @@ import Foundation
 
 public enum MenuBarItemKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case compact
-    case codex
-    case claude
-    case status
 
     public var id: String { rawValue }
 
-    /// Cases that the Settings page is allowed to surface as
-    /// independently togglable menu bar items. The other cases
-    /// (`.codex` / `.claude` / `.status`) remain in the enum for
-    /// stored-settings backward compatibility and for sub-page
-    /// routing inside the Overview popover, but the standalone
-    /// menu-bar entry is intentionally retired in favour of the
-    /// single Overview tile.
-    public static let userVisibleCases: [MenuBarItemKind] = [.compact]
-
-    public var isUserVisibleStandalone: Bool {
-        Self.userVisibleCases.contains(self)
-    }
-
     public var label: String {
-        switch self {
-        case .compact: return "Overview"
-        case .codex:   return "OpenAI"
-        case .claude:  return "Claude"
-        case .status:  return "Status"
-        }
+        "Overview"
     }
 
     public var title: String {
-        switch self {
-        case .compact: return "VB"
-        case .codex:   return "OpenAI"
-        case .claude:  return "Claude"
-        case .status:  return "●"
-        }
+        "VB"
     }
 }
 
@@ -187,12 +161,7 @@ public enum MenuBarFieldCatalog {
         codexFields + claudeFields + geminiFields + antigravityFields + grokFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
-        switch kind {
-        case .compact: return allFields
-        case .codex:   return codexFields
-        case .claude:  return claudeFields
-        case .status:  return []
-        }
+        allFields
     }
 
     public static func field(id: String) -> MenuBarFieldOption? {

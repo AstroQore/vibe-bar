@@ -10,16 +10,7 @@ enum ProviderBrandIcon {
         tint: NSColor? = nil,
         appearance: NSAppearance? = nil
     ) -> NSImage? {
-        switch kind {
-        case .compact:
-            return vibeBarGlyphImage(size: size, tint: tint, appearance: appearance, includeStatusDot: false)
-        case .codex:
-            return image(for: ToolType.codex, size: size, tint: tint, appearance: appearance)
-        case .claude:
-            return image(for: ToolType.claude, size: size, tint: tint, appearance: appearance)
-        case .status:
-            return vibeBarGlyphImage(size: size, tint: tint, appearance: appearance, includeStatusDot: true)
-        }
+        vibeBarGlyphImage(size: size, tint: tint, appearance: appearance, includeStatusDot: false)
     }
 
     static func image(
@@ -50,18 +41,13 @@ enum ProviderBrandIcon {
     }
 
     static func fallbackSystemImage(for kind: MenuBarItemKind) -> String {
-        switch kind {
-        case .compact: return "chart.bar"
-        case .codex:   return "sparkle.magnifyingglass"
-        case .claude:  return "sparkles"
-        case .status:  return "chart.bar.xaxis"
-        }
+        "chart.bar"
     }
 
     static func fallbackSystemImage(for tool: ToolType) -> String {
         switch tool {
-        case .codex:  return fallbackSystemImage(for: MenuBarItemKind.codex)
-        case .claude: return fallbackSystemImage(for: MenuBarItemKind.claude)
+        case .codex:  return "sparkle.magnifyingglass"
+        case .claude: return "sparkles"
         case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return tool.miscFallbackSymbol
         }

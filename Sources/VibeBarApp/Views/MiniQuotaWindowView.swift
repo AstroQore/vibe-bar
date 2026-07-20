@@ -447,6 +447,57 @@ private func providerTitle(for tool: ToolType) -> String {
     }
 }
 
+@MainActor
+private func miniQuotaForecast(
+    tool: ToolType,
+    bucket: QuotaBucket,
+    environment: AppEnvironment,
+    quotaService: QuotaService,
+    now: Date
+) -> QuotaPaceForecast? {
+    guard let accountId = environment.account(for: tool)?.id else { return nil }
+    let snapshot = environment.costService.snapshot(for: tool)
+    return quotaService.paceForecast(
+        accountId: accountId,
+        bucket: bucket,
+        activityHeatmap: snapshot?.heatmap,
+        dailyActivity: snapshot?.dailyHistory ?? [],
+        now: now
+    )
+}
+
+private func miniForecastPlan(_ forecast: QuotaPaceForecast, mode: DisplayMode) -> Double {
+    switch mode {
+    case .used: forecast.plannedUsedPercent
+    case .remaining: 100 - forecast.plannedUsedPercent
+    }
+}
+
+private func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact: Bool = false) -> String {
+    if forecast.verdict == .atRisk,
+       let runOutAt = forecast.runOutAt,
+       let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
+        return "out \(countdown)"
+    }
+    let left = Int(forecast.projectedRemainingPercent.rounded())
+    switch forecast.verdict {
+    case .enough: return compact ? "left \(left)%" : "\(left)% left"
+    case .watch: return "watch"
+    case .atRisk: return "risk"
+    case .learning: return compact ? "~\(left)% left" : "learning · \(left)% left"
+    }
+}
+
+private func miniForecastColor(_ forecast: QuotaPaceForecast?) -> Color {
+    guard let forecast else { return Color.secondary.opacity(0.5) }
+    switch forecast.verdict {
+    case .enough: return Color(red: 0.20, green: 0.70, blue: 0.48)
+    case .watch: return Color(red: 0.96, green: 0.62, blue: 0.20)
+    case .atRisk: return Color(red: 0.95, green: 0.32, blue: 0.32)
+    case .learning: return .secondary
+    }
+}
+
 private struct MiniProviderDivider: View {
     var height: CGFloat
 
@@ -697,6 +748,8 @@ private struct MiniBranchRingCell: View {
     let cell: MiniBranchCell
 
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -708,10 +761,17 @@ private struct MiniBranchRingCell: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let pace = UsagePace.compute(bucket: cell.bucket, now: now)
+        let forecast = miniQuotaForecast(
+            tool: cell.tool,
+            bucket: cell.bucket,
+            environment: environment,
+            quotaService: quotaService,
+            now: now
+        )
         let percent = cell.bucket.displayPercent(settingsStore.displayMode)
         let color = Theme.barColor(percent: percent, mode: settingsStore.displayMode)
         VStack(spacing: 3) {
-            let expected: Double? = pace.map { p in
+            let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
                 switch settingsStore.displayMode {
                 case .used:      return p.expectedUsedPercent
                 case .remaining: return 100 - p.expectedUsedPercent
@@ -721,7 +781,7 @@ private struct MiniBranchRingCell: View {
                 percent: percent,
                 expected: expected,
                 color: color,
-                markerColor: paceColor(pace: pace),
+                markerColor: forecast.map { miniForecastColor($0) } ?? paceColor(pace: pace),
                 size: MiniRingMetrics.ringSize,
                 lineWidth: MiniRingMetrics.ringLineWidth
             ) {
@@ -737,9 +797,9 @@ private struct MiniBranchRingCell: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(height: MiniRingMetrics.labelHeight, alignment: .center)
-            Text(paceLine(pace: pace, now: now))
+            Text(forecast.map { miniForecastLine($0, now: now) } ?? paceLine(pace: pace, now: now))
                 .font(.system(size: 8, weight: .medium, design: .rounded).monospacedDigit())
-                .foregroundStyle(paceColor(pace: pace))
+                .foregroundStyle(forecast.map { miniForecastColor($0) } ?? paceColor(pace: pace))
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
                 .frame(height: MiniRingMetrics.paceHeight, alignment: .center)
@@ -810,6 +870,8 @@ private struct MiniRingCell: View {
     let cell: MiniCell
 
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -821,17 +883,26 @@ private struct MiniRingCell: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let pace = cell.bucket.flatMap { UsagePace.compute(bucket: $0, now: now) }
+        let forecast = cell.bucket.flatMap {
+            miniQuotaForecast(
+                tool: cell.tool,
+                bucket: $0,
+                environment: environment,
+                quotaService: quotaService,
+                now: now
+            )
+        }
         VStack(spacing: 3) {
-            ringGauge(pace: pace, now: now)
+            ringGauge(pace: pace, forecast: forecast, now: now)
             Text(cell.resolvedLabel)
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(height: MiniRingMetrics.labelHeight, alignment: .center)
-            Text(paceLine(pace: pace, now: now))
+            Text(forecast.map { miniForecastLine($0, now: now) } ?? paceLine(pace: pace, now: now))
                 .font(.system(size: 8, weight: .medium, design: .rounded).monospacedDigit())
-                .foregroundStyle(paceColor(pace: pace))
+                .foregroundStyle(forecast.map { miniForecastColor($0) } ?? paceColor(pace: pace))
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
                 .frame(height: MiniRingMetrics.paceHeight, alignment: .center)
@@ -894,10 +965,10 @@ private struct MiniRingCell: View {
     }
 
     @ViewBuilder
-    private func ringGauge(pace: UsagePace?, now: Date) -> some View {
+    private func ringGauge(pace: UsagePace?, forecast: QuotaPaceForecast?, now: Date) -> some View {
         if let bucket = cell.bucket {
             let percent = bucket.displayPercent(settingsStore.displayMode)
-            let expected: Double? = pace.map { p in
+            let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
                 switch settingsStore.displayMode {
                 case .used:      return p.expectedUsedPercent
                 case .remaining: return 100 - p.expectedUsedPercent
@@ -908,7 +979,7 @@ private struct MiniRingCell: View {
                 percent: percent,
                 expected: expected,
                 color: color,
-                markerColor: paceColor(pace: pace),
+                markerColor: forecast.map { miniForecastColor($0) } ?? paceColor(pace: pace),
                 size: MiniRingMetrics.ringSize,
                 lineWidth: MiniRingMetrics.ringLineWidth
             ) {
@@ -1146,6 +1217,8 @@ private struct MiniCompactBarCell: View {
     let data: MiniCompactCellData
 
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -1157,8 +1230,17 @@ private struct MiniCompactBarCell: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let pace = data.bucket.flatMap { UsagePace.compute(bucket: $0, now: now) }
+        let forecast = data.bucket.flatMap {
+            miniQuotaForecast(
+                tool: data.tool,
+                bucket: $0,
+                environment: environment,
+                quotaService: quotaService,
+                now: now
+            )
+        }
         let percent = data.bucket?.displayPercent(settingsStore.displayMode) ?? 0
-        let expected: Double? = pace.map { p in
+        let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
             switch settingsStore.displayMode {
             case .used:      return p.expectedUsedPercent
             case .remaining: return 100 - p.expectedUsedPercent
@@ -1178,7 +1260,7 @@ private struct MiniCompactBarCell: View {
                 percent: percent,
                 expected: expected,
                 color: color,
-                markerColor: compactPaceColor(pace)
+                markerColor: forecast.map { miniForecastColor($0) } ?? compactPaceColor(pace)
             )
             Text(centerText(percent: percent))
                 .font(.system(size: 10.5, weight: .bold, design: .rounded).monospacedDigit())
@@ -1186,9 +1268,9 @@ private struct MiniCompactBarCell: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
                 .frame(height: MiniCompactMetrics.percentHeight, alignment: .center)
-            Text(compactPaceLine(pace: pace, now: now))
+            Text(forecast.map { miniForecastLine($0, now: now, compact: true) } ?? compactPaceLine(pace: pace, now: now))
                 .font(.system(size: 6.8, weight: .medium, design: .rounded).monospacedDigit())
-                .foregroundStyle(compactPaceColor(pace))
+                .foregroundStyle(forecast.map { miniForecastColor($0) } ?? compactPaceColor(pace))
                 .lineLimit(1)
                 .minimumScaleFactor(0.48)
                 .frame(height: MiniCompactMetrics.paceHeight, alignment: .center)

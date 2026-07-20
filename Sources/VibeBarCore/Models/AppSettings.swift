@@ -12,9 +12,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var antigravityUsageMode: AntigravityUsageMode
     public var menuBarItems: [MenuBarItemSettings]
     public var miniWindow: MiniWindowSettings
-    /// Per-popover density. Each menu bar item kind has its own density so the
-    /// user can keep one popover roomy and another tight.
-    public var popoverDensities: [MenuBarItemKind: PopoverDensity]
+    /// One density profile controls the entire tabbed popover workspace.
+    public var popoverDensity: PopoverDensity
     /// Optional user-visible plan badge overrides. Empty means "Auto".
     public var providerPlanLabels: [ToolType: String]
     /// L1 providers shown on the Overview surface. Hiding one keeps its
@@ -52,7 +51,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         antigravityUsageMode: .auto,
         menuBarItems: Self.defaultMenuBarItems,
         miniWindow: Self.defaultMiniWindow,
-        popoverDensities: Self.defaultPopoverDensities,
+        popoverDensity: .regular,
         providerPlanLabels: Self.defaultProviderPlanLabels,
         visibleCoreProviders: Self.defaultVisibleCoreProviders,
         miscProviders: Self.defaultMiscProviders,
@@ -76,27 +75,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
             ],
             customLabels: [:]
         ),
-        MenuBarItemSettings(
-            kind: .codex,
-            isVisible: false,
-            showTitle: true,
-            layout: .singleLine,
-            selectedFieldIds: MenuBarFieldCatalog.codexFields.map(\.id)
-        ),
-        MenuBarItemSettings(
-            kind: .claude,
-            isVisible: false,
-            showTitle: true,
-            layout: .singleLine,
-            selectedFieldIds: MenuBarFieldCatalog.claudeFields.map(\.id)
-        ),
-        MenuBarItemSettings(
-            kind: .status,
-            isVisible: false,
-            showTitle: false,
-            layout: .iconOnly,
-            selectedFieldIds: []
-        )
     ]
 
     public static let defaultMiniWindow = MiniWindowSettings(
@@ -104,15 +82,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         compactSelectedFieldIds: MenuBarFieldCatalog.allFields.map(\.id),
         customLabels: [:]
     )
-
-    /// New defaults: Overview is roomy (it shows 2 providers stacked), individual
-    /// provider popovers are also roomy (only one provider per popover now).
-    public static let defaultPopoverDensities: [MenuBarItemKind: PopoverDensity] = [
-        .compact: .regular,
-        .codex: .regular,
-        .claude: .regular,
-        .status: .regular
-    ]
 
     public static let defaultProviderPlanLabels: [ToolType: String] = [:]
 
@@ -157,7 +126,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         antigravityUsageMode: AntigravityUsageMode = .auto,
         menuBarItems: [MenuBarItemSettings] = AppSettings.defaultMenuBarItems,
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
-        popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
+        popoverDensity: PopoverDensity = .regular,
         providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
         visibleCoreProviders: Set<ToolType> = AppSettings.defaultVisibleCoreProviders,
         miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
@@ -177,7 +146,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.antigravityUsageMode = antigravityUsageMode
         self.menuBarItems = Self.normalizedMenuBarItems(menuBarItems)
         self.miniWindow = miniWindow
-        self.popoverDensities = popoverDensities
+        self.popoverDensity = popoverDensity
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
         self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
         let normalizedLegacyProviders = Self.normalizedMiscProviders(miscProviders)
@@ -243,18 +212,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.menuBarItems = Self.normalizedMenuBarItems(decodedItems)
         self.miniWindow = try c.decodeIfPresent(MiniWindowSettings.self, forKey: .miniWindow) ?? Self.defaultMiniWindow
 
-        if let perKind = try c.decodeIfPresent([String: PopoverDensity].self, forKey: .popoverDensities) {
-            var map: [MenuBarItemKind: PopoverDensity] = [:]
-            for (raw, value) in perKind {
-                if let kind = MenuBarItemKind(rawValue: raw) { map[kind] = value }
-            }
-            self.popoverDensities = Self.normalizedPopoverDensities(map)
-        } else if let legacy = try c.decodeIfPresent(PopoverDensity.self, forKey: .popoverDensity) {
-            var map: [MenuBarItemKind: PopoverDensity] = [:]
-            for kind in MenuBarItemKind.allCases { map[kind] = legacy }
-            self.popoverDensities = map
+        if let density = try c.decodeIfPresent(PopoverDensity.self, forKey: .popoverDensity) {
+            self.popoverDensity = density
+        } else if let legacy = try c.decodeIfPresent([String: PopoverDensity].self, forKey: .popoverDensities) {
+            // The retired standalone Codex / Claude / Status popovers once
+            // persisted independent values. Only the Overview value belongs
+            // to the current tabbed workspace.
+            self.popoverDensity = legacy[MenuBarItemKind.compact.rawValue] ?? .regular
         } else {
-            self.popoverDensities = Self.defaultPopoverDensities
+            self.popoverDensity = .regular
         }
 
         if let labels = try c.decodeIfPresent([String: String].self, forKey: .providerPlanLabels) {
@@ -343,8 +309,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(antigravityUsageMode, forKey: .antigravityUsageMode)
         try c.encode(menuBarItems, forKey: .menuBarItems)
         try c.encode(miniWindow, forKey: .miniWindow)
-        let stringKeyed = Dictionary(uniqueKeysWithValues: popoverDensities.map { ($0.key.rawValue, $0.value) })
-        try c.encode(stringKeyed, forKey: .popoverDensities)
+        try c.encode(popoverDensity, forKey: .popoverDensity)
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
         try c.encode(planLabels, forKey: .providerPlanLabels)
         let normalizedVisibleCore = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
@@ -376,14 +341,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
             normalized.append(item)
         }
         menuBarItems = Self.normalizedMenuBarItems(normalized)
-    }
-
-    public func popoverDensity(for kind: MenuBarItemKind) -> PopoverDensity {
-        popoverDensities[kind] ?? Self.defaultPopoverDensities[kind] ?? .regular
-    }
-
-    public mutating func setPopoverDensity(_ density: PopoverDensity, for kind: MenuBarItemKind) {
-        popoverDensities[kind] = density
     }
 
     public func planBadgeLabel(
@@ -427,26 +384,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     private static func normalizedMenuBarItems(_ items: [MenuBarItemSettings]) -> [MenuBarItemSettings] {
-        MenuBarItemKind.allCases.map { kind in
-            var item = items.first { $0.kind == kind }.map(migratedMenuBarItem)
-                ?? defaultMenuBarItems.first { $0.kind == kind }!
-            // Standalone menu bar tiles for non-user-visible kinds were
-            // retired in favour of the unified Overview tile. Force
-            // their isVisible=false on every normalize pass so legacy
-            // settings that had Codex/Claude/Status tiles enabled don't
-            // come back after the upgrade. The stored settings still
-            // round-trip — they just don't surface in the menu bar.
-            if !kind.isUserVisibleStandalone {
-                item.isVisible = false
-            }
-            return item
-        }
-    }
-
-    private static func normalizedPopoverDensities(_ map: [MenuBarItemKind: PopoverDensity]) -> [MenuBarItemKind: PopoverDensity] {
-        var out = defaultPopoverDensities
-        for (k, v) in map { out[k] = v }
-        return out
+        [
+            items.first { $0.kind == .compact }.map(migratedMenuBarItem)
+                ?? defaultMenuBarItems[0]
+        ]
     }
 
     private static func normalizedProviderPlanLabels(_ labels: [ToolType: String]) -> [ToolType: String] {

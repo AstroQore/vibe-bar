@@ -14,7 +14,7 @@ struct UsageActivityView: View {
     var titleOverride: String? = nil
 
     private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    private let barRowHeight: CGFloat = 64
+    private var barRowHeight: CGFloat { density.activityBarHeight }
 
     @State private var measuredGridWidth: CGFloat = 0
     @EnvironmentObject var environment: AppEnvironment

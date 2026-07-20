@@ -47,7 +47,7 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         )
     }
 
-    func testRecordsHeadlineBucketsIncludingFiveHour() async {
+    func testRecordsEveryBucketWithAdaptiveSlots() async {
         let store = UsageFillTimelineStore(fileURL: tempURL)
         let now = Date(timeIntervalSince1970: 1_780_000_123)
         await store.observe(quota(buckets: [
@@ -59,14 +59,18 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         let five = await store.points(accountId: "acct-1", bucketId: "five_hour")
         XCTAssertEqual(five.count, 1)
         XCTAssertEqual(five.first?.usedPercent, 41)
-        XCTAssertEqual(five.first?.slotStart, UsageFillTimelineStore.hourSlotStart(for: now))
+        XCTAssertEqual(
+            five.first?.slotStart,
+            UsageFillTimelineStore.slotStart(for: now, windowSeconds: 18_000)
+        )
 
         let weekly = await store.points(accountId: "acct-1", bucketId: "weekly")
         XCTAssertEqual(weekly.count, 1)
 
-        // Per-model branch buckets are not part of the timeline chart.
         let fable = await store.points(accountId: "acct-1", bucketId: "weekly_fable")
-        XCTAssertTrue(fable.isEmpty)
+        XCTAssertEqual(fable.count, 1)
+        XCTAssertNotNil(fable.first?.resetAt)
+        XCTAssertEqual(fable.first?.rawWindowSeconds, 604_800)
     }
 
     func testLastSampleInHourWinsAndNewHourAppends() async {
@@ -94,13 +98,32 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         let store = UsageFillTimelineStore(fileURL: tempURL)
         let old = Date(timeIntervalSince1970: 1_780_000_000)
         await store.observe(quota(buckets: [bucket(id: "weekly", used: 5)]), now: old)
-        // 10 days later: the old point is past the 8-day horizon and pruned
-        // by the next observe.
-        let later = old.addingTimeInterval(10 * 86_400)
+        // Weekly observations retain sixteen weeks.
+        let later = old.addingTimeInterval(120 * 86_400)
         await store.observe(quota(buckets: [bucket(id: "weekly", used: 9)]), now: later)
         let points = await store.points(accountId: "acct-1", bucketId: "weekly")
         XCTAssertEqual(points.count, 1)
         XCTAssertEqual(points.first?.usedPercent, 9)
+    }
+
+    func testAntigravityStoresEveryFiveHourAndWeeklyLane() async {
+        let store = UsageFillTimelineStore(fileURL: tempURL)
+        await store.observe(quota(
+            tool: .antigravity,
+            accountId: "ag-account",
+            buckets: [
+                bucket(id: "gemini_five_hour", used: 8, groupTitle: "Gemini Models", windowSeconds: 18_000),
+                bucket(id: "gemini_weekly", used: 12, groupTitle: "Gemini Models"),
+                bucket(id: "claude_gpt_five_hour", used: 5, groupTitle: "Claude and GPT Models", windowSeconds: 18_000),
+                bucket(id: "claude_gpt_weekly", used: 22, groupTitle: "Claude and GPT Models")
+            ]
+        ))
+        let points = await store.allPoints()
+        XCTAssertEqual(points.count, 4)
+        XCTAssertEqual(Set(points.map(\.bucketId)), [
+            "gemini_five_hour", "gemini_weekly",
+            "claude_gpt_five_hour", "claude_gpt_weekly"
+        ])
     }
 
     func testPersistenceRoundTrip() async {
@@ -114,5 +137,29 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         XCTAssertEqual(points.count, 1)
         XCTAssertEqual(points.first?.usedPercent, 33)
         XCTAssertEqual(points.first?.tool, .claude)
+    }
+
+    func testSchemaOnePointsMigrateWithoutResetMetadata() async throws {
+        let sampledAt = Date(timeIntervalSince1970: 1_780_000_000)
+        let point = FillTimelinePoint(
+            accountId: "acct-legacy",
+            tool: .codex,
+            bucketId: "weekly",
+            slotStart: sampledAt,
+            usedPercent: 42,
+            sampledAt: sampledAt
+        )
+        struct LegacyStorage: Encodable {
+            let schemaVersion = 1
+            let points: [FillTimelinePoint]
+        }
+        try JSONEncoder().encode(LegacyStorage(points: [point])).write(to: tempURL, options: .atomic)
+
+        let store = UsageFillTimelineStore(fileURL: tempURL)
+        let migrated = await store.points(accountId: "acct-legacy", bucketId: "weekly")
+        XCTAssertEqual(migrated.count, 1)
+        XCTAssertEqual(migrated.first?.usedPercent, 42)
+        XCTAssertNil(migrated.first?.resetAt)
+        XCTAssertNil(migrated.first?.rawWindowSeconds)
     }
 }

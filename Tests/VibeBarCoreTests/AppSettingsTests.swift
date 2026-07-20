@@ -19,13 +19,11 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.claudeUsageMode, .auto)
         XCTAssertEqual(settings.menuBarItems.count, MenuBarItemKind.allCases.count)
         XCTAssertEqual(settings.menuBarItem(.compact).layout, .iconOnly)
-        XCTAssertFalse(settings.menuBarItem(.status).isVisible)
         XCTAssertFalse(settings.menuBarItem(.compact).showTitle)
         XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("codex.five_hour"))
-        XCTAssertTrue(settings.menuBarItem(.codex).selectedFieldIds.contains("codex.weekly"))
-        XCTAssertTrue(settings.menuBarItem(.claude).selectedFieldIds.contains("claude.weekly"))
-        XCTAssertEqual(settings.popoverDensity(for: .codex), .regular)
-        XCTAssertEqual(settings.popoverDensity(for: .claude), .regular)
+        XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("codex.weekly"))
+        XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("claude.weekly"))
+        XCTAssertEqual(settings.popoverDensity, .regular)
         XCTAssertEqual(settings.miniWindow.displayMode, .regular)
         XCTAssertTrue(settings.miniWindow.selectedFieldIds.contains("claude.weekly"))
         XCTAssertTrue(settings.miniWindow.compactSelectedFieldIds.contains("claude.weekly"))
@@ -72,10 +70,10 @@ final class AppSettingsTests: XCTestCase {
         }
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        // Claude is preserved; gemini is silently dropped (filled with default if any other kind missing).
-        XCTAssertTrue(settings.menuBarItem(.claude).selectedFieldIds.contains("claude.weekly"))
-        // Persisted file shouldn't surface a .gemini entry in the in-memory list either.
-        XCTAssertFalse(settings.menuBarItems.contains { $0.kind.rawValue == "gemini" })
+        // Retired standalone provider items are silently dropped and the
+        // single Overview item is restored from defaults.
+        XCTAssertEqual(settings.menuBarItems.map(\.kind), [.compact])
+        XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("claude.weekly"))
     }
 
     func testClaudeWebThenCliModeRoundTrip() throws {
@@ -276,35 +274,61 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(overview.showTitle)
 
         XCTAssertTrue(AppSettings.default.menuBarItem(.compact).isVisible)
-        XCTAssertFalse(AppSettings.default.menuBarItem(.codex).isVisible)
-        XCTAssertFalse(AppSettings.default.menuBarItem(.claude).isVisible)
-        XCTAssertFalse(AppSettings.default.menuBarItem(.status).isVisible)
+        XCTAssertEqual(MenuBarItemKind.allCases, [.compact])
+        XCTAssertEqual(AppSettings.default.menuBarItems.count, 1)
         XCTAssertEqual(AppSettings.default.menuBarItems.filter(\.isVisible).map(\.kind), [.compact])
         XCTAssertTrue(overview.customLabels.isEmpty)
     }
 
     func testMenuBarCompactLayoutRoundTrip() throws {
         var settings = AppSettings.default
-        var codex = settings.menuBarItem(.codex)
-        codex.layout = .compact
-        settings.setMenuBarItem(codex)
+        var overview = settings.menuBarItem(.compact)
+        overview.layout = .compact
+        settings.setMenuBarItem(overview)
 
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
 
-        XCTAssertEqual(decoded.menuBarItem(.codex).layout, .compact)
+        XCTAssertEqual(decoded.menuBarItem(.compact).layout, .compact)
     }
 
     func testMenuBarIconOnlyLayoutRoundTrip() throws {
         var settings = AppSettings.default
-        var codex = settings.menuBarItem(.codex)
-        codex.layout = .iconOnly
-        settings.setMenuBarItem(codex)
+        var overview = settings.menuBarItem(.compact)
+        overview.layout = .iconOnly
+        settings.setMenuBarItem(overview)
 
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
 
-        XCTAssertEqual(decoded.menuBarItem(.codex).layout, .iconOnly)
+        XCTAssertEqual(decoded.menuBarItem(.compact).layout, .iconOnly)
+    }
+
+    func testGlobalPopoverDensityRoundTrips() throws {
+        var settings = AppSettings.default
+        settings.popoverDensity = .spacious
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.popoverDensity, .spacious)
+    }
+
+    func testLegacyPerItemDensitiesUseOverviewValue() throws {
+        let json = """
+        {
+          "popoverDensities": {
+            "compact": "compact",
+            "codex": "spacious",
+            "claude": "regular",
+            "status": "spacious"
+          }
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded.popoverDensity, .compact)
     }
 
     func testOnlyIconOnlyLayoutShowsMenuBarIcon() {

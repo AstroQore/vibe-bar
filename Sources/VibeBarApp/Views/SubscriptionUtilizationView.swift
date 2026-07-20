@@ -69,6 +69,7 @@ struct SubscriptionUtilizationView: View {
     private struct UtilizationBucket: Identifiable {
         let id: String
         let tool: ToolType
+        let accountId: String?
         let bucket: QuotaBucket
     }
 
@@ -81,11 +82,12 @@ struct SubscriptionUtilizationView: View {
             UtilizationBucket(
                 id: "primary:\(tool.rawValue):\($0.id)",
                 tool: tool,
+                accountId: environment.account(for: tool)?.id,
                 bucket: $0
             )
         }
         let additional = additionalQuotaSeries.map {
-            UtilizationBucket(id: $0.id, tool: $0.tool, bucket: $0.bucket)
+            UtilizationBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
         }
         return primary + additional
     }
@@ -119,8 +121,9 @@ struct SubscriptionUtilizationView: View {
     private func row(for item: UtilizationBucket) -> some View {
         let bucket = item.bucket
         let pace = UsagePace.compute(bucket: bucket, now: now)
+        let forecast = paceForecast(for: item)
         let used = bucket.usedPercent
-        let expected = pace?.expectedUsedPercent ?? 0
+        let expected = forecast?.plannedUsedPercent ?? pace?.expectedUsedPercent ?? 0
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(rowTitle(for: item))
@@ -163,7 +166,7 @@ struct SubscriptionUtilizationView: View {
                 }
             }
             .chartYAxis(.hidden)
-            .frame(height: 36)
+            .frame(height: density.utilizationBarHeight)
             Text(SubscriptionWindowProgress.summary(
                 usedPercent: bucket.usedPercent,
                 resetAt: bucket.resetAt,
@@ -174,30 +177,37 @@ struct SubscriptionUtilizationView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-            if let pace {
+            if let forecast {
+                QuotaForecastRow(
+                    forecast: forecast,
+                    now: now,
+                    fontSize: density.subtitleFontSize,
+                    showGuidance: true
+                )
+            } else if let pace {
                 HStack(spacing: 6) {
                     Text(pace.stageSummary)
                         .font(.system(size: density.subtitleFontSize, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if expected > 0 {
-                        Text("·")
-                            .font(.system(size: density.subtitleFontSize))
-                            .foregroundStyle(.tertiary)
-                        Text("expected \(Int(expected.rounded()))%")
-                            .font(.system(size: density.subtitleFontSize))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
                     Spacer(minLength: 4)
                     Text(etaText(pace: pace))
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                 }
             }
         }
+    }
+
+    private func paceForecast(for item: UtilizationBucket) -> QuotaPaceForecast? {
+        guard let accountId = item.accountId else { return nil }
+        let snapshot = environment.costService.snapshot(for: item.tool)
+        return quotaService.paceForecast(
+            accountId: accountId,
+            bucket: item.bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: now
+        )
     }
 
     private func rowTitle(for item: UtilizationBucket) -> String {

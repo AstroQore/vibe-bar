@@ -64,7 +64,7 @@ struct SettingsView: View {
 
                     settingsSection("Menu Bar Items") {
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(MenuBarItemKind.userVisibleCases) { kind in
+                            ForEach(MenuBarItemKind.allCases) { kind in
                                 menuBarItemEditor(kind)
                             }
                         }
@@ -644,11 +644,11 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                Picker("Popover density", selection: popoverDensityBinding(kind)) {
+                Picker("Display density", selection: popoverDensityBinding()) {
                     ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                Text(settingsStore.settings.popoverDensity(for: kind).detail)
+                Text(settingsStore.settings.popoverDensity.detail)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
@@ -890,12 +890,10 @@ struct SettingsView: View {
         )
     }
 
-    private func popoverDensityBinding(_ kind: MenuBarItemKind) -> Binding<PopoverDensity> {
+    private func popoverDensityBinding() -> Binding<PopoverDensity> {
         Binding(
-            get: { settingsStore.settings.popoverDensity(for: kind) },
-            set: { value in
-                settingsStore.settings.setPopoverDensity(value, for: kind)
-            }
+            get: { settingsStore.settings.popoverDensity },
+            set: { settingsStore.settings.popoverDensity = $0 }
         )
     }
 

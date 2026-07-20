@@ -31,9 +31,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private static let popoverReopenSuppressionWindow: TimeInterval = 0.2
 
     private let compactStatusItem: NSStatusItem
-    private let codexStatusItem: NSStatusItem
-    private let claudeStatusItem: NSStatusItem
-    private let statusStatusItem: NSStatusItem
     private var popovers: [MenuBarItemKind: NSPopover] = [:]
     private let environment: AppEnvironment
     private let miniWindowController: MiniQuotaWindowController
@@ -48,23 +45,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         self.miniWindowController = MiniQuotaWindowController()
         self.lastObservedDensities = Self.snapshotDensities(environment.settingsStore.settings)
         self.compactStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        self.codexStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        self.claudeStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        self.statusStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
         configureButton(for: .compact, item: compactStatusItem)
-        configureButton(for: .codex, item: codexStatusItem)
-        configureButton(for: .claude, item: claudeStatusItem)
-        configureButton(for: .status, item: statusStatusItem)
         observeChanges()
         renderMenuBar()
         // Restore mini window if the user had it open last session.
         miniWindowController.restoreIfNeeded(environment: environment)
-        // Pre-build only the compact popover's SwiftUI tree at launch. The
-        // others build on first click (still fast in practice). Eagerly
-        // warming all four left N copies of TimelineView(.periodic(by: 30))
-        // running for popovers the user might never open.
+        // Warm the one unified popover after launch so the first open is
+        // immediate without keeping retired standalone trees alive.
         DispatchQueue.main.async { [weak self] in
             _ = self?.popover(for: .compact)
         }
@@ -72,32 +61,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private func currentPopoverWidth(for kind: MenuBarItemKind) -> CGFloat {
         let settings = environment.settingsStore.settings
-        switch kind {
-        case .compact:
-            // The compact popover hosts three pages (Overview / Claude / OpenAI)
-            // and the user expects every sub-page to render identically to the
-            // matching dedicated menu bar item. Size the container to whichever
-            // of those is widest so switching pages never reflows the popover
-            // and the Claude/OpenAI sub-pages get exactly the same width as
-            // their stand-alone counterparts.
-            return max(
-                Theme.overviewDensity(for: settings.popoverDensity(for: .compact)).popoverWidth,
-                Theme.detailDensity(for: settings.popoverDensity(for: .claude)).popoverWidth,
-                Theme.detailDensity(for: settings.popoverDensity(for: .codex)).popoverWidth
-            )
-        case .codex, .claude:
-            return Theme.detailDensity(for: settings.popoverDensity(for: kind)).popoverWidth
-        case .status:
-            return Theme.density(for: settings.popoverDensity(for: kind)).popoverWidth
-        }
+        // Every tab uses the same density profile and the same stable window
+        // width. Page switches therefore never reflow the popover.
+        return max(
+            Theme.overviewDensity(for: settings.popoverDensity).popoverWidth,
+            Theme.detailDensity(for: settings.popoverDensity).popoverWidth
+        )
     }
 
     private static func snapshotDensities(_ settings: AppSettings) -> [MenuBarItemKind: PopoverDensity] {
-        var out: [MenuBarItemKind: PopoverDensity] = [:]
-        for kind in MenuBarItemKind.allCases {
-            out[kind] = settings.popoverDensity(for: kind)
-        }
-        return out
+        [.compact: settings.popoverDensity]
     }
 
     private static func makePopover(
@@ -113,9 +86,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.contentSize = NSSize(width: width, height: initialPopoverHeight)
         popover.contentViewController = NSHostingController(
             rootView: PopoverRoot(
-                kind: kind,
                 width: width,
-                closePopover: { [weak controller] in controller?.closePopover(kind: kind) },
                 onContentHeightChange: { [weak controller] height in controller?.resizePopover(kind: kind, toContentHeight: height) },
                 onToggleMiniWindow: { [weak controller] in controller?.toggleMiniWindow() }
             )
@@ -154,11 +125,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // Coalesce all five render triggers into one throttled pipeline.
-        // Five separate sinks each calling renderMenuBar() (which lockFocus's
-        // four NSImages) was the most expensive hot path on settings or
-        // quota updates that fire several @Published values in quick
-        // succession.
+        // Coalesce all render triggers into one throttled pipeline so a burst
+        // of quota, settings, account, and status updates only redraws once.
         let renderTriggers: [AnyPublisher<Void, Never>] = [
             environment.settingsStore.$settings.map { _ in () }.eraseToAnyPublisher(),
             environment.quotaService.$lastSuccessByAccount.map { _ in () }.eraseToAnyPublisher(),
@@ -235,26 +203,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         guard !changed.isEmpty else { return }
         lastObservedDensities = newDensities
-        var toInvalidate = Set(changed)
-        // The compact popover renders Overview + Claude/OpenAI sub-pages and
-        // sizes itself to fit the widest of the three. A change to claude's
-        // or codex's density preference therefore needs to invalidate compact
-        // too, so the next open picks up the new max width.
-        if changed.contains(.claude) || changed.contains(.codex) {
-            toInvalidate.insert(.compact)
-        }
-        for kind in toInvalidate {
+        for kind in changed {
             if let popover = popovers[kind], popover.isShown {
                 popover.performClose(nil)
             }
             popovers.removeValue(forKey: kind)
-        }
-    }
-
-    private func closePopover(kind: MenuBarItemKind) {
-        guard let popover = popovers[kind] else { return }
-        if popover.isShown {
-            popover.performClose(nil)
         }
     }
 
@@ -279,13 +232,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func kindForTag(_ tag: Int) -> MenuBarItemKind {
-        switch tag {
-        case 1: return .compact
-        case 2: return .codex
-        case 3: return .claude
-        case 4: return .status
-        default: return .compact
-        }
+        .compact
     }
 
     private func toggleMiniWindow() {
@@ -450,15 +397,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.image = nil
             button.imagePosition = .noImage
             removeTwoRowStatusContent(from: button)
-            if kind == .status && itemSettings.layout != .iconOnly {
-                installTwoRowImageContent(
-                    in: button,
-                    item: item,
-                    columns: serviceStatusTwoRowColumns(),
-                    kind: kind
-                )
-                continue
-            }
             switch itemSettings.layout {
             case .iconOnly:
                 installIconOnlyContent(in: button, item: item, kind: kind)
@@ -476,43 +414,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 button.attributedTitle = compactMenuTitle(for: itemSettings, settings: settings)
                 item.length = NSStatusItem.variableLength
             }
-        }
-    }
-
-    private func serviceStatusTwoRowColumns() -> [TwoRowMenuColumn] {
-        let top = providerStatusLine(tool: .codex, name: ToolType.codex.statusProviderName)
-        let bottom = providerStatusLine(tool: .claude, name: ToolType.claude.statusProviderName)
-        return [TwoRowMenuColumn(top: top, bottom: bottom)]
-    }
-
-    private func providerStatusLine(tool: ToolType, name: String) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        result.append(NSAttributedString(
-            string: "\(name) ",
-            attributes: [
-                .foregroundColor: NSColor.labelColor,
-                .font: NSFont.systemFont(ofSize: MenuBarStatusMetrics.twoRowFontSize, weight: .medium)
-            ]
-        ))
-        let snapshot = environment.serviceStatus.snapshotByTool[tool]
-        result.append(NSAttributedString(
-            string: "●",
-            attributes: [
-                .foregroundColor: providerStatusColor(snapshot?.indicator),
-                .font: NSFont.systemFont(ofSize: MenuBarStatusMetrics.twoRowFontSize, weight: .bold)
-            ]
-        ))
-        return result
-    }
-
-    private func providerStatusColor(_ indicator: StatusIndicator?) -> NSColor {
-        guard let indicator else { return NSColor.tertiaryLabelColor }
-        switch indicator {
-        case .none:         return NSColor.systemGreen
-        case .maintenance:  return NSColor.systemBlue
-        case .minor:        return NSColor.systemYellow
-        case .major:        return NSColor.systemOrange
-        case .critical:     return NSColor.systemRed
         }
     }
 
@@ -838,21 +739,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func statusItemTag(for kind: MenuBarItemKind) -> Int {
-        switch kind {
-        case .compact: return 1
-        case .codex:   return 2
-        case .claude:  return 3
-        case .status:  return 4
-        }
+        1
     }
 
     private func statusItem(for kind: MenuBarItemKind) -> NSStatusItem {
-        switch kind {
-        case .compact: return compactStatusItem
-        case .codex:   return codexStatusItem
-        case .claude:  return claudeStatusItem
-        case .status:  return statusStatusItem
-        }
+        compactStatusItem
     }
 
     private func barColor(for percent: Double, mode: DisplayMode) -> NSColor {

@@ -15,6 +15,10 @@ public final class QuotaService: ObservableObject {
     /// kept in sync as each `refresh` succeeds; views read this
     /// dictionary directly via the `@Published` projection.
     @Published public private(set) var historyByAccountBucket: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
+    /// Adaptive point samples for every independently resettable quota. These
+    /// power personal pace forecasts; completed-cycle summaries remain in
+    /// `historyByAccountBucket` for Fill History and reset outcomes.
+    @Published public private(set) var observationsByAccountBucket: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
 
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
@@ -41,6 +45,7 @@ public final class QuotaService: ObservableObject {
             // Salvage only genuine refill jumps from the retired hourly
             // timeline before hydrating the cycle-based history UI.
             let points = await UsageFillTimelineStore.shared.allPoints()
+            self?.applyInitialObservations(points)
             await SubscriptionHistoryStore.shared.importLegacyTimeline(
                 points,
                 retentionDays: retentionProvider()
@@ -160,6 +165,24 @@ public final class QuotaService: ObservableObject {
         store(success: quota)
     }
 
+    public func paceForecast(
+        accountId: String,
+        bucket: QuotaBucket,
+        activityHeatmap: UsageHeatmap? = nil,
+        dailyActivity: [DailyCostPoint] = [],
+        now: Date = Date()
+    ) -> QuotaPaceForecast? {
+        let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
+        return QuotaPaceForecast.compute(
+            bucket: bucket,
+            observations: observationsByAccountBucket[key] ?? [],
+            cycles: historyByAccountBucket[key] ?? [],
+            activityHeatmap: activityHeatmap,
+            dailyActivity: dailyActivity,
+            now: now
+        )
+    }
+
     // MARK: - Private
 
     private func store(success: AccountQuota) {
@@ -172,15 +195,36 @@ public final class QuotaService: ObservableObject {
             SafeLog.warn("Saving quota cache failed: \(SafeLog.sanitize(error.localizedDescription))")
         }
 
-        // Fold this snapshot into the reset-cycle store and republish the
-        // affected keys. Point-in-time hourly sampling is intentionally no
-        // longer updated: it measured "what remained at refresh time", not
-        // "what remained when the subscription reset".
+        // Store both the point observations used by the personal forecast and
+        // the inferred completed cycles used by reset history. Both paths
+        // retain every bucket, including model-scoped limits.
         let retention = retentionProvider()
         let quota = success
         Task { [weak self] in
+            await UsageFillTimelineStore.shared.observe(quota, retentionDays: retention)
             await SubscriptionHistoryStore.shared.observe(quota, retentionDays: retention)
+            await self?.refreshObservations(for: quota)
             await self?.refreshSubscriptionHistory(for: quota)
+        }
+    }
+
+    private func applyInitialObservations(_ points: [FillTimelinePoint]) {
+        var grouped: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
+        for point in points {
+            let key = SubscriptionHistoryKey(accountId: point.accountId, bucketId: point.bucketId)
+            grouped[key, default: []].append(point)
+        }
+        observationsByAccountBucket = grouped.mapValues { $0.sorted { $0.sampledAt < $1.sampledAt } }
+    }
+
+    private func refreshObservations(for quota: AccountQuota) async {
+        for bucket in quota.buckets {
+            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
+            let points = await UsageFillTimelineStore.shared.points(
+                accountId: quota.accountId,
+                bucketId: bucket.id
+            )
+            observationsByAccountBucket[key] = points
         }
     }
 

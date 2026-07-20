@@ -2,16 +2,9 @@ import SwiftUI
 import AppKit
 import VibeBarCore
 
-/// Top-level popover content. Each menu bar item kind opens its own popover.
-///
-/// - `.compact` → Overview: a wide provider-column waterfall with a small
-///   page switcher for all-provider and single-provider views.
-/// - `.codex` / `.claude` → single-provider detail waterfall.
-/// - `.status` → service status only.
+/// Top-level content for Vibe Bar's single tabbed popover workspace.
 struct PopoverRoot: View {
-    let kind: MenuBarItemKind
     let width: CGFloat
-    let closePopover: () -> Void
     let onContentHeightChange: (CGFloat) -> Void
     let onToggleMiniWindow: () -> Void
 
@@ -22,32 +15,32 @@ struct PopoverRoot: View {
     @State private var autoRefreshedPageKeys: Set<String> = []
 
     var body: some View {
-        let density = activeDensity
-        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+        let shellDensity = shellDensity
+        let contentDensity = activeDensity
+        VStack(alignment: .leading, spacing: shellDensity.interSectionSpacing) {
             HeaderView(
                 title: headerTitle,
                 subtitle: headerSubtitle,
-                plan: headerPlan,
+                plan: nil,
                 lastUpdated: latestUpdated,
                 isRefreshing: isRefreshing,
-                titleFontSize: density.titleFontSize + 2,
-                subtitleFontSize: density.subtitleFontSize,
-                accessory: kind == .compact
-                    ? AnyView(OverviewPageSwitch(selection: $overviewPage, density: density))
-                    : nil,
+                titleFontSize: shellDensity.titleFontSize + 2,
+                subtitleFontSize: shellDensity.subtitleFontSize,
+                accessory: AnyView(OverviewPageSwitch(selection: $overviewPage, density: shellDensity)),
                 onRefresh: { environment.refreshAll() },
                 onToggleMiniWindow: onToggleMiniWindow,
                 onShowSettings: { environment.showSettingsWindow() }
             )
+            .frame(height: shellDensity.headerHeight, alignment: .center)
             Divider().opacity(0.3)
             ScrollView(.vertical, showsIndicators: false) {
-                content(density: density)
+                content(density: contentDensity)
                     .padding(.bottom, 4)
             }
             .frame(maxHeight: maxScrollHeight)
         }
-        .padding(.horizontal, density.popoverPaddingH)
-        .padding(.vertical, density.popoverPaddingV)
+        .padding(.horizontal, shellDensity.popoverPaddingH)
+        .padding(.vertical, shellDensity.popoverPaddingV)
         .frame(width: width)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
@@ -57,37 +50,20 @@ struct PopoverRoot: View {
         }
     }
 
-    /// Resolves the "logical" menu bar kind for the current view. When the
-    /// overview popover sits on a sub-page (Claude / OpenAI), every kind-keyed
-    /// piece of state — density preference, header title/subtitle/plan,
-    /// `visibleTools` — is taken from the matching dedicated kind so the
-    /// rendering is byte-for-byte consistent with what the user would see if
-    /// they had opened that provider's menu bar item directly.
-    private var effectiveKind: MenuBarItemKind {
-        switch kind {
-        case .compact:
-            switch overviewPage {
-            case .overview: return .compact
-            case .claude:   return .claude
-            case .openAI:   return .codex
-            case .googleAI: return .compact
-            case .grok:     return .compact
-            case .misc:     return .compact
-            }
-        default:
-            return kind
-        }
+    /// The tabbed popover is one shared shell. Provider pages may use their
+    /// own content metrics, but the title band and outer margins must never
+    /// shift when the selected tab changes.
+    private var shellDensity: Theme.Density {
+        Theme.overviewDensity(for: settingsStore.settings.popoverDensity)
     }
 
     private var activeDensity: Theme.Density {
-        let popDens = settingsStore.settings.popoverDensity(for: effectiveKind)
-        switch effectiveKind {
-        case .compact:
-            return Theme.overviewDensity(for: popDens)
-        case .codex, .claude:
-            return Theme.detailDensity(for: popDens)
-        case .status:
-            return Theme.density(for: popDens)
+        let profile = settingsStore.settings.popoverDensity
+        switch overviewPage {
+        case .overview, .misc:
+            return Theme.overviewDensity(for: profile)
+        case .openAI, .claude, .googleAI, .grok:
+            return Theme.detailDensity(for: profile)
         }
     }
 
@@ -98,78 +74,41 @@ struct PopoverRoot: View {
 
     @ViewBuilder
     private func content(density: Theme.Density) -> some View {
-        switch kind {
-        case .compact:
-            switch overviewPage {
-            case .overview:
-                OverviewWaterfall(density: density)
-            case .claude:
-                ProviderDetailView(tool: .claude, density: density)
-            case .openAI:
-                ProviderDetailView(tool: .codex, density: density)
-            case .googleAI:
-                GeminiTabPage(density: density)
-            case .grok:
-                GrokPage(density: density)
-            case .misc:
-                MiscProvidersPage(density: density)
-            }
-        case .codex:
-            ProviderDetailView(tool: .codex, density: density)
+        switch overviewPage {
+        case .overview:
+            OverviewWaterfall(density: density)
         case .claude:
             ProviderDetailView(tool: .claude, density: density)
-        case .status:
-            ServiceStatusCard(tools: ToolType.combinedStatusPageProviders)
+        case .openAI:
+            ProviderDetailView(tool: .codex, density: density)
+        case .googleAI:
+            GeminiTabPage(density: density)
+        case .grok:
+            GrokPage(density: density)
+        case .misc:
+            MiscProvidersPage(density: density)
         }
     }
 
     private var headerTitle: String {
-        if kind == .compact, overviewPage == .misc {
-            return "Misc Providers"
-        }
-        if kind == .compact, overviewPage == .googleAI {
-            return "Gemini"
-        }
-        if kind == .compact, overviewPage == .grok {
-            return "Grok"
-        }
-        switch effectiveKind {
-        case .compact: return "Overview"
-        case .codex:   return "ChatGPT"
-        case .claude:  return "Claude"
-        case .status:  return "Service Status"
+        switch overviewPage {
+        case .overview: return "Overview"
+        case .openAI: return "ChatGPT"
+        case .claude: return "Claude"
+        case .googleAI: return "Gemini"
+        case .grok: return "Grok"
+        case .misc: return "Misc Providers"
         }
     }
 
     private var headerSubtitle: String? {
-        if kind == .compact, overviewPage == .misc {
-            return "Usage-only · sign in or paste a key"
-        }
-        if kind == .compact, overviewPage == .googleAI {
-            return "Gemini Web + AntiGravity · quota & status"
-        }
-        if kind == .compact, overviewPage == .grok {
-            return "xAI · monthly credits, cost & status"
-        }
-        switch effectiveKind {
-        case .compact: return "All providers · quota & cost"
-        case .codex:   return ToolType.codex.subtitle
-        case .claude:  return ToolType.claude.subtitle
-        case .status:  return "Live status pages"
-        }
-    }
-
-    private var headerPlan: String? {
-        // Always check `kind` here (not `effectiveKind`). The Overview popover
-        // sits between the page switcher and the refresh / settings buttons,
-        // so any extra accessory in that header band gets in the user's way
-        // when they're trying to switch tabs. AQ explicitly does not want a
-        // plan badge to appear in Overview, even when the active sub-page is
-        // Claude or OpenAI. Dedicated provider popovers still show it.
-        switch kind {
-        case .compact, .status: return nil
-        case .codex:   return planBadgeLabel(for: .codex)
-        case .claude:  return planBadgeLabel(for: .claude)
+        switch overviewPage {
+        case .overview: return "All providers · quota & cost"
+        case .openAI: return ToolType.codex.subtitle
+        case .claude: return ToolType.claude.subtitle
+        case .googleAI: return "Gemini Web + AntiGravity · quota & status"
+        case .grok: return "xAI · monthly credits, cost & status"
+        case .misc: return "Usage-only · sign in or paste a key"
         }
     }
 
@@ -178,23 +117,25 @@ struct PopoverRoot: View {
         // visible in the current popover. The Misc subpage owns its
         // usage-only integrations; the Google AI subpage aggregates the
         // partial-primary pair; the Grok subpage shows just `.grok`.
-        if kind == .compact, overviewPage == .misc {
+        if overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
         }
-        if kind == .compact, overviewPage == .googleAI {
+        if overviewPage == .googleAI {
             return ToolType.googleAIPair
         }
-        if kind == .compact, overviewPage == .grok {
+        if overviewPage == .grok {
             return [.grok]
         }
-        switch effectiveKind {
-        case .compact:
+        switch overviewPage {
+        case .overview:
             return ToolType.dedicatedCardProviders.filter {
                 settingsStore.settings.isCoreProviderVisible($0)
             }
-        case .status:           return ToolType.combinedStatusPageProviders
-        case .codex:            return [.codex]
-        case .claude:           return [.claude]
+        case .openAI: return [.codex]
+        case .claude: return [.claude]
+        case .googleAI: return ToolType.googleAIPair
+        case .grok: return [.grok]
+        case .misc: return settingsStore.settings.visibleMiscProviderList
         }
     }
 
@@ -210,23 +151,15 @@ struct PopoverRoot: View {
     }
 
     private var visibleAccounts: [AccountIdentity] {
-        if kind == .compact, overviewPage == .misc {
+        if overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderInstances
                 .compactMap { environment.account(for: $0) }
         }
         return visibleTools.compactMap { environment.account(for: $0) }
     }
 
-    private func planBadgeLabel(for tool: ToolType) -> String? {
-        settingsStore.settings.planBadgeLabel(
-            for: tool,
-            quotaPlan: environment.quota(for: tool)?.plan,
-            accountPlan: environment.account(for: tool)?.plan
-        )
-    }
-
     private var autoRefreshKey: String {
-        "\(kind.rawValue):\(overviewPage.rawValue)"
+        overviewPage.rawValue
     }
 
     private func refreshVisibleProvidersIfNeeded() {
@@ -309,17 +242,6 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .googleAI: return "Gemini"
         case .grok:     return "Grok"
         case .misc:     return "Misc"
-        }
-    }
-
-    var menuBarKind: MenuBarItemKind {
-        switch self {
-        case .overview: return .compact
-        case .openAI:   return .codex
-        case .claude:   return .claude
-        case .googleAI: return .compact
-        case .grok:     return .compact
-        case .misc:     return .compact
         }
     }
 
@@ -490,7 +412,7 @@ private struct OverviewWaterfall: View {
                         tool: .codex,
                         snapshot: combinedCostSnapshot,
                         density: density,
-                        chartHeight: 190,
+                        chartHeight: density.overviewCostChartHeight,
                         titleOverride: "All Providers Cost History"
                     )
                     .overviewMasonryItem(id: "cost-all-providers", phase: .cost)
@@ -774,7 +696,7 @@ private struct GeminiTabPage: View {
                         additionalQuotaSeries: antigravityQuotaSeries
                     )
                 }
-                ServiceStatusCard(tools: [.gemini])
+                ServiceStatusCard(tools: [.gemini], density: density)
             }
             .frame(
                 minWidth: geminiLeftColumnMinWidth,
@@ -789,19 +711,22 @@ private struct GeminiTabPage: View {
     }
 
     private var geminiLeftColumnMinWidth: CGFloat {
-        max(320, min(380, density.popoverWidth * 0.34))
+        density.detailLeftColumnRange.lowerBound
     }
 
     private var geminiLeftColumnIdealWidth: CGFloat {
-        max(geminiLeftColumnMinWidth, min(410, density.popoverWidth * 0.38))
+        min(
+            density.detailLeftColumnRange.upperBound,
+            max(geminiLeftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
+        )
     }
 
     private var geminiLeftColumnMaxWidth: CGFloat {
-        max(geminiLeftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
+        density.detailLeftColumnRange.upperBound
     }
 
     private var geminiRightColumnMinWidth: CGFloat {
-        500
+        density.detailRightColumnMinimum
     }
 }
 
@@ -900,7 +825,7 @@ private struct ProviderCostStack: View {
                 tool: tool,
                 snapshot: snapshot,
                 density: density,
-                chartHeight: 160
+                chartHeight: density.detailCostChartHeight
             )
             ModelRankingList(snapshot: snapshot, density: density)
             YearlyContributionHeatmapView(
@@ -922,8 +847,6 @@ private struct CombinedTotalsRow: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
     @EnvironmentObject var settingsStore: SettingsStore
-    private let summaryHeight: CGFloat = 178
-
     var body: some View {
         // Headline totals span every cost-aware provider, including
         // Google AI (Gemini + AntiGravity): AntiGravity usage is now
@@ -1022,9 +945,9 @@ private struct CombinedTotalsRow: View {
                     minWidth: columnWidth,
                     idealWidth: columnWidth,
                     maxWidth: columnWidth,
-                    minHeight: summaryHeight,
-                    idealHeight: summaryHeight,
-                    maxHeight: summaryHeight,
+                    minHeight: density.overviewSummaryHeight,
+                    idealHeight: density.overviewSummaryHeight,
+                    maxHeight: density.overviewSummaryHeight,
                     alignment: .topLeading
                 )
                 .background(
@@ -1038,7 +961,7 @@ private struct CombinedTotalsRow: View {
 
                 OverviewStatusSummaryCard(
                     density: density,
-                    minHeight: summaryHeight,
+                    minHeight: density.overviewSummaryHeight,
                     tools: ToolType.combinedStatusPageProviders.filter {
                         settingsStore.settings.isCoreProviderVisible($0)
                     }
@@ -1051,7 +974,7 @@ private struct CombinedTotalsRow: View {
                     )
             }
         }
-        .frame(height: summaryHeight)
+        .frame(height: density.overviewSummaryHeight)
     }
 
     private var divider: some View {
@@ -1109,7 +1032,7 @@ private struct OverviewStatusSummaryCard: View {
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Status")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
@@ -1140,11 +1063,11 @@ private struct OverviewStatusSummaryCard: View {
                 let tileHeight = statusTileHeight(rowCount: rowCount)
                 LazyVGrid(
                     columns: Array(
-                        repeating: GridItem(.flexible(), spacing: 8, alignment: .top),
+                        repeating: GridItem(.flexible(), spacing: density.cardSpacing, alignment: .top),
                         count: columnCount
                     ),
                     alignment: .leading,
-                    spacing: 8
+                    spacing: density.cardSpacing
                 ) {
                     ForEach(tools, id: \.self) { tool in
                         providerStatusTile(tool, height: tileHeight)
@@ -1168,25 +1091,31 @@ private struct OverviewStatusSummaryCard: View {
     private func statusTileHeight(rowCount: Int) -> CGFloat {
         let rows = max(1, rowCount)
         let headerHeight = max(18, density.bucketTitleFontSize + 6)
-        let gridSpacing = CGFloat(max(0, rows - 1)) * 8
+        let gridSpacing = CGFloat(max(0, rows - 1)) * density.cardSpacing
         let available = minHeight
             - density.cardPadding * 2
             - headerHeight
-            - 8
+            - density.cardSpacing
             - gridSpacing
-        return max(58, available / CGFloat(rows))
+        let minimum: CGFloat
+        switch density.profile {
+        case .compact: minimum = 46
+        case .regular: minimum = 58
+        case .spacious: minimum = 70
+        }
+        return max(minimum, available / CGFloat(rows))
     }
 
     private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
         let state = statusState(for: tool)
         let snapshot = statusSnapshot(for: tool)
-        return VStack(alignment: .leading, spacing: 9) {
+        return VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(spacing: 7) {
                 Image(systemName: state.iconName)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: density.bucketTitleFontSize + 1, weight: .semibold))
                     .foregroundStyle(state.color)
                     .frame(width: 17, height: 17)
-                ToolBrandIconView(tool: tool, size: 20)
+                ToolBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
                     .opacity(0.9)
                     .frame(width: 22, height: 22)
                 Text(statusTitle(for: tool))
@@ -1213,8 +1142,8 @@ private struct OverviewStatusSummaryCard: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, density.cardPadding - 2)
+        .padding(.vertical, max(6, density.cardPadding - 4))
         .frame(minHeight: height, maxHeight: height, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -1416,7 +1345,12 @@ private struct OverviewCostCard: View {
             if let snapshot, snapshot.jsonlFilesFound > 0 {
                 CostSummaryRow(snapshot: snapshot, density: density)
                 TopModelTile(snapshot: snapshot, density: density)
-                CostHistoryView(tool: tool, snapshot: snapshot, density: density, chartHeight: 160)
+                CostHistoryView(
+                    tool: tool,
+                    snapshot: snapshot,
+                    density: density,
+                    chartHeight: density.detailCostChartHeight
+                )
                     .padding(.top, 2)
             } else {
                 Text(emptyMessageOverride ?? emptyMessage)
@@ -1542,7 +1476,7 @@ private struct ProviderDetailView: View {
                         now: context.date
                     )
                 }
-                ServiceStatusCard(tools: [tool])
+                ServiceStatusCard(tools: [tool], density: density)
             }
             .frame(
                 minWidth: leftColumnMinWidth,
@@ -1558,7 +1492,7 @@ private struct ProviderDetailView: View {
                         tool: tool,
                         snapshot: snapshot,
                         density: density,
-                        chartHeight: 160
+                        chartHeight: density.detailCostChartHeight
                     )
                     ModelRankingList(snapshot: snapshot, density: density)
                     YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
@@ -1576,19 +1510,22 @@ private struct ProviderDetailView: View {
     }
 
     private var leftColumnMinWidth: CGFloat {
-        max(320, min(380, density.popoverWidth * 0.34))
+        density.detailLeftColumnRange.lowerBound
     }
 
     private var leftColumnIdealWidth: CGFloat {
-        max(leftColumnMinWidth, min(410, density.popoverWidth * 0.38))
+        min(
+            density.detailLeftColumnRange.upperBound,
+            max(leftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
+        )
     }
 
     private var leftColumnMaxWidth: CGFloat {
-        max(leftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
+        density.detailLeftColumnRange.upperBound
     }
 
     private var rightColumnMinWidth: CGFloat {
-        500
+        density.detailRightColumnMinimum
     }
 }
 
@@ -1764,7 +1701,7 @@ struct ProviderQuotaCard: View {
             }
 
             if let quota, !quota.buckets.isEmpty {
-                bucketContent(quota.buckets)
+                bucketContent(quota.buckets, accountId: account?.id)
                 if tool == .codex, let credits = quota.resetCredits, credits.availableCount > 0 {
                     ResetCreditsRow(credits: credits, density: density)
                 }
@@ -1796,13 +1733,19 @@ struct ProviderQuotaCard: View {
         )
     }
 
-    private func bucketContent(_ buckets: [QuotaBucket]) -> some View {
+    private func bucketContent(_ buckets: [QuotaBucket], accountId: String?) -> some View {
         let primary = buckets.filter { $0.groupTitle == nil }
         let extras = buckets.filter { $0.groupTitle != nil }
         return VStack(alignment: .leading, spacing: density.bucketGroupSpacing) {
             if !primary.isEmpty {
                 ForEach(primary) { bucket in
-                    ProviderBucketRow(bucket: bucket, mode: settingsStore.displayMode, density: density)
+                    ProviderBucketRow(
+                        tool: tool,
+                        accountId: accountId,
+                        bucket: bucket,
+                        mode: settingsStore.displayMode,
+                        density: density
+                    )
                 }
             }
             if !compact, !extras.isEmpty {
@@ -1821,7 +1764,13 @@ struct ProviderQuotaCard: View {
                             .textCase(.uppercase)
                             .tracking(0.4)
                         ForEach(group.buckets) { bucket in
-                            ProviderBucketRow(bucket: bucket, mode: settingsStore.displayMode, density: density)
+                            ProviderBucketRow(
+                                tool: tool,
+                                accountId: accountId,
+                                bucket: bucket,
+                                mode: settingsStore.displayMode,
+                                density: density
+                            )
                         }
                     }
                 }
@@ -1912,9 +1861,14 @@ private struct ResetCreditsRow: View {
 }
 
 private struct ProviderBucketRow: View {
+    let tool: ToolType
+    let accountId: String?
     let bucket: QuotaBucket
     let mode: DisplayMode
     let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         // We only refresh "resets in …" periodically, but we don't repaint
@@ -1930,7 +1884,11 @@ private struct ProviderBucketRow: View {
     private func content(now: Date) -> some View {
         let percent = bucket.displayPercent(mode)
         let pace = UsagePace.compute(bucket: bucket, now: now)
-        let expectedDisplayed = pace.map { expectedDisplay(for: $0, mode: mode) }
+        let forecast = paceForecast(now: now)
+        let expectedDisplayed = forecast.map { displayedPlan($0) }
+            ?? pace.map { expectedDisplay(for: $0, mode: mode) }
+        let forecastRange = forecast.map { displayedRange($0) }
+        let forecastMedian = forecast.map { displayedForecast($0) }
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
@@ -1951,14 +1909,58 @@ private struct ProviderBucketRow: View {
                     usedPercent: percent,
                     expectedPercent: expectedDisplayed,
                     mode: mode,
-                    height: density.bucketBarHeight
+                    height: density.bucketBarHeight,
+                    forecastLowerPercent: forecastRange?.lowerBound,
+                    forecastUpperPercent: forecastRange?.upperBound,
+                    forecastMedianPercent: forecastMedian
                 )
             } else {
                 QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
             }
-            if let pace {
+            if let forecast {
+                QuotaForecastRow(
+                    forecast: forecast,
+                    now: now,
+                    fontSize: density.resetCountdownFontSize
+                )
+            } else if let pace {
                 UsagePaceRow(pace: pace, now: now, fontSize: density.resetCountdownFontSize)
             }
+        }
+    }
+
+    private func paceForecast(now: Date) -> QuotaPaceForecast? {
+        guard let resolvedAccountId = accountId ?? environment.account(for: tool)?.id else { return nil }
+        let snapshot = environment.costService.snapshot(for: tool)
+        return quotaService.paceForecast(
+            accountId: resolvedAccountId,
+            bucket: bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: now
+        )
+    }
+
+    private func displayedPlan(_ forecast: QuotaPaceForecast) -> Double {
+        switch mode {
+        case .used: forecast.plannedUsedPercent
+        case .remaining: 100 - forecast.plannedUsedPercent
+        }
+    }
+
+    private func displayedForecast(_ forecast: QuotaPaceForecast) -> Double {
+        switch mode {
+        case .used: forecast.projectedUsedPercent
+        case .remaining: 100 - forecast.projectedUsedPercent
+        }
+    }
+
+    private func displayedRange(_ forecast: QuotaPaceForecast) -> ClosedRange<Double> {
+        switch mode {
+        case .used:
+            return forecast.projectedUsedLowerPercent...forecast.projectedUsedUpperPercent
+        case .remaining:
+            return (100 - forecast.projectedUsedUpperPercent)...(100 - forecast.projectedUsedLowerPercent)
         }
     }
 

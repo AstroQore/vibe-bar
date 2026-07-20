@@ -12,7 +12,7 @@ struct MiscProvidersPage: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
-        ColumnMasonryLayout(columns: 3, spacing: density.interSectionSpacing) {
+        ColumnMasonryLayout(columns: density.miscColumnCount, spacing: density.interSectionSpacing) {
             ForEach(providerGroups) { group in
                 if group.instances.count == 1, let instance = group.instances.first {
                     MiscProviderCard(instance: instance, density: density)

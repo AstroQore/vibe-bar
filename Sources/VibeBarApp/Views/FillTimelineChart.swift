@@ -22,12 +22,35 @@ struct FillTimelineChart: View {
     let now: Date
 
     @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var environment: AppEnvironment
     @State private var selectedBucketId: String?
     @State private var hoveredIndex: Int?
 
-    private static let barSpacing: CGFloat = 3
     private static let maxCycles = 12
-    private static let chartHeight: CGFloat = 48
+
+    private var barSpacing: CGFloat {
+        switch density.profile {
+        case .compact: 2
+        case .regular: 3
+        case .spacious: 4
+        }
+    }
+
+    private var chartHeight: CGFloat {
+        switch density.profile {
+        case .compact: 40
+        case .regular: 52
+        case .spacious: 66
+        }
+    }
+
+    private var tabHeight: CGFloat {
+        switch density.profile {
+        case .compact: 20
+        case .regular: 24
+        case .spacious: 28
+        }
+    }
 
     var body: some View {
         let tabs = availableTabs
@@ -39,6 +62,7 @@ struct FillTimelineChart: View {
             } ?? tabs[0].id
             let activeSeries = tabs.first(where: { $0.id == activeSeriesId })!.series
             let cycles = visibleCycles(series: activeSeries)
+            let target = displayedTarget(for: activeSeries)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("Utilization by reset")
@@ -75,7 +99,7 @@ struct FillTimelineChart: View {
                                             .lineLimit(1)
                                             .fixedSize(horizontal: true, vertical: false)
                                             .padding(.horizontal, 9)
-                                            .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+                                            .frame(maxWidth: .infinity, minHeight: tabHeight, maxHeight: tabHeight)
                                             .background {
                                                 if isSelected {
                                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -93,13 +117,13 @@ struct FillTimelineChart: View {
                             .frame(width: contentWidth)
                         }
                     }
-                    .frame(height: 26)
+                    .frame(height: tabHeight + 4)
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(Color.primary.opacity(0.08))
                     )
                 }
-                cycleStrip(cycles, tool: activeSeries.tool)
+                cycleStrip(cycles, tool: activeSeries.tool, targetPercent: target)
                 Text(caption(cycles))
                     .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -145,7 +169,11 @@ struct FillTimelineChart: View {
     }
 
     @ViewBuilder
-    private func cycleStrip(_ cycles: [SubscriptionWindowSample], tool: ToolType) -> some View {
+    private func cycleStrip(
+        _ cycles: [SubscriptionWindowSample],
+        tool: ToolType,
+        targetPercent: Double?
+    ) -> some View {
         if cycles.isEmpty {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Theme.barTrack.opacity(0.45))
@@ -154,28 +182,41 @@ struct FillTimelineChart: View {
                         .font(.system(size: max(8, density.subtitleFontSize - 3)))
                         .foregroundStyle(.tertiary)
                 }
-                .frame(height: Self.chartHeight)
+                .frame(height: chartHeight)
         } else {
             GeometryReader { geo in
                 let count = cycles.count
-                let barWidth = max(5, (geo.size.width - CGFloat(count - 1) * Self.barSpacing) / CGFloat(count))
-                HStack(alignment: .bottom, spacing: Self.barSpacing) {
-                    ForEach(Array(cycles.enumerated()), id: \.offset) { index, cycle in
-                        cycleBar(cycle, tool: tool, isHovered: hoveredIndex == index)
-                            .frame(width: barWidth, height: geo.size.height)
+                let barWidth = max(5, (geo.size.width - CGFloat(count - 1) * barSpacing) / CGFloat(count))
+                ZStack(alignment: .topLeading) {
+                    HStack(alignment: .bottom, spacing: barSpacing) {
+                        ForEach(Array(cycles.enumerated()), id: \.offset) { index, cycle in
+                            cycleBar(cycle, tool: tool, isHovered: hoveredIndex == index)
+                                .frame(width: barWidth, height: geo.size.height)
+                        }
+                    }
+                    if let targetPercent, targetPercent > 3, targetPercent < 97 {
+                        Path { path in
+                            let y = geo.size.height * (1 - targetPercent / 100)
+                            path.move(to: CGPoint(x: 0, y: y))
+                            path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                        }
+                        .stroke(
+                            Color.primary.opacity(0.34),
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                        )
                     }
                 }
                 .contentShape(Rectangle())
                 .onContinuousHover { phase in
                     switch phase {
                     case .active(let location):
-                        hoveredIndex = min(max(0, Int(location.x / (barWidth + Self.barSpacing))), count - 1)
+                        hoveredIndex = min(max(0, Int(location.x / (barWidth + barSpacing))), count - 1)
                     case .ended:
                         hoveredIndex = nil
                     }
                 }
             }
-            .frame(height: Self.chartHeight)
+            .frame(height: chartHeight)
         }
     }
 
@@ -206,7 +247,15 @@ struct FillTimelineChart: View {
         let used = Int(cycle.peakUsedPercent.rounded())
         let left = Int(cycle.remainingPercentAtReset.rounded())
         if let completedAt = cycle.completedAt {
-            return "\(Self.timestampFormatter.string(from: completedAt)) reset · \(used)% used · \(left)% left"
+            let samplingGap = completedAt.timeIntervalSince(cycle.lastSeenAt)
+            let gapText: String
+            if samplingGap >= 60,
+               let duration = ResetCountdownFormatter.string(from: completedAt, now: cycle.lastSeenAt) {
+                gapText = " · last seen \(duration) before reset"
+            } else {
+                gapText = ""
+            }
+            return "\(Self.timestampFormatter.string(from: completedAt)) reset · \(used)% used · \(left)% left\(gapText)"
         }
         return "Current cycle · \(used)% used so far · \(left)% left"
     }
@@ -232,6 +281,21 @@ struct FillTimelineChart: View {
         switch mode {
         case .used: cycle.peakUsedPercent
         case .remaining: cycle.remainingPercentAtReset
+        }
+    }
+
+    private func displayedTarget(for series: FillTimelineSeries) -> Double? {
+        let snapshot = environment.costService.snapshot(for: series.tool)
+        guard let forecast = quotaService.paceForecast(
+            accountId: series.accountId,
+            bucket: series.bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: now
+        ) else { return nil }
+        switch mode {
+        case .used: return 100 - forecast.targetRemainingPercent
+        case .remaining: return forecast.targetRemainingPercent
         }
     }
 
