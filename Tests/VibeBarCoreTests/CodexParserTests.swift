@@ -25,7 +25,7 @@ final class CodexParserTests: XCTestCase {
         let five = buckets[0]
         XCTAssertEqual(five.id, "five_hour")
         XCTAssertEqual(five.title, "5 Hours")
-        XCTAssertEqual(five.shortLabel, "5h")
+        XCTAssertEqual(five.shortLabel, "5 Hours")
         XCTAssertEqual(five.usedPercent, 56)
         XCTAssertEqual(five.remainingPercent, 44)
         XCTAssertEqual(five.rawWindowSeconds, 18000)
@@ -34,7 +34,7 @@ final class CodexParserTests: XCTestCase {
         let week = buckets[1]
         XCTAssertEqual(week.id, "weekly")
         XCTAssertEqual(week.title, "Weekly")
-        XCTAssertEqual(week.shortLabel, "wk")
+        XCTAssertEqual(week.shortLabel, "Weekly")
         XCTAssertEqual(week.usedPercent, 13)
         XCTAssertEqual(week.remainingPercent, 87)
         XCTAssertEqual(week.rawWindowSeconds, 604800)
@@ -81,14 +81,14 @@ final class CodexParserTests: XCTestCase {
         let sparkFive = buckets.first { $0.id == "gpt_5_3_codex_spark_five_hour" }
         XCTAssertEqual(sparkFive?.groupTitle, "GPT-5.3 Codex Spark")
         XCTAssertEqual(sparkFive?.title, "5 Hours")
-        XCTAssertEqual(sparkFive?.shortLabel, "Spark 5h")
+        XCTAssertEqual(sparkFive?.shortLabel, "Spark 5 Hours")
         XCTAssertEqual(sparkFive?.usedPercent, 0)
         XCTAssertEqual(sparkFive?.resetAt, Date(timeIntervalSince1970: 1_760_001_000))
 
         let sparkWeek = buckets.first { $0.id == "gpt_5_3_codex_spark_weekly" }
         XCTAssertEqual(sparkWeek?.groupTitle, "GPT-5.3 Codex Spark")
         XCTAssertEqual(sparkWeek?.title, "Weekly")
-        XCTAssertEqual(sparkWeek?.shortLabel, "Spark wk")
+        XCTAssertEqual(sparkWeek?.shortLabel, "Spark Weekly")
         XCTAssertEqual(sparkWeek?.usedPercent, 2)
         XCTAssertEqual(sparkWeek?.resetAt, Date(timeIntervalSince1970: 1_760_002_000))
     }

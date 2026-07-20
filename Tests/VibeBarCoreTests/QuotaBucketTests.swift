@@ -22,4 +22,16 @@ final class QuotaBucketTests: XCTestCase {
         XCTAssertEqual(QuotaBucket(id: "b", title: "b", shortLabel: "b", usedPercent: 150).usedPercent, 100, accuracy: 0.001)
         XCTAssertEqual(QuotaBucket(id: "c", title: "c", shortLabel: "c", usedPercent: 42.5).usedPercent, 42.5, accuracy: 0.001)
     }
+
+    func testQuotaWindowLabelsAlwaysUseFullWords() throws {
+        XCTAssertEqual(QuotaBucket(id: "a", title: "a", shortLabel: "5h", usedPercent: 0).shortLabel, "5 Hours")
+        XCTAssertEqual(QuotaBucket(id: "b", title: "b", shortLabel: "Wk", usedPercent: 0).shortLabel, "Weekly")
+        XCTAssertEqual(QuotaBucket(id: "c", title: "c", shortLabel: "Spark 5h", usedPercent: 0).shortLabel, "Spark 5 Hours")
+        XCTAssertEqual(QuotaBucket(id: "d", title: "d", shortLabel: "Fable wk", usedPercent: 0).shortLabel, "Fable Weekly")
+        XCTAssertEqual(QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "All models", usedPercent: 0).shortLabel, "Weekly")
+
+        let cachedJSON = #"{"id":"cached","title":"Weekly","shortLabel":"wk","usedPercent":20}"#.data(using: .utf8)!
+        let restored = try JSONDecoder().decode(QuotaBucket.self, from: cachedJSON)
+        XCTAssertEqual(restored.shortLabel, "Weekly")
+    }
 }

@@ -267,18 +267,18 @@ private struct MiniBranchCell: Identifiable {
 
     private var defaultTitle: String {
         switch bucket.id {
-        case "gpt_5_3_codex_spark_five_hour": return "5h"
-        case "gpt_5_3_codex_spark_weekly": return "wk"
+        case "gpt_5_3_codex_spark_five_hour": return "5 Hours"
+        case "gpt_5_3_codex_spark_weekly": return "Weekly"
         case let id where tool == .antigravity && ["gemini_five_hour", "claude_gpt_five_hour"].contains(id):
-            return "5h"
+            return "5 Hours"
         case let id where tool == .antigravity && ["gemini_weekly", "claude_gpt_weekly"].contains(id):
-            return "wk"
-        case "weekly_sonnet": return "wk"
-        case "weekly_design": return "wk"
+            return "Weekly"
+        case "weekly_sonnet": return "Weekly"
+        case "weekly_design": return "Weekly"
         case "daily_routines": return "Daily"
-        case "weekly_opus": return "Opus"
-        case "weekly_fable": return "wk"
-        case "weekly_oauth_apps": return "OAuth"
+        case "weekly_opus": return "Weekly"
+        case "weekly_fable": return "Weekly"
+        case "weekly_oauth_apps": return "Weekly"
         case let id where tool == .antigravity && id.contains("gpt-oss"):
             return "GPT"
         case let id where tool == .antigravity && id.contains("sonnet"):
@@ -572,9 +572,11 @@ private struct MiniMemberStack: View {
                 if !member.content.primaryCells.isEmpty {
                     MiniPrimaryRingGroup(cells: member.content.primaryCells)
                 }
-                ForEach(branchGroups) { group in
-                    MiniGroupDivider()
-                        .padding(.top, 15)
+                ForEach(Array(branchGroups.enumerated()), id: \.element.id) { index, group in
+                    if !member.content.primaryCells.isEmpty || index > 0 {
+                        MiniGroupDivider()
+                            .padding(.top, 15)
+                    }
                     MiniBranchRingGroup(group: group)
                 }
             }
@@ -987,9 +989,11 @@ private struct MiniCompactMemberStack: View {
                 if !member.content.primaryCells.isEmpty {
                     MiniCompactPrimaryGroup(cells: member.content.primaryCells)
                 }
-                ForEach(branchGroups) { group in
-                    MiniGroupDivider(height: 66)
-                        .padding(.top, 12)
+                ForEach(Array(branchGroups.enumerated()), id: \.element.id) { index, group in
+                    if !member.content.primaryCells.isEmpty || index > 0 {
+                        MiniGroupDivider(height: 66)
+                            .padding(.top, 12)
+                    }
                     MiniCompactBranchGroup(group: group)
                 }
             }

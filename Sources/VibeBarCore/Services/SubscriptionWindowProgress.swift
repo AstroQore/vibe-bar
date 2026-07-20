@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Examples:
 ///   - "Day 6 of 7 · 56% used"            — windows with full-day grain
-///   - "2h 35m of 5h · 7% used"           — sub-day windows (5-hour)
+///   - "2h 35m of 5 Hours · 7% used"      — sub-day windows (5-hour)
 ///   - "Resets soon · 99% used"           — reset has technically passed
 ///   - "42% used"                         — no resetAt or no
 ///                                          rawWindowSeconds (Gemini
@@ -36,7 +36,9 @@ public enum SubscriptionWindowProgress {
             return "Day \(dayNumber) of \(totalDays) · \(pct) used"
         }
 
-        let totalLabel = formatShortDuration(windowSeconds)
+        let totalLabel = rawWindowSeconds == 18_000
+            ? "5 Hours"
+            : formatShortDuration(windowSeconds)
         let elapsedLabel = formatShortDuration(elapsed)
         return "\(elapsedLabel) of \(totalLabel) · \(pct) used"
     }

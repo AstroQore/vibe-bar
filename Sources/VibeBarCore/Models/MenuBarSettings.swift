@@ -143,21 +143,21 @@ public struct MenuBarFieldOption: Identifiable, Hashable, Sendable {
 
 public enum MenuBarFieldCatalog {
     public static let codexFields: [MenuBarFieldOption] = [
-        option(.codex, "five_hour", "5 Hours", "5h"),
-        option(.codex, "weekly", "Weekly", "wk"),
-        option(.codex, "gpt_5_3_codex_spark_five_hour", "GPT-5.3 Codex Spark · 5 Hours", "Spark 5h"),
-        option(.codex, "gpt_5_3_codex_spark_weekly", "GPT-5.3 Codex Spark · Weekly", "Spark wk")
+        option(.codex, "five_hour", "5 Hours", "5 Hours"),
+        option(.codex, "weekly", "Weekly", "Weekly"),
+        option(.codex, "gpt_5_3_codex_spark_five_hour", "GPT-5.3 Codex Spark · 5 Hours", "Spark 5 Hours"),
+        option(.codex, "gpt_5_3_codex_spark_weekly", "GPT-5.3 Codex Spark · Weekly", "Spark Weekly")
     ]
 
     public static let claudeFields: [MenuBarFieldOption] = [
-        option(.claude, "five_hour", "5 Hours", "5h"),
-        option(.claude, "weekly", "All Models · Weekly", "All wk"),
-        option(.claude, "weekly_sonnet", "Sonnet · Weekly", "Sonnet wk"),
-        option(.claude, "weekly_design", "Designs · Weekly", "Design wk"),
+        option(.claude, "five_hour", "5 Hours", "5 Hours"),
+        option(.claude, "weekly", "All Models · Weekly", "Weekly"),
+        option(.claude, "weekly_sonnet", "Sonnet · Weekly", "Sonnet Weekly"),
+        option(.claude, "weekly_design", "Designs · Weekly", "Design Weekly"),
         option(.claude, "daily_routines", "Daily Routines", "Routines"),
-        option(.claude, "weekly_opus", "Opus · Weekly", "Opus wk"),
-        option(.claude, "weekly_fable", "Fable · Weekly", "Fable wk"),
-        option(.claude, "weekly_oauth_apps", "OAuth Apps · Weekly", "OAuth wk")
+        option(.claude, "weekly_opus", "Opus · Weekly", "Opus Weekly"),
+        option(.claude, "weekly_fable", "Fable · Weekly", "Fable Weekly"),
+        option(.claude, "weekly_oauth_apps", "OAuth Apps · Weekly", "OAuth Weekly")
     ]
 
     // Gemini Web (`gemini.google.com`) exposes a 5-hour rolling
@@ -168,19 +168,19 @@ public enum MenuBarFieldCatalog {
     // adapter the Web parser no longer produces; those ids get
     // migrated to the new pair in `fieldIdMigrations` below.
     public static let geminiFields: [MenuBarFieldOption] = [
-        option(.gemini, "five_hour", "5 Hours", "5h"),
-        option(.gemini, "weekly", "Weekly", "wk")
+        option(.gemini, "five_hour", "5 Hours", "5 Hours"),
+        option(.gemini, "weekly", "Weekly", "Weekly")
     ]
 
     public static let antigravityFields: [MenuBarFieldOption] = [
-        option(.antigravity, "gemini_five_hour", "Gemini Models · 5 Hours", "G 5h"),
-        option(.antigravity, "gemini_weekly", "Gemini Models · Weekly", "G wk"),
-        option(.antigravity, "claude_gpt_five_hour", "Claude and GPT Models · 5 Hours", "C+G 5h"),
-        option(.antigravity, "claude_gpt_weekly", "Claude and GPT Models · Weekly", "C+G wk")
+        option(.antigravity, "gemini_five_hour", "Gemini Models · 5 Hours", "G 5 Hours"),
+        option(.antigravity, "gemini_weekly", "Gemini Models · Weekly", "G Weekly"),
+        option(.antigravity, "claude_gpt_five_hour", "Claude and GPT Models · 5 Hours", "C+G 5 Hours"),
+        option(.antigravity, "claude_gpt_weekly", "Claude and GPT Models · Weekly", "C+G Weekly")
     ]
 
     public static let grokFields: [MenuBarFieldOption] = [
-        option(.grok, "weekly", "Weekly Credits", "wk")
+        option(.grok, "weekly", "Weekly Credits", "Weekly")
     ]
 
     public static let allFields: [MenuBarFieldOption] =

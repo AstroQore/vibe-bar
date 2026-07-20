@@ -24,14 +24,14 @@ final class ClaudeParserTests: XCTestCase {
 
         let five = buckets.first { $0.id == "five_hour" }!
         XCTAssertEqual(five.title, "5 Hours")
-        XCTAssertEqual(five.shortLabel, "5h")
+        XCTAssertEqual(five.shortLabel, "5 Hours")
         XCTAssertEqual(five.usedPercent, 56)
         XCTAssertEqual(five.remainingPercent, 44)
         XCTAssertNil(five.groupTitle)
 
         let weekly = buckets.first { $0.id == "weekly" }!
         XCTAssertEqual(weekly.title, "Weekly")
-        XCTAssertEqual(weekly.shortLabel, "All models")
+        XCTAssertEqual(weekly.shortLabel, "Weekly")
         XCTAssertEqual(weekly.usedPercent, 13)
         XCTAssertEqual(weekly.remainingPercent, 87)
         XCTAssertNil(weekly.groupTitle)
@@ -74,7 +74,7 @@ final class ClaudeParserTests: XCTestCase {
         let fable = buckets.first { $0.id == "weekly_fable" }!
         XCTAssertEqual(fable.usedPercent, 60)
         XCTAssertEqual(fable.groupTitle, "Fable")
-        XCTAssertEqual(fable.shortLabel, "Fable wk")
+        XCTAssertEqual(fable.shortLabel, "Fable Weekly")
         XCTAssertEqual(fable.rawWindowSeconds, 604_800)
     }
 
@@ -111,7 +111,7 @@ final class ClaudeParserTests: XCTestCase {
         XCTAssertNotNil(fable)
         XCTAssertEqual(fable?.usedPercent, 1)
         XCTAssertEqual(fable?.groupTitle, "Fable")
-        XCTAssertEqual(fable?.shortLabel, "Fable wk")
+        XCTAssertEqual(fable?.shortLabel, "Fable Weekly")
         XCTAssertEqual(fable?.rawWindowSeconds, 604_800)
         XCTAssertNotNil(fable?.resetAt)
     }
@@ -134,7 +134,7 @@ final class ClaudeParserTests: XCTestCase {
         XCTAssertNil(five?.groupTitle)
         let weekly = buckets.first { $0.id == "weekly" }
         XCTAssertEqual(weekly?.usedPercent, 12)
-        XCTAssertEqual(weekly?.shortLabel, "All models")
+        XCTAssertEqual(weekly?.shortLabel, "Weekly")
     }
 
     /// A scoped model Vibe Bar has never heard of still surfaces with a
@@ -188,7 +188,7 @@ final class ClaudeParserTests: XCTestCase {
         let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
         let routine = buckets.first { $0.id == "daily_routines" }!
         XCTAssertEqual(routine.groupTitle, "Daily Routines")
-        XCTAssertEqual(routine.shortLabel, "Routine wk")
+        XCTAssertEqual(routine.shortLabel, "Routine Weekly")
         XCTAssertEqual(routine.title, "Weekly")
         XCTAssertEqual(routine.usedPercent, 33.3)
         XCTAssertEqual(routine.rawWindowSeconds, 604_800)

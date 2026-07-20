@@ -23,7 +23,7 @@ final class VolcengineAgentPlanParserTests: XCTestCase {
 
         XCTAssertEqual(snap.buckets[0].id, "volcengineAgentPlan.session")
         XCTAssertEqual(snap.buckets[0].title, "5 Hours")
-        XCTAssertEqual(snap.buckets[0].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[0].shortLabel, "5 Hours")
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
         // 411.0225 / 10000 * 100 = 4.110225
         XCTAssertEqual(snap.buckets[0].usedPercent, 4.110225, accuracy: 0.0001)

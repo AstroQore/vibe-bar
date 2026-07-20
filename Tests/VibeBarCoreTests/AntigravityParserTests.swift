@@ -54,7 +54,7 @@ final class AntigravityParserTests: XCTestCase {
             "claude_gpt_weekly"
         ])
         XCTAssertEqual(snap.buckets.map(\.title), ["5 Hours", "Weekly", "5 Hours", "Weekly"])
-        XCTAssertEqual(snap.buckets.map(\.shortLabel), ["G 5h", "G wk", "C+G 5h", "C+G wk"])
+        XCTAssertEqual(snap.buckets.map(\.shortLabel), ["G 5 Hours", "G Weekly", "C+G 5 Hours", "C+G Weekly"])
         XCTAssertEqual(snap.buckets.map(\.groupTitle), [
             "Gemini Models",
             "Gemini Models",

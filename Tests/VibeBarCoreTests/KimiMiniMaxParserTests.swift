@@ -70,7 +70,7 @@ final class KimiParserTests: XCTestCase {
         let snap = try KimiResponseParser.parse(data: Data(json.utf8), now: now)
 
         XCTAssertEqual(snap.buckets[1].title, "5 Hours")
-        XCTAssertEqual(snap.buckets[1].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[1].shortLabel, "5 Hours")
         XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 5 * 3600)
     }
 
@@ -102,7 +102,7 @@ final class KimiParserTests: XCTestCase {
         let snap = try KimiResponseParser.parse(data: Data(json.utf8), now: now)
 
         XCTAssertEqual(snap.buckets[1].title, "5 Hours")
-        XCTAssertEqual(snap.buckets[1].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[1].shortLabel, "5 Hours")
         XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 5 * 3600)
     }
 
@@ -166,7 +166,7 @@ final class MiniMaxParserTests: XCTestCase {
         // used=234, remaining=766.
         XCTAssertEqual(snap.buckets[0].usedPercent, 23.4, accuracy: 0.01)
         XCTAssertEqual(snap.buckets[0].title, "5 Hours")
-        XCTAssertEqual(snap.buckets[0].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[0].shortLabel, "5 Hours")
         XCTAssertEqual(snap.buckets[0].groupTitle, "766/1000 · 222 hours")
         XCTAssertNotNil(snap.buckets[0].resetAt)
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
@@ -476,7 +476,7 @@ final class MiniMaxParserTests: XCTestCase {
                 "Web Search"
             ]
         )
-        XCTAssertEqual(snap.buckets.map(\.shortLabel), Array(repeating: "5h", count: 8))
+        XCTAssertEqual(snap.buckets.map(\.shortLabel), Array(repeating: "5 Hours", count: 8))
         XCTAssertEqual(snap.buckets.first?.usedPercent ?? -1, 0.222, accuracy: 0.001)
         XCTAssertEqual(snap.buckets.first?.groupTitle, "449/450 · 5 hours")
     }
@@ -526,7 +526,7 @@ final class MiniMaxParserTests: XCTestCase {
         """
         let snap = try MiniMaxResponseParser.parse(data: Data(json.utf8), now: now)
         XCTAssertEqual(snap.buckets[0].title, "5 Hours")
-        XCTAssertEqual(snap.buckets[0].shortLabel, "5h")
+        XCTAssertEqual(snap.buckets[0].shortLabel, "5 Hours")
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3600)
     }
 
