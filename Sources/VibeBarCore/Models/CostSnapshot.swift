@@ -559,7 +559,7 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     public var shortLabel: String {
         switch self {
         case .today: return "Today"
-        case .yesterday: return "Yday"
+        case .yesterday: return "Yesterday"
         case .week:  return "7d"
         case .month: return "30d"
         case .all:   return "All"

@@ -2,6 +2,11 @@ import XCTest
 @testable import VibeBarCore
 
 final class CostSnapshotTests: XCTestCase {
+    func testYesterdayUsesFullDisplayLabel() {
+        XCTAssertEqual(CostTimeframe.yesterday.label, "Yesterday")
+        XCTAssertEqual(CostTimeframe.yesterday.shortLabel, "Yesterday")
+    }
+
     func testRebasedForCurrentDayClearsStaleTodayTotalsAndHours() throws {
         let shanghai = try XCTUnwrap(TimeZone(secondsFromGMT: 8 * 3600))
         var calendar = Calendar(identifier: .gregorian)

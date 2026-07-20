@@ -153,7 +153,9 @@ extension BrowserCookieClient {
 extension Browser {
     var usesKeychainForCookieDecryption: Bool {
         switch self {
-        case .safari, .firefox, .zen:
+        case .safari,
+             .firefox, .firefoxBeta, .firefoxDeveloperEdition, .firefoxNightly,
+             .zen:
             return false
         case .chrome, .chromeBeta, .chromeCanary,
              .arc, .arcBeta, .arcCanary,
@@ -163,7 +165,9 @@ extension Browser {
              .edge, .edgeBeta, .edgeCanary,
              .helium,
              .vivaldi,
-             .dia:
+             .dia,
+             .yandex,
+             .comet:
             return true
         @unknown default:
             // Treat unknown future browsers conservatively: assume

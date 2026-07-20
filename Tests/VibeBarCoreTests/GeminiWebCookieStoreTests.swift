@@ -1,3 +1,4 @@
+import SweetCookieKit
 import XCTest
 @testable import VibeBarCore
 
@@ -6,11 +7,14 @@ import XCTest
 /// analytics cookies and require the authoritative `__Secure-1PSID`.
 final class GeminiWebCookieStoreTests: XCTestCase {
     func testMinimizedHeaderKeepsAuthCookies() {
-        let raw = "_ga=GA1.example; __Secure-1PSID=abc.synthetic-jwt; SAPISID=def-token; pref=light"
+        let raw = "_ga=GA1.example; __Secure-1PSID=abc.synthetic-jwt; SAPISID=def-token; SIDCC=sidcc; __Secure-1PAPISID=papi1; __Secure-3PAPISID=papi3; pref=light"
         let minimized = GeminiWebCookieStore.minimizedCookieHeader(from: raw)
         XCTAssertNotNil(minimized)
         XCTAssertTrue(minimized!.contains("__Secure-1PSID=abc.synthetic-jwt"))
         XCTAssertTrue(minimized!.contains("SAPISID=def-token"))
+        XCTAssertTrue(minimized!.contains("SIDCC=sidcc"))
+        XCTAssertTrue(minimized!.contains("__Secure-1PAPISID=papi1"))
+        XCTAssertTrue(minimized!.contains("__Secure-3PAPISID=papi3"))
         XCTAssertFalse(minimized!.contains("_ga"))
         XCTAssertFalse(minimized!.contains("pref="))
     }
@@ -83,5 +87,43 @@ final class GeminiWebCookieStoreTests: XCTestCase {
         let raw = "Cookie: __Secure-1PSID=abc; SAPISID=def"
         let normalized = GeminiWebCookieStore.normalizedCookieHeader(from: raw)
         XCTAssertEqual(normalized, "__Secure-1PSID=abc; SAPISID=def")
+    }
+
+    func testBrowserImporterUsesMostSpecificMatchingCookieRecord() throws {
+        let records = [
+            record(domain: "google.com", name: "__Secure-1PSID", path: "/", value: "parent"),
+            record(domain: "gemini.google.com", name: "__Secure-1PSID", path: "/", value: "host"),
+            record(domain: "google.com", name: "SIDCC", path: "/", value: "sidcc"),
+            record(domain: "google.com", name: "__Secure-1PAPISID", path: "/", value: "papi1"),
+            record(domain: "google.com", name: "__Secure-3PAPISID", path: "/", value: "papi3"),
+            record(domain: "other.google.com", name: "SAPISID", path: "/", value: "wrong-host"),
+            record(domain: "gemini.google.com", name: "SSID", path: "/other", value: "wrong-path")
+        ]
+
+        let header = try XCTUnwrap(GeminiBrowserCookieImporter.sessionHeader(from: records))
+        XCTAssertTrue(header.contains("__Secure-1PSID=host"))
+        XCTAssertFalse(header.contains("__Secure-1PSID=parent"))
+        XCTAssertTrue(header.contains("SIDCC=sidcc"))
+        XCTAssertTrue(header.contains("__Secure-1PAPISID=papi1"))
+        XCTAssertTrue(header.contains("__Secure-3PAPISID=papi3"))
+        XCTAssertFalse(header.contains("wrong-host"))
+        XCTAssertFalse(header.contains("wrong-path"))
+    }
+
+    private func record(
+        domain: String,
+        name: String,
+        path: String,
+        value: String
+    ) -> BrowserCookieRecord {
+        BrowserCookieRecord(
+            domain: domain,
+            name: name,
+            path: path,
+            value: value,
+            expires: nil,
+            isSecure: true,
+            isHTTPOnly: true
+        )
     }
 }

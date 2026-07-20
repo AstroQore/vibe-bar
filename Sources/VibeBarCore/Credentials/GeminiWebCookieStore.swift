@@ -15,10 +15,11 @@ import Foundation
 /// The set of cookies that are kept after `minimizedCookieHeader(from:)`
 /// runs is intentionally conservative for now: until the spike against
 /// `gemini.google.com/usage` confirms the exact authentication contract,
-/// the store keeps every `__Secure-1PSID*` cookie plus the Google SAPISID
-/// family. Spike outcomes that prove a smaller set is sufficient should
-/// shrink `keptCookieNamePrefixes` accordingly and document why each
-/// remaining cookie is required.
+/// the store keeps the Google SID/PSID/PAPISID authentication family. A
+/// July 2026 live `gemini.google.com/usage` verification confirmed that
+/// `SIDCC` and both secure PAPISID cookies are required in addition to the
+/// older PSID set; omitting them returns a logged-out HTML shell even while
+/// the same Chrome profile is visibly signed in.
 public enum GeminiWebCookieStore {
     public enum CookieSource: Sendable {
         case webView
@@ -34,10 +35,13 @@ public enum GeminiWebCookieStore {
         "__Secure-1PSID",
         "__Secure-1PSIDTS",
         "__Secure-1PSIDCC",
+        "__Secure-1PAPISID",
         "__Secure-3PSID",
         "__Secure-3PSIDTS",
         "__Secure-3PSIDCC",
+        "__Secure-3PAPISID",
         "SID",
+        "SIDCC",
         "HSID",
         "SSID",
         "APISID",

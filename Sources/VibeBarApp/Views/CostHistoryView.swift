@@ -19,7 +19,8 @@ private struct CostChartPoint: Identifiable, Equatable {
 }
 
 /// Cost history with hour/day/week/month grouping, model-aware hover detail,
-/// and a click-to-pin model inspector that stays out of the plot area.
+/// and a click-to-pin model inspector presented in a fixed-size popover so
+/// inspecting a bar never changes the card height or reflows the masonry.
 struct CostHistoryView: View {
     let tool: ToolType
     let snapshot: CostSnapshot?
@@ -41,42 +42,52 @@ struct CostHistoryView: View {
         let peak = points.map(\.costUSD).max() ?? 0
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(titleOverride ?? "Cost History")
-                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                Spacer(minLength: 4)
-                CostTimeframeSelector(selection: $timeframe, density: density)
-                if availableGranularities.count > 1 {
-                    Menu {
-                        ForEach(availableGranularities) { option in
-                            Button {
-                                granularity = option
-                                clearSelection()
-                            } label: {
-                                if option == granularity {
-                                    Label(option.rawValue, systemImage: "checkmark")
-                                } else {
-                                    Text(option.rawValue)
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(titleOverride ?? "Cost History")
+                        .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    Spacer(minLength: 8)
+                    SectionRefreshButton(isRefreshing: false) {
+                        environment.refreshCostUsage()
+                    }
+                }
+                HStack(spacing: 6) {
+                    Spacer(minLength: 0)
+                    CostTimeframeSelector(selection: $timeframe, density: density)
+                        .fixedSize(horizontal: true, vertical: false)
+                    if availableGranularities.count > 1 {
+                        Menu {
+                            ForEach(availableGranularities) { option in
+                                Button {
+                                    granularity = option
+                                    clearSelection()
+                                } label: {
+                                    if option == granularity {
+                                        Label(option.rawValue, systemImage: "checkmark")
+                                    } else {
+                                        Text(option.rawValue)
+                                    }
                                 }
                             }
+                        } label: {
+                            Text("By \(granularity.rawValue)")
+                                .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
                         }
-                    } label: {
-                        Text("By \(granularity.rawValue)")
-                            .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+                        .menuStyle(.borderlessButton)
+                        .focusable(false)
+                        .fixedSize()
                     }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                }
-                SectionRefreshButton(isRefreshing: false) {
-                    environment.refreshCostUsage()
                 }
             }
 
             chart(points: points, average: average)
-
-            if let pinned = pinnedPoint(in: points) {
-                pinnedModelPanel(pinned)
-            }
+                .popover(isPresented: pinnedPopoverBinding(points: points), arrowEdge: .top) {
+                    if let pinned = pinnedPoint(in: points) {
+                        pinnedModelPanel(pinned)
+                            .frame(width: 300)
+                            .padding(10)
+                    }
+                }
 
             HStack(spacing: 16) {
                 metric(label: "Total", value: formatCost(total))
@@ -98,9 +109,7 @@ struct CostHistoryView: View {
                 .stroke(.separator.opacity(0.4), lineWidth: 0.5)
         )
         .onChange(of: timeframe) { _, _ in
-            if !availableGranularities.contains(granularity) {
-                granularity = availableGranularities.first ?? .day
-            }
+            granularity = preferredGranularity(for: timeframe)
             clearSelection()
         }
     }
@@ -181,8 +190,9 @@ struct CostHistoryView: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .stride(by: axisStride.component, count: axisStride.count)) { value in
-                    AxisValueLabel(format: axisStride.format)
+                let stride = axisStride(for: points)
+                AxisMarks(values: .stride(by: stride.component, count: stride.count)) { value in
+                    AxisValueLabel(format: stride.format)
                         .font(.system(size: 9))
                 }
             }
@@ -323,6 +333,14 @@ struct CostHistoryView: View {
         }
     }
 
+    private func preferredGranularity(for timeframe: CostTimeframe) -> CostHistoryGranularity {
+        switch timeframe {
+        case .today, .yesterday: .hour
+        case .week, .month: .day
+        case .all: .month
+        }
+    }
+
     private var chartPoints: [CostChartPoint] {
         guard let snapshot else { return [] }
         if timeframe == .today || timeframe == .yesterday {
@@ -438,13 +456,30 @@ struct CostHistoryView: View {
         let format: Date.FormatStyle
     }
 
-    private var axisStride: AxisStride {
+    private func axisStride(for points: [CostChartPoint]) -> AxisStride {
+        let desiredLabels = 6
+        let adaptiveCount = max(1, Int(ceil(Double(max(1, points.count)) / Double(desiredLabels))))
         switch granularity {
-        case .hour: .init(component: .hour, count: 4, format: .dateTime.hour())
+        case .hour:
+            return AxisStride(component: .hour, count: 4, format: .dateTime.hour())
         case .day:
-            .init(component: .day, count: timeframe == .month ? 5 : 1, format: .dateTime.day().month(.abbreviated))
-        case .week: .init(component: .weekOfYear, count: 1, format: .dateTime.day().month(.abbreviated))
-        case .month: .init(component: .month, count: 1, format: .dateTime.month(.abbreviated).year(.twoDigits))
+            return AxisStride(
+                component: .day,
+                count: timeframe == .all ? adaptiveCount : (timeframe == .month ? 5 : 1),
+                format: .dateTime.day().month(.abbreviated)
+            )
+        case .week:
+            return AxisStride(
+                component: .weekOfYear,
+                count: timeframe == .all ? adaptiveCount : 1,
+                format: .dateTime.day().month(.abbreviated)
+            )
+        case .month:
+            return AxisStride(
+                component: .month,
+                count: timeframe == .all ? adaptiveCount : 1,
+                format: .dateTime.month(.abbreviated).year(.twoDigits)
+            )
         }
     }
 
@@ -454,6 +489,15 @@ struct CostHistoryView: View {
 
     private func pinnedPoint(in points: [CostChartPoint]) -> CostChartPoint? {
         pinnedDate.flatMap { date in points.first { $0.date == date } }
+    }
+
+    private func pinnedPopoverBinding(points: [CostChartPoint]) -> Binding<Bool> {
+        Binding(
+            get: { pinnedPoint(in: points) != nil },
+            set: { isPresented in
+                if !isPresented { pinnedDate = nil }
+            }
+        )
     }
 
     private func nearestPoint(to date: Date, in points: [CostChartPoint]) -> CostChartPoint? {
