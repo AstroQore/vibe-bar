@@ -11,7 +11,8 @@ import Foundation
 ///
 /// Extracted from `AntigravityQuotaAdapter` so two callers can share one
 /// probe + transport:
-///   1. live quota — `GetUserStatus` (`AntigravityQuotaAdapter`)
+///   1. live quota — `RetrieveUserQuotaSummary`, plus `GetUserStatus`
+///      for identity metadata (`AntigravityQuotaAdapter`)
 ///   2. historical cost — `GetCascadeTrajectoryGeneratorMetadata`
 ///      (`AntigravityCascadeUsageFetcher`, used by `CostUsageScanner`
 ///      for the encrypted `.pb` conversations we can't decode offline)

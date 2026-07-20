@@ -235,6 +235,12 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         }
         guard tool == .antigravity else { return nil }
         let lower = bucketId.lowercased()
+        if lower == "gemini_five_hour" || lower == "gemini_weekly" {
+            return "antigravity.gemini-models"
+        }
+        if lower == "claude_gpt_five_hour" || lower == "claude_gpt_weekly" {
+            return "antigravity.claude-gpt-models"
+        }
         if lower.contains("gpt-oss") { return "antigravity.gpt-oss" }
         if lower.contains("claude")  { return "antigravity.claude" }
         if lower.contains("flash-lite") { return "antigravity.gemini-flash-lite" }
