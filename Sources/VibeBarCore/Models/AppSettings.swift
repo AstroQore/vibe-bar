@@ -17,6 +17,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var popoverDensities: [MenuBarItemKind: PopoverDensity]
     /// Optional user-visible plan badge overrides. Empty means "Auto".
     public var providerPlanLabels: [ToolType: String]
+    /// L1 providers shown on the Overview surface. Hiding one keeps its
+    /// credentials, refresh schedule, and history intact; it only removes the
+    /// provider's Overview card, totals contribution, status tile, and tab.
+    public var visibleCoreProviders: Set<ToolType>
     /// Per-misc-provider non-sensitive config (source mode, region,
     /// enterprise host, etc.). Sensitive credentials live in Keychain
     /// (`MiscCredentialStore` / `CookieHeaderCache`), never in this map. The
@@ -50,6 +54,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miniWindow: Self.defaultMiniWindow,
         popoverDensities: Self.defaultPopoverDensities,
         providerPlanLabels: Self.defaultProviderPlanLabels,
+        visibleCoreProviders: Self.defaultVisibleCoreProviders,
         miscProviders: Self.defaultMiscProviders,
         visibleMiscProviders: Self.defaultVisibleMiscProviders,
         miscProviderOrder: Self.defaultMiscProviderOrder,
@@ -111,6 +116,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let defaultProviderPlanLabels: [ToolType: String] = [:]
 
+    public static var defaultVisibleCoreProviders: Set<ToolType> {
+        Set(ToolType.coreProviderRepresentatives)
+    }
+
     /// Default `MiscProviderSettings` for every misc-page provider. Source
     /// selection is intentionally automatic and not exposed in the UI;
     /// region / enterprise host remain as provider-specific knobs.
@@ -150,6 +159,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
         popoverDensities: [MenuBarItemKind: PopoverDensity] = AppSettings.defaultPopoverDensities,
         providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
+        visibleCoreProviders: Set<ToolType> = AppSettings.defaultVisibleCoreProviders,
         miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
         visibleMiscProviders: Set<ToolType> = AppSettings.defaultVisibleMiscProviders,
         miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
@@ -169,6 +179,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miniWindow = miniWindow
         self.popoverDensities = popoverDensities
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
+        self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
         let normalizedLegacyProviders = Self.normalizedMiscProviders(miscProviders)
         let normalizedVisibleProviders = Self.normalizedVisibleMiscProviders(visibleMiscProviders)
         let normalizedProviderOrder = Self.normalizedMiscProviderOrder(miscProviderOrder)
@@ -199,6 +210,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case popoverDensities
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
+        case visibleCoreProviders
         case miscProviders
         case visibleMiscProviders
         case miscProviderOrder
@@ -253,6 +265,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
             self.providerPlanLabels = Self.normalizedProviderPlanLabels(map)
         } else {
             self.providerPlanLabels = Self.defaultProviderPlanLabels
+        }
+
+        if let rawVisible = try c.decodeIfPresent([String].self, forKey: .visibleCoreProviders) {
+            let decoded = Set(rawVisible.compactMap(ToolType.init(rawValue:)))
+            self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(decoded)
+        } else {
+            self.visibleCoreProviders = Self.defaultVisibleCoreProviders
         }
 
         // Misc providers: lossy decode keyed by ToolType raw value.
@@ -328,6 +347,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(stringKeyed, forKey: .popoverDensities)
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
         try c.encode(planLabels, forKey: .providerPlanLabels)
+        let normalizedVisibleCore = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
+        let visibleCoreRaw = ToolType.coreProviderRepresentatives
+            .filter { normalizedVisibleCore.contains($0) }
+            .map(\.rawValue)
+        try c.encode(visibleCoreRaw, forKey: .visibleCoreProviders)
         let miscRaw = Dictionary(uniqueKeysWithValues: miscProviders.map { ($0.key.rawValue, $0.value) })
         try c.encode(miscRaw, forKey: .miscProviders)
         let visibleRaw = ToolType.miscPageProviders
@@ -387,6 +411,21 @@ public struct AppSettings: Codable, Equatable, Sendable {
         providerPlanLabels = Self.normalizedProviderPlanLabels(labels)
     }
 
+    public func isCoreProviderVisible(_ tool: ToolType) -> Bool {
+        guard let representative = tool.coreProviderRepresentative else { return false }
+        return Self.normalizedVisibleCoreProviders(visibleCoreProviders).contains(representative)
+    }
+
+    public mutating func setCoreProviderVisible(_ visible: Bool, for tool: ToolType) {
+        guard let representative = tool.coreProviderRepresentative else { return }
+        if visible {
+            visibleCoreProviders.insert(representative)
+        } else {
+            visibleCoreProviders.remove(representative)
+        }
+        visibleCoreProviders = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
+    }
+
     private static func normalizedMenuBarItems(_ items: [MenuBarItemSettings]) -> [MenuBarItemSettings] {
         MenuBarItemKind.allCases.map { kind in
             var item = items.first { $0.kind == kind }.map(migratedMenuBarItem)
@@ -419,6 +458,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
             }
         }
         return out
+    }
+
+    private static func normalizedVisibleCoreProviders(_ providers: Set<ToolType>) -> Set<ToolType> {
+        Set(providers.compactMap(\.coreProviderRepresentative))
     }
 
     /// Fill in defaults for any misc-page provider missing from the

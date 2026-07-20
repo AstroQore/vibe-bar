@@ -50,48 +50,43 @@ struct FillTimelineChart: View {
                         .foregroundStyle(.quaternary)
                 }
                 if tabs.count > 1 {
-                    if tabs.count <= 3 {
-                        Picker("", selection: Binding(
-                            get: { activeSeriesId },
-                            set: { selectedBucketId = $0; hoveredIndex = nil }
-                        )) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 2) {
                             ForEach(tabs, id: \.id) { tab in
-                                Text(tab.label).tag(tab.id)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .controlSize(.mini)
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        HStack {
-                            Spacer(minLength: 0)
-                            Menu {
-                                ForEach(tabs, id: \.id) { tab in
-                                    Button {
-                                        selectedBucketId = tab.id
-                                        hoveredIndex = nil
-                                    } label: {
-                                        if tab.id == activeSeriesId {
-                                            Label(tab.label, systemImage: "checkmark")
-                                        } else {
-                                            Text(tab.label)
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Text(tabs.first(where: { $0.id == activeSeriesId })?.label ?? "Quota")
+                                let isSelected = tab.id == activeSeriesId
+                                Button {
+                                    selectedBucketId = tab.id
+                                    hoveredIndex = nil
+                                } label: {
+                                    Text(tab.label)
+                                        .font(.system(
+                                            size: max(8.5, density.subtitleFontSize - 2),
+                                            weight: .semibold,
+                                            design: .rounded
+                                        ))
+                                        .foregroundStyle(isSelected ? Color.white : Color.secondary)
                                         .lineLimit(1)
-                                    Image(systemName: "chevron.up.chevron.down")
-                                        .font(.system(size: 8, weight: .semibold))
+                                        .padding(.horizontal, 9)
+                                        .frame(height: 22)
+                                        .background {
+                                            if isSelected {
+                                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                    .fill(Color.accentColor)
+                                            }
+                                        }
+                                        .contentShape(Rectangle())
                                 }
-                                .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
+                                .buttonStyle(.plain)
+                                .focusable(false)
+                                .accessibilityLabel("Show \(tab.label) utilization history")
                             }
-                            .menuStyle(.borderlessButton)
-                            .fixedSize()
                         }
+                        .padding(2)
                     }
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.08))
+                    )
                 }
                 cycleStrip(cycles, tool: activeSeries.tool)
                 Text(caption(cycles))

@@ -31,6 +31,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.miniWindow.compactSelectedFieldIds.contains("claude.weekly"))
         XCTAssertTrue(settings.miniWindow.selectedFieldIds.contains("claude.daily_routines"))
         XCTAssertNil(settings.miniWindow.customLabels["codex.five_hour"])
+        XCTAssertEqual(settings.visibleCoreProviders, AppSettings.defaultVisibleCoreProviders)
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.defaultRetentionDays)
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.unlimitedRetentionDays)
         XCTAssertFalse(settings.costData.privacyModeEnabled)
@@ -340,5 +341,37 @@ final class AppSettingsTests: XCTestCase {
         settings.setProviderPlanLabel("sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789", for: .codex)
 
         XCTAssertNil(settings.planBadgeLabel(for: .codex))
+    }
+
+    func testCoreProviderVisibilityGroupsGeminiAndAntigravityAndRoundTrips() throws {
+        var settings = AppSettings.default
+
+        settings.setCoreProviderVisible(false, for: .antigravity)
+
+        XCTAssertFalse(settings.isCoreProviderVisible(.gemini))
+        XCTAssertFalse(settings.isCoreProviderVisible(.antigravity))
+        XCTAssertTrue(settings.isCoreProviderVisible(.codex))
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertFalse(decoded.isCoreProviderVisible(.gemini))
+        XCTAssertFalse(decoded.isCoreProviderVisible(.antigravity))
+        XCTAssertEqual(
+            decoded.visibleCoreProviders,
+            Set([.codex, .claude, .grok])
+        )
+    }
+
+    func testCoreProviderVisibilityDropsNonCoreValues() throws {
+        let json = """
+        {
+          "visibleCoreProviders": ["codex", "antigravity", "minimax", "removedProvider"]
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .gemini]))
     }
 }

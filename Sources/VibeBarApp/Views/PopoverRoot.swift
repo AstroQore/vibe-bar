@@ -188,7 +188,10 @@ struct PopoverRoot: View {
             return [.grok]
         }
         switch effectiveKind {
-        case .compact:          return ToolType.dedicatedCardProviders
+        case .compact:
+            return ToolType.dedicatedCardProviders.filter {
+                settingsStore.settings.isCoreProviderVisible($0)
+            }
         case .status:           return ToolType.combinedStatusPageProviders
         case .codex:            return [.codex]
         case .claude:           return [.claude]
@@ -319,15 +322,34 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .misc:     return .compact
         }
     }
+
+    var coreProvider: ToolType? {
+        switch self {
+        case .openAI: return .codex
+        case .claude: return .claude
+        case .googleAI: return .gemini
+        case .grok: return .grok
+        case .overview, .misc: return nil
+        }
+    }
 }
 
 private struct OverviewPageSwitch: View {
     @Binding var selection: OverviewPage
     let density: Theme.Density
 
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    private var visiblePages: [OverviewPage] {
+        OverviewPage.allCases.filter { page in
+            guard let provider = page.coreProvider else { return true }
+            return settingsStore.settings.isCoreProviderVisible(provider)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 3) {
-            ForEach(OverviewPage.allCases) { page in
+            ForEach(visiblePages) { page in
                 let isSelected = selection == page
                 BorderlessRowButton(action: {
                     selection = page
@@ -365,6 +387,11 @@ private struct OverviewPageSwitch: View {
                         .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
                 )
         )
+        .onChange(of: settingsStore.settings.visibleCoreProviders) { _, _ in
+            if !visiblePages.contains(selection) {
+                selection = .overview
+            }
+        }
     }
 }
 
@@ -417,6 +444,7 @@ private struct OverviewWaterfall: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
         let snapshots = overviewCostSnapshots
@@ -435,18 +463,26 @@ private struct OverviewWaterfall: View {
                 columns: 2,
                 spacing: density.interSectionSpacing
             ) {
-                ProviderQuotaCard(tool: .codex, density: density, compact: false)
-                    .overviewMasonryItem(id: "quota-codex", phase: .quota)
-                ProviderQuotaCard(tool: .claude, density: density, compact: false)
-                    .overviewMasonryItem(id: "quota-claude", phase: .quota)
+                if isVisible(.codex) {
+                    ProviderQuotaCard(tool: .codex, density: density, compact: false)
+                        .overviewMasonryItem(id: "quota-codex", phase: .quota)
+                }
+                if isVisible(.claude) {
+                    ProviderQuotaCard(tool: .claude, density: density, compact: false)
+                        .overviewMasonryItem(id: "quota-claude", phase: .quota)
+                }
                 // Gemini Web and AntiGravity both roll up to the
                 // Gemini product, so the Overview surface shows them
                 // as a single L2 "Gemini" card with two L3 sub-sections
                 // (`GeminiCombinedCard`). Grok stays on its own card.
-                GeminiCombinedCard(density: density)
-                    .overviewMasonryItem(id: "quota-gemini", phase: .quota)
-                ProviderQuotaCard(tool: .grok, density: density, compact: false)
-                    .overviewMasonryItem(id: "quota-grok", phase: .quota)
+                if isVisible(.gemini) {
+                    GeminiCombinedCard(density: density)
+                        .overviewMasonryItem(id: "quota-gemini", phase: .quota)
+                }
+                if isVisible(.grok) {
+                    ProviderQuotaCard(tool: .grok, density: density, compact: false)
+                        .overviewMasonryItem(id: "quota-grok", phase: .quota)
+                }
                 if hasCostData {
                     CostHistoryView(
                         tool: .codex,
@@ -467,16 +503,18 @@ private struct OverviewWaterfall: View {
                 // source (Gemini CLI no longer writes local telemetry);
                 // its `.pb`-only cascades are filled via the
                 // language-server RPC in CostUsageScanner.scanAntigravity.
-                OverviewCostCard(
-                    tool: .antigravity,
-                    density: density,
-                    snapshotOverride: googleAICostSnapshot,
-                    titleOverride: "Gemini Cost",
-                    emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
-                    toolNameOverride: "Gemini",
-                    heatmapTitleOverride: "When you use Gemini"
-                )
-                .overviewMasonryItem(id: "cost-gemini", phase: .cost)
+                if isVisible(.gemini) {
+                    OverviewCostCard(
+                        tool: .antigravity,
+                        density: density,
+                        snapshotOverride: googleAICostSnapshot,
+                        titleOverride: "Gemini Cost",
+                        emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
+                        toolNameOverride: "Gemini",
+                        heatmapTitleOverride: "When you use Gemini"
+                    )
+                    .overviewMasonryItem(id: "cost-gemini", phase: .cost)
+                }
                 if hasCostData {
                     ModelRankingList(
                         breakdowns: combinedModels,
@@ -506,7 +544,11 @@ private struct OverviewWaterfall: View {
     /// (combined Gemini + AntiGravity) via `googleAICostSnapshot`, so it
     /// isn't listed here.
     private var overviewCostProviders: [ToolType] {
-        [.codex, .claude, .grok]
+        [.codex, .claude, .grok].filter(isVisible)
+    }
+
+    private func isVisible(_ tool: ToolType) -> Bool {
+        settingsStore.settings.isCoreProviderVisible(tool)
     }
 
     /// Combined Gemini + AntiGravity cost, surfaced as the single
@@ -525,8 +567,10 @@ private struct OverviewWaterfall: View {
     /// data so Gemini / AntiGravity usage shows up there too.
     private var overviewCostSnapshots: [CostSnapshot] {
         var snaps = overviewCostProviders.compactMap { environment.costService.snapshot(for: $0) }
-        let googleAI = googleAICostSnapshot
-        if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
+        if isVisible(.gemini) {
+            let googleAI = googleAICostSnapshot
+            if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
+        }
         return snaps
     }
 }
@@ -877,6 +921,7 @@ private struct CombinedTotalsRow: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
     @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var settingsStore: SettingsStore
     private let summaryHeight: CGFloat = 178
 
     var body: some View {
@@ -884,7 +929,10 @@ private struct CombinedTotalsRow: View {
         // Google AI (Gemini + AntiGravity): AntiGravity usage is now
         // captured offline (`.db`) and via the language-server RPC
         // (`.pb`), so it's reliable enough to roll up here.
-        let snapshots = ToolType.costAwareProviders
+        let visibleCostProviders = ToolType.costAwareProviders.filter {
+            settingsStore.settings.isCoreProviderVisible($0)
+        }
+        let snapshots = visibleCostProviders
             .compactMap { environment.costService.snapshot(for: $0) }
         let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
@@ -898,7 +946,17 @@ private struct CombinedTotalsRow: View {
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
         let monthAverageCost = monthCost / 30
-        let overallFill = OverallFillRate.average(quotaService.lastSuccessByAccount)
+        let visibleAccountIDs = Set(
+            ToolType.dedicatedCardProviders
+                .filter { settingsStore.settings.isCoreProviderVisible($0) }
+                .compactMap { environment.account(for: $0)?.id }
+        )
+        let visibleQuotas = Dictionary(uniqueKeysWithValues:
+            quotaService.lastSuccessByAccount.compactMap { accountID, quota in
+                visibleAccountIDs.contains(accountID) ? (accountID, quota) : nil
+            }
+        )
+        let overallFill = OverallFillRate.average(visibleQuotas)
         // Pick the single day with the highest cost across all
         // providers, then surface both its cost and token totals so
         // the user sees what they spent *and* burned on their worst
@@ -1001,7 +1059,12 @@ private struct CombinedTotalsRow: View {
                         .stroke(.separator.opacity(0.4), lineWidth: 0.5)
                 )
 
-                OverviewStatusSummaryCard(density: density)
+                OverviewStatusSummaryCard(
+                    density: density,
+                    tools: ToolType.combinedStatusPageProviders.filter {
+                        settingsStore.settings.isCoreProviderVisible($0)
+                    }
+                )
                     .frame(
                         minWidth: availableWidth - costWidth,
                         idealWidth: availableWidth - costWidth,
@@ -1067,6 +1130,7 @@ private struct CombinedTotalsRow: View {
 
 private struct OverviewStatusSummaryCard: View {
     let density: Theme.Density
+    let tools: [ToolType]
 
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
@@ -1091,14 +1155,21 @@ private struct OverviewStatusSummaryCard: View {
                 }
                 .disabled(!serviceStatus.inFlight.isEmpty)
             }
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .top)],
-                alignment: .leading,
-                spacing: 8
-            ) {
-                ForEach(ToolType.combinedStatusPageProviders, id: \.self) { tool in
-                    providerStatusTile(tool)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            if tools.isEmpty {
+                Text("Enable a core provider in Settings to show service status.")
+                    .font(.system(size: max(9, density.subtitleFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .top)],
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    ForEach(tools, id: \.self) { tool in
+                        providerStatusTile(tool)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
         }
@@ -1795,10 +1866,15 @@ struct ProviderQuotaCard: View {
 
     private func displayableError(_ error: QuotaError?, with quota: AccountQuota?) -> QuotaError? {
         guard let error else { return nil }
+        // A credential route can disappear temporarily when an account source
+        // reloads, even though the last successful quota remains complete and
+        // usable until its next reset. Do not turn that transient routing state
+        // into a large orange error inside an otherwise healthy quota card.
+        // Settings still exposes the live route-health result, while network
+        // and response-format failures continue to surface here.
         guard error.isCredentialState,
               let quota,
-              !quota.buckets.isEmpty,
-              Date().timeIntervalSince(quota.queriedAt) < 30 * 60
+              !quota.buckets.isEmpty
         else {
             return error
         }

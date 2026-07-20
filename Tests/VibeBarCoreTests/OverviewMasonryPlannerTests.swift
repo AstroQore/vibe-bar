@@ -55,4 +55,36 @@ final class OverviewMasonryPlannerTests: XCTestCase {
         XCTAssertNotNil(plan.positions["aux2"])
         XCTAssertGreaterThan(plan.positions["aux1"]?.y ?? 0, 0)
     }
+
+    func testFixedColumnsKeepExpandedCostCardOnTheSameSide() throws {
+        let collapsed: [OverviewMasonryPlanner.Item] = [
+            .init(id: "quota-left", height: 200, phase: .quota),
+            .init(id: "quota-right", height: 180, phase: .quota),
+            .init(id: "cost-detail", height: 220, phase: .cost),
+            .init(id: "cost-following", height: 160, phase: .cost),
+            .init(id: "aux", height: 80, phase: .auxiliary)
+        ]
+        let initial = OverviewMasonryPlanner.plan(items: collapsed, spacing: 10)
+        let fixedColumns = initial.positions.mapValues(\.column)
+        let expanded = collapsed.map { item in
+            item.id == "cost-detail"
+                ? .init(id: item.id, height: 420, phase: item.phase)
+                : item
+        }
+
+        let locked = OverviewMasonryPlanner.plan(
+            items: expanded,
+            fixedColumns: fixedColumns,
+            spacing: 10
+        )
+
+        for item in expanded {
+            XCTAssertEqual(locked.positions[item.id]?.column, fixedColumns[item.id])
+        }
+        let detail = try XCTUnwrap(locked.positions["cost-detail"])
+        let following = try XCTUnwrap(locked.positions["cost-following"])
+        if detail.column == following.column {
+            XCTAssertGreaterThan(following.y, detail.y + 420)
+        }
+    }
 }

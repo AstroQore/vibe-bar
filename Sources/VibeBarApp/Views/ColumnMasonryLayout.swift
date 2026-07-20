@@ -31,18 +31,34 @@ extension View {
 }
 
 /// A live-measured waterfall whose policy is quota-first, then Cost, then
-/// supporting analytics. See `OverviewMasonryPlanner` for the tested optimizer.
+/// supporting analytics. Quota height changes trigger a fresh optimization;
+/// transient height changes below the quota block keep the current columns and
+/// only move later cards down within their existing column. This lets inline
+/// Cost History inspection expand naturally without reshuffling the Overview.
 struct ColumnMasonryLayout: Layout {
     var columns: Int = 2
     var spacing: CGFloat = 12
 
+    struct Cache {
+        var columnsByID: [String: Int] = [:]
+        var structureKey: [String] = []
+        var quotaHeightKey: [String: Int] = [:]
+        var columnWidthKey: Int?
+    }
+
+    func makeCache(subviews: Subviews) -> Cache { Cache() }
+
     func sizeThatFits(
         proposal: ProposedViewSize,
         subviews: Subviews,
-        cache: inout Void
+        cache: inout Cache
     ) -> CGSize {
         let totalWidth = proposal.width ?? 0
-        let plan = placementPlan(for: subviews, columnWidth: columnWidth(for: totalWidth))
+        let plan = placementPlan(
+            for: subviews,
+            columnWidth: columnWidth(for: totalWidth),
+            cache: &cache
+        )
         return CGSize(width: totalWidth, height: CGFloat(plan.columnHeights.max() ?? 0))
     }
 
@@ -50,10 +66,10 @@ struct ColumnMasonryLayout: Layout {
         in bounds: CGRect,
         proposal: ProposedViewSize,
         subviews: Subviews,
-        cache: inout Void
+        cache: inout Cache
     ) {
         let width = columnWidth(for: bounds.width)
-        let plan = placementPlan(for: subviews, columnWidth: width)
+        let plan = placementPlan(for: subviews, columnWidth: width, cache: &cache)
         for (index, subview) in subviews.enumerated() {
             let id = stableID(for: subview, index: index)
             guard let position = plan.positions[id] else { continue }
@@ -69,7 +85,11 @@ struct ColumnMasonryLayout: Layout {
         }
     }
 
-    private func placementPlan(for subviews: Subviews, columnWidth: CGFloat) -> OverviewMasonryPlanner.Plan {
+    private func placementPlan(
+        for subviews: Subviews,
+        columnWidth: CGFloat,
+        cache: inout Cache
+    ) -> OverviewMasonryPlanner.Plan {
         let proposal = ProposedViewSize(width: columnWidth, height: nil)
         let items = subviews.enumerated().map { index, subview in
             OverviewMasonryPlanner.Item(
@@ -78,8 +98,31 @@ struct ColumnMasonryLayout: Layout {
                 phase: subview[OverviewMasonryPhaseKey.self].corePhase
             )
         }
+        let structureKey = items.map { "\($0.phase.rawValue):\($0.id)" }
+        let quotaHeightKey = Dictionary(uniqueKeysWithValues:
+            items.filter { $0.phase == .quota }.map { item in
+                (item.id, Int((item.height * 2).rounded()))
+            }
+        )
+        let columnWidthKey = Int((columnWidth * 2).rounded())
+        if cache.columnsByID.isEmpty
+            || cache.structureKey != structureKey
+            || cache.quotaHeightKey != quotaHeightKey
+            || cache.columnWidthKey != columnWidthKey
+        {
+            let optimized = OverviewMasonryPlanner.plan(
+                items: items,
+                columns: columns,
+                spacing: Double(spacing)
+            )
+            cache.columnsByID = optimized.positions.mapValues(\.column)
+            cache.structureKey = structureKey
+            cache.quotaHeightKey = quotaHeightKey
+            cache.columnWidthKey = columnWidthKey
+        }
         return OverviewMasonryPlanner.plan(
             items: items,
+            fixedColumns: cache.columnsByID,
             columns: columns,
             spacing: Double(spacing)
         )
