@@ -501,6 +501,19 @@ private func miniGroupTitle(for cell: MiniBranchCell, settings: MiniWindowSettin
     return cell.defaultGroupTitle
 }
 
+private func miniPrimaryGroupTitle(
+    for tool: ToolType,
+    settings: MiniWindowSettings
+) -> String? {
+    guard tool == .gemini else { return nil }
+    let key = "gemini.chat"
+    let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let custom, !custom.isEmpty {
+        return custom
+    }
+    return MiniWindowGroupLabelCatalog.defaultLabel(for: key)
+}
+
 /// Renders one L2 product super-column in the regular (ring) layout.
 /// Single-tool groups (ChatGPT / Claude / Grok) get a compact L2
 /// header + bucket rings. Multi-tool groups (Gemini = Gemini Web +
@@ -555,13 +568,9 @@ private struct MiniL2GroupColumn: View {
     }
 }
 
-/// One L3 member inside an L2 super-column. Renders only the bucket
-/// rings — AQ asked to drop the per-L3 sub-label ("Gemini Web" /
-/// "AntiGravity") under the GEMINI column. The branch-group titles
-/// the parser already emits (G PRO, G FLASH, CLAUDE, GPT-OSS) still
-/// distinguish the two surfaces visually, so an explicit L3 label
-/// on top was redundant and made the mini window look like a third
-/// hierarchy level when only two are wanted.
+/// One L3 member inside an L2 super-column. Primary Gemini Web quotas use a
+/// compact "Gemini Chat" group heading so the two leftmost rings are clearly
+/// distinguished from AntiGravity's Gemini and Claude + GPT quota groups.
 private struct MiniMemberStack: View {
     let member: MiniL2Member
     let settings: MiniWindowSettings
@@ -570,7 +579,10 @@ private struct MiniMemberStack: View {
         VStack(alignment: .center, spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
                 if !member.content.primaryCells.isEmpty {
-                    MiniPrimaryRingGroup(cells: member.content.primaryCells)
+                    MiniPrimaryRingGroup(
+                        cells: member.content.primaryCells,
+                        title: primaryGroupTitle
+                    )
                 }
                 ForEach(Array(branchGroups.enumerated()), id: \.element.id) { index, group in
                     if !member.content.primaryCells.isEmpty || index > 0 {
@@ -585,6 +597,10 @@ private struct MiniMemberStack: View {
 
     private var branchGroups: [MiniBranchGroup] {
         miniBranchGroups(from: member.content.branchCells, settings: settings)
+    }
+
+    private var primaryGroupTitle: String? {
+        miniPrimaryGroupTitle(for: member.tool, settings: settings)
     }
 
     static func width(
@@ -613,9 +629,10 @@ private struct MiniMemberStack: View {
 
 private struct MiniPrimaryRingGroup: View {
     let cells: [MiniCell]
+    let title: String?
 
     var body: some View {
-        MiniRingGroupShell(title: nil, width: groupWidth) {
+        MiniRingGroupShell(title: title, width: groupWidth) {
             HStack(alignment: .top, spacing: MiniRingMetrics.ringSpacing) {
                 ForEach(cells) { cell in
                     MiniRingCell(cell: cell)
@@ -987,7 +1004,10 @@ private struct MiniCompactMemberStack: View {
         VStack(alignment: .center, spacing: 0) {
             HStack(alignment: .top, spacing: 5) {
                 if !member.content.primaryCells.isEmpty {
-                    MiniCompactPrimaryGroup(cells: member.content.primaryCells)
+                    MiniCompactPrimaryGroup(
+                        cells: member.content.primaryCells,
+                        title: primaryGroupTitle
+                    )
                 }
                 ForEach(Array(branchGroups.enumerated()), id: \.element.id) { index, group in
                     if !member.content.primaryCells.isEmpty || index > 0 {
@@ -1002,6 +1022,10 @@ private struct MiniCompactMemberStack: View {
 
     private var branchGroups: [MiniBranchGroup] {
         miniBranchGroups(from: member.content.branchCells, settings: settings)
+    }
+
+    private var primaryGroupTitle: String? {
+        miniPrimaryGroupTitle(for: member.tool, settings: settings)
     }
 
     static func width(
@@ -1030,9 +1054,10 @@ private struct MiniCompactMemberStack: View {
 
 private struct MiniCompactPrimaryGroup: View {
     let cells: [MiniCell]
+    let title: String?
 
     var body: some View {
-        MiniCompactGroupShell(title: nil, width: groupWidth) {
+        MiniCompactGroupShell(title: title, width: groupWidth) {
             HStack(alignment: .top, spacing: MiniCompactMetrics.ringSpacing) {
                 ForEach(cells) { cell in
                     MiniCompactBarCell(

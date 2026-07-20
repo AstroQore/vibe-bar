@@ -753,7 +753,7 @@ private struct GeminiTabPage: View {
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
         let antigravityAccount = environment.account(for: .antigravity)
-        let antigravityHistorySeries: [FillTimelineSeries] = antigravityAccount.map { account in
+        let antigravityQuotaSeries: [FillTimelineSeries] = antigravityAccount.map { account in
             (quotaService.cachedQuota(for: account.id)?.buckets ?? []).map {
                 FillTimelineSeries(tool: .antigravity, accountId: account.id, bucket: $0)
             }
@@ -771,7 +771,7 @@ private struct GeminiTabPage: View {
                         mode: settingsStore.displayMode,
                         density: density,
                         now: context.date,
-                        additionalHistorySeries: antigravityHistorySeries
+                        additionalQuotaSeries: antigravityQuotaSeries
                     )
                 }
                 ServiceStatusCard(tools: [.gemini])
