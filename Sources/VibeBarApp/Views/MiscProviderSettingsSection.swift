@@ -135,7 +135,18 @@ struct MiscProviderSettingsSection: View {
             }
         case .alibabaTokenPlan:
             VStack(alignment: .leading, spacing: 4) {
-                AlibabaRegionPicker(instanceID: instanceID)
+                AlibabaTokenPlanVariantPicker(instanceID: instanceID)
+                if AlibabaTokenPlanVariant.from(
+                    settingsValue: settingsStore.settings
+                        .miscProviderSettings(forInstanceID: instanceID)
+                        .planVariant
+                ) == .team {
+                    AlibabaRegionPicker(instanceID: instanceID)
+                } else {
+                    Text("Personal Token Plan is currently available only in China mainland (cn-beijing). Clone this row to track Team and Personal together.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 CookieSourceControls(
                     tool: .alibabaTokenPlan,
                     instanceID: instanceID,
@@ -145,7 +156,7 @@ struct MiscProviderSettingsSection: View {
                 MiscWebLoginRow(
                     tool: .alibabaTokenPlan,
                     instanceID: instanceID,
-                    helpText: "Sign in to bailian.console.aliyun.com once on the Aliyun account that owns the Token Plan. Same login as the Coding Plan card — you can sign in on either."
+                    helpText: "Sign in to bailian.console.aliyun.com once on the Aliyun account that owns this Token Plan. Existing cards default to Team; choose Personal above for the new rolling-window plan."
                 )
             }
         case .minimax:
@@ -316,6 +327,40 @@ struct MiscProviderSettingsSection: View {
         }
     }
 
+}
+
+/// Alibaba Token Plan commercial edition. This uses a dedicated
+/// settings field because Team also has its own independent region
+/// selector. Missing values map to Team for backward compatibility.
+struct AlibabaTokenPlanVariantPicker: View {
+    let instanceID: String
+
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    var body: some View {
+        Picker("Edition", selection: choiceBinding) {
+            ForEach(AlibabaTokenPlanVariant.allCases, id: \.rawValue) { choice in
+                Text(choice.displayLabel).tag(choice)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var choiceBinding: Binding<AlibabaTokenPlanVariant> {
+        Binding(
+            get: {
+                let raw = settingsStore.settings
+                    .miscProviderSettings(forInstanceID: instanceID)
+                    .planVariant
+                return AlibabaTokenPlanVariant.from(settingsValue: raw)
+            },
+            set: { newValue in
+                var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
+                current.planVariant = newValue.rawValue
+                settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
+            }
+        )
+    }
 }
 
 private struct CopyNameField: View {

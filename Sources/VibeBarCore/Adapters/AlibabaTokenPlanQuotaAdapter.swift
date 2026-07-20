@@ -3,16 +3,19 @@ import Foundation
 /// Alibaba Qwen / Bailian **Token Plan** usage adapter.
 ///
 /// Lives alongside `AlibabaQuotaAdapter` (the Coding Plan flavour).
-/// Token Plan is a different commercial product with credit-based
-/// quotas — sold separately, lives on a different BFF, has its own
-/// console URL, and the dashboard renders under a separate tab:
-/// `https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan`.
+/// Token Plan is a different commercial product sold separately from
+/// Coding Plan. It currently has two editions with independent console
+/// contracts:
+///
+/// - **Team** — the original credit-based BSS summary, available on the
+///   China-mainland and international consoles.
+/// - **Personal** — rolling 5-hour and 7-day utilization windows, only
+///   available in `cn-beijing` at launch.
 ///
 /// Auth: console cookies only (`*.aliyun.com` / `*.alibabacloud.com`).
 /// DashScope API keys are not used for the Token Plan BFF — that
-/// endpoint is BSS-backed (BssOpenAPI-V3) and authenticates the user
-/// via the regular Aliyun console session jar, just like the buy /
-/// renew flow in the browser.
+/// endpoints authenticate the user via the regular Aliyun console
+/// session jar, just like the buy / renew flow in the browser.
 ///
 /// Request shape captured from the live console:
 ///
@@ -27,12 +30,12 @@ import Foundation
 ///        sec_token=<scraped>
 ///        region=cn-qingdao
 ///
-/// Response payload contains `SubscriptionGroupList[]` with one entry
+/// The Team response contains `SubscriptionGroupList[]` with one entry
 /// per seat tier (standard / advanced / exclusive). Each entry carries
 /// an `EquityList[]` with the `credit_value` totals and surplus, plus a
 /// `NextCycleFlushTime` reset stamp. We surface one quota bucket per
-/// non-empty seat tier so the misc card mirrors what the user sees in
-/// the browser dashboard.
+/// non-empty seat tier. Personal uses two BroadScope endpoints: one for
+/// subscription metadata and one for the rolling utilization values.
 public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .alibabaTokenPlan
 
@@ -65,6 +68,7 @@ public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
         let instanceID = AccountStore.miscInstanceID(fromAccountID: account.id, fallbackTool: .alibabaTokenPlan)
         let settings = MiscProviderSettings.current(for: .alibabaTokenPlan, instanceID: instanceID)
+        let variant = AlibabaTokenPlanVariant.from(settingsValue: settings.planVariant)
 
         let preferred: [AlibabaTokenPlanRegion]
         switch settings.region {
@@ -85,6 +89,7 @@ public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
         let results = await MiscQuotaAggregator.gatherSlotResults(cookieResolutions) { resolution in
             try await self.fetchViaCookieSlot(
                 resolution: resolution,
+                variant: variant,
                 regions: preferred,
                 account: account,
                 queriedAt: queriedAt
@@ -99,13 +104,38 @@ public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
     }
 
     private func fetchViaCookieSlot(resolution: MiscCookieResolver.Resolution,
+                                    variant: AlibabaTokenPlanVariant,
                                     regions: [AlibabaTokenPlanRegion],
                                     account: AccountIdentity,
                                     queriedAt: Date) async throws -> AccountQuota {
+        if variant == .personal {
+            let secToken = try await resolveSECToken(
+                cookieHeader: resolution.header,
+                dashboardURL: variant.dashboardURL
+            )
+            let snapshot = try await fetchPersonalSummary(
+                cookieHeader: resolution.header,
+                secToken: secToken,
+                now: queriedAt
+            )
+            return AccountQuota(
+                accountId: account.id,
+                tool: .alibabaTokenPlan,
+                buckets: snapshot.buckets,
+                plan: snapshot.planName,
+                email: account.email,
+                queriedAt: queriedAt,
+                error: nil
+            )
+        }
+
         var lastError: QuotaError?
         for region in regions {
             do {
-                let secToken = try await resolveSECToken(cookieHeader: resolution.header, region: region)
+                let secToken = try await resolveSECToken(
+                    cookieHeader: resolution.header,
+                    dashboardURL: region.dashboardURL
+                )
                 let snapshot = try await fetchSeatSummary(
                     cookieHeader: resolution.header,
                     secToken: secToken,
@@ -140,8 +170,8 @@ public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
     /// `sec_token` cookie fallback for layouts that hoist the token
     /// onto the jar instead of the inline JS.
     private func resolveSECToken(cookieHeader: String,
-                                 region: AlibabaTokenPlanRegion) async throws -> String {
-        var request = URLRequest(url: region.dashboardURL)
+                                 dashboardURL: URL) async throws -> String {
+        var request = URLRequest(url: dashboardURL)
         request.httpMethod = "GET"
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
         request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
@@ -252,6 +282,118 @@ public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
         return try AlibabaTokenPlanResponseParser.parse(data: data, productCode: region.productCode, now: referenceTime)
     }
 
+    /// Fetch the two requests emitted by the Personal Token Plan page:
+    /// subscription metadata identifies the tier, while usage carries
+    /// the independent rolling 5-hour and 7-day utilization values.
+    private func fetchPersonalSummary(
+        cookieHeader: String,
+        secToken: String,
+        now referenceTime: Date
+    ) async throws -> AlibabaTokenPlanResponseParser.Snapshot {
+        let traceID = UUID().uuidString.lowercased()
+        var cornerstone: [String: Any] = [
+            "feTraceId": traceID,
+            "feURL": AlibabaTokenPlanVariant.personal.dashboardURL.absoluteString,
+            "protocol": "V2",
+            "console": "ONE_CONSOLE",
+            "productCode": "p_efm",
+            "domain": "bailian.console.aliyun.com",
+            "consoleSite": "BAILIAN_ALIYUN",
+            "switchAgent": 10_087_432,
+            "switchUserType": 3,
+            "userNickName": "",
+            "userPrincipalName": "",
+            "xsp_lang": "en-US"
+        ]
+        if let cna = Self.extractCookieValue(name: "cna", from: cookieHeader), !cna.isEmpty {
+            cornerstone["X-Anonymous-Id"] = cna
+        }
+
+        let subscriptionData = try await fetchPersonalData(
+            endpoint: .subscription,
+            dataObject: [
+                "queryInstanceInfoRequest": [
+                    "commodityCode": "sfm_tokenplansolo_public_cn"
+                ],
+                "cornerstoneParam": cornerstone
+            ],
+            cookieHeader: cookieHeader,
+            secToken: secToken
+        )
+        let usageData = try await fetchPersonalData(
+            endpoint: .usage,
+            dataObject: ["cornerstoneParam": cornerstone],
+            cookieHeader: cookieHeader,
+            secToken: secToken
+        )
+
+        return try AlibabaTokenPlanPersonalResponseParser.parse(
+            subscriptionData: subscriptionData,
+            usageData: usageData,
+            now: referenceTime
+        )
+    }
+
+    private func fetchPersonalData(
+        endpoint: AlibabaTokenPlanPersonalEndpoint,
+        dataObject: [String: Any],
+        cookieHeader: String,
+        secToken: String
+    ) async throws -> Data {
+        let paramsObject: [String: Any] = [
+            "Api": endpoint.apiName,
+            "V": "1.0",
+            "Data": dataObject
+        ]
+        guard let paramsData = try? JSONSerialization.data(withJSONObject: paramsObject),
+              let paramsString = String(data: paramsData, encoding: .utf8) else {
+            throw QuotaError.parseFailure("Alibaba Personal Token Plan: failed to encode params")
+        }
+
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "params", value: paramsString),
+            URLQueryItem(name: "region", value: "cn-beijing"),
+            URLQueryItem(name: "sec_token", value: secToken)
+        ]
+
+        var request = URLRequest(url: endpoint.consoleRPCURL)
+        request.httpMethod = "POST"
+        request.httpBody = (components.percentEncodedQuery ?? "").data(using: .utf8) ?? Data()
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        if let csrf = Self.extractCookieValue(name: "login_aliyunid_csrf", from: cookieHeader)
+            ?? Self.extractCookieValue(name: "csrf", from: cookieHeader) {
+            request.setValue(csrf, forHTTPHeaderField: "x-xsrf-token")
+            request.setValue(csrf, forHTTPHeaderField: "x-csrf-token")
+        }
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
+        request.setValue("https://bailian.console.aliyun.com", forHTTPHeaderField: "Origin")
+        request.setValue(
+            AlibabaTokenPlanVariant.personal.dashboardURL.absoluteString,
+            forHTTPHeaderField: "Referer"
+        )
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw QuotaError.network("Alibaba Personal Token Plan console error: \(error.localizedDescription)")
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw QuotaError.network("Alibaba Personal Token Plan: invalid response object")
+        }
+        guard http.statusCode == 200 else {
+            if http.statusCode == 401 || http.statusCode == 403 { throw QuotaError.needsLogin }
+            if http.statusCode == 429 { throw QuotaError.rateLimited }
+            throw QuotaError.network("Alibaba Personal Token Plan returned HTTP \(http.statusCode).")
+        }
+        return data
+    }
+
     // MARK: Helpers
 
     nonisolated private static var safariUA: String {
@@ -278,6 +420,62 @@ public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
             return value.isEmpty ? nil : value
         }
         return nil
+    }
+}
+
+// MARK: - Plan variant
+
+/// Commercial edition selected for one Alibaba Token Plan misc card.
+/// Missing settings deliberately map to Team so existing installations
+/// keep monitoring the same product after Personal support is added.
+public enum AlibabaTokenPlanVariant: String, CaseIterable, Sendable {
+    case team
+    case personal
+
+    public static func from(settingsValue raw: String?) -> Self {
+        switch raw?.lowercased() {
+        case "personal", "individual", "solo": return .personal
+        default: return .team
+        }
+    }
+
+    public var displayLabel: String {
+        switch self {
+        case .team: return "Team"
+        case .personal: return "Personal"
+        }
+    }
+
+    var dashboardURL: URL {
+        switch self {
+        case .team:
+            return AlibabaTokenPlanRegion.chinaMainland.dashboardURL
+        case .personal:
+            return URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=plan#/efm/subscription/token-plan/personal")!
+        }
+    }
+}
+
+enum AlibabaTokenPlanPersonalEndpoint: CaseIterable {
+    case subscription
+    case usage
+
+    var apiName: String {
+        switch self {
+        case .subscription: return "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/subscription"
+        case .usage: return "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage"
+        }
+    }
+
+    var consoleRPCURL: URL {
+        var components = URLComponents(string: "https://bailian-cs.console.aliyun.com/data/api.json")!
+        components.queryItems = [
+            URLQueryItem(name: "action", value: "BroadScopeAspnGateway"),
+            URLQueryItem(name: "product", value: "sfm_bailian"),
+            URLQueryItem(name: "api", value: apiName),
+            URLQueryItem(name: "_v", value: "undefined")
+        ]
+        return components.url!
     }
 }
 
@@ -639,6 +837,146 @@ enum AlibabaTokenPlanResponseParser {
             f.formatOptions = [.withInternetDateTime]
             if let d = f.date(from: str) { return d }
         }
+        return nil
+    }
+}
+
+/// Parser for the Personal Token Plan's split subscription + usage
+/// response. Both BroadScope responses may contain JSON serialized as
+/// strings under `DataV2`; the Team parser's tree expansion keeps the
+/// extraction tolerant of that console envelope.
+enum AlibabaTokenPlanPersonalResponseParser {
+    static func parse(
+        subscriptionData: Data,
+        usageData: Data,
+        now _: Date
+    ) throws -> AlibabaTokenPlanResponseParser.Snapshot {
+        let subscription = try root(from: subscriptionData, responseName: "subscription")
+        let usage = try root(from: usageData, responseName: "usage")
+        try validateEnvelope(subscription)
+        try validateEnvelope(usage)
+
+        var buckets: [QuotaBucket] = []
+        if let fiveHour = findFirstDouble(["per5HourPercentage"], in: usage) {
+            buckets.append(QuotaBucket(
+                id: "alibabaTokenPlan.personal.fiveHour",
+                title: "5 Hours",
+                shortLabel: "5h",
+                usedPercent: normalizedPercentage(fiveHour),
+                resetAt: nil,
+                rawWindowSeconds: 5 * 3_600,
+                groupTitle: "Personal"
+            ))
+        }
+        if let weekly = findFirstDouble(["per1WeekPercentage"], in: usage) {
+            buckets.append(QuotaBucket(
+                id: "alibabaTokenPlan.personal.weekly",
+                title: "Weekly",
+                shortLabel: "Wk",
+                usedPercent: normalizedPercentage(weekly),
+                resetAt: nil,
+                rawWindowSeconds: 7 * 86_400,
+                groupTitle: "Personal"
+            ))
+        }
+
+        guard !buckets.isEmpty else {
+            throw QuotaError.parseFailure(
+                "Alibaba Personal Token Plan response had no usable utilization windows."
+            )
+        }
+
+        let specCode = AlibabaTokenPlanResponseParser.findFirstString(["specCode"], in: subscription)
+        let tier = tierDisplayName(from: specCode)
+        let planName = tier.map { "Token Plan · Personal · \($0)" } ?? "Token Plan · Personal"
+        return AlibabaTokenPlanResponseParser.Snapshot(buckets: buckets, planName: planName)
+    }
+
+    private static func root(from data: Data, responseName: String) throws -> [String: Any] {
+        guard !data.isEmpty else {
+            throw QuotaError.parseFailure(
+                "Alibaba Personal Token Plan returned an empty \(responseName) body."
+            )
+        }
+        let raw: Any
+        do {
+            raw = try JSONSerialization.jsonObject(with: data, options: [])
+        } catch {
+            throw QuotaError.parseFailure(
+                "Alibaba Personal Token Plan \(responseName) response was not parseable."
+            )
+        }
+        guard let dict = AlibabaTokenPlanResponseParser.expandedJSON(raw) as? [String: Any] else {
+            throw QuotaError.parseFailure(
+                "Alibaba Personal Token Plan \(responseName) response was not a JSON object."
+            )
+        }
+        return dict
+    }
+
+    private static func validateEnvelope(_ dict: [String: Any]) throws {
+        if let code = AlibabaTokenPlanResponseParser.findFirstString(
+            ["code", "status", "statusCode", "Code"],
+            in: dict
+        ) {
+            let lower = code.lowercased()
+            if lower.contains("needlogin") || lower.contains("notlogin") ||
+                lower.contains("unauthenticated") || lower == "login" {
+                throw QuotaError.needsLogin
+            }
+        }
+        if let success = dict["successResponse"] as? Bool, !success {
+            let message = AlibabaTokenPlanResponseParser.findFirstString(
+                ["message", "msg", "Message"],
+                in: dict
+            ) ?? "request failed"
+            throw QuotaError.network("Alibaba Personal Token Plan: \(message)")
+        }
+        if let status = AlibabaTokenPlanResponseParser.findFirstInt(
+            ["httpStatusCode", "statusCode", "status_code"],
+            in: dict
+        ), status != 0, status != 200 {
+            if status == 401 || status == 403 { throw QuotaError.needsLogin }
+            throw QuotaError.network("Alibaba Personal Token Plan returned status \(status).")
+        }
+    }
+
+    private static func findFirstDouble(_ keys: [String], in value: Any) -> Double? {
+        if let dict = value as? [String: Any] {
+            for key in keys {
+                if let parsed = AlibabaTokenPlanResponseParser.parseDouble(dict[key]) { return parsed }
+            }
+            for nested in dict.values {
+                if let parsed = findFirstDouble(keys, in: nested) { return parsed }
+            }
+        }
+        if let array = value as? [Any] {
+            for nested in array {
+                if let parsed = findFirstDouble(keys, in: nested) { return parsed }
+            }
+        }
+        return nil
+    }
+
+    /// The live account currently reports zero, which cannot reveal
+    /// whether a non-zero deployment serializes 0...1 or 0...100.
+    /// Accept both shapes without misreading a whole-number 1% value,
+    /// then clamp malformed data to the UI's supported range.
+    private static func normalizedPercentage(_ raw: Double) -> Double {
+        let scaled: Double
+        if raw > 0, raw < 1, raw.rounded(.towardZero) != raw {
+            scaled = raw * 100
+        } else {
+            scaled = raw
+        }
+        return max(0, min(100, scaled))
+    }
+
+    private static func tierDisplayName(from specCode: String?) -> String? {
+        guard let lower = specCode?.lowercased() else { return nil }
+        if lower.contains("standard") { return "Standard" }
+        if lower.contains("pro") { return "Pro" }
+        if lower.contains("lite") { return "Lite" }
         return nil
     }
 }

@@ -36,6 +36,10 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
     /// Optional region override (e.g. "ap-southeast-1", "cn-beijing"
     /// for Alibaba; provider-specific for others).
     public var region: String?
+    /// Optional commercial-plan variant for providers that expose
+    /// multiple products under one card (for example Alibaba Token
+    /// Plan's Team and Personal editions).
+    public var planVariant: String?
     /// Self-hosted endpoint override (e.g. GitHub Enterprise for
     /// Copilot, Z.ai self-hosted for Z.ai).
     public var enterpriseHost: URL?
@@ -54,6 +58,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         sourceMode: .auto,
         cookieSource: .auto,
         region: nil,
+        planVariant: nil,
         enterpriseHost: nil,
         workspaceID: nil,
         preferredBrowser: nil,
@@ -64,6 +69,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         sourceMode: SourceMode = .auto,
         cookieSource: ProviderCookieSource = .auto,
         region: String? = nil,
+        planVariant: String? = nil,
         enterpriseHost: URL? = nil,
         workspaceID: String? = nil,
         preferredBrowser: BrowserKind? = nil,
@@ -72,6 +78,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         self.sourceMode = sourceMode
         self.cookieSource = cookieSource
         self.region = region
+        self.planVariant = planVariant
         self.enterpriseHost = enterpriseHost
         self.workspaceID = workspaceID
         self.preferredBrowser = preferredBrowser
@@ -87,7 +94,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sourceMode, cookieSource, region, enterpriseHost, workspaceID
+        case sourceMode, cookieSource, region, planVariant, enterpriseHost, workspaceID
         case preferredBrowser, enabledOverride
     }
 
@@ -122,6 +129,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         self.sourceMode = try c.decodeIfPresent(SourceMode.self, forKey: .sourceMode) ?? .auto
         self.cookieSource = try c.decodeIfPresent(ProviderCookieSource.self, forKey: .cookieSource) ?? .auto
         self.region = try c.decodeIfPresent(String.self, forKey: .region)
+        self.planVariant = try c.decodeIfPresent(String.self, forKey: .planVariant)
         self.enterpriseHost = try c.decodeIfPresent(URL.self, forKey: .enterpriseHost)
         self.workspaceID = try c.decodeIfPresent(String.self, forKey: .workspaceID)
         self.preferredBrowser = try c.decodeIfPresent(BrowserKind.self, forKey: .preferredBrowser)
@@ -138,6 +146,7 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
         try c.encode(sourceMode, forKey: .sourceMode)
         try c.encode(cookieSource, forKey: .cookieSource)
         try c.encodeIfPresent(region, forKey: .region)
+        try c.encodeIfPresent(planVariant, forKey: .planVariant)
         try c.encodeIfPresent(enterpriseHost, forKey: .enterpriseHost)
         try c.encodeIfPresent(workspaceID, forKey: .workspaceID)
         try c.encodeIfPresent(preferredBrowser, forKey: .preferredBrowser)
