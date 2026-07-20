@@ -269,9 +269,9 @@ private struct MiniBranchCell: Identifiable {
         switch bucket.id {
         case "gpt_5_3_codex_spark_five_hour": return "5h"
         case "gpt_5_3_codex_spark_weekly": return "wk"
-        case "gemini_five_hour", "claude_gpt_five_hour" where tool == .antigravity:
+        case let id where tool == .antigravity && ["gemini_five_hour", "claude_gpt_five_hour"].contains(id):
             return "5h"
-        case "gemini_weekly", "claude_gpt_weekly" where tool == .antigravity:
+        case let id where tool == .antigravity && ["gemini_weekly", "claude_gpt_weekly"].contains(id):
             return "wk"
         case "weekly_sonnet": return "wk"
         case "weekly_design": return "wk"
@@ -315,9 +315,9 @@ private struct MiniBranchCell: Identifiable {
             return "claude.fable"
         case "weekly_oauth_apps":
             return "claude.oauth"
-        case "gemini_five_hour", "gemini_weekly" where tool == .antigravity:
+        case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "antigravity.gemini-models"
-        case "claude_gpt_five_hour", "claude_gpt_weekly" where tool == .antigravity:
+        case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
             return "antigravity.claude-gpt-models"
         case let id where tool == .gemini && id.contains("flash-lite"):
             return "gemini.flash-lite"
@@ -359,9 +359,9 @@ private struct MiniBranchCell: Identifiable {
             return "Fable"
         case "weekly_oauth_apps":
             return "OAuth"
-        case "gemini_five_hour", "gemini_weekly" where tool == .antigravity:
+        case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "Gemini"
-        case "claude_gpt_five_hour", "claude_gpt_weekly" where tool == .antigravity:
+        case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
             return "C+G"
         case let id where tool == .gemini && id.contains("flash-lite"):
             return "Lite"

@@ -346,11 +346,11 @@ enum TencentTokenPlanResponseParser {
         let displayLabel = humanPlanName(plan)
         return QuotaBucket(
             id: "tencentTokenPlan.\(variant.rawValue).\(stableSuffix)",
-            title: "Credits",
-            shortLabel: "Credits",
+            title: "Monthly",
+            shortLabel: "Month",
             usedPercent: percent,
             resetAt: resetAt,
-            rawWindowSeconds: nil,
+            rawWindowSeconds: 30 * 86_400,
             groupTitle: displayLabel
         )
     }

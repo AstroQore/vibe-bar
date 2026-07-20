@@ -124,6 +124,13 @@ enum GeminiWebResponseParser {
             let bucketType = intValue(entry[2])
             let resetAt = extractResetDate(from: entry[3])
             let descriptor = bucketDescriptor(forType: bucketType)
+            // The live Ultra payload currently includes an internal type-4
+            // sentinel with no reset timestamp. It is not rendered on the
+            // Gemini Usage page and is not a resettable user quota, so don't
+            // turn it into a misleading "Bucket 4" meter. Future unknown
+            // buckets with a real reset remain visible through the generic
+            // fallback below.
+            if descriptor.windowSeconds == nil, resetAt == nil { continue }
             let usedPercent = min(100, max(0, usedFraction * 100))
             buckets.append(QuotaBucket(
                 id: descriptor.id,
@@ -142,15 +149,13 @@ enum GeminiWebResponseParser {
     }
 
     /// Map Google's `planTier` integer to the user-visible plan label.
-    /// Confirmed `2 = "Pro"` (Google AI Pro). `1 = Free` / `3 = Ultra`
-    /// are inferred from Google's published tier names and the
-    /// "20x more usage than AI Pro" upgrade banner — adjust when a
-    /// real Ultra or Free account becomes available for verification.
+    /// `2 = Pro`; the current live Ultra response uses tier id `6`.
+    /// Older captures used `3` for Ultra, so retain that alias.
     static func planLabel(forTierId id: Int) -> String? {
         switch id {
         case 1: return "Free"
         case 2: return "Pro"
-        case 3: return "Ultra"
+        case 3, 6: return "Ultra"
         default: return nil
         }
     }

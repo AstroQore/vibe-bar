@@ -5,6 +5,7 @@ import Foundation
 /// failures, and supports a global mock-mode override.
 @MainActor
 public final class QuotaService: ObservableObject {
+    public static let credentialFallbackMaxAge: TimeInterval = 30 * 60
     @Published public private(set) var lastSuccessByAccount: [String: AccountQuota] = [:]
     @Published public private(set) var lastErrorByAccount: [String: QuotaError] = [:]
     @Published public private(set) var lastUpdatedByAccount: [String: Date] = [:]
@@ -14,10 +15,6 @@ public final class QuotaService: ObservableObject {
     /// kept in sync as each `refresh` succeeds; views read this
     /// dictionary directly via the `@Published` projection.
     @Published public private(set) var historyByAccountBucket: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
-    /// Per-(accountId, bucketId) fill timeline (hourly point-in-time samples)
-    /// from `UsageFillTimelineStore`, powering the CodexBar-style fill chart.
-    /// Points are oldest-first.
-    @Published public private(set) var fillTimelineByAccountBucket: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
 
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
@@ -41,10 +38,15 @@ public final class QuotaService: ObservableObject {
         // and mini window won't render samples until this Task resolves,
         // but neither is open at launch so the brief flicker is invisible.
         Task { @MainActor [weak self] in
+            // Salvage only genuine refill jumps from the retired hourly
+            // timeline before hydrating the cycle-based history UI.
+            let points = await UsageFillTimelineStore.shared.allPoints()
+            await SubscriptionHistoryStore.shared.importLegacyTimeline(
+                points,
+                retentionDays: retentionProvider()
+            )
             let samples = await SubscriptionHistoryStore.shared.allSamples()
             self?.applyInitialSubscriptionHistory(samples)
-            let points = await UsageFillTimelineStore.shared.allPoints()
-            self?.applyInitialFillTimeline(points)
         }
     }
 
@@ -131,6 +133,18 @@ public final class QuotaService: ObservableObject {
         lastSuccessByAccount[accountId]
     }
 
+    /// Opening a provider page should refresh both missing and stale cache.
+    /// Previously any cache entry — even one from months ago — suppressed the
+    /// page refresh indefinitely.
+    public func needsRefresh(
+        accountId: String,
+        now: Date = Date(),
+        maxAge: TimeInterval
+    ) -> Bool {
+        guard let cached = lastSuccessByAccount[accountId] else { return true }
+        return now.timeIntervalSince(cached.queriedAt) >= max(0, maxAge)
+    }
+
     public func clear(accountId: String) {
         lastSuccessByAccount.removeValue(forKey: accountId)
         lastErrorByAccount.removeValue(forKey: accountId)
@@ -158,45 +172,15 @@ public final class QuotaService: ObservableObject {
             SafeLog.warn("Saving quota cache failed: \(SafeLog.sanitize(error.localizedDescription))")
         }
 
-        // Fold this snapshot into the subscription fill-history store
-        // and republish the affected keys so views can repaint
-        // sparklines. The store's provider and window gates drop
-        // anything outside the four primary providers and 5-hour
-        // buckets, so this is a no-op for misc-provider refreshes.
+        // Fold this snapshot into the reset-cycle store and republish the
+        // affected keys. Point-in-time hourly sampling is intentionally no
+        // longer updated: it measured "what remained at refresh time", not
+        // "what remained when the subscription reset".
         let retention = retentionProvider()
         let quota = success
         Task { [weak self] in
             await SubscriptionHistoryStore.shared.observe(quota, retentionDays: retention)
             await self?.refreshSubscriptionHistory(for: quota)
-            await UsageFillTimelineStore.shared.observe(quota, retentionDays: retention)
-            await self?.refreshFillTimeline(for: quota)
-        }
-    }
-
-    private func applyInitialFillTimeline(_ points: [FillTimelinePoint]) {
-        var grouped: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
-        for point in points {
-            let key = SubscriptionHistoryKey(accountId: point.accountId, bucketId: point.bucketId)
-            grouped[key, default: []].append(point)
-        }
-        for key in grouped.keys {
-            grouped[key]?.sort { $0.slotStart < $1.slotStart }
-        }
-        fillTimelineByAccountBucket = grouped
-    }
-
-    private func refreshFillTimeline(for quota: AccountQuota) async {
-        var updates: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
-        for bucket in quota.buckets where bucket.groupTitle == nil {
-            let points = await UsageFillTimelineStore.shared.points(
-                accountId: quota.accountId,
-                bucketId: bucket.id
-            )
-            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
-            updates[key] = points
-        }
-        for (key, points) in updates {
-            fillTimelineByAccountBucket[key] = points
         }
     }
 
@@ -230,7 +214,8 @@ public final class QuotaService: ObservableObject {
     private func store(error: QuotaError, for account: AccountIdentity) {
         if error.isCredentialState,
            let cached = lastSuccessByAccount[account.id],
-           !cached.buckets.isEmpty {
+           !cached.buckets.isEmpty,
+           Date().timeIntervalSince(cached.queriedAt) < Self.credentialFallbackMaxAge {
             lastErrorByAccount.removeValue(forKey: account.id)
             return
         }
@@ -240,7 +225,9 @@ public final class QuotaService: ObservableObject {
 
     private func cachedOrEmpty(for account: AccountIdentity, error: QuotaError) -> AccountQuota {
         if var cached = lastSuccessByAccount[account.id] {
-            if error.isCredentialState, !cached.buckets.isEmpty {
+            if error.isCredentialState,
+               !cached.buckets.isEmpty,
+               Date().timeIntervalSince(cached.queriedAt) < Self.credentialFallbackMaxAge {
                 cached.error = nil
                 return cached
             }

@@ -1,253 +1,256 @@
 import SwiftUI
 import VibeBarCore
 
-/// CodexBar-style fill history: a Session | Weekly segmented control, a
-/// strip of thin per-slot bars (light track, accent fill proportional to
-/// used%), date ticks along the bottom, and a caption line that follows the
-/// hovered bar ("Jul 2 at 16:23: 24% used").
-///
-/// Data comes from `QuotaService.fillTimelineByAccountBucket` — hourly
-/// point-in-time samples recorded on every quota refresh. The chart shows
-/// the last 7 days; slots without a sample render as an empty track, which
-/// is also how a fresh install looks until history accumulates.
-struct FillTimelineChart: View {
+/// One independently resettable quota shown in Fill History. The account id
+/// is part of the identity because the Gemini page combines Gemini Web and
+/// AntiGravity, whose bucket ids can otherwise overlap.
+struct FillTimelineSeries: Identifiable {
     let tool: ToolType
-    /// Headline buckets of the account (groupTitle == nil), in display order.
-    let buckets: [QuotaBucket]
     let accountId: String
+    let bucket: QuotaBucket
+
+    var id: String { "\(tool.rawValue):\(accountId):\(bucket.id)" }
+}
+
+/// Reset-cycle utilization history. Each bar is one subscription cycle and
+/// answers the useful question: how much quota was still unused when the
+/// provider refilled it? The final outlined bar is the active cycle.
+struct FillTimelineChart: View {
+    let series: [FillTimelineSeries]
     let mode: DisplayMode
     let density: Theme.Density
     let now: Date
 
     @EnvironmentObject var quotaService: QuotaService
     @State private var selectedBucketId: String?
-    /// Resolved at hover time inside the strip, where the live slot grid is
-    /// in scope — keeps the caption pinned to the exact bar under the cursor
-    /// regardless of the rendered width.
-    @State private var hovered: HoveredSlot?
+    @State private var hoveredIndex: Int?
 
-    private struct HoveredSlot: Equatable {
-        let index: Int
-        let start: Date
-        let point: FillTimelinePoint?
-    }
-
-    private static let spanDays: Double = 7
-    private static let barSpacing: CGFloat = 2
-    private static let minBarWidth: CGFloat = 2.5
-    private static let maxSlots = 84   // 2h slots over 7 days
-    private static let chartHeight: CGFloat = 40
+    private static let barSpacing: CGFloat = 3
+    private static let maxCycles = 12
+    private static let chartHeight: CGFloat = 48
 
     var body: some View {
         let tabs = availableTabs
         if tabs.isEmpty {
             EmptyView()
         } else {
-            let activeBucketId = selectedBucketId.flatMap { id in
-                tabs.contains(where: { $0.bucketId == id }) ? id : nil
-            } ?? tabs.first!.bucketId
+            let activeSeriesId = selectedBucketId.flatMap { id in
+                tabs.contains(where: { $0.id == id }) ? id : nil
+            } ?? tabs[0].id
+            let activeSeries = tabs.first(where: { $0.id == activeSeriesId })!.series
+            let cycles = visibleCycles(series: activeSeries)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text("Fill history")
-                        .font(.system(size: max(9, density.subtitleFontSize - 2)))
-                        .foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Utilization by reset")
+                            .font(.system(size: max(9, density.subtitleFontSize - 2)))
+                            .foregroundStyle(.tertiary)
+                        Text("Each bar is one quota cycle")
+                            .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
+                            .foregroundStyle(.quaternary)
+                    }
                     Spacer(minLength: 4)
                     if tabs.count > 1 {
-                        Picker("", selection: Binding(
-                            get: { activeBucketId },
-                            set: { selectedBucketId = $0; hovered = nil }
-                        )) {
-                            ForEach(tabs, id: \.bucketId) { tab in
-                                Text(tab.label).tag(tab.bucketId)
+                        if tabs.count <= 3 {
+                            Picker("", selection: Binding(
+                                get: { activeSeriesId },
+                                set: { selectedBucketId = $0; hoveredIndex = nil }
+                            )) {
+                                ForEach(tabs, id: \.id) { tab in
+                                    Text(tab.label).tag(tab.id)
+                                }
                             }
+                            .pickerStyle(.segmented)
+                            .controlSize(.mini)
+                            .labelsHidden()
+                            .fixedSize()
+                        } else {
+                            Menu {
+                                ForEach(tabs, id: \.id) { tab in
+                                    Button {
+                                        selectedBucketId = tab.id
+                                        hoveredIndex = nil
+                                    } label: {
+                                        if tab.id == activeSeriesId {
+                                            Label(tab.label, systemImage: "checkmark")
+                                        } else {
+                                            Text(tab.label)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(tabs.first(where: { $0.id == activeSeriesId })?.label ?? "Quota")
+                                        .lineLimit(1)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 8, weight: .semibold))
+                                }
+                                .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
                         }
-                        .pickerStyle(.segmented)
-                        .controlSize(.mini)
-                        .labelsHidden()
-                        .fixedSize()
                     }
                 }
-                strip(bucketId: activeBucketId)
-                caption(bucketId: activeBucketId)
-                axisLabels
+                cycleStrip(cycles, tool: activeSeries.tool)
+                Text(caption(cycles))
+                    .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                axis(cycles)
             }
             .padding(.top, 2)
         }
     }
 
-    // MARK: - Tabs
-
-    private var availableTabs: [(bucketId: String, label: String)] {
-        buckets.map { bucket in
-            (bucketId: bucket.id, label: Self.tabLabel(for: bucket))
+    private var availableTabs: [(id: String, label: String, series: FillTimelineSeries)] {
+        let toolCount = Set(series.map(\.tool)).count
+        return series.map { item in
+            (item.id, Self.tabLabel(for: item, includeTool: toolCount > 1), item)
         }
     }
 
-    private static func tabLabel(for bucket: QuotaBucket) -> String {
-        switch bucket.id {
-        case "five_hour": return "Session"
-        case "weekly":    return "Weekly"
-        case "monthly":   return "Monthly"
-        default:          return bucket.title
+    private static func tabLabel(for series: FillTimelineSeries, includeTool: Bool) -> String {
+        let bucket = series.bucket
+        let window: String
+        switch bucket.rawWindowSeconds {
+        case 18_000: window = "5h"
+        case 604_800: window = "Wk"
+        case 2_592_000: window = "Mo"
+        default: window = bucket.shortLabel
         }
+        let group = bucket.groupTitle?.replacingOccurrences(of: " Models", with: "")
+        let owner = group ?? (includeTool ? series.tool.toolName : nil)
+        return owner.map { "\($0) · \(window)" } ?? window
     }
 
-    // MARK: - Slots
-
-    private struct Slot: Identifiable {
-        let index: Int
-        let start: Date
-        let point: FillTimelinePoint?
-        var id: Int { index }
-    }
-
-    private func slots(bucketId: String, count: Int) -> [Slot] {
-        let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucketId)
-        let points = quotaService.fillTimelineByAccountBucket[key] ?? []
-        let spanSeconds = Self.spanDays * 86_400
-        let slotSeconds = spanSeconds / Double(count)
-        let windowStart = now.addingTimeInterval(-spanSeconds)
-        var slots: [Slot] = []
-        for index in 0..<count {
-            let start = windowStart.addingTimeInterval(Double(index) * slotSeconds)
-            let end = start.addingTimeInterval(slotSeconds)
-            // Latest sample inside the slot wins — matches the store's
-            // last-in-hour-wins semantics at coarser granularity.
-            let point = points.last { $0.sampledAt >= start && $0.sampledAt < end }
-            slots.append(Slot(index: index, start: start, point: point))
-        }
-        return slots
-    }
-
-    private func slotCount(for width: CGFloat) -> Int {
-        let per = Self.minBarWidth + Self.barSpacing
-        guard width > per else { return 1 }
-        return max(12, min(Self.maxSlots, Int(width / per)))
+    private func visibleCycles(series: FillTimelineSeries) -> [SubscriptionWindowSample] {
+        let key = SubscriptionHistoryKey(accountId: series.accountId, bucketId: series.bucket.id)
+        let samples = quotaService.historyByAccountBucket[key] ?? []
+        return Array(samples.sorted { cycleDate($0) < cycleDate($1) }.suffix(Self.maxCycles))
     }
 
     @ViewBuilder
-    private func strip(bucketId: String) -> some View {
-        GeometryReader { geo in
-            let count = slotCount(for: geo.size.width)
-            let slots = slots(bucketId: bucketId, count: count)
-            let barWidth = max(
-                Self.minBarWidth,
-                (geo.size.width - CGFloat(count - 1) * Self.barSpacing) / CGFloat(count)
-            )
-            HStack(alignment: .bottom, spacing: Self.barSpacing) {
-                ForEach(slots) { slot in
-                    slotBar(slot: slot, width: barWidth, height: geo.size.height)
+    private func cycleStrip(_ cycles: [SubscriptionWindowSample], tool: ToolType) -> some View {
+        if cycles.isEmpty {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Theme.barTrack.opacity(0.45))
+                .overlay {
+                    Text("Waiting for the first quota observation")
+                        .font(.system(size: max(8, density.subtitleFontSize - 3)))
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(height: Self.chartHeight)
+        } else {
+            GeometryReader { geo in
+                let count = cycles.count
+                let barWidth = max(5, (geo.size.width - CGFloat(count - 1) * Self.barSpacing) / CGFloat(count))
+                HStack(alignment: .bottom, spacing: Self.barSpacing) {
+                    ForEach(Array(cycles.enumerated()), id: \.offset) { index, cycle in
+                        cycleBar(cycle, tool: tool, isHovered: hoveredIndex == index)
+                            .frame(width: barWidth, height: geo.size.height)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let location):
+                        hoveredIndex = min(max(0, Int(location.x / (barWidth + Self.barSpacing))), count - 1)
+                    case .ended:
+                        hoveredIndex = nil
+                    }
                 }
             }
-            .contentShape(Rectangle())
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    let index = min(max(0, Int(location.x / (barWidth + Self.barSpacing))), count - 1)
-                    let slot = slots[index]
-                    hovered = HoveredSlot(index: index, start: slot.start, point: slot.point)
-                case .ended:
-                    hovered = nil
-                }
+            .frame(height: Self.chartHeight)
+        }
+    }
+
+    private func cycleBar(_ cycle: SubscriptionWindowSample, tool: ToolType, isHovered: Bool) -> some View {
+        let percent = displayedPercent(cycle)
+        return ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Theme.barTrack.opacity(isHovered ? 0.95 : 0.62))
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Self.accent(for: tool).opacity(isHovered ? 1 : 0.86))
+                .frame(maxHeight: .infinity)
+                .scaleEffect(x: 1, y: max(0.04, percent / 100), anchor: .bottom)
+        }
+        .overlay {
+            if !cycle.isCompleted {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(Self.accent(for: tool).opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
             }
         }
-        .frame(height: Self.chartHeight)
+    }
+
+    private func caption(_ cycles: [SubscriptionWindowSample]) -> String {
+        guard !cycles.isEmpty else {
+            return "A cycle is recorded when the quota refills"
+        }
+        let index = hoveredIndex.map { min(max(0, $0), cycles.count - 1) } ?? cycles.count - 1
+        let cycle = cycles[index]
+        let used = Int(cycle.peakUsedPercent.rounded())
+        let left = Int(cycle.remainingPercentAtReset.rounded())
+        if let completedAt = cycle.completedAt {
+            return "\(Self.timestampFormatter.string(from: completedAt)) reset · \(used)% used · \(left)% left"
+        }
+        return "Current cycle · \(used)% used so far · \(left)% left"
     }
 
     @ViewBuilder
-    private func slotBar(slot: Slot, width: CGFloat, height: CGFloat) -> some View {
-        let isHovered = hovered?.index == slot.index
-        ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: width / 2, style: .continuous)
-                .fill(Theme.barTrack)
-                .opacity(isHovered ? 0.9 : 0.55)
-            if let point = slot.point {
-                let percent = displayPercent(point.usedPercent)
-                RoundedRectangle(cornerRadius: width / 2, style: .continuous)
-                    .fill(Self.accent(for: tool))
-                    .opacity(isHovered ? 1.0 : 0.85)
-                    .frame(height: max(2, height * CGFloat(percent / 100)))
+    private func axis(_ cycles: [SubscriptionWindowSample]) -> some View {
+        if !cycles.isEmpty {
+            HStack {
+                Text(axisLabel(cycles[0]))
+                Spacer()
+                if cycles.count > 2 {
+                    Text(axisLabel(cycles[cycles.count / 2]))
+                    Spacer()
+                }
+                Text(cycles.last?.isCompleted == false ? "Current" : axisLabel(cycles[cycles.count - 1]))
             }
-        }
-        .frame(width: width, height: height)
-    }
-
-    // MARK: - Caption & axis
-
-    private func caption(bucketId: String) -> some View {
-        Text(captionString(bucketId: bucketId))
-            .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.tail)
-    }
-
-    private func captionString(bucketId: String) -> String {
-        if let hovered {
-            if let point = hovered.point {
-                return Self.captionText(point: point, mode: mode)
-            }
-            return Self.dayFormatter.string(from: hovered.start) + ": no data"
-        }
-        let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucketId)
-        let points = quotaService.fillTimelineByAccountBucket[key] ?? []
-        if let latest = points.max(by: { $0.sampledAt < $1.sampledAt }) {
-            return Self.captionText(point: latest, mode: mode)
-        }
-        return "No samples yet — fills in as Vibe Bar refreshes"
-    }
-
-    private var axisLabels: some View {
-        HStack {
-            ForEach(0..<4, id: \.self) { index in
-                if index > 0 { Spacer(minLength: 4) }
-                Text(Self.dayFormatter.string(
-                    from: now.addingTimeInterval((-Self.spanDays + Double(index) * Self.spanDays / 3) * 86_400)
-                ))
-                .font(.system(size: max(7.5, density.subtitleFontSize - 4), design: .rounded))
-                .foregroundStyle(.tertiary)
-            }
+            .font(.system(size: max(7.5, density.subtitleFontSize - 4), design: .rounded))
+            .foregroundStyle(.tertiary)
         }
     }
 
-    private func displayPercent(_ used: Double) -> Double {
+    private func displayedPercent(_ cycle: SubscriptionWindowSample) -> Double {
         switch mode {
-        case .used:      return used
-        case .remaining: return max(0, 100 - used)
+        case .used: cycle.peakUsedPercent
+        case .remaining: cycle.remainingPercentAtReset
         }
     }
 
-    private static func captionText(point: FillTimelinePoint, mode: DisplayMode) -> String {
-        let stamp = timestampFormatter.string(from: point.sampledAt)
-        switch mode {
-        case .used:
-            return "\(stamp): \(Int(point.usedPercent.rounded()))% used"
-        case .remaining:
-            return "\(stamp): \(Int((100 - point.usedPercent).rounded()))% left"
-        }
+    private func cycleDate(_ cycle: SubscriptionWindowSample) -> Date {
+        cycle.completedAt ?? cycle.lastSeenAt
+    }
+
+    private func axisLabel(_ cycle: SubscriptionWindowSample) -> String {
+        Self.dayFormatter.string(from: cycleDate(cycle))
     }
 
     private static func accent(for tool: ToolType) -> Color {
         switch tool {
-        case .codex:  return Color(red: 0.30, green: 0.78, blue: 0.74)
-        case .claude: return Color(red: 0.93, green: 0.40, blue: 0.40)
-        case .gemini: return Color(red: 0.34, green: 0.62, blue: 0.96)
-        case .grok:   return Color(red: 0.45, green: 0.45, blue: 0.50)
-        default:      return Color(red: 0.45, green: 0.55, blue: 0.65)
+        case .codex: Color(red: 0.30, green: 0.78, blue: 0.74)
+        case .claude: Color(red: 0.93, green: 0.40, blue: 0.40)
+        case .gemini, .antigravity: Color(red: 0.34, green: 0.62, blue: 0.96)
+        case .grok: Color(red: 0.45, green: 0.45, blue: 0.50)
+        default: Color(red: 0.45, green: 0.55, blue: 0.65)
         }
     }
 
     private static let timestampFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "MMM d 'at' HH:mm"
-        return f
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d 'at' HH:mm"
+        return formatter
     }()
 
     private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "MMM d"
-        return f
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
     }()
 }

@@ -70,50 +70,11 @@ final class ServiceStatusIncidentTests: XCTestCase {
         XCTAssertEqual(snap.effectiveDescription, "All Systems Operational")
     }
 
-    func testDisplayUptimePrefersAdjustedWhenLower() {
+    func testDisplayUptimeIgnoresSyntheticIncidentDuration() {
         let dented = snapshot(indicator: .none, incidents: [], adjustedUptime: 99.83)
-        XCTAssertEqual(dented.displayUptimePercent, 99.83, accuracy: 0.001)
+        XCTAssertEqual(dented.displayUptimePercent, 100, accuracy: 0.001)
         let clean = snapshot(indicator: .none, incidents: [], adjustedUptime: nil)
         XCTAssertEqual(clean.displayUptimePercent, 100, accuracy: 0.001)
-    }
-
-    func testIncidentAdjustedUptimeMergesOverlaps() {
-        // Two incidents: 60min and an overlapping 30min inside it, plus a
-        // separate 30min — union is 90min of downtime over a 90-day window.
-        let intervals: [(start: Date, end: Date)] = [
-            (now.addingTimeInterval(-7_200), now.addingTimeInterval(-3_600)),   // 60 min
-            (now.addingTimeInterval(-5_400), now.addingTimeInterval(-4_500)),   // inside previous
-            (now.addingTimeInterval(-90_000), now.addingTimeInterval(-88_200))  // separate 30 min
-        ]
-        let uptime = ServiceStatusClient.incidentAdjustedUptime(
-            officialPercent: 100,
-            intervals: intervals,
-            dayCount: 90,
-            now: now
-        )
-        let expected = (1.0 - (5_400.0 / (90.0 * 86_400.0))) * 100
-        XCTAssertEqual(uptime ?? -1, expected, accuracy: 0.0001)
-    }
-
-    func testIncidentAdjustedUptimeClampsToWindowAndTakesOfficialMin() {
-        // Interval mostly before the window — only the in-window slice counts.
-        let intervals: [(start: Date, end: Date)] = [
-            (now.addingTimeInterval(-91 * 86_400), now.addingTimeInterval(-90 * 86_400 + 3_600))
-        ]
-        let uptime = ServiceStatusClient.incidentAdjustedUptime(
-            officialPercent: 99.0,
-            intervals: intervals,
-            dayCount: 90,
-            now: now
-        )
-        XCTAssertEqual(uptime ?? -1, 99.0, accuracy: 0.0001)
-
-        XCTAssertNil(ServiceStatusClient.incidentAdjustedUptime(
-            officialPercent: 100,
-            intervals: [],
-            dayCount: 90,
-            now: now
-        ))
     }
 
     /// Cached snapshots from before the incident-overlay schema must still

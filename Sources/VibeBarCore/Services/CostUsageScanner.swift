@@ -1309,6 +1309,7 @@ public enum CostUsageScanner {
         let now: Date
         let calendar: Calendar
         let startOfToday: Date
+        let startOfYesterday: Date
         let weekCutoff: Date
         let monthCutoff: Date
 
@@ -1318,6 +1319,7 @@ public enum CostUsageScanner {
         var monthCost: Double = 0, monthTokens: Int = 0, monthRequests: Int = 0
         var byDay: [Date: (cost: Double, tokens: Int)] = [:]
         var byHourToday: [Date: (cost: Double, tokens: Int)] = [:]
+        var byHourYesterday: [Date: (cost: Double, tokens: Int)] = [:]
         var heatmap: [[Int]] = Array(repeating: Array(repeating: 0, count: 24), count: 7)
         /// Model ranking across every scanned session.
         var byModelAllTime: [String: (cost: Double, tokens: Int)] = [:]
@@ -1326,6 +1328,7 @@ public enum CostUsageScanner {
         /// Per-day per-model breakdown. Keyed by `startOfDay` of the event so
         /// chart tooltips can show "On Mar 5: gpt-5 $1.20 · sonnet $0.40".
         var byDayModel: [Date: [String: (cost: Double, tokens: Int)]] = [:]
+        var byHourModel: [Date: [String: (cost: Double, tokens: Int)]] = [:]
 
         init(tool: ToolType, now: Date) {
             self.tool = tool
@@ -1334,6 +1337,7 @@ public enum CostUsageScanner {
             cal.locale = Locale(identifier: "en_US_POSIX")
             self.calendar = cal
             self.startOfToday = cal.startOfDay(for: now)
+            self.startOfYesterday = cal.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
             self.weekCutoff = cal.date(byAdding: .day, value: -6, to: startOfToday) ?? now
             self.monthCutoff = cal.date(byAdding: .day, value: -29, to: startOfToday) ?? now
         }
@@ -1353,6 +1357,13 @@ public enum CostUsageScanner {
                     hourBucket.tokens += tokens
                     byHourToday[hourKey] = hourBucket
                 }
+            }
+            if date >= startOfYesterday, date < startOfToday,
+               let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
+                var hourBucket = byHourYesterday[hourKey] ?? (0, 0)
+                hourBucket.cost += costUSD
+                hourBucket.tokens += tokens
+                byHourYesterday[hourKey] = hourBucket
             }
             if date >= weekCutoff {
                 weekCost += costUSD
@@ -1394,6 +1405,16 @@ public enum CostUsageScanner {
             dayModelEntry.tokens += tokens
             dayModels[model] = dayModelEntry
             byDayModel[dayKey] = dayModels
+
+            if date >= startOfYesterday,
+               let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
+                var hourModels = byHourModel[hourKey] ?? [:]
+                var hourModelEntry = hourModels[model] ?? (0, 0)
+                hourModelEntry.cost += costUSD
+                hourModelEntry.tokens += tokens
+                hourModels[model] = hourModelEntry
+                byHourModel[hourKey] = hourModels
+            }
         }
 
         func snapshot(jsonlFilesFound: Int) -> CostSnapshot {
@@ -1406,6 +1427,11 @@ public enum CostUsageScanner {
                 let value = byHourToday[hour] ?? (0, 0)
                 return HourlyCostPoint(date: hour, costUSD: value.cost, totalTokens: value.tokens)
             }
+            let hourlyYesterday = (0..<24).compactMap { offset -> HourlyCostPoint? in
+                guard let hour = calendar.date(byAdding: .hour, value: offset, to: startOfYesterday) else { return nil }
+                let value = byHourYesterday[hour] ?? (0, 0)
+                return HourlyCostPoint(date: hour, costUSD: value.cost, totalTokens: value.tokens)
+            }
             let sevenDayBreakdowns = byModel7d
                 .sorted { $0.value.cost > $1.value.cost }
                 .prefix(20)
@@ -1415,13 +1441,20 @@ public enum CostUsageScanner {
                 .sorted { $0.value.cost > $1.value.cost }
                 .prefix(20)
                 .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
-            // Reduce per-day model maps to sorted top-N arrays. Tooltip caps
-            // at 3 entries; we keep up to 5 here in case the UI wants more.
+            // Keep enough entries for the compact top-three hover plus the
+            // click-to-pin expanded list (up to ten models).
             var perDayModels: [Date: [CostSnapshot.ModelBreakdown]] = [:]
             for (day, models) in byDayModel {
                 perDayModels[day] = models
                     .sorted { $0.value.cost > $1.value.cost }
-                    .prefix(5)
+                    .prefix(20)
+                    .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
+            }
+            var perHourModels: [Date: [CostSnapshot.ModelBreakdown]] = [:]
+            for (hour, models) in byHourModel {
+                perHourModels[hour] = models
+                    .sorted { $0.value.cost > $1.value.cost }
+                    .prefix(20)
                     .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
             }
             return CostSnapshot(
@@ -1440,10 +1473,12 @@ public enum CostUsageScanner {
                 allTimeRequests: totalRequests,
                 dailyHistory: sortedDays,
                 todayHourlyHistory: hourlyToday,
+                yesterdayHourlyHistory: hourlyYesterday,
                 heatmap: UsageHeatmap(tool: tool, cells: heatmap, totalTokens: totalTokens),
                 modelBreakdowns: Array(allTimeBreakdowns),
                 last7DaysModelBreakdowns: Array(sevenDayBreakdowns),
                 dailyModelBreakdown: perDayModels,
+                hourlyModelBreakdown: perHourModels,
                 jsonlFilesFound: jsonlFilesFound,
                 updatedAt: now
             )

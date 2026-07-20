@@ -489,6 +489,13 @@ enum MiniMaxResponseParser {
     }
 
     private static func serviceTitle(displayName: String?, modelName: String?) -> String? {
+        // TokenPlanMax calls its primary rolling quota row `general`.
+        // That is a window name rather than a user-facing model name, so
+        // align it with the other providers' duration-based quota labels.
+        if modelName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .localizedCaseInsensitiveCompare("general") == .orderedSame {
+            return "5 Hours"
+        }
         if let displayTitle = englishServiceTitle(fromDisplayName: displayName, modelName: modelName) {
             return displayTitle
         }

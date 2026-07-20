@@ -33,6 +33,9 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
     /// derived from live JSONL events so the Today chart can show hourly shape
     /// instead of rendering one whole-day bar.
     public let todayHourlyHistory: [HourlyCostPoint]
+    /// Per-hour series for the previous local day. Kept separately so the
+    /// Yesterday range can retain the same line-chart detail as Today.
+    public let yesterdayHourlyHistory: [HourlyCostPoint]
     /// 7×24 cells: weekday (1-7, Sunday=1) × hour (0-23) → token total.
     public let heatmap: UsageHeatmap
     /// Top models in the all-time window.
@@ -44,6 +47,9 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
     /// Not persisted to disk: when CostHistoryStore preserves a day from a
     /// rotated session, the model split is lost — but the totals are kept.
     public let dailyModelBreakdown: [Date: [ModelBreakdown]]
+    /// Per-hour model breakdown for Today and Yesterday. This powers the
+    /// hourly hover detail without inflating the long-term history file.
+    public let hourlyModelBreakdown: [Date: [ModelBreakdown]]
     public let jsonlFilesFound: Int
     public let updatedAt: Date
 
@@ -76,10 +82,12 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         allTimeRequests: Int = 0,
         dailyHistory: [DailyCostPoint],
         todayHourlyHistory: [HourlyCostPoint] = [],
+        yesterdayHourlyHistory: [HourlyCostPoint] = [],
         heatmap: UsageHeatmap,
         modelBreakdowns: [ModelBreakdown],
         last7DaysModelBreakdowns: [ModelBreakdown] = [],
         dailyModelBreakdown: [Date: [ModelBreakdown]] = [:],
+        hourlyModelBreakdown: [Date: [ModelBreakdown]] = [:],
         jsonlFilesFound: Int,
         updatedAt: Date
     ) {
@@ -98,10 +106,12 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.allTimeRequests = allTimeRequests
         self.dailyHistory = dailyHistory
         self.todayHourlyHistory = todayHourlyHistory
+        self.yesterdayHourlyHistory = yesterdayHourlyHistory
         self.heatmap = heatmap
         self.modelBreakdowns = modelBreakdowns
         self.last7DaysModelBreakdowns = last7DaysModelBreakdowns
         self.dailyModelBreakdown = dailyModelBreakdown
+        self.hourlyModelBreakdown = hourlyModelBreakdown
         self.jsonlFilesFound = jsonlFilesFound
         self.updatedAt = updatedAt
     }
@@ -112,8 +122,8 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             todayCostUSD: 0, last7DaysCostUSD: 0, last30DaysCostUSD: 0, allTimeCostUSD: 0,
             todayTokens: 0, last7DaysTokens: 0, last30DaysTokens: 0, allTimeTokens: 0,
             todayRequests: 0, last7DaysRequests: 0, last30DaysRequests: 0, allTimeRequests: 0,
-            dailyHistory: [], todayHourlyHistory: [], heatmap: .empty(tool: tool),
-            modelBreakdowns: [], last7DaysModelBreakdowns: [], dailyModelBreakdown: [:], jsonlFilesFound: 0, updatedAt: now
+            dailyHistory: [], todayHourlyHistory: [], yesterdayHourlyHistory: [], heatmap: .empty(tool: tool),
+            modelBreakdowns: [], last7DaysModelBreakdowns: [], dailyModelBreakdown: [:], hourlyModelBreakdown: [:], jsonlFilesFound: 0, updatedAt: now
         )
     }
 
@@ -153,6 +163,10 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         let hourlyToday = todayHourlyHistory.filter {
             calendar.isDate($0.date, inSameDayAs: now)
         }
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let hourlyYesterday = yesterdayHourlyHistory.filter {
+            calendar.isDate($0.date, inSameDayAs: yesterday)
+        }
 
         // Request counts have no daily history — they pass through
         // verbatim except for the today bucket, which we zero out
@@ -175,10 +189,12 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             allTimeRequests: allTimeRequests,
             dailyHistory: dailyHistory,
             todayHourlyHistory: hourlyToday,
+            yesterdayHourlyHistory: hourlyYesterday,
             heatmap: heatmap,
             modelBreakdowns: modelBreakdowns,
             last7DaysModelBreakdowns: last7DaysModelBreakdowns,
             dailyModelBreakdown: dailyModelBreakdown,
+            hourlyModelBreakdown: hourlyModelBreakdown,
             jsonlFilesFound: jsonlFilesFound,
             updatedAt: updatedAt
         )
@@ -192,6 +208,12 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         return Array((dailyModelBreakdown[key] ?? []).prefix(limit))
     }
 
+    public func topModels(forHour hour: Date, limit: Int = 3, calendar: Calendar = .current) -> [ModelBreakdown] {
+        let components = calendar.dateComponents([.year, .month, .day, .hour], from: hour)
+        guard let key = calendar.date(from: components) else { return [] }
+        return Array((hourlyModelBreakdown[key] ?? []).prefix(limit))
+    }
+
     // MARK: - Codable
     //
     // The default synthesis can't encode `[Date: [ModelBreakdown]]` as JSON
@@ -203,7 +225,8 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         case tool, todayCostUSD, last7DaysCostUSD, last30DaysCostUSD, allTimeCostUSD
         case todayTokens, last7DaysTokens, last30DaysTokens, allTimeTokens
         case todayRequests, last7DaysRequests, last30DaysRequests, allTimeRequests
-        case dailyHistory, todayHourlyHistory, heatmap, modelBreakdowns, last7DaysModelBreakdowns, dailyModelBreakdown
+        case dailyHistory, todayHourlyHistory, yesterdayHourlyHistory, heatmap, modelBreakdowns, last7DaysModelBreakdowns
+        case dailyModelBreakdown, hourlyModelBreakdown
         case jsonlFilesFound, updatedAt
     }
 
@@ -233,6 +256,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.allTimeRequests = try c.decodeIfPresent(Int.self, forKey: .allTimeRequests) ?? 0
         self.dailyHistory = try c.decode([DailyCostPoint].self, forKey: .dailyHistory)
         self.todayHourlyHistory = try c.decodeIfPresent([HourlyCostPoint].self, forKey: .todayHourlyHistory) ?? []
+        self.yesterdayHourlyHistory = try c.decodeIfPresent([HourlyCostPoint].self, forKey: .yesterdayHourlyHistory) ?? []
         self.heatmap = try c.decode(UsageHeatmap.self, forKey: .heatmap)
         self.modelBreakdowns = try c.decode([ModelBreakdown].self, forKey: .modelBreakdowns)
         self.last7DaysModelBreakdowns = try c.decodeIfPresent(
@@ -250,6 +274,15 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             }
         }
         self.dailyModelBreakdown = rebuilt
+
+        let hourlyStringKeyed = try c.decodeIfPresent([String: [ModelBreakdown]].self, forKey: .hourlyModelBreakdown) ?? [:]
+        var hourlyRebuilt: [Date: [ModelBreakdown]] = [:]
+        for (raw, value) in hourlyStringKeyed {
+            if let date = Self.dateKeyFormatter.date(from: raw) {
+                hourlyRebuilt[date] = value
+            }
+        }
+        self.hourlyModelBreakdown = hourlyRebuilt
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -269,6 +302,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         try c.encode(allTimeRequests, forKey: .allTimeRequests)
         try c.encode(dailyHistory, forKey: .dailyHistory)
         try c.encode(todayHourlyHistory, forKey: .todayHourlyHistory)
+        try c.encode(yesterdayHourlyHistory, forKey: .yesterdayHourlyHistory)
         try c.encode(heatmap, forKey: .heatmap)
         try c.encode(modelBreakdowns, forKey: .modelBreakdowns)
         try c.encode(last7DaysModelBreakdowns, forKey: .last7DaysModelBreakdowns)
@@ -279,6 +313,10 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             uniqueKeysWithValues: dailyModelBreakdown.map { (Self.dateKeyFormatter.string(from: $0.key), $0.value) }
         )
         try c.encode(stringKeyed, forKey: .dailyModelBreakdown)
+        let hourlyStringKeyed = Dictionary(
+            uniqueKeysWithValues: hourlyModelBreakdown.map { (Self.dateKeyFormatter.string(from: $0.key), $0.value) }
+        )
+        try c.encode(hourlyStringKeyed, forKey: .hourlyModelBreakdown)
     }
 }
 
@@ -331,6 +369,40 @@ public enum CostSnapshotAggregator {
         return totals
             .map { HourlyCostPoint(date: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
             .sorted { $0.date < $1.date }
+    }
+
+    public static func combinedYesterdayHourlyHistory(
+        _ snapshots: [CostSnapshot],
+        calendar: Calendar = .current
+    ) -> [HourlyCostPoint] {
+        combineHourlyPoints(snapshots.flatMap(\.yesterdayHourlyHistory), calendar: calendar)
+    }
+
+    public static func combinedHourlyModelBreakdown(
+        _ snapshots: [CostSnapshot],
+        calendar: Calendar = .current
+    ) -> [Date: [CostSnapshot.ModelBreakdown]] {
+        var totals: [Date: [String: (cost: Double, tokens: Int)]] = [:]
+        for snapshot in snapshots {
+            for (rawHour, breakdowns) in snapshot.hourlyModelBreakdown {
+                let components = calendar.dateComponents([.year, .month, .day, .hour], from: rawHour)
+                guard let hour = calendar.date(from: components) else { continue }
+                var hourTotals = totals[hour] ?? [:]
+                for breakdown in breakdowns {
+                    let current = hourTotals[breakdown.modelName] ?? (0, 0)
+                    hourTotals[breakdown.modelName] = (
+                        current.cost + breakdown.costUSD,
+                        current.tokens + breakdown.totalTokens
+                    )
+                }
+                totals[hour] = hourTotals
+            }
+        }
+        return totals.mapValues { models in
+            models.map {
+                CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens)
+            }.sorted { $0.costUSD > $1.costUSD }
+        }
     }
 
     public static func combinedHeatmap(
@@ -421,10 +493,12 @@ public enum CostSnapshotAggregator {
             allTimeRequests: rebased.reduce(0) { $0 + $1.allTimeRequests },
             dailyHistory: combinedDailyHistory(rebased, calendar: calendar),
             todayHourlyHistory: combinedHourlyHistory(rebased, calendar: calendar),
+            yesterdayHourlyHistory: combinedYesterdayHourlyHistory(rebased, calendar: calendar),
             heatmap: combinedHeatmap(rebased, tool: tool),
             modelBreakdowns: combinedModelBreakdowns(rebased),
             last7DaysModelBreakdowns: combinedLast7DaysModelBreakdowns(rebased),
             dailyModelBreakdown: combinedDailyModelBreakdown(rebased, calendar: calendar),
+            hourlyModelBreakdown: combinedHourlyModelBreakdown(rebased, calendar: calendar),
             jsonlFilesFound: rebased.reduce(0) { $0 + $1.jsonlFilesFound },
             updatedAt: rebased.map(\.updatedAt).max() ?? now
         )
@@ -445,10 +519,27 @@ public enum CostSnapshotAggregator {
             .map { CostSnapshot.ModelBreakdown(modelName: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
             .sorted { $0.costUSD > $1.costUSD }
     }
+
+    private static func combineHourlyPoints(
+        _ points: [HourlyCostPoint],
+        calendar: Calendar
+    ) -> [HourlyCostPoint] {
+        var totals: [Date: (cost: Double, tokens: Int)] = [:]
+        for point in points {
+            let components = calendar.dateComponents([.year, .month, .day, .hour], from: point.date)
+            guard let hour = calendar.date(from: components) else { continue }
+            let current = totals[hour] ?? (0, 0)
+            totals[hour] = (current.cost + point.costUSD, current.tokens + point.totalTokens)
+        }
+        return totals.map {
+            HourlyCostPoint(date: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens)
+        }.sorted { $0.date < $1.date }
+    }
 }
 
 public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     case today
+    case yesterday
     case week
     case month
     case all
@@ -458,6 +549,7 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     public var label: String {
         switch self {
         case .today: return "Today"
+        case .yesterday: return "Yesterday"
         case .week:  return "7 days"
         case .month: return "30 days"
         case .all:   return "All"
@@ -467,6 +559,7 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     public var shortLabel: String {
         switch self {
         case .today: return "Today"
+        case .yesterday: return "Yday"
         case .week:  return "7d"
         case .month: return "30d"
         case .all:   return "All"
@@ -476,6 +569,10 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     public func cost(in snapshot: CostSnapshot) -> Double {
         switch self {
         case .today: return snapshot.todayCostUSD
+        case .yesterday:
+            return snapshot.dailyHistory.first {
+                Calendar.current.isDate($0.date, inSameDayAs: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+            }?.costUSD ?? 0
         case .week:  return snapshot.last7DaysCostUSD
         case .month: return snapshot.last30DaysCostUSD
         case .all:   return snapshot.allTimeCostUSD
@@ -485,6 +582,10 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     public func tokens(in snapshot: CostSnapshot) -> Int {
         switch self {
         case .today: return snapshot.todayTokens
+        case .yesterday:
+            return snapshot.dailyHistory.first {
+                Calendar.current.isDate($0.date, inSameDayAs: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+            }?.totalTokens ?? 0
         case .week:  return snapshot.last7DaysTokens
         case .month: return snapshot.last30DaysTokens
         case .all:   return snapshot.allTimeTokens

@@ -126,9 +126,7 @@ private struct ServiceStatusRow: View {
             ComponentGroupBlock(
                 title: "Components",
                 components: snapshot.components,
-                defaultExpanded: true,
-                incidentDays: snapshot.incidentDays,
-                incidentAdjustedUptime: snapshot.incidentAdjustedUptimePercent
+                defaultExpanded: true
             )
         } else {
             VStack(alignment: .leading, spacing: 12) {

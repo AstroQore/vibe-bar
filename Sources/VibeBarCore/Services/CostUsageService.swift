@@ -172,14 +172,23 @@ public final class CostUsageService: ObservableObject {
         let dayCount: Int?
         switch timeframe {
         case .today: dayCount = 1
+        case .yesterday: dayCount = 2
         case .week:  dayCount = 7
         case .month: dayCount = 30
         case .all:   dayCount = nil
         }
-        return await CostHistoryStore.shared.history(
+        let history = await CostHistoryStore.shared.history(
             for: tool,
             days: dayCount,
             retentionDays: costData.retentionDays
+        )
+        guard timeframe == .yesterday else { return history }
+        let calendar = Calendar.current
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: Date())) ?? Date()
+        return CostHistory(
+            tool: history.tool,
+            days: history.days.filter { calendar.isDate($0.date, inSameDayAs: yesterday) },
+            updatedAt: history.updatedAt
         )
     }
 

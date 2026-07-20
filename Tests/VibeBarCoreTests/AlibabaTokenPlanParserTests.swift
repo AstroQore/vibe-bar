@@ -62,7 +62,10 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets.count, 1)
         let bucket = snap.buckets[0]
         XCTAssertEqual(bucket.id, "alibabaTokenPlan.\(cnProductCode).standard")
-        XCTAssertEqual(bucket.groupTitle, "Standard")
+        XCTAssertEqual(bucket.title, "Monthly")
+        XCTAssertEqual(bucket.shortLabel, "Month")
+        XCTAssertEqual(bucket.rawWindowSeconds, 30 * 86_400)
+        XCTAssertEqual(bucket.groupTitle, "Team · Standard")
         XCTAssertEqual(snap.planName, "Token Plan · Team · Standard")
         // (25000 - 24999.5534) / 25000 * 100 ≈ 0.001786
         XCTAssertEqual(bucket.usedPercent, 0.001786, accuracy: 0.001)
@@ -112,8 +115,8 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets.count, 2)
         XCTAssertEqual(snap.buckets[0].usedPercent, 25.0, accuracy: 0.01)
         XCTAssertEqual(snap.buckets[1].usedPercent, 75.0, accuracy: 0.01)
-        XCTAssertEqual(snap.buckets[0].groupTitle, "Standard")
-        XCTAssertEqual(snap.buckets[1].groupTitle, "Advanced")
+        XCTAssertEqual(snap.buckets[0].groupTitle, "Team · Standard")
+        XCTAssertEqual(snap.buckets[1].groupTitle, "Team · Advanced")
     }
 
     func testFallsBackToFlatTotalValueWhenNoGroupList() throws {

@@ -254,6 +254,10 @@ final class MiniMaxParserTests: XCTestCase {
             .map(\.usedPercent)
             .sorted()
         XCTAssertEqual(fiveHourUsed.count, 2)
+        XCTAssertEqual(
+            snap.buckets.first { $0.id.hasSuffix(".general") }?.title,
+            "5 Hours"
+        )
         XCTAssertEqual(fiveHourUsed.first ?? -1, 0, accuracy: 0.5)   // video: 100% remaining
         XCTAssertEqual(fiveHourUsed.last ?? -1, 12, accuracy: 0.5)   // general text: 12% used
     }

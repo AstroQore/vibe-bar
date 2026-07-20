@@ -1,16 +1,15 @@
 import Foundation
 
-/// One observed reset window for a single quota bucket of a single
-/// account. The store keeps a rolling history of these per (account,
-/// bucket) so the UI can render a sparkline of "how full did I get in
-/// each of the last N windows."
-///
-/// Identity for max-merge is `(accountId, bucketId, windowEnd)`. A
-/// window is uniquely identified by its `resetAt` — every observation
-/// of the same bucket within the same window converges to one sample,
-/// with `peakUsedPercent` rising monotonically as new observations
-/// arrive and `lastUsedPercent` tracking the time-newest value.
+/// One inferred subscription cycle for a quota bucket. The active cycle is
+/// updated in place; it becomes a historical sample only after a refill is
+/// observed (usage falls materially) or a scheduled reset is crossed.
 public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
+    public enum CompletionReason: String, Codable, Hashable, Sendable {
+        case refillDetected
+        case scheduledReset
+        case legacyTimelineMigration
+    }
+
     public var accountId: String
     public var tool: ToolType
     public var bucketId: String
@@ -22,6 +21,13 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
     public var observationCount: Int
     public var firstSeenAt: Date
     public var lastSeenAt: Date
+    public var completedAt: Date?
+    public var completionReason: CompletionReason?
+
+    public var isCompleted: Bool { completedAt != nil }
+    public var remainingPercentAtReset: Double {
+        max(0, 100 - peakUsedPercent)
+    }
 
     public init(
         accountId: String,
@@ -34,7 +40,9 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
         lastUsedPercent: Double,
         observationCount: Int = 1,
         firstSeenAt: Date,
-        lastSeenAt: Date
+        lastSeenAt: Date,
+        completedAt: Date? = nil,
+        completionReason: CompletionReason? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -47,6 +55,8 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
         self.observationCount = max(0, observationCount)
         self.firstSeenAt = firstSeenAt
         self.lastSeenAt = lastSeenAt
+        self.completedAt = completedAt
+        self.completionReason = completionReason
     }
 
     private static func clamp(_ value: Double) -> Double {

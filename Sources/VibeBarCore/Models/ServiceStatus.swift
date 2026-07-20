@@ -173,11 +173,11 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         return values.reduce(0, +) / Double(values.count)
     }
 
-    /// Uptime the card should display: the incident-adjusted number when the
-    /// provider's incident feed dented it, otherwise the official aggregate.
+    /// Uptime shown by the card comes only from the provider's published
+    /// component uptime. Incident tickets are not continuous downtime
+    /// intervals: some stay open across intermittent degradation for days.
     public var displayUptimePercent: Double {
-        guard let adjusted = incidentAdjustedUptimePercent else { return aggregateUptimePercent }
-        return min(adjusted, aggregateUptimePercent)
+        aggregateUptimePercent
     }
 
     /// Indicator with unresolved incidents folded in. Anthropic sometimes
