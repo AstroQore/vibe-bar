@@ -914,9 +914,8 @@ private struct ProviderCostStack: View {
 }
 
 /// Sits above the per-provider columns: cost and token summary on the left,
-/// current provider status on the right. Cost intentionally gets more width
-/// because its metrics are denser while the four compact status tiles fit in
-/// the narrower column.
+/// current provider status on the right. The two cards use equal columns so
+/// the Overview header aligns with the waterfall below it.
 private struct CombinedTotalsRow: View {
     let density: Theme.Density
 
@@ -924,7 +923,7 @@ private struct CombinedTotalsRow: View {
     @EnvironmentObject var costService: CostUsageService
     @EnvironmentObject var quotaService: QuotaService
     @EnvironmentObject var settingsStore: SettingsStore
-    private let summaryHeight: CGFloat = 178
+    private let summaryHeight: CGFloat = 220
 
     var body: some View {
         // Headline totals span every cost-aware provider, including
@@ -948,6 +947,9 @@ private struct CombinedTotalsRow: View {
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
         let monthAverageCost = monthCost / 30
+        let monthCostPerMillionTokens = monthTokens > 0
+            ? monthCost * 1_000_000 / Double(monthTokens)
+            : nil
         let visibleAccountIDs = Set(
             ToolType.dedicatedCardProviders
                 .filter { settingsStore.settings.isCoreProviderVisible($0) }
@@ -985,9 +987,7 @@ private struct CombinedTotalsRow: View {
         GeometryReader { geometry in
             let spacing = density.interSectionSpacing
             let availableWidth = max(0, geometry.size.width - spacing)
-            // Five cost columns next to the status card's four logical
-            // columns: enough room for Yesterday without over-expanding Cost.
-            let costWidth = availableWidth * (5.0 / 9.0)
+            let columnWidth = availableWidth / 2
 
             HStack(alignment: .top, spacing: spacing) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -1010,9 +1010,19 @@ private struct CombinedTotalsRow: View {
                     }
                     .disabled(costService.isRefreshing)
                 }
+                    // 4 × 4 summary: durable all-time/peak context first,
+                    // matching cost and token timeframes next, then four
+                    // operational efficiency indicators.
                     HStack(alignment: .top, spacing: 0) {
                         metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
                         divider
+                        metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
+                        divider
+                        metric(label: "PEAK DAY", value: formatCost(peakDayCost))
+                        divider
+                        metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
+                    }
+                    HStack(alignment: .top, spacing: 0) {
                         metric(label: "TODAY", value: formatCost(todayCost))
                         divider
                         metric(label: "YESTERDAY", value: formatCost(yesterdayCost))
@@ -1022,8 +1032,6 @@ private struct CombinedTotalsRow: View {
                         metric(label: "30-DAY", value: formatCost(monthCost))
                     }
                     HStack(alignment: .top, spacing: 0) {
-                        metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
-                        divider
                         metric(label: "TODAY TOK", value: formatTokens(todayTokens))
                         divider
                         metric(label: "YESTERDAY TOK", value: formatTokens(yesterdayTokens))
@@ -1033,11 +1041,9 @@ private struct CombinedTotalsRow: View {
                         metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
                     }
                     HStack(alignment: .top, spacing: 0) {
-                        metric(label: "PEAK DAY", value: formatCost(peakDayCost))
-                        divider
-                        metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
-                        divider
                         metric(label: "30D AVG/DAY", value: formatCost(monthAverageCost))
+                        divider
+                        metric(label: "30D $/1M TOK", value: formatCost(monthCostPerMillionTokens))
                         divider
                         metric(label: "TPM", value: formatTokens(tokensPerMinute))
                         divider
@@ -1046,9 +1052,9 @@ private struct CombinedTotalsRow: View {
                 }
                 .padding(density.cardPadding)
                 .frame(
-                    minWidth: costWidth,
-                    idealWidth: costWidth,
-                    maxWidth: costWidth,
+                    minWidth: columnWidth,
+                    idealWidth: columnWidth,
+                    maxWidth: columnWidth,
                     minHeight: summaryHeight,
                     alignment: .topLeading
                 )
@@ -1063,15 +1069,15 @@ private struct CombinedTotalsRow: View {
 
                 OverviewStatusSummaryCard(
                     density: density,
+                    minHeight: summaryHeight,
                     tools: ToolType.combinedStatusPageProviders.filter {
                         settingsStore.settings.isCoreProviderVisible($0)
                     }
                 )
                     .frame(
-                        minWidth: availableWidth - costWidth,
-                        idealWidth: availableWidth - costWidth,
-                        maxWidth: availableWidth - costWidth,
-                        minHeight: summaryHeight,
+                        minWidth: columnWidth,
+                        idealWidth: columnWidth,
+                        maxWidth: columnWidth,
                         alignment: .topLeading
                     )
             }
@@ -1105,7 +1111,8 @@ private struct CombinedTotalsRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func formatCost(_ value: Double) -> String {
+    private func formatCost(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
         if value < 0.01 { return "$0.00" }
         if value < 100  { return String(format: "$%.2f", value) }
         return String(format: "$%.0f", value)
@@ -1132,6 +1139,7 @@ private struct CombinedTotalsRow: View {
 
 private struct OverviewStatusSummaryCard: View {
     let density: Theme.Density
+    let minHeight: CGFloat
     let tools: [ToolType]
 
     @EnvironmentObject var serviceStatus: ServiceStatusController
@@ -1176,7 +1184,7 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: 134, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))

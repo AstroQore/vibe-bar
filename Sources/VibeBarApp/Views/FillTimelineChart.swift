@@ -51,6 +51,12 @@ struct FillTimelineChart: View {
                 }
                 if tabs.count > 1 {
                     GeometryReader { geometry in
+                        let tabFontSize = max(8.5, density.subtitleFontSize - 2)
+                        let minimumContentWidth = tabs.reduce(CGFloat.zero) { width, tab in
+                            width + max(64, CGFloat(tab.label.count) * tabFontSize * 0.58 + 24)
+                        } + CGFloat(max(0, tabs.count - 1)) * 2 + 4
+                        let contentWidth = max(geometry.size.width, minimumContentWidth)
+
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 2) {
                                 ForEach(tabs, id: \.id) { tab in
@@ -61,14 +67,15 @@ struct FillTimelineChart: View {
                                     } label: {
                                         Text(tab.label)
                                             .font(.system(
-                                                size: max(8.5, density.subtitleFontSize - 2),
+                                                size: tabFontSize,
                                                 weight: .semibold,
                                                 design: .rounded
                                             ))
                                             .foregroundStyle(isSelected ? Color.white : Color.secondary)
                                             .lineLimit(1)
+                                            .fixedSize(horizontal: true, vertical: false)
                                             .padding(.horizontal, 9)
-                                            .frame(height: 22)
+                                            .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
                                             .background {
                                                 if isSelected {
                                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -83,8 +90,7 @@ struct FillTimelineChart: View {
                                 }
                             }
                             .padding(2)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(minWidth: geometry.size.width, alignment: .trailing)
+                            .frame(width: contentWidth)
                         }
                     }
                     .frame(height: 26)
