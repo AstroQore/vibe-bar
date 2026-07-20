@@ -921,9 +921,8 @@ private struct CombinedTotalsRow: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
-    @EnvironmentObject var quotaService: QuotaService
     @EnvironmentObject var settingsStore: SettingsStore
-    private let summaryHeight: CGFloat = 220
+    private let summaryHeight: CGFloat = 178
 
     var body: some View {
         // Headline totals span every cost-aware provider, including
@@ -946,21 +945,6 @@ private struct CombinedTotalsRow: View {
         let yesterdayTokens = snapshots.reduce(0) { $0 + CostTimeframe.yesterday.tokens(in: $1) }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
-        let monthAverageCost = monthCost / 30
-        let monthCostPerMillionTokens = monthTokens > 0
-            ? monthCost * 1_000_000 / Double(monthTokens)
-            : nil
-        let visibleAccountIDs = Set(
-            ToolType.dedicatedCardProviders
-                .filter { settingsStore.settings.isCoreProviderVisible($0) }
-                .compactMap { environment.account(for: $0)?.id }
-        )
-        let visibleQuotas = Dictionary(uniqueKeysWithValues:
-            quotaService.lastSuccessByAccount.compactMap { accountID, quota in
-                visibleAccountIDs.contains(accountID) ? (accountID, quota) : nil
-            }
-        )
-        let overallFill = OverallFillRate.average(visibleQuotas)
         // Pick the single day with the highest cost across all
         // providers, then surface both its cost and token totals so
         // the user sees what they spent *and* burned on their worst
@@ -970,20 +954,6 @@ private struct CombinedTotalsRow: View {
         let peakDayPoint = dailyHistory.max(by: { $0.costUSD < $1.costUSD })
         let peakDayCost = peakDayPoint?.costUSD ?? 0
         let peakDayTokens = peakDayPoint?.totalTokens ?? 0
-        // TPM is today-so-far tokens divided by elapsed minutes since
-        // local midnight. We floor the divisor to 1 so a 00:00:05
-        // launch can't divide by zero. RPM previously sat next to it
-        // but request counts aren't available across providers; the
-        // cell now surfaces the overall subscription fill rate
-        // instead, which is the more useful "are my plans burning
-        // hot?" indicator.
-        let elapsedMinutesToday: Double = {
-            let cal = Calendar.current
-            let start = cal.startOfDay(for: Date())
-            return max(1, Date().timeIntervalSince(start) / 60)
-        }()
-        let tokensPerMinute = Int((Double(todayTokens) / elapsedMinutesToday).rounded())
-
         GeometryReader { geometry in
             let spacing = density.interSectionSpacing
             let availableWidth = max(0, geometry.size.width - spacing)
@@ -1010,9 +980,8 @@ private struct CombinedTotalsRow: View {
                     }
                     .disabled(costService.isRefreshing)
                 }
-                    // 4 × 4 summary: durable all-time/peak context first,
-                    // matching cost and token timeframes next, then four
-                    // operational efficiency indicators.
+                    // 4 × 3 summary: durable all-time/peak context first,
+                    // followed by matching cost and token timeframes.
                     HStack(alignment: .top, spacing: 0) {
                         metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
                         divider
@@ -1039,15 +1008,6 @@ private struct CombinedTotalsRow: View {
                         metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
                         divider
                         metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
-                    }
-                    HStack(alignment: .top, spacing: 0) {
-                        metric(label: "30D AVG/DAY", value: formatCost(monthAverageCost))
-                        divider
-                        metric(label: "30D $/1M TOK", value: formatCost(monthCostPerMillionTokens))
-                        divider
-                        metric(label: "TPM", value: formatTokens(tokensPerMinute))
-                        divider
-                        metric(label: "FILL", value: formatFillPercent(overallFill))
                     }
                 }
                 .padding(density.cardPadding)
@@ -1123,11 +1083,6 @@ private struct CombinedTotalsRow: View {
         if tokens >= 1_000_000 { return String(format: "%.2fM", Double(tokens) / 1_000_000) }
         if tokens >= 1_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
         return "\(tokens)"
-    }
-
-    private func formatFillPercent(_ value: Double?) -> String {
-        guard let value, value.isFinite else { return "—" }
-        return "\(Int(value.rounded()))%"
     }
 
     private func formatModelName(_ modelName: String?) -> String {
