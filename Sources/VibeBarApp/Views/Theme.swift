@@ -14,7 +14,6 @@ enum Theme {
     /// Per-density spacing/sizing for the popover. Returned by `Theme.density(for:)`.
     /// Each menu bar item kind picks its own density via Settings.
     struct Density {
-        let popoverDensity: PopoverDensity
         let popoverPaddingH: CGFloat
         let popoverPaddingV: CGFloat
         let interSectionSpacing: CGFloat
@@ -38,7 +37,6 @@ enum Theme {
         switch popover {
         case .compact:
             return Density(
-                popoverDensity: popover,
                 popoverPaddingH: 12, popoverPaddingV: 10,
                 interSectionSpacing: 10, cardPadding: 10, cardSpacing: 8,
                 bucketRowSpacing: 5, bucketGroupSpacing: 8,
@@ -50,7 +48,6 @@ enum Theme {
             )
         case .regular:
             return Density(
-                popoverDensity: popover,
                 popoverPaddingH: 16, popoverPaddingV: 14,
                 interSectionSpacing: 14, cardPadding: 14, cardSpacing: 10,
                 bucketRowSpacing: 6, bucketGroupSpacing: 12,
@@ -62,7 +59,6 @@ enum Theme {
             )
         case .spacious:
             return Density(
-                popoverDensity: popover,
                 popoverPaddingH: 20, popoverPaddingV: 18,
                 interSectionSpacing: 18, cardPadding: 16, cardSpacing: 12,
                 bucketRowSpacing: 8, bucketGroupSpacing: 14,
@@ -88,7 +84,6 @@ enum Theme {
         case .spacious: extraWidth = 560
         }
         return Density(
-            popoverDensity: base.popoverDensity,
             popoverPaddingH: base.popoverPaddingH,
             popoverPaddingV: base.popoverPaddingV,
             interSectionSpacing: base.interSectionSpacing,
@@ -120,7 +115,6 @@ enum Theme {
         case .spacious: extraWidth = 580
         }
         return Density(
-            popoverDensity: base.popoverDensity,
             popoverPaddingH: base.popoverPaddingH,
             popoverPaddingV: base.popoverPaddingV,
             interSectionSpacing: base.interSectionSpacing,
