@@ -412,47 +412,54 @@ struct CostHistoryView: View {
 
     @ViewBuilder
     private var granularityControl: some View {
-        if availableGranularities.count > 1 {
-            Menu {
-                ForEach(availableGranularities) { option in
-                    Button {
-                        granularity = option
-                        clearSelection()
-                    } label: {
-                        if option == granularity {
-                            Label(option.rawValue, systemImage: "checkmark")
-                        } else {
-                            Text(option.rawValue)
+        Group {
+            if availableGranularities.count > 1 {
+                HStack(spacing: 1) {
+                    ForEach(availableGranularities) { option in
+                        Button {
+                            granularity = option
+                            clearSelection()
+                        } label: {
+                            granularityOptionLabel(option, selected: option == granularity)
                         }
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                        .accessibilityLabel("Group cost history by \(option.rawValue.lowercased())")
                     }
                 }
-            } label: {
-                granularityLabel
+            } else {
+                Text(granularity.rawValue)
+                    .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 22)
+                    .accessibilityLabel("Cost history grouped by \(granularity.rawValue.lowercased())")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .focusable(false)
-            .accessibilityLabel("Group cost history by \(granularity.rawValue.lowercased())")
-        } else {
-            granularityLabel
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Cost history grouped by \(granularity.rawValue.lowercased())")
         }
+        .padding(2)
+        .frame(width: 132)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
     }
 
-    private var granularityLabel: some View {
-        HStack(spacing: 3) {
-            Text("By \(granularity.rawValue)")
-                .lineLimit(1)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 7, weight: .bold))
-                .opacity(availableGranularities.count > 1 ? 1 : 0)
-        }
-        .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
-        .frame(width: 72, height: 22)
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
-        .contentShape(Rectangle())
+    private func granularityOptionLabel(
+        _ option: CostHistoryGranularity,
+        selected: Bool
+    ) -> some View {
+        Text(option.rawValue)
+            .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
+            .foregroundStyle(selected ? Color.primary : Color.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(maxWidth: .infinity, minHeight: 22)
+            .contentShape(Rectangle())
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.12))
+                }
+            }
     }
 
     private var chartCalendarComponent: Calendar.Component {
