@@ -2,9 +2,11 @@ import SwiftUI
 import Charts
 import VibeBarCore
 
-/// Subscription Utilization sub-page. For each main bucket (5h / weekly),
-/// shows the absolute time-since-reset on a horizontal Swift Charts bar
-/// alongside the linear "expected" reference line — making it obvious
+/// Subscription Utilization sub-page. Every independently resettable quota
+/// gets its own pace row — including model-scoped buckets such as Codex Spark
+/// and Claude Fable, plus linked product tools such as AntiGravity on Gemini.
+/// Each row shows the absolute time-since-reset on a horizontal Swift Charts
+/// bar alongside the linear "expected" reference line, making it obvious
 /// whether the user is burning faster or slower than the linear pace.
 struct SubscriptionUtilizationView: View {
     let tool: ToolType
@@ -12,7 +14,7 @@ struct SubscriptionUtilizationView: View {
     let mode: DisplayMode
     let density: Theme.Density
     let now: Date
-    var additionalHistorySeries: [FillTimelineSeries] = []
+    var additionalQuotaSeries: [FillTimelineSeries] = []
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
@@ -27,17 +29,19 @@ struct SubscriptionUtilizationView: View {
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
                 SectionRefreshButton(isRefreshing: isRefreshing) {
-                    environment.refresh(tool)
+                    for refreshTool in refreshTools {
+                        environment.refresh(refreshTool)
+                    }
                 }
             }
-            if paceBuckets.isEmpty && historySeries.isEmpty {
+            if utilizationBuckets.isEmpty && historySeries.isEmpty {
                 Text("No utilization data — try refreshing.")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 8)
             } else {
-                ForEach(paceBuckets) { bucket in
-                    row(for: bucket)
+                ForEach(utilizationBuckets) { item in
+                    row(for: item)
                 }
                 if !historySeries.isEmpty {
                     FillTimelineChart(
@@ -60,9 +64,32 @@ struct SubscriptionUtilizationView: View {
         )
     }
 
-    /// Pick the headline buckets only (no per-model groups).
-    private var paceBuckets: [QuotaBucket] {
-        buckets.filter { $0.groupTitle == nil }
+    /// One live quota row. The tool is retained so linked-product quotas can
+    /// be labelled and refreshed independently (Gemini Web + AntiGravity).
+    private struct UtilizationBucket: Identifiable {
+        let id: String
+        let tool: ToolType
+        let accountId: String?
+        let bucket: QuotaBucket
+    }
+
+    /// Keep live utilization and reset-cycle history on the same complete
+    /// quota set. Previously this path discarded every bucket with a
+    /// `groupTitle`, which made Spark and Fable disappear even though their
+    /// history tabs were already present.
+    private var utilizationBuckets: [UtilizationBucket] {
+        let primary = buckets.map {
+            UtilizationBucket(
+                id: "primary:\(tool.rawValue):\($0.id)",
+                tool: tool,
+                accountId: environment.account(for: tool)?.id,
+                bucket: $0
+            )
+        }
+        let additional = additionalQuotaSeries.map {
+            UtilizationBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
+        }
+        return primary + additional
     }
 
     /// Every bucket participates in reset-cycle history, including per-model
@@ -74,22 +101,32 @@ struct SubscriptionUtilizationView: View {
         } else {
             primary = []
         }
-        return primary + additionalHistorySeries
+        return primary + additionalQuotaSeries
     }
 
     private var isRefreshing: Bool {
-        guard let id = environment.account(for: tool)?.id else { return false }
-        return quotaService.inFlightAccountIds.contains(id)
+        refreshTools.contains { refreshTool in
+            guard let id = environment.account(for: refreshTool)?.id else { return false }
+            return quotaService.inFlightAccountIds.contains(id)
+        }
+    }
+
+    private var refreshTools: [ToolType] {
+        var seen: Set<ToolType> = []
+        let productTools = tool == .gemini ? ToolType.googleAIPair : [tool]
+        return (productTools + additionalQuotaSeries.map(\.tool)).filter { seen.insert($0).inserted }
     }
 
     @ViewBuilder
-    private func row(for bucket: QuotaBucket) -> some View {
+    private func row(for item: UtilizationBucket) -> some View {
+        let bucket = item.bucket
         let pace = UsagePace.compute(bucket: bucket, now: now)
+        let forecast = paceForecast(for: item)
         let used = bucket.usedPercent
-        let expected = pace?.expectedUsedPercent ?? 0
+        let expected = forecast?.plannedUsedPercent ?? pace?.expectedUsedPercent ?? 0
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text(bucket.title)
+                Text(rowTitle(for: item))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -129,7 +166,7 @@ struct SubscriptionUtilizationView: View {
                 }
             }
             .chartYAxis(.hidden)
-            .frame(height: 36)
+            .frame(height: density.utilizationBarHeight)
             Text(SubscriptionWindowProgress.summary(
                 usedPercent: bucket.usedPercent,
                 resetAt: bucket.resetAt,
@@ -140,30 +177,50 @@ struct SubscriptionUtilizationView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-            if let pace {
+            if let forecast {
+                QuotaForecastRow(
+                    forecast: forecast,
+                    now: now,
+                    fontSize: density.subtitleFontSize,
+                    showGuidance: true
+                )
+            } else if let pace {
                 HStack(spacing: 6) {
                     Text(pace.stageSummary)
                         .font(.system(size: density.subtitleFontSize, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if expected > 0 {
-                        Text("·")
-                            .font(.system(size: density.subtitleFontSize))
-                            .foregroundStyle(.tertiary)
-                        Text("expected \(Int(expected.rounded()))%")
-                            .font(.system(size: density.subtitleFontSize))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
                     Spacer(minLength: 4)
                     Text(etaText(pace: pace))
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                 }
             }
         }
+    }
+
+    private func paceForecast(for item: UtilizationBucket) -> QuotaPaceForecast? {
+        guard let accountId = item.accountId else { return nil }
+        let snapshot = environment.costService.snapshot(for: item.tool)
+        return quotaService.paceForecast(
+            accountId: accountId,
+            bucket: item.bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: now
+        )
+    }
+
+    private func rowTitle(for item: UtilizationBucket) -> String {
+        var parts: [String] = []
+        if item.tool != tool {
+            parts.append(item.tool.toolName)
+        }
+        if let groupTitle = item.bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !groupTitle.isEmpty {
+            parts.append(groupTitle)
+        }
+        parts.append(item.bucket.title)
+        return parts.joined(separator: " · ")
     }
 
     private func percentLabel(used: Double) -> String {

@@ -64,7 +64,7 @@ struct SettingsView: View {
 
                     settingsSection("Menu Bar Items") {
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(MenuBarItemKind.userVisibleCases) { kind in
+                            ForEach(MenuBarItemKind.allCases) { kind in
                                 menuBarItemEditor(kind)
                             }
                         }
@@ -118,7 +118,13 @@ struct SettingsView: View {
                         }
                     }
 
-                    settingsSection("OpenAI Account") {
+                    settingsSection("OpenAI") {
+                        coreProviderSummary(
+                            representative: .codex,
+                            healthProviders: [.codex]
+                        )
+                        Divider()
+                            .padding(.vertical, 2)
                         Picker("Usage source", selection: $settingsStore.settings.codexUsageMode) {
                             ForEach(CodexUsageMode.allCases) { mode in
                                 Text(mode.label).tag(mode)
@@ -165,11 +171,17 @@ struct SettingsView: View {
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .codex)
                         } label: {
-                            Label("Check connections", systemImage: "checkmark.circle")
+                            Label("Check OpenAI connections", systemImage: "checkmark.circle")
                         }
                     }
 
-                    settingsSection("Claude Account") {
+                    settingsSection("Anthropic") {
+                        coreProviderSummary(
+                            representative: .claude,
+                            healthProviders: [.claude]
+                        )
+                        Divider()
+                            .padding(.vertical, 2)
                         Picker("Usage source", selection: $settingsStore.settings.claudeUsageMode) {
                             ForEach(ClaudeUsageMode.allCases) { mode in
                                 Text(mode.label).tag(mode)
@@ -216,15 +228,22 @@ struct SettingsView: View {
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .claude)
                         } label: {
-                            Label("Check connections", systemImage: "checkmark.circle")
+                            Label("Check Anthropic connections", systemImage: "checkmark.circle")
                         }
                     }
 
-                    settingsSection("Google AI Account") {
+                    settingsSection("Google AI") {
+                        coreProviderSummary(
+                            representative: .gemini,
+                            healthProviders: [.gemini, .antigravity]
+                        )
+                        Divider()
+                            .padding(.vertical, 2)
                         Text("Gemini and Antigravity share the same Google AI subscription quota. Cookie import is the only supported web path — there is no WebView login.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
+                        sourceSummary(label: "Gemini source", value: "Web quota")
                         Text(GeminiUsageMode.webOnly.detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -258,11 +277,6 @@ struct SettingsView: View {
                         Divider()
                             .padding(.vertical, 2)
                         connectionHealthRows(provider: .gemini)
-                        Button {
-                            environment.recheckPrimaryRouteHealth(provider: .gemini)
-                        } label: {
-                            Label("Check Gemini connections", systemImage: "checkmark.circle")
-                        }
 
                         Divider()
                             .padding(.vertical, 2)
@@ -292,16 +306,25 @@ struct SettingsView: View {
                             .padding(.vertical, 2)
                         connectionHealthRows(provider: .antigravity)
                         Button {
+                            environment.recheckPrimaryRouteHealth(provider: .gemini)
                             environment.recheckPrimaryRouteHealth(provider: .antigravity)
                         } label: {
-                            Label("Check Antigravity connection", systemImage: "checkmark.circle")
+                            Label("Check Google AI connections", systemImage: "checkmark.circle")
                         }
                     }
 
-                    settingsSection("Grok Account") {
+                    settingsSection("xAI") {
+                        coreProviderSummary(
+                            representative: .grok,
+                            healthProviders: [.grok]
+                        )
+                        Divider()
+                            .padding(.vertical, 2)
                         Text("Vibe Bar can read Grok usage from `~/.grok/auth.json` (preferred — written by `grok login`) or from a signed-in grok.com browser session. Either source is enough.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        sourceSummary(label: "Usage source", value: "Auto")
 
                         if GrokCredentialsStore.hasCredentials() {
                             Label("~/.grok/auth.json detected", systemImage: "checkmark.circle")
@@ -348,7 +371,7 @@ struct SettingsView: View {
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .grok)
                         } label: {
-                            Label("Check Grok connections", systemImage: "checkmark.circle")
+                            Label("Check xAI connections", systemImage: "checkmark.circle")
                         }
 
                         Link("Open xAI status page",
@@ -512,8 +535,62 @@ struct SettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+                .padding(.horizontal, 8)
+                .frame(minHeight: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(healthColor(health.status).opacity(health.status == .ok ? 0.08 : 0.04))
+                )
             }
         }
+    }
+
+    private func coreProviderSummary(
+        representative: ToolType,
+        healthProviders: [ToolType]
+    ) -> some View {
+        let routes = healthProviders.flatMap(PrimaryProviderRoute.routes(for:))
+        let ready = routes.contains { route in
+            environment.routeHealth[route]?.status == .ok
+        }
+        return HStack(spacing: 10) {
+            ToolBrandIconView(tool: representative, size: 20)
+                .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(representative.statusProviderName)
+                    .font(.system(size: 13, weight: .semibold))
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(ready ? Color.green : Color.red)
+                        .frame(width: 7, height: 7)
+                    Text(ready ? "Ready" : "Needs setup")
+                        .font(.caption2)
+                        .foregroundStyle(ready ? Color.green : Color.red)
+                }
+            }
+            Spacer(minLength: 12)
+            Toggle("Show in Overview", isOn: coreProviderVisibilityBinding(representative))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.caption)
+        }
+    }
+
+    private func sourceSummary(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+            Spacer(minLength: 12)
+            Text(value)
+                .foregroundStyle(.secondary)
+        }
+        .font(.body)
+    }
+
+    private func coreProviderVisibilityBinding(_ tool: ToolType) -> Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.isCoreProviderVisible(tool) },
+            set: { settingsStore.settings.setCoreProviderVisible($0, for: tool) }
+        )
     }
 
     private var keychainAuthorizationControls: some View {
@@ -551,8 +628,8 @@ struct SettingsView: View {
     private func healthColor(_ status: PrimaryProviderRouteHealthStatus) -> Color {
         switch status {
         case .ok: return .green
-        case .missing: return .red
-        case .blocked, .failed: return .orange
+        case .missing: return .secondary
+        case .blocked, .failed: return .red
         }
     }
 
@@ -567,11 +644,11 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                Picker("Popover density", selection: popoverDensityBinding(kind)) {
+                Picker("Display density", selection: popoverDensityBinding()) {
                     ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                Text(settingsStore.settings.popoverDensity(for: kind).detail)
+                Text(settingsStore.settings.popoverDensity.detail)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
@@ -813,12 +890,10 @@ struct SettingsView: View {
         )
     }
 
-    private func popoverDensityBinding(_ kind: MenuBarItemKind) -> Binding<PopoverDensity> {
+    private func popoverDensityBinding() -> Binding<PopoverDensity> {
         Binding(
-            get: { settingsStore.settings.popoverDensity(for: kind) },
-            set: { value in
-                settingsStore.settings.setPopoverDensity(value, for: kind)
-            }
+            get: { settingsStore.settings.popoverDensity },
+            set: { settingsStore.settings.popoverDensity = $0 }
         )
     }
 

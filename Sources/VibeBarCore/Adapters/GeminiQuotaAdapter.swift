@@ -12,14 +12,19 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
 
     private let session: URLSession
     private let now: @Sendable () -> Date
+    private let cookieHeader: @Sendable () throws -> String
 
     public init(
         session: URLSession = .shared,
         homeDirectory _: String = RealHomeDirectory.path,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        cookieHeader: @escaping @Sendable () throws -> String = {
+            try GeminiWebCookieStore.readCookieHeader()
+        }
     ) {
         self.session = session
         self.now = now
+        self.cookieHeader = cookieHeader
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
@@ -28,7 +33,7 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         }
         let header: String
         do {
-            header = try GeminiWebCookieStore.readCookieHeader()
+            header = try cookieHeader()
         } catch {
             throw QuotaError.noCredential
         }

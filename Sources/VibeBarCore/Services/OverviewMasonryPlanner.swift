@@ -100,6 +100,37 @@ public enum OverviewMasonryPlanner {
         return Plan(positions: positions, columnHeights: heights)
     }
 
+    /// Rebuild positions from a previously chosen column assignment while
+    /// honoring each item's current height. Interactive card expansion can
+    /// therefore push later cards down within the same column without making
+    /// any card jump to the other side. Declaration order remains the vertical
+    /// order within each phase.
+    public static func plan(
+        items: [Item],
+        fixedColumns: [String: Int],
+        columns: Int = 2,
+        spacing: Double
+    ) -> Plan {
+        let columnCount = max(1, columns)
+        var positions: [String: Position] = [:]
+        var heights = Array(repeating: 0.0, count: columnCount)
+
+        for phase in [Phase.quota, .cost, .auxiliary] {
+            for item in items where item.phase == phase {
+                let preferred = fixedColumns[item.id] ?? shortestColumn(heights)
+                let column = min(max(0, preferred), columnCount - 1)
+                append(
+                    item,
+                    to: column,
+                    spacing: spacing,
+                    heights: &heights,
+                    positions: &positions
+                )
+            }
+        }
+        return Plan(positions: positions, columnHeights: heights)
+    }
+
     private static func bestQuotaOrder(_ items: [Item], spacing: Double) -> [Item] {
         var best = items
         var bestScore = quotaScore(items, spacing: spacing)

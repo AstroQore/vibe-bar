@@ -2,16 +2,9 @@ import SwiftUI
 import AppKit
 import VibeBarCore
 
-/// Top-level popover content. Each menu bar item kind opens its own popover.
-///
-/// - `.compact` → Overview: a wide provider-column waterfall with a small
-///   page switcher for all-provider and single-provider views.
-/// - `.codex` / `.claude` → single-provider detail waterfall.
-/// - `.status` → service status only.
+/// Top-level content for Vibe Bar's single tabbed popover workspace.
 struct PopoverRoot: View {
-    let kind: MenuBarItemKind
     let width: CGFloat
-    let closePopover: () -> Void
     let onContentHeightChange: (CGFloat) -> Void
     let onToggleMiniWindow: () -> Void
 
@@ -22,32 +15,32 @@ struct PopoverRoot: View {
     @State private var autoRefreshedPageKeys: Set<String> = []
 
     var body: some View {
-        let density = activeDensity
-        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+        let shellDensity = shellDensity
+        let contentDensity = activeDensity
+        VStack(alignment: .leading, spacing: shellDensity.interSectionSpacing) {
             HeaderView(
                 title: headerTitle,
                 subtitle: headerSubtitle,
-                plan: headerPlan,
+                plan: nil,
                 lastUpdated: latestUpdated,
                 isRefreshing: isRefreshing,
-                titleFontSize: density.titleFontSize + 2,
-                subtitleFontSize: density.subtitleFontSize,
-                accessory: kind == .compact
-                    ? AnyView(OverviewPageSwitch(selection: $overviewPage, density: density))
-                    : nil,
+                titleFontSize: shellDensity.titleFontSize + 2,
+                subtitleFontSize: shellDensity.subtitleFontSize,
+                accessory: AnyView(OverviewPageSwitch(selection: $overviewPage, density: shellDensity)),
                 onRefresh: { environment.refreshAll() },
                 onToggleMiniWindow: onToggleMiniWindow,
                 onShowSettings: { environment.showSettingsWindow() }
             )
+            .frame(height: shellDensity.headerHeight, alignment: .center)
             Divider().opacity(0.3)
             ScrollView(.vertical, showsIndicators: false) {
-                content(density: density)
+                content(density: contentDensity)
                     .padding(.bottom, 4)
             }
             .frame(maxHeight: maxScrollHeight)
         }
-        .padding(.horizontal, density.popoverPaddingH)
-        .padding(.vertical, density.popoverPaddingV)
+        .padding(.horizontal, shellDensity.popoverPaddingH)
+        .padding(.vertical, shellDensity.popoverPaddingV)
         .frame(width: width)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
@@ -57,37 +50,20 @@ struct PopoverRoot: View {
         }
     }
 
-    /// Resolves the "logical" menu bar kind for the current view. When the
-    /// overview popover sits on a sub-page (Claude / OpenAI), every kind-keyed
-    /// piece of state — density preference, header title/subtitle/plan,
-    /// `visibleTools` — is taken from the matching dedicated kind so the
-    /// rendering is byte-for-byte consistent with what the user would see if
-    /// they had opened that provider's menu bar item directly.
-    private var effectiveKind: MenuBarItemKind {
-        switch kind {
-        case .compact:
-            switch overviewPage {
-            case .overview: return .compact
-            case .claude:   return .claude
-            case .openAI:   return .codex
-            case .googleAI: return .compact
-            case .grok:     return .compact
-            case .misc:     return .compact
-            }
-        default:
-            return kind
-        }
+    /// The tabbed popover is one shared shell. Provider pages may use their
+    /// own content metrics, but the title band and outer margins must never
+    /// shift when the selected tab changes.
+    private var shellDensity: Theme.Density {
+        Theme.overviewDensity(for: settingsStore.settings.popoverDensity)
     }
 
     private var activeDensity: Theme.Density {
-        let popDens = settingsStore.settings.popoverDensity(for: effectiveKind)
-        switch effectiveKind {
-        case .compact:
-            return Theme.overviewDensity(for: popDens)
-        case .codex, .claude:
-            return Theme.detailDensity(for: popDens)
-        case .status:
-            return Theme.density(for: popDens)
+        let profile = settingsStore.settings.popoverDensity
+        switch overviewPage {
+        case .overview, .misc:
+            return Theme.overviewDensity(for: profile)
+        case .openAI, .claude, .googleAI, .grok:
+            return Theme.detailDensity(for: profile)
         }
     }
 
@@ -98,78 +74,41 @@ struct PopoverRoot: View {
 
     @ViewBuilder
     private func content(density: Theme.Density) -> some View {
-        switch kind {
-        case .compact:
-            switch overviewPage {
-            case .overview:
-                OverviewWaterfall(density: density)
-            case .claude:
-                ProviderDetailView(tool: .claude, density: density)
-            case .openAI:
-                ProviderDetailView(tool: .codex, density: density)
-            case .googleAI:
-                GeminiTabPage(density: density)
-            case .grok:
-                GrokPage(density: density)
-            case .misc:
-                MiscProvidersPage(density: density)
-            }
-        case .codex:
-            ProviderDetailView(tool: .codex, density: density)
+        switch overviewPage {
+        case .overview:
+            OverviewWaterfall(density: density)
         case .claude:
             ProviderDetailView(tool: .claude, density: density)
-        case .status:
-            ServiceStatusCard(tools: ToolType.combinedStatusPageProviders)
+        case .openAI:
+            ProviderDetailView(tool: .codex, density: density)
+        case .googleAI:
+            GeminiTabPage(density: density)
+        case .grok:
+            GrokPage(density: density)
+        case .misc:
+            MiscProvidersPage(density: density)
         }
     }
 
     private var headerTitle: String {
-        if kind == .compact, overviewPage == .misc {
-            return "Misc Providers"
-        }
-        if kind == .compact, overviewPage == .googleAI {
-            return "Gemini"
-        }
-        if kind == .compact, overviewPage == .grok {
-            return "Grok"
-        }
-        switch effectiveKind {
-        case .compact: return "Overview"
-        case .codex:   return "ChatGPT"
-        case .claude:  return "Claude"
-        case .status:  return "Service Status"
+        switch overviewPage {
+        case .overview: return "Overview"
+        case .openAI: return "ChatGPT"
+        case .claude: return "Claude"
+        case .googleAI: return "Gemini"
+        case .grok: return "Grok"
+        case .misc: return "Misc Providers"
         }
     }
 
     private var headerSubtitle: String? {
-        if kind == .compact, overviewPage == .misc {
-            return "Usage-only · sign in or paste a key"
-        }
-        if kind == .compact, overviewPage == .googleAI {
-            return "Gemini Web + AntiGravity · quota & status"
-        }
-        if kind == .compact, overviewPage == .grok {
-            return "xAI · monthly credits, cost & status"
-        }
-        switch effectiveKind {
-        case .compact: return "All providers · quota & cost"
-        case .codex:   return ToolType.codex.subtitle
-        case .claude:  return ToolType.claude.subtitle
-        case .status:  return "Live status pages"
-        }
-    }
-
-    private var headerPlan: String? {
-        // Always check `kind` here (not `effectiveKind`). The Overview popover
-        // sits between the page switcher and the refresh / settings buttons,
-        // so any extra accessory in that header band gets in the user's way
-        // when they're trying to switch tabs. AQ explicitly does not want a
-        // plan badge to appear in Overview, even when the active sub-page is
-        // Claude or OpenAI. Dedicated provider popovers still show it.
-        switch kind {
-        case .compact, .status: return nil
-        case .codex:   return planBadgeLabel(for: .codex)
-        case .claude:  return planBadgeLabel(for: .claude)
+        switch overviewPage {
+        case .overview: return "All providers · quota & cost"
+        case .openAI: return ToolType.codex.subtitle
+        case .claude: return ToolType.claude.subtitle
+        case .googleAI: return "Gemini Web + AntiGravity · quota & status"
+        case .grok: return "xAI · monthly credits, cost & status"
+        case .misc: return "Usage-only · sign in or paste a key"
         }
     }
 
@@ -178,20 +117,25 @@ struct PopoverRoot: View {
         // visible in the current popover. The Misc subpage owns its
         // usage-only integrations; the Google AI subpage aggregates the
         // partial-primary pair; the Grok subpage shows just `.grok`.
-        if kind == .compact, overviewPage == .misc {
+        if overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
         }
-        if kind == .compact, overviewPage == .googleAI {
+        if overviewPage == .googleAI {
             return ToolType.googleAIPair
         }
-        if kind == .compact, overviewPage == .grok {
+        if overviewPage == .grok {
             return [.grok]
         }
-        switch effectiveKind {
-        case .compact:          return ToolType.dedicatedCardProviders
-        case .status:           return ToolType.combinedStatusPageProviders
-        case .codex:            return [.codex]
-        case .claude:           return [.claude]
+        switch overviewPage {
+        case .overview:
+            return ToolType.dedicatedCardProviders.filter {
+                settingsStore.settings.isCoreProviderVisible($0)
+            }
+        case .openAI: return [.codex]
+        case .claude: return [.claude]
+        case .googleAI: return ToolType.googleAIPair
+        case .grok: return [.grok]
+        case .misc: return settingsStore.settings.visibleMiscProviderList
         }
     }
 
@@ -207,23 +151,15 @@ struct PopoverRoot: View {
     }
 
     private var visibleAccounts: [AccountIdentity] {
-        if kind == .compact, overviewPage == .misc {
+        if overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderInstances
                 .compactMap { environment.account(for: $0) }
         }
         return visibleTools.compactMap { environment.account(for: $0) }
     }
 
-    private func planBadgeLabel(for tool: ToolType) -> String? {
-        settingsStore.settings.planBadgeLabel(
-            for: tool,
-            quotaPlan: environment.quota(for: tool)?.plan,
-            accountPlan: environment.account(for: tool)?.plan
-        )
-    }
-
     private var autoRefreshKey: String {
-        "\(kind.rawValue):\(overviewPage.rawValue)"
+        overviewPage.rawValue
     }
 
     private func refreshVisibleProvidersIfNeeded() {
@@ -309,14 +245,13 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         }
     }
 
-    var menuBarKind: MenuBarItemKind {
+    var coreProvider: ToolType? {
         switch self {
-        case .overview: return .compact
-        case .openAI:   return .codex
-        case .claude:   return .claude
-        case .googleAI: return .compact
-        case .grok:     return .compact
-        case .misc:     return .compact
+        case .openAI: return .codex
+        case .claude: return .claude
+        case .googleAI: return .gemini
+        case .grok: return .grok
+        case .overview, .misc: return nil
         }
     }
 }
@@ -325,9 +260,18 @@ private struct OverviewPageSwitch: View {
     @Binding var selection: OverviewPage
     let density: Theme.Density
 
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    private var visiblePages: [OverviewPage] {
+        OverviewPage.allCases.filter { page in
+            guard let provider = page.coreProvider else { return true }
+            return settingsStore.settings.isCoreProviderVisible(provider)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 3) {
-            ForEach(OverviewPage.allCases) { page in
+            ForEach(visiblePages) { page in
                 let isSelected = selection == page
                 BorderlessRowButton(action: {
                     selection = page
@@ -365,6 +309,11 @@ private struct OverviewPageSwitch: View {
                         .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
                 )
         )
+        .onChange(of: settingsStore.settings.visibleCoreProviders) { _, _ in
+            if !visiblePages.contains(selection) {
+                selection = .overview
+            }
+        }
     }
 }
 
@@ -417,6 +366,8 @@ private struct OverviewWaterfall: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
+    @State private var masonrySession = ColumnMasonryLayout.Session()
 
     var body: some View {
         let snapshots = overviewCostSnapshots
@@ -433,26 +384,35 @@ private struct OverviewWaterfall: View {
             CombinedTotalsRow(density: density)
             ColumnMasonryLayout(
                 columns: 2,
-                spacing: density.interSectionSpacing
+                spacing: density.interSectionSpacing,
+                session: masonrySession
             ) {
-                ProviderQuotaCard(tool: .codex, density: density, compact: false)
-                    .overviewMasonryItem(id: "quota-codex", phase: .quota)
-                ProviderQuotaCard(tool: .claude, density: density, compact: false)
-                    .overviewMasonryItem(id: "quota-claude", phase: .quota)
+                if isVisible(.codex) {
+                    ProviderQuotaCard(tool: .codex, density: density, compact: false)
+                        .overviewMasonryItem(id: "quota-codex", phase: .quota)
+                }
+                if isVisible(.claude) {
+                    ProviderQuotaCard(tool: .claude, density: density, compact: false)
+                        .overviewMasonryItem(id: "quota-claude", phase: .quota)
+                }
                 // Gemini Web and AntiGravity both roll up to the
                 // Gemini product, so the Overview surface shows them
                 // as a single L2 "Gemini" card with two L3 sub-sections
                 // (`GeminiCombinedCard`). Grok stays on its own card.
-                GeminiCombinedCard(density: density)
-                    .overviewMasonryItem(id: "quota-gemini", phase: .quota)
-                ProviderQuotaCard(tool: .grok, density: density, compact: false)
-                    .overviewMasonryItem(id: "quota-grok", phase: .quota)
+                if isVisible(.gemini) {
+                    GeminiCombinedCard(density: density)
+                        .overviewMasonryItem(id: "quota-gemini", phase: .quota)
+                }
+                if isVisible(.grok) {
+                    ProviderQuotaCard(tool: .grok, density: density, compact: false)
+                        .overviewMasonryItem(id: "quota-grok", phase: .quota)
+                }
                 if hasCostData {
                     CostHistoryView(
                         tool: .codex,
                         snapshot: combinedCostSnapshot,
                         density: density,
-                        chartHeight: 190,
+                        chartHeight: density.overviewCostChartHeight,
                         titleOverride: "All Providers Cost History"
                     )
                     .overviewMasonryItem(id: "cost-all-providers", phase: .cost)
@@ -467,16 +427,18 @@ private struct OverviewWaterfall: View {
                 // source (Gemini CLI no longer writes local telemetry);
                 // its `.pb`-only cascades are filled via the
                 // language-server RPC in CostUsageScanner.scanAntigravity.
-                OverviewCostCard(
-                    tool: .antigravity,
-                    density: density,
-                    snapshotOverride: googleAICostSnapshot,
-                    titleOverride: "Gemini Cost",
-                    emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
-                    toolNameOverride: "Gemini",
-                    heatmapTitleOverride: "When you use Gemini"
-                )
-                .overviewMasonryItem(id: "cost-gemini", phase: .cost)
+                if isVisible(.gemini) {
+                    OverviewCostCard(
+                        tool: .antigravity,
+                        density: density,
+                        snapshotOverride: googleAICostSnapshot,
+                        titleOverride: "Gemini Cost",
+                        emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
+                        toolNameOverride: "Gemini",
+                        heatmapTitleOverride: "When you use Gemini"
+                    )
+                    .overviewMasonryItem(id: "cost-gemini", phase: .cost)
+                }
                 if hasCostData {
                     ModelRankingList(
                         breakdowns: combinedModels,
@@ -506,7 +468,11 @@ private struct OverviewWaterfall: View {
     /// (combined Gemini + AntiGravity) via `googleAICostSnapshot`, so it
     /// isn't listed here.
     private var overviewCostProviders: [ToolType] {
-        [.codex, .claude, .grok]
+        [.codex, .claude, .grok].filter(isVisible)
+    }
+
+    private func isVisible(_ tool: ToolType) -> Bool {
+        settingsStore.settings.isCoreProviderVisible(tool)
     }
 
     /// Combined Gemini + AntiGravity cost, surfaced as the single
@@ -525,8 +491,10 @@ private struct OverviewWaterfall: View {
     /// data so Gemini / AntiGravity usage shows up there too.
     private var overviewCostSnapshots: [CostSnapshot] {
         var snaps = overviewCostProviders.compactMap { environment.costService.snapshot(for: $0) }
-        let googleAI = googleAICostSnapshot
-        if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
+        if isVisible(.gemini) {
+            let googleAI = googleAICostSnapshot
+            if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
+        }
         return snaps
     }
 }
@@ -707,7 +675,7 @@ private struct GeminiTabPage: View {
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
         let antigravityAccount = environment.account(for: .antigravity)
-        let antigravityHistorySeries: [FillTimelineSeries] = antigravityAccount.map { account in
+        let antigravityQuotaSeries: [FillTimelineSeries] = antigravityAccount.map { account in
             (quotaService.cachedQuota(for: account.id)?.buckets ?? []).map {
                 FillTimelineSeries(tool: .antigravity, accountId: account.id, bucket: $0)
             }
@@ -725,10 +693,10 @@ private struct GeminiTabPage: View {
                         mode: settingsStore.displayMode,
                         density: density,
                         now: context.date,
-                        additionalHistorySeries: antigravityHistorySeries
+                        additionalQuotaSeries: antigravityQuotaSeries
                     )
                 }
-                ServiceStatusCard(tools: [.gemini])
+                ServiceStatusCard(tools: [.gemini], density: density)
             }
             .frame(
                 minWidth: geminiLeftColumnMinWidth,
@@ -743,19 +711,22 @@ private struct GeminiTabPage: View {
     }
 
     private var geminiLeftColumnMinWidth: CGFloat {
-        max(320, min(380, density.popoverWidth * 0.34))
+        density.detailLeftColumnRange.lowerBound
     }
 
     private var geminiLeftColumnIdealWidth: CGFloat {
-        max(geminiLeftColumnMinWidth, min(410, density.popoverWidth * 0.38))
+        min(
+            density.detailLeftColumnRange.upperBound,
+            max(geminiLeftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
+        )
     }
 
     private var geminiLeftColumnMaxWidth: CGFloat {
-        max(geminiLeftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
+        density.detailLeftColumnRange.upperBound
     }
 
     private var geminiRightColumnMinWidth: CGFloat {
-        500
+        density.detailRightColumnMinimum
     }
 }
 
@@ -854,7 +825,7 @@ private struct ProviderCostStack: View {
                 tool: tool,
                 snapshot: snapshot,
                 density: density,
-                chartHeight: 160
+                chartHeight: density.detailCostChartHeight
             )
             ModelRankingList(snapshot: snapshot, density: density)
             YearlyContributionHeatmapView(
@@ -868,23 +839,23 @@ private struct ProviderCostStack: View {
 }
 
 /// Sits above the per-provider columns: cost and token summary on the left,
-/// current provider status on the right. Cost intentionally gets more width
-/// because its metrics are denser while the four compact status tiles fit in
-/// the narrower column.
+/// current provider status on the right. The two cards use equal columns so
+/// the Overview header aligns with the waterfall below it.
 private struct CombinedTotalsRow: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
-    @EnvironmentObject var quotaService: QuotaService
-    private let summaryHeight: CGFloat = 178
-
+    @EnvironmentObject var settingsStore: SettingsStore
     var body: some View {
         // Headline totals span every cost-aware provider, including
         // Google AI (Gemini + AntiGravity): AntiGravity usage is now
         // captured offline (`.db`) and via the language-server RPC
         // (`.pb`), so it's reliable enough to roll up here.
-        let snapshots = ToolType.costAwareProviders
+        let visibleCostProviders = ToolType.costAwareProviders.filter {
+            settingsStore.settings.isCoreProviderVisible($0)
+        }
+        let snapshots = visibleCostProviders
             .compactMap { environment.costService.snapshot(for: $0) }
         let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
         let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
@@ -897,7 +868,6 @@ private struct CombinedTotalsRow: View {
         let yesterdayTokens = snapshots.reduce(0) { $0 + CostTimeframe.yesterday.tokens(in: $1) }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
-        let overallFill = OverallFillRate.average(quotaService.lastSuccessByAccount)
         // Pick the single day with the highest cost across all
         // providers, then surface both its cost and token totals so
         // the user sees what they spent *and* burned on their worst
@@ -907,24 +877,10 @@ private struct CombinedTotalsRow: View {
         let peakDayPoint = dailyHistory.max(by: { $0.costUSD < $1.costUSD })
         let peakDayCost = peakDayPoint?.costUSD ?? 0
         let peakDayTokens = peakDayPoint?.totalTokens ?? 0
-        // TPM is today-so-far tokens divided by elapsed minutes since
-        // local midnight. We floor the divisor to 1 so a 00:00:05
-        // launch can't divide by zero. RPM previously sat next to it
-        // but request counts aren't available across providers; the
-        // cell now surfaces the overall subscription fill rate
-        // instead, which is the more useful "are my plans burning
-        // hot?" indicator.
-        let elapsedMinutesToday: Double = {
-            let cal = Calendar.current
-            let start = cal.startOfDay(for: Date())
-            return max(1, Date().timeIntervalSince(start) / 60)
-        }()
-        let tokensPerMinute = Int((Double(todayTokens) / elapsedMinutesToday).rounded())
-
         GeometryReader { geometry in
             let spacing = density.interSectionSpacing
             let availableWidth = max(0, geometry.size.width - spacing)
-            let costWidth = availableWidth * 0.62
+            let columnWidth = availableWidth / 2
 
             HStack(alignment: .top, spacing: spacing) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -947,44 +903,51 @@ private struct CombinedTotalsRow: View {
                     }
                     .disabled(costService.isRefreshing)
                 }
-                    HStack(alignment: .top, spacing: 0) {
-                        metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
-                        divider
-                        metric(label: "TODAY", value: formatCost(todayCost))
-                        divider
-                        metric(label: "YESTERDAY", value: formatCost(yesterdayCost))
-                        divider
-                        metric(label: "7-DAY", value: formatCost(weekCost))
-                        divider
-                        metric(label: "30-DAY", value: formatCost(monthCost))
+                    // 4 × 3 summary: durable all-time/peak context first,
+                    // followed by matching cost and token timeframes. The
+                    // flexible gaps use the full height shared with Status,
+                    // instead of leaving one empty band below the third row.
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .top, spacing: 0) {
+                            metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
+                            divider
+                            metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
+                            divider
+                            metric(label: "PEAK DAY", value: formatCost(peakDayCost))
+                            divider
+                            metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
+                        }
+                        Spacer(minLength: 8)
+                        HStack(alignment: .top, spacing: 0) {
+                            metric(label: "TODAY", value: formatCost(todayCost))
+                            divider
+                            metric(label: "YESTERDAY", value: formatCost(yesterdayCost))
+                            divider
+                            metric(label: "7-DAY", value: formatCost(weekCost))
+                            divider
+                            metric(label: "30-DAY", value: formatCost(monthCost))
+                        }
+                        Spacer(minLength: 8)
+                        HStack(alignment: .top, spacing: 0) {
+                            metric(label: "TODAY TOK", value: formatTokens(todayTokens))
+                            divider
+                            metric(label: "YESTERDAY TOK", value: formatTokens(yesterdayTokens))
+                            divider
+                            metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
+                            divider
+                            metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
+                        }
                     }
-                    HStack(alignment: .top, spacing: 0) {
-                        metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
-                        divider
-                        metric(label: "TODAY TOK", value: formatTokens(todayTokens))
-                        divider
-                        metric(label: "YESTERDAY TOK", value: formatTokens(yesterdayTokens))
-                        divider
-                        metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
-                        divider
-                        metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
-                    }
-                    HStack(alignment: .top, spacing: 0) {
-                        metric(label: "PEAK DAY", value: formatCost(peakDayCost))
-                        divider
-                        metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
-                        divider
-                        metric(label: "TPM", value: formatTokens(tokensPerMinute))
-                        divider
-                        metric(label: "FILL", value: formatFillPercent(overallFill))
-                    }
+                    .frame(maxHeight: .infinity)
                 }
                 .padding(density.cardPadding)
                 .frame(
-                    minWidth: costWidth,
-                    idealWidth: costWidth,
-                    maxWidth: costWidth,
-                    minHeight: summaryHeight,
+                    minWidth: columnWidth,
+                    idealWidth: columnWidth,
+                    maxWidth: columnWidth,
+                    minHeight: density.overviewSummaryHeight,
+                    idealHeight: density.overviewSummaryHeight,
+                    maxHeight: density.overviewSummaryHeight,
                     alignment: .topLeading
                 )
                 .background(
@@ -996,17 +959,22 @@ private struct CombinedTotalsRow: View {
                         .stroke(.separator.opacity(0.4), lineWidth: 0.5)
                 )
 
-                OverviewStatusSummaryCard(density: density)
+                OverviewStatusSummaryCard(
+                    density: density,
+                    minHeight: density.overviewSummaryHeight,
+                    tools: ToolType.combinedStatusPageProviders.filter {
+                        settingsStore.settings.isCoreProviderVisible($0)
+                    }
+                )
                     .frame(
-                        minWidth: availableWidth - costWidth,
-                        idealWidth: availableWidth - costWidth,
-                        maxWidth: availableWidth - costWidth,
-                        minHeight: summaryHeight,
+                        minWidth: columnWidth,
+                        idealWidth: columnWidth,
+                        maxWidth: columnWidth,
                         alignment: .topLeading
                     )
             }
         }
-        .frame(height: summaryHeight)
+        .frame(height: density.overviewSummaryHeight)
     }
 
     private var divider: some View {
@@ -1035,7 +1003,8 @@ private struct CombinedTotalsRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func formatCost(_ value: Double) -> String {
+    private func formatCost(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
         if value < 0.01 { return "$0.00" }
         if value < 100  { return String(format: "$%.2f", value) }
         return String(format: "$%.0f", value)
@@ -1048,11 +1017,6 @@ private struct CombinedTotalsRow: View {
         return "\(tokens)"
     }
 
-    private func formatFillPercent(_ value: Double?) -> String {
-        guard let value, value.isFinite else { return "—" }
-        return "\(Int(value.rounded()))%"
-    }
-
     private func formatModelName(_ modelName: String?) -> String {
         guard let modelName, !modelName.isEmpty else { return "-" }
         if modelName.count <= 18 { return modelName }
@@ -1062,11 +1026,13 @@ private struct CombinedTotalsRow: View {
 
 private struct OverviewStatusSummaryCard: View {
     let density: Theme.Density
+    let minHeight: CGFloat
+    let tools: [ToolType]
 
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Status")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
@@ -1086,19 +1052,32 @@ private struct OverviewStatusSummaryCard: View {
                 }
                 .disabled(!serviceStatus.inFlight.isEmpty)
             }
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .top)],
-                alignment: .leading,
-                spacing: 8
-            ) {
-                ForEach(ToolType.combinedStatusPageProviders, id: \.self) { tool in
-                    providerStatusTile(tool)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            if tools.isEmpty {
+                Text("Enable a core provider in Settings to show service status.")
+                    .font(.system(size: max(9, density.subtitleFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else {
+                let columnCount = min(2, max(1, tools.count))
+                let rowCount = Int(ceil(Double(tools.count) / Double(columnCount)))
+                let tileHeight = statusTileHeight(rowCount: rowCount)
+                LazyVGrid(
+                    columns: Array(
+                        repeating: GridItem(.flexible(), spacing: density.cardSpacing, alignment: .top),
+                        count: columnCount
+                    ),
+                    alignment: .leading,
+                    spacing: density.cardSpacing
+                ) {
+                    ForEach(tools, id: \.self) { tool in
+                        providerStatusTile(tool, height: tileHeight)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
         }
         .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: 134, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))
@@ -1109,19 +1088,38 @@ private struct OverviewStatusSummaryCard: View {
         )
     }
 
-    private func providerStatusTile(_ tool: ToolType) -> some View {
+    private func statusTileHeight(rowCount: Int) -> CGFloat {
+        let rows = max(1, rowCount)
+        let headerHeight = max(18, density.bucketTitleFontSize + 6)
+        let gridSpacing = CGFloat(max(0, rows - 1)) * density.cardSpacing
+        let available = minHeight
+            - density.cardPadding * 2
+            - headerHeight
+            - density.cardSpacing
+            - gridSpacing
+        let minimum: CGFloat
+        switch density.profile {
+        case .compact: minimum = 46
+        case .regular: minimum = 58
+        case .spacious: minimum = 70
+        }
+        return max(minimum, available / CGFloat(rows))
+    }
+
+    private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
         let state = statusState(for: tool)
         let snapshot = statusSnapshot(for: tool)
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
+        return VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
+            HStack(spacing: 7) {
                 Image(systemName: state.iconName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: density.bucketTitleFontSize + 1, weight: .semibold))
                     .foregroundStyle(state.color)
-                ToolBrandIconView(tool: tool, size: 16)
+                    .frame(width: 17, height: 17)
+                ToolBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
                     .opacity(0.9)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 22, height: 22)
                 Text(statusTitle(for: tool))
-                    .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
+                    .font(.system(size: density.subtitleFontSize + 1, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
@@ -1144,9 +1142,9 @@ private struct OverviewStatusSummaryCard: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(minHeight: 54, alignment: .center)
+        .padding(.horizontal, density.cardPadding - 2)
+        .padding(.vertical, max(6, density.cardPadding - 4))
+        .frame(minHeight: height, maxHeight: height, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(state.color.opacity(0.12))
@@ -1347,7 +1345,12 @@ private struct OverviewCostCard: View {
             if let snapshot, snapshot.jsonlFilesFound > 0 {
                 CostSummaryRow(snapshot: snapshot, density: density)
                 TopModelTile(snapshot: snapshot, density: density)
-                CostHistoryView(tool: tool, snapshot: snapshot, density: density, chartHeight: 160)
+                CostHistoryView(
+                    tool: tool,
+                    snapshot: snapshot,
+                    density: density,
+                    chartHeight: density.detailCostChartHeight
+                )
                     .padding(.top, 2)
             } else {
                 Text(emptyMessageOverride ?? emptyMessage)
@@ -1473,7 +1476,7 @@ private struct ProviderDetailView: View {
                         now: context.date
                     )
                 }
-                ServiceStatusCard(tools: [tool])
+                ServiceStatusCard(tools: [tool], density: density)
             }
             .frame(
                 minWidth: leftColumnMinWidth,
@@ -1489,7 +1492,7 @@ private struct ProviderDetailView: View {
                         tool: tool,
                         snapshot: snapshot,
                         density: density,
-                        chartHeight: 160
+                        chartHeight: density.detailCostChartHeight
                     )
                     ModelRankingList(snapshot: snapshot, density: density)
                     YearlyContributionHeatmapView(history: snapshot.dailyHistory, density: density, toolName: tool.menuTitle)
@@ -1507,19 +1510,22 @@ private struct ProviderDetailView: View {
     }
 
     private var leftColumnMinWidth: CGFloat {
-        max(320, min(380, density.popoverWidth * 0.34))
+        density.detailLeftColumnRange.lowerBound
     }
 
     private var leftColumnIdealWidth: CGFloat {
-        max(leftColumnMinWidth, min(410, density.popoverWidth * 0.38))
+        min(
+            density.detailLeftColumnRange.upperBound,
+            max(leftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
+        )
     }
 
     private var leftColumnMaxWidth: CGFloat {
-        max(leftColumnIdealWidth, min(440, density.popoverWidth * 0.42))
+        density.detailLeftColumnRange.upperBound
     }
 
     private var rightColumnMinWidth: CGFloat {
-        500
+        density.detailRightColumnMinimum
     }
 }
 
@@ -1695,7 +1701,7 @@ struct ProviderQuotaCard: View {
             }
 
             if let quota, !quota.buckets.isEmpty {
-                bucketContent(quota.buckets)
+                bucketContent(quota.buckets, accountId: account?.id)
                 if tool == .codex, let credits = quota.resetCredits, credits.availableCount > 0 {
                     ResetCreditsRow(credits: credits, density: density)
                 }
@@ -1727,13 +1733,19 @@ struct ProviderQuotaCard: View {
         )
     }
 
-    private func bucketContent(_ buckets: [QuotaBucket]) -> some View {
+    private func bucketContent(_ buckets: [QuotaBucket], accountId: String?) -> some View {
         let primary = buckets.filter { $0.groupTitle == nil }
         let extras = buckets.filter { $0.groupTitle != nil }
         return VStack(alignment: .leading, spacing: density.bucketGroupSpacing) {
             if !primary.isEmpty {
                 ForEach(primary) { bucket in
-                    ProviderBucketRow(bucket: bucket, mode: settingsStore.displayMode, density: density)
+                    ProviderBucketRow(
+                        tool: tool,
+                        accountId: accountId,
+                        bucket: bucket,
+                        mode: settingsStore.displayMode,
+                        density: density
+                    )
                 }
             }
             if !compact, !extras.isEmpty {
@@ -1752,7 +1764,13 @@ struct ProviderQuotaCard: View {
                             .textCase(.uppercase)
                             .tracking(0.4)
                         ForEach(group.buckets) { bucket in
-                            ProviderBucketRow(bucket: bucket, mode: settingsStore.displayMode, density: density)
+                            ProviderBucketRow(
+                                tool: tool,
+                                accountId: accountId,
+                                bucket: bucket,
+                                mode: settingsStore.displayMode,
+                                density: density
+                            )
                         }
                     }
                 }
@@ -1790,10 +1808,15 @@ struct ProviderQuotaCard: View {
 
     private func displayableError(_ error: QuotaError?, with quota: AccountQuota?) -> QuotaError? {
         guard let error else { return nil }
+        // A credential route can disappear temporarily when an account source
+        // reloads, even though the last successful quota remains complete and
+        // usable until its next reset. Do not turn that transient routing state
+        // into a large orange error inside an otherwise healthy quota card.
+        // Settings still exposes the live route-health result, while network
+        // and response-format failures continue to surface here.
         guard error.isCredentialState,
               let quota,
-              !quota.buckets.isEmpty,
-              Date().timeIntervalSince(quota.queriedAt) < 30 * 60
+              !quota.buckets.isEmpty
         else {
             return error
         }
@@ -1838,9 +1861,14 @@ private struct ResetCreditsRow: View {
 }
 
 private struct ProviderBucketRow: View {
+    let tool: ToolType
+    let accountId: String?
     let bucket: QuotaBucket
     let mode: DisplayMode
     let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         // We only refresh "resets in …" periodically, but we don't repaint
@@ -1856,7 +1884,11 @@ private struct ProviderBucketRow: View {
     private func content(now: Date) -> some View {
         let percent = bucket.displayPercent(mode)
         let pace = UsagePace.compute(bucket: bucket, now: now)
-        let expectedDisplayed = pace.map { expectedDisplay(for: $0, mode: mode) }
+        let forecast = paceForecast(now: now)
+        let expectedDisplayed = forecast.map { displayedPlan($0) }
+            ?? pace.map { expectedDisplay(for: $0, mode: mode) }
+        let forecastRange = forecast.map { displayedRange($0) }
+        let forecastMedian = forecast.map { displayedForecast($0) }
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
@@ -1877,14 +1909,58 @@ private struct ProviderBucketRow: View {
                     usedPercent: percent,
                     expectedPercent: expectedDisplayed,
                     mode: mode,
-                    height: density.bucketBarHeight
+                    height: density.bucketBarHeight,
+                    forecastLowerPercent: forecastRange?.lowerBound,
+                    forecastUpperPercent: forecastRange?.upperBound,
+                    forecastMedianPercent: forecastMedian
                 )
             } else {
                 QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
             }
-            if let pace {
+            if let forecast {
+                QuotaForecastRow(
+                    forecast: forecast,
+                    now: now,
+                    fontSize: density.resetCountdownFontSize
+                )
+            } else if let pace {
                 UsagePaceRow(pace: pace, now: now, fontSize: density.resetCountdownFontSize)
             }
+        }
+    }
+
+    private func paceForecast(now: Date) -> QuotaPaceForecast? {
+        guard let resolvedAccountId = accountId ?? environment.account(for: tool)?.id else { return nil }
+        let snapshot = environment.costService.snapshot(for: tool)
+        return quotaService.paceForecast(
+            accountId: resolvedAccountId,
+            bucket: bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: now
+        )
+    }
+
+    private func displayedPlan(_ forecast: QuotaPaceForecast) -> Double {
+        switch mode {
+        case .used: forecast.plannedUsedPercent
+        case .remaining: 100 - forecast.plannedUsedPercent
+        }
+    }
+
+    private func displayedForecast(_ forecast: QuotaPaceForecast) -> Double {
+        switch mode {
+        case .used: forecast.projectedUsedPercent
+        case .remaining: 100 - forecast.projectedUsedPercent
+        }
+    }
+
+    private func displayedRange(_ forecast: QuotaPaceForecast) -> ClosedRange<Double> {
+        switch mode {
+        case .used:
+            return forecast.projectedUsedLowerPercent...forecast.projectedUsedUpperPercent
+        case .remaining:
+            return (100 - forecast.projectedUsedUpperPercent)...(100 - forecast.projectedUsedLowerPercent)
         }
     }
 

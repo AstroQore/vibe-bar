@@ -157,7 +157,28 @@ public enum PrimaryProviderRouteHealthChecker {
         route: PrimaryProviderRoute,
         now: Date
     ) -> PrimaryProviderRouteHealth {
-        if antigravityLanguageServerIsRunning() {
+        let dataRoot = URL(fileURLWithPath: RealHomeDirectory.path)
+            .appendingPathComponent(".gemini/antigravity")
+        return antigravityLocalProbeHealth(
+            route: route,
+            languageServerRunning: antigravityLanguageServerIsRunning(),
+            hasLocalData: FileManager.default.fileExists(atPath: dataRoot.path),
+            now: now
+        )
+    }
+
+    /// Separates the AntiGravity availability semantics from process and file
+    /// probing so the important cached-data fallback remains testable. A
+    /// stopped language server is not a broken connection when Vibe Bar still
+    /// has usable local AntiGravity data; it only means live synchronization is
+    /// paused until AntiGravity runs again.
+    static func antigravityLocalProbeHealth(
+        route: PrimaryProviderRoute = .antigravityLocalProbe,
+        languageServerRunning: Bool,
+        hasLocalData: Bool,
+        now: Date
+    ) -> PrimaryProviderRouteHealth {
+        if languageServerRunning {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .ok,
@@ -165,13 +186,11 @@ public enum PrimaryProviderRouteHealthChecker {
                 checkedAt: now
             )
         }
-        let dataRoot = URL(fileURLWithPath: RealHomeDirectory.path)
-            .appendingPathComponent(".gemini/antigravity")
-        if FileManager.default.fileExists(atPath: dataRoot.path) {
+        if hasLocalData {
             return PrimaryProviderRouteHealth(
                 route: route,
-                status: .missing,
-                detail: "Local data found; LSP not running",
+                status: .ok,
+                detail: "Local data available; LSP offline",
                 checkedAt: now
             )
         }

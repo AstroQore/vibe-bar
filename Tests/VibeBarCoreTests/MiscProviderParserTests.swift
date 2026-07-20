@@ -128,7 +128,7 @@ final class MiscProviderParserTests: XCTestCase {
         XCTAssertEqual(snapshot.email, "dev@example.com")
         XCTAssertEqual(snapshot.buckets.map(\.id), ["ollama.fiveHour", "ollama.weekly"])
         XCTAssertEqual(snapshot.buckets[0].title, "5 Hours")
-        XCTAssertEqual(snapshot.buckets[0].shortLabel, "5h")
+        XCTAssertEqual(snapshot.buckets[0].shortLabel, "5 Hours")
         XCTAssertEqual(snapshot.buckets[0].usedPercent, 25.0, accuracy: 0.01)
         XCTAssertEqual(snapshot.buckets[1].usedPercent, 40.0, accuracy: 0.01)
         XCTAssertTrue(OllamaQuotaAdapter.hasRecognizedSessionCookie("__Secure-next-auth.session-token.0=abc; other=x"))
@@ -152,7 +152,7 @@ final class MiscProviderParserTests: XCTestCase {
 
         XCTAssertEqual(snapshot.buckets.map(\.id), ["ollama.fiveHour", "ollama.weekly"])
         XCTAssertEqual(snapshot.buckets[0].title, "5 Hours")
-        XCTAssertEqual(snapshot.buckets[0].shortLabel, "5h")
+        XCTAssertEqual(snapshot.buckets[0].shortLabel, "5 Hours")
         XCTAssertEqual(snapshot.buckets[0].usedPercent, 1.0, accuracy: 0.01)
         XCTAssertEqual(snapshot.buckets[0].rawWindowSeconds, 5 * 3600)
         XCTAssertEqual(snapshot.buckets[1].usedPercent, 0.5, accuracy: 0.01)

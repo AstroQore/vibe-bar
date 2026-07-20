@@ -12,7 +12,8 @@ final class GeminiDualFetchTests: XCTestCase {
         let adapter = GeminiQuotaAdapter(
             session: .shared,
             homeDirectory: temp.path,
-            now: { Date() }
+            now: { Date() },
+            cookieHeader: { throw QuotaError.noCredential }
         )
         return (adapter, temp)
     }
@@ -48,17 +49,14 @@ final class GeminiDualFetchTests: XCTestCase {
 
     func testWebAccountWithoutCookiesSurfacesNoCredential() async throws {
         // With no cookies imported, the adapter should surface a
-        // QuotaError without crashing. Most likely .noCredential
-        // from GeminiWebCookieStore; .network is acceptable if the
-        // test env happens to have a stale cookie in the keychain.
+        // QuotaError without crashing. The injected loader keeps this
+        // test isolated from the developer's real Gemini Keychain item.
         let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
 
         do {
             _ = try await adapter.fetch(for: account(source: .webCookie))
-            // If this ever succeeds, the test env happens to have a
-            // live cookie in the keychain. Don't fail — but the
-            // smoke test scope still passes.
+            XCTFail("Expected noCredential without an injected cookie")
         } catch is QuotaError {
             // Pass — any QuotaError variant is acceptable here.
         } catch {

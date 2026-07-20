@@ -132,7 +132,28 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     public static var combinedStatusPageProviders: [ToolType] {
+        coreProviderRepresentatives
+    }
+
+    /// One representative tool for each L1 provider shown in Overview and
+    /// Settings. Google AI is represented by Gemini; AntiGravity maps back to
+    /// the same provider so one visibility switch controls the combined card.
+    public static var coreProviderRepresentatives: [ToolType] {
         [.codex, .claude, .gemini, .grok]
+    }
+
+    public var coreProviderRepresentative: ToolType? {
+        switch self {
+        case .codex, .claude, .gemini, .grok:
+            return self
+        case .antigravity:
+            return .gemini
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
+             .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
+             .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
+             .kilo, .kiro, .ollama, .openRouter, .warp:
+            return nil
+        }
     }
 
     public static var miscPageProviders: [ToolType] {

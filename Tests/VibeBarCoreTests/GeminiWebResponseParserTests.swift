@@ -94,7 +94,7 @@ final class GeminiWebResponseParserTests: XCTestCase {
 
         let current = try XCTUnwrap(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.currentUsageBucketId }))
         XCTAssertEqual(current.title, "5 Hours")
-        XCTAssertEqual(current.shortLabel, "5h")
+        XCTAssertEqual(current.shortLabel, "5 Hours")
         XCTAssertEqual(current.usedPercent, 25.0, accuracy: 0.0001)
         XCTAssertEqual(current.resetAt?.timeIntervalSince1970 ?? 0, 1779469511.884512, accuracy: 0.001)
         // Fixed window lengths let `UsagePace` render reserve/deficit
@@ -103,7 +103,7 @@ final class GeminiWebResponseParserTests: XCTestCase {
 
         let weekly = try XCTUnwrap(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.weeklyUsageBucketId }))
         XCTAssertEqual(weekly.title, "Weekly")
-        XCTAssertEqual(weekly.shortLabel, "Wk")
+        XCTAssertEqual(weekly.shortLabel, "Weekly")
         XCTAssertEqual(weekly.usedPercent, 10.0, accuracy: 0.0001)
         XCTAssertEqual(weekly.resetAt?.timeIntervalSince1970 ?? 0, 1779815111.884621, accuracy: 0.001)
         XCTAssertEqual(weekly.rawWindowSeconds, 604_800)

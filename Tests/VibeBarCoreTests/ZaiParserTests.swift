@@ -32,7 +32,7 @@ final class ZaiParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets.count, 1)
         let bucket = snap.buckets[0]
         XCTAssertEqual(bucket.title, "Weekly")
-        XCTAssertEqual(bucket.shortLabel, "Wk")
+        XCTAssertEqual(bucket.shortLabel, "Weekly")
         // (10_000_000 - 6_500_000) / 10_000_000 * 100 = 35.0
         XCTAssertEqual(bucket.usedPercent, 35.0, accuracy: 0.01)
         XCTAssertEqual(bucket.rawWindowSeconds, 7 * 86_400)

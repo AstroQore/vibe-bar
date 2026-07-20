@@ -1,19 +1,13 @@
 import Foundation
 
-/// Persists short-horizon fill samples (`FillTimelinePoint`) so the popover
-/// can render a CodexBar-style timeline — thin per-hour bars over the last
-/// week — for each headline quota bucket.
+/// Persists quota observations used by reset history and pace forecasting.
 ///
 /// Scope mirrors `SubscriptionHistoryStore` where it makes sense:
 ///
-/// - **Provider gate.** Only the four primary providers (`codex`, `claude`,
-///   `gemini`, `grok`).
-/// - **Bucket gate.** Headline buckets only (`groupTitle == nil`) — the
-///   five_hour / weekly / monthly rows the utilization panel shows. Unlike
-///   the window-peak store, 5-hour rolling buckets ARE recorded: a
-///   point-in-time series has no monotonicity requirement.
-/// - **Horizon.** Hour-slot samples, pruned past `maxHorizonDays` (8) — the
-///   chart shows 7 days; retention settings below that are respected.
+/// - Every quota for the five core providers is recorded, including Codex
+///   Spark, Claude Fable, and every Gemini Web / AntiGravity lane.
+/// - Slot size and retention follow the quota window so short rolling limits
+///   stay detailed without making weekly/monthly history unnecessarily large.
 ///
 /// File: `~/.vibebar/fill_timeline.json` (mode 0600).
 public actor UsageFillTimelineStore {
@@ -38,11 +32,10 @@ public actor UsageFillTimelineStore {
     private var pendingFlushTask: Task<Void, Never>?
     private var pendingStorage: Storage?
 
-    private static let storageSchemaVersion = 1
+    private static let storageSchemaVersion = 2
     private static let saveThrottleInterval: TimeInterval = 30
-    private static let maxFileBytes = 4 * 1024 * 1024
-    private static let maxHorizonDays = 8
-    private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .grok]
+    private static let maxFileBytes = 24 * 1024 * 1024
+    private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok]
 
     public init(fileURL: URL = UsageFillTimelineStore.defaultFileURL()) {
         self.fileURL = fileURL
@@ -64,11 +57,10 @@ public actor UsageFillTimelineStore {
 
         var storage = load()
         var dirty = false
-        let slotStart = Self.hourSlotStart(for: now)
         for bucket in quota.buckets {
-            guard bucket.groupTitle == nil else { continue }
             guard bucket.usedPercent.isFinite else { continue }
             let percent = min(100, max(0, bucket.usedPercent))
+            let slotStart = Self.slotStart(for: now, windowSeconds: bucket.rawWindowSeconds)
             if let idx = storage.points.firstIndex(where: {
                 $0.accountId == quota.accountId
                     && $0.bucketId == bucket.id
@@ -76,6 +68,8 @@ public actor UsageFillTimelineStore {
             }) {
                 storage.points[idx].usedPercent = percent
                 storage.points[idx].sampledAt = now
+                storage.points[idx].resetAt = bucket.resetAt
+                storage.points[idx].rawWindowSeconds = bucket.rawWindowSeconds
             } else {
                 storage.points.append(FillTimelinePoint(
                     accountId: quota.accountId,
@@ -83,7 +77,9 @@ public actor UsageFillTimelineStore {
                     bucketId: bucket.id,
                     slotStart: slotStart,
                     usedPercent: percent,
-                    sampledAt: now
+                    sampledAt: now,
+                    resetAt: bucket.resetAt,
+                    rawWindowSeconds: bucket.rawWindowSeconds
                 ))
             }
             dirty = true
@@ -129,6 +125,21 @@ public actor UsageFillTimelineStore {
         Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / 3_600) * 3_600)
     }
 
+    static func slotStart(for date: Date, windowSeconds: Int?) -> Date {
+        let slotSeconds: TimeInterval
+        switch windowSeconds {
+        case let seconds? where seconds <= 6 * 3_600:
+            slotSeconds = 5 * 60
+        case let seconds? where seconds <= 8 * 86_400:
+            slotSeconds = 3_600
+        case let seconds? where seconds <= 45 * 86_400:
+            slotSeconds = 6 * 3_600
+        default:
+            slotSeconds = 86_400
+        }
+        return Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / slotSeconds) * slotSeconds)
+    }
+
     private func load() -> Storage {
         if let cached = cachedStorage { return cached }
         if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
@@ -151,8 +162,13 @@ public actor UsageFillTimelineStore {
             cachedStorage = empty
             return empty
         }
-        cachedStorage = storage
-        return storage
+        var migrated = storage
+        if migrated.schemaVersion < Self.storageSchemaVersion {
+            migrated.schemaVersion = Self.storageSchemaVersion
+            persist(migrated)
+        }
+        cachedStorage = migrated
+        return migrated
     }
 
     private func save(_ storage: Storage) {
@@ -189,13 +205,22 @@ public actor UsageFillTimelineStore {
     }
 
     private func pruneInPlace(_ storage: inout Storage, retentionDays: Int, now: Date) {
-        let horizon: Int
-        if CostDataSettings.isUnlimitedRetention(retentionDays) {
-            horizon = Self.maxHorizonDays
-        } else {
-            horizon = max(0, min(Self.maxHorizonDays, retentionDays))
+        storage.points.removeAll { point in
+            let naturalHorizon: Int
+            switch point.rawWindowSeconds {
+            case let seconds? where seconds <= 6 * 3_600:
+                naturalHorizon = 30
+            case let seconds? where seconds <= 8 * 86_400:
+                naturalHorizon = 16 * 7
+            case let seconds? where seconds <= 45 * 86_400:
+                naturalHorizon = 18 * 31
+            default:
+                naturalHorizon = 16 * 7
+            }
+            let horizon = CostDataSettings.isUnlimitedRetention(retentionDays)
+                ? naturalHorizon
+                : min(naturalHorizon, max(1, retentionDays))
+            return point.slotStart < now.addingTimeInterval(-TimeInterval(horizon) * 86_400)
         }
-        let cutoff = now.addingTimeInterval(-TimeInterval(horizon) * 86_400)
-        storage.points.removeAll { $0.slotStart < cutoff }
     }
 }

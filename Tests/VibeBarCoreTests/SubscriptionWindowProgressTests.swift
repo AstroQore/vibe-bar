@@ -47,7 +47,7 @@ final class SubscriptionWindowProgressTests: XCTestCase {
             rawWindowSeconds: 18_000,
             now: now
         )
-        XCTAssertEqual(summary, "2h 35m of 5h · 7% used")
+        XCTAssertEqual(summary, "2h 35m of 5 Hours · 7% used")
     }
 
     func testFiveHourWindowSubHourElapsed() {
@@ -59,7 +59,7 @@ final class SubscriptionWindowProgressTests: XCTestCase {
             rawWindowSeconds: 18_000,
             now: now
         )
-        XCTAssertEqual(summary, "30m of 5h · 12% used")
+        XCTAssertEqual(summary, "30m of 5 Hours · 12% used")
     }
 
     func testMissingResetAtFallsBackToPercentOnly() {

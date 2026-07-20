@@ -1,11 +1,10 @@
 import Foundation
 
-/// One point-in-time usage sample for a quota bucket, bucketed to an hour
-/// slot. Powers the CodexBar-style fill timeline chart: unlike
-/// `SubscriptionWindowSample` (one aggregate per reset window), this is a
-/// short-horizon time series — "at 16:00 on Jul 2 the weekly bucket was 24%
-/// used" — so it can include the 5-hour rolling windows the window-peak
-/// store deliberately excludes.
+/// One point-in-time usage sample for a quota bucket. Slots are adaptive:
+/// five-hour windows use five-minute slots, weekly windows use hourly slots,
+/// and monthly windows use six-hour slots. The exact sample timestamp and the
+/// provider's reset forecast are retained so the forecasting engine can
+/// distinguish real burn from refills and reset-time drift.
 public struct FillTimelinePoint: Codable, Sendable, Hashable {
     public let accountId: String
     public let tool: ToolType
@@ -17,6 +16,12 @@ public struct FillTimelinePoint: Codable, Sendable, Hashable {
     /// Exact refresh timestamp of the winning sample — shown in the
     /// hover caption ("Jul 2 at 16:23: 24% used").
     public var sampledAt: Date
+    /// Provider-reported reset forecast at the time of this observation.
+    /// Optional for schema-v1 points migrated from older builds.
+    public var resetAt: Date?
+    /// Window length at the time of this observation. Optional for legacy
+    /// points whose original payload did not retain this field.
+    public var rawWindowSeconds: Int?
 
     public init(
         accountId: String,
@@ -24,7 +29,9 @@ public struct FillTimelinePoint: Codable, Sendable, Hashable {
         bucketId: String,
         slotStart: Date,
         usedPercent: Double,
-        sampledAt: Date
+        sampledAt: Date,
+        resetAt: Date? = nil,
+        rawWindowSeconds: Int? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -32,5 +39,7 @@ public struct FillTimelinePoint: Codable, Sendable, Hashable {
         self.slotStart = slotStart
         self.usedPercent = usedPercent
         self.sampledAt = sampledAt
+        self.resetAt = resetAt
+        self.rawWindowSeconds = rawWindowSeconds
     }
 }

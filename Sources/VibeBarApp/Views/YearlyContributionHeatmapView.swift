@@ -12,7 +12,13 @@ struct YearlyContributionHeatmapView: View {
     let density: Theme.Density
     let toolName: String
 
-    private let cellSpacing: CGFloat = 2
+    private var cellSpacing: CGFloat {
+        switch density.profile {
+        case .compact: 1.5
+        case .regular: 2
+        case .spacious: 2.5
+        }
+    }
     private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     @State private var measuredGridWidth: CGFloat = 0
     @EnvironmentObject var environment: AppEnvironment
@@ -102,7 +108,7 @@ struct YearlyContributionHeatmapView: View {
                         .frame(width: metrics.gridWidth, height: 12)
                     ForEach(monthMarkers, id: \.column) { marker in
                         Text(marker.label)
-                            .font(.system(size: 8, design: .rounded))
+                            .font(.system(size: max(7, density.resetCountdownFontSize - 2), design: .rounded))
                             .foregroundStyle(.tertiary)
                             .offset(x: CGFloat(marker.column) * (metrics.cellSize + metrics.cellSpacing))
                     }
@@ -116,11 +122,11 @@ struct YearlyContributionHeatmapView: View {
                         Group {
                             if weekday % 2 == 1 {
                                 Text(weekdayLabels[weekday])
-                                    .font(.system(size: 8, design: .rounded))
+                                    .font(.system(size: max(7, density.resetCountdownFontSize - 2), design: .rounded))
                                     .foregroundStyle(.tertiary)
                             } else {
                                 Text(" ")
-                                    .font(.system(size: 8))
+                                    .font(.system(size: max(7, density.resetCountdownFontSize - 2)))
                             }
                         }
                         .frame(width: metrics.labelWidth, height: metrics.cellSize)
@@ -153,12 +159,18 @@ struct YearlyContributionHeatmapView: View {
     private func gridMetrics(columnCount: Int, measuredWidth: CGFloat) -> YearlyGridMetrics {
         let labelWidth: CGFloat = 28
         let labelGap: CGFloat = 4
-        let fallbackWidth: CGFloat = 560
+        let fallbackWidth = density.detailRightColumnMinimum
         let availableWidth = measuredWidth > 1 ? measuredWidth : fallbackWidth
         let interCellSpacing = CGFloat(max(0, columnCount - 1)) * cellSpacing
         let usableWidth = max(0, availableWidth - labelWidth - labelGap - interCellSpacing)
         let rawSide = usableWidth / CGFloat(max(1, columnCount))
-        let cellSize = min(max(rawSide, 5), 13)
+        let cellBounds: ClosedRange<CGFloat>
+        switch density.profile {
+        case .compact: cellBounds = 4...11
+        case .regular: cellBounds = 5...13
+        case .spacious: cellBounds = 6...15
+        }
+        let cellSize = min(max(rawSide, cellBounds.lowerBound), cellBounds.upperBound)
         return YearlyGridMetrics(
             labelWidth: labelWidth,
             labelGap: labelGap,

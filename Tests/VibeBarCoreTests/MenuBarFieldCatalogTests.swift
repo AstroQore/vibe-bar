@@ -33,6 +33,16 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         XCTAssertTrue(selected.contains("grok.weekly"))
     }
 
+    func testDefaultLabelsUseFullQuotaWindowNames() {
+        for field in MenuBarFieldCatalog.allFields {
+            let words = field.defaultLabel
+                .split(whereSeparator: { $0.isWhitespace })
+                .map { $0.lowercased() }
+            XCTAssertFalse(words.contains("5h"), "\(field.id) must spell out 5 Hours")
+            XCTAssertFalse(words.contains("wk"), "\(field.id) must spell out Weekly")
+        }
+    }
+
     func testGeminiCLIModelIdsMigrateToWebBuckets() {
         // Old Gemini CLI fields no longer have catalog entries; all of
         // them must migrate to the Web parser's `gemini.five_hour`

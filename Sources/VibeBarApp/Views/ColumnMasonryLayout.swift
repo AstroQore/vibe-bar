@@ -31,10 +31,27 @@ extension View {
 }
 
 /// A live-measured waterfall whose policy is quota-first, then Cost, then
-/// supporting analytics. See `OverviewMasonryPlanner` for the tested optimizer.
+/// supporting analytics. It optimizes column assignment once for this layout
+/// lifetime, then keeps every existing card on that side until the Overview is
+/// entered again. Refreshes and inline expansion may move later cards down,
+/// but never reshuffle the visible dashboard.
 struct ColumnMasonryLayout: Layout {
+    /// Owned by `OverviewWaterfall` for exactly one visible Overview session.
+    /// Keeping assignments outside SwiftUI's disposable Layout cache prevents
+    /// a live subview-set change from silently triggering a second shuffle.
+    final class Session {
+        var columnsByID: [String: Int] = [:]
+    }
+
     var columns: Int = 2
     var spacing: CGFloat = 12
+    let session: Session
+
+    init(columns: Int = 2, spacing: CGFloat = 12, session: Session = Session()) {
+        self.columns = columns
+        self.spacing = spacing
+        self.session = session
+    }
 
     func sizeThatFits(
         proposal: ProposedViewSize,
@@ -42,7 +59,11 @@ struct ColumnMasonryLayout: Layout {
         cache: inout Void
     ) -> CGSize {
         let totalWidth = proposal.width ?? 0
-        let plan = placementPlan(for: subviews, columnWidth: columnWidth(for: totalWidth))
+        let plan = placementPlan(
+            for: subviews,
+            columnWidth: columnWidth(for: totalWidth),
+            cache: &cache
+        )
         return CGSize(width: totalWidth, height: CGFloat(plan.columnHeights.max() ?? 0))
     }
 
@@ -53,7 +74,7 @@ struct ColumnMasonryLayout: Layout {
         cache: inout Void
     ) {
         let width = columnWidth(for: bounds.width)
-        let plan = placementPlan(for: subviews, columnWidth: width)
+        let plan = placementPlan(for: subviews, columnWidth: width, cache: &cache)
         for (index, subview) in subviews.enumerated() {
             let id = stableID(for: subview, index: index)
             guard let position = plan.positions[id] else { continue }
@@ -69,7 +90,11 @@ struct ColumnMasonryLayout: Layout {
         }
     }
 
-    private func placementPlan(for subviews: Subviews, columnWidth: CGFloat) -> OverviewMasonryPlanner.Plan {
+    private func placementPlan(
+        for subviews: Subviews,
+        columnWidth: CGFloat,
+        cache: inout Void
+    ) -> OverviewMasonryPlanner.Plan {
         let proposal = ProposedViewSize(width: columnWidth, height: nil)
         let items = subviews.enumerated().map { index, subview in
             OverviewMasonryPlanner.Item(
@@ -78,8 +103,27 @@ struct ColumnMasonryLayout: Layout {
                 phase: subview[OverviewMasonryPhaseKey.self].corePhase
             )
         }
+        // A zero-width speculative pass is not a real Overview placement.
+        // Wait for the first usable proposal, optimize once, then lock the
+        // assignment for the lifetime of this visible Overview session.
+        if session.columnsByID.isEmpty, columnWidth > 0, !items.isEmpty {
+            let optimized = OverviewMasonryPlanner.plan(
+                items: items,
+                columns: columns,
+                spacing: Double(spacing)
+            )
+            session.columnsByID = optimized.positions.mapValues(\.column)
+        }
+        if session.columnsByID.isEmpty {
+            return OverviewMasonryPlanner.plan(
+                items: items,
+                columns: columns,
+                spacing: Double(spacing)
+            )
+        }
         return OverviewMasonryPlanner.plan(
             items: items,
+            fixedColumns: session.columnsByID,
             columns: columns,
             spacing: Double(spacing)
         )

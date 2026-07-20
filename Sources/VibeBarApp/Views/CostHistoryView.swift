@@ -19,8 +19,10 @@ private struct CostChartPoint: Identifiable, Equatable {
 }
 
 /// Cost history with hour/day/week/month grouping, model-aware hover detail,
-/// and a click-to-pin model inspector presented in a fixed-size popover so
-/// inspecting a bar never changes the card height or reflows the masonry.
+/// and an inline model inspector. The inspector is absent until a point is
+/// selected, then expands as part of the card; `ColumnMasonryLayout` keeps the
+/// current column assignments stable while live item heights change so the
+/// expanded card does not jump across the Overview.
 struct CostHistoryView: View {
     let tool: ToolType
     let snapshot: CostSnapshot?
@@ -31,7 +33,7 @@ struct CostHistoryView: View {
     @State private var timeframe: CostTimeframe = .month
     @State private var granularity: CostHistoryGranularity = .day
     @State private var hoveredDate: Date?
-    @State private var pinnedDate: Date?
+    @State private var inspectedPoint: CostChartPoint?
 
     @EnvironmentObject var environment: AppEnvironment
 
@@ -55,39 +57,15 @@ struct CostHistoryView: View {
                     Spacer(minLength: 0)
                     CostTimeframeSelector(selection: $timeframe, density: density)
                         .fixedSize(horizontal: true, vertical: false)
-                    if availableGranularities.count > 1 {
-                        Menu {
-                            ForEach(availableGranularities) { option in
-                                Button {
-                                    granularity = option
-                                    clearSelection()
-                                } label: {
-                                    if option == granularity {
-                                        Label(option.rawValue, systemImage: "checkmark")
-                                    } else {
-                                        Text(option.rawValue)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Text("By \(granularity.rawValue)")
-                                .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
-                        }
-                        .menuStyle(.borderlessButton)
-                        .focusable(false)
-                        .fixedSize()
-                    }
+                    granularityControl
                 }
             }
 
             chart(points: points, average: average)
-                .popover(isPresented: pinnedPopoverBinding(points: points), arrowEdge: .top) {
-                    if let pinned = pinnedPoint(in: points) {
-                        pinnedModelPanel(pinned)
-                            .frame(width: 300)
-                            .padding(10)
-                    }
-                }
+
+            if inspectedPoint != nil {
+                inlineModelInspector
+            }
 
             HStack(spacing: 16) {
                 metric(label: "Total", value: formatCost(total))
@@ -221,11 +199,11 @@ struct CostHistoryView: View {
                         }
                     }
                     .onTapGesture {
-                        guard let hoveredDate else { return }
-                        pinnedDate = pinnedDate == hoveredDate ? nil : hoveredDate
+                        guard let hovered = hoveredPoint(in: points) else { return }
+                        inspectedPoint = inspectedPoint?.date == hovered.date ? nil : hovered
                     }
 
-                if let hovered = hoveredPoint(in: points), pinnedDate == nil {
+                if let hovered = hoveredPoint(in: points), inspectedPoint == nil {
                     compactTooltip(hovered)
                         .offset(x: tooltipX(for: hovered.date, proxy: proxy, geometry: geometry))
                 }
@@ -262,52 +240,64 @@ struct CostHistoryView: View {
         .allowsHitTesting(false)
     }
 
-    private func pinnedModelPanel(_ point: CostChartPoint) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text("Models · \(tooltipDate(point.date))")
-                    .font(.system(size: 10, weight: .semibold))
-                Spacer()
-                Text("Top \(min(10, point.models.count)) of \(point.models.count)")
-                    .font(.system(size: 9))
+    @ViewBuilder
+    private var inlineModelInspector: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider()
+                .opacity(0.35)
+
+            if let point = inspectedPoint {
+                HStack(spacing: 8) {
+                    Text("Models · \(tooltipDate(point.date))")
+                        .font(.system(size: 10, weight: .semibold))
+                    Spacer(minLength: 8)
+                    Button {
+                        inspectedPoint = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                Button {
-                    pinnedDate = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    .help("Clear model selection")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-            }
-            if point.models.isEmpty {
-                Text("Model detail is unavailable for this historical period.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-            } else {
-                ScrollView {
-                    VStack(spacing: 4) {
-                        ForEach(point.models.prefix(10)) { model in
-                            HStack {
-                                Text(model.modelName)
-                                    .font(.system(size: 9, weight: .medium))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer()
-                                Text(formatCost(model.costUSD))
-                                    .font(.system(size: 9, design: .rounded).monospacedDigit())
-                                Text(formatTokens(model.totalTokens))
-                                    .font(.system(size: 8, design: .rounded).monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
+
+                if point.models.isEmpty {
+                    Text("Model detail is unavailable for this historical period.")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                } else {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: 16, alignment: .leading),
+                            GridItem(.flexible(), spacing: 0, alignment: .leading)
+                        ],
+                        alignment: .leading,
+                        spacing: 4
+                    ) {
+                        ForEach(point.models) { model in
+                            inspectedModelRow(model)
                         }
                     }
                 }
-                .frame(maxHeight: 112)
             }
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(.separator.opacity(0.35), lineWidth: 0.5))
+    }
+
+    private func inspectedModelRow(_ model: CostSnapshot.ModelBreakdown) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(model.modelName)
+                .font(.system(size: 9, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            Text(formatCost(model.costUSD))
+                .font(.system(size: 9, design: .rounded).monospacedDigit())
+            Text(formatTokens(model.totalTokens))
+                .font(.system(size: 8, design: .rounded).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 
     private func modelRow(_ model: CostSnapshot.ModelBreakdown) -> some View {
@@ -350,7 +340,7 @@ struct CostHistoryView: View {
                     date: point.date,
                     costUSD: point.costUSD,
                     totalTokens: point.totalTokens,
-                    models: snapshot.topModels(forHour: point.date, limit: 20)
+                    models: snapshot.topModels(forHour: point.date, limit: .max)
                 )
             }
         }
@@ -362,7 +352,7 @@ struct CostHistoryView: View {
                     date: point.date,
                     costUSD: point.costUSD,
                     totalTokens: point.totalTokens,
-                    models: snapshot.topModels(for: point.date, limit: 20)
+                    models: snapshot.topModels(for: point.date, limit: .max)
                 )
             }
         }
@@ -397,7 +387,7 @@ struct CostHistoryView: View {
             var value = totals[key] ?? (0, 0, [:])
             value.cost += day.costUSD
             value.tokens += day.totalTokens
-            for model in snapshot.topModels(for: day.date, limit: 20) {
+            for model in snapshot.topModels(for: day.date, limit: .max) {
                 let current = value.models[model.modelName] ?? (0, 0)
                 value.models[model.modelName] = (current.0 + model.costUSD, current.1 + model.totalTokens)
             }
@@ -416,6 +406,58 @@ struct CostHistoryView: View {
     }
 
     // MARK: - Presentation helpers
+
+    @ViewBuilder
+    private var granularityControl: some View {
+        Group {
+            if availableGranularities.count > 1 {
+                HStack(spacing: 1) {
+                    ForEach(availableGranularities) { option in
+                        Button {
+                            granularity = option
+                            clearSelection()
+                        } label: {
+                            granularityOptionLabel(option, selected: option == granularity)
+                        }
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                        .accessibilityLabel("Group cost history by \(option.rawValue.lowercased())")
+                    }
+                }
+            } else {
+                Text(granularity.rawValue)
+                    .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 22)
+                    .accessibilityLabel("Cost history grouped by \(granularity.rawValue.lowercased())")
+            }
+        }
+        .padding(2)
+        .frame(width: 132)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
+    }
+
+    private func granularityOptionLabel(
+        _ option: CostHistoryGranularity,
+        selected: Bool
+    ) -> some View {
+        Text(option.rawValue)
+            .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
+            .foregroundStyle(selected ? Color.primary : Color.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(maxWidth: .infinity, minHeight: 22)
+            .contentShape(Rectangle())
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.12))
+                }
+            }
+    }
 
     private var chartCalendarComponent: Calendar.Component {
         switch granularity {
@@ -487,25 +529,12 @@ struct CostHistoryView: View {
         hoveredDate.flatMap { date in points.first { $0.date == date } }
     }
 
-    private func pinnedPoint(in points: [CostChartPoint]) -> CostChartPoint? {
-        pinnedDate.flatMap { date in points.first { $0.date == date } }
-    }
-
-    private func pinnedPopoverBinding(points: [CostChartPoint]) -> Binding<Bool> {
-        Binding(
-            get: { pinnedPoint(in: points) != nil },
-            set: { isPresented in
-                if !isPresented { pinnedDate = nil }
-            }
-        )
-    }
-
     private func nearestPoint(to date: Date, in points: [CostChartPoint]) -> CostChartPoint? {
         points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
     }
 
     private func pointOpacity(_ point: CostChartPoint) -> Double {
-        guard let selected = pinnedDate ?? hoveredDate else { return 1 }
+        guard let selected = inspectedPoint?.date ?? hoveredDate else { return 1 }
         return point.date == selected ? 1 : 0.55
     }
 
@@ -517,7 +546,7 @@ struct CostHistoryView: View {
 
     private func clearSelection() {
         hoveredDate = nil
-        pinnedDate = nil
+        inspectedPoint = nil
     }
 
     private func timeframeNote(pointCount: Int) -> String {
