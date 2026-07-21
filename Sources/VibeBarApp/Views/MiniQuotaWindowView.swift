@@ -556,8 +556,14 @@ private func miniPrimaryGroupTitle(
     for tool: ToolType,
     settings: MiniWindowSettings
 ) -> String? {
-    guard tool == .gemini else { return nil }
-    let key = "gemini.chat"
+    let key: String
+    switch tool {
+    case .codex: key = "codex.all-models"
+    case .claude: key = "claude.all-models"
+    case .gemini: key = "gemini.chat"
+    case .grok: key = "grok.all-models"
+    default: return nil
+    }
     let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let custom, !custom.isEmpty {
         return custom
@@ -619,9 +625,9 @@ private struct MiniL2GroupColumn: View {
     }
 }
 
-/// One L3 member inside an L2 super-column. Primary Gemini Web quotas use a
-/// compact "Gemini Chat" group heading so the two leftmost rings are clearly
-/// distinguished from AntiGravity's Gemini and Claude + GPT quota groups.
+/// One L3 member inside an L2 super-column. Primary provider quotas get an
+/// explicit group heading: "All Models" for ChatGPT, Claude, and Grok, and
+/// "Gemini Chat" for Gemini Web so it stays distinct from AntiGravity groups.
 private struct MiniMemberStack: View {
     let member: MiniL2Member
     let settings: MiniWindowSettings
