@@ -5,13 +5,12 @@ import Security
 ///
 /// Source builds are ad-hoc signed, so their Keychain ACL identity changes on
 /// every rebuild. Keeping Vibe Bar-owned values inside one versioned vault
-/// means a rebuild has one item to repair instead of one prompt per cookie,
-/// provider, or account. External items (CLI credentials and browser Safe
-/// Storage keys) are deliberately excluded.
+/// means the app performs one non-interactive Keychain lookup instead of one
+/// lookup per cookie, provider, or account. External items (CLI credentials
+/// and browser Safe Storage keys) are deliberately excluded.
 public enum VibeBarCredentialVault {
     public static let keychainService = "com.astroqore.VibeBar.credential-vault"
     public static let keychainAccount = "vault-v1"
-    public static let stagingKeychainAccountPrefix = "vault-v1.migration-staging"
 
     public struct Entry: Codable, Sendable, Equatable {
         public let service: String
@@ -75,7 +74,8 @@ public enum VibeBarCredentialVault {
         // Seamless transition for an already-authorized build: import the
         // historical per-secret item on first read. Queries stay non-
         // interactive, so a newly signed build never brings back the prompt
-        // storm; Settings → Keychain Access handles inaccessible old items.
+        // storm. Inaccessible stale items fail closed and can be re-imported
+        // through their owning provider's settings.
         let legacy = try KeychainStore.readData(
             service: service,
             account: account,
@@ -122,16 +122,6 @@ public enum VibeBarCredentialVault {
             throw KeychainStore.KeychainError.itemNotFound
         }
         try persist(payload)
-    }
-
-    /// Replaces the complete payload after the explicit password-assisted
-    /// migration in Settings. This is intentionally public so the authorizer
-    /// can make migration transactional: old items are deleted only after
-    /// this write succeeds.
-    public static func replacePayload(_ payload: Payload) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        try persist(Payload(version: payload.version, entries: payload.entries))
     }
 
     public static func decodePayload(_ data: Data) throws -> Payload {

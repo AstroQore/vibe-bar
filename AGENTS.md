@@ -298,9 +298,12 @@ JSON payload keeps OpenAI / Claude / Gemini / Grok Web cookies logically
 split by source (`browser` vs `WebView`), plus the resolved Claude
 organization ID and misc-provider secrets. The single-item design is
 intentional: ad-hoc rebuilds change the app's Keychain ACL identity, so
-Settings can repair one Vault instead of triggering one authorization per
-secret. Never put external CLI credentials or browser Safe Storage keys in
-this Vault. Legacy plaintext cookie files under
+Vibe Bar performs one non-interactive Vault lookup instead of one lookup per
+secret. Do not add a password-assisted bulk-repair Settings page: it reopens
+stale per-secret items and recreates the prompt storm this Vault replaces.
+Inaccessible stale entries fail closed and are re-imported from the owning
+provider's settings. Never put external CLI credentials or browser Safe
+Storage keys in this Vault. Legacy plaintext cookie files under
 `~/.vibebar/cookies/` may be read once for migration and must be deleted
 immediately afterward. The app reads (never writes) Codex and Claude CLI
 credential files and their session JSONL logs. Treat those as read-only
@@ -664,7 +667,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   remains the primary summary-bar layer. The elapsed-time-only pace uses the
   substantial neutral inset tick established by `PaceMarkerCapsule`; the
   forecast-at-reset median is a verdict-colored vertical tick; the confidence
-  interval is a soft matching gradient through the bar's full height. Legends
+  interval is a soft, flat matching tint through exactly the bar's original
+  full height. It must not overflow vertically or make the quota bar look
+  thicker. Legends
   must use the same marker shapes as the bar — never show a solid sample for a
   dashed mark, reduce the wall-clock reference to a hairline, or turn the
   forecast into a dot. Used/Remaining projection must be performed through one

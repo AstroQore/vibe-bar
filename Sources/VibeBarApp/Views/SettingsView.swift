@@ -11,7 +11,6 @@ enum SettingsSectionID: String {
     case miscProviders
     case system
     case costData
-    case keychain
     case privacy
 
     var id: String { rawValue }
@@ -27,7 +26,6 @@ enum SettingsSectionID: String {
         case .miscProviders: "Misc Providers"
         case .system: "System"
         case .costData: "Cost Data"
-        case .keychain: "Keychain Access"
         case .privacy: "Privacy"
         }
     }
@@ -43,7 +41,6 @@ enum SettingsSectionID: String {
         case .miscProviders: "square.grid.2x2"
         case .system: "desktopcomputer"
         case .costData: "chart.bar.xaxis"
-        case .keychain: "key.fill"
         case .privacy: "hand.raised.fill"
         }
     }
@@ -102,10 +99,6 @@ struct SettingsView: View {
     @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
     @State private var launchAtLoginError: String?
-    @State private var keychainPassword: String = ""
-    @State private var isAuthorizingKeychain: Bool = false
-    @State private var keychainAuthorizationStatus: String?
-    @State private var keychainAuthorizationSucceeded: Bool = false
     @State private var selectedDestination: SettingsDestination = .page(.system)
 
     private var selectedSection: SettingsSectionID {
@@ -574,13 +567,6 @@ struct SettingsView: View {
                     .id(SettingsSectionID.costData.id)
                     }
 
-                    if selectedSection == .keychain {
-                    settingsSection("Keychain Access") {
-                        keychainAuthorizationControls
-                    }
-                    .id(SettingsSectionID.keychain.id)
-                    }
-
                     if selectedSection == .privacy {
                     settingsSection("Privacy") {
                         Text("Tokens are read from local CLI credentials. Saved OpenAI and Claude Web cookies are stored in macOS Keychain, split by browser and WebView source. Legacy plaintext cookie files under ~/.vibebar/cookies are migrated once and deleted. Settings, quota cache, and cost summaries stay under ~/.vibebar.")
@@ -727,38 +713,6 @@ struct SettingsView: View {
             get: { settingsStore.settings.isCoreProviderVisible(tool) },
             set: { settingsStore.settings.setCoreProviderVisible($0, for: tool) }
         )
-    }
-
-    private var keychainAuthorizationControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Vibe Bar keeps its cookies and provider secrets inside one Keychain Vault. After an ad-hoc rebuild, enter the login keychain password once to migrate old entries and repair access to that single Vault. Browser and CLI-owned Keychain items are never included. The password is used only for this operation.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                SecureField("Login keychain password", text: $keychainPassword)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(authorizeKeychainAccess)
-                    .disabled(isAuthorizingKeychain)
-                Button {
-                    authorizeKeychainAccess()
-                } label: {
-                    Label(
-                        isAuthorizingKeychain ? "Repairing..." : "Repair Vault",
-                        systemImage: "key.fill"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(keychainPassword.isEmpty || isAuthorizingKeychain)
-            }
-            if let keychainAuthorizationStatus {
-                Text(keychainAuthorizationStatus)
-                    .font(.caption2)
-                    .foregroundStyle(keychainAuthorizationSucceeded ? .green : .orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 
     private func healthColor(_ status: PrimaryProviderRouteHealthStatus) -> Color {
@@ -1149,67 +1103,6 @@ struct SettingsView: View {
             accountPlan: environment.account(for: tool)?.plan
         )
         return label.map { "Auto: \($0)" } ?? "Auto: hidden until detected"
-    }
-
-    private func authorizeKeychainAccess() {
-        guard !isAuthorizingKeychain, !keychainPassword.isEmpty else { return }
-        let password = keychainPassword
-        keychainPassword = ""
-        keychainAuthorizationSucceeded = false
-        keychainAuthorizationStatus = "Consolidating secrets into one Keychain Vault..."
-        isAuthorizingKeychain = true
-
-        Task.detached {
-            do {
-                let report = try VibeBarKeychainAccessAuthorizer.authorizeExistingOwnedItems(
-                    loginKeychainPassword: password
-                )
-                await MainActor.run {
-                    isAuthorizingKeychain = false
-                    keychainAuthorizationSucceeded = report.failureCount == 0
-                    keychainAuthorizationStatus = keychainAuthorizationMessage(for: report)
-                }
-            } catch {
-                await MainActor.run {
-                    isAuthorizingKeychain = false
-                    keychainAuthorizationSucceeded = false
-                    keychainAuthorizationStatus = keychainAuthorizationFailureMessage(error)
-                }
-            }
-        }
-    }
-
-    private func keychainAuthorizationMessage(
-        for report: VibeBarKeychainAccessAuthorizer.Report
-    ) -> String {
-        if report.failureCount == 0 {
-            if report.migratedItemCount > 0 {
-                return "Migrated \(report.migratedItemCount) old item(s) into one Vault containing \(report.vaultEntryCount) secret(s). Future rebuilds need one repair only."
-            }
-            return "Keychain Vault repaired. It currently contains \(report.vaultEntryCount) secret(s)."
-        }
-        let firstStatus = report.failures.first.map { String($0.status) } ?? "unknown"
-        return "Vault saved with \(report.vaultEntryCount) secret(s), but \(report.failureCount) old item(s) could not be migrated or removed (status \(firstStatus))."
-    }
-
-    private func keychainAuthorizationFailureMessage(_ error: Error) -> String {
-        if let authError = error as? VibeBarKeychainAccessAuthorizer.AuthorizationError {
-            switch authError {
-            case .emptyPassword:
-                return "Enter the login keychain password first."
-            case .unlockFailed(let status):
-                return "Could not unlock the login keychain. OSStatus \(status)."
-            case .trustedApplicationFailed(let status):
-                return "Could not identify this Vibe Bar build. OSStatus \(status)."
-            case .accessCreateFailed(let status):
-                return "Could not create Keychain access for this Vibe Bar build. OSStatus \(status)."
-            case .invalidVault:
-                return "The existing Vault could not be decoded, so no old Keychain item was deleted."
-            case .vaultWriteFailed:
-                return "Could not write the new Vault. No old Keychain item was deleted."
-            }
-        }
-        return "Could not authorize Keychain access: \(error)"
     }
 
     private func intervalLabel(_ seconds: Int) -> String {
