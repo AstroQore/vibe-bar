@@ -10,39 +10,55 @@ struct QuotaForecastRow: View {
     var showGuidance = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: showGuidance ? 3 : 0) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(QuotaForecastPalette.color(for: forecast.verdict))
-                    .frame(width: 5, height: 5)
-                Text(primaryText)
-                    .font(.system(size: fontSize, weight: .medium))
-                    .foregroundStyle(QuotaForecastPalette.color(for: forecast.verdict))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                if showGuidance {
-                    Text(forecast.confidenceLabel)
-                        .font(.system(size: max(8, fontSize - 1)))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+        VStack(alignment: .leading, spacing: 3) {
+            if showGuidance {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        statusLabel
+                        Spacer(minLength: 4)
+                        confidenceLabel
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        statusLabel
+                        confidenceLabel
+                    }
                 }
+            } else {
+                statusLabel
             }
+            Text(useUpText)
+                .font(.system(size: max(8, fontSize - 1), weight: .medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if showGuidance {
                 Text(forecast.guidanceSummary)
                     .font(.system(size: max(8, fontSize - 1)))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    private var primaryText: String {
-        if forecast.verdict == .atRisk, let runOutAt = forecast.runOutAt,
-           let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
-            return "At risk · runs out in \(countdown)"
+    private var statusLabel: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(QuotaForecastPalette.color(for: forecast.verdict))
+                .frame(width: 5, height: 5)
+            Text(primaryText)
+                .font(.system(size: fontSize, weight: .medium))
+                .foregroundStyle(QuotaForecastPalette.color(for: forecast.verdict))
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var confidenceLabel: some View {
+        Text(forecast.confidenceLabel)
+            .font(.system(size: max(8, fontSize - 1)))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var primaryText: String {
         let left = Int(forecast.projectedRemainingPercent.rounded())
         switch forecast.verdict {
         case .enough:
@@ -55,6 +71,23 @@ struct QuotaForecastRow: View {
             return "At risk · likely to run out before reset"
         case .learning:
             return "Learning · about \(left)% left at reset"
+        }
+    }
+
+    private var useUpText: String {
+        if let runOutAt = forecast.runOutAt,
+           let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
+            return forecast.verdict == .watch
+                ? "Could run out in \(countdown)"
+                : "Estimated to run out in \(countdown)"
+        }
+        switch forecast.verdict {
+        case .watch:
+            return "Use-up time uncertain · may run short before reset"
+        case .atRisk:
+            return "Expected to run out before reset"
+        case .enough, .surplus, .learning:
+            return "Projected to last until reset"
         }
     }
 

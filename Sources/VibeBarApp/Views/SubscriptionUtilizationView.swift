@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 import VibeBarCore
 
 /// Subscription Utilization sub-page. Every independently resettable quota
@@ -35,7 +34,7 @@ struct SubscriptionUtilizationView: View {
                     }
                 }
             }
-            if utilizationBuckets.isEmpty && historySeries.isEmpty {
+            if utilizationBuckets.isEmpty {
                 Text("No utilization data — try refreshing.")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
@@ -43,14 +42,6 @@ struct SubscriptionUtilizationView: View {
             } else {
                 ForEach(utilizationBuckets) { item in
                     row(for: item)
-                }
-                if !historySeries.isEmpty {
-                    FillTimelineChart(
-                        series: historySeries,
-                        mode: mode,
-                        density: density,
-                        now: now
-                    )
                 }
             }
         }
@@ -93,18 +84,6 @@ struct SubscriptionUtilizationView: View {
         return primary + additional
     }
 
-    /// Every bucket participates in reset-cycle history, including per-model
-    /// dimensions and additional accounts combined into the same product page.
-    private var historySeries: [FillTimelineSeries] {
-        let primary: [FillTimelineSeries]
-        if let accountId = environment.account(for: tool)?.id {
-            primary = buckets.map { FillTimelineSeries(tool: tool, accountId: accountId, bucket: $0) }
-        } else {
-            primary = []
-        }
-        return primary + additionalQuotaSeries
-    }
-
     private var isRefreshing: Bool {
         refreshTools.contains { refreshTool in
             guard let id = environment.account(for: refreshTool)?.id else { return false }
@@ -125,55 +104,25 @@ struct SubscriptionUtilizationView: View {
         let forecast = paceForecast(for: item)
         let used = bucket.usedPercent
         let timeExpected = pace?.expectedUsedPercent
-        let personalExpected = forecast?.plannedUsedPercent
+        let forecastExpected = forecast?.projectedUsedPercent
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(rowTitle(for: item))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 6)
                 Text(percentLabel(used: used))
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            Chart {
-                BarMark(
-                    xStart: .value("Start", 0),
-                    xEnd: .value("Used", min(100, used)),
-                    y: .value("Bucket", bucket.title)
-                )
-                .foregroundStyle(Theme.barColor(percent: used, mode: .used))
-                .cornerRadius(3)
-                if let timeExpected, timeExpected > 0 {
-                    RuleMark(x: .value("Time-only pace", timeExpected))
-                        .foregroundStyle(.secondary.opacity(0.7))
-                        .lineStyle(StrokeStyle(lineWidth: 1.25, dash: [3, 3]))
-                }
-                if let personalExpected, personalExpected > 0 {
-                    RuleMark(x: .value("Personal plan", personalExpected))
-                        .foregroundStyle(Color.accentColor.opacity(0.9))
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                }
-            }
-            .chartXScale(domain: 0...100)
-            .chartXAxis {
-                AxisMarks(values: [0, 25, 50, 75, 100]) { value in
-                    AxisGridLine().foregroundStyle(.secondary.opacity(0.1))
-                    AxisValueLabel {
-                        if let raw = value.as(Int.self) {
-                            Text("\(raw)%")
-                                .font(.system(size: 9, design: .rounded).monospacedDigit())
-                        }
-                    }
-                }
-            }
-            .chartYAxis(.hidden)
-            .frame(height: density.utilizationBarHeight)
+            quotaReferenceBar(used: used, pace: pace, forecast: forecast)
+            percentageAxis
             referenceLegend(
                 timeExpected: timeExpected,
-                personalExpected: personalExpected
+                forecastExpected: forecastExpected,
+                forecastColor: forecast.map { QuotaForecastPalette.color(for: $0.verdict) }
             )
             Text(SubscriptionWindowProgress.summary(
                 usedPercent: bucket.usedPercent,
@@ -183,8 +132,7 @@ struct SubscriptionUtilizationView: View {
             ))
                 .font(.system(size: density.subtitleFontSize, weight: .semibold))
                 .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
             if let forecast {
                 QuotaForecastRow(
                     forecast: forecast,
@@ -192,7 +140,6 @@ struct SubscriptionUtilizationView: View {
                     fontSize: density.subtitleFontSize,
                     showGuidance: true
                 )
-                forecastExplanation(forecast: forecast, pace: pace)
             } else if let pace {
                 HStack(spacing: 6) {
                     Text(pace.stageSummary)
@@ -202,6 +149,61 @@ struct SubscriptionUtilizationView: View {
                     Text(etaText(pace: pace))
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
+                }
+            }
+            if let series = historySeries(for: item) {
+                FillTimelineChart(
+                    series: series,
+                    mode: mode,
+                    density: density,
+                    targetPercent: forecast.map(displayedTarget)
+                )
+            }
+            if let forecast {
+                forecastExplanation(forecast: forecast, pace: pace)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func quotaReferenceBar(
+        used: Double,
+        pace: UsagePace?,
+        forecast: QuotaPaceForecast?
+    ) -> some View {
+        let barHeight = max(10, density.bucketBarHeight)
+        if let forecast {
+            ForecastQuotaBar(
+                percent: used,
+                mode: .used,
+                timePacePercent: pace?.expectedUsedPercent,
+                forecastLowerPercent: forecast.projectedUsedLowerPercent,
+                forecastUpperPercent: forecast.projectedUsedUpperPercent,
+                forecastMedianPercent: forecast.projectedUsedPercent,
+                forecastColor: QuotaForecastPalette.color(for: forecast.verdict),
+                height: barHeight
+            )
+        } else if let pace {
+            PaceMarkerCapsule(
+                usedPercent: used,
+                expectedPercent: pace.expectedUsedPercent,
+                mode: .used,
+                height: barHeight
+            )
+        } else {
+            QuotaBarShape(percent: used, mode: .used, height: barHeight)
+        }
+    }
+
+    private var percentageAxis: some View {
+        HStack(spacing: 0) {
+            ForEach([0, 25, 50, 75, 100], id: \.self) { value in
+                Text("\(value)%")
+                    .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: true, vertical: false)
+                if value < 100 {
+                    Spacer(minLength: 0)
                 }
             }
         }
@@ -220,38 +222,88 @@ struct SubscriptionUtilizationView: View {
     }
 
     @ViewBuilder
-    private func referenceLegend(timeExpected: Double?, personalExpected: Double?) -> some View {
-        HStack(spacing: 14) {
-            if let timeExpected {
-                referenceLegendItem(
-                    color: .secondary,
-                    label: "Time-only pace",
-                    value: "\(Int(timeExpected.rounded()))%"
+    private func referenceLegend(
+        timeExpected: Double?,
+        forecastExpected: Double?,
+        forecastColor: Color?
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                referenceItems(
+                    timeExpected: timeExpected,
+                    forecastExpected: forecastExpected,
+                    forecastColor: forecastColor
                 )
+                Spacer(minLength: 4)
+                actualUsedLegend
             }
-            if let personalExpected {
-                referenceLegendItem(
-                    color: .accentColor,
-                    label: "Personal plan",
-                    value: "\(Int(personalExpected.rounded()))%"
-                )
+            VStack(alignment: .leading, spacing: 4) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) {
+                        referenceItems(
+                            timeExpected: timeExpected,
+                            forecastExpected: forecastExpected,
+                            forecastColor: forecastColor
+                        )
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        referenceItems(
+                            timeExpected: timeExpected,
+                            forecastExpected: forecastExpected,
+                            forecastColor: forecastColor
+                        )
+                    }
+                }
+                actualUsedLegend
             }
-            Spacer(minLength: 4)
-            Text("bar = actual used")
-                .font(.system(size: max(8, density.subtitleFontSize - 1)))
-                .foregroundStyle(.tertiary)
         }
-        .lineLimit(1)
     }
 
-    private func referenceLegendItem(color: Color, label: String, value: String) -> some View {
+    @ViewBuilder
+    private func referenceItems(
+        timeExpected: Double?,
+        forecastExpected: Double?,
+        forecastColor: Color?
+    ) -> some View {
+        if let timeExpected {
+            referenceLegendItem(
+                color: .secondary,
+                lineWidth: 1.25,
+                label: "Time-only pace",
+                value: "\(Int(timeExpected.rounded()))%"
+            )
+        }
+        if let forecastExpected, let forecastColor {
+            referenceLegendItem(
+                color: forecastColor,
+                lineWidth: 2.5,
+                label: "Forecast at reset",
+                value: "\(Int(forecastExpected.rounded()))%"
+            )
+        }
+    }
+
+    private var actualUsedLegend: some View {
+        Text("bar = actual used")
+            .font(.system(size: max(8, density.subtitleFontSize - 1)))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func referenceLegendItem(
+        color: Color,
+        lineWidth: CGFloat,
+        label: String,
+        value: String
+    ) -> some View {
         HStack(spacing: 5) {
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: lineWidth / 2, style: .continuous)
                 .fill(color)
-                .frame(width: 14, height: 2)
+                .frame(width: lineWidth, height: 12)
             Text("\(label) \(value)")
                 .font(.system(size: max(8, density.subtitleFontSize - 1), weight: .medium))
                 .foregroundStyle(color)
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -272,7 +324,7 @@ struct SubscriptionUtilizationView: View {
                 .font(.system(size: density.subtitleFontSize, weight: .semibold))
                 .foregroundStyle(.secondary)
             LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                columns: [GridItem(.adaptive(minimum: 126), spacing: 7)],
                 alignment: .leading,
                 spacing: 7
             ) {
@@ -281,17 +333,15 @@ struct SubscriptionUtilizationView: View {
                         Text(metric.label.uppercased())
                             .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                             .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(metric.value)
                             .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(metric.detail)
                             .font(.system(size: max(8, density.subtitleFontSize - 1)))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.78)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
@@ -430,6 +480,18 @@ struct SubscriptionUtilizationView: View {
         }
         parts.append(item.bucket.title)
         return parts.joined(separator: " · ")
+    }
+
+    private func historySeries(for item: UtilizationBucket) -> FillTimelineSeries? {
+        guard let accountId = item.accountId else { return nil }
+        return FillTimelineSeries(tool: item.tool, accountId: accountId, bucket: item.bucket)
+    }
+
+    private func displayedTarget(_ forecast: QuotaPaceForecast) -> Double {
+        switch mode {
+        case .used: 100 - forecast.targetRemainingPercent
+        case .remaining: forecast.targetRemainingPercent
+        }
     }
 
     private func percentLabel(used: Double) -> String {

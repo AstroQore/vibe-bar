@@ -648,17 +648,40 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   `PaceMarkerCapsule`; do not route Misc through the personal forecast model
   unless AQ explicitly asks to change that product boundary.
 - **Forecast overlays need one coherent visual vocabulary.** The current quota
-  remains the primary summary-bar layer. If a personal forecast is overlaid,
-  use one integrated uncertainty band plus one color-matched endpoint tied to
-  the labeled status row below. Do not stack unrelated plan, range, and median
-  micro-lines; they look like rendering defects without a legend. Detailed
-  utilization views may carry additional labeled planning marks.
+  remains the primary summary-bar layer. The elapsed-time-only pace is a thin
+  solid gray vertical tick; the forecast-at-reset median is a taller
+  verdict-colored vertical tick; the confidence interval is a matching bottom
+  gradient band. Legends must use the same vertical-tick shapes as the bar —
+  never show a solid sample for a dashed mark or turn the forecast into a dot.
+  Keep forecast semantics in the labeled status row below the Overview bar;
+  detailed utilization views may carry the explicit reference legend.
 - **Subscription Utilization is the forecast explainability surface.** Keep
-  the legacy wall-clock pace visible alongside the personal plan, then expose
+  the legacy wall-clock pace visible alongside the forecast at reset, then expose
   recent burn, reset-history comparison, weekday/hour activity weighting,
   recent activity trend, forecast interval, safety target, evidence counts,
   coverage, and confidence. The Overview may stay concise; this detail view
   must show why a verdict was produced.
+- **Core-provider use-up ETA comes from the personal forecast.** Under each
+  core quota, preserve the scannable "runs out in" conclusion, but derive it
+  from `QuotaPaceForecast.runOutAt`, not the legacy elapsed-time burn rate.
+  When the model does not predict exhaustion before reset, say that the quota
+  is projected to last until reset instead of extrapolating a meaningless time
+  beyond the refill boundary. A `Watch` ETA is explicitly possible, not certain.
+- **Reset history belongs to its quota.** Render each independently resettable
+  bucket's cycle history immediately under that bucket in Subscription
+  Utilization. Do not restore a shared selector at the bottom of the card;
+  model-scoped limits such as Spark, Fable, Gemini Web, and AntiGravity must
+  remain visible at the same time.
+- **Provider detail pages share one asymmetric layout.** Preserve the existing
+  column ratio but put the wide primary flow on the left in this order: quota,
+  cost, cost history, service status, model ranking, past year, when-you-use.
+  The narrow right column contains Subscription Utilization only. ChatGPT,
+  Claude, Gemini, and Grok must use the same framework.
+- **Dense status history is one drawing surface, not hundreds of views.** Use
+  `Canvas` (or an equivalent batched renderer) for uptime strips and avoid one
+  Swift Charts instance per quota. These detail pages can display many status
+  components and quota dimensions simultaneously, so per-cell view trees make
+  scrolling visibly stutter.
 - **`Surplus` is a robust likely-waste verdict, not a synonym for high current
   remaining quota.** Keep `Learning` while confidence is low. Only surface
   `Surplus` with at least medium confidence, a materially large median surplus
