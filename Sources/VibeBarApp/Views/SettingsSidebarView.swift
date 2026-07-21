@@ -18,7 +18,6 @@ struct SettingsSidebarView: View {
     private let basicPages: [SettingsSectionID] = [
         .system,
         .costData,
-        .keychain,
         .privacy,
         .menuBar,
         .miniWindow,

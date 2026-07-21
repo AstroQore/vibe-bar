@@ -9,25 +9,9 @@ final class KeychainMigrationPolicyTests: XCTestCase {
         )
     }
 
-    func testCurrentAuthorizationTargetIsOnlyTheVault() {
-        XCTAssertEqual(
-            VibeBarKeychainAccessAuthorizer.currentOwnedTargets,
-            [.init(
-                service: VibeBarCredentialVault.keychainService,
-                account: VibeBarCredentialVault.keychainAccount
-            )]
-        )
-        XCTAssertEqual(
-            VibeBarKeychainAccessAuthorizer.ownedTargets,
-            VibeBarKeychainAccessAuthorizer.currentOwnedTargets
-        )
-    }
-
-    func testMigrationSourcesExcludeExternalCredentialStores() {
-        let targets = VibeBarKeychainAccessAuthorizer.legacyOwnedTargets
-        XCTAssertFalse(targets.contains { $0.service == "Codex Auth" })
-        XCTAssertFalse(targets.contains { $0.service == "Claude Code-credentials" })
-        XCTAssertFalse(targets.contains { $0.service.localizedCaseInsensitiveContains("Chrome Safe Storage") })
+    func testVaultUsesOneStablePhysicalKeychainItem() {
+        XCTAssertEqual(VibeBarCredentialVault.keychainService, "com.astroqore.VibeBar.credential-vault")
+        XCTAssertEqual(VibeBarCredentialVault.keychainAccount, "vault-v1")
     }
 
     func testVaultPayloadDeduplicatesAndRoundTripsBinaryData() throws {

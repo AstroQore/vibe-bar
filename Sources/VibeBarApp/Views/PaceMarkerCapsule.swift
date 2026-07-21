@@ -108,17 +108,17 @@ struct ForecastQuotaBar: View {
                 .clipShape(Capsule(style: .continuous))
 
                 if forecastProjection.hasUncertainty {
-                    RoundedRectangle(cornerRadius: (height + 6) / 2, style: .continuous)
+                    RoundedRectangle(cornerRadius: height / 2, style: .continuous)
                         .fill(forecastColor.opacity(colorScheme == .dark ? 0.22 : 0.15))
                         .overlay {
-                            RoundedRectangle(cornerRadius: (height + 6) / 2, style: .continuous)
+                            RoundedRectangle(cornerRadius: height / 2, style: .continuous)
                                 .stroke(
                                     forecastColor.opacity(colorScheme == .dark ? 0.30 : 0.22),
                                     lineWidth: 0.8
                                 )
                         }
-                        .frame(width: band.width, height: height + 6)
-                        .offset(x: band.x, y: -3)
+                        .frame(width: band.width, height: height)
+                        .offset(x: band.x)
                 }
 
                 if let timePace, timePacePercent.map({ $0 > 2 && $0 < 98 }) == true {
