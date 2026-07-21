@@ -31,7 +31,6 @@ struct PopoverRoot: View {
                 onShowSettings: { environment.showSettingsWindow() }
             )
             .frame(height: shellDensity.headerHeight, alignment: .center)
-            .padding(.horizontal, shellDensity.cardPadding)
             .padding(.bottom, max(4, shellDensity.interSectionSpacing * 0.45))
             Divider()
                 .opacity(0.3)
@@ -50,21 +49,15 @@ struct PopoverRoot: View {
         .readHeight(onContentHeightChange)
     }
 
-    /// The tabbed popover is one shared shell. Provider pages may use their
-    /// own content metrics, but the title band and outer margins must never
-    /// shift when the selected tab changes.
+    /// The tabbed popover is one shared shell. The title band, content cards,
+    /// and outer margins all use the same density so switching pages never
+    /// shifts the left edge or changes the apparent workspace padding.
     private var shellDensity: Theme.Density {
         Theme.overviewDensity(for: settingsStore.settings.popoverDensity)
     }
 
     private var activeDensity: Theme.Density {
-        let profile = settingsStore.settings.popoverDensity
-        switch overviewPage {
-        case .overview, .misc:
-            return Theme.overviewDensity(for: profile)
-        case .openAI, .claude, .googleAI, .grok:
-            return Theme.detailDensity(for: profile)
-        }
+        shellDensity
     }
 
     private var maxScrollHeight: CGFloat {
@@ -128,9 +121,7 @@ struct PopoverRoot: View {
         }
         switch overviewPage {
         case .overview:
-            return ToolType.dedicatedCardProviders.filter {
-                settingsStore.settings.isCoreProviderVisible($0)
-            }
+            return settingsStore.settings.visibleCoreProviderList
         case .openAI: return [.codex]
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
@@ -233,6 +224,16 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
         case .overview, .misc: return nil
         }
     }
+
+    static func page(for tool: ToolType) -> OverviewPage? {
+        switch tool.coreProviderRepresentative {
+        case .codex: return .openAI
+        case .claude: return .claude
+        case .gemini: return .googleAI
+        case .grok: return .grok
+        default: return nil
+        }
+    }
 }
 
 private struct OverviewPageSwitch: View {
@@ -242,10 +243,9 @@ private struct OverviewPageSwitch: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     private var visiblePages: [OverviewPage] {
-        OverviewPage.allCases.filter { page in
-            guard let provider = page.coreProvider else { return true }
-            return settingsStore.settings.isCoreProviderVisible(provider)
-        }
+        [.overview]
+            + settingsStore.settings.visibleCoreProviderList.compactMap(OverviewPage.page(for:))
+            + [.misc]
     }
 
     var body: some View {
@@ -366,25 +366,8 @@ private struct OverviewWaterfall: View {
                 spacing: density.interSectionSpacing,
                 session: masonrySession
             ) {
-                if isVisible(.codex) {
-                    ProviderQuotaCard(tool: .codex, density: density, compact: false)
-                        .overviewMasonryItem(id: "quota-codex", phase: .quota)
-                }
-                if isVisible(.claude) {
-                    ProviderQuotaCard(tool: .claude, density: density, compact: false)
-                        .overviewMasonryItem(id: "quota-claude", phase: .quota)
-                }
-                // Gemini Web and AntiGravity both roll up to the
-                // Gemini product, so the Overview surface shows them
-                // as a single L2 "Gemini" card with two L3 sub-sections
-                // (`GeminiCombinedCard`). Grok stays on its own card.
-                if isVisible(.gemini) {
-                    GeminiCombinedCard(density: density)
-                        .overviewMasonryItem(id: "quota-gemini", phase: .quota)
-                }
-                if isVisible(.grok) {
-                    ProviderQuotaCard(tool: .grok, density: density, compact: false)
-                        .overviewMasonryItem(id: "quota-grok", phase: .quota)
+                ForEach(settingsStore.settings.visibleCoreProviderList, id: \.self) { tool in
+                    overviewQuotaCard(for: tool)
                 }
                 if hasCostData {
                     CostHistoryView(
@@ -447,7 +430,21 @@ private struct OverviewWaterfall: View {
     /// (combined Gemini + AntiGravity) via `googleAICostSnapshot`, so it
     /// isn't listed here.
     private var overviewCostProviders: [ToolType] {
-        [.codex, .claude, .grok].filter(isVisible)
+        settingsStore.settings.visibleCoreProviderList.filter { tool in
+            tool == .codex || tool == .claude || tool == .grok
+        }
+    }
+
+    @ViewBuilder
+    private func overviewQuotaCard(for tool: ToolType) -> some View {
+        if tool == .gemini {
+            // Gemini Web and AntiGravity roll up to one Google AI product.
+            GeminiCombinedCard(density: density)
+                .overviewMasonryItem(id: "quota-gemini", phase: .quota)
+        } else {
+            ProviderQuotaCard(tool: tool, density: density, compact: false)
+                .overviewMasonryItem(id: "quota-\(tool.rawValue)", phase: .quota)
+        }
     }
 
     private func isVisible(_ tool: ToolType) -> Bool {
@@ -937,9 +934,7 @@ private struct CombinedTotalsRow: View {
                 OverviewStatusSummaryCard(
                     density: density,
                     minHeight: density.overviewSummaryHeight,
-                    tools: ToolType.combinedStatusPageProviders.filter {
-                        settingsStore.settings.isCoreProviderVisible($0)
-                    }
+                    tools: settingsStore.settings.visibleCoreProviderList
                 )
                     .frame(
                         minWidth: columnWidth,
@@ -1862,15 +1857,18 @@ private struct ProviderBucketRow: View {
                 Text(bucket.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 if let resetAt = bucket.resetAt,
-                   let reset = ResetCountdownFormatter.string(from: resetAt, now: now) {
+                   let reset = ResetCountdownFormatter.stringWithAbsoluteTime(from: resetAt, now: now) {
                     Text("resets in \(reset)")
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                 }
                 Spacer(minLength: 6)
                 Text("\(Int(percent.rounded()))%")
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
+                    .fixedSize(horizontal: true, vertical: false)
             }
             if let forecast {
                 ForecastQuotaBar(

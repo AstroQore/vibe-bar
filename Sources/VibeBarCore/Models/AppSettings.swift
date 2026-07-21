@@ -22,6 +22,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// credentials, refresh schedule, and history intact; it only removes the
     /// provider's Overview card, totals contribution, status tile, and tab.
     public var visibleCoreProviders: Set<ToolType>
+    /// User-controlled order for the four core provider families. The same
+    /// order drives Settings, the popover switcher, and Overview quota cards.
+    /// Missing providers are appended so older settings files automatically
+    /// pick up newly introduced core providers.
+    public var coreProviderOrder: [ToolType]
     /// Per-misc-provider non-sensitive config (source mode, region,
     /// enterprise host, etc.). Sensitive credentials live in Keychain
     /// (`MiscCredentialStore` / `CookieHeaderCache`), never in this map. The
@@ -58,6 +63,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         popoverDensity: .regular,
         providerPlanLabels: Self.defaultProviderPlanLabels,
         visibleCoreProviders: Self.defaultVisibleCoreProviders,
+        coreProviderOrder: Self.defaultCoreProviderOrder,
         miscProviders: Self.defaultMiscProviders,
         visibleMiscProviders: Self.defaultVisibleMiscProviders,
         miscProviderOrder: Self.defaultMiscProviderOrder,
@@ -91,6 +97,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static var defaultVisibleCoreProviders: Set<ToolType> {
         Set(ToolType.coreProviderRepresentatives)
+    }
+
+    public static var defaultCoreProviderOrder: [ToolType] {
+        ToolType.coreProviderRepresentatives
     }
 
     /// Default `MiscProviderSettings` for every misc-page provider. Source
@@ -135,6 +145,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         popoverDensity: PopoverDensity = .regular,
         providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
         visibleCoreProviders: Set<ToolType> = AppSettings.defaultVisibleCoreProviders,
+        coreProviderOrder: [ToolType] = AppSettings.defaultCoreProviderOrder,
         miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
         visibleMiscProviders: Set<ToolType> = AppSettings.defaultVisibleMiscProviders,
         miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
@@ -157,6 +168,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.popoverDensity = popoverDensity
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
         self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
+        self.coreProviderOrder = Self.normalizedCoreProviderOrder(coreProviderOrder)
         let normalizedLegacyProviders = Self.normalizedMiscProviders(miscProviders)
         let normalizedVisibleProviders = Self.normalizedVisibleMiscProviders(visibleMiscProviders)
         let normalizedProviderOrder = Self.normalizedMiscProviderOrder(miscProviderOrder)
@@ -190,6 +202,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
         case visibleCoreProviders
+        case coreProviderOrder
         case miscProviders
         case visibleMiscProviders
         case miscProviderOrder
@@ -254,6 +267,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
             self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(decoded)
         } else {
             self.visibleCoreProviders = Self.defaultVisibleCoreProviders
+        }
+
+        if let rawOrder = try c.decodeIfPresent([String].self, forKey: .coreProviderOrder) {
+            self.coreProviderOrder = Self.normalizedCoreProviderOrder(
+                rawOrder.compactMap(ToolType.init(rawValue:))
+            )
+        } else {
+            self.coreProviderOrder = Self.defaultCoreProviderOrder
         }
 
         // Misc providers: lossy decode keyed by ToolType raw value.
@@ -335,6 +356,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             .filter { normalizedVisibleCore.contains($0) }
             .map(\.rawValue)
         try c.encode(visibleCoreRaw, forKey: .visibleCoreProviders)
+        try c.encode(coreProviderOrder.map(\.rawValue), forKey: .coreProviderOrder)
         let miscRaw = Dictionary(uniqueKeysWithValues: miscProviders.map { ($0.key.rawValue, $0.value) })
         try c.encode(miscRaw, forKey: .miscProviders)
         let visibleRaw = ToolType.miscPageProviders
@@ -401,6 +423,35 @@ public struct AppSettings: Codable, Equatable, Sendable {
         visibleCoreProviders = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
     }
 
+    public var orderedCoreProviders: [ToolType] {
+        Self.normalizedCoreProviderOrder(coreProviderOrder)
+    }
+
+    public var visibleCoreProviderList: [ToolType] {
+        orderedCoreProviders.filter(isCoreProviderVisible)
+    }
+
+    public mutating func moveCoreProvider(_ tool: ToolType, before target: ToolType) {
+        let source = tool.coreProviderRepresentative
+        let destination = target.coreProviderRepresentative
+        guard let source, let destination, source != destination else { return }
+        var order = orderedCoreProviders
+        guard let from = order.firstIndex(of: source),
+              let targetIndex = order.firstIndex(of: destination) else { return }
+        let item = order.remove(at: from)
+        let adjustedTarget = from < targetIndex ? targetIndex - 1 : targetIndex
+        order.insert(item, at: adjustedTarget)
+        coreProviderOrder = Self.normalizedCoreProviderOrder(order)
+    }
+
+    public mutating func moveCoreProviderToEnd(_ tool: ToolType) {
+        guard let representative = tool.coreProviderRepresentative else { return }
+        var order = orderedCoreProviders
+        guard let from = order.firstIndex(of: representative) else { return }
+        order.append(order.remove(at: from))
+        coreProviderOrder = Self.normalizedCoreProviderOrder(order)
+    }
+
     private static func normalizedMenuBarItems(_ items: [MenuBarItemSettings]) -> [MenuBarItemSettings] {
         [
             items.first { $0.kind == .compact }.map(migratedMenuBarItem)
@@ -421,6 +472,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     private static func normalizedVisibleCoreProviders(_ providers: Set<ToolType>) -> Set<ToolType> {
         Set(providers.compactMap(\.coreProviderRepresentative))
+    }
+
+    private static func normalizedCoreProviderOrder(_ order: [ToolType]) -> [ToolType] {
+        var seen = Set<ToolType>()
+        var normalized: [ToolType] = []
+        for tool in order {
+            guard let representative = tool.coreProviderRepresentative,
+                  seen.insert(representative).inserted else { continue }
+            normalized.append(representative)
+        }
+        for tool in ToolType.coreProviderRepresentatives where seen.insert(tool).inserted {
+            normalized.append(tool)
+        }
+        return normalized
     }
 
     /// Fill in defaults for any misc-page provider missing from the

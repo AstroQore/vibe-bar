@@ -418,7 +418,7 @@ private struct MiscQuotaBody: View {
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
-            if let countdown = ResetCountdownFormatter.string(from: bucket.resetAt) {
+            if let countdown = ResetCountdownFormatter.stringWithAbsoluteTime(from: bucket.resetAt) {
                 Text("Resets \(countdown)")
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)

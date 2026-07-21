@@ -26,7 +26,7 @@ final class SettingsWindowController: NSObject {
                 .environmentObject(environment.quotaService)
                 .environmentObject(environment.serviceStatus)
         )
-        let initialSize = NSSize(width: 980, height: 760)
+        let initialSize = NSSize(width: 1040, height: 780)
         let win = NSWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
@@ -39,7 +39,7 @@ final class SettingsWindowController: NSObject {
         win.isReleasedWhenClosed = false
         win.contentViewController = hosting
         win.center()
-        win.minSize = NSSize(width: 820, height: 600)
+        win.minSize = NSSize(width: 900, height: 620)
         win.delegate = self
         self.window = win
 

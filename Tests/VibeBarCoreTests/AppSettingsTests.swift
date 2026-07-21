@@ -30,6 +30,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.miniWindow.selectedFieldIds.contains("claude.daily_routines"))
         XCTAssertNil(settings.miniWindow.customLabels["codex.five_hour"])
         XCTAssertEqual(settings.visibleCoreProviders, AppSettings.defaultVisibleCoreProviders)
+        XCTAssertEqual(settings.coreProviderOrder, AppSettings.defaultCoreProviderOrder)
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.defaultRetentionDays)
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.unlimitedRetentionDays)
         XCTAssertFalse(settings.costData.privacyModeEnabled)
@@ -397,6 +398,34 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
         XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .gemini]))
+    }
+
+    func testCoreProviderOrderNormalizesAliasesDuplicatesAndUnknownValues() throws {
+        let json = """
+        {
+          "coreProviderOrder": ["grok", "antigravity", "minimax", "grok"]
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .gemini, .codex, .claude])
+    }
+
+    func testCoreProviderOrderMovesAndRoundTrips() throws {
+        var settings = AppSettings.default
+        settings.moveCoreProvider(.grok, before: .codex)
+        settings.moveCoreProvider(.claude, before: .gemini)
+        settings.setCoreProviderVisible(false, for: .codex)
+
+        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .codex, .claude, .gemini])
+        XCTAssertEqual(settings.visibleCoreProviderList, [.grok, .claude, .gemini])
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.orderedCoreProviders, settings.orderedCoreProviders)
+        XCTAssertEqual(decoded.visibleCoreProviderList, settings.visibleCoreProviderList)
     }
 
     func testRefreshPreferencesRoundTrip() throws {

@@ -176,11 +176,12 @@ struct SubscriptionUtilizationView: View {
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
                 if let resetAt = bucket.resetAt,
-                   let reset = ResetCountdownFormatter.string(from: resetAt, now: now) {
+                   let reset = ResetCountdownFormatter.stringWithAbsoluteTime(from: resetAt, now: now) {
                     Text("resets in \(reset)")
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                 }
                 Spacer(minLength: 6)
                 Text(percentLabel(used: used))
