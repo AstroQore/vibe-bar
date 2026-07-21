@@ -286,6 +286,260 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
         XCTAssertFalse(samples[0].isCompleted)
     }
 
+    func testOnePercentToZeroCompletesLowUsageCycle() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let now = Date()
+        let reset = now.addingTimeInterval(3 * 86_400)
+
+        await store.observe(
+            quota(tool: .codex, buckets: [
+                bucket(
+                    id: "gpt_5_3_codex_spark_weekly",
+                    usedPercent: 1,
+                    resetAt: reset,
+                    rawWindowSeconds: 604_800,
+                    groupTitle: "GPT-5.3 Codex Spark"
+                )
+            ]),
+            now: now,
+            retentionDays: 30
+        )
+        await store.observe(
+            quota(tool: .codex, buckets: [
+                bucket(
+                    id: "gpt_5_3_codex_spark_weekly",
+                    usedPercent: 0,
+                    resetAt: reset,
+                    rawWindowSeconds: 604_800,
+                    groupTitle: "GPT-5.3 Codex Spark"
+                )
+            ]),
+            now: now.addingTimeInterval(60),
+            retentionDays: 30
+        )
+
+        let samples = await store.samples(
+            accountId: "acct-test",
+            bucketId: "gpt_5_3_codex_spark_weekly"
+        )
+        XCTAssertEqual(samples.count, 2)
+        XCTAssertEqual(samples.filter(\.isCompleted).count, 1)
+        XCTAssertEqual(samples.first(where: \.isCompleted)?.peakUsedPercent, 1)
+        XCTAssertEqual(samples.first(where: \.isCompleted)?.completionReason, .refillDetected)
+    }
+
+    func testFiveHourTwoHourResetAdvanceCompletesEvenWhenUsageIncreases() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let now = Date()
+        let reset = now.addingTimeInterval(3 * 3_600)
+
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "five_hour", usedPercent: 20, resetAt: reset, rawWindowSeconds: 18_000)
+            ]),
+            now: now,
+            retentionDays: 30
+        )
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(
+                    id: "five_hour",
+                    usedPercent: 35,
+                    resetAt: reset.addingTimeInterval(2 * 3_600),
+                    rawWindowSeconds: 18_000
+                )
+            ]),
+            now: now.addingTimeInterval(60),
+            retentionDays: 30
+        )
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "five_hour")
+        XCTAssertEqual(samples.count, 2)
+        XCTAssertEqual(samples.filter(\.isCompleted).count, 1)
+        XCTAssertEqual(samples.first(where: \.isCompleted)?.completionReason, .scheduledReset)
+        XCTAssertEqual(samples.first(where: { !$0.isCompleted })?.lastUsedPercent, 35)
+    }
+
+    func testWeeklyThreeDayResetAdvanceCompletesEvenWhenUsageIncreases() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let now = Date()
+        let reset = now.addingTimeInterval(3 * 86_400)
+
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "weekly", usedPercent: 20, resetAt: reset, rawWindowSeconds: 604_800)
+            ]),
+            now: now,
+            retentionDays: 30
+        )
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(
+                    id: "weekly",
+                    usedPercent: 35,
+                    resetAt: reset.addingTimeInterval(3 * 86_400),
+                    rawWindowSeconds: 604_800
+                )
+            ]),
+            now: now.addingTimeInterval(60),
+            retentionDays: 30
+        )
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "weekly")
+        XCTAssertEqual(samples.count, 2)
+        XCTAssertEqual(samples.filter(\.isCompleted).count, 1)
+        XCTAssertEqual(samples.first(where: \.isCompleted)?.completionReason, .scheduledReset)
+    }
+
+    func testResetAdvanceBelowTenPercentDoesNotCompleteByItself() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let now = Date()
+        let reset = now.addingTimeInterval(3 * 3_600)
+
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "five_hour", usedPercent: 20, resetAt: reset, rawWindowSeconds: 18_000)
+            ]),
+            now: now,
+            retentionDays: 30
+        )
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(
+                    id: "five_hour",
+                    usedPercent: 21,
+                    resetAt: reset.addingTimeInterval(20 * 60),
+                    rawWindowSeconds: 18_000
+                )
+            ]),
+            now: now.addingTimeInterval(60),
+            retentionDays: 30
+        )
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "five_hour")
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertFalse(samples[0].isCompleted)
+    }
+
+    func testWeakUsageDropAndWeakResetAdvanceCombineIntoReset() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let now = Date()
+        let reset = now.addingTimeInterval(3 * 86_400)
+
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "weekly", usedPercent: 10, resetAt: reset, rawWindowSeconds: 604_800)
+            ]),
+            now: now,
+            retentionDays: 30
+        )
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(
+                    id: "weekly",
+                    usedPercent: 9,
+                    resetAt: reset.addingTimeInterval(604_800 * 0.05),
+                    rawWindowSeconds: 604_800
+                )
+            ]),
+            now: now.addingTimeInterval(60),
+            retentionDays: 30
+        )
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "weekly")
+        XCTAssertEqual(samples.count, 2)
+        XCTAssertEqual(samples.filter(\.isCompleted).count, 1)
+        XCTAssertEqual(samples.first(where: \.isCompleted)?.completionReason, .scheduledReset)
+    }
+
+    func testOneTimeRepairSplitsMissedLowUsageResetFromRetainedTimeline() async throws {
+        struct ExistingStorage: Codable {
+            let schemaVersion: Int
+            let legacyTimelineImported: Bool
+            let samples: [SubscriptionWindowSample]
+        }
+
+        let (store, fileURL, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let now = Date()
+        let oldReset = now.addingTimeInterval(3 * 86_400)
+        let transition = now.addingTimeInterval(3_600)
+        let newReset = oldReset.addingTimeInterval(3 * 86_400)
+        let active = SubscriptionWindowSample(
+            accountId: "acct-test",
+            tool: .codex,
+            bucketId: "gpt_5_3_codex_spark_weekly",
+            windowEnd: newReset,
+            windowStart: now,
+            rawWindowSeconds: 604_800,
+            peakUsedPercent: 1,
+            lastUsedPercent: 0,
+            observationCount: 20,
+            firstSeenAt: now,
+            lastSeenAt: transition.addingTimeInterval(3_600)
+        )
+        let encoded = try JSONEncoder().encode(ExistingStorage(
+            schemaVersion: 2,
+            legacyTimelineImported: true,
+            samples: [active]
+        ))
+        try encoded.write(to: fileURL, options: .atomic)
+
+        let points = [
+            FillTimelinePoint(
+                accountId: "acct-test",
+                tool: .codex,
+                bucketId: "gpt_5_3_codex_spark_weekly",
+                slotStart: now,
+                usedPercent: 1,
+                sampledAt: now,
+                resetAt: oldReset,
+                rawWindowSeconds: 604_800
+            ),
+            FillTimelinePoint(
+                accountId: "acct-test",
+                tool: .codex,
+                bucketId: "gpt_5_3_codex_spark_weekly",
+                slotStart: transition,
+                usedPercent: 0,
+                sampledAt: transition,
+                resetAt: newReset,
+                rawWindowSeconds: 604_800
+            ),
+            FillTimelinePoint(
+                accountId: "acct-test",
+                tool: .codex,
+                bucketId: "gpt_5_3_codex_spark_weekly",
+                slotStart: transition.addingTimeInterval(3_600),
+                usedPercent: 0,
+                sampledAt: transition.addingTimeInterval(3_600),
+                resetAt: newReset,
+                rawWindowSeconds: 604_800
+            )
+        ]
+
+        await store.importLegacyTimeline(points, retentionDays: 30)
+        await store.importLegacyTimeline(points, retentionDays: 30)
+
+        let samples = await store.samples(
+            accountId: "acct-test",
+            bucketId: "gpt_5_3_codex_spark_weekly"
+        )
+        XCTAssertEqual(samples.count, 2)
+        let completed = try XCTUnwrap(samples.first(where: \.isCompleted))
+        XCTAssertEqual(completed.peakUsedPercent, 1)
+        XCTAssertEqual(completed.lastUsedPercent, 1)
+        let current = try XCTUnwrap(samples.first(where: { !$0.isCompleted }))
+        XCTAssertEqual(current.peakUsedPercent, 0)
+        XCTAssertEqual(current.lastUsedPercent, 0)
+        XCTAssertEqual(current.firstSeenAt, transition)
+    }
+
     func testLegacyTimelineImportsOnlyDetectedRefills() async throws {
         let (store, _, cleanup) = try makeTempStore()
         defer { cleanup() }
