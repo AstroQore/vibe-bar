@@ -1,7 +1,7 @@
 import Foundation
 
 /// Parses the JSON envelope returned by Gemini's signed-in web
-/// quota endpoint (rpcid `jSf9Qc` on
+/// quota endpoint (currently rpcid `ESY5D` on
 /// `gemini.google.com/_/BardChatUi/data/batchexecute`) into the
 /// shared `GeminiResponseParser.Snapshot` shape.
 ///
@@ -73,10 +73,11 @@ enum GeminiWebResponseParser {
         // The chunked stream is `<len>\n<json>\n<len>\n<json>...`.
         // The `wrb.fr` entry we want sits inside one of those JSON
         // chunks. The regex captures the JSON-encoded string between
-        // `["wrb.fr","jSf9Qc","` and the `"`-terminator immediately
+        // `["wrb.fr","<rpcid>","` and the `"`-terminator immediately
         // before `,null` — handling escape sequences so a `\"` inside
         // the payload doesn't end the match early.
-        let pattern = #"\["wrb\.fr","jSf9Qc","((?:[^"\\]|\\.)*)",null"#
+        let escapedRPCId = NSRegularExpression.escapedPattern(for: GeminiWebQuotaFetcher.quotaRPCId)
+        let pattern = #"\["wrb\.fr","\#(escapedRPCId)","((?:[^"\\]|\\.)*)",null"#
         guard let regex = try? NSRegularExpression(
             pattern: pattern,
             options: [.dotMatchesLineSeparators]
@@ -88,7 +89,9 @@ enum GeminiWebResponseParser {
             in: text,
             range: NSRange(location: 0, length: ns.length)
         ), match.numberOfRanges >= 2 else {
-            throw QuotaError.parseFailure("Gemini Web response did not contain a jSf9Qc payload entry.")
+            throw QuotaError.parseFailure(
+                "Gemini Web response did not contain an \(GeminiWebQuotaFetcher.quotaRPCId) payload entry."
+            )
         }
         let innerEscaped = ns.substring(with: match.range(at: 1))
         // Captured string is JSON-encoded inside the outer JSON. Wrap
@@ -98,21 +101,21 @@ enum GeminiWebResponseParser {
               let innerJsonString = (try? JSONSerialization.jsonObject(
                 with: wrappedData, options: [.allowFragments])) as? String,
               let innerData = innerJsonString.data(using: .utf8) else {
-            throw QuotaError.parseFailure("Gemini Web jSf9Qc inner payload could not be unescaped.")
+            throw QuotaError.parseFailure("Gemini Web quota inner payload could not be unescaped.")
         }
         let outer: [Any]
         do {
             guard let arr = try JSONSerialization.jsonObject(with: innerData) as? [Any] else {
-                throw QuotaError.parseFailure("Gemini Web jSf9Qc inner payload not an array.")
+                throw QuotaError.parseFailure("Gemini Web quota inner payload not an array.")
             }
             outer = arr
         } catch let error as QuotaError {
             throw error
         } catch {
-            throw QuotaError.parseFailure("Gemini Web jSf9Qc inner payload not parseable: \(error.localizedDescription)")
+            throw QuotaError.parseFailure("Gemini Web quota inner payload not parseable: \(error.localizedDescription)")
         }
         guard outer.count >= 2, let bucketsRaw = outer[1] as? [[Any]] else {
-            throw QuotaError.parseFailure("Gemini Web jSf9Qc payload missing bucket array.")
+            throw QuotaError.parseFailure("Gemini Web quota payload missing bucket array.")
         }
         let planTier = intValue(outer.first ?? 0)
         let planName = planLabel(forTierId: planTier)
@@ -143,19 +146,27 @@ enum GeminiWebResponseParser {
             ))
         }
         guard !buckets.isEmpty else {
-            throw QuotaError.parseFailure("Gemini Web jSf9Qc returned no buckets.")
+            throw QuotaError.parseFailure("Gemini Web quota payload returned no buckets.")
         }
         // Google's bucket array is not stable across refreshes: live
         // responses may list the weekly window before the shorter current
         // window. Every Gemini surface renders this array directly, so lock
         // the user-facing cadence to 5 Hours -> Weekly and keep any future
         // unknown buckets after the two known windows.
-        buckets.sort { lhs, rhs in
+        buckets = canonicalBucketOrder(buckets)
+        return GeminiResponseParser.Snapshot(buckets: buckets, planName: planName, email: email)
+    }
+
+    /// Normalize both fresh responses and persisted caches. Older cache files
+    /// may retain the server's weekly-first order even after a protocol change
+    /// prevents an immediate refresh; every surface should still render the
+    /// shorter current window before Weekly.
+    static func canonicalBucketOrder(_ buckets: [QuotaBucket]) -> [QuotaBucket] {
+        buckets.sorted { lhs, rhs in
             let lhsRank = displayRank(forBucketId: lhs.id)
             let rhsRank = displayRank(forBucketId: rhs.id)
             return lhsRank == rhsRank ? lhs.id < rhs.id : lhsRank < rhsRank
         }
-        return GeminiResponseParser.Snapshot(buckets: buckets, planName: planName, email: email)
     }
 
     /// Map Google's `planTier` integer to the user-visible plan label.

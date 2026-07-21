@@ -81,6 +81,22 @@ final class PrivacyPersistenceTests: XCTestCase {
         XCTAssertNotEqual(component, VibeBarLocalStore.safeFileComponent(accountId))
     }
 
+    func testGeminiStoredQuotaNormalizesKnownBucketOrder() {
+        let quota = AccountQuota(
+            accountId: "gemini-web",
+            tool: .gemini,
+            buckets: [
+                QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "Weekly", usedPercent: 2),
+                QuotaBucket(id: "five_hour", title: "5 Hours", shortLabel: "5 Hours", usedPercent: 0)
+            ],
+            queriedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        let restored = QuotaCacheStore.StoredQuota(quota).quota(accountId: quota.accountId)
+
+        XCTAssertEqual(restored.buckets.map(\.id), ["five_hour", "weekly"])
+    }
+
     func testScanCacheStoresHashedPathKeys() throws {
         var cache = CostUsageScanCache()
         let mtime = Date(timeIntervalSince1970: 1_700_000_000)

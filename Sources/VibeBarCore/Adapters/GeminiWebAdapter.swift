@@ -3,30 +3,30 @@ import Foundation
 /// Fetches Gemini usage data from the signed-in `gemini.google.com`
 /// web session via imported browser cookies.
 ///
-/// 2026-05-23 spike resolved: the live quota data rendered by the
-/// `<usage-metrics-window>` Angular component comes from a hidden
-/// `jSf9Qc` batchexecute rpcid, not from the initial-load rpcid set
-/// the 2026-05-22 pass inspected. `jSf9Qc` only fires on the SECOND
-/// entry to `/usage` within a session (initial loads cache the
-/// bucket array client-side), so a clean page-load capture missed
-/// it. SPA-navigating to `/app` and back exposed it.
+/// The live quota data rendered by Gemini's `<usage-metrics-window>`
+/// Angular component comes from a private batchexecute RPC. Google renamed
+/// that RPC from `jSf9Qc` to `ESY5D` in July 2026 and changed its request
+/// argument from `[]` to a `bard_activity_enabled` feature list. Keep the
+/// live contract centralized below so request construction and response
+/// parsing cannot drift independently the next time the identifier moves.
 ///
 /// Wire format (cookie-authenticated, no SAPISIDHASH required):
 /// - URL: `https://gemini.google.com/_/BardChatUi/data/batchexecute`
-///   with query items `rpcids=jSf9Qc&source-path=/usage&hl=en&_reqid=<rand>&rt=c`.
+///   with query items `rpcids=ESY5D&source-path=/usage&hl=en&_reqid=<rand>&rt=c`.
 /// - Method: POST, `Content-Type:
 ///   application/x-www-form-urlencoded;charset=UTF-8`.
-/// - Body: `f.req=[[["jSf9Qc","[]",null,"generic"]]]&at=<XSRF>&`.
-///   The inner args really are an empty array — the server scopes
-///   the response using the cookie identity. `at=` carries the
+/// - Body: `f.req=[[["ESY5D","[[[\"bard_activity_enabled\"]]]",null,
+///   "generic"]]]&at=<XSRF>&`. `at=` carries the
 ///   `WIZ_global_data.SNlM0e` XSRF token extracted from the SSR
 ///   HTML of `https://gemini.google.com/usage?pli=1`.
 /// - Response: JSONP-prefixed (`)]}'\n`) chunked stream. The
-///   `["wrb.fr","jSf9Qc","<encoded JSON>",...]` entry carries the
+///   `["wrb.fr","ESY5D","<encoded JSON>",...]` entry carries the
 ///   payload. See `GeminiWebResponseParser` for the decoded shape.
 struct GeminiWebQuotaFetcher: Sendable {
     /// Set to `true` now that the live quota endpoint is implemented.
     static let spikeComplete = true
+    static let quotaRPCId = "ESY5D"
+    static let quotaRPCArgument = #"[[[\"bard_activity_enabled\"]]]"#
 
     private let session: URLSession
     private let now: @Sendable () -> Date
@@ -90,7 +90,7 @@ struct GeminiWebQuotaFetcher: Sendable {
             throw QuotaError.unknown("Gemini Web batchexecute URL malformed.")
         }
         components.queryItems = [
-            URLQueryItem(name: "rpcids", value: "jSf9Qc"),
+            URLQueryItem(name: "rpcids", value: Self.quotaRPCId),
             URLQueryItem(name: "source-path", value: "/usage"),
             URLQueryItem(name: "hl", value: "en"),
             URLQueryItem(name: "_reqid", value: String(reqid)),
@@ -110,7 +110,7 @@ struct GeminiWebQuotaFetcher: Sendable {
         request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
         request.httpShouldHandleCookies = false
 
-        let innerArgs = #"[[["jSf9Qc","[]",null,"generic"]]]"#
+        let innerArgs = #"[[["\#(Self.quotaRPCId)","\#(Self.quotaRPCArgument)",null,"generic"]]]"#
         let bodyString = "f.req=" + Self.formEncode(innerArgs)
             + "&at=" + Self.formEncode(xsrfToken) + "&"
         request.httpBody = bodyString.data(using: .utf8)

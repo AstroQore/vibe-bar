@@ -2,8 +2,8 @@ import XCTest
 @testable import VibeBarCore
 
 /// Behavioural tests for `GeminiWebResponseParser`. The 2026-05-23
-/// reverse-engineering pass identified `jSf9Qc` as the live quota
-/// rpcid on `gemini.google.com`. These tests pin the wire format
+/// reverse-engineering pass identified the live quota response shape on
+/// `gemini.google.com`. These tests pin the wire format
 /// (chunked JSONP-prefixed envelope wrapping a doubly-encoded inner
 /// JSON payload) against fixtures captured from a live PRO session
 /// with the numbers scrubbed to synthetic values.
@@ -46,13 +46,18 @@ final class GeminiWebResponseParserTests: XCTestCase {
                 XCTFail("Expected parseFailure, got \(error)")
                 return
             }
-            XCTAssertTrue(message.contains("jSf9Qc"), "Message should reference the rpcid: \(message)")
+            XCTAssertTrue(
+                message.contains(GeminiWebQuotaFetcher.quotaRPCId),
+                "Message should reference the current rpcid: \(message)"
+            )
         }
     }
 
     func testParseMalformedInnerJsonThrowsParseFailure() {
         // wrb.fr entry present, but the inner JSON string is not an array.
-        let payload = Data(#")]}'\n[["wrb.fr","jSf9Qc","not-json",null,null,null,"generic"]]"#.utf8)
+        let payload = Data(
+            ")]}'\\n[[\"wrb.fr\",\"\(GeminiWebQuotaFetcher.quotaRPCId)\",\"not-json\",null,null,null,\"generic\"]]".utf8
+        )
         XCTAssertThrowsError(try GeminiWebResponseParser.parse(data: payload)) { error in
             guard case QuotaError.parseFailure = error else {
                 XCTFail("Expected parseFailure, got \(error)")
@@ -200,7 +205,7 @@ final class GeminiWebResponseParserTests: XCTestCase {
         let escapedInner = inner
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
-        let wrbEntry = #"[["wrb.fr","jSf9Qc","\#(escapedInner)",null,null,null,"generic"],["di",100],["af.httprm",100,"0",0]]"#
+        let wrbEntry = #"[["wrb.fr","\#(GeminiWebQuotaFetcher.quotaRPCId)","\#(escapedInner)",null,null,null,"generic"],["di",100],["af.httprm",100,"0",0]]"#
         let tail = #"[["e",4,null,null,0]]"#
         let wrbBytes = wrbEntry.utf8.count
         let tailBytes = tail.utf8.count
