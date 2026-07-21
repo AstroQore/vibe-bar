@@ -67,10 +67,10 @@ struct PaceMarkerCapsule: View {
 /// The actual fill remains the dominant layer. A substantial neutral tick
 /// marks where usage should be *now* under a time-only pace. A
 /// status-colored tick marks the projected usage *at reset*. The confidence
-/// interval is a full-height, context-aware solid capsule: forecast color over
-/// the unfilled track, a mixed bridge over the actual fill, and a narrow curved
-/// seam where those two regions meet. It is intentionally not a second bar or
-/// a gradient.
+/// interval is a full-height capsule. It is opaque in ordinary geometry, uses
+/// a soft overlap or curved endpoint seam for the two Used-mode contact cases,
+/// and switches to an outlined tint when every mark crowds the lower axis. It
+/// is intentionally not a second bar or a gradient.
 struct ForecastQuotaBar: View {
     let percent: Double
     let mode: DisplayMode
@@ -85,21 +85,26 @@ struct ForecastQuotaBar: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let fillFraction = clamp(percent, 0, 100) / 100
-            let lower = forecastProjection.lowerPercent / 100
-            let upper = forecastProjection.upperPercent / 100
             let median = forecastProjection.medianPercent / 100
             let timePace = timePacePercent.map { clamp($0, 0, 100) / 100 }
             let forecastLineWidth = max(3.2, min(4.2, height * 0.30))
             let paceMarkerWidth = max(4.5, min(5.5, height * 0.42))
             let minimumBandWidth = forecastLineWidth + 6
-            let band = confidenceBandLayout(
-                width: width,
-                lower: lower,
-                upper: upper,
-                minimumWidth: minimumBandWidth
+            let band = forecastProjection.confidenceBandLayout(
+                actualDisplayedPercent: clamp(percent, 0, 100),
+                minimumVisibleWidthPercent: width > 0 ? minimumBandWidth / width * 100 : 100,
+                contactTolerancePercent: width > 0 ? 0.5 / width * 100 : 100
             )
-            let actualFillWidth = min(width, max(height, width * fillFraction))
-            let bandOverlapWidth = max(0, min(band.width, actualFillWidth - band.x))
+            let naturalBandX = width * band.startPercent / 100
+            let naturalBandWidth = width * band.widthPercent / 100
+            let softJoinOverlap = band.style == .softJoin
+                ? min(height / 2, naturalBandX)
+                : 0
+            let bandX = naturalBandX - softJoinOverlap
+            let bandWidth = naturalBandWidth + softJoinOverlap
+            let bandOverlapWidth = band.style == .softJoin
+                ? softJoinOverlap
+                : width * band.overlapPercent / 100
             let seamWidth = min(3, max(2, height * 0.25))
             let actualColor = Theme.barColor(percent: percent, mode: mode)
             let visibleForecastColor = colorScheme == .dark
@@ -118,13 +123,14 @@ struct ForecastQuotaBar: View {
 
                 if forecastProjection.hasUncertainty {
                     confidenceBand(
+                        style: band.style,
                         actualColor: actualColor,
                         overlapWidth: bandOverlapWidth,
                         seamWidth: seamWidth,
                         visibleForecastColor: visibleForecastColor
                     )
-                    .frame(width: band.width, height: height, alignment: .leading)
-                    .offset(x: band.x)
+                    .frame(width: bandWidth, height: height, alignment: .leading)
+                    .offset(x: bandX)
                 }
 
                 if let timePace, timePacePercent.map({ $0 > 2 && $0 < 98 }) == true {
@@ -151,20 +157,67 @@ struct ForecastQuotaBar: View {
 
     @ViewBuilder
     private func confidenceBand(
+        style: QuotaForecastBandStyle,
         actualColor: Color,
         overlapWidth: CGFloat,
         seamWidth: CGFloat,
+        visibleForecastColor: Color
+    ) -> some View {
+        switch style {
+        case .outlinedTint:
+            ZStack(alignment: .trailing) {
+                Capsule(style: .continuous)
+                    .fill(visibleForecastColor.opacity(colorScheme == .dark ? 0.30 : 0.18))
+                Capsule(style: .continuous)
+                    .strokeBorder(visibleForecastColor.opacity(0.88), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(visibleForecastColor.opacity(0.95))
+                    .frame(width: 2, height: max(4, height - 4))
+                    .padding(.trailing, 1)
+            }
+
+        case .softJoin:
+            Capsule(style: .continuous)
+                .fill(visibleForecastColor)
+
+        case .opaque:
+            solidConfidenceBand(
+                actualColor: actualColor,
+                overlapWidth: overlapWidth,
+                seamWidth: seamWidth,
+                showsCurvedSeam: false,
+                visibleForecastColor: visibleForecastColor
+            )
+
+        case .curvedSeam:
+            solidConfidenceBand(
+                actualColor: actualColor,
+                overlapWidth: overlapWidth,
+                seamWidth: seamWidth,
+                showsCurvedSeam: true,
+                visibleForecastColor: visibleForecastColor
+            )
+        }
+    }
+
+    private func solidConfidenceBand(
+        actualColor: Color,
+        overlapWidth: CGFloat,
+        seamWidth: CGFloat,
+        showsCurvedSeam: Bool,
         visibleForecastColor: Color
     ) -> some View {
         ZStack(alignment: .leading) {
             Capsule(style: .continuous)
                 .fill(visibleForecastColor)
 
-            if overlapWidth > 0.5 {
+            if showsCurvedSeam {
                 Capsule(style: .continuous)
                     .fill(confidenceSeamColor)
                     .frame(width: overlapWidth + seamWidth)
+            }
 
+            if overlapWidth > 0.5 {
                 Capsule(style: .continuous)
                     .fill(actualColor.mix(with: visibleForecastColor, by: 0.42))
                     .frame(width: overlapWidth)
@@ -182,30 +235,6 @@ struct ForecastQuotaBar: View {
 
     private func markerOffset(width: CGFloat, fraction: Double, markerWidth: CGFloat) -> CGFloat {
         max(0, min(width - markerWidth, width * fraction - markerWidth / 2))
-    }
-
-    private func confidenceBandLayout(
-        width: CGFloat,
-        lower: Double,
-        upper: Double,
-        minimumWidth: CGFloat
-    ) -> (x: CGFloat, width: CGFloat) {
-        let naturalStart = width * lower
-        let naturalEnd = width * upper
-        let naturalWidth = max(0, naturalEnd - naturalStart)
-        guard naturalWidth < minimumWidth else {
-            return (naturalStart, naturalWidth)
-        }
-        if lower <= 0 {
-            return (0, min(width, minimumWidth))
-        }
-        if upper >= 1 {
-            let bandWidth = min(width, minimumWidth)
-            return (max(0, width - bandWidth), bandWidth)
-        }
-        let bandWidth = min(width, minimumWidth)
-        let center = (naturalStart + naturalEnd) / 2
-        return (max(0, min(width - bandWidth, center - bandWidth / 2)), bandWidth)
     }
 
     private func neutralPaceMarker(width: CGFloat) -> some View {

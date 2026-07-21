@@ -145,6 +145,16 @@ enum GeminiWebResponseParser {
         guard !buckets.isEmpty else {
             throw QuotaError.parseFailure("Gemini Web jSf9Qc returned no buckets.")
         }
+        // Google's bucket array is not stable across refreshes: live
+        // responses may list the weekly window before the shorter current
+        // window. Every Gemini surface renders this array directly, so lock
+        // the user-facing cadence to 5 Hours -> Weekly and keep any future
+        // unknown buckets after the two known windows.
+        buckets.sort { lhs, rhs in
+            let lhsRank = displayRank(forBucketId: lhs.id)
+            let rhsRank = displayRank(forBucketId: rhs.id)
+            return lhsRank == rhsRank ? lhs.id < rhs.id : lhsRank < rhsRank
+        }
         return GeminiResponseParser.Snapshot(buckets: buckets, planName: planName, email: email)
     }
 
@@ -186,6 +196,14 @@ enum GeminiWebResponseParser {
                 shortLabel: "B\(type)",
                 windowSeconds: nil
             )
+        }
+    }
+
+    private static func displayRank(forBucketId id: String) -> Int {
+        switch id {
+        case currentUsageBucketId: return 0
+        case weeklyUsageBucketId: return 1
+        default: return 2
         }
     }
 

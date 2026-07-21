@@ -666,14 +666,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 - **Forecast overlays need one coherent visual vocabulary.** The current quota
   remains the primary summary-bar layer. The elapsed-time-only pace uses the
   substantial neutral inset tick established by `PaceMarkerCapsule`; the
-  forecast-at-reset median is a verdict-colored vertical tick; the confidence
-  interval is a context-aware solid capsule through exactly the bar's original
-  full height. Use verdict color over the unfilled track, a solid mixed bridge
-  over the actual fill, and a narrow curved background seam at the bridge's
-  trailing cap. Keep that seam visible even when the forecast interval is
-  fully contained by the actual fill; it may overflow horizontally by a few
-  pixels, but never vertically. Do not use a translucent wash, gradient, or
-  square color cut, and never make the quota bar look thicker. Legends
+  forecast-at-reset median is a verdict-colored vertical tick. The confidence
+  interval always stays within the bar's original full height and follows four
+  explicit geometries. Ordinary intervals use an opaque solid overlay. In Used
+  mode, an interval that starts exactly at the actual endpoint overlaps it by
+  one rounded cap radius with no dark seam; when the actual endpoint falls
+  strictly inside the interval, keep the interval's rounded lower cap laid over
+  the complete actual fill and draw the curved background seam only at that
+  actual endpoint. When actual, interval, and median all crowd the lower axis,
+  both Used and Remaining modes use the same translucent full-height tint with
+  a complete rounded outline and emphasized far edge. Do not expose the track
+  through the lower rounded cap, use gradients or square color cuts, or make
+  the quota bar look thicker. Legends
   must use the same marker shapes as the bar — never show a solid sample for a
   dashed mark, reduce the wall-clock reference to a hairline, or turn the
   forecast into a dot. Used/Remaining projection must be performed through one
