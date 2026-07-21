@@ -659,6 +659,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   recent activity trend, forecast interval, safety target, evidence counts,
   coverage, and confidence. The Overview may stay concise; this detail view
   must show why a verdict was produced.
+- **`Surplus` is a robust likely-waste verdict, not a synonym for high current
+  remaining quota.** Keep `Learning` while confidence is low. Only surface
+  `Surplus` with at least medium confidence, a materially large median surplus
+  above the safety target, and a conservative forecast bound that still clears
+  that target. Risk verdicts always take precedence.
 - **Bundle ID is `com.astroqore.VibeBar`.** For a release, bump
   `CFBundleShortVersionString` and `CFBundleVersion` in
   `Resources/Info.plist`.

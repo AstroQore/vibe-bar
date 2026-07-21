@@ -105,9 +105,16 @@ final class QuotaPaceForecastTests: XCTestCase {
             cycles: cycles,
             now: now
         ))
-        XCTAssertNotEqual(forecast.verdict, .atRisk)
+        XCTAssertEqual(forecast.verdict, .surplus)
+        XCTAssertEqual(forecast.verdictLabel, "Surplus")
+        XCTAssertTrue(forecast.resetSummary.hasPrefix("Likely surplus"))
+        XCTAssertTrue(forecast.guidanceSummary.contains("likely unused"))
         XCTAssertGreaterThan(forecast.potentialUnusedPercent, 30)
         XCTAssertGreaterThan(forecast.projectedRemainingPercent, forecast.targetRemainingPercent)
+        XCTAssertGreaterThanOrEqual(
+            forecast.projectedRemainingRange.lowerBound - forecast.targetRemainingPercent,
+            10
+        )
     }
 
     func testForecastKeepsEveryBucketIndependent() throws {

@@ -482,6 +482,7 @@ private func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact:
     let left = Int(forecast.projectedRemainingPercent.rounded())
     switch forecast.verdict {
     case .enough: return compact ? "left \(left)%" : "\(left)% left"
+    case .surplus: return compact ? "surplus \(left)%" : "surplus · \(left)% left"
     case .watch: return "watch"
     case .atRisk: return "risk"
     case .learning: return compact ? "~\(left)% left" : "learning · \(left)% left"
@@ -492,6 +493,7 @@ private func miniForecastColor(_ forecast: QuotaPaceForecast?) -> Color {
     guard let forecast else { return Color.secondary.opacity(0.5) }
     switch forecast.verdict {
     case .enough: return Color(red: 0.20, green: 0.70, blue: 0.48)
+    case .surplus: return Color(red: 0.20, green: 0.56, blue: 0.88)
     case .watch: return Color(red: 0.96, green: 0.62, blue: 0.20)
     case .atRisk: return Color(red: 0.95, green: 0.32, blue: 0.32)
     case .learning: return .secondary

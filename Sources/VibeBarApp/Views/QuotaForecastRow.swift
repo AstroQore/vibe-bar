@@ -47,6 +47,8 @@ struct QuotaForecastRow: View {
         switch forecast.verdict {
         case .enough:
             return "Enough · forecast \(left)% left at reset"
+        case .surplus:
+            return "Surplus · forecast \(left)% left at reset"
         case .watch:
             return "Watch · forecast \(left)% left at reset"
         case .atRisk:
@@ -62,6 +64,7 @@ enum QuotaForecastPalette {
     static func color(for verdict: QuotaPaceForecast.Verdict) -> Color {
         switch verdict {
         case .enough: Color(red: 0.20, green: 0.70, blue: 0.48)
+        case .surplus: Color(red: 0.20, green: 0.56, blue: 0.88)
         case .watch: Color(red: 0.96, green: 0.62, blue: 0.20)
         case .atRisk: Color(red: 0.95, green: 0.32, blue: 0.32)
         case .learning: .secondary

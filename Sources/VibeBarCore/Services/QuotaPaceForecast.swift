@@ -13,6 +13,7 @@ import Foundation
 public struct QuotaPaceForecast: Sendable, Equatable {
     public enum Verdict: String, Sendable, Equatable {
         case enough
+        case surplus
         case watch
         case atRisk
         case learning
@@ -76,6 +77,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
     public var verdictLabel: String {
         switch verdict {
         case .enough: "Enough"
+        case .surplus: "Surplus"
         case .watch: "Watch"
         case .atRisk: "At risk"
         case .learning: "Learning"
@@ -95,6 +97,8 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         switch verdict {
         case .enough:
             return "Forecast \(left)% left at reset"
+        case .surplus:
+            return "Likely surplus · forecast \(left)% left"
         case .watch:
             return "May run short · forecast \(left)% left"
         case .atRisk:
@@ -109,6 +113,9 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let unused = Int(potentialUnusedPercent.rounded())
         if verdict == .atRisk { return "Slow down or shift work to another quota" }
         if verdict == .watch { return "Recent usage is above the safe range" }
+        if verdict == .surplus {
+            return "About \(unused)% likely unused beyond the \(target)% safety target"
+        }
         if unused >= 3 {
             return "Target \(target)% left · about \(unused)% available"
         }
@@ -229,6 +236,11 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         )
         let lower = max(actual, projected - uncertainty)
         let upper = projected + uncertainty
+        // A high remaining estimate alone is not enough to call quota waste:
+        // require both a material median surplus and a pessimistic bound that
+        // still clears the adaptive safety target.
+        let medianSurplus = max(0, 100 - projected - targetRemaining)
+        let conservativeSurplus = max(0, 100 - upper - targetRemaining)
 
         let verdict: Verdict
         if projected >= 100 {
@@ -237,6 +249,8 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             verdict = .watch
         } else if confidence == .learning {
             verdict = .learning
+        } else if medianSurplus >= 25, conservativeSurplus >= 10 {
+            verdict = .surplus
         } else {
             verdict = .enough
         }
