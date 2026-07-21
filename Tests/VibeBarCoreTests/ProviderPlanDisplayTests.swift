@@ -3,19 +3,22 @@ import XCTest
 
 final class ProviderPlanDisplayTests: XCTestCase {
     func testCodexPlanDisplayHumanizesKnownMachineValues() {
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro"), "Pro")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "prolite"), "Pro Lite")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro"), "ChatGPT Pro")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "prolite"), "ChatGPT Pro Lite")
         XCTAssertEqual(
             ProviderPlanDisplay.displayName(for: .codex, rawPlan: "enterprise_cbp_usage_based"),
-            "Enterprise CBP Usage Based"
+            "ChatGPT Enterprise CBP Usage Based"
         )
     }
 
     func testClaudePlanDisplayRecognizesRateLimitTiers() {
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "default_claude_max_20x"), "Max")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "claude_pro"), "Pro")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Claude Enterprise Account"), "Enterprise")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Experimental"), "Experimental")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "default_claude_max_20x"), "Claude Max")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "claude_pro"), "Claude Pro")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Claude Enterprise Account"), "Claude Enterprise")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Experimental"), "Claude Experimental")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .gemini, rawPlan: "Ultra"), "Google AI Ultra")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .antigravity, rawPlan: "Google AI Ultra"), "Google AI Ultra")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .grok, rawPlan: "supergrok_heavy"), "SuperGrok Heavy")
     }
 
     func testCodexCredentialDecodesPlanAndEmailFromIDToken() throws {
@@ -56,7 +59,7 @@ final class ProviderPlanDisplayTests: XCTestCase {
         let credential = try ClaudeCredentialReader.decode(jsonString: json, source: .cliDetected)
 
         XCTAssertEqual(credential.rateLimitTier, "default_claude_max_20x")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: credential.rateLimitTier), "Max")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: credential.rateLimitTier), "Claude Max")
     }
 
     func testMiscProviderDisplayNamesUseNormalizedPlanNames() {

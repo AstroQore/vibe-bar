@@ -121,10 +121,9 @@ public enum SecureCookieHeaderStore {
         }
 
         do {
-            let data = try KeychainStore.readData(
+            let data = try VibeBarCredentialVault.readData(
                 service: keychainService,
-                account: account,
-                useDataProtectionKeychain: true
+                account: account
             )
             let entry = try JSONDecoder().decode(Entry.self, from: data)
             cacheLock.lock()
@@ -154,11 +153,10 @@ public enum SecureCookieHeaderStore {
         if storeInTestStore(data, account: account) {
             return
         }
-        try KeychainStore.writeData(
+        try VibeBarCredentialVault.writeData(
             service: keychainService,
             account: account,
-            data: data,
-            useDataProtectionKeychain: true
+            data: data
         )
         cacheLock.lock()
         cache[account] = entry
@@ -170,10 +168,9 @@ public enum SecureCookieHeaderStore {
         if deleteFromTestStore(account: account) {
             return
         }
-        try KeychainStore.deleteItem(
+        try VibeBarCredentialVault.delete(
             service: keychainService,
-            account: account,
-            useDataProtectionKeychain: true
+            account: account
         )
         cacheLock.lock()
         cache.removeValue(forKey: account)

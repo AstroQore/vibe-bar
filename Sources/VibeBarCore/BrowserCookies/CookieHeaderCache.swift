@@ -99,11 +99,10 @@ public enum CookieHeaderCache {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(entry)
-            try KeychainStore.writeData(
+            try VibeBarCredentialVault.writeData(
                 service: keychainService,
                 account: keychainAccount(for: tool),
-                data: data,
-                useDataProtectionKeychain: true
+                data: data
             )
             return true
         } catch {
@@ -116,10 +115,9 @@ public enum CookieHeaderCache {
     public static func clear(for tool: ToolType) -> Bool {
         guard tool.isMisc else { return false }
         do {
-            try KeychainStore.deleteItem(
+            try VibeBarCredentialVault.delete(
                 service: keychainService,
-                account: keychainAccount(for: tool),
-                useDataProtectionKeychain: true
+                account: keychainAccount(for: tool)
             )
             try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(
                 service: legacyKeychainService,
@@ -161,10 +159,9 @@ public enum CookieHeaderCache {
                     service: service,
                     account: account
                 )
-                : try KeychainStore.readData(
+                : try VibeBarCredentialVault.readData(
                     service: service,
-                    account: account,
-                    useDataProtectionKeychain: true
+                    account: account
                 )
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601

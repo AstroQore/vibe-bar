@@ -343,10 +343,10 @@ final class AppSettingsTests: XCTestCase {
         let settings = AppSettings.default
 
         XCTAssertNil(settings.planBadgeLabel(for: .codex))
-        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite"), "Pro Lite")
-        XCTAssertEqual(settings.planBadgeLabel(for: .codex, accountPlan: "self_serve_business_usage_based"), "Self Serve Business Usage Based")
-        XCTAssertEqual(settings.planBadgeLabel(for: .claude, quotaPlan: "default_claude_max_20x"), "Max")
-        XCTAssertEqual(settings.planBadgeLabel(for: .claude, accountPlan: "Claude Pro Account"), "Pro")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite"), "ChatGPT Pro Lite")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, accountPlan: "self_serve_business_usage_based"), "ChatGPT Self Serve Business Usage Based")
+        XCTAssertEqual(settings.planBadgeLabel(for: .claude, quotaPlan: "default_claude_max_20x"), "Claude Max")
+        XCTAssertEqual(settings.planBadgeLabel(for: .claude, accountPlan: "Claude Pro Account"), "Claude Pro")
     }
 
     func testProviderPlanLabelOverrideWinsAndRoundTrips() throws {

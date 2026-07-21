@@ -2,13 +2,10 @@ import Darwin
 import Foundation
 import Security
 
-/// User-initiated repair for Vibe Bar-owned login-keychain items.
-///
-/// Source builds are usually ad-hoc signed, so every rebuild can look like
-/// a different app to macOS Keychain ACLs. Background refreshes stay
-/// non-interactive; this helper is called only from Settings after the
-/// user explicitly provides the login-keychain password for this one
-/// operation.
+/// Password-assisted migration and repair for Vibe Bar's single credential
+/// vault. The password stays in memory and is used only to unlock the login
+/// keychain through Security.framework; it is never persisted or passed to a
+/// child process.
 public enum VibeBarKeychainAccessAuthorizer {
     public struct Target: Hashable, Sendable, Equatable {
         public let service: String
@@ -35,6 +32,8 @@ public enum VibeBarKeychainAccessAuthorizer {
         public let authorized: [Target]
         public let missing: [Target]
         public let failures: [Failure]
+        public let vaultEntryCount: Int
+        public let migratedItemCount: Int
 
         public var authorizedCount: Int { authorized.count }
         public var missingCount: Int { missing.count }
@@ -44,12 +43,16 @@ public enum VibeBarKeychainAccessAuthorizer {
             targetCount: Int,
             authorized: [Target],
             missing: [Target],
-            failures: [Failure]
+            failures: [Failure],
+            vaultEntryCount: Int = 0,
+            migratedItemCount: Int = 0
         ) {
             self.targetCount = targetCount
             self.authorized = authorized
             self.missing = missing
             self.failures = failures
+            self.vaultEntryCount = vaultEntryCount
+            self.migratedItemCount = migratedItemCount
         }
     }
 
@@ -58,117 +61,26 @@ public enum VibeBarKeychainAccessAuthorizer {
         case unlockFailed(Int)
         case trustedApplicationFailed(Int)
         case accessCreateFailed(Int)
+        case invalidVault
+        case vaultWriteFailed
     }
 
     private static let legacyMiscService = "com.astroqore.VibeBar.misc"
     private static let legacyClaudeWebService = "Vibe Bar Claude Web Cookies"
-    private static let legacyClaudeCookieAccount = "claude.ai"
-    private static let legacyClaudeOrganizationAccount = "claude.ai.organization"
-    private static let claudeOrganizationAccount = "claude.organization-id"
-    /// Misc providers that stack their cookie sessions through
-    /// `MiscCookieSlotStore`. The list mirrors every cookie-only adapter
-    /// plus Alibaba (cookie path is one of two auth modes).
-    private static let currentCookieBackedMiscTools: [ToolType] = [
-        .alibaba, .alibabaTokenPlan, .kimi, .cursor, .mimo, .iflytek,
-        .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .ollama
-    ]
-    /// Misc tools with an in-app WKWebView login flow where
-    /// `WebFormCredentialStore` may persist a username/password pair.
-    /// Keeping the list explicit lets the preflight pre-authorize the
-    /// Keychain accounts so users don't see a prompt on first save.
-    private static let currentWebFormBackedMiscTools: [ToolType] = [
-        .mimo, .volcengine, .volcengineAgentPlan, .tencentHunyuan, .tencentTokenPlan, .alibaba, .alibabaTokenPlan, .baiduQianfan
-    ]
-    private static let currentSecretKindsByTool: [ToolType: [MiscCredentialStore.Kind]] = [
-        .alibaba: [.apiKey],
-        .copilot: [.apiKey, .oauthAccessToken, .oauthRefreshToken, .oauthExpiry],
-        .kilo: [.apiKey],
-        .minimax: [.apiKey],
-        .openRouter: [.apiKey],
-        .warp: [.apiKey],
-        .zai: [.apiKey]
-    ]
+
+    /// The only current Keychain item owned by Vibe Bar.
+    public static var currentOwnedTargets: [Target] {
+        [vaultTarget]
+    }
+
+    /// Historical stores that are scanned only during explicit migration.
+    /// They are never pre-created and no longer contribute placeholder rows.
+    public static var legacyOwnedTargets: [Target] {
+        knownMigrationTargets
+    }
 
     public static var ownedTargets: [Target] {
-        uniqueSortedTargets(currentOwnedTargets + legacyOwnedTargets)
-    }
-
-    public static var currentOwnedTargets: [Target] {
-        var targets: [Target] = []
-
-        for provider in [SecureCookieHeaderStore.Provider.openAI, .claude] {
-            for source in SecureCookieHeaderStore.Source.allCases {
-                targets.append(
-                    Target(
-                        service: SecureCookieHeaderStore.keychainService,
-                        account: SecureCookieHeaderStore.account(provider: provider, source: source)
-                    )
-                )
-            }
-        }
-        targets.append(
-            Target(
-                service: SecureCookieHeaderStore.keychainService,
-                account: claudeOrganizationAccount
-            )
-        )
-
-        for tool in currentCookieBackedMiscTools {
-            targets.append(
-                Target(
-                    service: MiscCookieSlotStore.keychainService,
-                    account: MiscCookieSlotStore.keychainAccount(for: tool)
-                )
-            )
-        }
-
-        for (tool, kinds) in currentSecretKindsByTool {
-            for kind in kinds {
-                targets.append(
-                    Target(
-                        service: MiscCredentialStore.keychainService,
-                        account: MiscCredentialStore.keychainAccount(tool: tool, kind: kind)
-                    )
-                )
-            }
-        }
-
-        for tool in currentWebFormBackedMiscTools {
-            targets.append(
-                Target(
-                    service: WebFormCredentialStore.keychainService,
-                    account: WebFormCredentialStore.keychainAccount(tool: tool)
-                )
-            )
-        }
-
-        return uniqueSortedTargets(targets)
-    }
-
-    public static var legacyOwnedTargets: [Target] {
-        var targets: [Target] = [
-            Target(service: legacyClaudeWebService, account: legacyClaudeCookieAccount),
-            Target(service: legacyClaudeWebService, account: legacyClaudeOrganizationAccount)
-        ]
-
-        for tool in ToolType.miscProviders {
-            targets.append(
-                Target(
-                    service: legacyMiscService,
-                    account: "cookie.\(tool.rawValue)"
-                )
-            )
-            for kind in MiscCredentialStore.Kind.allCases {
-                targets.append(
-                    Target(
-                        service: legacyMiscService,
-                        account: MiscCredentialStore.keychainAccount(tool: tool, kind: kind)
-                    )
-                )
-            }
-        }
-
-        return uniqueSortedTargets(targets)
+        [vaultTarget]
     }
 
     public static func authorizeExistingOwnedItems(
@@ -192,41 +104,231 @@ public enum VibeBarKeychainAccessAuthorizer {
         guard unlockStatus == errSecSuccess else {
             throw AuthorizationError.unlockFailed(Int(unlockStatus))
         }
-
         let access = try currentApplicationAccess()
 
-        var authorized: [Target] = []
-        var missing: [Target] = []
+        let discovered = discoverExistingTargets()
+        let existingVault = discovered.contains(vaultTarget)
+        let existingStagingVaults = discovered.filter(isStagingVault)
+        let migrationTargets = discovered.filter { $0 != vaultTarget && !isStagingVault($0) }
+        var payload = VibeBarCredentialVault.Payload()
+        var migrated: [Target] = []
         var failures: [Failure] = []
 
-        for target in ownedTargets {
-            let lookup = findGenericPasswordItem(target)
-            switch lookup.status {
-            case errSecSuccess:
-                guard let item = lookup.item else {
-                    failures.append(Failure(target: target, status: Int(errSecInternalComponent)))
-                    continue
+        for stagingTarget in existingStagingVaults {
+            do {
+                let data = try extractSecret(for: stagingTarget, access: access)
+                let staged = try VibeBarCredentialVault.decodePayload(data)
+                for entry in staged.entries {
+                    payload.set(entry.data, service: entry.service, account: entry.account)
                 }
+                migrated.append(stagingTarget)
+            } catch let error as KeychainOperationError {
+                failures.append(Failure(target: stagingTarget, status: Int(error.status)))
+            } catch {
+                throw AuthorizationError.invalidVault
+            }
+        }
 
-                let setStatus = SecKeychainItemSetAccess(item, access)
-                if setStatus == errSecSuccess {
-                    authorized.append(target)
-                } else {
-                    failures.append(Failure(target: target, status: Int(setStatus)))
+        if existingVault {
+            do {
+                let data = try extractSecret(for: vaultTarget, access: access)
+                let existing = try VibeBarCredentialVault.decodePayload(data)
+                for entry in existing.entries {
+                    payload.set(entry.data, service: entry.service, account: entry.account)
                 }
-            case errSecItemNotFound:
-                missing.append(target)
-            default:
-                failures.append(Failure(target: target, status: Int(lookup.status)))
+                migrated.append(vaultTarget)
+            } catch let error as KeychainOperationError {
+                failures.append(Failure(target: vaultTarget, status: Int(error.status)))
+            } catch {
+                throw AuthorizationError.invalidVault
+            }
+        }
+
+        for target in migrationTargets {
+            do {
+                let data = try extractSecret(for: target, access: access)
+                payload.set(data, service: target.service, account: target.account)
+                migrated.append(target)
+            } catch let error as KeychainOperationError {
+                failures.append(Failure(target: target, status: Int(error.status)))
+            }
+        }
+
+        // Never replace an unreadable vault: that would discard secrets which
+        // the current build could not decrypt.
+        if existingVault,
+           !migrated.contains(vaultTarget),
+           !existingStagingVaults.contains(where: { migrated.contains($0) }) {
+            return Report(
+                targetCount: discovered.count,
+                authorized: migrated,
+                missing: [],
+                failures: failures,
+                vaultEntryCount: 0,
+                migratedItemCount: max(0, migrated.count)
+            )
+        }
+
+        // Write a recovery copy with the current app identity before touching
+        // the old vault. If the final add fails, the next repair can recover
+        // every entry from this staging item.
+        let recoveryTarget = Target(
+            service: VibeBarCredentialVault.keychainService,
+            account: VibeBarCredentialVault.stagingKeychainAccountPrefix + "." + UUID().uuidString
+        )
+        do {
+            try KeychainStore.writeData(
+                service: recoveryTarget.service,
+                account: recoveryTarget.account,
+                data: try VibeBarCredentialVault.encodePayload(payload)
+            )
+        } catch {
+            throw AuthorizationError.vaultWriteFailed
+        }
+
+        if existingVault {
+            do {
+                try deleteKeychainItem(vaultTarget)
+            } catch let error as KeychainOperationError {
+                failures.append(Failure(target: vaultTarget, status: Int(error.status)))
+                throw AuthorizationError.vaultWriteFailed
+            }
+        }
+
+        do {
+            try VibeBarCredentialVault.replacePayload(payload)
+        } catch {
+            throw AuthorizationError.vaultWriteFailed
+        }
+
+        try? KeychainStore.deleteItem(
+            service: recoveryTarget.service,
+            account: recoveryTarget.account
+        )
+
+        for stagingTarget in existingStagingVaults where migrated.contains(stagingTarget) {
+            do {
+                try deleteKeychainItem(stagingTarget)
+            } catch let error as KeychainOperationError {
+                failures.append(Failure(target: stagingTarget, status: Int(error.status)))
+            }
+        }
+
+        // Transaction boundary: old entries are removed only after the new
+        // single-item vault is safely written.
+        for target in migrationTargets where migrated.contains(target) {
+            do {
+                try deleteKeychainItem(target)
+            } catch let error as KeychainOperationError {
+                failures.append(Failure(target: target, status: Int(error.status)))
             }
         }
 
         return Report(
-            targetCount: ownedTargets.count,
-            authorized: authorized,
-            missing: missing,
-            failures: failures
+            targetCount: discovered.count,
+            authorized: migrated,
+            missing: [],
+            failures: failures,
+            vaultEntryCount: payload.entries.count,
+            migratedItemCount: migrationTargets.filter { migrated.contains($0) }.count
         )
+    }
+
+    private struct KeychainOperationError: Error {
+        let status: OSStatus
+    }
+
+    private static var vaultTarget: Target {
+        Target(
+            service: VibeBarCredentialVault.keychainService,
+            account: VibeBarCredentialVault.keychainAccount
+        )
+    }
+
+    private static var ownedServiceNames: [String] {
+        [
+            VibeBarCredentialVault.keychainService,
+            SecureCookieHeaderStore.keychainService,
+            MiscCredentialStore.keychainService,
+            WebFormCredentialStore.keychainService,
+            legacyMiscService,
+            legacyClaudeWebService
+        ]
+    }
+
+    private static func discoverExistingTargets() -> [Target] {
+        var targets = Set<Target>()
+        for service in ownedServiceNames {
+            var query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecReturnAttributes as String: true,
+                kSecMatchLimit as String: kSecMatchLimitAll
+            ]
+            KeychainNoUIQuery.apply(to: &query, uiPolicy: .skip)
+            var result: AnyObject?
+            guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else {
+                continue
+            }
+            let dictionaries: [[String: Any]]
+            if let list = result as? [[String: Any]] {
+                dictionaries = list
+            } else if let one = result as? [String: Any] {
+                dictionaries = [one]
+            } else {
+                dictionaries = []
+            }
+            for attributes in dictionaries {
+                if let account = attributes[kSecAttrAccount as String] as? String {
+                    targets.insert(Target(service: service, account: account))
+                }
+            }
+        }
+
+        // Attribute enumeration varies between older macOS Keychain formats;
+        // direct lookups make the known historical accounts deterministic.
+        for target in [vaultTarget] + knownMigrationTargets {
+            if findGenericPasswordItem(target).status == errSecSuccess {
+                targets.insert(target)
+            }
+        }
+        return targets.sorted(by: targetSort)
+    }
+
+    private static func extractSecret(for target: Target, access: SecAccess) throws -> Data {
+        let lookup = findGenericPasswordItem(target)
+        guard lookup.status == errSecSuccess, let item = lookup.item else {
+            throw KeychainOperationError(status: lookup.status)
+        }
+
+        // Reset the ACL only after the user explicitly unlocks the login
+        // keychain in Settings. The read below is then non-interactive, so a
+        // rebuild never fans out into one system prompt per old secret.
+        let accessStatus = SecKeychainItemSetAccess(item, access)
+        guard accessStatus == errSecSuccess else {
+            throw KeychainOperationError(status: accessStatus)
+        }
+
+        do {
+            return try KeychainStore.readData(service: target.service, account: target.account)
+        } catch let KeychainStore.KeychainError.unhandledStatus(status) {
+            throw KeychainOperationError(status: status)
+        } catch KeychainStore.KeychainError.interactionNotAllowed {
+            throw KeychainOperationError(status: errSecInteractionNotAllowed)
+        } catch {
+            throw KeychainOperationError(status: errSecItemNotFound)
+        }
+    }
+
+    private static func deleteKeychainItem(_ target: Target) throws {
+        let lookup = findGenericPasswordItem(target)
+        guard lookup.status == errSecSuccess, let item = lookup.item else {
+            throw KeychainOperationError(status: lookup.status)
+        }
+        let status = SecKeychainItemDelete(item)
+        guard status == errSecSuccess else {
+            throw KeychainOperationError(status: status)
+        }
     }
 
     private static func currentApplicationAccess() throws -> SecAccess {
@@ -239,7 +341,7 @@ public enum VibeBarKeychainAccessAuthorizer {
         let trustedList = [trustedApplication] as CFArray
         var access: SecAccess?
         let accessStatus = SecAccessCreate(
-            "Vibe Bar Keychain Access" as CFString,
+            "Vibe Bar Credential Vault" as CFString,
             trustedList,
             &access
         )
@@ -268,12 +370,55 @@ public enum VibeBarKeychainAccessAuthorizer {
         return (item, status)
     }
 
-    private static func uniqueSortedTargets(_ targets: [Target]) -> [Target] {
-        Array(Set(targets)).sorted {
-            if $0.service == $1.service {
-                return $0.account < $1.account
+    private static func targetSort(_ lhs: Target, _ rhs: Target) -> Bool {
+        lhs.service == rhs.service ? lhs.account < rhs.account : lhs.service < rhs.service
+    }
+
+    private static func isStagingVault(_ target: Target) -> Bool {
+        target.service == VibeBarCredentialVault.keychainService &&
+            target.account.hasPrefix(VibeBarCredentialVault.stagingKeychainAccountPrefix + ".")
+    }
+
+    private static var knownMigrationTargets: [Target] {
+        var targets: [Target] = [
+            Target(service: legacyClaudeWebService, account: "claude.ai"),
+            Target(service: legacyClaudeWebService, account: "claude.ai.organization"),
+            Target(service: SecureCookieHeaderStore.keychainService, account: "claude.organization-id")
+        ]
+        for provider in [
+            SecureCookieHeaderStore.Provider.openAI,
+            .claude,
+            .gemini,
+            .grok
+        ] {
+            for source in SecureCookieHeaderStore.Source.allCases {
+                targets.append(Target(
+                    service: SecureCookieHeaderStore.keychainService,
+                    account: SecureCookieHeaderStore.account(provider: provider, source: source)
+                ))
             }
-            return $0.service < $1.service
         }
+        for tool in ToolType.miscProviders {
+            targets.append(Target(
+                service: MiscCookieSlotStore.keychainService,
+                account: MiscCookieSlotStore.keychainAccount(for: tool)
+            ))
+            targets.append(Target(service: legacyMiscService, account: "cookie.\(tool.rawValue)"))
+            for kind in MiscCredentialStore.Kind.allCases {
+                targets.append(Target(
+                    service: MiscCredentialStore.keychainService,
+                    account: MiscCredentialStore.keychainAccount(tool: tool, kind: kind)
+                ))
+                targets.append(Target(
+                    service: legacyMiscService,
+                    account: MiscCredentialStore.keychainAccount(tool: tool, kind: kind)
+                ))
+            }
+            targets.append(Target(
+                service: WebFormCredentialStore.keychainService,
+                account: WebFormCredentialStore.keychainAccount(tool: tool)
+            ))
+        }
+        return Array(Set(targets)).sorted(by: targetSort)
     }
 }

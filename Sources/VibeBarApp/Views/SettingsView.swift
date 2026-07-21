@@ -731,7 +731,7 @@ struct SettingsView: View {
 
     private var keychainAuthorizationControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("If macOS repeatedly asks for Vibe Bar's Keychain items after a rebuild, enter the login keychain password once to re-authorize Vibe Bar-owned cookies and misc-provider secrets. The password is used only for this operation.")
+            Text("Vibe Bar keeps its cookies and provider secrets inside one Keychain Vault. After an ad-hoc rebuild, enter the login keychain password once to migrate old entries and repair access to that single Vault. Browser and CLI-owned Keychain items are never included. The password is used only for this operation.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -744,7 +744,7 @@ struct SettingsView: View {
                     authorizeKeychainAccess()
                 } label: {
                     Label(
-                        isAuthorizingKeychain ? "Authorizing..." : "Authorize",
+                        isAuthorizingKeychain ? "Repairing..." : "Repair Vault",
                         systemImage: "key.fill"
                     )
                 }
@@ -920,7 +920,7 @@ struct SettingsView: View {
             ToolBrandIconView(tool: tool, size: 16)
                 .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text(tool.menuTitle)
+                Text(providerBadgeTitle(for: tool))
                     .font(.system(size: 12, weight: .medium))
                 Text(autoPlanLabel(for: tool))
                     .font(.caption2)
@@ -930,6 +930,17 @@ struct SettingsView: View {
             TextField("Auto", text: providerPlanLabelBinding(tool))
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 130)
+        }
+    }
+
+    private func providerBadgeTitle(for tool: ToolType) -> String {
+        switch tool {
+        case .codex: return "ChatGPT"
+        case .claude: return "Claude"
+        case .gemini: return "Gemini Web"
+        case .antigravity: return "AntiGravity"
+        case .grok: return "Grok"
+        default: return tool.menuTitle
         }
     }
 
@@ -1145,7 +1156,7 @@ struct SettingsView: View {
         let password = keychainPassword
         keychainPassword = ""
         keychainAuthorizationSucceeded = false
-        keychainAuthorizationStatus = "Authorizing Keychain access..."
+        keychainAuthorizationStatus = "Consolidating secrets into one Keychain Vault..."
         isAuthorizingKeychain = true
 
         Task.detached {
@@ -1172,10 +1183,13 @@ struct SettingsView: View {
         for report: VibeBarKeychainAccessAuthorizer.Report
     ) -> String {
         if report.failureCount == 0 {
-            return "Authorized \(report.authorizedCount) existing Keychain item(s). \(report.missingCount) item(s) have not been created yet."
+            if report.migratedItemCount > 0 {
+                return "Migrated \(report.migratedItemCount) old item(s) into one Vault containing \(report.vaultEntryCount) secret(s). Future rebuilds need one repair only."
+            }
+            return "Keychain Vault repaired. It currently contains \(report.vaultEntryCount) secret(s)."
         }
         let firstStatus = report.failures.first.map { String($0.status) } ?? "unknown"
-        return "Partially authorized \(report.authorizedCount) item(s); \(report.failureCount) failed with OSStatus \(firstStatus)."
+        return "Vault saved with \(report.vaultEntryCount) secret(s), but \(report.failureCount) old item(s) could not be migrated or removed (status \(firstStatus))."
     }
 
     private func keychainAuthorizationFailureMessage(_ error: Error) -> String {
@@ -1186,9 +1200,13 @@ struct SettingsView: View {
             case .unlockFailed(let status):
                 return "Could not unlock the login keychain. OSStatus \(status)."
             case .trustedApplicationFailed(let status):
-                return "Could not identify the current Vibe Bar app for Keychain access. OSStatus \(status)."
+                return "Could not identify this Vibe Bar build. OSStatus \(status)."
             case .accessCreateFailed(let status):
-                return "Could not create the Keychain access rule. OSStatus \(status)."
+                return "Could not create Keychain access for this Vibe Bar build. OSStatus \(status)."
+            case .invalidVault:
+                return "The existing Vault could not be decoded, so no old Keychain item was deleted."
+            case .vaultWriteFailed:
+                return "Could not write the new Vault. No old Keychain item was deleted."
             }
         }
         return "Could not authorize Keychain access: \(error)"

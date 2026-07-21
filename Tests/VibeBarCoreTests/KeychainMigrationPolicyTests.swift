@@ -9,94 +9,51 @@ final class KeychainMigrationPolicyTests: XCTestCase {
         )
     }
 
-    func testAuthorizationTargetsCoverVibeBarOwnedStores() {
-        let targets = Set(VibeBarKeychainAccessAuthorizer.ownedTargets)
-
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.web-cookies",
-            account: "openai.browser.cookie"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.web-cookies",
-            account: "claude.webView.cookie"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.web-cookies",
-            account: "claude.organization-id"
-        )))
-        // Cookie-backed misc providers now stack their sessions through
-        // `MiscCookieSlotStore` (one Keychain entry per tool, holding a
-        // JSON-encoded list of slots). The authorizer needs to cover
-        // every cookie-backed tool's slot list.
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc-secrets",
-            account: "kimi.cookieSlots"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc-secrets",
-            account: "cursor.cookieSlots"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc-secrets",
-            account: "volcengine.cookieSlots"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc-secrets",
-            account: "alibaba.cookieSlots"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc-secrets",
-            account: "copilot.oauthAccessToken"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc-secrets",
-            account: "zai.apiKey"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc-secrets",
-            account: "minimax.apiKey"
-        )))
-        // The single-cookie `CookieHeaderCache` entries are no longer the
-        // authoritative storage (their contents migrate into slots on
-        // first read) and should not appear in the current target list.
-        XCTAssertFalse(targets.contains(.init(
-            service: CookieHeaderCache.keychainService,
-            account: CookieHeaderCache.keychainAccount(for: .minimax)
-        )))
-        XCTAssertFalse(targets.contains(.init(
-            service: "com.astroqore.VibeBar.web-cookies",
-            account: "misc.kimi.cookie"
-        )))
+    func testCurrentAuthorizationTargetIsOnlyTheVault() {
+        XCTAssertEqual(
+            VibeBarKeychainAccessAuthorizer.currentOwnedTargets,
+            [.init(
+                service: VibeBarCredentialVault.keychainService,
+                account: VibeBarCredentialVault.keychainAccount
+            )]
+        )
+        XCTAssertEqual(
+            VibeBarKeychainAccessAuthorizer.ownedTargets,
+            VibeBarKeychainAccessAuthorizer.currentOwnedTargets
+        )
     }
 
-    func testAuthorizationTargetsIncludeLegacyOwnedStores() {
-        let targets = Set(VibeBarKeychainAccessAuthorizer.ownedTargets)
-
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc",
-            account: "cookie.antigravity"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "com.astroqore.VibeBar.misc",
-            account: "antigravity.importedCookieHeader"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "Vibe Bar Claude Web Cookies",
-            account: "claude.ai"
-        )))
-        XCTAssertTrue(targets.contains(.init(
-            service: "Vibe Bar Claude Web Cookies",
-            account: "claude.ai.organization"
-        )))
-    }
-
-    func testAuthorizationTargetsExcludeExternalCredentialStores() {
-        let targets = VibeBarKeychainAccessAuthorizer.ownedTargets
-        let pairs = Set(targets.map { "\($0.service)|\($0.account)" })
-
-        XCTAssertEqual(targets.count, pairs.count)
+    func testMigrationSourcesExcludeExternalCredentialStores() {
+        let targets = VibeBarKeychainAccessAuthorizer.legacyOwnedTargets
         XCTAssertFalse(targets.contains { $0.service == "Codex Auth" })
         XCTAssertFalse(targets.contains { $0.service == "Claude Code-credentials" })
         XCTAssertFalse(targets.contains { $0.service.localizedCaseInsensitiveContains("Chrome Safe Storage") })
+    }
+
+    func testVaultPayloadDeduplicatesAndRoundTripsBinaryData() throws {
+        var payload = VibeBarCredentialVault.Payload(entries: [
+            .init(service: "service-b", account: "account", data: Data([0, 1, 2])),
+            .init(service: "service-a", account: "account", data: Data("old".utf8))
+        ])
+        payload.set(Data("new".utf8), service: "service-a", account: "account")
+        payload.set(Data("second".utf8), service: "service-a", account: "other")
+
+        let encoded = try VibeBarCredentialVault.encodePayload(payload)
+        let decoded = try VibeBarCredentialVault.decodePayload(encoded)
+
+        XCTAssertEqual(decoded.entries.count, 3)
+        XCTAssertEqual(decoded.data(service: "service-a", account: "account"), Data("new".utf8))
+        XCTAssertEqual(decoded.data(service: "service-b", account: "account"), Data([0, 1, 2]))
+    }
+
+    func testVaultPayloadDeleteDoesNotAffectSiblingAccount() {
+        var payload = VibeBarCredentialVault.Payload(entries: [
+            .init(service: "service", account: "one", data: Data("1".utf8)),
+            .init(service: "service", account: "two", data: Data("2".utf8))
+        ])
+
+        XCTAssertTrue(payload.remove(service: "service", account: "one"))
+        XCTAssertNil(payload.data(service: "service", account: "one"))
+        XCTAssertEqual(payload.data(service: "service", account: "two"), Data("2".utf8))
     }
 }

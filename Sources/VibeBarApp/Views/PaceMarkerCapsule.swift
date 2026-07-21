@@ -98,17 +98,27 @@ struct ForecastQuotaBar: View {
             )
 
             ZStack(alignment: .leading) {
-                Capsule(style: .continuous)
-                    .fill(Theme.barTrack)
-                Capsule(style: .continuous)
-                    .fill(Theme.barColor(percent: percent, mode: mode))
-                    .frame(width: max(height, width * fillFraction))
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(Theme.barTrack)
+                    Capsule(style: .continuous)
+                        .fill(Theme.barColor(percent: percent, mode: mode))
+                        .frame(width: max(height, width * fillFraction))
+                }
+                .clipShape(Capsule(style: .continuous))
 
                 if forecastProjection.hasUncertainty {
-                    Rectangle()
-                        .fill(forecastColor.opacity(colorScheme == .dark ? 0.28 : 0.20))
-                        .frame(width: band.width, height: height)
-                        .offset(x: band.x)
+                    RoundedRectangle(cornerRadius: (height + 6) / 2, style: .continuous)
+                        .fill(forecastColor.opacity(colorScheme == .dark ? 0.22 : 0.15))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: (height + 6) / 2, style: .continuous)
+                                .stroke(
+                                    forecastColor.opacity(colorScheme == .dark ? 0.30 : 0.22),
+                                    lineWidth: 0.8
+                                )
+                        }
+                        .frame(width: band.width, height: height + 6)
+                        .offset(x: band.x, y: -3)
                 }
 
                 if let timePace, timePacePercent.map({ $0 > 2 && $0 < 98 }) == true {
@@ -129,7 +139,6 @@ struct ForecastQuotaBar: View {
                 .frame(width: forecastLineWidth + 3, height: height)
                 .offset(x: markerOffset(width: width, fraction: median, markerWidth: forecastLineWidth + 3))
             }
-            .clipShape(Capsule(style: .continuous))
         }
         .frame(height: height)
     }

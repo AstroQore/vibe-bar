@@ -16,6 +16,7 @@ struct PopoverRoot: View {
     var body: some View {
         let shellDensity = shellDensity
         let contentDensity = activeDensity
+        let shellContentWidth = max(0, width - shellDensity.popoverPaddingH * 2)
         VStack(alignment: .leading, spacing: 0) {
             HeaderView(
                 title: headerTitle,
@@ -42,9 +43,13 @@ struct PopoverRoot: View {
             }
             .frame(maxHeight: maxScrollHeight)
         }
+        // Provider pages have a narrower intrinsic HStack than Overview and
+        // Misc. Pin the shared shell's inner width before adding padding so
+        // SwiftUI never centers those pages inside the outer frame.
+        .frame(width: shellContentWidth, alignment: .topLeading)
         .padding(.horizontal, shellDensity.popoverPaddingH)
         .padding(.vertical, shellDensity.popoverPaddingV)
-        .frame(width: width)
+        .frame(width: width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
     }
@@ -1859,10 +1864,11 @@ private struct ProviderBucketRow: View {
                 if let resetAt = bucket.resetAt,
                    let reset = ResetCountdownFormatter.stringWithAbsoluteTime(from: resetAt, now: now) {
                     Text("resets in \(reset)")
-                        .font(.system(size: density.resetCountdownFontSize))
+                        .font(.system(size: resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                        .minimumScaleFactor(tool == .antigravity ? 0.92 : 0.80)
+                        .layoutPriority(tool == .antigravity ? 1 : 0)
                 }
                 Spacer(minLength: 6)
                 Text("\(Int(percent.rounded()))%")
@@ -1905,6 +1911,12 @@ private struct ProviderBucketRow: View {
                 UsagePaceRow(pace: pace, now: now, fontSize: density.resetCountdownFontSize)
             }
         }
+    }
+
+    private var resetCountdownFontSize: CGFloat {
+        tool == .antigravity
+            ? max(density.subtitleFontSize, density.resetCountdownFontSize + 1)
+            : density.resetCountdownFontSize
     }
 
     private func paceForecast(now: Date) -> QuotaPaceForecast? {
