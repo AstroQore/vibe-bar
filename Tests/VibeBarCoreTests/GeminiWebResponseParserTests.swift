@@ -110,8 +110,9 @@ final class GeminiWebResponseParserTests: XCTestCase {
     }
 
     func testParseTolerantOfBucketOrderingInResponse() throws {
-        // Same buckets but listed weekly-then-current. UI-side aggregation
-        // looks up by id, so ordering inside the array must not matter.
+        // Same buckets but listed weekly-then-current. The parser must
+        // canonicalize them because Gemini quota cards render this array
+        // directly and otherwise flip after refreshes.
         let inner =
             "[2,[" +
             "[4500,0.1,2,[[1779815111,884621000]]]," +
@@ -119,8 +120,10 @@ final class GeminiWebResponseParserTests: XCTestCase {
             "],false]"
         let snapshot = try GeminiWebResponseParser.parse(data: Self.wireFormat(inner: inner))
         XCTAssertEqual(snapshot.buckets.count, 2)
-        XCTAssertNotNil(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.currentUsageBucketId }))
-        XCTAssertNotNil(snapshot.buckets.first(where: { $0.id == GeminiWebResponseParser.weeklyUsageBucketId }))
+        XCTAssertEqual(snapshot.buckets.map(\.id), [
+            GeminiWebResponseParser.currentUsageBucketId,
+            GeminiWebResponseParser.weeklyUsageBucketId
+        ])
     }
 
     func testCurrentUltraPayloadMapsTierSixAndDropsInternalSentinel() throws {
