@@ -86,7 +86,7 @@ final class GeminiWebXsrfExtractionTests: XCTestCase {
             let formItems = form.queryItems ?? []
             XCTAssertEqual(
                 formItems.first(where: { $0.name == "f.req" })?.value,
-                #"[[["ESY5D","[[[\"bard_activity_enabled\"]]]",null,"generic"]]]"#
+                #"[[["jSf9Qc","[]",null,"generic"]]]"#
             )
             XCTAssertEqual(formItems.first(where: { $0.name == "at" })?.value, "synthetic-xsrf")
 
@@ -102,11 +102,68 @@ final class GeminiWebXsrfExtractionTests: XCTestCase {
         XCTAssertEqual(snapshot.buckets.map(\.usedPercent), [0, 0])
     }
 
-    private static func wireFormat(inner: String) -> Data {
+    func testFetchReplaysLearnedRecipe() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiWebStubURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let recipe = GeminiWebUsageRecipe(
+            rpcID: "newQuotaRPC",
+            argument: #"[["dynamic-argument"]]"#,
+            learnedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        GeminiWebStubURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            if request.httpMethod == "GET" {
+                return (
+                    response,
+                    Data(#"<script>window.WIZ_global_data={"SNlM0e":"synthetic-xsrf"};</script>"#.utf8)
+                )
+            }
+
+            let query = URLComponents(
+                url: try XCTUnwrap(request.url),
+                resolvingAgainstBaseURL: false
+            )?.queryItems
+            XCTAssertEqual(query?.first(where: { $0.name == "rpcids" })?.value, recipe.rpcID)
+
+            let body = String(data: try Self.requestBody(request), encoding: .utf8) ?? ""
+            var form = URLComponents()
+            form.percentEncodedQuery = body
+            XCTAssertEqual(
+                form.queryItems?.first(where: { $0.name == "f.req" })?.value,
+                #"[[["newQuotaRPC","[[\"dynamic-argument\"]]",null,"generic"]]]"#
+            )
+            return (
+                response,
+                Self.wireFormat(
+                    inner: "[6,[[1,0,1,[[1779469511,0]]],[1,0,2,[[1780074311,0]]]],false]",
+                    rpcID: recipe.rpcID
+                )
+            )
+        }
+
+        let snapshot = try await GeminiWebQuotaFetcher(
+            session: session,
+            recipeProvider: { recipe }
+        ).fetch(cookieHeader: "__Secure-1PSID=synthetic")
+
+        XCTAssertEqual(snapshot.buckets.map(\.id), ["five_hour", "weekly"])
+    }
+
+    private static func wireFormat(
+        inner: String,
+        rpcID: String = GeminiWebQuotaFetcher.quotaRPCId
+    ) -> Data {
         let escapedInner = inner
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
-        let entry = #"[["wrb.fr","\#(GeminiWebQuotaFetcher.quotaRPCId)","\#(escapedInner)",null,null,null,"generic"]]"#
+        let entry = #"[["wrb.fr","\#(rpcID)","\#(escapedInner)",null,null,null,"generic"]]"#
         return Data(")]}'\\n\(entry.utf8.count)\\n\(entry)\\n".utf8)
     }
 

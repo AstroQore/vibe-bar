@@ -663,6 +663,15 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   retain the legacy elapsed-time `UsagePace` reserve/deficit calculation and
   `PaceMarkerCapsule`; do not route Misc through the personal forecast model
   unless AQ explicitly asks to change that product boundary.
+- **Gemini Web quota requests are learned, not guessed.** Keep normal refresh
+  on the lightweight URLSession replay path using the persisted, non-secret
+  usage recipe. If Google rotates the private batchexecute rpcid or argument,
+  the App-layer hidden usage WebView must observe the page's own request,
+  verify the two-bucket payload against rendered percentages, persist only the
+  recipe, and immediately return that quota. Do not substitute an unrelated
+  Google rpcid from search results, persist response bodies/cookies, or route
+  Gemini live quota through Gemini CLI credentials. Always normalize the
+  resulting buckets to 5 Hours followed by Weekly.
 - **Forecast overlays need one coherent visual vocabulary.** The current quota
   remains the primary summary-bar layer. The elapsed-time-only pace uses the
   substantial neutral inset tick established by `PaceMarkerCapsule`; the

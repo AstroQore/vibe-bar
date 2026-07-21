@@ -616,7 +616,7 @@ private struct GeminiCombinedCard: View {
     }
 
     /// Resolve the plan-badge text for a Gemini-family sub-tool. Looks
-    /// at the cached quota first (jSf9Qc returns "Pro" / "Ultra" /
+    /// at the cached quota first (Gemini Web returns "Pro" / "Ultra" /
     /// "Free") and falls back to the account-level plan string. nil
     /// when nothing meaningful is set so the caller suppresses the
     /// badge instead of drawing an empty pill.

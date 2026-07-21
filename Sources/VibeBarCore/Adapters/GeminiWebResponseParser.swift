@@ -1,9 +1,23 @@
 import Foundation
 
+/// Parsed Gemini Web quota data shared with the App-layer WebView
+/// calibrator without exposing the internal wire envelope.
+public struct GeminiWebQuotaSnapshot: Sendable {
+    public var buckets: [QuotaBucket]
+    public var planName: String?
+    public var email: String?
+
+    public init(buckets: [QuotaBucket], planName: String?, email: String?) {
+        self.buckets = buckets
+        self.planName = planName
+        self.email = email
+    }
+}
+
 /// Parses the JSON envelope returned by Gemini's signed-in web
-/// quota endpoint (currently rpcid `ESY5D` on
+/// quota endpoint (a dynamically learned batchexecute rpcid on
 /// `gemini.google.com/_/BardChatUi/data/batchexecute`) into the
-/// shared `GeminiResponseParser.Snapshot` shape.
+/// shared `GeminiWebQuotaSnapshot` shape.
 ///
 /// Wire format (see the file-level docs on `GeminiWebQuotaFetcher`
 /// for the upstream investigation):
@@ -20,7 +34,7 @@ import Foundation
 ///   weekly window. `planTier` is an integer that maps to the
 ///   user-visible plan name (`2 = Pro` confirmed; `1 = Free` and
 ///   `3 = Ultra` inferred from Google's published tier names).
-enum GeminiWebResponseParser {
+public enum GeminiWebResponseParser {
     /// Bucket ids the parser emits. Aligned with Codex's
     /// `five_hour` / `weekly` naming so the Overview/MiniWindow
     /// label catalog can share field-id conventions across providers
@@ -38,8 +52,8 @@ enum GeminiWebResponseParser {
     // same `gemini.five_hour` field id user settings already store
     // — which is what `MiniQuotaWindowView` looks up against
     // `field.bucketId` on the live quota.
-    static let currentUsageBucketId = "five_hour"
-    static let weeklyUsageBucketId  = "weekly"
+    public static let currentUsageBucketId = "five_hour"
+    public static let weeklyUsageBucketId  = "weekly"
 
     /// Strip Google's anti-hijacking prefix `)]}'` (with or without a
     /// trailing newline) that fronts most internal JSON RPCs.
@@ -58,11 +72,12 @@ enum GeminiWebResponseParser {
         return data.subdata(in: idx..<data.endIndex)
     }
 
-    static func parse(
+    public static func parse(
         data: Data,
+        rpcID: String = GeminiWebUsageRecipe.fallback.rpcID,
         email: String? = nil,
         now: Date = Date()
-    ) throws -> GeminiResponseParser.Snapshot {
+    ) throws -> GeminiWebQuotaSnapshot {
         let stripped = stripAntiHijackingPrefix(data)
         guard !stripped.isEmpty else {
             throw QuotaError.parseFailure("Gemini Web response was empty after stripping anti-hijacking prefix.")
@@ -76,7 +91,7 @@ enum GeminiWebResponseParser {
         // `["wrb.fr","<rpcid>","` and the `"`-terminator immediately
         // before `,null` — handling escape sequences so a `\"` inside
         // the payload doesn't end the match early.
-        let escapedRPCId = NSRegularExpression.escapedPattern(for: GeminiWebQuotaFetcher.quotaRPCId)
+        let escapedRPCId = NSRegularExpression.escapedPattern(for: rpcID)
         let pattern = #"\["wrb\.fr","\#(escapedRPCId)","((?:[^"\\]|\\.)*)",null"#
         guard let regex = try? NSRegularExpression(
             pattern: pattern,
@@ -90,7 +105,7 @@ enum GeminiWebResponseParser {
             range: NSRange(location: 0, length: ns.length)
         ), match.numberOfRanges >= 2 else {
             throw QuotaError.parseFailure(
-                "Gemini Web response did not contain an \(GeminiWebQuotaFetcher.quotaRPCId) payload entry."
+                "Gemini Web response did not contain an \(rpcID) payload entry."
             )
         }
         let innerEscaped = ns.substring(with: match.range(at: 1))
@@ -154,7 +169,7 @@ enum GeminiWebResponseParser {
         // the user-facing cadence to 5 Hours -> Weekly and keep any future
         // unknown buckets after the two known windows.
         buckets = canonicalBucketOrder(buckets)
-        return GeminiResponseParser.Snapshot(buckets: buckets, planName: planName, email: email)
+        return GeminiWebQuotaSnapshot(buckets: buckets, planName: planName, email: email)
     }
 
     /// Normalize both fresh responses and persisted caches. Older cache files
@@ -187,7 +202,7 @@ enum GeminiWebResponseParser {
         let id: String
         let title: String
         let shortLabel: String
-        /// Fixed window length for `UsagePace`. Google's jSf9Qc payload
+        /// Fixed window length for `UsagePace`. Google's quota payload
         /// carries reset timestamps but no window duration, so the two
         /// known bucket types get the same 5h / 7d constants Codex and
         /// Claude use. Unknown types stay nil (no pace caption).

@@ -58,7 +58,8 @@ public final class QuotaService: ObservableObject {
     public static func makeDefault(
         mockProvider: @escaping () -> Bool,
         retentionProvider: @escaping () -> Int = { CostDataSettings.defaultRetentionDays },
-        initialAccountIds: [String] = []
+        initialAccountIds: [String] = [],
+        geminiWebFallback: (@Sendable (AccountIdentity, String) async throws -> AccountQuota)? = nil
     ) -> QuotaService {
         QuotaService(
             adapters: [
@@ -66,7 +67,7 @@ public final class QuotaService: ObservableObject {
                 .claude: ClaudeQuotaAdapter(),
                 .zai: ZaiQuotaAdapter(),
                 .copilot: CopilotQuotaAdapter(),
-                .gemini: GeminiQuotaAdapter(),
+                .gemini: GeminiQuotaAdapter(webFallback: geminiWebFallback),
                 .alibaba: AlibabaQuotaAdapter(),
                 .alibabaTokenPlan: AlibabaTokenPlanQuotaAdapter(),
                 .minimax: MiniMaxQuotaAdapter(),
