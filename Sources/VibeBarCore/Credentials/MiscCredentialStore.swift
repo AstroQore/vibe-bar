@@ -47,10 +47,9 @@ public enum MiscCredentialStore {
     public static func readString(tool: ToolType, kind: Kind, instanceID: String) -> String? {
         guard tool.isMisc else { return nil }
         let account = keychainAccount(tool: tool, kind: kind, instanceID: instanceID)
-        if let value = try? KeychainStore.readString(
+        if let value = try? VibeBarCredentialVault.readString(
             service: keychainService,
-            account: account,
-            useDataProtectionKeychain: true
+            account: account
         ) {
             return value
         }
@@ -72,11 +71,10 @@ public enum MiscCredentialStore {
             return delete(tool: tool, kind: kind, instanceID: instanceID)
         }
         do {
-            try KeychainStore.writeString(
+            try VibeBarCredentialVault.writeString(
                 service: keychainService,
                 account: keychainAccount(tool: tool, kind: kind, instanceID: instanceID),
-                value: trimmed,
-                useDataProtectionKeychain: true
+                value: trimmed
             )
             return true
         } catch {
@@ -94,10 +92,9 @@ public enum MiscCredentialStore {
     public static func delete(tool: ToolType, kind: Kind, instanceID: String) -> Bool {
         guard tool.isMisc else { return false }
         do {
-            try KeychainStore.deleteItem(
+            try VibeBarCredentialVault.delete(
                 service: keychainService,
-                account: keychainAccount(tool: tool, kind: kind, instanceID: instanceID),
-                useDataProtectionKeychain: true
+                account: keychainAccount(tool: tool, kind: kind, instanceID: instanceID)
             )
             if instanceID == tool.rawValue {
                 deleteLegacyMigratedValue(tool: tool, kind: kind)

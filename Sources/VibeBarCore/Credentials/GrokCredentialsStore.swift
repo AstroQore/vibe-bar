@@ -12,6 +12,7 @@ public struct GrokCredentials: Sendable, Equatable {
     public let firstName: String?
     public let lastName: String?
     public let teamId: String?
+    public let subscriptionTier: String?
     public let expiresAt: Date?
 
     public init(
@@ -22,6 +23,7 @@ public struct GrokCredentials: Sendable, Equatable {
         firstName: String?,
         lastName: String?,
         teamId: String?,
+        subscriptionTier: String?,
         expiresAt: Date?
     ) {
         self.accessToken = accessToken
@@ -31,6 +33,7 @@ public struct GrokCredentials: Sendable, Equatable {
         self.firstName = firstName
         self.lastName = lastName
         self.teamId = teamId
+        self.subscriptionTier = subscriptionTier
         self.expiresAt = expiresAt
     }
 
@@ -43,6 +46,10 @@ public struct GrokCredentials: Sendable, Equatable {
     /// session logins surface as "session" so the user can tell them
     /// apart in the popover badge.
     public var planLabel: String? {
+        if let subscriptionTier,
+           let normalized = ProviderPlanDisplay.grokDisplayName(subscriptionTier) {
+            return normalized
+        }
         switch authMode?.lowercased() {
         case "oidc":    return "SuperGrok"
         case "session": return "Session"
@@ -118,8 +125,18 @@ public enum GrokCredentialsStore {
             firstName: (entry["first_name"] as? String)?.trimmed.nilIfEmpty,
             lastName: (entry["last_name"] as? String)?.trimmed.nilIfEmpty,
             teamId: (entry["team_id"] as? String)?.trimmed.nilIfEmpty,
+            subscriptionTier: firstNonEmptyString(
+                entry["subscription_tier"],
+                entry["plan_name"],
+                entry["plan"],
+                entry["tier"]
+            ),
             expiresAt: parseDate(entry["expires_at"])
         )
+    }
+
+    private static func firstNonEmptyString(_ values: Any?...) -> String? {
+        values.lazy.compactMap { ($0 as? String)?.trimmed.nilIfEmpty }.first
     }
 
     private static func selectPreferredEntry(in root: [String: Any]) -> (scope: String, entry: [String: Any])? {

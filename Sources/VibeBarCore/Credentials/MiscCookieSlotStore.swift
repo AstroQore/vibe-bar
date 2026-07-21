@@ -218,10 +218,9 @@ public enum MiscCookieSlotStore {
     private static func readRaw(for tool: ToolType, instanceID: String) -> [MiscCookieSlot]? {
         let account = keychainAccount(for: tool, instanceID: instanceID)
         do {
-            let data = try KeychainStore.readData(
+            let data = try VibeBarCredentialVault.readData(
                 service: keychainService,
-                account: account,
-                useDataProtectionKeychain: true
+                account: account
             )
             return try Self.decoder().decode([MiscCookieSlot].self, from: data)
         } catch KeychainStore.KeychainError.itemNotFound {
@@ -243,11 +242,10 @@ public enum MiscCookieSlotStore {
         }
         do {
             let data = try Self.encoder().encode(slots)
-            try KeychainStore.writeData(
+            try VibeBarCredentialVault.writeData(
                 service: keychainService,
                 account: account,
-                data: data,
-                useDataProtectionKeychain: true
+                data: data
             )
             postChangeNotification(for: tool, instanceID: instanceID)
             return true
@@ -261,10 +259,9 @@ public enum MiscCookieSlotStore {
     private static func deleteRaw(for tool: ToolType, instanceID: String) -> Bool {
         let account = keychainAccount(for: tool, instanceID: instanceID)
         do {
-            try KeychainStore.deleteItem(
+            try VibeBarCredentialVault.delete(
                 service: keychainService,
-                account: account,
-                useDataProtectionKeychain: true
+                account: account
             )
             postChangeNotification(for: tool, instanceID: instanceID)
             return true

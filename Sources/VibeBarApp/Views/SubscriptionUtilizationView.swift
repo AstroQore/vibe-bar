@@ -178,10 +178,11 @@ struct SubscriptionUtilizationView: View {
                 if let resetAt = bucket.resetAt,
                    let reset = ResetCountdownFormatter.stringWithAbsoluteTime(from: resetAt, now: now) {
                     Text("resets in \(reset)")
-                        .font(.system(size: density.resetCountdownFontSize))
+                        .font(.system(size: resetCountdownFontSize(for: item.tool)))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                        .minimumScaleFactor(item.tool == .antigravity ? 0.92 : 0.80)
+                        .layoutPriority(item.tool == .antigravity ? 1 : 0)
                 }
                 Spacer(minLength: 6)
                 Text(percentLabel(used: used))
@@ -237,6 +238,12 @@ struct SubscriptionUtilizationView: View {
                 forecastExplanation(itemID: item.id, forecast: forecast, pace: pace)
             }
         }
+    }
+
+    private func resetCountdownFontSize(for tool: ToolType) -> CGFloat {
+        tool == .antigravity
+            ? max(density.subtitleFontSize, density.resetCountdownFontSize + 1)
+            : density.resetCountdownFontSize
     }
 
     @ViewBuilder
@@ -312,7 +319,6 @@ struct SubscriptionUtilizationView: View {
                     forecastColor: forecastColor
                 )
                 Spacer(minLength: 4)
-                actualValueLegend
             }
             VStack(alignment: .leading, spacing: 4) {
                 ViewThatFits(in: .horizontal) {
@@ -331,7 +337,6 @@ struct SubscriptionUtilizationView: View {
                         )
                     }
                 }
-                actualValueLegend
             }
         }
     }
@@ -358,13 +363,6 @@ struct SubscriptionUtilizationView: View {
                 value: "\(Int(forecastExpected.rounded()))% \(mode == .remaining ? "left" : "used")"
             )
         }
-    }
-
-    private var actualValueLegend: some View {
-        Text("bar = actual \(mode == .remaining ? "left" : "used")")
-            .font(.system(size: max(8, density.subtitleFontSize - 1)))
-            .foregroundStyle(.tertiary)
-            .fixedSize(horizontal: true, vertical: false)
     }
 
     private enum ReferenceMarkerStyle {

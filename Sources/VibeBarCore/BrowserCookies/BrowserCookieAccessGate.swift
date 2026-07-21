@@ -165,12 +165,13 @@ extension Browser {
              .vivaldi,
              .dia:
             return true
-        @unknown default:
+        default:
             // Treat unknown future browsers conservatively: assume
-            // they're Chromium-derived and gate them. False positive
+            // they're Chromium-derived unless their enum label clearly says
+            // Firefox. False positive
             // here just means we run an extra preflight; false
             // negative would mean a Keychain prompt loop.
-            return true
+            return !String(describing: self).localizedCaseInsensitiveContains("firefox")
         }
     }
 }

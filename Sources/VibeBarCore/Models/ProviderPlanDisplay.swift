@@ -4,10 +4,14 @@ public enum ProviderPlanDisplay {
     public static func displayName(for tool: ToolType, rawPlan: String?) -> String? {
         switch tool {
         case .codex:
-            return codexDisplayName(rawPlan)
+            return prefixed(codexDisplayName(rawPlan), brand: "ChatGPT")
         case .claude:
-            return claudeDisplayName(rawPlan)
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+            return prefixed(claudeDisplayName(rawPlan), brand: "Claude")
+        case .gemini, .antigravity:
+            return prefixed(codexDisplayName(rawPlan), brand: "Google AI")
+        case .grok:
+            return grokDisplayName(rawPlan)
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers feed `plan` straight through. Each adapter
             // is responsible for normalizing the raw API response
             // (e.g. `Pro Coding` → `Pro`) before it reaches this map.
@@ -43,6 +47,26 @@ public enum ProviderPlanDisplay {
 
     public static func claudeDisplayName(rateLimitTier: String?, billingType: String? = nil) -> String? {
         ClaudePlan.webPlan(rateLimitTier: rateLimitTier, billingType: billingType)?.compactLoginMethod
+    }
+
+    public static func grokDisplayName(_ rawPlan: String?) -> String? {
+        guard let display = codexDisplayName(rawPlan) else { return nil }
+        let compact = display.replacingOccurrences(of: " ", with: "").lowercased()
+        switch compact {
+        case "supergrokheavy": return "SuperGrok Heavy"
+        case "supergrok": return "SuperGrok"
+        case "supergroklite": return "SuperGrok Lite"
+        default: return display
+        }
+    }
+
+    private static func prefixed(_ plan: String?, brand: String) -> String? {
+        guard let plan else { return nil }
+        if plan.lowercased().hasPrefix(brand.lowercased() + " ") ||
+            plan.caseInsensitiveCompare(brand) == .orderedSame {
+            return plan
+        }
+        return "\(brand) \(plan)"
     }
 
     private static let codexExactDisplayNames: [String: String] = [

@@ -292,9 +292,15 @@ Vibe Bar persists derived data under the user's **real** home directory:
 If you are debugging odd behavior, that directory is the place to look.
 Deleting it resets the app to first-run state.
 
-Keychain stores Vibe Bar-owned OpenAI / Claude Web cookies, split by
-source (`browser` vs `WebView`), plus the resolved Claude organization
-ID — those are not in `~/.vibebar/`. Legacy plaintext cookie files under
+Keychain stores one Vibe Bar credential Vault
+(`com.astroqore.VibeBar.credential-vault` / `vault-v1`). Its versioned
+JSON payload keeps OpenAI / Claude / Gemini / Grok Web cookies logically
+split by source (`browser` vs `WebView`), plus the resolved Claude
+organization ID and misc-provider secrets. The single-item design is
+intentional: ad-hoc rebuilds change the app's Keychain ACL identity, so
+Settings can repair one Vault instead of triggering one authorization per
+secret. Never put external CLI credentials or browser Safe Storage keys in
+this Vault. Legacy plaintext cookie files under
 `~/.vibebar/cookies/` may be read once for migration and must be deleted
 immediately afterward. The app reads (never writes) Codex and Claude CLI
 credential files and their session JSONL logs. Treat those as read-only
@@ -444,7 +450,9 @@ What is **not** allowed in any commit:
 - Logging raw credentials or email addresses. Route through
   `SafeLog.sanitize` and `EmailMasker`.
 - Persisting OpenAI / Claude Web cookies, session keys, or resolved
-  organization IDs in plaintext. Use the Vibe Bar-owned Keychain service;
+  organization IDs in plaintext. Use the single Vibe Bar-owned credential
+  Vault; keep logical service/account keys inside its payload and do not
+  create a new physical Keychain item per secret;
   `~/.vibebar/cookies/` is migration-only.
 - Re-enabling the app sandbox in `Resources/VibeBar.entitlements`
   *without coordinating the misc-providers feature first*. Vibe Bar is

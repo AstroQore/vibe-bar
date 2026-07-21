@@ -43,6 +43,20 @@ final class GrokCredentialsStoreTests: XCTestCase {
         XCTAssertEqual(creds.planLabel, "Session")
     }
 
+    func testExplicitSubscriptionTierDistinguishesHeavy() throws {
+        let json = """
+        {
+          "https://auth.x.ai::client-id": {
+            "key": "token",
+            "auth_mode": "oidc",
+            "subscription_tier": "supergrok_heavy"
+          }
+        }
+        """
+        let creds = try GrokCredentialsStore.parse(data: Data(json.utf8))
+        XCTAssertEqual(creds.planLabel, "SuperGrok Heavy")
+    }
+
     func testPrefersOIDCWhenBothPresent() throws {
         let json = """
         {

@@ -62,31 +62,28 @@ public enum ClaudeWebCookieStore {
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeWebViewCookieURL)
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeBrowserCookieURL)
         try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
-        try? KeychainStore.deleteItem(
+        try? VibeBarCredentialVault.delete(
             service: SecureCookieHeaderStore.keychainService,
-            account: organizationAccount,
-            useDataProtectionKeychain: true
+            account: organizationAccount
         )
         try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(service: legacyService, account: legacyAccount)
         try? KeychainStore.deleteItemFromDataProtectionKeychainOnly(service: legacyService, account: legacyOrganizationAccount)
     }
 
     public static func readOrganizationID() -> String? {
-        if let raw = try? KeychainStore.readString(
+        if let raw = try? VibeBarCredentialVault.readString(
             service: SecureCookieHeaderStore.keychainService,
-            account: organizationAccount,
-            useDataProtectionKeychain: true
+            account: organizationAccount
         ), let normalized = normalizedOrganizationID(raw) {
             return normalized
         }
 
         if let local = try? VibeBarLocalStore.readString(from: VibeBarLocalStore.claudeOrganizationIDURL),
            let normalized = normalizedOrganizationID(local) {
-            try? KeychainStore.writeString(
+            try? VibeBarCredentialVault.writeString(
                 service: SecureCookieHeaderStore.keychainService,
                 account: organizationAccount,
-                value: normalized,
-                useDataProtectionKeychain: true
+                value: normalized
             )
             try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
             return normalized
@@ -96,11 +93,10 @@ public enum ClaudeWebCookieStore {
 
     public static func writeOrganizationID(_ organizationID: String) throws {
         guard let trimmed = normalizedOrganizationID(organizationID) else { return }
-        try KeychainStore.writeString(
+        try VibeBarCredentialVault.writeString(
             service: SecureCookieHeaderStore.keychainService,
             account: organizationAccount,
-            value: trimmed,
-            useDataProtectionKeychain: true
+            value: trimmed
         )
         try? VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.claudeOrganizationIDURL)
     }

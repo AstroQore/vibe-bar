@@ -31,10 +31,9 @@ public enum WebFormCredentialStore {
     public static func read(for tool: ToolType) -> [WebFormCredential] {
         guard tool.isMisc else { return [] }
         do {
-            let data = try KeychainStore.readData(
+            let data = try VibeBarCredentialVault.readData(
                 service: keychainService,
-                account: keychainAccount(tool: tool),
-                useDataProtectionKeychain: true
+                account: keychainAccount(tool: tool)
             )
             return decode(data)
         } catch {
@@ -99,10 +98,9 @@ public enum WebFormCredentialStore {
         let account = keychainAccount(tool: tool)
         if credentials.isEmpty {
             do {
-                try KeychainStore.deleteItem(
+                try VibeBarCredentialVault.delete(
                     service: keychainService,
-                    account: account,
-                    useDataProtectionKeychain: true
+                    account: account
                 )
                 return true
             } catch KeychainStore.KeychainError.itemNotFound {
@@ -114,11 +112,10 @@ public enum WebFormCredentialStore {
         }
         do {
             let data = try JSONEncoder().encode(credentials)
-            try KeychainStore.writeData(
+            try VibeBarCredentialVault.writeData(
                 service: keychainService,
                 account: account,
-                data: data,
-                useDataProtectionKeychain: true
+                data: data
             )
             return true
         } catch {
