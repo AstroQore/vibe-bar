@@ -20,6 +20,40 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         XCTAssertEqual(supplementalRefreshCount, 1)
     }
 
+    func testPopoverOpenRefreshHonorsToggleAndCooldown() {
+        var refreshCount = 0
+        let service = QuotaService(adapters: [:], mockProvider: { false })
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { [] },
+            intervalProvider: { 600 },
+            onRefreshTriggered: { refreshCount += 1 }
+        )
+        let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+        XCTAssertFalse(scheduler.triggerRefreshForPopoverOpenIfNeeded(
+            enabled: false,
+            cooldownSeconds: 60,
+            now: start
+        ))
+        XCTAssertTrue(scheduler.triggerRefreshForPopoverOpenIfNeeded(
+            enabled: true,
+            cooldownSeconds: 60,
+            now: start
+        ))
+        XCTAssertFalse(scheduler.triggerRefreshForPopoverOpenIfNeeded(
+            enabled: true,
+            cooldownSeconds: 60,
+            now: start.addingTimeInterval(59)
+        ))
+        XCTAssertTrue(scheduler.triggerRefreshForPopoverOpenIfNeeded(
+            enabled: true,
+            cooldownSeconds: 60,
+            now: start.addingTimeInterval(60)
+        ))
+        XCTAssertEqual(refreshCount, 2)
+    }
+
     func testCredentialFailureDoesNotPoisonVisibleCachedQuota() async {
         let account = AccountIdentity(id: "cached-claude", tool: .claude, source: .oauthCLI)
         let service = QuotaService(

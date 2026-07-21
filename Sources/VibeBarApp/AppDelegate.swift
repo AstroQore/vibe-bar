@@ -16,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let env = AppEnvironment()
         self.environment = env
+        do {
+            try LoginItemController.reconcileDesiredState(env.settingsStore.settings.launchAtLogin)
+        } catch {
+            SafeLog.warn("Reconciling launch at login failed: \(SafeLog.sanitize(error.localizedDescription))")
+        }
         self.statusItem = StatusItemController(environment: env)
 
         CookieRefreshScheduler.shared.start()

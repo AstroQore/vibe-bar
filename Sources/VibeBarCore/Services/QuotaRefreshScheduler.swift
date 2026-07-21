@@ -21,6 +21,7 @@ public final class QuotaRefreshScheduler {
     private var boundaryTimer: Timer?
     private var boundaryAccountIds: Set<String> = []
     private var lastBoundaryRefreshByAccount: [String: Date] = [:]
+    private var lastPopoverOpenRefreshAt: Date?
     private var pathMonitor: NWPathMonitor?
     private var lastNetworkStatus: NWPath.Status = .satisfied
     private var observers: [NSObjectProtocol] = []
@@ -81,6 +82,27 @@ public final class QuotaRefreshScheduler {
                 _ = await service.refresh(account)
             }
         }
+    }
+
+    /// Refresh when the user explicitly opens the menu popover, subject to a
+    /// user-configured cooldown. Popover construction/warm-up does not call
+    /// this method; only an actual open gesture does, so launch-time eager
+    /// SwiftUI creation cannot accidentally consume the cooldown.
+    @discardableResult
+    public func triggerRefreshForPopoverOpenIfNeeded(
+        enabled: Bool,
+        cooldownSeconds: Int,
+        now: Date = Date()
+    ) -> Bool {
+        guard enabled else { return false }
+        let cooldown = TimeInterval(max(60, cooldownSeconds))
+        if let lastPopoverOpenRefreshAt,
+           now.timeIntervalSince(lastPopoverOpenRefreshAt) < cooldown {
+            return false
+        }
+        lastPopoverOpenRefreshAt = now
+        triggerRefresh()
+        return true
     }
 
     private func scheduleTimer() {

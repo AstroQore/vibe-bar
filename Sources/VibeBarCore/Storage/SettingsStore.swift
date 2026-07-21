@@ -38,12 +38,9 @@ public final class SettingsStore: ObservableObject {
         }
     }
 
-    private static func migrated(_ settings: AppSettings) -> AppSettings {
+    static func migrated(_ settings: AppSettings) -> AppSettings {
         var migrated = settings
         migrated.mockEnabled = false
-        if migrated.refreshIntervalSeconds == 300 {
-            migrated.refreshIntervalSeconds = AppSettings.default.refreshIntervalSeconds
-        }
         // Claude bucket IDs were renamed when Daily Routines moved out of the
         // headline weekly group. Rewrite stale field IDs in-place so the user
         // doesn't have to re-pick everything in Settings.
@@ -117,6 +114,14 @@ public final class SettingsStore: ObservableObject {
     public var refreshIntervalSeconds: Int {
         get { settings.refreshIntervalSeconds }
         set { settings.refreshIntervalSeconds = max(60, newValue) }
+    }
+    public var refreshOnPopoverOpen: Bool {
+        get { settings.refreshOnPopoverOpen }
+        set { settings.refreshOnPopoverOpen = newValue }
+    }
+    public var popoverOpenRefreshCooldownSeconds: Int {
+        get { settings.popoverOpenRefreshCooldownSeconds }
+        set { settings.popoverOpenRefreshCooldownSeconds = max(60, newValue) }
     }
     public var mockEnabled: Bool {
         get { settings.mockEnabled }
