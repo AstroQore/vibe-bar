@@ -16,14 +16,12 @@ struct FillTimelineSeries: Identifiable {
 /// answers the useful question: how much quota was still unused when the
 /// provider refilled it? The final outlined bar is the active cycle.
 struct FillTimelineChart: View {
-    let series: [FillTimelineSeries]
+    let series: FillTimelineSeries
     let mode: DisplayMode
     let density: Theme.Density
-    let now: Date
+    let targetPercent: Double?
 
     @EnvironmentObject var quotaService: QuotaService
-    @EnvironmentObject var environment: AppEnvironment
-    @State private var selectedBucketId: String?
     @State private var hoveredIndex: Int?
 
     private static let maxCycles = 12
@@ -44,122 +42,26 @@ struct FillTimelineChart: View {
         }
     }
 
-    private var tabHeight: CGFloat {
-        switch density.profile {
-        case .compact: 20
-        case .regular: 24
-        case .spacious: 28
-        }
-    }
-
     var body: some View {
-        let tabs = availableTabs
-        if tabs.isEmpty {
-            EmptyView()
-        } else {
-            let activeSeriesId = selectedBucketId.flatMap { id in
-                tabs.contains(where: { $0.id == id }) ? id : nil
-            } ?? tabs[0].id
-            let activeSeries = tabs.first(where: { $0.id == activeSeriesId })!.series
-            let cycles = visibleCycles(series: activeSeries)
-            let target = displayedTarget(for: activeSeries)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Utilization by reset")
-                        .font(.system(size: max(9, density.subtitleFontSize - 2)))
-                        .foregroundStyle(.tertiary)
-                    Spacer(minLength: 8)
-                    Text("Each bar is one quota cycle")
-                        .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
-                        .foregroundStyle(.quaternary)
-                }
-                if tabs.count > 1 {
-                    GeometryReader { geometry in
-                        let tabFontSize = max(8.5, density.subtitleFontSize - 2)
-                        let minimumContentWidth = tabs.reduce(CGFloat.zero) { width, tab in
-                            width + max(64, CGFloat(tab.label.count) * tabFontSize * 0.58 + 24)
-                        } + CGFloat(max(0, tabs.count - 1)) * 2 + 4
-                        let contentWidth = max(geometry.size.width, minimumContentWidth)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 2) {
-                                ForEach(tabs, id: \.id) { tab in
-                                    let isSelected = tab.id == activeSeriesId
-                                    Button {
-                                        selectedBucketId = tab.id
-                                        hoveredIndex = nil
-                                    } label: {
-                                        Text(tab.label)
-                                            .font(.system(
-                                                size: tabFontSize,
-                                                weight: .semibold,
-                                                design: .rounded
-                                            ))
-                                            .foregroundStyle(isSelected ? Color.white : Color.secondary)
-                                            .lineLimit(1)
-                                            .fixedSize(horizontal: true, vertical: false)
-                                            .padding(.horizontal, 9)
-                                            .frame(maxWidth: .infinity, minHeight: tabHeight, maxHeight: tabHeight)
-                                            .background {
-                                                if isSelected {
-                                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                        .fill(Color.accentColor)
-                                                }
-                                            }
-                                            .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .focusable(false)
-                                    .accessibilityLabel("Show \(tab.label) utilization history")
-                                }
-                            }
-                            .padding(2)
-                            .frame(width: contentWidth)
-                        }
-                    }
-                    .frame(height: tabHeight + 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.08))
-                    )
-                }
-                cycleStrip(cycles, tool: activeSeries.tool, targetPercent: target)
-                Text(caption(cycles))
-                    .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                axis(cycles)
+        let cycles = visibleCycles(series: series)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Reset history")
+                    .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 8)
+                Text("Each bar is one quota cycle")
+                    .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
+                    .foregroundStyle(.quaternary)
             }
-            .padding(.top, 2)
+            cycleStrip(cycles, tool: series.tool, targetPercent: targetPercent)
+            Text(caption(cycles))
+                .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            axis(cycles)
         }
-    }
-
-    private var availableTabs: [(id: String, label: String, series: FillTimelineSeries)] {
-        let toolCount = Set(series.map(\.tool)).count
-        return series.map { item in
-            (item.id, Self.tabLabel(for: item, includeTool: toolCount > 1), item)
-        }
-    }
-
-    private static func tabLabel(for series: FillTimelineSeries, includeTool: Bool) -> String {
-        let bucket = series.bucket
-        let window: String
-        switch bucket.rawWindowSeconds {
-        case 18_000: window = "5 Hours"
-        case 604_800: window = "Weekly"
-        case 2_592_000: window = "Monthly"
-        default:
-            switch bucket.shortLabel.lowercased() {
-            case "5h", "5 hr", "5 hrs": window = "5 Hours"
-            case "wk", "1w": window = "Weekly"
-            case "mo", "1m": window = "Monthly"
-            default: window = bucket.title
-            }
-        }
-        let group = bucket.groupTitle?.replacingOccurrences(of: " Models", with: "")
-        let owner = group ?? (includeTool ? series.tool.toolName : nil)
-        return owner.map { "\($0) · \(window)" } ?? window
+        .padding(.top, 4)
     }
 
     private func visibleCycles(series: FillTimelineSeries) -> [SubscriptionWindowSample] {
@@ -281,21 +183,6 @@ struct FillTimelineChart: View {
         switch mode {
         case .used: cycle.peakUsedPercent
         case .remaining: cycle.remainingPercentAtReset
-        }
-    }
-
-    private func displayedTarget(for series: FillTimelineSeries) -> Double? {
-        let snapshot = environment.costService.snapshot(for: series.tool)
-        guard let forecast = quotaService.paceForecast(
-            accountId: series.accountId,
-            bucket: series.bucket,
-            activityHeatmap: snapshot?.heatmap,
-            dailyActivity: snapshot?.dailyHistory ?? [],
-            now: now
-        ) else { return nil }
-        switch mode {
-        case .used: return 100 - forecast.targetRemainingPercent
-        case .remaining: return forecast.targetRemainingPercent
         }
     }
 

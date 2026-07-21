@@ -454,20 +454,30 @@ private struct UptimeStrip: View {
     let currentImpact: IncidentImpact?
 
     var body: some View {
-        GeometryReader { proxy in
-            let count = max(days.count, 1)
-            let totalGap = CGFloat(count - 1) * 1
-            let cellWidth = max((proxy.size.width - totalGap) / CGFloat(count), 1)
-            HStack(spacing: 1) {
-                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
-                    let isToday = index == count - 1
-                    let impact = isToday ? (currentImpact ?? day.worstImpact) : day.worstImpact
-                    RoundedRectangle(cornerRadius: 1.2, style: .continuous)
-                        .fill(uptimeColor(for: impact))
-                        .frame(width: cellWidth)
-                }
+        Canvas { context, size in
+            guard !days.isEmpty else { return }
+            let gap: CGFloat = 1
+            let count = days.count
+            let totalGap = CGFloat(count - 1) * gap
+            let cellWidth = max((size.width - totalGap) / CGFloat(count), 1)
+
+            for (index, day) in days.enumerated() {
+                let isToday = index == count - 1
+                let impact = isToday ? (currentImpact ?? day.worstImpact) : day.worstImpact
+                let rect = CGRect(
+                    x: CGFloat(index) * (cellWidth + gap),
+                    y: 0,
+                    width: cellWidth,
+                    height: size.height
+                )
+                context.fill(
+                    Path(roundedRect: rect, cornerRadius: 1.2),
+                    with: .color(uptimeColor(for: impact))
+                )
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Service uptime over the last \(days.count) days")
     }
 }
 

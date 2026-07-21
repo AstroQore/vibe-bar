@@ -11,31 +11,47 @@ struct QuotaForecastRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: showGuidance ? 3 : 0) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(QuotaForecastPalette.color(for: forecast.verdict))
-                    .frame(width: 5, height: 5)
-                Text(primaryText)
-                    .font(.system(size: fontSize, weight: .medium))
-                    .foregroundStyle(QuotaForecastPalette.color(for: forecast.verdict))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                if showGuidance {
-                    Text(forecast.confidenceLabel)
-                        .font(.system(size: max(8, fontSize - 1)))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+            if showGuidance {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        statusLabel
+                        Spacer(minLength: 4)
+                        confidenceLabel
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        statusLabel
+                        confidenceLabel
+                    }
                 }
+            } else {
+                statusLabel
             }
             if showGuidance {
                 Text(forecast.guidanceSummary)
                     .font(.system(size: max(8, fontSize - 1)))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private var statusLabel: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(QuotaForecastPalette.color(for: forecast.verdict))
+                .frame(width: 5, height: 5)
+            Text(primaryText)
+                .font(.system(size: fontSize, weight: .medium))
+                .foregroundStyle(QuotaForecastPalette.color(for: forecast.verdict))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var confidenceLabel: some View {
+        Text(forecast.confidenceLabel)
+            .font(.system(size: max(8, fontSize - 1)))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private var primaryText: String {
