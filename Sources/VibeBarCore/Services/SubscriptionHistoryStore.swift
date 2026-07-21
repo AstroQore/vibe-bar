@@ -136,9 +136,10 @@ public actor SubscriptionHistoryStore {
         save(storage)
     }
 
-    /// One-time best-effort migration from the old hourly fill timeline. Only
-    /// material downward jumps become completed cycles; ordinary samples are
-    /// intentionally discarded so the new chart starts truthful.
+    /// One-time best-effort migration from the old hourly fill timeline.
+    /// Material downward jumps and proportional reset-time advances become
+    /// completed cycles; ordinary samples are intentionally discarded so the
+    /// new chart starts truthful.
     public func importLegacyTimeline(
         _ points: [FillTimelinePoint],
         retentionDays: Int = CostDataSettings.defaultRetentionDays
