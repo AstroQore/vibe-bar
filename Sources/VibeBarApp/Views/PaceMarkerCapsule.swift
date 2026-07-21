@@ -12,9 +12,6 @@ struct PaceMarkerCapsule: View {
     let expectedPercent: Double  // 0..100 in displayed terms (already mode-adjusted)
     let mode: DisplayMode
     var height: CGFloat = 12
-    var forecastLowerPercent: Double? = nil
-    var forecastUpperPercent: Double? = nil
-    var forecastMedianPercent: Double? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -33,24 +30,6 @@ struct PaceMarkerCapsule: View {
                 Capsule(style: .continuous)
                     .fill(Theme.barColor(percent: usedPercent, mode: mode))
                     .frame(width: max(height, width * pct))
-                if let lower = forecastLowerPercent,
-                   let upper = forecastUpperPercent,
-                   upper > lower {
-                    let start = clamp(lower, 0, 100) / 100
-                    let end = clamp(upper, 0, 100) / 100
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(Color.primary.opacity(0.24))
-                        .frame(width: max(2, width * (end - start)), height: max(2, height * 0.24))
-                        .offset(x: width * start, y: -height * 0.28)
-                }
-                if let median = forecastMedianPercent,
-                   median > 2,
-                   median < 98 {
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(Color.primary.opacity(0.48))
-                        .frame(width: 1.5, height: max(3, height * 0.42))
-                        .offset(x: max(0, min(width - 1.5, width * clamp(median, 0, 100) / 100 - 0.75)), y: -height * 0.27)
-                }
                 if showMarker {
                     paceMarker
                         .offset(x: max(0, min(width - 7, width * markerPos - 3.5)))
