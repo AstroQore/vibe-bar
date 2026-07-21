@@ -661,6 +661,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   recent activity trend, forecast interval, safety target, evidence counts,
   coverage, and confidence. The Overview may stay concise; this detail view
   must show why a verdict was produced.
+- **Core-provider use-up ETA comes from the personal forecast.** Under each
+  core quota, preserve the scannable "runs out in" conclusion, but derive it
+  from `QuotaPaceForecast.runOutAt`, not the legacy elapsed-time burn rate.
+  When the model does not predict exhaustion before reset, say that the quota
+  is projected to last until reset instead of extrapolating a meaningless time
+  beyond the refill boundary. A `Watch` ETA is explicitly possible, not certain.
 - **Reset history belongs to its quota.** Render each independently resettable
   bucket's cycle history immediately under that bucket in Subscription
   Utilization. Do not restore a shared selector at the bottom of the card;

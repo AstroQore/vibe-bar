@@ -474,10 +474,9 @@ private func miniForecastPlan(_ forecast: QuotaPaceForecast, mode: DisplayMode) 
 }
 
 private func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact: Bool = false) -> String {
-    if forecast.verdict == .atRisk,
-       let runOutAt = forecast.runOutAt,
+    if let runOutAt = forecast.runOutAt,
        let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
-        return "out \(countdown)"
+        return forecast.verdict == .watch ? "may run out \(countdown)" : "out \(countdown)"
     }
     let left = Int(forecast.projectedRemainingPercent.rounded())
     switch forecast.verdict {

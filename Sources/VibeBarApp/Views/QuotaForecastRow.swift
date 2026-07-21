@@ -10,7 +10,7 @@ struct QuotaForecastRow: View {
     var showGuidance = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: showGuidance ? 3 : 0) {
+        VStack(alignment: .leading, spacing: 3) {
             if showGuidance {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -26,6 +26,10 @@ struct QuotaForecastRow: View {
             } else {
                 statusLabel
             }
+            Text(useUpText)
+                .font(.system(size: max(8, fontSize - 1), weight: .medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if showGuidance {
                 Text(forecast.guidanceSummary)
                     .font(.system(size: max(8, fontSize - 1)))
@@ -55,10 +59,6 @@ struct QuotaForecastRow: View {
     }
 
     private var primaryText: String {
-        if forecast.verdict == .atRisk, let runOutAt = forecast.runOutAt,
-           let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
-            return "At risk · runs out in \(countdown)"
-        }
         let left = Int(forecast.projectedRemainingPercent.rounded())
         switch forecast.verdict {
         case .enough:
@@ -71,6 +71,23 @@ struct QuotaForecastRow: View {
             return "At risk · likely to run out before reset"
         case .learning:
             return "Learning · about \(left)% left at reset"
+        }
+    }
+
+    private var useUpText: String {
+        if let runOutAt = forecast.runOutAt,
+           let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
+            return forecast.verdict == .watch
+                ? "Could run out in \(countdown)"
+                : "Estimated to run out in \(countdown)"
+        }
+        switch forecast.verdict {
+        case .watch:
+            return "Use-up time uncertain · may run short before reset"
+        case .atRisk:
+            return "Expected to run out before reset"
+        case .enough, .surplus, .learning:
+            return "Projected to last until reset"
         }
     }
 
