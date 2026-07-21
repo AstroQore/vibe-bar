@@ -266,7 +266,7 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
         let usage = #"""
         {
           "code": "200",
-          "DataV2": "{\"data\":{\"data\":{\"per5HourPercentage\":0.25,\"per1WeekPercentage\":37.5}}}",
+          "DataV2": "{\"data\":{\"data\":{\"per5HourPercentage\":0.25,\"per5HourResetTime\":1784622360000,\"per1WeekPercentage\":37.5,\"per1WeekResetTime\":1785134940000}}}",
           "httpStatusCode": "200",
           "successResponse": true
         }
@@ -284,9 +284,16 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
         ])
         XCTAssertEqual(snap.buckets[0].usedPercent, 25, accuracy: 0.01)
         XCTAssertEqual(snap.buckets[0].rawWindowSeconds, 5 * 3_600)
+        XCTAssertEqual(
+            snap.buckets[0].resetAt,
+            Date(timeIntervalSince1970: 1_784_622_360)
+        )
         XCTAssertEqual(snap.buckets[1].usedPercent, 37.5, accuracy: 0.01)
         XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 7 * 86_400)
-        XCTAssertNil(snap.buckets[0].resetAt)
+        XCTAssertEqual(
+            snap.buckets[1].resetAt,
+            Date(timeIntervalSince1970: 1_785_134_940)
+        )
     }
 
     func testPersonalUsageWithoutWindowsThrowsParseFailure() {

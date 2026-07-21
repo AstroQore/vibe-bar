@@ -64,10 +64,11 @@ struct PaceMarkerCapsule: View {
 /// Current quota with wall-clock pace and reset forecast integrated into the
 /// same capsule.
 ///
-/// The actual fill remains the dominant layer. A short gray tick marks where
-/// usage should be *now* under a time-only pace. A taller status-colored tick
-/// marks the projected usage *at reset*. The matching color gradient hugs the
-/// bottom edge and expresses the forecast interval without obscuring the fill.
+/// The actual fill remains the dominant layer. A substantial neutral tick
+/// marks where usage should be *now* under a time-only pace. A
+/// status-colored tick marks the projected usage *at reset*. A soft,
+/// full-height gradient expresses the confidence interval as one integrated
+/// layer rather than looking like a second progress bar below the quota.
 struct ForecastQuotaBar: View {
     let percent: Double
     let mode: DisplayMode
@@ -86,11 +87,10 @@ struct ForecastQuotaBar: View {
             let upper = clamp(max(forecastLowerPercent, forecastUpperPercent), 0, 100) / 100
             let median = clamp(forecastMedianPercent, 0, 100) / 100
             let timePace = timePacePercent.map { clamp($0, 0, 100) / 100 }
-            let intervalHeight = max(2.5, height * 0.28)
-            let forecastLineWidth = max(2, min(3, height * 0.22))
-            let paceLineWidth = max(1, min(1.5, height * 0.11))
+            let forecastLineWidth = max(2.5, min(3.5, height * 0.25))
+            let paceMarkerWidth = max(4.5, min(5.5, height * 0.42))
 
-            ZStack(alignment: .bottomLeading) {
+            ZStack(alignment: .leading) {
                 Capsule(style: .continuous)
                     .fill(Theme.barTrack)
                 Capsule(style: .continuous)
@@ -98,13 +98,15 @@ struct ForecastQuotaBar: View {
                     .frame(width: max(height, width * fillFraction))
 
                 if upper > lower {
-                    RoundedRectangle(cornerRadius: intervalHeight / 2, style: .continuous)
-                    .fill(
+                    Rectangle()
+                        .fill(
                         LinearGradient(
                             colors: [
-                                forecastColor.opacity(0.08),
-                                forecastColor.opacity(0.48),
-                                forecastColor.opacity(0.20),
+                                forecastColor.opacity(0.06),
+                                forecastColor.opacity(0.26),
+                                forecastColor.opacity(0.42),
+                                forecastColor.opacity(0.26),
+                                forecastColor.opacity(0.06),
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
@@ -112,24 +114,27 @@ struct ForecastQuotaBar: View {
                     )
                     .frame(
                         width: max(forecastLineWidth * 2, width * (upper - lower)),
-                        height: intervalHeight
+                        height: height
                     )
                     .offset(x: width * lower)
                 }
 
                 if let timePace, timePacePercent.map({ $0 > 2 && $0 < 98 }) == true {
-                    RoundedRectangle(cornerRadius: paceLineWidth / 2, style: .continuous)
-                        .fill(Color.secondary.opacity(0.78))
-                        .frame(width: paceLineWidth, height: max(4, height * 0.62))
-                        .offset(x: markerOffset(width: width, fraction: timePace, markerWidth: paceLineWidth))
-                        .padding(.bottom, max(1, height * 0.18))
+                    neutralPaceMarker(width: paceMarkerWidth)
+                        .frame(width: paceMarkerWidth, height: height)
+                        .offset(x: markerOffset(width: width, fraction: timePace, markerWidth: paceMarkerWidth))
                 }
 
-                RoundedRectangle(cornerRadius: forecastLineWidth / 2, style: .continuous)
-                    .fill(forecastColor)
-                    .frame(width: forecastLineWidth, height: max(5, height * 0.90))
-                    .offset(x: markerOffset(width: width, fraction: median, markerWidth: forecastLineWidth))
-                    .padding(.bottom, max(0.5, height * 0.05))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color.black.opacity(0.12))
+                        .frame(width: forecastLineWidth + 2, height: height)
+                    RoundedRectangle(cornerRadius: forecastLineWidth / 2, style: .continuous)
+                        .fill(forecastColor)
+                        .frame(width: forecastLineWidth, height: max(4, height - 1))
+                }
+                .frame(width: forecastLineWidth + 2, height: height)
+                .offset(x: markerOffset(width: width, fraction: median, markerWidth: forecastLineWidth + 2))
             }
             .clipShape(Capsule(style: .continuous))
         }
@@ -142,5 +147,16 @@ struct ForecastQuotaBar: View {
 
     private func markerOffset(width: CGFloat, fraction: Double, markerWidth: CGFloat) -> CGFloat {
         max(0, min(width - markerWidth, width * fraction - markerWidth / 2))
+    }
+
+    private func neutralPaceMarker(width: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(Color.black.opacity(0.16))
+                .frame(width: width, height: height)
+            RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                .fill(Color.primary.opacity(0.62))
+                .frame(width: max(2.2, width * 0.46), height: max(4, height - 1))
+        }
     }
 }

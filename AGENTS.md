@@ -648,11 +648,13 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   `PaceMarkerCapsule`; do not route Misc through the personal forecast model
   unless AQ explicitly asks to change that product boundary.
 - **Forecast overlays need one coherent visual vocabulary.** The current quota
-  remains the primary summary-bar layer. The elapsed-time-only pace is a thin
-  solid gray vertical tick; the forecast-at-reset median is a taller
-  verdict-colored vertical tick; the confidence interval is a matching bottom
-  gradient band. Legends must use the same vertical-tick shapes as the bar —
-  never show a solid sample for a dashed mark or turn the forecast into a dot.
+  remains the primary summary-bar layer. The elapsed-time-only pace uses the
+  substantial neutral inset tick established by `PaceMarkerCapsule`; the
+  forecast-at-reset median is a verdict-colored vertical tick; the confidence
+  interval is a soft matching gradient through the bar's full height. Legends
+  must use the same marker shapes as the bar — never show a solid sample for a
+  dashed mark, reduce the wall-clock reference to a hairline, or turn the
+  forecast into a dot.
   Keep forecast semantics in the labeled status row below the Overview bar;
   detailed utilization views may carry the explicit reference legend.
 - **Subscription Utilization is the forecast explainability surface.** Keep
@@ -660,7 +662,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   recent burn, reset-history comparison, weekday/hour activity weighting,
   recent activity trend, forecast interval, safety target, evidence counts,
   coverage, and confidence. The Overview may stay concise; this detail view
-  must show why a verdict was produced.
+  must make the explanation available without dominating the page. Keep
+  "How this forecast was calculated" collapsed by default and expand it per
+  quota only when the user asks.
 - **Core-provider use-up ETA comes from the personal forecast.** Under each
   core quota, preserve the scannable "runs out in" conclusion, but derive it
   from `QuotaPaceForecast.runOutAt`, not the legacy elapsed-time burn rate.
@@ -673,10 +677,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   model-scoped limits such as Spark, Fable, Gemini Web, and AntiGravity must
   remain visible at the same time.
 - **Provider detail pages share one asymmetric layout.** Preserve the existing
-  column ratio but put the wide primary flow on the left in this order: quota,
-  cost, cost history, service status, model ranking, past year, when-you-use.
-  The narrow right column contains Subscription Utilization only. ChatGPT,
-  Claude, Gemini, and Grok must use the same framework.
+  column ratio with quota, Subscription Utilization, and service status in the
+  narrow left column. Put cost, cost history, model ranking, past year, and
+  when-you-use in the wide right column. ChatGPT, Claude, Gemini, and Grok must
+  use the same framework. Overview and provider pages also share the popover
+  shell's exact horizontal content inset; page-specific layouts must not add a
+  second outer inset or shrink away from the scroll view's available width.
 - **Dense status history is one drawing surface, not hundreds of views.** Use
   `Canvas` (or an equivalent batched renderer) for uptime strips and avoid one
   Swift Charts instance per quota. These detail pages can display many status

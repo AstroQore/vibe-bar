@@ -867,23 +867,27 @@ enum AlibabaTokenPlanPersonalResponseParser {
 
         var buckets: [QuotaBucket] = []
         if let fiveHour = findFirstDouble(["per5HourPercentage"], in: usage) {
+            let resetAt = findFirstDouble(["per5HourResetTime"], in: usage)
+                .flatMap(AlibabaTokenPlanResponseParser.parseDate)
             buckets.append(QuotaBucket(
                 id: "alibabaTokenPlan.personal.fiveHour",
                 title: "5 Hours",
                 shortLabel: "5h",
                 usedPercent: normalizedPercentage(fiveHour),
-                resetAt: nil,
+                resetAt: resetAt,
                 rawWindowSeconds: 5 * 3_600,
                 groupTitle: "Personal"
             ))
         }
         if let weekly = findFirstDouble(["per1WeekPercentage"], in: usage) {
+            let resetAt = findFirstDouble(["per1WeekResetTime"], in: usage)
+                .flatMap(AlibabaTokenPlanResponseParser.parseDate)
             buckets.append(QuotaBucket(
                 id: "alibabaTokenPlan.personal.weekly",
                 title: "Weekly",
                 shortLabel: "Wk",
                 usedPercent: normalizedPercentage(weekly),
-                resetAt: nil,
+                resetAt: resetAt,
                 rawWindowSeconds: 7 * 86_400,
                 groupTitle: "Personal"
             ))
