@@ -16,31 +16,34 @@ public enum SubscriptionWindowProgress {
         usedPercent: Double,
         resetAt: Date?,
         rawWindowSeconds: Int?,
+        displayMode: DisplayMode = .used,
         now: Date = Date()
     ) -> String {
-        let pct = formatPercent(usedPercent)
+        let displayedPercent = displayMode == .used ? usedPercent : 100 - usedPercent
+        let pct = formatPercent(displayedPercent)
+        let unit = displayMode == .used ? "used" : "left"
         guard let resetAt, let rawWindowSeconds, rawWindowSeconds > 0 else {
-            return "\(pct) used"
+            return "\(pct) \(unit)"
         }
 
         let windowSeconds = TimeInterval(rawWindowSeconds)
         let remaining = resetAt.timeIntervalSince(now)
         if remaining <= 0 {
-            return "Resets soon · \(pct) used"
+            return "Resets soon · \(pct) \(unit)"
         }
         let elapsed = max(0, min(windowSeconds, windowSeconds - remaining))
 
         if rawWindowSeconds >= 86_400 {
             let totalDays = max(1, Int((windowSeconds / 86_400).rounded()))
             let dayNumber = clamp(Int(elapsed / 86_400) + 1, lower: 1, upper: totalDays)
-            return "Day \(dayNumber) of \(totalDays) · \(pct) used"
+            return "Day \(dayNumber) of \(totalDays) · \(pct) \(unit)"
         }
 
         let totalLabel = rawWindowSeconds == 18_000
             ? "5 Hours"
             : formatShortDuration(windowSeconds)
         let elapsedLabel = formatShortDuration(elapsed)
-        return "\(elapsedLabel) of \(totalLabel) · \(pct) used"
+        return "\(elapsedLabel) of \(totalLabel) · \(pct) \(unit)"
     }
 
     private static func clamp(_ value: Int, lower: Int, upper: Int) -> Int {

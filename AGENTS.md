@@ -638,6 +638,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   be eagerly instantiated. Scope live timers to the visible surface.
 - **New persistent state** goes through `VibeBarLocalStore` and lives
   under `~/.vibebar/`. Do not write to `~/` directly from new code.
+- **Every user-facing Settings control must round-trip through
+  `AppSettings`.** Add its Codable key, a backward-compatible decode default,
+  and a round-trip test. Migrations must be one-time and evidence-based; never
+  rewrite a currently selectable value (such as a refresh interval) on every
+  launch.
 - **Mini-window geometry stays in `mini_window_geometry.json`.** Do not
   fold it back into `AppSettings` — every settings write fans out to
   every Combine subscriber.
@@ -654,9 +659,15 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   interval is a soft matching gradient through the bar's full height. Legends
   must use the same marker shapes as the bar — never show a solid sample for a
   dashed mark, reduce the wall-clock reference to a hairline, or turn the
-  forecast into a dot.
+  forecast into a dot. Used/Remaining projection must be performed through one
+  shared coordinate transform; the visible median marker must stay inside its
+  confidence band, and a band clipped by the 0% or 100% boundary must remain
+  saturated at that boundary instead of fading as though it ended there.
   Keep forecast semantics in the labeled status row below the Overview bar;
   detailed utilization views may carry the explicit reference legend.
+- **Forecast diagnostic tiles use one stable height per density.** Long labels
+  may wrap within that shared height, but no individual tile may grow and leave
+  a ragged two-column grid.
 - **Subscription Utilization is the forecast explainability surface.** Keep
   the legacy wall-clock pace visible alongside the forecast at reset, then expose
   recent burn, reset-history comparison, weekday/hour activity weighting,

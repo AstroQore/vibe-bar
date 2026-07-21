@@ -8,6 +8,7 @@ struct QuotaForecastRow: View {
     let now: Date
     let fontSize: CGFloat
     var showGuidance = false
+    var displayMode: DisplayMode = .remaining
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -31,7 +32,7 @@ struct QuotaForecastRow: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if showGuidance {
-                Text(forecast.guidanceSummary)
+                Text(guidanceText)
                     .font(.system(size: max(8, fontSize - 1)))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -60,17 +61,19 @@ struct QuotaForecastRow: View {
 
     private var primaryText: String {
         let left = Int(forecast.projectedRemainingPercent.rounded())
+        let used = Int(forecast.projectedUsedPercent.rounded())
+        let forecastValue = displayMode == .remaining ? "\(left)% left" : "\(used)% used"
         switch forecast.verdict {
         case .enough:
-            return "Enough · forecast \(left)% left at reset"
+            return "Enough · forecast \(forecastValue) at reset"
         case .surplus:
-            return "Surplus · forecast \(left)% left at reset"
+            return "Surplus · forecast \(forecastValue) at reset"
         case .watch:
-            return "Watch · forecast \(left)% left at reset"
+            return "Watch · forecast \(forecastValue) at reset"
         case .atRisk:
             return "At risk · likely to run out before reset"
         case .learning:
-            return "Learning · about \(left)% left at reset"
+            return "Learning · about \(forecastValue) at reset"
         }
     }
 
@@ -89,6 +92,21 @@ struct QuotaForecastRow: View {
         case .enough, .surplus, .learning:
             return "Projected to last until reset"
         }
+    }
+
+    private var guidanceText: String {
+        guard displayMode == .used else { return forecast.guidanceSummary }
+        let usedTarget = Int((100 - forecast.targetRemainingPercent).rounded())
+        let unused = Int(forecast.potentialUnusedPercent.rounded())
+        if forecast.verdict == .atRisk { return "Slow down or shift work to another quota" }
+        if forecast.verdict == .watch { return "Recent usage is above the safe range" }
+        if forecast.verdict == .surplus {
+            return "About \(unused)% capacity may remain beyond the \(usedTarget)% used target"
+        }
+        if unused >= 3 {
+            return "Target \(usedTarget)% used · about \(unused)% capacity available"
+        }
+        return "Within the \(usedTarget)% used target"
     }
 
 }

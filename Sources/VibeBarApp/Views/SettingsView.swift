@@ -2,12 +2,67 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VibeBarCore
 
+private enum SettingsSectionID: String, CaseIterable, Identifiable {
+    case general
+    case providerBadges
+    case menuBar
+    case miniWindow
+    case openAI
+    case anthropic
+    case googleAI
+    case xAI
+    case miscProviders
+    case system
+    case costData
+    case keychain
+    case privacy
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .providerBadges: "Provider Badges"
+        case .menuBar: "Menu Bar"
+        case .miniWindow: "Mini Window"
+        case .openAI: "OpenAI"
+        case .anthropic: "Anthropic"
+        case .googleAI: "Google AI"
+        case .xAI: "xAI"
+        case .miscProviders: "Misc Providers"
+        case .system: "System"
+        case .costData: "Cost Data"
+        case .keychain: "Keychain Access"
+        case .privacy: "Privacy"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: "gearshape"
+        case .providerBadges: "person.text.rectangle"
+        case .menuBar: "menubar.rectangle"
+        case .miniWindow: "rectangle.on.rectangle"
+        case .openAI: "brain.head.profile"
+        case .anthropic: "sparkles"
+        case .googleAI: "diamond"
+        case .xAI: "circle.hexagongrid"
+        case .miscProviders: "square.grid.2x2"
+        case .system: "desktopcomputer"
+        case .costData: "chart.bar.xaxis"
+        case .keychain: "key.fill"
+        case .privacy: "hand.raised.fill"
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
     var dismiss: () -> Void
 
     private let intervalOptions: [Int] = [60, 180, 300, 600, 1800]
+    private let popoverRefreshCooldownOptions: [Int] = [60, 120, 300, 600]
     private let costRetentionOptions = CostDataSettings.retentionOptions
     @State private var openAICookieDeleteFailed: Bool = false
     @State private var claudeCookieDeleteFailed: Bool = false
@@ -21,24 +76,35 @@ struct SettingsView: View {
     @State private var keychainAuthorizationStatus: String?
     @State private var keychainAuthorizationSucceeded: Bool = false
     @State private var draggedMiscProviderInstanceID: String?
+    @State private var selectedSection: SettingsSectionID = .general
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Settings")
-                    .font(.system(size: 18, weight: .semibold))
-                Spacer()
-                Button(action: dismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: 0) {
+            settingsSidebar { section in
+                selectedSection = section
             }
-            .padding(.bottom, 12)
+            Divider()
 
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text(selectedSection.title)
+                            .font(.system(size: 20, weight: .semibold))
+                        Spacer()
+                        Button(action: dismiss) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 16)
+
+                    Divider()
+
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 18) {
+                    if selectedSection == .general {
                     settingsSection("General") {
                         Picker("Percent shows", selection: $settingsStore.settings.displayMode) {
                             ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -49,8 +115,28 @@ struct SettingsView: View {
                                 Text(intervalLabel(secs)).tag(secs)
                             }
                         }
+                        Toggle(
+                            "Refresh when the popover opens",
+                            isOn: $settingsStore.settings.refreshOnPopoverOpen
+                        )
+                        if settingsStore.settings.refreshOnPopoverOpen {
+                            Picker(
+                                "Minimum open-refresh cooldown",
+                                selection: $settingsStore.settings.popoverOpenRefreshCooldownSeconds
+                            ) {
+                                ForEach(popoverRefreshCooldownOptions, id: \.self) { secs in
+                                    Text(intervalLabel(secs)).tag(secs)
+                                }
+                            }
+                            Text("Opening the popover refreshes all visible providers at most once per cooldown period.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .id(SettingsSectionID.general.id)
                     }
 
+                    if selectedSection == .providerBadges {
                     settingsSection("Provider Badges") {
                         Text("Leave a badge blank to use the detected account plan.")
                             .font(.caption)
@@ -61,7 +147,10 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    .id(SettingsSectionID.providerBadges.id)
+                    }
 
+                    if selectedSection == .menuBar {
                     settingsSection("Menu Bar Items") {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(MenuBarItemKind.allCases) { kind in
@@ -69,7 +158,10 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    .id(SettingsSectionID.menuBar.id)
+                    }
 
+                    if selectedSection == .miniWindow {
                     settingsSection("Mini Window") {
                         Picker("Display mode", selection: miniWindowDisplayModeBinding()) {
                             ForEach(MiniWindowDisplayMode.allCases) { mode in
@@ -117,7 +209,10 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    .id(SettingsSectionID.miniWindow.id)
+                    }
 
+                    if selectedSection == .openAI {
                     settingsSection("OpenAI") {
                         coreProviderSummary(
                             representative: .codex,
@@ -174,7 +269,10 @@ struct SettingsView: View {
                             Label("Check OpenAI connections", systemImage: "checkmark.circle")
                         }
                     }
+                    .id(SettingsSectionID.openAI.id)
+                    }
 
+                    if selectedSection == .anthropic {
                     settingsSection("Anthropic") {
                         coreProviderSummary(
                             representative: .claude,
@@ -231,7 +329,10 @@ struct SettingsView: View {
                             Label("Check Anthropic connections", systemImage: "checkmark.circle")
                         }
                     }
+                    .id(SettingsSectionID.anthropic.id)
+                    }
 
+                    if selectedSection == .googleAI {
                     settingsSection("Google AI") {
                         coreProviderSummary(
                             representative: .gemini,
@@ -312,7 +413,10 @@ struct SettingsView: View {
                             Label("Check Google AI connections", systemImage: "checkmark.circle")
                         }
                     }
+                    .id(SettingsSectionID.googleAI.id)
+                    }
 
+                    if selectedSection == .xAI {
                     settingsSection("xAI") {
                         coreProviderSummary(
                             representative: .grok,
@@ -378,7 +482,10 @@ struct SettingsView: View {
                              destination: ToolType.grok.statusPageURL)
                             .font(.caption2)
                     }
+                    .id(SettingsSectionID.xAI.id)
+                    }
 
+                    if selectedSection == .miscProviders {
                     settingsSection("Misc Providers") {
                         Text("Usage-only integrations. Check providers to show them on the Misc page; hidden providers keep their saved setup.")
                             .font(.caption)
@@ -411,7 +518,10 @@ struct SettingsView: View {
                                 )
                         }
                     }
+                    .id(SettingsSectionID.miscProviders.id)
+                    }
 
+                    if selectedSection == .system {
                     settingsSection("System") {
                         Toggle("Launch at login", isOn: launchAtLoginBinding())
                         Text(launchAtLoginStatusText)
@@ -423,7 +533,10 @@ struct SettingsView: View {
                                 .foregroundStyle(.orange)
                         }
                     }
+                    .id(SettingsSectionID.system.id)
+                    }
 
+                    if selectedSection == .costData {
                     settingsSection("Cost Data") {
                         Text("Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.")
                             .font(.caption)
@@ -466,22 +579,68 @@ struct SettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
+                    .id(SettingsSectionID.costData.id)
+                    }
 
+                    if selectedSection == .keychain {
                     settingsSection("Keychain Access") {
                         keychainAuthorizationControls
                     }
+                    .id(SettingsSectionID.keychain.id)
+                    }
 
+                    if selectedSection == .privacy {
                     settingsSection("Privacy") {
                         Text("Tokens are read from local CLI credentials. Saved OpenAI and Claude Web cookies are stored in macOS Keychain, split by browser and WebView source. Legacy plaintext cookie files under ~/.vibebar/cookies are migrated once and deleted. Settings, quota cache, and cost summaries stay under ~/.vibebar.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
+                    .id(SettingsSectionID.privacy.id)
+                    }
+                        }
+                        .padding(22)
+                    }
             }
         }
-        .padding(20)
-        .frame(minWidth: 560, idealWidth: 640, minHeight: 560, idealHeight: 720)
+        .frame(minWidth: 820, idealWidth: 980, minHeight: 600, idealHeight: 760)
         .onAppear(perform: refreshLaunchAtLoginState)
+    }
+
+    private func settingsSidebar(onSelect: @escaping (SettingsSectionID) -> Void) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Vibe Bar")
+                    .font(.system(size: 17, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                ForEach(SettingsSectionID.allCases) { section in
+                    Button {
+                        onSelect(section)
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: section.systemImage)
+                                .frame(width: 18)
+                            Text(section.title)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.system(size: 13, weight: selectedSection == section ? .semibold : .regular))
+                        .foregroundStyle(selectedSection == section ? Color.white : Color.primary)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(selectedSection == section ? Color.accentColor : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(14)
+        }
+        .frame(width: 205)
+        .background(Color.primary.opacity(0.035))
     }
 
     private func settingsSection<Content: View>(
@@ -686,6 +845,7 @@ struct SettingsView: View {
             set: { enabled in
                 do {
                     try LoginItemController.setEnabled(enabled)
+                    settingsStore.settings.launchAtLogin = enabled
                     launchAtLoginError = nil
                 } catch {
                     launchAtLoginError = error.localizedDescription
@@ -696,7 +856,16 @@ struct SettingsView: View {
     }
 
     private func refreshLaunchAtLoginState() {
-        settingsStore.settings.launchAtLogin = LoginItemController.isEnabled
+        switch LoginItemController.status {
+        case .enabled, .requiresApproval:
+            settingsStore.settings.launchAtLogin = true
+        case .notRegistered:
+            settingsStore.settings.launchAtLogin = false
+        case .notFound:
+            break
+        @unknown default:
+            break
+        }
         launchAtLoginStatusText = LoginItemController.statusText
     }
 

@@ -92,4 +92,18 @@ final class SubscriptionWindowProgressTests: XCTestCase {
         )
         XCTAssertEqual(summary, "Resets soon · 99% used")
     }
+
+    func testRemainingModeUsesTheSameWindowWithRemainingPercent() {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let reset = now.addingTimeInterval(2 * 86_400)
+        let summary = SubscriptionWindowProgress.summary(
+            usedPercent: 56,
+            resetAt: reset,
+            rawWindowSeconds: 604_800,
+            displayMode: .remaining,
+            now: now
+        )
+
+        XCTAssertEqual(summary, "Day 6 of 7 · 44% left")
+    }
 }

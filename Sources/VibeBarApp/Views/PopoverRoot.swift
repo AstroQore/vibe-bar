@@ -12,12 +12,11 @@ struct PopoverRoot: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var quotaService: QuotaService
     @State private var overviewPage: OverviewPage = .overview
-    @State private var autoRefreshedPageKeys: Set<String> = []
 
     var body: some View {
         let shellDensity = shellDensity
         let contentDensity = activeDensity
-        VStack(alignment: .leading, spacing: shellDensity.interSectionSpacing) {
+        VStack(alignment: .leading, spacing: 0) {
             HeaderView(
                 title: headerTitle,
                 subtitle: headerSubtitle,
@@ -32,7 +31,11 @@ struct PopoverRoot: View {
                 onShowSettings: { environment.showSettingsWindow() }
             )
             .frame(height: shellDensity.headerHeight, alignment: .center)
-            Divider().opacity(0.3)
+            .padding(.horizontal, shellDensity.cardPadding)
+            .padding(.bottom, max(4, shellDensity.interSectionSpacing * 0.45))
+            Divider()
+                .opacity(0.3)
+                .padding(.bottom, shellDensity.interSectionSpacing)
             ScrollView(.vertical, showsIndicators: false) {
                 content(density: contentDensity)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -45,10 +48,6 @@ struct PopoverRoot: View {
         .frame(width: width)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
-        .onAppear(perform: refreshVisibleProvidersIfNeeded)
-        .onChange(of: overviewPage) { _, _ in
-            refreshVisibleProvidersIfNeeded()
-        }
     }
 
     /// The tabbed popover is one shared shell. Provider pages may use their
@@ -159,30 +158,9 @@ struct PopoverRoot: View {
         return visibleTools.compactMap { environment.account(for: $0) }
     }
 
-    private var autoRefreshKey: String {
-        overviewPage.rawValue
-    }
-
-    private func refreshVisibleProvidersIfNeeded() {
-        let key = autoRefreshKey
-        guard !autoRefreshedPageKeys.contains(key) else { return }
-        let accounts = visibleAccounts
-        let refreshAge = TimeInterval(max(60, settingsStore.settings.refreshIntervalSeconds))
-        let missing = accounts.filter { account in
-            quotaService.needsRefresh(accountId: account.id, maxAge: refreshAge)
-                && !quotaService.inFlightAccountIds.contains(account.id)
-        }
-        guard !missing.isEmpty else { return }
-        autoRefreshedPageKeys.insert(key)
-        Task { @MainActor in
-            for account in missing {
-                _ = await quotaService.refresh(account)
-            }
-        }
-    }
 }
 
-private struct ProviderSectionTitle: View {
+struct ProviderSectionTitle: View {
     let tool: ToolType
     let title: String
     var subtitle: String?
@@ -682,7 +660,6 @@ private struct GeminiTabPage: View {
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                GeminiCombinedCard(density: density)
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     SubscriptionUtilizationView(
                         tool: .gemini,
@@ -1436,13 +1413,12 @@ private struct CostDetailPopoverContent: View {
 // MARK: - Single-provider detail (two-column waterfall)
 
 /// Single-provider popover content. Two-column layout — narrow left for the
-/// live subscription panels, wider right for cost charts and heatmaps. The two
+/// live subscription panel, wider right for cost charts and heatmaps. The two
 /// columns size independently and do NOT have to match in height.
 ///
 /// Left column (fixed order, narrow):
-///   1. Quota / Usage bar
-///   2. Subscription Utilization
-///   3. Service Status
+///   1. Subscription Utilization (provider header + all live quotas)
+///   2. Service Status
 ///
 /// Right column (wide): Cost summary → Cost History → Model Ranking →
 /// yearly contribution heatmap → weekday-hour heatmap.
@@ -1459,7 +1435,6 @@ private struct ProviderDetailView: View {
         let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
             VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                ProviderQuotaCard(tool: tool, density: density, compact: false)
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     SubscriptionUtilizationView(
                         tool: tool,
@@ -1881,8 +1856,6 @@ private struct ProviderBucketRow: View {
         let percent = bucket.displayPercent(mode)
         let pace = UsagePace.compute(bucket: bucket, now: now)
         let forecast = paceForecast(now: now)
-        let forecastRange = forecast.map { displayedRange($0) }
-        let forecastMedian = forecast.map { displayedForecast($0) }
         let timePaceDisplayed = pace.map { expectedDisplay(for: $0, mode: mode) }
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
@@ -1899,14 +1872,17 @@ private struct ProviderBucketRow: View {
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
             }
-            if let forecast, let forecastRange, let forecastMedian {
+            if let forecast {
                 ForecastQuotaBar(
                     percent: percent,
                     mode: mode,
                     timePacePercent: timePaceDisplayed,
-                    forecastLowerPercent: forecastRange.lowerBound,
-                    forecastUpperPercent: forecastRange.upperBound,
-                    forecastMedianPercent: forecastMedian,
+                    forecastProjection: QuotaForecastBarProjection(
+                        projectedUsedLowerPercent: forecast.projectedUsedLowerPercent,
+                        projectedUsedUpperPercent: forecast.projectedUsedUpperPercent,
+                        projectedUsedMedianPercent: forecast.projectedUsedPercent,
+                        displayMode: mode
+                    ),
                     forecastColor: QuotaForecastPalette.color(for: forecast.verdict),
                     height: density.bucketBarHeight
                 )
@@ -1924,7 +1900,8 @@ private struct ProviderBucketRow: View {
                 QuotaForecastRow(
                     forecast: forecast,
                     now: now,
-                    fontSize: density.resetCountdownFontSize
+                    fontSize: density.resetCountdownFontSize,
+                    displayMode: mode
                 )
             } else if let pace {
                 UsagePaceRow(pace: pace, now: now, fontSize: density.resetCountdownFontSize)
@@ -1942,22 +1919,6 @@ private struct ProviderBucketRow: View {
             dailyActivity: snapshot?.dailyHistory ?? [],
             now: now
         )
-    }
-
-    private func displayedForecast(_ forecast: QuotaPaceForecast) -> Double {
-        switch mode {
-        case .used: forecast.projectedUsedPercent
-        case .remaining: 100 - forecast.projectedUsedPercent
-        }
-    }
-
-    private func displayedRange(_ forecast: QuotaPaceForecast) -> ClosedRange<Double> {
-        switch mode {
-        case .used:
-            return forecast.projectedUsedLowerPercent...forecast.projectedUsedUpperPercent
-        case .remaining:
-            return (100 - forecast.projectedUsedUpperPercent)...(100 - forecast.projectedUsedLowerPercent)
-        }
     }
 
     private func expectedDisplay(for pace: UsagePace, mode: DisplayMode) -> Double {

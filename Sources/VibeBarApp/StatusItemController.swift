@@ -165,6 +165,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         for (otherKind, other) in popovers where otherKind != kind && other.isShown {
             other.performClose(nil)
         }
+        let settings = environment.settingsStore.settings
+        environment.scheduler.triggerRefreshForPopoverOpenIfNeeded(
+            enabled: settings.refreshOnPopoverOpen,
+            cooldownSeconds: settings.popoverOpenRefreshCooldownSeconds
+        )
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }

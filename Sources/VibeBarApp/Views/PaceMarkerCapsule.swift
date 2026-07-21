@@ -73,9 +73,7 @@ struct ForecastQuotaBar: View {
     let percent: Double
     let mode: DisplayMode
     let timePacePercent: Double?
-    let forecastLowerPercent: Double
-    let forecastUpperPercent: Double
-    let forecastMedianPercent: Double
+    let forecastProjection: QuotaForecastBarProjection
     let forecastColor: Color
     var height: CGFloat = 12
 
@@ -83,12 +81,19 @@ struct ForecastQuotaBar: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let fillFraction = clamp(percent, 0, 100) / 100
-            let lower = clamp(min(forecastLowerPercent, forecastUpperPercent), 0, 100) / 100
-            let upper = clamp(max(forecastLowerPercent, forecastUpperPercent), 0, 100) / 100
-            let median = clamp(forecastMedianPercent, 0, 100) / 100
+            let lower = forecastProjection.lowerPercent / 100
+            let upper = forecastProjection.upperPercent / 100
+            let median = forecastProjection.medianPercent / 100
             let timePace = timePacePercent.map { clamp($0, 0, 100) / 100 }
             let forecastLineWidth = max(2.5, min(3.5, height * 0.25))
             let paceMarkerWidth = max(4.5, min(5.5, height * 0.42))
+            let minimumBandWidth = forecastLineWidth + 6
+            let band = confidenceBandLayout(
+                width: width,
+                lower: lower,
+                upper: upper,
+                minimumWidth: minimumBandWidth
+            )
 
             ZStack(alignment: .leading) {
                 Capsule(style: .continuous)
@@ -97,26 +102,13 @@ struct ForecastQuotaBar: View {
                     .fill(Theme.barColor(percent: percent, mode: mode))
                     .frame(width: max(height, width * fillFraction))
 
-                if upper > lower {
+                if forecastProjection.hasUncertainty {
                     Rectangle()
                         .fill(
-                        LinearGradient(
-                            colors: [
-                                forecastColor.opacity(0.06),
-                                forecastColor.opacity(0.26),
-                                forecastColor.opacity(0.42),
-                                forecastColor.opacity(0.26),
-                                forecastColor.opacity(0.06),
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                            confidenceGradient(lower: lower, upper: upper, median: median)
                         )
-                    )
-                    .frame(
-                        width: max(forecastLineWidth * 2, width * (upper - lower)),
-                        height: height
-                    )
-                    .offset(x: width * lower)
+                        .frame(width: band.width, height: height)
+                        .offset(x: band.x)
                 }
 
                 if let timePace, timePacePercent.map({ $0 > 2 && $0 < 98 }) == true {
@@ -147,6 +139,49 @@ struct ForecastQuotaBar: View {
 
     private func markerOffset(width: CGFloat, fraction: Double, markerWidth: CGFloat) -> CGFloat {
         max(0, min(width - markerWidth, width * fraction - markerWidth / 2))
+    }
+
+    private func confidenceBandLayout(
+        width: CGFloat,
+        lower: Double,
+        upper: Double,
+        minimumWidth: CGFloat
+    ) -> (x: CGFloat, width: CGFloat) {
+        let naturalStart = width * lower
+        let naturalEnd = width * upper
+        let naturalWidth = max(0, naturalEnd - naturalStart)
+        guard naturalWidth < minimumWidth else {
+            return (naturalStart, naturalWidth)
+        }
+        if lower <= 0 {
+            return (0, min(width, minimumWidth))
+        }
+        if upper >= 1 {
+            let bandWidth = min(width, minimumWidth)
+            return (max(0, width - bandWidth), bandWidth)
+        }
+        let bandWidth = min(width, minimumWidth)
+        let center = (naturalStart + naturalEnd) / 2
+        return (max(0, min(width - bandWidth, center - bandWidth / 2)), bandWidth)
+    }
+
+    private func confidenceGradient(lower: Double, upper: Double, median: Double) -> LinearGradient {
+        let visibleSpan = upper - lower
+        let medianLocation = visibleSpan > 0
+            ? clamp((median - lower) / visibleSpan, 0, 1)
+            : (forecastProjection.clipsLowerBound ? 0 : 1)
+        let leadingOpacity = forecastProjection.clipsLowerBound ? 0.44 : 0.10
+        let trailingOpacity = forecastProjection.clipsUpperBound ? 0.44 : 0.10
+        let peakLocation = min(max(medianLocation, 0.001), 0.999)
+        return LinearGradient(
+            gradient: Gradient(stops: [
+                .init(color: forecastColor.opacity(leadingOpacity), location: 0),
+                .init(color: forecastColor.opacity(0.48), location: peakLocation),
+                .init(color: forecastColor.opacity(trailingOpacity), location: 1),
+            ]),
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 
     private func neutralPaceMarker(width: CGFloat) -> some View {

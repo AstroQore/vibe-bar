@@ -3,6 +3,8 @@ import Foundation
 public struct AppSettings: Codable, Equatable, Sendable {
     public var displayMode: DisplayMode
     public var refreshIntervalSeconds: Int
+    public var refreshOnPopoverOpen: Bool
+    public var popoverOpenRefreshCooldownSeconds: Int
     public var launchAtLogin: Bool
     public var menuBarTextEnabled: Bool
     public var mockEnabled: Bool
@@ -42,6 +44,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static let `default` = AppSettings(
         displayMode: .remaining,
         refreshIntervalSeconds: 600,
+        refreshOnPopoverOpen: false,
+        popoverOpenRefreshCooldownSeconds: 60,
         launchAtLogin: false,
         menuBarTextEnabled: true,
         mockEnabled: false,
@@ -117,6 +121,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public init(
         displayMode: DisplayMode,
         refreshIntervalSeconds: Int,
+        refreshOnPopoverOpen: Bool = false,
+        popoverOpenRefreshCooldownSeconds: Int = 60,
         launchAtLogin: Bool,
         menuBarTextEnabled: Bool,
         mockEnabled: Bool,
@@ -137,6 +143,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
+        self.refreshOnPopoverOpen = refreshOnPopoverOpen
+        self.popoverOpenRefreshCooldownSeconds = max(60, popoverOpenRefreshCooldownSeconds)
         self.launchAtLogin = launchAtLogin
         self.menuBarTextEnabled = menuBarTextEnabled
         self.mockEnabled = false
@@ -167,6 +175,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case displayMode
         case refreshIntervalSeconds
+        case refreshOnPopoverOpen
+        case popoverOpenRefreshCooldownSeconds
         case launchAtLogin
         case menuBarTextEnabled
         case mockEnabled
@@ -191,6 +201,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.displayMode = try c.decodeIfPresent(DisplayMode.self, forKey: .displayMode) ?? Self.default.displayMode
         self.refreshIntervalSeconds = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalSeconds) ?? Self.default.refreshIntervalSeconds
+        self.refreshOnPopoverOpen = try c.decodeIfPresent(Bool.self, forKey: .refreshOnPopoverOpen) ?? Self.default.refreshOnPopoverOpen
+        self.popoverOpenRefreshCooldownSeconds = max(
+            60,
+            try c.decodeIfPresent(Int.self, forKey: .popoverOpenRefreshCooldownSeconds)
+                ?? Self.default.popoverOpenRefreshCooldownSeconds
+        )
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? Self.default.launchAtLogin
         self.menuBarTextEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarTextEnabled) ?? Self.default.menuBarTextEnabled
         self.mockEnabled = false
@@ -300,6 +316,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(displayMode, forKey: .displayMode)
         try c.encode(refreshIntervalSeconds, forKey: .refreshIntervalSeconds)
+        try c.encode(refreshOnPopoverOpen, forKey: .refreshOnPopoverOpen)
+        try c.encode(popoverOpenRefreshCooldownSeconds, forKey: .popoverOpenRefreshCooldownSeconds)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(menuBarTextEnabled, forKey: .menuBarTextEnabled)
         try c.encode(mockEnabled, forKey: .mockEnabled)

@@ -398,4 +398,27 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .gemini]))
     }
+
+    func testRefreshPreferencesRoundTrip() throws {
+        var settings = AppSettings.default
+        settings.refreshIntervalSeconds = 300
+        settings.refreshOnPopoverOpen = true
+        settings.popoverOpenRefreshCooldownSeconds = 120
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.refreshIntervalSeconds, 300)
+        XCTAssertTrue(decoded.refreshOnPopoverOpen)
+        XCTAssertEqual(decoded.popoverOpenRefreshCooldownSeconds, 120)
+    }
+
+    func testFiveMinuteRefreshIntervalIsNotRewrittenDuringMigration() async {
+        await MainActor.run {
+            var settings = AppSettings.default
+            settings.refreshIntervalSeconds = 300
+
+            XCTAssertEqual(SettingsStore.migrated(settings).refreshIntervalSeconds, 300)
+        }
+    }
 }
