@@ -1,8 +1,8 @@
 import Foundation
 
 /// One inferred subscription cycle for a quota bucket. The active cycle is
-/// updated in place; it becomes a historical sample only after a refill is
-/// observed (usage falls materially) or a scheduled reset is crossed.
+/// updated in place; it becomes a historical sample after a refill is inferred
+/// from usage, a proportional reset-time advance, or both signals together.
 public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
     public enum CompletionReason: String, Codable, Hashable, Sendable {
         case refillDetected
