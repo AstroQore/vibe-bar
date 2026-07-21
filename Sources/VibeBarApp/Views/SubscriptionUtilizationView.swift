@@ -18,6 +18,7 @@ struct SubscriptionUtilizationView: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
+    @State private var expandedForecastIDs: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
@@ -160,7 +161,7 @@ struct SubscriptionUtilizationView: View {
                 )
             }
             if let forecast {
-                forecastExplanation(forecast: forecast, pace: pace)
+                forecastExplanation(itemID: item.id, forecast: forecast, pace: pace)
             }
         }
     }
@@ -268,7 +269,7 @@ struct SubscriptionUtilizationView: View {
         if let timeExpected {
             referenceLegendItem(
                 color: .secondary,
-                lineWidth: 1.25,
+                markerStyle: .timePace,
                 label: "Time-only pace",
                 value: "\(Int(timeExpected.rounded()))%"
             )
@@ -276,7 +277,7 @@ struct SubscriptionUtilizationView: View {
         if let forecastExpected, let forecastColor {
             referenceLegendItem(
                 color: forecastColor,
-                lineWidth: 2.5,
+                markerStyle: .forecast,
                 label: "Forecast at reset",
                 value: "\(Int(forecastExpected.rounded()))%"
             )
@@ -290,20 +291,49 @@ struct SubscriptionUtilizationView: View {
             .fixedSize(horizontal: true, vertical: false)
     }
 
+    private enum ReferenceMarkerStyle {
+        case timePace
+        case forecast
+    }
+
     private func referenceLegendItem(
         color: Color,
-        lineWidth: CGFloat,
+        markerStyle: ReferenceMarkerStyle,
         label: String,
         value: String
     ) -> some View {
         HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: lineWidth / 2, style: .continuous)
-                .fill(color)
-                .frame(width: lineWidth, height: 12)
+            referenceMarker(style: markerStyle, color: color)
             Text("\(label) \(value)")
                 .font(.system(size: max(8, density.subtitleFontSize - 1), weight: .medium))
                 .foregroundStyle(color)
                 .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    @ViewBuilder
+    private func referenceMarker(style: ReferenceMarkerStyle, color: Color) -> some View {
+        switch style {
+        case .timePace:
+            ZStack {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.black.opacity(0.16))
+                    .frame(width: 5, height: 12)
+                RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                    .fill(color.opacity(0.78))
+                    .frame(width: 2.4, height: 11)
+            }
+            .frame(width: 5, height: 12)
+        case .forecast:
+            ZStack {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.black.opacity(0.12))
+                    .frame(width: 5, height: 12)
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(color)
+                    .frame(width: 3, height: 11)
+            }
+            .frame(width: 5, height: 12)
         }
     }
 
@@ -315,47 +345,72 @@ struct SubscriptionUtilizationView: View {
     }
 
     private func forecastExplanation(
+        itemID: String,
         forecast: QuotaPaceForecast,
         pace: UsagePace?
     ) -> some View {
         let metrics = forecastMetrics(forecast: forecast, pace: pace)
+        let isExpanded = expandedForecastIDs.contains(itemID)
         return VStack(alignment: .leading, spacing: 7) {
-            Text("How this forecast was calculated")
-                .font(.system(size: density.subtitleFontSize, weight: .semibold))
-                .foregroundStyle(.secondary)
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 126), spacing: 7)],
-                alignment: .leading,
-                spacing: 7
-            ) {
-                ForEach(metrics) { metric in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(metric.label.uppercased())
-                            .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(metric.value)
-                            .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(metric.detail)
-                            .font(.system(size: max(8, density.subtitleFontSize - 1)))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    if isExpanded {
+                        expandedForecastIDs.remove(itemID)
+                    } else {
+                        expandedForecastIDs.insert(itemID)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 7)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.035))
-                    )
                 }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("How this forecast was calculated")
+                        .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
-            Text("Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage.")
-                .font(.system(size: max(8, density.subtitleFontSize - 1)))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide forecast calculation" : "Show forecast calculation")
+
+            if isExpanded {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 126), spacing: 7)],
+                    alignment: .leading,
+                    spacing: 7
+                ) {
+                    ForEach(metrics) { metric in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(metric.label.uppercased())
+                                .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(metric.value)
+                                .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(metric.detail)
+                                .font(.system(size: max(8, density.subtitleFontSize - 1)))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.primary.opacity(0.035))
+                        )
+                    }
+                }
+                Text("Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage.")
+                    .font(.system(size: max(8, density.subtitleFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(.top, 2)
     }

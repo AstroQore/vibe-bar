@@ -35,6 +35,7 @@ struct PopoverRoot: View {
             Divider().opacity(0.3)
             ScrollView(.vertical, showsIndicators: false) {
                 content(density: contentDensity)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(.bottom, 4)
             }
             .frame(maxHeight: maxScrollHeight)
@@ -658,10 +659,9 @@ private struct GeminiCombinedCard: View {
 
 /// The dedicated Gemini sub-page (still routed through `OverviewPage.googleAI`
 /// for backwards-compat with the menu-bar settings, but labelled "Gemini" at
-/// every user-facing surface). Provider detail pages share one asymmetric
-/// layout: the wider primary column carries the live quota, cost, status and
-/// analytics flow; the narrower secondary column is dedicated to the deeper
-/// subscription forecast and reset-cycle history.
+/// every user-facing surface). Provider pages share one asymmetric layout:
+/// live quota, forecast and service status remain together in the narrow left
+/// column; cost and analytics use the wider right column.
 private struct GeminiTabPage: View {
     let density: Theme.Density
 
@@ -679,85 +679,77 @@ private struct GeminiTabPage: View {
                 FillTimelineSeries(tool: .antigravity, accountId: account.id, bucket: $0)
             }
         } ?? []
-        let costParts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
-        let costSnapshot = CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: costParts)
-        let hasCostData = costSnapshot.jsonlFilesFound > 0
 
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            LazyVStack(alignment: .leading, spacing: density.interSectionSpacing) {
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 GeminiCombinedCard(density: density)
-                if hasCostData {
-                    CostHeaderCard(
-                        tool: .antigravity,
-                        snapshot: costSnapshot,
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    SubscriptionUtilizationView(
+                        tool: .gemini,
+                        buckets: geminiAccounts.first.flatMap {
+                            quotaService.cachedQuota(for: $0.id)?.buckets
+                        } ?? [],
+                        mode: settingsStore.displayMode,
                         density: density,
-                        titleOverride: "Gemini Cost",
-                        toolNameOverride: "Gemini"
+                        now: context.date,
+                        additionalQuotaSeries: antigravityQuotaSeries
                     )
-                    CostHistoryView(
-                        tool: .antigravity,
-                        snapshot: costSnapshot,
-                        density: density,
-                        chartHeight: density.detailCostChartHeight
-                    )
-                } else {
-                    GeminiCostEmptyCard(density: density)
                 }
                 ServiceStatusCard(tools: [.gemini], density: density)
-                if hasCostData {
-                    ModelRankingList(snapshot: costSnapshot, density: density)
-                    YearlyContributionHeatmapView(
-                        history: costSnapshot.dailyHistory,
-                        density: density,
-                        toolName: "Gemini"
-                    )
-                    UsageActivityView(
-                        heatmap: costSnapshot.heatmap,
-                        density: density,
-                        titleOverride: "When you use Gemini"
-                    )
-                }
-            }
-            .frame(minWidth: primaryColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
-
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                SubscriptionUtilizationView(
-                    tool: .gemini,
-                    buckets: geminiAccounts.first.flatMap {
-                        quotaService.cachedQuota(for: $0.id)?.buckets
-                    } ?? [],
-                    mode: settingsStore.displayMode,
-                    density: density,
-                    now: context.date,
-                    additionalQuotaSeries: antigravityQuotaSeries
-                )
             }
             .frame(
-                minWidth: utilizationColumnMinWidth,
-                idealWidth: utilizationColumnIdealWidth,
-                maxWidth: utilizationColumnMaxWidth,
+                minWidth: leftColumnMinWidth,
+                idealWidth: leftColumnIdealWidth,
+                maxWidth: leftColumnMaxWidth,
                 alignment: .topLeading
             )
+
+            GeminiCostColumn(density: density)
+                .frame(minWidth: rightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
-    private var utilizationColumnMinWidth: CGFloat {
+    private var leftColumnMinWidth: CGFloat {
         density.detailLeftColumnRange.lowerBound
     }
 
-    private var utilizationColumnIdealWidth: CGFloat {
+    private var leftColumnIdealWidth: CGFloat {
         min(
             density.detailLeftColumnRange.upperBound,
-            max(utilizationColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
+            max(leftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
         )
     }
 
-    private var utilizationColumnMaxWidth: CGFloat {
+    private var leftColumnMaxWidth: CGFloat {
         density.detailLeftColumnRange.upperBound
     }
 
-    private var primaryColumnMinWidth: CGFloat {
+    private var rightColumnMinWidth: CGFloat {
         density.detailRightColumnMinimum
+    }
+}
+
+/// Right-column cost and analytics flow for the combined Gemini surface.
+private struct GeminiCostColumn: View {
+    let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+
+    var body: some View {
+        let parts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
+        let snapshot = CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: parts)
+        if snapshot.jsonlFilesFound > 0 {
+            ProviderCostStack(
+                tool: .antigravity,
+                snapshot: snapshot,
+                density: density,
+                titleOverride: "Gemini Cost",
+                toolNameOverride: "Gemini",
+                heatmapTitleOverride: "When you use Gemini"
+            )
+        } else {
+            GeminiCostEmptyCard(density: density)
+        }
     }
 }
 
@@ -803,6 +795,44 @@ private struct GeminiCostEmptyCard: View {
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .stroke(.separator.opacity(0.4), lineWidth: 0.5)
         )
+    }
+}
+
+private struct ProviderCostStack: View {
+    let tool: ToolType
+    let snapshot: CostSnapshot
+    let density: Theme.Density
+    var titleOverride: String? = nil
+    var toolNameOverride: String? = nil
+    var heatmapTitleOverride: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+            CostHeaderCard(
+                tool: tool,
+                snapshot: snapshot,
+                density: density,
+                titleOverride: titleOverride,
+                toolNameOverride: toolNameOverride
+            )
+            CostHistoryView(
+                tool: tool,
+                snapshot: snapshot,
+                density: density,
+                chartHeight: density.detailCostChartHeight
+            )
+            ModelRankingList(snapshot: snapshot, density: density)
+            YearlyContributionHeatmapView(
+                history: snapshot.dailyHistory,
+                density: density,
+                toolName: toolNameOverride ?? tool.menuTitle
+            )
+            UsageActivityView(
+                heatmap: snapshot.heatmap,
+                density: density,
+                titleOverride: heatmapTitleOverride
+            )
+        }
     }
 }
 
@@ -1405,21 +1435,17 @@ private struct CostDetailPopoverContent: View {
 
 // MARK: - Single-provider detail (two-column waterfall)
 
-/// Single-provider popover content. Two-column layout — wider left for the
-/// primary quota, cost, status and analytics flow; narrow right for the deeper
-/// subscription forecast and its per-quota reset history. The
-/// two columns size independently and do NOT have to match in height.
+/// Single-provider popover content. Two-column layout — narrow left for the
+/// live subscription panels, wider right for cost charts and heatmaps. The two
+/// columns size independently and do NOT have to match in height.
 ///
-/// Left column (fixed order, wide):
+/// Left column (fixed order, narrow):
 ///   1. Quota / Usage bar
-///   2. Cost summary
-///   3. Cost history
-///   4. Service Status
-///   5. Model Ranking
-///   6. Past Year
-///   7. When You Use
+///   2. Subscription Utilization
+///   3. Service Status
 ///
-/// Right column (narrow): Subscription Utilization only.
+/// Right column (wide): Cost summary → Cost History → Model Ranking →
+/// yearly contribution heatmap → weekday-hour heatmap.
 private struct ProviderDetailView: View {
     let tool: ToolType
     let density: Theme.Density
@@ -1432,8 +1458,27 @@ private struct ProviderDetailView: View {
         let snapshot = environment.costService.snapshot(for: tool)
         let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            LazyVStack(alignment: .leading, spacing: density.interSectionSpacing) {
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 ProviderQuotaCard(tool: tool, density: density, compact: false)
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    SubscriptionUtilizationView(
+                        tool: tool,
+                        buckets: environment.quota(for: tool)?.buckets ?? [],
+                        mode: settingsStore.displayMode,
+                        density: density,
+                        now: context.date
+                    )
+                }
+                ServiceStatusCard(tools: [tool], density: density)
+            }
+            .frame(
+                minWidth: leftColumnMinWidth,
+                idealWidth: leftColumnIdealWidth,
+                maxWidth: leftColumnMaxWidth,
+                alignment: .topLeading
+            )
+
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                 if let snapshot, hasCostData {
                     CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
                     CostHistoryView(
@@ -1442,15 +1487,6 @@ private struct ProviderDetailView: View {
                         density: density,
                         chartHeight: density.detailCostChartHeight
                     )
-                } else {
-                    Text("No \(tool.menuTitle) CLI sessions found yet.")
-                        .font(.system(size: density.subtitleFontSize))
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 24)
-                        .frame(maxWidth: .infinity)
-                }
-                ServiceStatusCard(tools: [tool], density: density)
-                if let snapshot, hasCostData {
                     ModelRankingList(snapshot: snapshot, density: density)
                     YearlyContributionHeatmapView(
                         history: snapshot.dailyHistory,
@@ -1458,51 +1494,40 @@ private struct ProviderDetailView: View {
                         toolName: tool.menuTitle
                     )
                     UsageActivityView(heatmap: snapshot.heatmap, density: density)
+                } else {
+                    Text("No \(tool.menuTitle) CLI sessions found yet.")
+                        .font(.system(size: density.subtitleFontSize))
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 24)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .frame(minWidth: primaryColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
-
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                SubscriptionUtilizationView(
-                    tool: tool,
-                    buckets: environment.quota(for: tool)?.buckets ?? [],
-                    mode: settingsStore.displayMode,
-                    density: density,
-                    now: context.date
-                )
-            }
-            .frame(
-                minWidth: utilizationColumnMinWidth,
-                idealWidth: utilizationColumnIdealWidth,
-                maxWidth: utilizationColumnMaxWidth,
-                alignment: .topLeading
-            )
+            .frame(minWidth: rightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
-    private var utilizationColumnMinWidth: CGFloat {
+    private var leftColumnMinWidth: CGFloat {
         density.detailLeftColumnRange.lowerBound
     }
 
-    private var utilizationColumnIdealWidth: CGFloat {
+    private var leftColumnIdealWidth: CGFloat {
         min(
             density.detailLeftColumnRange.upperBound,
-            max(utilizationColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
+            max(leftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
         )
     }
 
-    private var utilizationColumnMaxWidth: CGFloat {
+    private var leftColumnMaxWidth: CGFloat {
         density.detailLeftColumnRange.upperBound
     }
 
-    private var primaryColumnMinWidth: CGFloat {
+    private var rightColumnMinWidth: CGFloat {
         density.detailRightColumnMinimum
     }
 }
 
-/// Composite Cost header for the provider's primary column: 4-cell summary
-/// row + Top Model. Bundled so the cost section has clear framing before the
-/// chart starts.
+/// Composite Cost header for the provider's wide analytics column: 4-cell
+/// summary row + Top Model.
 private struct CostHeaderCard: View {
     let tool: ToolType
     let snapshot: CostSnapshot
