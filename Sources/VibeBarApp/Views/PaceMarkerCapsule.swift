@@ -69,8 +69,10 @@ struct PaceMarkerCapsule: View {
 /// status-colored tick marks the projected usage *at reset*. The confidence
 /// interval is a full-height capsule. It is opaque in ordinary geometry, uses
 /// a soft overlap or curved endpoint seam for the two Used-mode contact cases,
-/// and switches to an outlined tint when every mark crowds the lower axis. It
-/// is intentionally not a second bar or a gradient.
+/// and switches to an outlined tint when every Used-mode mark crowds the lower
+/// axis. In the equivalent Remaining-mode extreme, the interval becomes a
+/// narrow inset color core so the actual fill keeps one clean silhouette. It is
+/// intentionally not a second bar or a gradient.
 struct ForecastQuotaBar: View {
     let percent: Double
     let mode: DisplayMode
@@ -105,6 +107,11 @@ struct ForecastQuotaBar: View {
             let bandOverlapWidth = band.style == .softJoin
                 ? softJoinOverlap
                 : width * band.overlapPercent / 100
+            let actualFillWidth = min(width, max(height, width * fillFraction))
+            let connectorCapOverlap = height / 2
+            let connectorStartX = max(0, actualFillWidth - connectorCapOverlap)
+            let connectorEndX = min(width, bandX + connectorCapOverlap)
+            let connectorWidth = max(0, connectorEndX - connectorStartX)
             let seamWidth = min(3, max(2, height * 0.25))
             let actualColor = Theme.barColor(percent: percent, mode: mode)
             let visibleForecastColor = colorScheme == .dark
@@ -115,9 +122,20 @@ struct ForecastQuotaBar: View {
                 ZStack(alignment: .leading) {
                     Capsule(style: .continuous)
                         .fill(Theme.barTrack)
+
+                    if forecastProjection.hasUncertainty,
+                       band.showsGapConnector,
+                       connectorWidth > 0.5
+                    {
+                        Capsule(style: .continuous)
+                            .fill(visibleForecastColor.opacity(colorScheme == .dark ? 0.34 : 0.24))
+                            .frame(width: connectorWidth, height: max(1.5, min(2.5, height * 0.18)))
+                            .offset(x: connectorStartX)
+                    }
+
                     Capsule(style: .continuous)
                         .fill(Theme.barColor(percent: percent, mode: mode))
-                        .frame(width: max(height, width * fillFraction))
+                        .frame(width: actualFillWidth)
                 }
                 .clipShape(Capsule(style: .continuous))
 
@@ -164,6 +182,11 @@ struct ForecastQuotaBar: View {
         visibleForecastColor: Color
     ) -> some View {
         switch style {
+        case .insetTint:
+            Capsule(style: .continuous)
+                .fill(visibleForecastColor.opacity(colorScheme == .dark ? 0.78 : 0.68))
+                .frame(height: max(3, height * 0.42))
+
         case .outlinedTint:
             ZStack(alignment: .trailing) {
                 Capsule(style: .continuous)

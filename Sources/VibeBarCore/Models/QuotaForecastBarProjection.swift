@@ -66,11 +66,12 @@ public struct QuotaForecastBarProjection: Sendable, Equatable {
         actualDisplayedPercent: Double,
         minimumVisibleWidthPercent: Double,
         contactTolerancePercent: Double = 0.1,
-        axisPileupThresholdPercent: Double = 12
+        axisPileupThresholdPercent: Double = 12,
+        remainingInsetThresholdPercent: Double = 8
     ) -> QuotaForecastBandLayout {
         let minimumWidth = min(max(minimumVisibleWidthPercent, 0), 100)
         let naturalWidth = max(0, upperPercent - lowerPercent)
-        let bandWidth: Double
+        var bandWidth: Double
         let start: Double
 
         if naturalWidth >= minimumWidth {
@@ -89,19 +90,34 @@ public struct QuotaForecastBarProjection: Sendable, Equatable {
         }
 
         let actualEnd = min(max(actualDisplayedPercent, 0), 100)
-        let overlap = max(0, min(bandWidth, actualEnd - start))
+        var overlap = max(0, min(bandWidth, actualEnd - start))
         let tolerance = max(0, contactTolerancePercent)
         let pileupThreshold = min(max(axisPileupThresholdPercent, 0), 100)
+        let remainingInsetThreshold = min(max(remainingInsetThresholdPercent, 0), 100)
         let style: QuotaForecastBandStyle
 
-        if actualEnd <= pileupThreshold,
-           upperPercent <= pileupThreshold,
-           medianPercent <= pileupThreshold
+        if displayMode == .remaining,
+           actualEnd <= remainingInsetThreshold,
+           upperPercent <= actualEnd + tolerance,
+           medianPercent <= actualEnd + tolerance
+        {
+            // A Remaining-mode forecast cannot exceed the quota remaining now.
+            // When all of that geometry crowds the lower axis, keep the actual
+            // fill's capsule as the silhouette and render the interval as an
+            // inset color core inside it. The minimum-width expansion must not
+            // push that core beyond the current remaining endpoint.
+            bandWidth = min(bandWidth, max(0, actualEnd - start))
+            overlap = min(overlap, bandWidth)
+            style = .insetTint
+        } else if displayMode == .used,
+                  actualEnd <= pileupThreshold,
+                  upperPercent <= pileupThreshold,
+                  medianPercent <= pileupThreshold
         {
             // Near the lower axis, the current fill, interval and median can
-            // collapse into only a handful of pixels. Use one translucent,
-            // fully outlined pill in both display modes so all boundaries
-            // remain legible without adding an artificial gap.
+            // collapse into only a handful of pixels. Used mode can project
+            // beyond the current fill, so retain the outlined tint that keeps
+            // those coincident boundaries legible.
             style = .outlinedTint
         } else if displayMode == .used,
                   abs(actualEnd - lowerPercent) <= tolerance
@@ -121,11 +137,16 @@ public struct QuotaForecastBarProjection: Sendable, Equatable {
             style = .opaque
         }
 
+        let showsGapConnector = displayMode == .used
+            && style == .opaque
+            && start > actualEnd + tolerance
+
         return QuotaForecastBandLayout(
             startPercent: start,
             widthPercent: bandWidth,
             overlapPercent: overlap,
-            style: style
+            style: style,
+            showsGapConnector: showsGapConnector
         )
     }
 }
@@ -135,6 +156,7 @@ public enum QuotaForecastBandStyle: Sendable, Equatable {
     case softJoin
     case curvedSeam
     case outlinedTint
+    case insetTint
 }
 
 public struct QuotaForecastBandLayout: Sendable, Equatable {
@@ -142,16 +164,19 @@ public struct QuotaForecastBandLayout: Sendable, Equatable {
     public let widthPercent: Double
     public let overlapPercent: Double
     public let style: QuotaForecastBandStyle
+    public let showsGapConnector: Bool
 
     public init(
         startPercent: Double,
         widthPercent: Double,
         overlapPercent: Double,
-        style: QuotaForecastBandStyle
+        style: QuotaForecastBandStyle,
+        showsGapConnector: Bool
     ) {
         self.startPercent = startPercent
         self.widthPercent = widthPercent
         self.overlapPercent = overlapPercent
         self.style = style
+        self.showsGapConnector = showsGapConnector
     }
 }
