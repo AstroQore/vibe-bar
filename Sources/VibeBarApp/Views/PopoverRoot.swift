@@ -1885,6 +1885,8 @@ private struct ProviderBucketRow: View {
         let percent = bucket.displayPercent(mode)
         let pace = UsagePace.compute(bucket: bucket, now: now)
         let forecast = paceForecast(now: now)
+        let forecastRange = forecast.map { displayedRange($0) }
+        let forecastMedian = forecast.map { displayedForecast($0) }
         let legacyExpectedDisplayed = forecast == nil
             ? pace.map { expectedDisplay(for: $0, mode: mode) }
             : nil
@@ -1903,12 +1905,16 @@ private struct ProviderBucketRow: View {
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
             }
-            // The provider summary bar represents only the quota that exists
-            // right now. Forecast ranges and plan markers need labels to be
-            // meaningful, so the personal forecast is expressed in the row
-            // below instead of as unexplained micro-marks inside the bar.
-            if forecast != nil {
-                QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
+            if let forecast, let forecastRange, let forecastMedian {
+                ForecastQuotaBar(
+                    percent: percent,
+                    mode: mode,
+                    forecastLowerPercent: forecastRange.lowerBound,
+                    forecastUpperPercent: forecastRange.upperBound,
+                    forecastMedianPercent: forecastMedian,
+                    forecastColor: QuotaForecastPalette.color(for: forecast.verdict),
+                    height: density.bucketBarHeight
+                )
             } else if let legacyExpectedDisplayed {
                 PaceMarkerCapsule(
                     usedPercent: percent,
@@ -1941,6 +1947,22 @@ private struct ProviderBucketRow: View {
             dailyActivity: snapshot?.dailyHistory ?? [],
             now: now
         )
+    }
+
+    private func displayedForecast(_ forecast: QuotaPaceForecast) -> Double {
+        switch mode {
+        case .used: forecast.projectedUsedPercent
+        case .remaining: 100 - forecast.projectedUsedPercent
+        }
+    }
+
+    private func displayedRange(_ forecast: QuotaPaceForecast) -> ClosedRange<Double> {
+        switch mode {
+        case .used:
+            return forecast.projectedUsedLowerPercent...forecast.projectedUsedUpperPercent
+        case .remaining:
+            return (100 - forecast.projectedUsedUpperPercent)...(100 - forecast.projectedUsedLowerPercent)
+        }
     }
 
     private func expectedDisplay(for pace: UsagePace, mode: DisplayMode) -> Double {

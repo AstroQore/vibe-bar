@@ -647,11 +647,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   retain the legacy elapsed-time `UsagePace` reserve/deficit calculation and
   `PaceMarkerCapsule`; do not route Misc through the personal forecast model
   unless AQ explicitly asks to change that product boundary.
-- **Do not place unlabeled forecast micro-marks inside summary quota bars.** A
-  provider summary bar represents the current quota only. Put forecast status,
-  projected remaining quota, and uncertainty in a labeled row or a detailed
-  utilization view where their meaning is explicit. An unlabeled range line,
-  median tick, or plan tick in the summary bar looks like a rendering defect.
+- **Forecast overlays need one coherent visual vocabulary.** The current quota
+  remains the primary summary-bar layer. If a personal forecast is overlaid,
+  use one integrated uncertainty band plus one color-matched endpoint tied to
+  the labeled status row below. Do not stack unrelated plan, range, and median
+  micro-lines; they look like rendering defects without a legend. Detailed
+  utilization views may carry additional labeled planning marks.
+- **Subscription Utilization is the forecast explainability surface.** Keep
+  the legacy wall-clock pace visible alongside the personal plan, then expose
+  recent burn, reset-history comparison, weekday/hour activity weighting,
+  recent activity trend, forecast interval, safety target, evidence counts,
+  coverage, and confidence. The Overview may stay concise; this detail view
+  must show why a verdict was produced.
 - **Bundle ID is `com.astroqore.VibeBar`.** For a release, bump
   `CFBundleShortVersionString` and `CFBundleVersion` in
   `Resources/Info.plist`.

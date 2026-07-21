@@ -13,11 +13,11 @@ struct QuotaForecastRow: View {
         VStack(alignment: .leading, spacing: showGuidance ? 3 : 0) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(verdictColor)
+                    .fill(QuotaForecastPalette.color(for: forecast.verdict))
                     .frame(width: 5, height: 5)
                 Text(primaryText)
                     .font(.system(size: fontSize, weight: .medium))
-                    .foregroundStyle(verdictColor)
+                    .foregroundStyle(QuotaForecastPalette.color(for: forecast.verdict))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 4)
@@ -56,8 +56,11 @@ struct QuotaForecastRow: View {
         }
     }
 
-    private var verdictColor: Color {
-        switch forecast.verdict {
+}
+
+enum QuotaForecastPalette {
+    static func color(for verdict: QuotaPaceForecast.Verdict) -> Color {
+        switch verdict {
         case .enough: Color(red: 0.20, green: 0.70, blue: 0.48)
         case .watch: Color(red: 0.96, green: 0.62, blue: 0.20)
         case .atRisk: Color(red: 0.95, green: 0.32, blue: 0.32)

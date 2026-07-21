@@ -60,3 +60,86 @@ struct PaceMarkerCapsule: View {
         min(max(value, lower), upper)
     }
 }
+
+/// Current quota with a forecast interval integrated into the same capsule.
+///
+/// The actual fill remains the dominant layer. The forecast uses one coherent
+/// visual vocabulary: a soft, full-height interval band plus one color-matched
+/// endpoint. The matching labeled row directly below supplies the meaning.
+struct ForecastQuotaBar: View {
+    let percent: Double
+    let mode: DisplayMode
+    let forecastLowerPercent: Double
+    let forecastUpperPercent: Double
+    let forecastMedianPercent: Double
+    let forecastColor: Color
+    var height: CGFloat = 12
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let fillFraction = clamp(percent, 0, 100) / 100
+            let lower = clamp(min(forecastLowerPercent, forecastUpperPercent), 0, 100) / 100
+            let upper = clamp(max(forecastLowerPercent, forecastUpperPercent), 0, 100) / 100
+            let median = clamp(forecastMedianPercent, 0, 100) / 100
+            let inset = max(1.5, height * 0.14)
+            let endpointSize = min(7, max(5, height * 0.52))
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Theme.barTrack)
+                Capsule(style: .continuous)
+                    .fill(Theme.barColor(percent: percent, mode: mode))
+                    .frame(width: max(height, width * fillFraction))
+
+                if upper > lower {
+                    RoundedRectangle(
+                        cornerRadius: max(2, (height - inset * 2) / 2),
+                        style: .continuous
+                    )
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                forecastColor.opacity(0.10),
+                                forecastColor.opacity(0.28),
+                                forecastColor.opacity(0.10),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: max(2, (height - inset * 2) / 2),
+                            style: .continuous
+                        )
+                        .stroke(forecastColor.opacity(0.24), lineWidth: 0.75)
+                    }
+                    .frame(
+                        width: max(endpointSize, width * (upper - lower)),
+                        height: max(3, height - inset * 2)
+                    )
+                    .offset(x: width * lower)
+                }
+
+                Circle()
+                    .fill(forecastColor)
+                    .overlay {
+                        Circle()
+                            .stroke(Color.white.opacity(0.72), lineWidth: 1)
+                    }
+                    .shadow(color: Color.black.opacity(0.18), radius: 1.5, y: 0.5)
+                    .frame(width: endpointSize, height: endpointSize)
+                    .offset(
+                        x: max(1, min(width - endpointSize - 1, width * median - endpointSize / 2))
+                    )
+            }
+            .clipShape(Capsule(style: .continuous))
+        }
+        .frame(height: height)
+    }
+
+    private func clamp(_ value: Double, _ lower: Double, _ upper: Double) -> Double {
+        min(max(value, lower), upper)
+    }
+}
