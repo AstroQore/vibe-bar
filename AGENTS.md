@@ -667,9 +667,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   remains the primary summary-bar layer. The elapsed-time-only pace uses the
   substantial neutral inset tick established by `PaceMarkerCapsule`; the
   forecast-at-reset median is a verdict-colored vertical tick; the confidence
-  interval is a soft, flat matching tint through exactly the bar's original
-  full height. It must not overflow vertically or make the quota bar look
-  thicker. Legends
+  interval is a context-aware solid capsule through exactly the bar's original
+  full height. Use verdict color over the unfilled track, a solid mixed bridge
+  over the actual fill, and a narrow curved background seam at their internal
+  boundary. Do not use a translucent wash, gradient, or square color cut. It
+  must not overflow vertically or make the quota bar look thicker. Legends
   must use the same marker shapes as the bar — never show a solid sample for a
   dashed mark, reduce the wall-clock reference to a hairline, or turn the
   forecast into a dot. Used/Remaining projection must be performed through one

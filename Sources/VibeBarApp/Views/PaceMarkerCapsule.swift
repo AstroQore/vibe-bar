@@ -66,9 +66,11 @@ struct PaceMarkerCapsule: View {
 ///
 /// The actual fill remains the dominant layer. A substantial neutral tick
 /// marks where usage should be *now* under a time-only pace. A
-/// status-colored tick marks the projected usage *at reset*. A quiet,
-/// full-height flat tint expresses the confidence interval behind both the
-/// fill and markers; it is intentionally not a second bar or a gradient.
+/// status-colored tick marks the projected usage *at reset*. The confidence
+/// interval is a full-height, context-aware solid capsule: forecast color over
+/// the unfilled track, a mixed bridge over the actual fill, and a narrow curved
+/// seam where those two regions meet. It is intentionally not a second bar or
+/// a gradient.
 struct ForecastQuotaBar: View {
     let percent: Double
     let mode: DisplayMode
@@ -96,6 +98,11 @@ struct ForecastQuotaBar: View {
                 upper: upper,
                 minimumWidth: minimumBandWidth
             )
+            let actualFillWidth = min(width, max(height, width * fillFraction))
+            let bandOverlapWidth = max(0, min(band.width, actualFillWidth - band.x))
+            let hasInternalBoundary = bandOverlapWidth > 0.5 && bandOverlapWidth < band.width - 0.5
+            let seamWidth = min(2.5, max(1.5, height * 0.18))
+            let actualColor = Theme.barColor(percent: percent, mode: mode)
 
             ZStack(alignment: .leading) {
                 ZStack(alignment: .leading) {
@@ -108,17 +115,15 @@ struct ForecastQuotaBar: View {
                 .clipShape(Capsule(style: .continuous))
 
                 if forecastProjection.hasUncertainty {
-                    RoundedRectangle(cornerRadius: height / 2, style: .continuous)
-                        .fill(forecastColor.opacity(colorScheme == .dark ? 0.22 : 0.15))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: height / 2, style: .continuous)
-                                .stroke(
-                                    forecastColor.opacity(colorScheme == .dark ? 0.30 : 0.22),
-                                    lineWidth: 0.8
-                                )
-                        }
-                        .frame(width: band.width, height: height)
-                        .offset(x: band.x)
+                    confidenceBand(
+                        actualColor: actualColor,
+                        overlapWidth: bandOverlapWidth,
+                        bandWidth: band.width,
+                        seamWidth: seamWidth,
+                        hasInternalBoundary: hasInternalBoundary
+                    )
+                    .frame(width: band.width, height: height, alignment: .leading)
+                    .offset(x: band.x)
                 }
 
                 if let timePace, timePacePercent.map({ $0 > 2 && $0 < 98 }) == true {
@@ -141,6 +146,37 @@ struct ForecastQuotaBar: View {
             }
         }
         .frame(height: height)
+    }
+
+    @ViewBuilder
+    private func confidenceBand(
+        actualColor: Color,
+        overlapWidth: CGFloat,
+        bandWidth: CGFloat,
+        seamWidth: CGFloat,
+        hasInternalBoundary: Bool
+    ) -> some View {
+        ZStack(alignment: .leading) {
+            Capsule(style: .continuous)
+                .fill(forecastColor)
+
+            if overlapWidth > 0.5 {
+                if hasInternalBoundary {
+                    Capsule(style: .continuous)
+                        .fill(confidenceSeamColor)
+                        .frame(width: min(bandWidth, overlapWidth + seamWidth))
+                }
+
+                Capsule(style: .continuous)
+                    .fill(actualColor.mix(with: forecastColor, by: 0.42))
+                    .frame(width: overlapWidth)
+            }
+        }
+        .clipShape(Capsule(style: .continuous))
+    }
+
+    private var confidenceSeamColor: Color {
+        colorScheme == .dark ? .black : .white
     }
 
     private func clamp(_ value: Double, _ lower: Double, _ upper: Double) -> Double {
