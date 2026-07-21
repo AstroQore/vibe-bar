@@ -100,9 +100,11 @@ struct ForecastQuotaBar: View {
             )
             let actualFillWidth = min(width, max(height, width * fillFraction))
             let bandOverlapWidth = max(0, min(band.width, actualFillWidth - band.x))
-            let hasInternalBoundary = bandOverlapWidth > 0.5 && bandOverlapWidth < band.width - 0.5
-            let seamWidth = min(2.5, max(1.5, height * 0.18))
+            let seamWidth = min(3, max(2, height * 0.25))
             let actualColor = Theme.barColor(percent: percent, mode: mode)
+            let visibleForecastColor = colorScheme == .dark
+                ? forecastColor.mix(with: .white, by: 0.16)
+                : forecastColor
 
             ZStack(alignment: .leading) {
                 ZStack(alignment: .leading) {
@@ -118,9 +120,8 @@ struct ForecastQuotaBar: View {
                     confidenceBand(
                         actualColor: actualColor,
                         overlapWidth: bandOverlapWidth,
-                        bandWidth: band.width,
                         seamWidth: seamWidth,
-                        hasInternalBoundary: hasInternalBoundary
+                        visibleForecastColor: visibleForecastColor
                     )
                     .frame(width: band.width, height: height, alignment: .leading)
                     .offset(x: band.x)
@@ -137,7 +138,7 @@ struct ForecastQuotaBar: View {
                         .fill(colorScheme == .dark ? Color.black.opacity(0.82) : Color.white.opacity(0.92))
                         .frame(width: forecastLineWidth + 3, height: height)
                     RoundedRectangle(cornerRadius: forecastLineWidth / 2, style: .continuous)
-                        .fill(forecastColor)
+                        .fill(visibleForecastColor)
                         .frame(width: forecastLineWidth, height: height)
                         .shadow(color: Color.black.opacity(0.30), radius: 0.7)
                 }
@@ -152,27 +153,23 @@ struct ForecastQuotaBar: View {
     private func confidenceBand(
         actualColor: Color,
         overlapWidth: CGFloat,
-        bandWidth: CGFloat,
         seamWidth: CGFloat,
-        hasInternalBoundary: Bool
+        visibleForecastColor: Color
     ) -> some View {
         ZStack(alignment: .leading) {
             Capsule(style: .continuous)
-                .fill(forecastColor)
+                .fill(visibleForecastColor)
 
             if overlapWidth > 0.5 {
-                if hasInternalBoundary {
-                    Capsule(style: .continuous)
-                        .fill(confidenceSeamColor)
-                        .frame(width: min(bandWidth, overlapWidth + seamWidth))
-                }
+                Capsule(style: .continuous)
+                    .fill(confidenceSeamColor)
+                    .frame(width: overlapWidth + seamWidth)
 
                 Capsule(style: .continuous)
-                    .fill(actualColor.mix(with: forecastColor, by: 0.42))
+                    .fill(actualColor.mix(with: visibleForecastColor, by: 0.42))
                     .frame(width: overlapWidth)
             }
         }
-        .clipShape(Capsule(style: .continuous))
     }
 
     private var confidenceSeamColor: Color {
