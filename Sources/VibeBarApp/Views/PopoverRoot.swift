@@ -1885,10 +1885,11 @@ private struct ProviderBucketRow: View {
         let percent = bucket.displayPercent(mode)
         let pace = UsagePace.compute(bucket: bucket, now: now)
         let forecast = paceForecast(now: now)
-        let expectedDisplayed = forecast.map { displayedPlan($0) }
-            ?? pace.map { expectedDisplay(for: $0, mode: mode) }
         let forecastRange = forecast.map { displayedRange($0) }
         let forecastMedian = forecast.map { displayedForecast($0) }
+        let legacyExpectedDisplayed = forecast == nil
+            ? pace.map { expectedDisplay(for: $0, mode: mode) }
+            : nil
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
@@ -1904,15 +1905,22 @@ private struct ProviderBucketRow: View {
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
             }
-            if let expectedDisplayed {
+            if let forecast, let forecastRange, let forecastMedian {
+                ForecastQuotaBar(
+                    percent: percent,
+                    mode: mode,
+                    forecastLowerPercent: forecastRange.lowerBound,
+                    forecastUpperPercent: forecastRange.upperBound,
+                    forecastMedianPercent: forecastMedian,
+                    forecastColor: QuotaForecastPalette.color(for: forecast.verdict),
+                    height: density.bucketBarHeight
+                )
+            } else if let legacyExpectedDisplayed {
                 PaceMarkerCapsule(
                     usedPercent: percent,
-                    expectedPercent: expectedDisplayed,
+                    expectedPercent: legacyExpectedDisplayed,
                     mode: mode,
-                    height: density.bucketBarHeight,
-                    forecastLowerPercent: forecastRange?.lowerBound,
-                    forecastUpperPercent: forecastRange?.upperBound,
-                    forecastMedianPercent: forecastMedian
+                    height: density.bucketBarHeight
                 )
             } else {
                 QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
@@ -1939,13 +1947,6 @@ private struct ProviderBucketRow: View {
             dailyActivity: snapshot?.dailyHistory ?? [],
             now: now
         )
-    }
-
-    private func displayedPlan(_ forecast: QuotaPaceForecast) -> Double {
-        switch mode {
-        case .used: forecast.plannedUsedPercent
-        case .remaining: 100 - forecast.plannedUsedPercent
-        }
     }
 
     private func displayedForecast(_ forecast: QuotaPaceForecast) -> Double {

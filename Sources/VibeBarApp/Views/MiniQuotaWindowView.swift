@@ -482,6 +482,7 @@ private func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact:
     let left = Int(forecast.projectedRemainingPercent.rounded())
     switch forecast.verdict {
     case .enough: return compact ? "left \(left)%" : "\(left)% left"
+    case .surplus: return compact ? "surplus \(left)%" : "surplus · \(left)% left"
     case .watch: return "watch"
     case .atRisk: return "risk"
     case .learning: return compact ? "~\(left)% left" : "learning · \(left)% left"
@@ -492,6 +493,7 @@ private func miniForecastColor(_ forecast: QuotaPaceForecast?) -> Color {
     guard let forecast else { return Color.secondary.opacity(0.5) }
     switch forecast.verdict {
     case .enough: return Color(red: 0.20, green: 0.70, blue: 0.48)
+    case .surplus: return Color(red: 0.20, green: 0.56, blue: 0.88)
     case .watch: return Color(red: 0.96, green: 0.62, blue: 0.20)
     case .atRisk: return Color(red: 0.95, green: 0.32, blue: 0.32)
     case .learning: return .secondary
@@ -556,8 +558,14 @@ private func miniPrimaryGroupTitle(
     for tool: ToolType,
     settings: MiniWindowSettings
 ) -> String? {
-    guard tool == .gemini else { return nil }
-    let key = "gemini.chat"
+    let key: String
+    switch tool {
+    case .codex: key = "codex.all-models"
+    case .claude: key = "claude.all-models"
+    case .gemini: key = "gemini.chat"
+    case .grok: key = "grok.all-models"
+    default: return nil
+    }
     let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let custom, !custom.isEmpty {
         return custom
@@ -619,9 +627,9 @@ private struct MiniL2GroupColumn: View {
     }
 }
 
-/// One L3 member inside an L2 super-column. Primary Gemini Web quotas use a
-/// compact "Gemini Chat" group heading so the two leftmost rings are clearly
-/// distinguished from AntiGravity's Gemini and Claude + GPT quota groups.
+/// One L3 member inside an L2 super-column. Primary provider quotas get an
+/// explicit group heading: "All Models" for ChatGPT, Claude, and Grok, and
+/// "Gemini Chat" for Gemini Web so it stays distinct from AntiGravity groups.
 private struct MiniMemberStack: View {
     let member: MiniL2Member
     let settings: MiniWindowSettings

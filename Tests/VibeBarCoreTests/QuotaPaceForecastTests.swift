@@ -41,6 +41,9 @@ final class QuotaPaceForecastTests: XCTestCase {
         XCTAssertEqual(forecast.verdict, .learning)
         XCTAssertEqual(forecast.projectedUsedPercent, 60, accuracy: 0.5)
         XCTAssertGreaterThan(forecast.targetRemainingPercent, 10)
+        XCTAssertEqual(forecast.diagnostics.behavioralProjectionUsedPercent, 60, accuracy: 0.5)
+        XCTAssertFalse(forecast.diagnostics.hasActivityTrendBaseline)
+        XCTAssertEqual(forecast.diagnostics.recentSampleCount, 0)
     }
 
     func testRecentAccelerationPredictsRunOutBeforeReset() throws {
@@ -61,6 +64,8 @@ final class QuotaPaceForecastTests: XCTestCase {
         ))
         XCTAssertEqual(forecast.verdict, .atRisk)
         XCTAssertGreaterThanOrEqual(forecast.projectedUsedPercent, 100)
+        XCTAssertNotNil(forecast.diagnostics.recentProjectionUsedPercent)
+        XCTAssertGreaterThan(forecast.diagnostics.recentSampleCount, 0)
         XCTAssertNotNil(forecast.runOutAt)
         XCTAssertLessThan(try XCTUnwrap(forecast.runOutAt), reset)
     }
@@ -100,9 +105,16 @@ final class QuotaPaceForecastTests: XCTestCase {
             cycles: cycles,
             now: now
         ))
-        XCTAssertNotEqual(forecast.verdict, .atRisk)
+        XCTAssertEqual(forecast.verdict, .surplus)
+        XCTAssertEqual(forecast.verdictLabel, "Surplus")
+        XCTAssertTrue(forecast.resetSummary.hasPrefix("Likely surplus"))
+        XCTAssertTrue(forecast.guidanceSummary.contains("likely unused"))
         XCTAssertGreaterThan(forecast.potentialUnusedPercent, 30)
         XCTAssertGreaterThan(forecast.projectedRemainingPercent, forecast.targetRemainingPercent)
+        XCTAssertGreaterThanOrEqual(
+            forecast.projectedRemainingRange.lowerBound - forecast.targetRemainingPercent,
+            10
+        )
     }
 
     func testForecastKeepsEveryBucketIndependent() throws {
@@ -157,5 +169,7 @@ final class QuotaPaceForecastTests: XCTestCase {
             calendar: calendar
         ))
         XCTAssertGreaterThan(habitual.plannedUsedPercent, uniform.plannedUsedPercent + 20)
+        XCTAssertEqual(habitual.diagnostics.activityCoveragePercent, 100)
+        XCTAssertGreaterThan(habitual.diagnostics.behavioralProgressPercent, 70)
     }
 }

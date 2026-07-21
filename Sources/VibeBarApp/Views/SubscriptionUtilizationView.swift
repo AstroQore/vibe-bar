@@ -5,9 +5,10 @@ import VibeBarCore
 /// Subscription Utilization sub-page. Every independently resettable quota
 /// gets its own pace row — including model-scoped buckets such as Codex Spark
 /// and Claude Fable, plus linked product tools such as AntiGravity on Gemini.
-/// Each row shows the absolute time-since-reset on a horizontal Swift Charts
-/// bar alongside the linear "expected" reference line, making it obvious
-/// whether the user is burning faster or slower than the linear pace.
+/// The detailed view keeps both reference systems visible: the legacy
+/// wall-clock pace and the personal activity-aware plan. It also exposes the
+/// component projections, evidence coverage, confidence, target, and final
+/// forecast so the verdict is inspectable rather than a black box.
 struct SubscriptionUtilizationView: View {
     let tool: ToolType
     let buckets: [QuotaBucket]
@@ -123,7 +124,8 @@ struct SubscriptionUtilizationView: View {
         let pace = UsagePace.compute(bucket: bucket, now: now)
         let forecast = paceForecast(for: item)
         let used = bucket.usedPercent
-        let expected = forecast?.plannedUsedPercent ?? pace?.expectedUsedPercent ?? 0
+        let timeExpected = pace?.expectedUsedPercent
+        let personalExpected = forecast?.plannedUsedPercent
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(rowTitle(for: item))
@@ -144,13 +146,15 @@ struct SubscriptionUtilizationView: View {
                 )
                 .foregroundStyle(Theme.barColor(percent: used, mode: .used))
                 .cornerRadius(3)
-                if expected > 0 {
-                    RuleMark(x: .value("Expected", expected))
-                        .foregroundStyle(.primary.opacity(0.55))
-                        .lineStyle(StrokeStyle(lineWidth: 1.5))
-                        // Annotation moved into the legend row below the chart
-                        // — placing it inside Charts caused the popover to clip
-                        // when the rule was near the chart edge (esp. at 100%).
+                if let timeExpected, timeExpected > 0 {
+                    RuleMark(x: .value("Time-only pace", timeExpected))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                        .lineStyle(StrokeStyle(lineWidth: 1.25, dash: [3, 3]))
+                }
+                if let personalExpected, personalExpected > 0 {
+                    RuleMark(x: .value("Personal plan", personalExpected))
+                        .foregroundStyle(Color.accentColor.opacity(0.9))
+                        .lineStyle(StrokeStyle(lineWidth: 2))
                 }
             }
             .chartXScale(domain: 0...100)
@@ -167,6 +171,10 @@ struct SubscriptionUtilizationView: View {
             }
             .chartYAxis(.hidden)
             .frame(height: density.utilizationBarHeight)
+            referenceLegend(
+                timeExpected: timeExpected,
+                personalExpected: personalExpected
+            )
             Text(SubscriptionWindowProgress.summary(
                 usedPercent: bucket.usedPercent,
                 resetAt: bucket.resetAt,
@@ -184,6 +192,7 @@ struct SubscriptionUtilizationView: View {
                     fontSize: density.subtitleFontSize,
                     showGuidance: true
                 )
+                forecastExplanation(forecast: forecast, pace: pace)
             } else if let pace {
                 HStack(spacing: 6) {
                     Text(pace.stageSummary)
@@ -208,6 +217,206 @@ struct SubscriptionUtilizationView: View {
             dailyActivity: snapshot?.dailyHistory ?? [],
             now: now
         )
+    }
+
+    @ViewBuilder
+    private func referenceLegend(timeExpected: Double?, personalExpected: Double?) -> some View {
+        HStack(spacing: 14) {
+            if let timeExpected {
+                referenceLegendItem(
+                    color: .secondary,
+                    label: "Time-only pace",
+                    value: "\(Int(timeExpected.rounded()))%"
+                )
+            }
+            if let personalExpected {
+                referenceLegendItem(
+                    color: .accentColor,
+                    label: "Personal plan",
+                    value: "\(Int(personalExpected.rounded()))%"
+                )
+            }
+            Spacer(minLength: 4)
+            Text("bar = actual used")
+                .font(.system(size: max(8, density.subtitleFontSize - 1)))
+                .foregroundStyle(.tertiary)
+        }
+        .lineLimit(1)
+    }
+
+    private func referenceLegendItem(color: Color, label: String, value: String) -> some View {
+        HStack(spacing: 5) {
+            Capsule(style: .continuous)
+                .fill(color)
+                .frame(width: 14, height: 2)
+            Text("\(label) \(value)")
+                .font(.system(size: max(8, density.subtitleFontSize - 1), weight: .medium))
+                .foregroundStyle(color)
+        }
+    }
+
+    private struct ForecastMetric: Identifiable {
+        let id: String
+        let label: String
+        let value: String
+        let detail: String
+    }
+
+    private func forecastExplanation(
+        forecast: QuotaPaceForecast,
+        pace: UsagePace?
+    ) -> some View {
+        let metrics = forecastMetrics(forecast: forecast, pace: pace)
+        return VStack(alignment: .leading, spacing: 7) {
+            Text("How this forecast was calculated")
+                .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                .foregroundStyle(.secondary)
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                alignment: .leading,
+                spacing: 7
+            ) {
+                ForEach(metrics) { metric in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(metric.label.uppercased())
+                            .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                        Text(metric.value)
+                            .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                        Text(metric.detail)
+                            .font(.system(size: max(8, density.subtitleFontSize - 1)))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.035))
+                    )
+                }
+            }
+            Text("Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage.")
+                .font(.system(size: max(8, density.subtitleFontSize - 1)))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 2)
+    }
+
+    private func forecastMetrics(
+        forecast: QuotaPaceForecast,
+        pace: UsagePace?
+    ) -> [ForecastMetric] {
+        let diagnostics = forecast.diagnostics
+        let timePaceValue = pace.map { "\(whole($0.expectedUsedPercent))% expected now" } ?? "Unavailable"
+        let timePaceDetail = pace.map { "\($0.stageSummary) by wall clock" } ?? "Needs reset time and window length"
+        let recentValue = diagnostics.recentProjectionUsedPercent
+            .map { "\(whole($0))% used at reset" } ?? "Learning"
+        let recentDetail = diagnostics.recentSampleCount > 0
+            ? "\(diagnostics.recentSampleCount) recent intervals"
+            : "Needs at least two useful observations"
+        let historyValue = diagnostics.historicalProjectionUsedPercent
+            .map { "\(whole($0))% used at reset" } ?? "No comparison yet"
+        let historyDetail = diagnostics.comparableCycleCount > 0
+            ? "\(diagnostics.comparableCycleCount) comparable reset cycles"
+            : "Completed cycles will appear here"
+        let activityDetail = diagnostics.activityCoveragePercent > 0
+            ? "weekday and hour weighted"
+            : "wall-clock fallback until habits exist"
+        let trendValue = diagnostics.hasActivityTrendBaseline
+            ? String(format: "%.2f× activity", diagnostics.activityTrendMultiplier)
+            : "No baseline yet"
+        let trendDetail = diagnostics.hasActivityTrendBaseline
+            ? "last 7 days versus prior 21 days"
+            : "needs prior daily activity"
+        let range = forecast.projectedUsedLowerPercent...forecast.projectedUsedUpperPercent
+        let unused = whole(forecast.potentialUnusedPercent)
+
+        return [
+            ForecastMetric(
+                id: "time",
+                label: "Time-only pace",
+                value: timePaceValue,
+                detail: timePaceDetail
+            ),
+            ForecastMetric(
+                id: "plan",
+                label: "Personal plan now",
+                value: "\(whole(forecast.plannedUsedPercent))% used",
+                detail: "activity timing + \(whole(forecast.targetRemainingPercent))% safety target"
+            ),
+            ForecastMetric(
+                id: "recent",
+                label: "Recent burn",
+                value: recentValue,
+                detail: recentDetail
+            ),
+            ForecastMetric(
+                id: "history",
+                label: "Reset history",
+                value: historyValue,
+                detail: historyDetail
+            ),
+            ForecastMetric(
+                id: "activity",
+                label: "Activity timing",
+                value: "\(whole(diagnostics.behavioralProgressPercent))% elapsed",
+                detail: activityDetail
+            ),
+            ForecastMetric(
+                id: "trend",
+                label: "Recent trend",
+                value: trendValue,
+                detail: trendDetail
+            ),
+            ForecastMetric(
+                id: "forecast",
+                label: "Forecast at reset",
+                value: "\(whole(forecast.projectedUsedPercent))% used",
+                detail: "\(whole(forecast.projectedRemainingPercent))% expected left"
+            ),
+            ForecastMetric(
+                id: "range",
+                label: "Forecast range",
+                value: "\(whole(range.lowerBound))–\(whole(range.upperBound))% used",
+                detail: "uncertainty interval"
+            ),
+            ForecastMetric(
+                id: "target",
+                label: "Safety target",
+                value: "\(whole(forecast.targetRemainingPercent))% left",
+                detail: unused >= 3 ? "\(unused)% capacity above target" : "inside the target range"
+            ),
+            ForecastMetric(
+                id: "evidence",
+                label: "Evidence",
+                value: "\(forecast.currentObservationCount) obs · \(forecast.completedCycleCount) cycles",
+                detail: "\(forecast.confidenceLabel) · score \(whole(forecast.confidenceScore * 100))%"
+            ),
+            ForecastMetric(
+                id: "coverage",
+                label: "Coverage",
+                value: "obs \(whole(diagnostics.observationCoveragePercent))% · history \(whole(diagnostics.historyCoveragePercent))%",
+                detail: "fresh \(whole(diagnostics.freshnessPercent))% · habits \(whole(diagnostics.activityCoveragePercent))%"
+            ),
+            ForecastMetric(
+                id: "behavior",
+                label: "Behavior fallback",
+                value: "\(whole(diagnostics.behavioralProjectionUsedPercent))% used at reset",
+                detail: "used when stronger evidence is sparse"
+            ),
+        ]
+    }
+
+    private func whole(_ value: Double) -> Int {
+        Int(value.rounded())
     }
 
     private func rowTitle(for item: UtilizationBucket) -> String {

@@ -13,6 +13,7 @@ import Foundation
 public struct QuotaPaceForecast: Sendable, Equatable {
     public enum Verdict: String, Sendable, Equatable {
         case enough
+        case surplus
         case watch
         case atRisk
         case learning
@@ -22,6 +23,24 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         case learning
         case medium
         case high
+    }
+
+    /// Explainable inputs and component projections used by the blended
+    /// forecast. These values are intentionally retained so detailed product
+    /// surfaces can show their work instead of presenting a black-box verdict.
+    public struct Diagnostics: Sendable, Equatable {
+        public let recentProjectionUsedPercent: Double?
+        public let historicalProjectionUsedPercent: Double?
+        public let behavioralProjectionUsedPercent: Double
+        public let behavioralProgressPercent: Double
+        public let activityTrendMultiplier: Double
+        public let hasActivityTrendBaseline: Bool
+        public let observationCoveragePercent: Double
+        public let historyCoveragePercent: Double
+        public let freshnessPercent: Double
+        public let activityCoveragePercent: Double
+        public let recentSampleCount: Int
+        public let comparableCycleCount: Int
     }
 
     public let verdict: Verdict
@@ -38,6 +57,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
     public let runOutAt: Date?
     public let completedCycleCount: Int
     public let currentObservationCount: Int
+    public let diagnostics: Diagnostics
 
     public var projectedRemainingPercent: Double {
         max(0, 100 - projectedUsedPercent)
@@ -57,6 +77,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
     public var verdictLabel: String {
         switch verdict {
         case .enough: "Enough"
+        case .surplus: "Surplus"
         case .watch: "Watch"
         case .atRisk: "At risk"
         case .learning: "Learning"
@@ -76,6 +97,8 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         switch verdict {
         case .enough:
             return "Forecast \(left)% left at reset"
+        case .surplus:
+            return "Likely surplus · forecast \(left)% left"
         case .watch:
             return "May run short · forecast \(left)% left"
         case .atRisk:
@@ -90,6 +113,9 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let unused = Int(potentialUnusedPercent.rounded())
         if verdict == .atRisk { return "Slow down or shift work to another quota" }
         if verdict == .watch { return "Recent usage is above the safe range" }
+        if verdict == .surplus {
+            return "About \(unused)% likely unused beyond the \(target)% safety target"
+        }
         if unused >= 3 {
             return "Target \(target)% left · about \(unused)% available"
         }
@@ -134,17 +160,24 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             currentProgress: behavioralProgress,
             profile: profile
         )
-        let trend = activityTrend(dailyActivity, now: now, calendar: calendar)
+        let trendResult = activityTrend(dailyActivity, now: now, calendar: calendar)
+        let trend = trendResult.multiplier
+
+        let recentProjection = recent.rate.flatMap { recentRate in
+            recentRate > 0 ? actual + recentRate * futureActivity : nil
+        }
+        let historicalProjection = median(historicalAdditions).map {
+            actual + $0 * trend
+        }
 
         var candidates: [(value: Double, weight: Double)] = []
-        if let recentRate = recent.rate, recentRate > 0 {
-            let prediction = actual + recentRate * futureActivity
+        if let recentProjection {
             let reliability = min(1, Double(recent.sampleCount) / 6)
-            candidates.append((prediction, 0.52 * reliability))
+            candidates.append((recentProjection, 0.52 * reliability))
         }
-        if let historical = median(historicalAdditions) {
+        if let historicalProjection {
             let reliability = min(1, Double(historicalAdditions.count) / 5)
-            candidates.append((actual + historical * trend, 0.34 * reliability))
+            candidates.append((historicalProjection, 0.34 * reliability))
         }
 
         // Always retain a low-weight behavioral-time fallback. It behaves like
@@ -156,7 +189,8 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         } else {
             fallback = actual
         }
-        candidates.append((fallback * trend, 0.14))
+        let behavioralProjection = fallback * trend
+        candidates.append((behavioralProjection, 0.14))
 
         let weightSum = candidates.reduce(0) { $0 + $1.weight }
         let rawProjection = weightSum > 0
@@ -202,6 +236,11 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         )
         let lower = max(actual, projected - uncertainty)
         let upper = projected + uncertainty
+        // A high remaining estimate alone is not enough to call quota waste:
+        // require both a material median surplus and a pessimistic bound that
+        // still clears the adaptive safety target.
+        let medianSurplus = max(0, 100 - projected - targetRemaining)
+        let conservativeSurplus = max(0, 100 - upper - targetRemaining)
 
         let verdict: Verdict
         if projected >= 100 {
@@ -210,6 +249,8 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             verdict = .watch
         } else if confidence == .learning {
             verdict = .learning
+        } else if medianSurplus >= 25, conservativeSurplus >= 10 {
+            verdict = .surplus
         } else {
             verdict = .enough
         }
@@ -240,7 +281,21 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             targetRemainingPercent: targetRemaining,
             runOutAt: runOutAt,
             completedCycleCount: completed.count,
-            currentObservationCount: currentPoints.count
+            currentObservationCount: currentPoints.count,
+            diagnostics: Diagnostics(
+                recentProjectionUsedPercent: recentProjection,
+                historicalProjectionUsedPercent: historicalProjection,
+                behavioralProjectionUsedPercent: behavioralProjection,
+                behavioralProgressPercent: behavioralProgress * 100,
+                activityTrendMultiplier: trend,
+                hasActivityTrendBaseline: trendResult.hasBaseline,
+                observationCoveragePercent: observationCoverage * 100,
+                historyCoveragePercent: historyCoverage * 100,
+                freshnessPercent: freshness * 100,
+                activityCoveragePercent: activityCoverage * 100,
+                recentSampleCount: recent.sampleCount,
+                comparableCycleCount: historicalAdditions.count
+            )
         )
     }
 
@@ -294,18 +349,30 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         }
     }
 
-    private static func activityTrend(_ days: [DailyCostPoint], now: Date, calendar: Calendar) -> Double {
-        guard !days.isEmpty else { return 1 }
+    private struct ActivityTrendResult {
+        let multiplier: Double
+        let hasBaseline: Bool
+    }
+
+    private static func activityTrend(
+        _ days: [DailyCostPoint],
+        now: Date,
+        calendar: Calendar
+    ) -> ActivityTrendResult {
+        guard !days.isEmpty else { return ActivityTrendResult(multiplier: 1, hasBaseline: false) }
         let today = calendar.startOfDay(for: now)
         let recentStart = calendar.date(byAdding: .day, value: -6, to: today) ?? today
         let baselineStart = calendar.date(byAdding: .day, value: -27, to: today) ?? today
         let baselineEnd = calendar.date(byAdding: .day, value: -7, to: today) ?? today
         let recentTotal = days.filter { $0.date >= recentStart && $0.date <= now }.reduce(0.0) { $0 + Double($1.totalTokens) }
         let baselineTotal = days.filter { $0.date >= baselineStart && $0.date < baselineEnd }.reduce(0.0) { $0 + Double($1.totalTokens) }
-        guard baselineTotal > 0 else { return 1 }
+        guard baselineTotal > 0 else { return ActivityTrendResult(multiplier: 1, hasBaseline: false) }
         let recentAverage = recentTotal / 7
         let baselineAverage = baselineTotal / 21
-        return clamp(recentAverage / baselineAverage, 0.5, 1.8)
+        return ActivityTrendResult(
+            multiplier: clamp(recentAverage / baselineAverage, 0.5, 1.8),
+            hasBaseline: true
+        )
     }
 
     private struct ActivityProfile {

@@ -641,6 +641,29 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 - **Mini-window geometry stays in `mini_window_geometry.json`.** Do not
   fold it back into `AppSettings` — every settings write fans out to
   every Combine subscriber.
+- **Keep the two pace systems intentionally separate.** The core-provider
+  surfaces (ChatGPT/Codex, Claude, Gemini Web, AntiGravity, and Grok) may use
+  `QuotaPaceForecast` and reset-cycle observations. Misc provider cards must
+  retain the legacy elapsed-time `UsagePace` reserve/deficit calculation and
+  `PaceMarkerCapsule`; do not route Misc through the personal forecast model
+  unless AQ explicitly asks to change that product boundary.
+- **Forecast overlays need one coherent visual vocabulary.** The current quota
+  remains the primary summary-bar layer. If a personal forecast is overlaid,
+  use one integrated uncertainty band plus one color-matched endpoint tied to
+  the labeled status row below. Do not stack unrelated plan, range, and median
+  micro-lines; they look like rendering defects without a legend. Detailed
+  utilization views may carry additional labeled planning marks.
+- **Subscription Utilization is the forecast explainability surface.** Keep
+  the legacy wall-clock pace visible alongside the personal plan, then expose
+  recent burn, reset-history comparison, weekday/hour activity weighting,
+  recent activity trend, forecast interval, safety target, evidence counts,
+  coverage, and confidence. The Overview may stay concise; this detail view
+  must show why a verdict was produced.
+- **`Surplus` is a robust likely-waste verdict, not a synonym for high current
+  remaining quota.** Keep `Learning` while confidence is low. Only surface
+  `Surplus` with at least medium confidence, a materially large median surplus
+  above the safety target, and a conservative forecast bound that still clears
+  that target. Risk verdicts always take precedence.
 - **Bundle ID is `com.astroqore.VibeBar`.** For a release, bump
   `CFBundleShortVersionString` and `CFBundleVersion` in
   `Resources/Info.plist`.
