@@ -1,10 +1,7 @@
 import SwiftUI
-import UniformTypeIdentifiers
 import VibeBarCore
 
-private enum SettingsSectionID: String, CaseIterable, Identifiable {
-    case general
-    case providerBadges
+enum SettingsSectionID: String {
     case menuBar
     case miniWindow
     case openAI
@@ -21,8 +18,6 @@ private enum SettingsSectionID: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: "General"
-        case .providerBadges: "Provider Badges"
         case .menuBar: "Menu Bar"
         case .miniWindow: "Mini Window"
         case .openAI: "OpenAI"
@@ -39,8 +34,6 @@ private enum SettingsSectionID: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .general: "gearshape"
-        case .providerBadges: "person.text.rectangle"
         case .menuBar: "menubar.rectangle"
         case .miniWindow: "rectangle.on.rectangle"
         case .openAI: "brain.head.profile"
@@ -52,6 +45,44 @@ private enum SettingsSectionID: String, CaseIterable, Identifiable {
         case .costData: "chart.bar.xaxis"
         case .keychain: "key.fill"
         case .privacy: "hand.raised.fill"
+        }
+    }
+}
+
+enum SettingsDestination: Hashable {
+    case page(SettingsSectionID)
+    case coreProvider(ToolType)
+    case miscProvider(String)
+
+    var sectionID: SettingsSectionID {
+        switch self {
+        case let .page(section): section
+        case let .coreProvider(tool):
+            switch tool.coreProviderRepresentative {
+            case .codex: .openAI
+            case .claude: .anthropic
+            case .gemini: .googleAI
+            case .grok: .xAI
+            default: .openAI
+            }
+        case .miscProvider: .miscProviders
+        }
+    }
+
+    func title(settings: AppSettings) -> String {
+        switch self {
+        case let .page(section): return section.title
+        case let .coreProvider(tool):
+            switch tool.coreProviderRepresentative {
+            case .codex: return "OpenAI"
+            case .claude: return "Anthropic"
+            case .gemini: return "Google AI"
+            case .grok: return "xAI"
+            default: return tool.vendorName
+            }
+        case let .miscProvider(id):
+            guard let instance = settings.miscProviderInstance(id: id) else { return "Misc Provider" }
+            return instance.displayTitle(fallback: instance.tool.menuTitle)
         }
     }
 }
@@ -75,27 +106,27 @@ struct SettingsView: View {
     @State private var isAuthorizingKeychain: Bool = false
     @State private var keychainAuthorizationStatus: String?
     @State private var keychainAuthorizationSucceeded: Bool = false
-    @State private var draggedMiscProviderInstanceID: String?
-    @State private var selectedSection: SettingsSectionID = .general
+    @State private var selectedDestination: SettingsDestination = .page(.system)
+
+    private var selectedSection: SettingsSectionID {
+        selectedDestination.sectionID
+    }
 
     var body: some View {
         HStack(spacing: 0) {
-            settingsSidebar { section in
-                selectedSection = section
-            }
-            Divider()
+            SettingsSidebarView(selection: $selectedDestination)
 
             VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text(selectedSection.title)
+                        Text(selectedDestination.title(settings: settingsStore.settings))
                             .font(.system(size: 20, weight: .semibold))
                         Spacer()
-                        Button(action: dismiss) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
+                        BorderlessIconButton(
+                            systemImage: "xmark.circle.fill",
+                            help: "Close Settings",
+                            size: 15,
+                            action: dismiss
+                        )
                     }
                     .padding(.horizontal, 22)
                     .padding(.vertical, 16)
@@ -104,8 +135,21 @@ struct SettingsView: View {
 
                     ScrollView(.vertical, showsIndicators: true) {
                         VStack(alignment: .leading, spacing: 18) {
-                    if selectedSection == .general {
-                    settingsSection("General") {
+                    if selectedSection == .system {
+                    settingsSection("System") {
+                        Toggle("Launch at login", isOn: launchAtLoginBinding())
+                        Text(launchAtLoginStatusText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        if let launchAtLoginError {
+                            Text(launchAtLoginError)
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .id(SettingsSectionID.system.rawValue)
+
+                    settingsSection("Refreshing") {
                         Picker("Percent shows", selection: $settingsStore.settings.displayMode) {
                             ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
                         }
@@ -133,32 +177,14 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .id(SettingsSectionID.general.id)
-                    }
-
-                    if selectedSection == .providerBadges {
-                    settingsSection("Provider Badges") {
-                        Text("Leave a badge blank to use the detected account plan.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(ToolType.dedicatedCardProviders, id: \.self) { tool in
-                                providerBadgeRow(tool)
-                            }
-                        }
-                    }
-                    .id(SettingsSectionID.providerBadges.id)
+                    .id("refreshing")
                     }
 
                     if selectedSection == .menuBar {
-                    settingsSection("Menu Bar Items") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(MenuBarItemKind.allCases) { kind in
-                                menuBarItemEditor(kind)
-                            }
-                        }
+                    settingsSection("Overview") {
+                        menuBarOverviewEditor()
                     }
-                    .id(SettingsSectionID.menuBar.id)
+                    .id(SettingsSectionID.menuBar.rawValue)
                     }
 
                     if selectedSection == .miniWindow {
@@ -209,7 +235,7 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .id(SettingsSectionID.miniWindow.id)
+                    .id(SettingsSectionID.miniWindow.rawValue)
                     }
 
                     if selectedSection == .openAI {
@@ -218,6 +244,7 @@ struct SettingsView: View {
                             representative: .codex,
                             healthProviders: [.codex]
                         )
+                        coreProviderPlanBadgeRows(for: [.codex])
                         Divider()
                             .padding(.vertical, 2)
                         Picker("Usage source", selection: $settingsStore.settings.codexUsageMode) {
@@ -278,6 +305,7 @@ struct SettingsView: View {
                             representative: .claude,
                             healthProviders: [.claude]
                         )
+                        coreProviderPlanBadgeRows(for: [.claude])
                         Divider()
                             .padding(.vertical, 2)
                         Picker("Usage source", selection: $settingsStore.settings.claudeUsageMode) {
@@ -338,6 +366,7 @@ struct SettingsView: View {
                             representative: .gemini,
                             healthProviders: [.gemini, .antigravity]
                         )
+                        coreProviderPlanBadgeRows(for: [.gemini, .antigravity])
                         Divider()
                             .padding(.vertical, 2)
                         Text("Gemini and Antigravity share the same Google AI subscription quota. Cookie import is the only supported web path — there is no WebView login.")
@@ -422,6 +451,7 @@ struct SettingsView: View {
                             representative: .grok,
                             healthProviders: [.grok]
                         )
+                        coreProviderPlanBadgeRows(for: [.grok])
                         Divider()
                             .padding(.vertical, 2)
                         Text("Vibe Bar can read Grok usage from `~/.grok/auth.json` (preferred — written by `grok login`) or from a signed-in grok.com browser session. Either source is enough.")
@@ -486,54 +516,16 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .miscProviders {
-                    settingsSection("Misc Providers") {
-                        Text("Usage-only integrations. Check providers to show them on the Misc page; hidden providers keep their saved setup.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(settingsStore.settings.miscProviderInstances) { instance in
-                                MiscProviderSettingsSection(instance: instance)
-                                    .onDrag {
-                                        draggedMiscProviderInstanceID = instance.id
-                                        return NSItemProvider(object: instance.id as NSString)
-                                    }
-                                    .onDrop(
-                                        of: [UTType.text],
-                                        delegate: MiscProviderInstanceDropDelegate(
-                                            targetID: instance.id,
-                                            draggedID: $draggedMiscProviderInstanceID,
-                                            settingsStore: settingsStore
-                                        )
-                                    )
-                            }
-                            Color.clear
-                                .frame(height: 8)
-                                .onDrop(
-                                    of: [UTType.text],
-                                    delegate: MiscProviderInstanceDropDelegate(
-                                        targetID: nil,
-                                        draggedID: $draggedMiscProviderInstanceID,
-                                        settingsStore: settingsStore
-                                    )
-                                )
+                    if case let .miscProvider(instanceID) = selectedDestination,
+                       let instance = settingsStore.settings.miscProviderInstance(id: instanceID) {
+                        MiscProviderSettingsSection(instance: instance)
+                    } else {
+                        settingsSection("Misc Provider") {
+                            Text("Select a provider from the sidebar. Hidden providers keep their saved setup and credentials.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .id(SettingsSectionID.miscProviders.id)
-                    }
-
-                    if selectedSection == .system {
-                    settingsSection("System") {
-                        Toggle("Launch at login", isOn: launchAtLoginBinding())
-                        Text(launchAtLoginStatusText)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        if let launchAtLoginError {
-                            Text(launchAtLoginError)
-                                .font(.caption2)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    .id(SettingsSectionID.system.id)
                     }
 
                     if selectedSection == .costData {
@@ -606,43 +598,6 @@ struct SettingsView: View {
         .onAppear(perform: refreshLaunchAtLoginState)
     }
 
-    private func settingsSidebar(onSelect: @escaping (SettingsSectionID) -> Void) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Vibe Bar")
-                    .font(.system(size: 17, weight: .semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
-                ForEach(SettingsSectionID.allCases) { section in
-                    Button {
-                        onSelect(section)
-                    } label: {
-                        HStack(spacing: 9) {
-                            Image(systemName: section.systemImage)
-                                .frame(width: 18)
-                            Text(section.title)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                        }
-                        .font(.system(size: 13, weight: selectedSection == section ? .semibold : .regular))
-                        .foregroundStyle(selectedSection == section ? Color.white : Color.primary)
-                        .padding(.horizontal, 10)
-                        .frame(height: 34)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(selectedSection == section ? Color.accentColor : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(14)
-        }
-        .frame(width: 205)
-        .background(Color.primary.opacity(0.035))
-    }
-
     private func settingsSection<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
@@ -702,6 +657,14 @@ struct SettingsView: View {
                 )
             }
         }
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.72))
+                .frame(width: 1)
+                .offset(x: SettingsSidebarView.width)
+                .ignoresSafeArea(.container, edges: .vertical)
+                .allowsHitTesting(false)
+        }
     }
 
     private func coreProviderSummary(
@@ -732,6 +695,20 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.caption)
+        }
+    }
+
+    private func coreProviderPlanBadgeRows(for tools: [ToolType]) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Plan badge")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(tools, id: \.self) { tool in
+                providerBadgeRow(tool)
+            }
+            Text("Leave blank to use the detected account plan.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -792,51 +769,32 @@ struct SettingsView: View {
         }
     }
 
-    private func menuBarItemEditor(_ kind: MenuBarItemKind) -> some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle("Show in menu bar", isOn: menuItemVisibleBinding(kind))
-                Toggle("Show title text", isOn: menuItemTitleBinding(kind))
-                Picker("Layout", selection: menuItemLayoutBinding(kind)) {
-                    ForEach(MenuBarLayout.allCases) { layout in
-                        Text(layout.label).tag(layout)
-                    }
-                }
-                .pickerStyle(.segmented)
-                Picker("Display density", selection: popoverDensityBinding()) {
-                    ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                Text(settingsStore.settings.popoverDensity.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
-                    Text("Fields")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
-                    menuItemFieldList(for: kind)
+    private func menuBarOverviewEditor() -> some View {
+        let kind = MenuBarItemKind.compact
+        return VStack(alignment: .leading, spacing: 10) {
+            Toggle("Show in menu bar", isOn: menuItemVisibleBinding(kind))
+            Toggle("Show title text", isOn: menuItemTitleBinding(kind))
+            Picker("Layout", selection: menuItemLayoutBinding(kind)) {
+                ForEach(MenuBarLayout.allCases) { layout in
+                    Text(layout.label).tag(layout)
                 }
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(spacing: 8) {
-                if settingsStore.settings.menuBarItem(kind).layout.showsMenuBarIcon {
-                    ProviderBrandIconView(kind: kind, size: 16)
-                }
-                Text(kind.label)
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer(minLength: 8)
-                Text(settingsStore.settings.menuBarItem(kind).layout.label)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+            .pickerStyle(.segmented)
+            Picker("Display density", selection: popoverDensityBinding()) {
+                ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Text(settingsStore.settings.popoverDensity.detail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
+                Text("Fields")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                menuItemFieldList(for: kind)
             }
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
     }
 
     private func launchAtLoginBinding() -> Binding<Bool> {
@@ -1258,31 +1216,6 @@ struct SettingsView: View {
         case 365 * 3: return "3 years"
         default: return "\(days) days"
         }
-    }
-}
-
-private struct MiscProviderInstanceDropDelegate: DropDelegate {
-    let targetID: String?
-    @Binding var draggedID: String?
-    let settingsStore: SettingsStore
-
-    func dropEntered(info: DropInfo) {
-        guard let draggedID else { return }
-        if let targetID {
-            guard draggedID != targetID else { return }
-            settingsStore.settings.moveMiscProviderInstance(id: draggedID, before: targetID)
-        } else {
-            settingsStore.settings.moveMiscProviderInstanceToEnd(id: draggedID)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggedID = nil
-        return true
     }
 }
 

@@ -20,7 +20,7 @@ struct QuotaBucketView: View {
             }
             QuotaBarShape(percent: percent, mode: mode, height: 12)
             HStack {
-                if let s = ResetCountdownFormatter.string(from: bucket.resetAt, now: now) {
+                if let s = ResetCountdownFormatter.stringWithAbsoluteTime(from: bucket.resetAt, now: now) {
                     Text("Resets in \(s)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)

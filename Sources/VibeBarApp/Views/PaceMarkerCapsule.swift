@@ -66,9 +66,9 @@ struct PaceMarkerCapsule: View {
 ///
 /// The actual fill remains the dominant layer. A substantial neutral tick
 /// marks where usage should be *now* under a time-only pace. A
-/// status-colored tick marks the projected usage *at reset*. A soft,
-/// full-height gradient expresses the confidence interval as one integrated
-/// layer rather than looking like a second progress bar below the quota.
+/// status-colored tick marks the projected usage *at reset*. A quiet,
+/// full-height flat tint expresses the confidence interval behind both the
+/// fill and markers; it is intentionally not a second bar or a gradient.
 struct ForecastQuotaBar: View {
     let percent: Double
     let mode: DisplayMode
@@ -76,6 +76,8 @@ struct ForecastQuotaBar: View {
     let forecastProjection: QuotaForecastBarProjection
     let forecastColor: Color
     var height: CGFloat = 12
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         GeometryReader { proxy in
@@ -85,7 +87,7 @@ struct ForecastQuotaBar: View {
             let upper = forecastProjection.upperPercent / 100
             let median = forecastProjection.medianPercent / 100
             let timePace = timePacePercent.map { clamp($0, 0, 100) / 100 }
-            let forecastLineWidth = max(2.5, min(3.5, height * 0.25))
+            let forecastLineWidth = max(3.2, min(4.2, height * 0.30))
             let paceMarkerWidth = max(4.5, min(5.5, height * 0.42))
             let minimumBandWidth = forecastLineWidth + 6
             let band = confidenceBandLayout(
@@ -104,9 +106,7 @@ struct ForecastQuotaBar: View {
 
                 if forecastProjection.hasUncertainty {
                     Rectangle()
-                        .fill(
-                            confidenceGradient(lower: lower, upper: upper, median: median)
-                        )
+                        .fill(forecastColor.opacity(colorScheme == .dark ? 0.28 : 0.20))
                         .frame(width: band.width, height: height)
                         .offset(x: band.x)
                 }
@@ -119,14 +119,15 @@ struct ForecastQuotaBar: View {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Color.black.opacity(0.12))
-                        .frame(width: forecastLineWidth + 2, height: height)
+                        .fill(colorScheme == .dark ? Color.black.opacity(0.82) : Color.white.opacity(0.92))
+                        .frame(width: forecastLineWidth + 3, height: height)
                     RoundedRectangle(cornerRadius: forecastLineWidth / 2, style: .continuous)
                         .fill(forecastColor)
-                        .frame(width: forecastLineWidth, height: max(4, height - 1))
+                        .frame(width: forecastLineWidth, height: height)
+                        .shadow(color: Color.black.opacity(0.30), radius: 0.7)
                 }
-                .frame(width: forecastLineWidth + 2, height: height)
-                .offset(x: markerOffset(width: width, fraction: median, markerWidth: forecastLineWidth + 2))
+                .frame(width: forecastLineWidth + 3, height: height)
+                .offset(x: markerOffset(width: width, fraction: median, markerWidth: forecastLineWidth + 3))
             }
             .clipShape(Capsule(style: .continuous))
         }
@@ -163,25 +164,6 @@ struct ForecastQuotaBar: View {
         let bandWidth = min(width, minimumWidth)
         let center = (naturalStart + naturalEnd) / 2
         return (max(0, min(width - bandWidth, center - bandWidth / 2)), bandWidth)
-    }
-
-    private func confidenceGradient(lower: Double, upper: Double, median: Double) -> LinearGradient {
-        let visibleSpan = upper - lower
-        let medianLocation = visibleSpan > 0
-            ? clamp((median - lower) / visibleSpan, 0, 1)
-            : (forecastProjection.clipsLowerBound ? 0 : 1)
-        let leadingOpacity = forecastProjection.clipsLowerBound ? 0.44 : 0.10
-        let trailingOpacity = forecastProjection.clipsUpperBound ? 0.44 : 0.10
-        let peakLocation = min(max(medianLocation, 0.001), 0.999)
-        return LinearGradient(
-            gradient: Gradient(stops: [
-                .init(color: forecastColor.opacity(leadingOpacity), location: 0),
-                .init(color: forecastColor.opacity(0.48), location: peakLocation),
-                .init(color: forecastColor.opacity(trailingOpacity), location: 1),
-            ]),
-            startPoint: .leading,
-            endPoint: .trailing
-        )
     }
 
     private func neutralPaceMarker(width: CGFloat) -> some View {

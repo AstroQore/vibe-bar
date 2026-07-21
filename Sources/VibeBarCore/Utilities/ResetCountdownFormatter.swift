@@ -1,6 +1,11 @@
 import Foundation
 
 public enum ResetCountdownFormatter {
+    private static let shortMonthNames = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+
     /// Formats a future reset date as a compact human countdown:
     /// "5d", "2d 4h", "3h 16m", "12m", "<1m", "now".
     /// Returns nil if `resetAt` is nil.
@@ -26,6 +31,36 @@ public enum ResetCountdownFormatter {
             return "\(minutes)m"
         }
         return "<1m"
+    }
+
+    /// Combines the compact countdown with the concrete local reset time.
+    /// Same-day resets stay compact ("3h 16m · 18:30"); later resets include
+    /// the calendar date ("2d 4h · Jul 24, 09:00") so the user never has to
+    /// mentally derive the exact reset from a relative duration.
+    public static func stringWithAbsoluteTime(
+        from resetAt: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        timeZone: TimeZone = .current
+    ) -> String? {
+        guard let resetAt, let countdown = string(from: resetAt, now: now) else { return nil }
+        var calendar = calendar
+        calendar.timeZone = timeZone
+
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: resetAt)
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day,
+              let hour = components.hour,
+              let minute = components.minute,
+              shortMonthNames.indices.contains(month - 1) else { return countdown }
+        let time = String(format: "%02d:%02d", hour, minute)
+        if calendar.isDate(resetAt, inSameDayAs: now) {
+            return "\(countdown) · \(time)"
+        } else if calendar.component(.year, from: resetAt) == calendar.component(.year, from: now) {
+            return "\(countdown) · \(shortMonthNames[month - 1]) \(day), \(time)"
+        }
+        return "\(countdown) · \(shortMonthNames[month - 1]) \(day), \(year), \(time)"
     }
 
     /// "Updated 10 seconds ago", "Updated 3 minutes ago", "Updated just now",
