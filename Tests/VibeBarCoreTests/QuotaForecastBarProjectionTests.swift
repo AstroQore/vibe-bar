@@ -144,7 +144,7 @@ final class QuotaForecastBarProjectionTests: XCTestCase {
         XCTAssertEqual(layout.style, .outlinedTint)
     }
 
-    func testRemainingBandPileupAtLowerAxisUsesSameOutlinedTint() {
+    func testRemainingBandPileupAtLowerAxisUsesInsetTint() {
         let projection = QuotaForecastBarProjection(
             projectedUsedLowerPercent: 95,
             projectedUsedUpperPercent: 100,
@@ -160,7 +160,47 @@ final class QuotaForecastBarProjectionTests: XCTestCase {
         XCTAssertEqual(layout.startPercent, 0)
         XCTAssertEqual(layout.widthPercent, 5)
         XCTAssertEqual(layout.overlapPercent, 5)
-        XCTAssertEqual(layout.style, .outlinedTint)
+        XCTAssertEqual(layout.style, .insetTint)
+        XCTAssertFalse(layout.showsGapConnector)
+    }
+
+    func testRemainingInsetTintNeverExtendsBeyondActualFill() {
+        let projection = QuotaForecastBarProjection(
+            projectedUsedLowerPercent: 99.7,
+            projectedUsedUpperPercent: 100,
+            projectedUsedMedianPercent: 99.9,
+            displayMode: .remaining
+        )
+
+        let layout = projection.confidenceBandLayout(
+            actualDisplayedPercent: 0.4,
+            minimumVisibleWidthPercent: 2
+        )
+
+        XCTAssertEqual(layout.style, .insetTint)
+        XCTAssertEqual(layout.startPercent, 0)
+        XCTAssertEqual(layout.widthPercent, 0.4, accuracy: 0.0001)
+        XCTAssertEqual(layout.overlapPercent, 0.4, accuracy: 0.0001)
+        XCTAssertLessThanOrEqual(layout.startPercent + layout.widthPercent, 0.4)
+    }
+
+    func testRemainingBandAboveExtremeThresholdUsesOrdinaryOpaqueOverlay() {
+        let projection = QuotaForecastBarProjection(
+            projectedUsedLowerPercent: 89,
+            projectedUsedUpperPercent: 94,
+            projectedUsedMedianPercent: 92,
+            displayMode: .remaining
+        )
+
+        let layout = projection.confidenceBandLayout(
+            actualDisplayedPercent: 11,
+            minimumVisibleWidthPercent: 2
+        )
+
+        XCTAssertEqual(layout.startPercent, 6)
+        XCTAssertEqual(layout.widthPercent, 5)
+        XCTAssertEqual(layout.style, .opaque)
+        XCTAssertFalse(layout.showsGapConnector)
     }
 
     func testRemainingBandReachingActualEndpointStaysOpaque() {

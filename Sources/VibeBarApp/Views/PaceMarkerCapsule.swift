@@ -69,8 +69,10 @@ struct PaceMarkerCapsule: View {
 /// status-colored tick marks the projected usage *at reset*. The confidence
 /// interval is a full-height capsule. It is opaque in ordinary geometry, uses
 /// a soft overlap or curved endpoint seam for the two Used-mode contact cases,
-/// and switches to an outlined tint when every mark crowds the lower axis. It
-/// is intentionally not a second bar or a gradient.
+/// and switches to an outlined tint when every Used-mode mark crowds the lower
+/// axis. In the equivalent Remaining-mode extreme, the interval becomes a
+/// narrow inset color core so the actual fill keeps one clean silhouette. It is
+/// intentionally not a second bar or a gradient.
 struct ForecastQuotaBar: View {
     let percent: Double
     let mode: DisplayMode
@@ -180,6 +182,11 @@ struct ForecastQuotaBar: View {
         visibleForecastColor: Color
     ) -> some View {
         switch style {
+        case .insetTint:
+            Capsule(style: .continuous)
+                .fill(visibleForecastColor.opacity(colorScheme == .dark ? 0.78 : 0.68))
+                .frame(height: max(3, height * 0.42))
+
         case .outlinedTint:
             ZStack(alignment: .trailing) {
                 Capsule(style: .continuous)

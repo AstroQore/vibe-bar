@@ -675,11 +675,14 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   rounded cap radius with no dark seam; when the actual endpoint falls
   strictly inside the interval, keep the interval's rounded lower cap laid over
   the complete actual fill and draw the curved background seam only at that
-  actual endpoint. When actual, interval, and median all crowd the lower axis,
-  both Used and Remaining modes use the same translucent full-height tint with
-  a complete rounded outline and emphasized far edge. Do not expose the track
-  through the lower rounded cap, use gradients or square color cuts, or make
-  the quota bar look thicker. Legends
+  actual endpoint. When Used-mode actual, interval, and median all crowd the
+  lower axis, use a translucent full-height tint with a complete rounded
+  outline and emphasized far edge. In Remaining mode, forecasts stay inside
+  the current remaining fill; at 8% remaining or below, preserve that fill as
+  the capsule silhouette and render the confidence interval as a narrow,
+  borderless inset color core. Do not expose the track through the lower
+  rounded cap, use gradients or square color cuts, or make the quota bar look
+  thicker. Legends
   must use the same marker shapes as the bar — never show a solid sample for a
   dashed mark, reduce the wall-clock reference to a hairline, or turn the
   forecast into a dot. Used/Remaining projection must be performed through one
