@@ -64,6 +64,7 @@ final class QuotaForecastBarProjectionTests: XCTestCase {
         XCTAssertEqual(layout.widthPercent, 20)
         XCTAssertEqual(layout.overlapPercent, 20)
         XCTAssertEqual(layout.style, .opaque)
+        XCTAssertFalse(layout.showsGapConnector)
     }
 
     func testUsedBandWithActualEndpointInsideIntervalUsesCurvedSeam() {
@@ -104,6 +105,7 @@ final class QuotaForecastBarProjectionTests: XCTestCase {
         XCTAssertEqual(layout.widthPercent, 20)
         XCTAssertEqual(layout.overlapPercent, 0)
         XCTAssertEqual(layout.style, .opaque)
+        XCTAssertTrue(layout.showsGapConnector)
     }
 
     func testUsedBandStartingAtActualEndpointUsesSoftJoin() {
@@ -122,6 +124,7 @@ final class QuotaForecastBarProjectionTests: XCTestCase {
         XCTAssertEqual(layout.startPercent, 40)
         XCTAssertEqual(layout.overlapPercent, 0)
         XCTAssertEqual(layout.style, .softJoin)
+        XCTAssertFalse(layout.showsGapConnector)
     }
 
     func testUsedBandPileupAtLowerAxisUsesOutlinedTint() {
@@ -177,6 +180,7 @@ final class QuotaForecastBarProjectionTests: XCTestCase {
         XCTAssertEqual(layout.widthPercent, 11)
         XCTAssertEqual(layout.overlapPercent, 11)
         XCTAssertEqual(layout.style, .opaque)
+        XCTAssertFalse(layout.showsGapConnector)
     }
 
     func testCurvedSeamKeepsRoundedLowerBoundInsideActualFill() {

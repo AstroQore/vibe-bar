@@ -669,8 +669,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   forecast-at-reset median is a verdict-colored vertical tick. The confidence
   interval always stays within the bar's original full height and follows four
   explicit geometries. Ordinary intervals use an opaque solid overlay. In Used
-  mode, an interval that starts exactly at the actual endpoint overlaps it by
-  one rounded cap radius with no dark seam; when the actual endpoint falls
+  mode, an interval separated from the actual endpoint stays opaque and uses a
+  quiet centerline connector whose ends tuck beneath both rounded caps. An
+  interval that starts exactly at the actual endpoint overlaps it by one
+  rounded cap radius with no dark seam; when the actual endpoint falls
   strictly inside the interval, keep the interval's rounded lower cap laid over
   the complete actual fill and draw the curved background seam only at that
   actual endpoint. When actual, interval, and median all crowd the lower axis,

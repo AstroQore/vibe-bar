@@ -105,6 +105,11 @@ struct ForecastQuotaBar: View {
             let bandOverlapWidth = band.style == .softJoin
                 ? softJoinOverlap
                 : width * band.overlapPercent / 100
+            let actualFillWidth = min(width, max(height, width * fillFraction))
+            let connectorCapOverlap = height / 2
+            let connectorStartX = max(0, actualFillWidth - connectorCapOverlap)
+            let connectorEndX = min(width, bandX + connectorCapOverlap)
+            let connectorWidth = max(0, connectorEndX - connectorStartX)
             let seamWidth = min(3, max(2, height * 0.25))
             let actualColor = Theme.barColor(percent: percent, mode: mode)
             let visibleForecastColor = colorScheme == .dark
@@ -115,9 +120,20 @@ struct ForecastQuotaBar: View {
                 ZStack(alignment: .leading) {
                     Capsule(style: .continuous)
                         .fill(Theme.barTrack)
+
+                    if forecastProjection.hasUncertainty,
+                       band.showsGapConnector,
+                       connectorWidth > 0.5
+                    {
+                        Capsule(style: .continuous)
+                            .fill(visibleForecastColor.opacity(colorScheme == .dark ? 0.34 : 0.24))
+                            .frame(width: connectorWidth, height: max(1.5, min(2.5, height * 0.18)))
+                            .offset(x: connectorStartX)
+                    }
+
                     Capsule(style: .continuous)
                         .fill(Theme.barColor(percent: percent, mode: mode))
-                        .frame(width: max(height, width * fillFraction))
+                        .frame(width: actualFillWidth)
                 }
                 .clipShape(Capsule(style: .continuous))
 

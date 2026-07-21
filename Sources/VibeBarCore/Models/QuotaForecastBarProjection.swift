@@ -121,11 +121,16 @@ public struct QuotaForecastBarProjection: Sendable, Equatable {
             style = .opaque
         }
 
+        let showsGapConnector = displayMode == .used
+            && style == .opaque
+            && start > actualEnd + tolerance
+
         return QuotaForecastBandLayout(
             startPercent: start,
             widthPercent: bandWidth,
             overlapPercent: overlap,
-            style: style
+            style: style,
+            showsGapConnector: showsGapConnector
         )
     }
 }
@@ -142,16 +147,19 @@ public struct QuotaForecastBandLayout: Sendable, Equatable {
     public let widthPercent: Double
     public let overlapPercent: Double
     public let style: QuotaForecastBandStyle
+    public let showsGapConnector: Bool
 
     public init(
         startPercent: Double,
         widthPercent: Double,
         overlapPercent: Double,
-        style: QuotaForecastBandStyle
+        style: QuotaForecastBandStyle,
+        showsGapConnector: Bool
     ) {
         self.startPercent = startPercent
         self.widthPercent = widthPercent
         self.overlapPercent = overlapPercent
         self.style = style
+        self.showsGapConnector = showsGapConnector
     }
 }
