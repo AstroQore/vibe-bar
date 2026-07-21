@@ -98,6 +98,18 @@ final class GrokWebBillingCookieFetchTests: XCTestCase {
         GrokCookieStubURLProtocol.reset()
         GrokCookieStubURLProtocol.handler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer xai-fake-token")
+            if request.url?.host == "cli-chat-proxy.grok.com" {
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (
+                    response,
+                    Data(#"{"subscription_tier_display":"SuperGrok Heavy"}"#.utf8)
+                )
+            }
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: 200,
@@ -127,6 +139,7 @@ final class GrokWebBillingCookieFetchTests: XCTestCase {
         XCTAssertEqual(quota.buckets.count, 1)
         XCTAssertEqual(quota.buckets[0].id, "weekly")
         XCTAssertNil(quota.buckets[0].groupTitle)
+        XCTAssertEqual(quota.plan, "SuperGrok Heavy")
     }
 
     // MARK: - Helpers

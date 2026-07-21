@@ -57,15 +57,27 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         credentials: GrokCredentials,
         account: AccountIdentity
     ) async throws -> AccountQuota {
-        let snapshot = try await GrokWebBillingFetcher.fetch(
+        async let billingSnapshot = GrokWebBillingFetcher.fetch(
             credentials: credentials,
             session: session,
             now: now
         )
+        async let accountSettings = GrokAccountSettingsFetcher.fetch(
+            credentials: credentials,
+            session: session
+        )
+
+        // Billing remains the required source of quota truth. Account
+        // settings only enriches the badge, so a settings outage or schema
+        // change must never make the weekly quota refresh fail.
+        let snapshot = try await billingSnapshot
+        let detectedTier = try? await accountSettings
+        let plan = detectedTier?.subscriptionTierDisplay ?? credentials.planLabel
+
         return makeQuota(
             snapshot: snapshot,
             account: account,
-            plan: credentials.planLabel,
+            plan: plan,
             email: credentials.email
         )
     }
