@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an improvement for Codex or Claude Code monitoring in Vibe Bar.
+description: Suggest an improvement to Vibe Bar's quota, cost, status, or macOS experience.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
@@ -8,9 +8,12 @@ body:
     attributes:
       label: Target workflow
       options:
-        - Codex/OpenAI
-        - Claude Code/Anthropic
-        - Both Codex and Claude Code
+        - ChatGPT/Codex / OpenAI
+        - Claude Code / Anthropic
+        - Gemini / AntiGravity / Google AI
+        - Grok / xAI
+        - Misc coding-plan provider
+        - Cross-provider overview or analytics
         - General macOS app experience
     validations:
       required: true

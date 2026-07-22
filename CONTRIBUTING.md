@@ -1,8 +1,10 @@
 # Contributing to Vibe Bar
 
 Thanks for helping improve Vibe Bar. The project is a native macOS menu-bar app
-for Codex and Claude Code users, so changes should keep that workflow clear,
-private, and fast.
+for developers who monitor AI subscription quotas and local usage across
+ChatGPT/Codex, Claude Code, Gemini/AntiGravity, Grok, and other coding plans.
+Changes should keep those workflows clear, private, fast, and visually
+consistent across providers.
 
 ## Commit Identity
 
