@@ -3,48 +3,87 @@ import Foundation
 /// Fetches Gemini usage data from the signed-in `gemini.google.com`
 /// web session via imported browser cookies.
 ///
-/// 2026-05-23 spike resolved: the live quota data rendered by the
-/// `<usage-metrics-window>` Angular component comes from a hidden
-/// `jSf9Qc` batchexecute rpcid, not from the initial-load rpcid set
-/// the 2026-05-22 pass inspected. `jSf9Qc` only fires on the SECOND
-/// entry to `/usage` within a session (initial loads cache the
-/// bucket array client-side), so a clean page-load capture missed
-/// it. SPA-navigating to `/app` and back exposed it.
+/// The live quota data rendered by Gemini's usage component comes from a
+/// private batchexecute RPC. Its identifier and argument are runtime
+/// implementation details, so Vibe Bar replays a small learned recipe and
+/// lets the App-layer hidden `/usage` WebView calibrate a replacement when
+/// Google changes it.
 ///
 /// Wire format (cookie-authenticated, no SAPISIDHASH required):
 /// - URL: `https://gemini.google.com/_/BardChatUi/data/batchexecute`
-///   with query items `rpcids=jSf9Qc&source-path=/usage&hl=en&_reqid=<rand>&rt=c`.
+///   with query items `rpcids=<learned>&source-path=/usage&hl=en&_reqid=<rand>&rt=c`.
 /// - Method: POST, `Content-Type:
 ///   application/x-www-form-urlencoded;charset=UTF-8`.
-/// - Body: `f.req=[[["jSf9Qc","[]",null,"generic"]]]&at=<XSRF>&`.
-///   The inner args really are an empty array — the server scopes
-///   the response using the cookie identity. `at=` carries the
+/// - Body: `f.req=[[["<learned>","<learned args>",null,
+///   "generic"]]]&at=<XSRF>&`. `at=` carries the
 ///   `WIZ_global_data.SNlM0e` XSRF token extracted from the SSR
 ///   HTML of `https://gemini.google.com/usage?pli=1`.
 /// - Response: JSONP-prefixed (`)]}'\n`) chunked stream. The
-///   `["wrb.fr","jSf9Qc","<encoded JSON>",...]` entry carries the
+///   `["wrb.fr","<learned>","<encoded JSON>",...]` entry carries the
 ///   payload. See `GeminiWebResponseParser` for the decoded shape.
 struct GeminiWebQuotaFetcher: Sendable {
     /// Set to `true` now that the live quota endpoint is implemented.
     static let spikeComplete = true
+    static let quotaRPCId = GeminiWebUsageRecipe.fallback.rpcID
 
     private let session: URLSession
     private let now: @Sendable () -> Date
+    private let recipeProvider: @Sendable () -> GeminiWebUsageRecipe
 
     init(
         session: URLSession = .shared,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        recipeProvider: @escaping @Sendable () -> GeminiWebUsageRecipe = {
+            GeminiWebUsageRecipeStore.load()
+        }
     ) {
         self.session = session
         self.now = now
+        self.recipeProvider = recipeProvider
     }
 
-    func fetch(cookieHeader: String, email: String? = nil) async throws -> GeminiResponseParser.Snapshot {
+    func fetch(cookieHeader: String, email: String? = nil) async throws -> GeminiWebQuotaSnapshot {
         let trimmed = cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw QuotaError.noCredential }
         let xsrf = try await fetchXsrfToken(cookieHeader: trimmed)
-        let payload = try await postQuotaRequest(cookieHeader: trimmed, xsrfToken: xsrf)
-        return try GeminiWebResponseParser.parse(data: payload, email: email, now: now())
+        let learned = recipeProvider()
+        do {
+            return try await fetch(
+                recipe: learned,
+                cookieHeader: trimmed,
+                xsrfToken: xsrf,
+                email: email
+            )
+        } catch {
+            // A learned recipe can become stale. Retry the last broadly known
+            // contract once before asking WebKit to calibrate a new one.
+            guard learned != .fallback else { throw error }
+            return try await fetch(
+                recipe: .fallback,
+                cookieHeader: trimmed,
+                xsrfToken: xsrf,
+                email: email
+            )
+        }
+    }
+
+    private func fetch(
+        recipe: GeminiWebUsageRecipe,
+        cookieHeader: String,
+        xsrfToken: String,
+        email: String?
+    ) async throws -> GeminiWebQuotaSnapshot {
+        let payload = try await postQuotaRequest(
+            cookieHeader: cookieHeader,
+            xsrfToken: xsrfToken,
+            recipe: recipe
+        )
+        return try GeminiWebResponseParser.parse(
+            data: payload,
+            rpcID: recipe.rpcID,
+            email: email,
+            now: now()
+        )
     }
 
     private func fetchXsrfToken(cookieHeader: String) async throws -> String {
@@ -84,13 +123,17 @@ struct GeminiWebQuotaFetcher: Sendable {
         return try Self.extractXsrfToken(from: body)
     }
 
-    private func postQuotaRequest(cookieHeader: String, xsrfToken: String) async throws -> Data {
+    private func postQuotaRequest(
+        cookieHeader: String,
+        xsrfToken: String,
+        recipe: GeminiWebUsageRecipe
+    ) async throws -> Data {
         let reqid = Int.random(in: 100_000...999_999)
         guard var components = URLComponents(string: "https://gemini.google.com/_/BardChatUi/data/batchexecute") else {
             throw QuotaError.unknown("Gemini Web batchexecute URL malformed.")
         }
         components.queryItems = [
-            URLQueryItem(name: "rpcids", value: "jSf9Qc"),
+            URLQueryItem(name: "rpcids", value: recipe.rpcID),
             URLQueryItem(name: "source-path", value: "/usage"),
             URLQueryItem(name: "hl", value: "en"),
             URLQueryItem(name: "_reqid", value: String(reqid)),
@@ -110,7 +153,11 @@ struct GeminiWebQuotaFetcher: Sendable {
         request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
         request.httpShouldHandleCookies = false
 
-        let innerArgs = #"[[["jSf9Qc","[]",null,"generic"]]]"#
+        let requestEnvelope: [Any] = [[[recipe.rpcID, recipe.argument, NSNull(), "generic"]]]
+        guard let envelopeData = try? JSONSerialization.data(withJSONObject: requestEnvelope),
+              let innerArgs = String(data: envelopeData, encoding: .utf8) else {
+            throw QuotaError.parseFailure("Gemini Web request recipe could not be encoded.")
+        }
         let bodyString = "f.req=" + Self.formEncode(innerArgs)
             + "&at=" + Self.formEncode(xsrfToken) + "&"
         request.httpBody = bodyString.data(using: .utf8)

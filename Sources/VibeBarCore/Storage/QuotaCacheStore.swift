@@ -9,7 +9,7 @@ public enum QuotaCacheStore {
 
         init(_ quota: AccountQuota) {
             self.tool = quota.tool
-            self.buckets = quota.buckets
+            self.buckets = Self.normalizedBuckets(quota.buckets, tool: quota.tool)
             self.plan = quota.plan
             self.queriedAt = quota.queriedAt
         }
@@ -18,13 +18,18 @@ public enum QuotaCacheStore {
             AccountQuota(
                 accountId: accountId,
                 tool: tool,
-                buckets: buckets,
+                buckets: Self.normalizedBuckets(buckets, tool: tool),
                 plan: plan,
                 email: nil,
                 queriedAt: queriedAt,
                 error: nil,
                 providerExtras: nil
             )
+        }
+
+        private static func normalizedBuckets(_ buckets: [QuotaBucket], tool: ToolType) -> [QuotaBucket] {
+            guard tool == .gemini else { return buckets }
+            return GeminiWebResponseParser.canonicalBucketOrder(buckets)
         }
     }
 

@@ -56,7 +56,13 @@ final class AppEnvironment: ObservableObject {
             retentionProvider: { [weak settings] in
                 settings?.settings.costData.retentionDays ?? CostDataSettings.defaultRetentionDays
             },
-            initialAccountIds: accounts.accounts.map(\.id)
+            initialAccountIds: accounts.accounts.map(\.id),
+            geminiWebFallback: { account, cookieHeader in
+                try await GeminiWebQuotaCalibrator.shared.fetch(
+                    account: account,
+                    cookieHeader: cookieHeader
+                )
+            }
         )
 
         self.settingsStore = settings

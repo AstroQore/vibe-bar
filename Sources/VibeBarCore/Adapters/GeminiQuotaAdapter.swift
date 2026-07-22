@@ -13,6 +13,8 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
     private let session: URLSession
     private let now: @Sendable () -> Date
     private let cookieHeader: @Sendable () throws -> String
+    private let browserCookieImporter: @Sendable () -> GeminiBrowserCookieImporter.Result?
+    private let webFallback: (@Sendable (AccountIdentity, String) async throws -> AccountQuota)?
 
     public init(
         session: URLSession = .shared,
@@ -20,11 +22,17 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         now: @escaping @Sendable () -> Date = { Date() },
         cookieHeader: @escaping @Sendable () throws -> String = {
             try GeminiWebCookieStore.readCookieHeader()
-        }
+        },
+        browserCookieImporter: @escaping @Sendable () -> GeminiBrowserCookieImporter.Result? = {
+            GeminiBrowserCookieImporter.importFromBrowsers(allowKeychainPrompt: false)
+        },
+        webFallback: (@Sendable (AccountIdentity, String) async throws -> AccountQuota)? = nil
     ) {
         self.session = session
         self.now = now
         self.cookieHeader = cookieHeader
+        self.browserCookieImporter = browserCookieImporter
+        self.webFallback = webFallback
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
@@ -38,23 +46,41 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             throw QuotaError.noCredential
         }
         let fetcher = GeminiWebQuotaFetcher(session: session, now: now)
-        let snapshot: GeminiResponseParser.Snapshot
+        let snapshot: GeminiWebQuotaSnapshot
         do {
             snapshot = try await fetcher.fetch(cookieHeader: header)
-        } catch let initialError as QuotaError {
+        } catch let initialError {
             // Google rotates the browser session more often than Vibe Bar's
             // persisted Keychain copy. Refresh it directly from an installed
             // browser once before surfacing a login error; this keeps the
             // source purely gemini.google.com and never falls back to CLI
             // OAuth quota.
-            guard let imported = GeminiBrowserCookieImporter.importFromBrowsers(
-                allowKeychainPrompt: false
-            ), imported.header != header else {
-                throw initialError
+            if let imported = browserCookieImporter(), imported.header != header {
+                do {
+                    let refreshed = try await fetcher.fetch(cookieHeader: imported.header)
+                    try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+                    return quota(from: refreshed, for: account)
+                } catch {
+                    if shouldCalibrate(error), let webFallback {
+                        let calibrated = try await webFallback(account, imported.header)
+                        try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+                        return calibrated
+                    }
+                    throw error
+                }
             }
-            snapshot = try await fetcher.fetch(cookieHeader: imported.header)
-            try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+            if shouldCalibrate(initialError), let webFallback {
+                return try await webFallback(account, header)
+            }
+            throw initialError
         }
+        return quota(from: snapshot, for: account)
+    }
+
+    private func quota(
+        from snapshot: GeminiWebQuotaSnapshot,
+        for account: AccountIdentity
+    ) -> AccountQuota {
         return AccountQuota(
             accountId: account.id,
             tool: .gemini,
@@ -64,6 +90,21 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             queriedAt: now(),
             error: nil
         )
+    }
+
+    private func shouldCalibrate(_ error: Error) -> Bool {
+        guard let quotaError = error as? QuotaError else { return false }
+        switch quotaError {
+        case .parseFailure:
+            return true
+        case .network(let message):
+            // Transport failures should surface immediately. Only an HTTP
+            // response from the private RPC itself indicates a likely rotated
+            // route/argument that WebKit can learn.
+            return message.contains("Gemini Web batchexecute HTTP")
+        case .noCredential, .needsLogin, .rateLimited, .notImplemented, .unknown:
+            return false
+        }
     }
 }
 

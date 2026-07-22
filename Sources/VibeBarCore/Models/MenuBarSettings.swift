@@ -136,7 +136,7 @@ public enum MenuBarFieldCatalog {
 
     // Gemini Web (`gemini.google.com`) exposes a 5-hour rolling
     // window and a weekly bucket — that's the entire quota surface
-    // the jSf9Qc parser returns, regardless of model. Earlier
+    // the Gemini Web quota parser returns, regardless of model. Earlier
     // entries here were per-model CLI ids (Gemini 2.5 Pro / Flash /
     // Lite, Gemini 3 Pro / Flash) from the pre-PR-#45 telemetry
     // adapter the Web parser no longer produces; those ids get
