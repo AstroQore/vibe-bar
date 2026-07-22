@@ -62,10 +62,7 @@ final class CostHistoryStoreTests: XCTestCase {
     }
 
     func testMergeAndAugmentKeepsLocalTodayWhenTimeZoneIsAheadOfUTC() async throws {
-        let previousTimeZone = NSTimeZone.default
         let shanghai = TimeZone(secondsFromGMT: 8 * 3600)!
-        NSTimeZone.default = shanghai
-        defer { NSTimeZone.default = previousTimeZone }
 
         let fileManager = FileManager.default
         let directory = fileManager.temporaryDirectory
@@ -85,7 +82,10 @@ final class CostHistoryStoreTests: XCTestCase {
         components.minute = 15
         let now = try XCTUnwrap(components.date)
         let today = calendar.startOfDay(for: now)
-        let store = CostHistoryStore(fileURL: directory.appendingPathComponent("cost_history.json"))
+        let store = CostHistoryStore(
+            fileURL: directory.appendingPathComponent("cost_history.json"),
+            timeZone: shanghai
+        )
         let snapshot = CostSnapshot(
             tool: .codex,
             todayCostUSD: 7,
@@ -113,10 +113,7 @@ final class CostHistoryStoreTests: XCTestCase {
     }
 
     func testLegacyUTCDateKeysMigrateToLocalDay() async throws {
-        let previousTimeZone = NSTimeZone.default
         let shanghai = TimeZone(secondsFromGMT: 8 * 3600)!
-        NSTimeZone.default = shanghai
-        defer { NSTimeZone.default = previousTimeZone }
 
         let fileManager = FileManager.default
         let directory = fileManager.temporaryDirectory
@@ -140,7 +137,7 @@ final class CostHistoryStoreTests: XCTestCase {
         components.day = 6
         components.hour = 2
         let now = try XCTUnwrap(components.date)
-        let store = CostHistoryStore(fileURL: url)
+        let store = CostHistoryStore(fileURL: url, timeZone: shanghai)
 
         let history = await store.history(
             for: .codex,
@@ -220,10 +217,7 @@ final class CostHistoryStoreTests: XCTestCase {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: directory) }
 
-        let previousTimeZone = NSTimeZone.default
         let utc = TimeZone(secondsFromGMT: 0)!
-        NSTimeZone.default = utc
-        defer { NSTimeZone.default = previousTimeZone }
 
         let url = directory.appendingPathComponent("cost_history.json")
         let legacyCurrentSchemaJSON = """
@@ -235,7 +229,7 @@ final class CostHistoryStoreTests: XCTestCase {
         calendar.timeZone = utc
         let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 6, hour: 12)))
         let today = calendar.startOfDay(for: now)
-        let store = CostHistoryStore(fileURL: url)
+        let store = CostHistoryStore(fileURL: url, timeZone: utc)
         let fresh = CostSnapshot(
             tool: .claude,
             todayCostUSD: 1,

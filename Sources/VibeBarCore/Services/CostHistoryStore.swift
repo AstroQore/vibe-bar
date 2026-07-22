@@ -88,11 +88,14 @@ public actor CostHistoryStore {
     /// cache-read over-count, so a corrected re-scan rebuilds them clean.
     private static let currentHistoryCorrectionVersion = 1
 
-    init(fileURL: URL = CostHistoryStore.defaultFileURL()) {
+    init(
+        fileURL: URL = CostHistoryStore.defaultFileURL(),
+        timeZone: TimeZone = .current
+    ) {
         self.fileURL = fileURL
         var cal = Calendar(identifier: .gregorian)
         cal.locale = Locale(identifier: "en_US_POSIX")
-        cal.timeZone = TimeZone.current
+        cal.timeZone = timeZone
         self.calendar = cal
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
