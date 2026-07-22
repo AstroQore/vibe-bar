@@ -15,6 +15,7 @@ Humans are welcome here too. The shorter, human-focused version is
 | [AGENTS.md](AGENTS.md) (this file) | AI agents (and curious humans) | Comprehensive operating manual: orientation, build, conventions, home-directory rule, PR, release. |
 | [AGENT-DEPLOY.md](AGENT-DEPLOY.md) | AI agents | Focused "clone → build → smoke-test → optional install" walkthrough. |
 | [AGENT-PR.md](AGENT-PR.md) | AI agents | Focused "branch → verify → push → open PR" walkthrough. |
+| [RELEASING.md](RELEASING.md) | Maintainers | Tag → verified asset → draft GitHub Release, with optional Developer ID notarization. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Humans | Short version of this file's project rules. |
 | [SECURITY.md](SECURITY.md) | Anyone | Security disclosure policy and what not to paste in reports. |
 | [README.md](README.md) / [README.zh-CN.md](README.zh-CN.md) | End users | What Vibe Bar is and how to install it. |
@@ -30,10 +31,10 @@ and Anthropic/Claude Code (often side-by-side) and want subscription
 quota, usage pace, local token cost, and provider service status visible
 in one quiet desktop surface — without opening multiple dashboards.
 
-It is a pure Swift package, distributed as **source only**. There is no
-Xcode workspace, no installer, no notarized release, and no production
-server. The "deploy" target is the user's own Mac (and optionally
-`/Applications`); the "publish" target is GitHub.
+It is a pure Swift package with source-first distribution and an optional
+tag-driven GitHub Release workflow. There is no Xcode workspace, installer,
+or production server. The "deploy" target is the user's own Mac (and
+optionally `/Applications`); the "publish" target is GitHub.
 
 Key product surfaces:
 
@@ -816,15 +817,23 @@ moment step 1 lands.
 
 ## 12. Releases
 
+- Follow [RELEASING.md](RELEASING.md) for the complete tag, asset, signing,
+  notarization, and draft-publishing flow.
 - Bundle ID is `com.astroqore.VibeBar`. Bump
   `CFBundleShortVersionString` and `CFBundleVersion` in
   `Resources/Info.plist` for a new release.
 - Confirm `Resources/VibeBar.entitlements` still matches the rule in
   **§ 4.5** — empty `<dict/>`, no `app-sandbox` key.
-- Run **§ 4.3 – § 4.6** before tagging or announcing a release.
+- Run **§ 4.3 – § 4.6** before tagging or announcing a release. The GitHub
+  workflow repeats those checks on a macOS 26 runner.
+- Tag the merged `main` with exactly `v` plus
+  `CFBundleShortVersionString`. The workflow creates a draft GitHub Release
+  so its assets can be inspected before publishing.
 - The license is AGPL-3.0-only; don't relicense without an explicit
   board decision.
-- There is no notarization step (ad-hoc signed only) and no homebrew
+- Releases remain ad-hoc signed when Apple credentials are absent. With the
+  documented Developer ID secrets, the same workflow signs with hardened
+  runtime, notarizes, and staples the unsandboxed app. There is no Homebrew
   formula in this repo.
 
 ## 13. What You Should Not Change Without Explicit Instruction
