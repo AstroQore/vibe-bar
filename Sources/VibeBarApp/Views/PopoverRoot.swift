@@ -38,7 +38,13 @@ struct PopoverRoot: View {
                 .padding(.bottom, shellDensity.interSectionSpacing)
             ScrollView(.vertical, showsIndicators: false) {
                 content(density: contentDensity)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    // A vertical ScrollView does not always pass a finite
+                    // horizontal proposal through to intrinsically wide
+                    // HStacks. Provider detail pages then grow to the sum of
+                    // both columns' ideal widths and their right edge escapes
+                    // the shared popover shell. Give every tab the exact same
+                    // viewport width so only its height remains scrollable.
+                    .frame(width: shellContentWidth, alignment: .topLeading)
                     .padding(.bottom, 4)
             }
             .frame(maxHeight: maxScrollHeight)
@@ -650,6 +656,7 @@ private struct GeminiTabPage: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
+        let columns = ProviderDetailColumnWidths(density: density)
         let geminiAccounts = environment.accountStore
             .accounts(for: .gemini)
             .sorted { $0.id < $1.id }
@@ -677,34 +684,14 @@ private struct GeminiTabPage: View {
                 ServiceStatusCard(tools: [.gemini], density: density)
             }
             .frame(
-                minWidth: leftColumnMinWidth,
-                idealWidth: leftColumnIdealWidth,
-                maxWidth: leftColumnMaxWidth,
+                width: columns.left,
                 alignment: .topLeading
             )
 
             GeminiCostColumn(density: density)
-                .frame(minWidth: rightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
+                .frame(width: columns.right, alignment: .topLeading)
         }
-    }
-
-    private var leftColumnMinWidth: CGFloat {
-        density.detailLeftColumnRange.lowerBound
-    }
-
-    private var leftColumnIdealWidth: CGFloat {
-        min(
-            density.detailLeftColumnRange.upperBound,
-            max(leftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
-        )
-    }
-
-    private var leftColumnMaxWidth: CGFloat {
-        density.detailLeftColumnRange.upperBound
-    }
-
-    private var rightColumnMinWidth: CGFloat {
-        density.detailRightColumnMinimum
+        .frame(width: columns.total, alignment: .topLeading)
     }
 }
 
@@ -1431,6 +1418,7 @@ private struct ProviderDetailView: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
+        let columns = ProviderDetailColumnWidths(density: density)
         let snapshot = environment.costService.snapshot(for: tool)
         let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
         HStack(alignment: .top, spacing: density.interSectionSpacing) {
@@ -1447,9 +1435,7 @@ private struct ProviderDetailView: View {
                 ServiceStatusCard(tools: [tool], density: density)
             }
             .frame(
-                minWidth: leftColumnMinWidth,
-                idealWidth: leftColumnIdealWidth,
-                maxWidth: leftColumnMaxWidth,
+                width: columns.left,
                 alignment: .topLeading
             )
 
@@ -1477,27 +1463,38 @@ private struct ProviderDetailView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .frame(minWidth: rightColumnMinWidth, maxWidth: .infinity, alignment: .topLeading)
+            .frame(width: columns.right, alignment: .topLeading)
         }
+        .frame(width: columns.total, alignment: .topLeading)
     }
+}
 
-    private var leftColumnMinWidth: CGFloat {
-        density.detailLeftColumnRange.lowerBound
-    }
+/// Exact widths for the shared provider-detail shell. Flexible HStack children
+/// use their intrinsic ideal size inside a vertical ScrollView, which can make
+/// the analytics column wider than the visible popover. Resolve the two
+/// columns from the shell's finite content width instead, while preserving the
+/// existing narrow-left / wide-right density ratios.
+private struct ProviderDetailColumnWidths {
+    let left: CGFloat
+    let right: CGFloat
+    let total: CGFloat
 
-    private var leftColumnIdealWidth: CGFloat {
-        min(
+    init(density: Theme.Density) {
+        total = max(0, density.popoverWidth - density.popoverPaddingH * 2)
+        let usable = max(0, total - density.interSectionSpacing)
+        let preferredLeft = min(
             density.detailLeftColumnRange.upperBound,
-            max(leftColumnMinWidth, density.popoverWidth * density.detailLeftColumnFraction)
+            max(
+                density.detailLeftColumnRange.lowerBound,
+                density.popoverWidth * density.detailLeftColumnFraction
+            )
         )
-    }
-
-    private var leftColumnMaxWidth: CGFloat {
-        density.detailLeftColumnRange.upperBound
-    }
-
-    private var rightColumnMinWidth: CGFloat {
-        density.detailRightColumnMinimum
+        let maximumLeft = max(
+            density.detailLeftColumnRange.lowerBound,
+            usable - density.detailRightColumnMinimum
+        )
+        left = min(preferredLeft, maximumLeft)
+        right = max(0, usable - left)
     }
 }
 

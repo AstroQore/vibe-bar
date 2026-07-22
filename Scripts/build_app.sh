@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Build Vibe Bar executable, wrap into a proper .app bundle, and ad-hoc sign.
+# Build Vibe Bar executable, wrap it into a proper .app bundle, and sign it.
 # Usage: ./Scripts/build_app.sh [debug|release]
 # Output: .build/Vibe Bar.app
+#
+# Signing defaults to ad-hoc for local builds. Public release automation can
+# set VIBEBAR_CODESIGN_IDENTITY to a Developer ID Application identity; the
+# same unsandboxed entitlements remain in force in both modes.
 set -euo pipefail
 
 CONFIG="${1:-release}"
+SIGN_IDENTITY="${VIBEBAR_CODESIGN_IDENTITY:--}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -43,8 +48,20 @@ if [[ ! -f "$ENTITLEMENTS" ]]; then
     exit 1
 fi
 
-echo "==> ad-hoc codesign with entitlements"
-codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_DIR"
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+    echo "==> ad-hoc codesign with entitlements"
+    codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_DIR"
+else
+    echo "==> Developer ID codesign with hardened runtime"
+    codesign \
+        --force \
+        --deep \
+        --options runtime \
+        --timestamp \
+        --sign "$SIGN_IDENTITY" \
+        --entitlements "$ENTITLEMENTS" \
+        "$APP_DIR"
+fi
 
 echo "==> done: $APP_DIR"
 echo "Run with: open \"$APP_DIR\""
