@@ -8,8 +8,11 @@ end with a working app.
 
 ## What Vibe Bar is
 
-A native macOS menu-bar app for Codex and Claude Code users. Pure Swift
-package, no Xcode workspace required. The package produces:
+A native macOS menu-bar app for monitoring AI subscription quota, reset
+forecasts, local token cost, model usage, and provider status across
+ChatGPT/Codex, Claude Code, Gemini/AntiGravity, Grok, and other coding plans.
+It is a pure Swift package with no Xcode workspace required. The package
+produces:
 
 - `VibeBar` — executable target, the actual app binary.
 - `VibeBarApp` — AppKit/SwiftUI menu-bar UI module.
@@ -17,8 +20,10 @@ package, no Xcode workspace required. The package produces:
   cost/usage logic.
 - `VibeBarCoreTests` — `swift test` target.
 
-There is no installer and no notarized release in this repo. Distribution
-is "build from source, ad-hoc sign, run locally."
+GitHub Releases provides an ad-hoc-signed Apple-silicon ZIP, but there is no
+installer and the public build is not notarized. This guide covers the
+reproducible source path: build, verify, ad-hoc sign, and run locally. See
+`RELEASING.md` for the tag-driven release workflow.
 
 ## Prerequisites
 
@@ -78,9 +83,9 @@ later in a more confusing way.
 swift test
 ```
 
-About 90 tests run; all must pass. If any fail, stop and surface the
-failure to the user before continuing. Packaging on top of broken core
-logic produces a broken app.
+The full test suite must pass. If any test fails, stop and surface the failure
+to the user before continuing. Packaging on top of broken core logic produces
+a broken app.
 
 ### 4. Build and package the `.app` bundle
 
@@ -217,12 +222,12 @@ Vibe Bar persists derived data under the user's home directory:
 ```
 
 If you are debugging weird behavior, that directory is the place to
-look. Deleting it resets the app to first-run state. Keychain stores
-Claude session cookies and the resolved Claude organization ID — those
-are not in `~/.vibebar/`.
+look. Deleting it resets the app to first-run state. Vibe Bar-owned cookies
+and provider secrets live in one versioned Keychain Vault — they are not in
+`~/.vibebar/`.
 
-The app reads (never writes) Codex and Claude CLI credential files and
-their session JSONL logs. Treat those as read-only inputs.
+The app reads (never writes) provider-owned CLI credential files and local
+session/usage records. Treat those as read-only inputs.
 
 ## Common build/run failures
 

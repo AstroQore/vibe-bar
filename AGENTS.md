@@ -338,8 +338,8 @@ sandbox for the same reasons. Vibe Bar follows suit.
 `Resources/VibeBar.entitlements` is therefore an empty `<dict/>`
 plist. The trade-offs:
 
-- **No Mac App Store distribution.** Vibe Bar is source-distributed
-  today and was never on MAS, so this is a no-op.
+- **No Mac App Store distribution.** Vibe Bar is distributed through GitHub
+  Releases and source builds, and was never on MAS, so this is a no-op.
 - **Wider local file access.** Vibe Bar can technically read anything
   the user can read. The privacy rules (§ 8) and `SafeLog` /
   `EmailMasker` discipline still apply — *don't* abuse this. Browser

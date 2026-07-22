@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with Vibe Bar's Codex or Claude Code monitoring.
+description: Report a problem with Vibe Bar's quota, cost, status, or macOS experience.
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -12,12 +12,16 @@ body:
     attributes:
       label: Area
       options:
-        - Codex/OpenAI quota or cost
-        - Claude Code/Anthropic quota or cost
+        - ChatGPT/Codex / OpenAI
+        - Claude Code / Anthropic
+        - Gemini / AntiGravity / Google AI
+        - Grok / xAI
+        - Misc coding-plan provider
+        - Overview, forecast, or cost analytics
         - Menu-bar item
         - Mini floating window
         - Settings or privacy controls
-        - Build, signing, or packaging
+        - Install, update, build, signing, or packaging
         - Other
     validations:
       required: true
