@@ -18,9 +18,14 @@ swift build -c "$CONFIG"
 
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 EXEC_PATH="$BIN_DIR/VibeBar"
+CORE_RESOURCE_BUNDLE="$BIN_DIR/VibeBar_VibeBarCore.bundle"
 
 if [[ ! -x "$EXEC_PATH" ]]; then
     echo "Executable not found at $EXEC_PATH" >&2
+    exit 1
+fi
+if [[ ! -f "$CORE_RESOURCE_BUNDLE/pricing.json" ]]; then
+    echo "Core resource bundle not found at $CORE_RESOURCE_BUNDLE" >&2
     exit 1
 fi
 
@@ -32,6 +37,11 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$EXEC_PATH" "$APP_DIR/Contents/MacOS/VibeBar"
+# A signed macOS app may only contain its conventional Contents tree. Core's
+# pricing resolver explicitly discovers this SwiftPM bundle under Resources
+# before falling back to Bundle.module for source builds and tests.
+cp -R "$CORE_RESOURCE_BUNDLE" \
+    "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle"
 cp "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
@@ -42,6 +52,11 @@ fi
 
 PkgInfo="APPL????"
 printf '%s' "$PkgInfo" > "$APP_DIR/Contents/PkgInfo"
+
+if [[ ! -f "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle/pricing.json" ]]; then
+    echo "Packaged core resource bundle is incomplete." >&2
+    exit 1
+fi
 
 if [[ ! -f "$ENTITLEMENTS" ]]; then
     echo "Entitlements file not found at $ENTITLEMENTS" >&2

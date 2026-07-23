@@ -109,10 +109,13 @@ What the script does (so you can recognize each phase in its output):
    skeleton at `.build/Vibe Bar.app/Contents/{MacOS,Resources}`.
 4. Copies the freshly built `VibeBar` executable into
    `Contents/MacOS/VibeBar`.
-5. Copies `Resources/Info.plist` and `Resources/AppIcon.icns` into the
+5. Copies SwiftPM's generated `VibeBar_VibeBarCore.bundle` into
+   `Contents/Resources`; `PricingResolver` checks this installed-app
+   location before falling back to `Bundle.module`.
+6. Copies `Resources/Info.plist` and `Resources/AppIcon.icns` into the
    bundle.
-6. Writes `Contents/PkgInfo`.
-7. Runs `codesign --force --deep --sign - --entitlements
+7. Writes `Contents/PkgInfo`.
+8. Runs `codesign --force --deep --sign - --entitlements
    Resources/VibeBar.entitlements ".build/Vibe Bar.app"`.
 
 The output bundle is `.build/Vibe Bar.app` (the bundle name has a literal
