@@ -35,11 +35,14 @@ fails before an asset is uploaded.
 4. builds and signs the release app;
 5. verifies the strict code signature and rejects sandboxed entitlements;
 6. optionally notarizes and staples a Developer ID build;
-7. creates an architecture-labelled ZIP and SHA-256 checksum; and
-8. creates or updates a draft GitHub Release.
+7. creates an architecture-labelled ZIP and SHA-256 checksum;
+8. signs the ZIP with Sparkle's EdDSA key and generates `appcast.xml`; and
+9. creates or updates a draft GitHub Release.
 
 Review the generated draft and then select **Publish release** on GitHub.
-Re-running the workflow for the same tag replaces its assets.
+Re-running the workflow for the same tag replaces its assets. Draft releases
+do not become the live update feed: GitHub's `releases/latest` URL continues
+to resolve to the previous published release until the draft is published.
 
 ## Release assets
 
@@ -54,10 +57,42 @@ It writes architecture-labelled files under `.build/release/`, for example:
 ```text
 Vibe-Bar-0.2.0-macOS-arm64.zip
 Vibe-Bar-0.2.0-macOS-arm64.zip.sha256
+appcast.xml
 ```
 
 Without signing credentials this produces an ad-hoc-signed build. GitHub can
 host that build, but Gatekeeper will require users to approve it manually.
+The archive still requires a Sparkle EdDSA signature; this protects in-app
+updates independently of the optional Apple Developer ID signature.
+
+## Sparkle update signing
+
+Generate one organization-scoped Sparkle key on a trusted maintainer Mac:
+
+```sh
+.build/artifacts/sparkle/Sparkle/bin/generate_keys \
+  --account astroqore-vibe-bar
+```
+
+Keep the printed public key in `Resources/Info.plist` as `SUPublicEDKey`.
+The private key remains in the login Keychain. For GitHub Actions, export it
+to a temporary permission-restricted file, save its contents as the repository
+secret `SPARKLE_ED_PRIVATE_KEY`, and immediately delete the temporary file.
+Never commit or print the private key.
+
+Local releases use the `astroqore-vibe-bar` Keychain account by default.
+CI reads `SPARKLE_ED_PRIVATE_KEY` from standard input and fails before
+packaging when the secret is absent. `Scripts/release_app.sh` also rejects an
+appcast that lacks an EdDSA archive signature or the expected build number.
+
+The stable feed URL is:
+
+```text
+https://github.com/AstroQore/vibe-bar/releases/latest/download/appcast.xml
+```
+
+Each published release must therefore contain the ZIP, its checksum, and
+`appcast.xml`. Do not hand-edit the appcast after it has been generated.
 
 ## Enable Developer ID signing and notarization
 

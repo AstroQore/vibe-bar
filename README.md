@@ -172,6 +172,12 @@ Release builds are ad-hoc signed and currently not notarized. If Gatekeeper
 blocks the first launch, right-click the app and choose **Open**. No Apple
 Developer account is required to build or run Vibe Bar locally.
 
+Starting with the first Sparkle-enabled release, Vibe Bar checks the signed
+GitHub Release feed once a day. You can also choose **Check for Updates…**
+from a menu-bar item's context menu or from **Settings → System**. Vibe Bar
+always asks before installing an update; the first Sparkle-enabled release
+still needs to be installed manually once.
+
 ### Build from source
 
 Requirements: macOS 26+, Xcode 26, and Swift 6.2+.
@@ -186,7 +192,7 @@ open ".build/Vibe Bar.app"
 
 The package contains the `VibeBar` executable and the testable `VibeBarCore`
 library. The packaging script assembles `.build/Vibe Bar.app`, copies its
-resources, and ad-hoc signs the bundle.
+resources and Sparkle framework, and ad-hoc signs the bundle.
 
 ## Contributing
 

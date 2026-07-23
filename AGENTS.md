@@ -58,6 +58,7 @@ Single SwiftPM package, two product targets and one test target:
 │   ├── VibeBarApp/                # AppKit/SwiftUI menu-bar UI (executable)
 │   │   ├── AppDelegate.swift
 │   │   ├── AppEnvironment.swift
+│   │   ├── AppUpdateController.swift
 │   │   ├── StatusItemController.swift
 │   │   ├── MiniQuotaWindowController.swift
 │   │   ├── ServiceStatusController.swift
@@ -84,7 +85,8 @@ Single SwiftPM package, two product targets and one test target:
 │   ├── AppIcon.icns / AppIcon.png
 │   └── README/                    # Screenshots used by README.md
 ├── Scripts/
-│   └── build_app.sh               # Release packaging + ad-hoc codesign
+│   ├── build_app.sh               # App packaging + nested codesign
+│   └── release_app.sh             # ZIP, checksum, signed Sparkle appcast
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
 │   └── pull_request_template.md
@@ -177,16 +179,20 @@ What the script does (so each phase in its output is recognizable):
 2. Resolves the executable path with
    `swift build -c <config> --show-bin-path`.
 3. Deletes any old `.build/Vibe Bar.app` and creates a fresh bundle
-   skeleton at `.build/Vibe Bar.app/Contents/{MacOS,Resources}`.
+   skeleton under `.build/Vibe Bar.app/Contents`.
 4. Copies the freshly built `VibeBar` executable into
    `Contents/MacOS/VibeBar`.
 5. Copies SwiftPM's generated `VibeBar_VibeBarCore.bundle` into
    `Contents/Resources`; `PricingResolver` checks this installed-app
    location before falling back to `Bundle.module`.
-6. Copies `Resources/Info.plist` and `Resources/AppIcon.icns` into the
+6. Copies the versioned `Sparkle.framework` tree under
+   `Contents/Frameworks`, preserving symlinks and executable permissions.
+7. Copies `Resources/Info.plist` and `Resources/AppIcon.icns` into the
    bundle.
-7. Writes `Contents/PkgInfo`.
-8. `codesign --force --deep --sign - --entitlements Resources/VibeBar.entitlements ".build/Vibe Bar.app"`.
+8. Writes `Contents/PkgInfo`.
+9. Signs Sparkle's nested helpers in the documented order, then signs the
+   outer app with `Resources/VibeBar.entitlements`.
+10. Runs strict deep signature verification.
 
 The output bundle is `.build/Vibe Bar.app` (the bundle name has a
 literal space).
@@ -832,6 +838,12 @@ moment step 1 lands.
 - Tag the merged `main` with exactly `v` plus
   `CFBundleShortVersionString`. The workflow creates a draft GitHub Release
   so its assets can be inspected before publishing.
+- Every published release must include the ZIP, checksum, and signed
+  `appcast.xml`. The workflow requires the repository secret
+  `SPARKLE_ED_PRIVATE_KEY`; the matching public key is `SUPublicEDKey` in
+  `Resources/Info.plist`.
+- The stable in-app update feed is the `appcast.xml` asset on GitHub's latest
+  published release. Never hand-edit an appcast after generation.
 - The license is AGPL-3.0-only; don't relicense without an explicit
   board decision.
 - Releases remain ad-hoc signed when Apple credentials are absent. With the

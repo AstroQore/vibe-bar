@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.1</string>
+    <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>3</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSUIElement</key>
@@ -33,6 +33,24 @@
         <key>NSAllowsArbitraryLoads</key>
         <false/>
     </dict>
+    <key>SUFeedURL</key>
+    <string>https://github.com/AstroQore/vibe-bar/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>o0Rf8gjkEf+Fcrq7w3T8CmyYTBy0Q57aGMuwrvzPKo8=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUEnableSystemProfiling</key>
+    <false/>
+    <key>SUShowReleaseNotes</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
 </dict>

@@ -20,10 +20,11 @@ produces:
   cost/usage logic.
 - `VibeBarCoreTests` — `swift test` target.
 
-GitHub Releases provides an ad-hoc-signed Apple-silicon ZIP, but there is no
-installer and the public build is not notarized. This guide covers the
+GitHub Releases provides an ad-hoc-signed Apple-silicon ZIP. Sparkle handles
+signed in-app updates after the first Sparkle-enabled version has been
+installed, but the public build is not notarized. This guide covers the
 reproducible source path: build, verify, ad-hoc sign, and run locally. See
-`RELEASING.md` for the tag-driven release workflow.
+`RELEASING.md` for the tag-driven release and appcast workflow.
 
 ## Prerequisites
 
@@ -106,17 +107,20 @@ What the script does (so you can recognize each phase in its output):
 2. Resolves the executable path with
    `swift build -c <config> --show-bin-path`.
 3. Deletes any old `.build/Vibe Bar.app` and creates a fresh bundle
-   skeleton at `.build/Vibe Bar.app/Contents/{MacOS,Resources}`.
+   skeleton under `.build/Vibe Bar.app/Contents`.
 4. Copies the freshly built `VibeBar` executable into
    `Contents/MacOS/VibeBar`.
 5. Copies SwiftPM's generated `VibeBar_VibeBarCore.bundle` into
    `Contents/Resources`; `PricingResolver` checks this installed-app
    location before falling back to `Bundle.module`.
-6. Copies `Resources/Info.plist` and `Resources/AppIcon.icns` into the
+6. Copies and preserves SwiftPM's versioned
+   `Sparkle.framework` symlinks under `Contents/Frameworks`.
+7. Copies `Resources/Info.plist` and `Resources/AppIcon.icns` into the
    bundle.
-7. Writes `Contents/PkgInfo`.
-8. Runs `codesign --force --deep --sign - --entitlements
-   Resources/VibeBar.entitlements ".build/Vibe Bar.app"`.
+8. Writes `Contents/PkgInfo`.
+9. Signs Sparkle's helper components from the inside out, then signs the
+   outer app with `Resources/VibeBar.entitlements`.
+10. Runs strict deep signature verification on the completed bundle.
 
 The output bundle is `.build/Vibe Bar.app` (the bundle name has a literal
 space).

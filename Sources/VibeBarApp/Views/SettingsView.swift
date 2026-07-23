@@ -171,6 +171,11 @@ struct SettingsView: View {
                         }
                     }
                     .id("refreshing")
+
+                    settingsSection("Updates") {
+                        UpdateSettingsRow(updateController: environment.updateController)
+                    }
+                    .id("updates")
                     }
 
                     if selectedSection == .menuBar {
@@ -1126,6 +1131,29 @@ struct SettingsView: View {
         case 365: return "1 year"
         case 365 * 3: return "3 years"
         default: return "\(days) days"
+        }
+    }
+}
+
+private struct UpdateSettingsRow: View {
+    @ObservedObject var updateController: AppUpdateController
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Vibe Bar \(updateController.currentVersionDescription)")
+                    .font(.callout)
+                Text("Checks GitHub Releases once a day and asks before installing.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                updateController.checkForUpdates()
+            } label: {
+                Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(!updateController.canCheckForUpdates)
         }
     }
 }
