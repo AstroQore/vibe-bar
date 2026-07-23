@@ -832,15 +832,10 @@ private struct CombinedTotalsRow: View {
         let yesterdayTokens = snapshots.reduce(0) { $0 + CostTimeframe.yesterday.tokens(in: $1) }
         let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
         let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
-        // Pick the single day with the highest cost across all
-        // providers, then surface both its cost and token totals so
-        // the user sees what they spent *and* burned on their worst
-        // day. Using `.max(by:)` rather than two separate `.max()`
-        // calls keeps the two numbers from drifting onto different
-        // days when token-heavy and dollar-heavy days disagree.
-        let peakDayPoint = dailyHistory.max(by: { $0.costUSD < $1.costUSD })
-        let peakDayCost = peakDayPoint?.costUSD ?? 0
-        let peakDayTokens = peakDayPoint?.totalTokens ?? 0
+        // Cost and token peaks are independent: the most expensive day
+        // is not necessarily the day with the highest token volume.
+        let peakDayCost = CostSnapshotAggregator.peakDailyCost(in: dailyHistory)
+        let peakTokenDayTokens = CostSnapshotAggregator.peakDailyTokens(in: dailyHistory)
         GeometryReader { geometry in
             let spacing = density.interSectionSpacing
             let availableWidth = max(0, geometry.size.width - spacing)
@@ -879,7 +874,7 @@ private struct CombinedTotalsRow: View {
                             divider
                             metric(label: "PEAK DAY", value: formatCost(peakDayCost))
                             divider
-                            metric(label: "PEAK DAY TOK", value: formatTokens(peakDayTokens))
+                            metric(label: "PEAK TOK DAY", value: formatTokens(peakTokenDayTokens))
                         }
                         Spacer(minLength: 8)
                         HStack(alignment: .top, spacing: 0) {

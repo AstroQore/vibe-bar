@@ -336,6 +336,14 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
 ///   we sum costs/tokens under the shared name. The output is sorted by cost
 ///   desc to match the existing single-provider rendering.
 public enum CostSnapshotAggregator {
+    public static func peakDailyCost(in history: [DailyCostPoint]) -> Double {
+        history.map(\.costUSD).max() ?? 0
+    }
+
+    public static func peakDailyTokens(in history: [DailyCostPoint]) -> Int {
+        history.map(\.totalTokens).max() ?? 0
+    }
+
     public static func combinedDailyHistory(
         _ snapshots: [CostSnapshot],
         calendar: Calendar = .current
