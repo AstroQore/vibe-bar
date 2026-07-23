@@ -100,11 +100,33 @@ public enum PricingResolver {
     }
 
     static func loadBundled() -> PricingDataSet? {
-        guard let url = Bundle.module.url(forResource: "pricing", withExtension: "json"),
+        guard let url = bundledPricingURL(),
               let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(PricingDataSet.self, from: data),
               decoded.schemaVersion == PricingDataSet.currentSchemaVersion
         else { return nil }
         return decoded
+    }
+
+    /// SwiftPM's generated `Bundle.module` accessor only knows the absolute
+    /// build directory and a bundle next to `Bundle.main.bundleURL`. Neither
+    /// location is valid after the executable is installed in a signed macOS
+    /// app: the CI build directory is gone, while non-Contents files make
+    /// codesign reject the app. The packaging script therefore embeds the
+    /// generated resource bundle in the conventional Resources directory.
+    private static func bundledPricingURL() -> URL? {
+        if let resourcesURL = Bundle.main.resourceURL {
+            let embeddedBundleURL = resourcesURL
+                .appendingPathComponent("VibeBar_VibeBarCore.bundle", isDirectory: true)
+            if let embeddedBundle = Bundle(url: embeddedBundleURL),
+               let url = embeddedBundle.url(
+                   forResource: "pricing",
+                   withExtension: "json"
+               )
+            {
+                return url
+            }
+        }
+        return Bundle.module.url(forResource: "pricing", withExtension: "json")
     }
 }

@@ -65,6 +65,12 @@ fi
 echo "==> building Vibe Bar $VERSION ($BUILD_NUMBER)"
 (cd "$ROOT" && ./Scripts/build_app.sh release)
 
+echo "==> verifying bundled pricing resources"
+if [[ ! -f "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle/pricing.json" ]]; then
+    echo "Refusing to release an app without the VibeBarCore resource bundle." >&2
+    exit 1
+fi
+
 echo "==> verifying bundle signature"
 codesign --verify --deep --strict "$APP_DIR"
 ENTITLEMENTS="$(codesign -d --entitlements - "$APP_DIR" 2>&1)"
