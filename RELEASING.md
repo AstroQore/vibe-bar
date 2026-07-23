@@ -77,12 +77,14 @@ Generate one organization-scoped Sparkle key on a trusted maintainer Mac:
 Keep the printed public key in `Resources/Info.plist` as `SUPublicEDKey`.
 The private key remains in the login Keychain. For GitHub Actions, export it
 to a temporary permission-restricted file, save its contents as the repository
-secret `SPARKLE_ED_PRIVATE_KEY`, and immediately delete the temporary file.
-Never commit or print the private key.
+Actions secret `SPARKLE_ED_PRIVATE_KEY`, and immediately delete the temporary
+file. Never commit or print the private key.
 
 Local releases use the `astroqore-vibe-bar` Keychain account by default.
-CI reads `SPARKLE_ED_PRIVATE_KEY` from standard input and fails before
-packaging when the secret is absent. `Scripts/release_app.sh` also rejects an
+CI exposes `SPARKLE_ED_PRIVATE_KEY` only to the release-asset build step,
+passes it to Sparkle over standard input, and fails before packaging when the
+secret is absent. The value is not written to the checkout, command line,
+release assets, or workflow output. `Scripts/release_app.sh` also rejects an
 appcast that lacks an EdDSA archive signature or the expected build number.
 
 The stable feed URL is:

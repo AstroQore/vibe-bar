@@ -839,9 +839,10 @@ moment step 1 lands.
   `CFBundleShortVersionString`. The workflow creates a draft GitHub Release
   so its assets can be inspected before publishing.
 - Every published release must include the ZIP, checksum, and signed
-  `appcast.xml`. The workflow requires the repository secret
-  `SPARKLE_ED_PRIVATE_KEY`; the matching public key is `SUPublicEDKey` in
-  `Resources/Info.plist`.
+  `appcast.xml`. The workflow requires the repository Actions secret
+  `SPARKLE_ED_PRIVATE_KEY`, exposes it only to the release-asset build step,
+  and passes it to Sparkle over standard input. The matching public key is
+  `SUPublicEDKey` in `Resources/Info.plist`.
 - The stable in-app update feed is the `appcast.xml` asset on GitHub's latest
   published release. Never hand-edit an appcast after generation.
 - The license is AGPL-3.0-only; don't relicense without an explicit

@@ -29,7 +29,6 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-      SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
 
     steps:
       - name: Check out tagged source
@@ -42,15 +41,6 @@ jobs:
           sw_vers -productVersion
           xcode-select -p
           swift --version
-
-      - name: Verify Sparkle signing key
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
-            echo "SPARKLE_ED_PRIVATE_KEY is required for signed in-app updates." >&2
-            exit 1
-          fi
 
       - name: Import optional Developer ID certificate
         if: ${{ env.MACOS_CERTIFICATE_P12 != '' }}
@@ -95,7 +85,16 @@ jobs:
           echo "VIBEBAR_CODESIGN_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Build verified release assets
-        run: ./Scripts/release_app.sh "$RELEASE_TAG"
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
+            echo "SPARKLE_ED_PRIVATE_KEY is required for signed in-app updates." >&2
+            exit 1
+          fi
+          ./Scripts/release_app.sh "$RELEASE_TAG"
 
       - name: Create or update draft release
         env:
