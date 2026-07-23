@@ -10,6 +10,7 @@ final class AppEnvironment: ObservableObject {
     let scheduler: QuotaRefreshScheduler
     let serviceStatus: ServiceStatusController
     let costService: CostUsageService
+    let updateController: AppUpdateController
 
     @Published private(set) var hasClaudeWebCookies: Bool
     @Published private(set) var hasOpenAIWebCookies: Bool
@@ -41,6 +42,7 @@ final class AppEnvironment: ObservableObject {
     private var pricingRefreshTask: Task<Void, Never>?
 
     init() {
+        self.updateController = AppUpdateController()
         let settings = SettingsStore()
         let accounts = AccountStore(
             codexUsageMode: settings.codexUsageMode,

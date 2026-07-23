@@ -11,20 +11,29 @@ let package = Package(
         .library(name: "VibeBarCore", targets: ["VibeBarCore"])
     ],
     dependencies: [
-        // First and currently only external dependency. SweetCookieKit
-        // encapsulates the Chromium SQLite parsing, "Chrome Safe Storage"
-        // Keychain decryption, and Safari binarycookies / Firefox SQLite
-        // reads that the misc-providers feature needs. Adding it
-        // permanently ends vibe-bar's zero-deps invariant — see AGENTS.md
-        // § 6 for the trade-off, and prefer porting code into Vibe Bar
-        // before adding a second dep.
-        .package(url: "https://github.com/steipete/SweetCookieKit", from: "0.4.0")
+        // SweetCookieKit encapsulates the Chromium SQLite parsing, "Chrome
+        // Safe Storage" Keychain decryption, and Safari binarycookies /
+        // Firefox SQLite reads that the misc-providers feature needs.
+        .package(url: "https://github.com/steipete/SweetCookieKit", from: "0.4.0"),
+        // Sparkle is the standard update framework for independently
+        // distributed macOS applications. Pin the exact reviewed release:
+        // update verification and installation are security-sensitive.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4")
     ],
     targets: [
         .executableTarget(
             name: "VibeBarApp",
-            dependencies: ["VibeBarCore"],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            dependencies: [
+                "VibeBarCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "@loader_path/../Frameworks"
+                ])
+            ]
         ),
         .target(
             name: "VibeBarCore",

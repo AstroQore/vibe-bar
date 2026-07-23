@@ -19,6 +19,13 @@ swift build -c "$CONFIG"
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 EXEC_PATH="$BIN_DIR/VibeBar"
 CORE_RESOURCE_BUNDLE="$BIN_DIR/VibeBar_VibeBarCore.bundle"
+SPARKLE_FRAMEWORK_SOURCE="$(
+    find "$ROOT/.build/artifacts/sparkle" \
+        -type d \
+        -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' \
+        -print \
+        -quit
+)"
 
 if [[ ! -x "$EXEC_PATH" ]]; then
     echo "Executable not found at $EXEC_PATH" >&2
@@ -28,13 +35,19 @@ if [[ ! -f "$CORE_RESOURCE_BUNDLE/pricing.json" ]]; then
     echo "Core resource bundle not found at $CORE_RESOURCE_BUNDLE" >&2
     exit 1
 fi
+if [[ -z "$SPARKLE_FRAMEWORK_SOURCE" || ! -x "$SPARKLE_FRAMEWORK_SOURCE/Versions/B/Sparkle" ]]; then
+    echo "Sparkle framework artifact not found after SwiftPM build." >&2
+    exit 1
+fi
 
 APP_DIR="$ROOT/.build/Vibe Bar.app"
 ENTITLEMENTS="$ROOT/Resources/VibeBar.entitlements"
+SPARKLE_FRAMEWORK="$APP_DIR/Contents/Frameworks/Sparkle.framework"
 echo "==> packaging $APP_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
+mkdir -p "$APP_DIR/Contents/Frameworks"
 
 cp "$EXEC_PATH" "$APP_DIR/Contents/MacOS/VibeBar"
 # A signed macOS app may only contain its conventional Contents tree. Core's
@@ -42,6 +55,7 @@ cp "$EXEC_PATH" "$APP_DIR/Contents/MacOS/VibeBar"
 # before falling back to Bundle.module for source builds and tests.
 cp -R "$CORE_RESOURCE_BUNDLE" \
     "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle"
+ditto "$SPARKLE_FRAMEWORK_SOURCE" "$SPARKLE_FRAMEWORK"
 cp "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
@@ -63,20 +77,38 @@ if [[ ! -f "$ENTITLEMENTS" ]]; then
     exit 1
 fi
 
+SPARKLE_VERSION_DIR="$SPARKLE_FRAMEWORK/Versions/B"
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+    SPARKLE_SIGN_ARGS=(--force --sign - --options runtime)
+else
+    SPARKLE_SIGN_ARGS=(--force --sign "$SIGN_IDENTITY" --options runtime --timestamp)
+fi
+
+echo "==> signing Sparkle helper components"
+codesign "${SPARKLE_SIGN_ARGS[@]}" "$SPARKLE_VERSION_DIR/XPCServices/Installer.xpc"
+codesign \
+    "${SPARKLE_SIGN_ARGS[@]}" \
+    --preserve-metadata=entitlements \
+    "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc"
+codesign "${SPARKLE_SIGN_ARGS[@]}" "$SPARKLE_VERSION_DIR/Autoupdate"
+codesign "${SPARKLE_SIGN_ARGS[@]}" "$SPARKLE_VERSION_DIR/Updater.app"
+codesign "${SPARKLE_SIGN_ARGS[@]}" "$SPARKLE_FRAMEWORK"
+
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
     echo "==> ad-hoc codesign with entitlements"
-    codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_DIR"
+    codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_DIR"
 else
     echo "==> Developer ID codesign with hardened runtime"
     codesign \
         --force \
-        --deep \
         --options runtime \
         --timestamp \
         --sign "$SIGN_IDENTITY" \
         --entitlements "$ENTITLEMENTS" \
         "$APP_DIR"
 fi
+
+codesign --verify --deep --strict "$APP_DIR"
 
 echo "==> done: $APP_DIR"
 echo "Run with: open \"$APP_DIR\""

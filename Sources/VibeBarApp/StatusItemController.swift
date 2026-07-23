@@ -285,6 +285,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menu.addItem(actionMenuItem("Refresh", action: #selector(refreshFromContextMenu(_:)), keyEquivalent: "r"))
         menu.addItem(actionMenuItem("Open Mini Window", action: #selector(toggleMiniFromContextMenu(_:))))
         menu.addItem(actionMenuItem("Open Settings", action: #selector(openSettingsFromContextMenu(_:)), keyEquivalent: ","))
+        let updateItem = actionMenuItem(
+            "Check for Updates…",
+            action: #selector(checkForUpdatesFromContextMenu(_:))
+        )
+        updateItem.isEnabled = environment.updateController.canCheckForUpdates
+        menu.addItem(updateItem)
         menu.addItem(.separator())
         menu.addItem(actionMenuItem("Quit", action: #selector(quitFromContextMenu(_:)), keyEquivalent: "q"))
         return menu
@@ -377,6 +383,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     @objc private func openSettingsFromContextMenu(_ sender: NSMenuItem) {
         environment.showSettingsWindow()
+    }
+
+    @objc private func checkForUpdatesFromContextMenu(_ sender: NSMenuItem) {
+        environment.updateController.checkForUpdates()
     }
 
     @objc private func quitFromContextMenu(_ sender: NSMenuItem) {

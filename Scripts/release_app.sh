@@ -7,6 +7,7 @@
 # Default output:
 #   .build/release/Vibe-Bar-<version>-macOS-<arch>.zip
 #   .build/release/Vibe-Bar-<version>-macOS-<arch>.zip.sha256
+#   .build/release/appcast.xml
 #
 # Without extra environment variables the app is ad-hoc signed. To create a
 # public Developer ID build, set VIBEBAR_CODESIGN_IDENTITY and one notarization
@@ -26,6 +27,7 @@ PLIST="$ROOT/Resources/Info.plist"
 APP_DIR="$ROOT/.build/Vibe Bar.app"
 DIST_DIR="$ROOT/.build/release"
 SIGN_IDENTITY="${VIBEBAR_CODESIGN_IDENTITY:--}"
+SPARKLE_KEY_ACCOUNT="${VIBEBAR_SPARKLE_KEY_ACCOUNT:-astroqore-vibe-bar}"
 
 usage() {
     printf '%s\n' \
@@ -129,9 +131,58 @@ else
     echo "==> ad-hoc release asset (Gatekeeper will require manual approval)"
 fi
 
+GENERATE_APPCAST="$(
+    find "$ROOT/.build/artifacts/sparkle" \
+        -type f \
+        -path '*/Sparkle/bin/generate_appcast' \
+        -print \
+        -quit
+)"
+if [[ -z "$GENERATE_APPCAST" || ! -x "$GENERATE_APPCAST" ]]; then
+    echo "Sparkle generate_appcast tool not found after SwiftPM build." >&2
+    exit 1
+fi
+
+RELEASE_NOTES="$DIST_DIR/$(basename "${ARCHIVE%.zip}").md"
+printf '# Vibe Bar %s\n\nSee the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/%s).\n' \
+    "$VERSION" "$RELEASE_TAG" > "$RELEASE_NOTES"
+
+echo "==> generating signed Sparkle appcast"
+APPCAST_ARGS=(
+    --download-url-prefix "https://github.com/AstroQore/vibe-bar/releases/download/$RELEASE_TAG/"
+    --link "https://github.com/AstroQore/vibe-bar/releases/tag/$RELEASE_TAG"
+    --embed-release-notes
+    --maximum-versions 1
+    -o "$DIST_DIR/appcast.xml"
+)
+if [[ -n "${SPARKLE_ED_PRIVATE_KEY:-}" ]]; then
+    printf '%s' "$SPARKLE_ED_PRIVATE_KEY" \
+        | "$GENERATE_APPCAST" --ed-key-file - "${APPCAST_ARGS[@]}" "$DIST_DIR"
+elif [[ "${CI:-}" == "true" ]]; then
+    echo "SPARKLE_ED_PRIVATE_KEY is required in CI." >&2
+    exit 1
+else
+    "$GENERATE_APPCAST" \
+        --account "$SPARKLE_KEY_ACCOUNT" \
+        "${APPCAST_ARGS[@]}" \
+        "$DIST_DIR"
+fi
+rm -f "$RELEASE_NOTES"
+
+APPCAST="$DIST_DIR/appcast.xml"
+if ! grep -q 'sparkle:edSignature=' "$APPCAST"; then
+    echo "Generated appcast does not contain an EdDSA archive signature." >&2
+    exit 1
+fi
+if ! grep -q "<sparkle:version>$BUILD_NUMBER</sparkle:version>" "$APPCAST"; then
+    echo "Generated appcast does not contain build $BUILD_NUMBER." >&2
+    exit 1
+fi
+
 CHECKSUM="$ARCHIVE.sha256"
 (cd "$DIST_DIR" && shasum -a 256 "$(basename "$ARCHIVE")" > "$(basename "$CHECKSUM")")
 
 echo "==> release assets ready"
 echo "$ARCHIVE"
 echo "$CHECKSUM"
+echo "$APPCAST"
