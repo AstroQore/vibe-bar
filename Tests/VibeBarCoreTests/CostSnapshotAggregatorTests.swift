@@ -71,6 +71,24 @@ final class CostSnapshotAggregatorTests: XCTestCase {
         XCTAssertEqual(combined[1].totalTokens, 750)
     }
 
+    func testDailyCostAndTokenPeaksUseIndependentDays() throws {
+        let cal = calendar()
+        let costPeakDay = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 1)))
+        let tokenPeakDay = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 2)))
+        let history = [
+            DailyCostPoint(date: costPeakDay, costUSD: 100, totalTokens: 1_000),
+            DailyCostPoint(date: tokenPeakDay, costUSD: 10, totalTokens: 9_000),
+        ]
+
+        XCTAssertEqual(CostSnapshotAggregator.peakDailyCost(in: history), 100, accuracy: 0.0001)
+        XCTAssertEqual(CostSnapshotAggregator.peakDailyTokens(in: history), 9_000)
+    }
+
+    func testDailyPeaksDefaultToZeroForEmptyHistory() {
+        XCTAssertEqual(CostSnapshotAggregator.peakDailyCost(in: []), 0, accuracy: 0.0001)
+        XCTAssertEqual(CostSnapshotAggregator.peakDailyTokens(in: []), 0)
+    }
+
     func testCombinedHeatmapAddsCellsAndTotalsAcrossProviders() {
         var codexCells = Array(repeating: Array(repeating: 0, count: 24), count: 7)
         codexCells[1][9] = 100
