@@ -722,12 +722,13 @@ private struct GeminiTabPage: View {
         accountId: String,
         titleOverride: String
     ) -> some View {
+        let allGroups = QuotaBucketGrouping.groups(
+            pageTool: .gemini,
+            itemTool: tool,
+            buckets: quotaService.cachedQuota(for: accountId)?.buckets ?? []
+        )
         let groups = QuotaBucketGrouping.chartable(
-            QuotaBucketGrouping.groups(
-                pageTool: .gemini,
-                itemTool: tool,
-                buckets: quotaService.cachedQuota(for: accountId)?.buckets ?? []
-            ),
+            allGroups,
             accountId: accountId,
             observations: quotaService.observationsByAccountBucket
         )
@@ -738,7 +739,10 @@ private struct GeminiTabPage: View {
                 group: group,
                 density: density,
                 titleOverride: titleOverride,
-                showsGroupTitle: groups.count > 1
+                // Unfiltered count: when other groups merely lack history yet,
+                // the surviving card still needs its group label to stay
+                // distinguishable from them.
+                showsGroupTitle: allGroups.count > 1
             )
         }
     }
@@ -1482,12 +1486,13 @@ private struct ProviderDetailView: View {
                 // Quotas that share a heading share a plot; quotas that reset
                 // on unrelated schedules never get merged behind a picker.
                 if let accountId = environment.account(for: tool)?.id {
+                    let allGroups = QuotaBucketGrouping.groups(
+                        pageTool: tool,
+                        itemTool: tool,
+                        buckets: environment.quota(for: tool)?.buckets ?? []
+                    )
                     let groups = QuotaBucketGrouping.chartable(
-                        QuotaBucketGrouping.groups(
-                            pageTool: tool,
-                            itemTool: tool,
-                            buckets: environment.quota(for: tool)?.buckets ?? []
-                        ),
+                        allGroups,
                         accountId: accountId,
                         observations: quotaService.observationsByAccountBucket
                     )
@@ -1497,7 +1502,10 @@ private struct ProviderDetailView: View {
                             accountId: accountId,
                             group: group,
                             density: density,
-                            showsGroupTitle: groups.count > 1
+                            // Unfiltered count, so a lone drawable group keeps
+                            // its label while sibling groups are still
+                            // accumulating history.
+                            showsGroupTitle: allGroups.count > 1
                         )
                     }
                 }
