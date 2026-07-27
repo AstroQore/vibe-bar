@@ -59,16 +59,66 @@ final class CostChartGranularityTests: XCTestCase {
         XCTAssertEqual(CostChartGranularity.allowed(for: 7 * day + 1), [.day])
     }
 
-    func testWeekIsOfferedFromThreeWeeks() {
-        XCTAssertEqual(CostChartGranularity.allowed(for: 20 * day), [.day])
-        XCTAssertEqual(CostChartGranularity.allowed(for: 21 * day), [.day, .week])
+    func testWeekIsOfferedFromFourWeeks() {
+        XCTAssertEqual(CostChartGranularity.allowed(for: 21 * day), [.day])
+        XCTAssertEqual(CostChartGranularity.allowed(for: 27 * day), [.day])
+        XCTAssertEqual(CostChartGranularity.allowed(for: 28 * day), [.day, .week])
         XCTAssertEqual(CostChartGranularity.allowed(for: 365 * day), [.day, .week, .month])
+    }
+
+    /// The unlock threshold and the bar floor have to agree: the first span
+    /// that offers weekly must also be able to draw the four weekly bars a
+    /// manual pick has to survive.
+    func testWeekUnlocksExactlyWhenItCanDrawItsBarFloor() {
+        XCTAssertFalse(CostChartGranularity.drawsEnoughBuckets(.week, for: 27 * day))
+        XCTAssertTrue(CostChartGranularity.drawsEnoughBuckets(.week, for: 28 * day))
+        XCTAssertTrue(CostChartGranularity.survivesManualSelection(.week, for: 28 * day))
     }
 
     func testMonthIsOfferedFromSixtyDays() {
         XCTAssertEqual(CostChartGranularity.allowed(for: 59 * day), [.day, .week])
         XCTAssertEqual(CostChartGranularity.allowed(for: 60 * day), [.day, .week, .month])
         XCTAssertEqual(CostChartGranularity.allowed(for: 900 * day), [.day, .week, .month])
+    }
+
+    // MARK: - Manual selections that stop paying their way
+
+    func testManualPickIsDroppedWhenItWouldDrawTooFewBars() {
+        // Monthly is offered from 60 days, but 60 days is only two bars.
+        XCTAssertTrue(CostChartGranularity.isAllowed(.month, for: 60 * day))
+        XCTAssertFalse(CostChartGranularity.survivesManualSelection(.month, for: 60 * day))
+        XCTAssertTrue(CostChartGranularity.survivesManualSelection(.month, for: 120 * day))
+    }
+
+    func testManualPickIsDroppedWhenItIsNoLongerOffered() {
+        XCTAssertFalse(CostChartGranularity.survivesManualSelection(.hour, for: 30 * day))
+        XCTAssertFalse(CostChartGranularity.survivesManualSelection(.week, for: 10 * day))
+    }
+
+    func testHourAlwaysClearsTheBarFloorAtEveryUsableSpan() {
+        // The chart's zoom floor is half a day, which is still twelve bars.
+        for hours in [12.0, 24.0, 48.0, 7 * 24.0] {
+            XCTAssertTrue(
+                CostChartGranularity.survivesManualSelection(.hour, for: hours * 3_600),
+                "hour should survive a \(hours)h span"
+            )
+        }
+    }
+
+    /// Daily is the option the control always offers, so it is never taken
+    /// away — not even at the zoom floor, where it draws a single bar.
+    func testDayIsExemptFromTheBarFloor() {
+        XCTAssertFalse(CostChartGranularity.drawsEnoughBuckets(.day, for: 12 * 3_600))
+        XCTAssertTrue(CostChartGranularity.survivesManualSelection(.day, for: 12 * 3_600))
+        XCTAssertTrue(CostChartGranularity.survivesManualSelection(.day, for: 900 * day))
+    }
+
+    func testBarFloorCountsWholeBucketsAndIgnoresNegativeSpans() {
+        XCTAssertEqual(CostChartGranularity.minimumManualBuckets, 4)
+        XCTAssertFalse(CostChartGranularity.drawsEnoughBuckets(.week, for: -30 * day))
+        XCTAssertTrue(CostChartGranularity.drawsEnoughBuckets(.week, for: 30 * day, minimum: 0))
+        XCTAssertTrue(CostChartGranularity.drawsEnoughBuckets(.day, for: 4 * day, minimum: 4))
+        XCTAssertFalse(CostChartGranularity.drawsEnoughBuckets(.day, for: 3.9 * day, minimum: 4))
     }
 
     func testDayIsAlwaysAllowed() {
