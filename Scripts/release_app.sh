@@ -223,8 +223,7 @@ APPCAST_ARGS=(
     --download-url-prefix "https://github.com/AstroQore/vibe-bar/releases/download/$RELEASE_TAG/"
     --link "https://github.com/AstroQore/vibe-bar/releases/tag/$RELEASE_TAG"
     --embed-release-notes
-    --versions "$BUILD_NUMBER"
-    --maximum-versions 1
+    --maximum-versions 0
     -o "$DIST_DIR/appcast.xml"
 )
 if [[ "$RELEASE_CHANNEL" == "dev" ]]; then

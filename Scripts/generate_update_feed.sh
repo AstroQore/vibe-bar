@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Merge one published release archive into Vibe Bar's shared Sparkle appcast.
+# Add one published release archive to a reconstructed Sparkle appcast.
 #
-# This is intentionally separate from release_app.sh: draft assets are built
-# and reviewed first, then the release-published workflow regenerates the
-# shared feed against its latest state so independently prepared Main and Dev
-# drafts cannot overwrite each other.
+# The release-published workflow calls this once for the newest published Main
+# archive and once for the newest published Dev archive. Existing items in the
+# supplied base appcast are preserved, so the final feed always contains both
+# channel heads without treating GitHub Actions concurrency as an event queue.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLIST="$ROOT/Resources/Info.plist"
 SPARKLE_KEY_ACCOUNT="${VIBEBAR_SPARKLE_KEY_ACCOUNT:-astroqore-vibe-bar}"
 RELEASE_CHANNEL=""
 RELEASE_TAG=""
@@ -18,7 +17,7 @@ OUTPUT=""
 
 usage() {
     printf '%s\n' \
-        "Merge a published release archive into the shared Sparkle appcast." \
+        "Add a published release archive to a reconstructed Sparkle appcast." \
         "" \
         "Usage: ./Scripts/generate_update_feed.sh \\" \
         "  --channel main|dev --tag <tag> --archive <zip> --output <appcast.xml> \\" \
@@ -96,18 +95,6 @@ if [[ -n "$BASE_APPCAST" && ! -f "$BASE_APPCAST" ]]; then
     exit 1
 fi
 
-VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$PLIST")"
-BUILD_NUMBER="$(plutil -extract CFBundleVersion raw -o - "$PLIST")"
-if [[ "$RELEASE_CHANNEL" == "main" ]]; then
-    EXPECTED_TAG="v$VERSION"
-else
-    EXPECTED_TAG="v$VERSION-dev.$BUILD_NUMBER"
-fi
-if [[ "$RELEASE_TAG" != "$EXPECTED_TAG" ]]; then
-    echo "Release tag $RELEASE_TAG does not match $EXPECTED_TAG" >&2
-    exit 1
-fi
-
 GENERATE_APPCAST="$(
     find "$ROOT/.build/artifacts/sparkle" \
         -type f \
@@ -124,6 +111,35 @@ STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vibebar-update-feed.XXXXXX")"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 STAGED_ARCHIVE="$STAGING_DIR/$(basename "$ARCHIVE")"
 cp "$ARCHIVE" "$STAGED_ARCHIVE"
+
+EXTRACTED_DIR="$STAGING_DIR/extracted"
+mkdir -p "$EXTRACTED_DIR"
+ditto -x -k "$STAGED_ARCHIVE" "$EXTRACTED_DIR"
+ARCHIVE_PLIST="$(
+    find "$EXTRACTED_DIR" \
+        -mindepth 3 \
+        -maxdepth 3 \
+        -type f \
+        -path '*.app/Contents/Info.plist' \
+        -print \
+        -quit
+)"
+if [[ -z "$ARCHIVE_PLIST" ]]; then
+    echo "Release archive does not contain an app Info.plist." >&2
+    exit 1
+fi
+VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$ARCHIVE_PLIST")"
+BUILD_NUMBER="$(plutil -extract CFBundleVersion raw -o - "$ARCHIVE_PLIST")"
+if [[ "$RELEASE_CHANNEL" == "main" ]]; then
+    EXPECTED_TAG="v$VERSION"
+else
+    EXPECTED_TAG="v$VERSION-dev.$BUILD_NUMBER"
+fi
+if [[ "$RELEASE_TAG" != "$EXPECTED_TAG" ]]; then
+    echo "Release tag $RELEASE_TAG does not match archived build $EXPECTED_TAG" >&2
+    exit 1
+fi
+
 if [[ -n "$BASE_APPCAST" ]]; then
     cp "$BASE_APPCAST" "$STAGING_DIR/appcast.xml"
 fi
@@ -136,8 +152,7 @@ APPCAST_ARGS=(
     --download-url-prefix "https://github.com/AstroQore/vibe-bar/releases/download/$RELEASE_TAG/"
     --link "https://github.com/AstroQore/vibe-bar/releases/tag/$RELEASE_TAG"
     --embed-release-notes
-    --versions "$BUILD_NUMBER"
-    --maximum-versions 1
+    --maximum-versions 0
     -o "$STAGING_DIR/appcast.xml"
 )
 if [[ "$RELEASE_CHANNEL" == "dev" ]]; then
@@ -170,6 +185,17 @@ if [[ "$RELEASE_CHANNEL" == "dev" ]] \
     && ! grep -q '<sparkle:channel>dev</sparkle:channel>' "$APPCAST"; then
     echo "Generated shared appcast does not mark build $BUILD_NUMBER as dev." >&2
     exit 1
+fi
+if [[ -n "$BASE_APPCAST" ]]; then
+    while IFS= read -r base_version; do
+        if ! grep -q "<sparkle:version>$base_version</sparkle:version>" "$APPCAST"; then
+            echo "Generated shared appcast dropped existing build $base_version." >&2
+            exit 1
+        fi
+    done < <(
+        sed -n 's|.*<sparkle:version>\([^<]*\)</sparkle:version>.*|\1|p' \
+            "$BASE_APPCAST"
+    )
 fi
 
 mkdir -p "$(dirname "$OUTPUT")"

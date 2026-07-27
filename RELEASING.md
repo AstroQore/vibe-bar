@@ -56,18 +56,21 @@ mismatches fail before an asset is uploaded.
 5. verifies the strict code signature and rejects sandboxed entitlements;
 6. optionally notarizes and staples a Developer ID build;
 7. creates an architecture-labelled ZIP and SHA-256 checksum;
-8. merges the current shared appcast, signs the ZIP with Sparkle's EdDSA key,
-   and adds either a Main or `dev` appcast item; and
+8. preserves the current shared appcast, signs the ZIP with Sparkle's EdDSA
+   key, and adds either a Main or `dev` appcast item; and
 9. creates or updates a draft GitHub Release, marking Dev drafts as
    prereleases.
 
 Review the generated draft and then select **Publish release** on GitHub.
 Re-running the workflow for the same tag replaces its assets. Draft releases
 do not become the live update feed. Once a versioned release is published,
-`.github/workflows/publish-update-feed.yml` serially regenerates its item
-against the latest shared appcast, then commits the result to the
-machine-managed `updates` branch. Regenerating at publication time prevents
-independently prepared Main and Dev drafts from overwriting each other.
+`.github/workflows/publish-update-feed.yml` queries the published releases,
+selects the newest Main and newest Dev archive, and reconstructs the shared
+feed from those channel heads before committing it to the machine-managed
+`updates` branch. Workflow concurrency only serializes branch writes; feed
+correctness does not depend on every release event remaining queued. A later
+run always sees all published releases and repairs the complete two-channel
+feed.
 
 ## Release assets
 
@@ -92,9 +95,10 @@ automatically. Do not use the single-release appcast as a replacement for the
 shared feed unless it was generated from that base.
 
 `Scripts/generate_update_feed.sh` is the narrower publication-time companion:
-it takes the already reviewed release ZIP, merges it into the latest shared
-feed, and signs the new item without rebuilding or replacing the release
-asset.
+it takes one already reviewed release ZIP, validates the tag against the
+version embedded in that archive, adds the item without pruning the supplied
+base appcast, and signs it without rebuilding or replacing the release asset.
+The publication workflow invokes it once per available channel head.
 
 Without signing credentials this produces an ad-hoc-signed build. GitHub can
 host that build, but Gatekeeper will require users to approve it manually.

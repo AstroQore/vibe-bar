@@ -9,6 +9,9 @@ permissions:
   contents: write
 
 concurrency:
+  # This serializes writes to the updates branch. It is not an event queue:
+  # every surviving run reconstructs both channel heads from published
+  # releases, so replacing a pending run cannot omit a release.
   group: sparkle-update-feed
   cancel-in-progress: false
 
@@ -18,56 +21,74 @@ jobs:
     name: Publish shared Main and Dev appcast
     runs-on: macos-26
     env:
-      RELEASE_TAG: ${{ github.event.release.tag_name }}
+      TRIGGER_TAG: ${{ github.event.release.tag_name }}
 
     steps:
-      - name: Check out released source
+      - name: Check out feed publisher
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: main
           fetch-depth: 0
 
-      - name: Resolve channel and current shared feed
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$RELEASE_TAG" == v*-dev.* ]]; then
-            echo "RELEASE_CHANNEL=dev" >> "$GITHUB_ENV"
-          else
-            echo "RELEASE_CHANNEL=main" >> "$GITHUB_ENV"
-          fi
-
-          feed_dir="$RUNNER_TEMP/vibebar-update-feed"
-          mkdir -p "$feed_dir"
-          base_appcast="$feed_dir/base-appcast.xml"
-          if git ls-remote --exit-code --heads origin updates >/dev/null 2>&1; then
-            git fetch --no-tags origin \
-              refs/heads/updates:refs/remotes/origin/updates
-            git show refs/remotes/origin/updates:appcast.xml > "$base_appcast"
-            echo "BASE_APPCAST=$base_appcast" >> "$GITHUB_ENV"
-          else
-            echo "No existing shared appcast; this release will seed it."
-          fi
-          echo "FEED_DIR=$feed_dir" >> "$GITHUB_ENV"
-
-      - name: Download published release archive
+      - name: Resolve newest published Main and Dev releases
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release download "$RELEASE_TAG" \
-            --pattern '*.zip' \
-            --dir "$FEED_DIR" \
-            --clobber
-          archives=("$FEED_DIR"/*.zip)
-          if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
-            echo "Expected exactly one release ZIP for $RELEASE_TAG." >&2
+          feed_dir="$RUNNER_TEMP/vibebar-update-feed"
+          mkdir -p "$feed_dir"
+          releases_json="$feed_dir/releases.json"
+          manifest="$feed_dir/releases.tsv"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases_json"
+
+          main_tag="$(
+            jq -r '
+              [.[] | select(.draft == false and .prerelease == false)
+                | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))]
+              | sort_by(.published_at) | last | .tag_name // empty
+            ' "$releases_json"
+          )"
+          dev_tag="$(
+            jq -r '
+              [.[] | select(.draft == false)
+                | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$"))]
+              | sort_by(.published_at) | last | .tag_name // empty
+            ' "$releases_json"
+          )"
+
+          if [[ -z "$main_tag" && -z "$dev_tag" ]]; then
+            echo "No published Main or Dev release is available." >&2
             exit 1
           fi
-          echo "RELEASE_ARCHIVE=${archives[0]}" >> "$GITHUB_ENV"
+          : > "$manifest"
+          for channel in main dev; do
+            if [[ "$channel" == "main" ]]; then
+              tag="$main_tag"
+            else
+              tag="$dev_tag"
+            fi
+            [[ -n "$tag" ]] || continue
 
-      - name: Regenerate shared appcast from latest state
+            archive_dir="$feed_dir/$channel"
+            mkdir -p "$archive_dir"
+            gh release download "$tag" \
+              --pattern '*.zip' \
+              --dir "$archive_dir" \
+              --clobber
+            archives=("$archive_dir"/*.zip)
+            if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
+              echo "Expected exactly one release ZIP for $tag." >&2
+              exit 1
+            fi
+            printf '%s\t%s\t%s\n' \
+              "$channel" "$tag" "${archives[0]}" >> "$manifest"
+          done
+
+          echo "FEED_DIR=$feed_dir" >> "$GITHUB_ENV"
+          echo "RELEASE_MANIFEST=$manifest" >> "$GITHUB_ENV"
+
+      - name: Reconstruct shared appcast
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         shell: bash
@@ -78,16 +99,29 @@ jobs:
             exit 1
           fi
           swift package resolve
-          args=(
-            --channel "$RELEASE_CHANNEL"
-            --tag "$RELEASE_TAG"
-            --archive "$RELEASE_ARCHIVE"
-            --output "$FEED_DIR/appcast.xml"
-          )
-          if [[ -n "${BASE_APPCAST:-}" ]]; then
-            args+=(--base-appcast "$BASE_APPCAST")
+          current_appcast=""
+          iteration=0
+          while IFS=$'\t' read -r channel tag archive; do
+            ((iteration += 1))
+            next_appcast="$FEED_DIR/appcast-$iteration.xml"
+            args=(
+              --channel "$channel"
+              --tag "$tag"
+              --archive "$archive"
+              --output "$next_appcast"
+            )
+            if [[ -n "$current_appcast" ]]; then
+              args+=(--base-appcast "$current_appcast")
+            fi
+            ./Scripts/generate_update_feed.sh "${args[@]}"
+            current_appcast="$next_appcast"
+          done < "$RELEASE_MANIFEST"
+
+          if [[ -z "$current_appcast" || ! -f "$current_appcast" ]]; then
+            echo "Shared appcast reconstruction produced no output." >&2
+            exit 1
           fi
-          ./Scripts/generate_update_feed.sh "${args[@]}"
+          cp "$current_appcast" "$FEED_DIR/appcast.xml"
           echo "RELEASE_APPCAST=$FEED_DIR/appcast.xml" >> "$GITHUB_ENV"
 
       - name: Publish machine-managed updates branch
@@ -112,5 +146,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add appcast.xml
-          git commit -m "Update Sparkle feed for $RELEASE_TAG"
+          git commit \
+            -m "Rebuild Sparkle feed after $TRIGGER_TAG" \
+            -m "Co-Authored-By: Codex <noreply@openai.com>"
           git push origin HEAD:updates
