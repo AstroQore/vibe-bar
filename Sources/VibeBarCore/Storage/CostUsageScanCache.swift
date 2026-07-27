@@ -24,6 +24,10 @@ public struct CostUsageScanCache: Codable, Sendable {
     public struct ParsedEvent: Codable, Sendable {
         public let date: Date
         public let model: String
+        /// Optional provider-native alias used only when `model` is an
+        /// unresolved opaque identifier. AntiGravity keeps its field-19
+        /// router alias here until the field-20 enum gains a learned label.
+        public let modelFallback: String?
         public let input: Int
         public let output: Int
         public let cache: Int
@@ -45,6 +49,7 @@ public struct CostUsageScanCache: Codable, Sendable {
         public init(
             date: Date,
             model: String,
+            modelFallback: String? = nil,
             input: Int,
             output: Int,
             cache: Int,
@@ -59,6 +64,7 @@ public struct CostUsageScanCache: Codable, Sendable {
         ) {
             self.date = date
             self.model = model
+            self.modelFallback = modelFallback
             self.input = input
             self.output = output
             self.cache = cache

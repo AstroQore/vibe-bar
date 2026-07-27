@@ -40,6 +40,9 @@ public enum AntigravitySessionReader {
         public let toolTokens: Int
         public let requestId: String?
         public let model: String?
+        /// Field-19 router alias retained as a safe display/pricing fallback
+        /// while an opaque field-20 model enum has no learned label.
+        public let routedModel: String?
 
         public init(
             date: Date,
@@ -49,7 +52,8 @@ public enum AntigravitySessionReader {
             thoughtsTokens: Int,
             toolTokens: Int,
             requestId: String?,
-            model: String? = nil
+            model: String? = nil,
+            routedModel: String? = nil
         ) {
             self.date = date
             self.inputTokens = inputTokens
@@ -59,7 +63,14 @@ public enum AntigravitySessionReader {
             self.toolTokens = toolTokens
             self.requestId = requestId
             self.model = model
+            self.routedModel = routedModel
         }
+    }
+
+    enum ReadError: Error {
+        case openDatabase
+        case prepareStatement
+        case stepStatement
     }
 
     /// Open the SQLite database in read-only mode, walk the
@@ -68,13 +79,24 @@ public enum AntigravitySessionReader {
     /// rather than throwing — a malformed database shouldn't sink
     /// the rest of the scan.
     public static func readGenMetadata(at file: URL) -> [Turn] {
+        switch readGenMetadataResult(at: file) {
+        case let .success(turns):
+            return turns
+        case .failure:
+            return []
+        }
+    }
+
+    /// Result-bearing variant used by cache migrations, where a valid empty
+    /// database must be distinguished from a temporary SQLite read failure.
+    static func readGenMetadataResult(at file: URL) -> Result<[Turn], ReadError> {
         let path = file.path
         var db: OpaquePointer? = nil
         let openFlags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_URI
         let uri = "file:\(path)?immutable=1"
         guard sqlite3_open_v2(uri, &db, openFlags, nil) == SQLITE_OK, let db else {
             if db != nil { sqlite3_close_v2(db) }
-            return []
+            return .failure(.openDatabase)
         }
         defer { sqlite3_close_v2(db) }
 
@@ -82,21 +104,28 @@ public enum AntigravitySessionReader {
         let sql = "SELECT idx, data FROM gen_metadata ORDER BY idx"
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
             if statement != nil { sqlite3_finalize(statement) }
-            return []
+            return .failure(.prepareStatement)
         }
         defer { sqlite3_finalize(statement) }
 
         var turns: [Turn] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            guard let raw = sqlite3_column_blob(statement, 1) else { continue }
-            let length = Int(sqlite3_column_bytes(statement, 1))
-            guard length > 0 else { continue }
-            let blob = Data(bytes: raw, count: length)
-            if let turn = decodeTurn(blob: blob) {
-                turns.append(turn)
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            if let raw = sqlite3_column_blob(statement, 1) {
+                let length = Int(sqlite3_column_bytes(statement, 1))
+                if length > 0 {
+                    let blob = Data(bytes: raw, count: length)
+                    if let turn = decodeTurn(blob: blob) {
+                        turns.append(turn)
+                    }
+                }
             }
+            stepResult = sqlite3_step(statement)
         }
-        return turns
+        guard stepResult == SQLITE_DONE else {
+            return .failure(.stepStatement)
+        }
+        return .success(turns)
     }
 
     // MARK: - Blob decoding
@@ -146,7 +175,8 @@ public enum AntigravitySessionReader {
             thoughtsTokens: thoughts,
             toolTokens: tool,
             requestId: requestId,
-            model: model
+            model: model,
+            routedModel: modelLabel == nil && modelEnum != nil ? routedModel : nil
         )
     }
 

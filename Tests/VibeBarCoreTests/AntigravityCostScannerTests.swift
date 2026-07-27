@@ -195,6 +195,7 @@ final class AntigravityCostScannerTests: XCTestCase {
         let turn = try XCTUnwrap(AntigravitySessionReader.decodeTurn(blob: blob))
 
         XCTAssertEqual(turn.model, "Gemini 3.5 Flash (High)")
+        XCTAssertNil(turn.routedModel)
     }
 
     func testDecoderFallsBackToModelEnumBeforeRoutedAlias() throws {
@@ -210,6 +211,7 @@ final class AntigravityCostScannerTests: XCTestCase {
         let turn = try XCTUnwrap(AntigravitySessionReader.decodeTurn(blob: blob))
 
         XCTAssertEqual(turn.model, "MODEL_PLACEHOLDER_M84")
+        XCTAssertEqual(turn.routedModel, "gemini-default")
     }
 
     func testDecoderKeepsLegacyBlobsWithoutModelReadable() throws {
@@ -433,6 +435,69 @@ final class AntigravityCostScannerTests: XCTestCase {
         XCTAssertLessThan(snap.allTimeCostUSD, 1.0)
     }
 
+    func testUnknownModelEnumUsesRoutedAliasUntilLabelIsLearned() async throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        let convDir = home
+            .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let base = UInt64(now.addingTimeInterval(-600).timeIntervalSince1970)
+        let dbURL = convDir.appendingPathComponent("enum-fallback.db")
+        try writeAntigravityDB(at: dbURL, turns: [
+            TurnSpec(idx: 0, blob: encodeTurnBlob(
+                seconds: base,
+                input: 1_000_000,
+                output: 0,
+                cumulativeCache: 0,
+                model: "gemini-3-flash-a",
+                modelEnum: "MODEL_PLACEHOLDER_M84"
+            ))
+        ])
+
+        let firstResult = await CostUsageScanner.scan(
+            tool: .antigravity,
+            homeDirectory: home.path,
+            now: now
+        )
+        let first = try XCTUnwrap(firstResult)
+        XCTAssertEqual(first.modelBreakdowns.map(\.modelName), ["gemini-3-flash-a"])
+        XCTAssertGreaterThan(first.allTimeCostUSD, 0)
+        XCTAssertLessThan(first.allTimeCostUSD, 3.0)
+
+        let scannedDBPath = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: convDir,
+                includingPropertiesForKeys: nil
+            ).first
+        ).path
+        let cacheData = try Data(contentsOf: CostUsageScanCache.fileURL(
+            homeDirectory: home.path,
+            tool: .antigravity
+        ))
+        let decodedCache = try JSONDecoder().decode(CostUsageScanCache.self, from: cacheData)
+        XCTAssertEqual(
+            decodedCache.entries.keys.sorted(),
+            [CostUsageScanCache.entryKey(for: scannedDBPath)]
+        )
+        let cached = decodedCache.lastKnownEvents(for: scannedDBPath)?.first
+        XCTAssertEqual(cached?.model, "MODEL_PLACEHOLDER_M84")
+        XCTAssertEqual(cached?.modelFallback, "gemini-3-flash-a")
+
+        AntigravityModelLabelStore(labels: [
+            "MODEL_PLACEHOLDER_M84": "Gemini 3.5 Flash (High)"
+        ]).save(homeDirectory: home.path)
+
+        let secondResult = await CostUsageScanner.scan(
+            tool: .antigravity,
+            homeDirectory: home.path,
+            now: now
+        )
+        let second = try XCTUnwrap(secondResult)
+        XCTAssertEqual(second.modelBreakdowns.map(\.modelName), ["Gemini 3.5 Flash (High)"])
+    }
+
     func testModelParserMigrationReparsesOnlyDatabaseEvents() async throws {
         let home = try makeTempHome()
         defer { cleanup(home) }
@@ -458,6 +523,12 @@ final class AntigravityCostScannerTests: XCTestCase {
         let attributes = try FileManager.default.attributesOfItem(atPath: dbURL.path)
         let mtime = try XCTUnwrap(attributes[.modificationDate] as? Date)
         let size = try XCTUnwrap((attributes[.size] as? NSNumber)?.int64Value)
+        let scannedDBPath = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: convDir,
+                includingPropertiesForKeys: nil
+            ).first
+        ).path
         let staleEvent = CostUsageScanCache.ParsedEvent(
             date: eventDate,
             model: "gemini-default",
@@ -467,7 +538,7 @@ final class AntigravityCostScannerTests: XCTestCase {
             sessionId: "cached-model"
         )
         var cache = CostUsageScanCache(antigravityDBParserVersion: 1)
-        cache.store([staleEvent], for: dbURL.path, mtime: mtime, size: size)
+        cache.store([staleEvent], for: scannedDBPath, mtime: mtime, size: size)
         cache.save(homeDirectory: home.path, tool: .antigravity)
 
         let snapshot = await CostUsageScanner.scan(
@@ -483,6 +554,81 @@ final class AntigravityCostScannerTests: XCTestCase {
 
         XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["Gemini 3.5 Flash (High)"])
         XCTAssertEqual(migratedCache.antigravityDBParserVersion, 2)
+    }
+
+    func testModelParserMigrationRetriesDatabaseAfterTemporaryReadFailure() async throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        let convDir = home
+            .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+
+        let now = Date(timeIntervalSince1970: 1_779_434_500)
+        let eventDate = now.addingTimeInterval(-600)
+        let dbURL = convDir.appendingPathComponent("temporarily-unreadable.db")
+        try Data("not-a-sqlite-database".utf8).write(to: dbURL)
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: dbURL.path)
+        let mtime = try XCTUnwrap(attributes[.modificationDate] as? Date)
+        let size = try XCTUnwrap((attributes[.size] as? NSNumber)?.int64Value)
+        let scannedDBPath = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: convDir,
+                includingPropertiesForKeys: nil
+            ).first
+        ).path
+        let staleEvent = CostUsageScanCache.ParsedEvent(
+            date: eventDate,
+            model: "gemini-default",
+            input: 1_000,
+            output: 200,
+            cache: 0,
+            sessionId: "temporarily-unreadable"
+        )
+        var cache = CostUsageScanCache(antigravityDBParserVersion: 1)
+        cache.store([staleEvent], for: scannedDBPath, mtime: mtime, size: size)
+        cache.save(homeDirectory: home.path, tool: .antigravity)
+
+        let failedMigrationResult = await CostUsageScanner.scan(
+            tool: .antigravity,
+            homeDirectory: home.path,
+            now: now
+        )
+        let failedMigration = try XCTUnwrap(failedMigrationResult)
+        XCTAssertEqual(failedMigration.modelBreakdowns.map(\.modelName), ["gemini-default"])
+        XCTAssertEqual(
+            CostUsageScanCache.load(homeDirectory: home.path, tool: .antigravity)
+                .antigravityDBParserVersion,
+            1
+        )
+
+        try FileManager.default.removeItem(at: dbURL)
+        try writeAntigravityDB(at: dbURL, turns: [
+            TurnSpec(idx: 0, blob: encodeTurnBlob(
+                seconds: UInt64(eventDate.timeIntervalSince1970),
+                input: 1_000,
+                output: 200,
+                cumulativeCache: 0,
+                model: "gemini-default",
+                modelLabel: "Gemini 3.5 Flash (High)"
+            ))
+        ])
+
+        let recoveredMigrationResult = await CostUsageScanner.scan(
+            tool: .antigravity,
+            homeDirectory: home.path,
+            now: now
+        )
+        let recoveredMigration = try XCTUnwrap(recoveredMigrationResult)
+        XCTAssertEqual(
+            recoveredMigration.modelBreakdowns.map(\.modelName),
+            ["Gemini 3.5 Flash (High)"]
+        )
+        XCTAssertEqual(
+            CostUsageScanCache.load(homeDirectory: home.path, tool: .antigravity)
+                .antigravityDBParserVersion,
+            2
+        )
     }
 
     func testModelParserVersionRoundTripPreservesOpaqueProtobufCache() throws {

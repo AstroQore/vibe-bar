@@ -939,6 +939,7 @@ public enum CostUsageScanner {
 
         var knownPaths: Set<String> = []
         var fileCount = 0
+        var completedRequiredDatabaseReparses = true
 
         for cascade in cascades {
             // 1. Prefer the offline `.db` decode.
@@ -957,24 +958,32 @@ public enum CostUsageScanner {
                     if !cached.isEmpty { handledByDB = true }
                     continue
                 }
-                let turns = AntigravitySessionReader.readGenMetadata(at: dbFile)
-                if !turns.isEmpty {
+                let readResult = AntigravitySessionReader.readGenMetadataResult(at: dbFile)
+                if case let .success(turns) = readResult, !turns.isEmpty {
                     let parsed = antigravityEvents(fromDB: turns, sessionId: cascade.id, cutoff: cutoff)
                     cache.store(parsed, for: dbFile.path, mtime: mtime, size: size)
                     aggregateAntigravity(parsed, labels: labels, into: &aggregator)
                     handledByDB = true
                     continue
                 }
-                // A parser migration must never erase a previously readable
-                // conversation if a database is temporarily locked or
-                // malformed. Keep its last cooked events and continue to
-                // prefer them over a `.pb` sibling to avoid double-counting.
-                if let cached {
-                    let retained = retainedEvents(cached, cutoff: cutoff)
-                    aggregateAntigravity(retained, labels: labels, into: &aggregator)
-                    if !cached.isEmpty { handledByDB = true }
+                if case .failure = readResult {
+                    if shouldReparseDatabases {
+                        completedRequiredDatabaseReparses = false
+                    }
+                    // A parser migration must never erase a previously
+                    // readable conversation if SQLite is temporarily locked
+                    // or malformed. Keep the old parser version so the next
+                    // scan retries this database.
+                    if let cached {
+                        let retained = retainedEvents(cached, cutoff: cutoff)
+                        aggregateAntigravity(retained, labels: labels, into: &aggregator)
+                        if !cached.isEmpty { handledByDB = true }
+                    }
                     continue
                 }
+                // A parser migration must never erase a previously readable
+                // conversation. A successful empty decode is authoritative,
+                // so cache it and allow a `.pb` sibling to provide usage.
                 cache.store([], for: dbFile.path, mtime: mtime, size: size)
             }
             if handledByDB { continue }
@@ -1020,7 +1029,9 @@ public enum CostUsageScanner {
             }
         }
         cache.prune(known: knownPaths)
-        cache.antigravityDBParserVersion = antigravityDBParserVersion
+        if !shouldReparseDatabases || completedRequiredDatabaseReparses {
+            cache.antigravityDBParserVersion = antigravityDBParserVersion
+        }
         cache.save(homeDirectory: homeDirectory, tool: .antigravity)
         return aggregator.snapshot(jsonlFilesFound: fileCount)
     }
@@ -1097,9 +1108,12 @@ public enum CostUsageScanner {
             let output = turn.outputTokens + turn.thoughtsTokens + turn.toolTokens
             guard input > 0 || output > 0 || cacheReadThisTurn > 0 else { continue }
             let model = normalizedNonEmpty(turn.model) ?? "antigravity-default"
+            let fallback = normalizedNonEmpty(turn.routedModel)
+                .flatMap { $0 == model ? nil : $0 }
             let event = CostUsageScanCache.ParsedEvent(
                 date: turn.date,
                 model: model,
+                modelFallback: fallback,
                 input: input,
                 output: output,
                 cache: cacheReadThisTurn,
@@ -1155,10 +1169,14 @@ public enum CostUsageScanner {
             // normalizes to `antigravity-default` (Sonnet rate); the
             // resolved label (e.g. "Gemini 3.5 Flash") normalizes to the
             // correct — usually much cheaper — rate.
-            let name = labels.resolve(event.model)
+            let learnedName = labels.resolve(event.model)
+            let name = learnedName == event.model
+                ? (normalizedNonEmpty(event.modelFallback) ?? learnedName)
+                : learnedName
             let resolved = name == event.model ? event : CostUsageScanCache.ParsedEvent(
                 date: event.date,
                 model: name,
+                modelFallback: event.modelFallback,
                 input: event.input,
                 output: event.output,
                 cache: event.cache,
