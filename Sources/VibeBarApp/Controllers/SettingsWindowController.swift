@@ -25,6 +25,7 @@ final class SettingsWindowController: NSObject {
                 .environmentObject(environment.settingsStore)
                 .environmentObject(environment.quotaService)
                 .environmentObject(environment.serviceStatus)
+                .environmentObject(environment.pageLayout)
         )
         let initialSize = NSSize(width: 1040, height: 780)
         let win = NSWindow(

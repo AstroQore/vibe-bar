@@ -96,6 +96,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 .environmentObject(environment.quotaService)
                 .environmentObject(environment.serviceStatus)
                 .environmentObject(environment.costService)
+                .environmentObject(environment.pageLayout)
         )
         return popover
     }

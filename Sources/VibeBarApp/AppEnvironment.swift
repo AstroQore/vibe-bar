@@ -11,6 +11,9 @@ final class AppEnvironment: ObservableObject {
     let serviceStatus: ServiceStatusController
     let costService: CostUsageService
     let updateController: AppUpdateController
+    /// Per-page card arrangement, shared by the popover and the Settings
+    /// layout editor. Loads `~/.vibebar/layout.json` once at startup.
+    let pageLayout: PageLayoutModel
 
     @Published private(set) var hasClaudeWebCookies: Bool
     @Published private(set) var hasOpenAIWebCookies: Bool
@@ -72,6 +75,7 @@ final class AppEnvironment: ObservableObject {
         self.settingsStore = settings
         self.accountStore = accounts
         self.quotaService = service
+        self.pageLayout = PageLayoutModel()
         self.serviceStatus = ServiceStatusController()
         let costService = CostUsageService(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
