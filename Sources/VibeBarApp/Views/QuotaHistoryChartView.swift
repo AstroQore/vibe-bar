@@ -8,7 +8,7 @@ import VibeBarCore
 /// and Codex splits its by limit name; each of those is a group, and the
 /// ungrouped remainder (Claude's 5 Hours + Weekly) is a group too — the one
 /// Subscription Utilization prints no heading for.
-struct QuotaBucketGroup: Identifiable {
+struct QuotaBucketGroup: Identifiable, Equatable {
     let id: String
     let title: String?
     let buckets: [QuotaBucket]
@@ -38,71 +38,15 @@ enum QuotaBucketGrouping {
         return nil
     }
 
-    /// Split `buckets` into runs that share a heading, preserving the
-    /// provider's own bucket order.
+    /// Stable identity for the run of rows a heading covers.
     ///
-    /// Contiguous by design: the utilization card decides "this row starts a
-    /// group" by comparing with the row above it, so a title that reappeared
-    /// after an interruption would print twice there. Grouping the same way
-    /// keeps one chart per printed heading rather than per distinct string.
-    static func groups(
-        pageTool: ToolType,
-        itemTool: ToolType,
-        buckets: [QuotaBucket]
-    ) -> [QuotaBucketGroup] {
-        var result: [QuotaBucketGroup] = []
-        for bucket in buckets {
-            let title = title(pageTool: pageTool, itemTool: itemTool, bucket: bucket)
-            if let last = result.last, last.title == title {
-                result[result.count - 1] = QuotaBucketGroup(
-                    id: last.id,
-                    title: last.title,
-                    buckets: last.buckets + [bucket]
-                )
-            } else {
-                result.append(
-                    QuotaBucketGroup(
-                        id: "\(itemTool.rawValue)|\(result.count)|\(title ?? "")",
-                        title: title,
-                        buckets: [bucket]
-                    )
-                )
-            }
-        }
-        return result
+    /// Account- and tool-scoped because one card can stack two products'
+    /// quotas (Gemini Web + AntiGravity), and `nil`-safe because the ungrouped
+    /// run (Claude's 5 Hours + Weekly — "all models") is a group for charting
+    /// purposes even though the utilization card prints no heading above it.
+    static func key(accountId: String?, itemTool: ToolType, title: String?) -> String {
+        "\(accountId ?? "")|\(itemTool.rawValue)|\(title ?? "")"
     }
-
-    /// Groups worth giving a history card.
-    ///
-    /// A line needs two points, so a group nobody has observed twice yet would
-    /// render an empty card — and on a fresh install *every* group would. Keep
-    /// the ones with something to draw; when none of them has anything, keep
-    /// exactly one so the "history builds up as refreshes come in" note is
-    /// still said once instead of once per quota scope.
-    static func chartable(
-        _ groups: [QuotaBucketGroup],
-        accountId: String,
-        observations: [SubscriptionHistoryKey: [FillTimelinePoint]]
-    ) -> [QuotaBucketGroup] {
-        let drawable = groups.filter { group in
-            group.buckets.contains { bucket in
-                let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
-                return (observations[key]?.count ?? 0) > 1
-            }
-        }
-        if !drawable.isEmpty { return drawable }
-        return groups.isEmpty ? [] : [groups[0]]
-    }
-}
-
-/// One drawable point on a quota history line. Segment membership travels with
-/// the point as `seriesKey` so Swift Charts never joins two sides of a reset
-/// (or of a stretch where Vibe Bar was not running) into one stroke.
-private struct QuotaLinePoint: Identifiable {
-    let id: String
-    let seriesKey: String
-    let time: Date
-    let value: Double
 }
 
 /// One drawable point of the forecast's uncertainty band.
@@ -119,8 +63,10 @@ private struct QuotaBucketLines: Identifiable {
     let id: String
     let color: Color
     let forecastColor: Color
-    let actual: [QuotaLinePoint]
-    let forecast: [QuotaLinePoint]
+    let actual: [QuotaChartLinePoint]
+    let actualBridges: [QuotaChartLinePoint]
+    let forecast: [QuotaChartLinePoint]
+    let forecastBridges: [QuotaChartLinePoint]
 }
 
 /// What the hover crosshair resolved to on one bucket's lines.
@@ -177,20 +123,48 @@ private struct QuotaSeriesSignature: Equatable {
 ///
 /// Navigation is the approved thumbnail + gesture hybrid: a brush strip covers
 /// the whole domain, while drag-pan and pinch-zoom work directly on the plot.
-struct QuotaHistoryChartView: View {
+///
+/// `Equatable` on purpose. The chart is rendered inside Subscription
+/// Utilization, whose call sites wrap it in `TimelineView(.periodic(by: 30))`
+/// so the pace rows can re-read the wall clock. Every tick re-proposes this
+/// view; without `.equatable()` each tick would re-segment, re-clip and
+/// re-thin thousands of marks and could land in the middle of a pan. The
+/// comparison covers exactly the inputs that change what is drawn — the
+/// `@State`/`@EnvironmentObject` storage is deliberately excluded, because
+/// those invalidate the view through their own dependency, not through the
+/// parent's diff.
+///
+/// The other half of that contract: **this view must never read the current
+/// time**. There is no `now` parameter and no `Date()` anywhere in it — every
+/// "current" reading in the legend comes from the newest recorded sample, so a
+/// tick genuinely has nothing new to say.
+struct QuotaHistoryChartView: View, Equatable {
     let tool: ToolType
     let accountId: String
     let group: QuotaBucketGroup
     let density: Theme.Density
-    /// Set when a page shows more than one of these cards for *different
+    /// Set when a page shows more than one of these charts for *different
     /// products* and "Quota history" alone would not say whose.
     var titleOverride: String? = nil
-    /// Print the group's name under the title. Set when the account has more
-    /// than one group, mirroring the headings in Subscription Utilization.
+    /// Print the group's name under the title. Set when the chart is shown
+    /// away from its group's heading and needs to name itself.
     var showsGroupTitle: Bool = false
+    /// Drawn inside the utilization card, directly under the group's rows —
+    /// so no card chrome of its own, and a quiet caption-sized title, exactly
+    /// like the "Reset history" strip it sits beside.
+    var isEmbedded: Bool = false
 
     @EnvironmentObject var quotaService: QuotaService
-    @Environment(\.colorScheme) private var colorScheme
+
+    static func == (lhs: QuotaHistoryChartView, rhs: QuotaHistoryChartView) -> Bool {
+        lhs.tool == rhs.tool
+            && lhs.accountId == rhs.accountId
+            && lhs.group == rhs.group
+            && lhs.density == rhs.density
+            && lhs.titleOverride == rhs.titleOverride
+            && lhs.showsGroupTitle == rhs.showsGroupTitle
+            && lhs.isEmbedded == rhs.isEmbedded
+    }
 
     @State private var forecastByBucket: [String: [ForecastTimelinePoint]] = [:]
     @State private var seriesByBucket: [String: QuotaHistorySeries] = [:]
@@ -227,25 +201,42 @@ struct QuotaHistoryChartView: View {
 
     var body: some View {
         let buckets = bucketsWithHistory
+        let drawable = buckets.first.flatMap { first in
+            window.flatMap { $0.domainSpan > 0 ? (first, $0) : nil }
+        }
 
-        VStack(alignment: .leading, spacing: density.cardSpacing) {
-            header
-
-            if let first = buckets.first, let window, window.domainSpan > 0 {
-                chartBody(buckets: buckets, primary: first, window: window)
+        Group {
+            if isEmbedded {
+                // Nothing to draw yet: stay silent rather than repeating a
+                // "history builds up" note under every quota scope in the card.
+                // The Reset history strip on the row above already says it.
+                if let drawable {
+                    VStack(alignment: .leading, spacing: 5) {
+                        embeddedHeader
+                        chartBody(buckets: buckets, primary: drawable.0, window: drawable.1)
+                    }
+                    .padding(.top, 5)
+                }
             } else {
-                emptyNote
+                VStack(alignment: .leading, spacing: density.cardSpacing) {
+                    cardHeader
+                    if let drawable {
+                        chartBody(buckets: buckets, primary: drawable.0, window: drawable.1)
+                    } else {
+                        emptyNote
+                    }
+                }
+                .padding(density.cardPadding)
+                .background(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .fill(.background.tertiary.opacity(0.6))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+                )
             }
         }
-        .padding(density.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-        )
         .task(id: forecastLoadKey) {
             await loadForecastPoints()
         }
@@ -256,7 +247,20 @@ struct QuotaHistoryChartView: View {
 
     // MARK: - Header
 
-    private var header: some View {
+    /// Embedded title, styled like the "Reset history" caption directly above
+    /// it — the chart is a continuation of the group's rows, not a new card
+    /// competing with the section heading.
+    private var embeddedHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("Quota history")
+                .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 8)
+            rangePills
+        }
+    }
+
+    private var cardHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(titleOverride ?? "Quota history")
@@ -273,11 +277,7 @@ struct QuotaHistoryChartView: View {
                 }
             }
             Spacer(minLength: 8)
-            if window != nil, !rangeOptions.isEmpty {
-                pillGroup(rangeOptions) { option in
-                    applyRange(option)
-                }
-            }
+            rangePills
         }
     }
 
@@ -312,6 +312,15 @@ struct QuotaHistoryChartView: View {
         let pacePoints = isSingle
             ? linePoints(primarySeries.pace, kind: "pace", range: visible, limit: limit)
             : []
+        let paceBridges = isSingle
+            ? bridgePoints(
+                primarySeries.pace,
+                time: { $0.time },
+                value: { $0.remainingPercent },
+                kind: "pace",
+                range: visible
+            )
+            : []
         let bandPoints = isSingle
             ? forecastBandPoints(primarySeries.forecast, range: visible, limit: limit)
             : []
@@ -335,6 +344,15 @@ struct QuotaHistoryChartView: View {
                         .foregroundStyle(Color.primary.opacity(0.16))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
+                ForEach(paceBridges) { point in
+                    LineMark(
+                        x: .value("Time", point.time),
+                        y: .value("Left", point.value),
+                        series: .value("Line", point.seriesKey)
+                    )
+                    .foregroundStyle(Self.paceColor.opacity(QuotaChartMarks.bridgeOpacity))
+                    .lineStyle(QuotaChartMarks.bridgeStroke)
+                }
                 ForEach(pacePoints) { point in
                     LineMark(
                         x: .value("Time", point.time),
@@ -345,6 +363,17 @@ struct QuotaHistoryChartView: View {
                     .lineStyle(StrokeStyle(lineWidth: 1.6, dash: [5, 4]))
                 }
                 ForEach(lines) { line in
+                    ForEach(line.forecastBridges) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("Left", point.value),
+                            series: .value("Line", point.seriesKey)
+                        )
+                        .foregroundStyle(line.forecastColor.opacity(QuotaChartMarks.bridgeOpacity))
+                        .lineStyle(QuotaChartMarks.bridgeStroke)
+                    }
+                }
+                ForEach(lines) { line in
                     ForEach(line.forecast) { point in
                         LineMark(
                             x: .value("Time", point.time),
@@ -353,6 +382,17 @@ struct QuotaHistoryChartView: View {
                         )
                         .foregroundStyle(line.forecastColor)
                         .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, dash: [2, 3.4]))
+                    }
+                }
+                ForEach(lines) { line in
+                    ForEach(line.actualBridges) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("Left", point.value),
+                            series: .value("Line", point.seriesKey)
+                        )
+                        .foregroundStyle(line.color.opacity(QuotaChartMarks.bridgeOpacity))
+                        .lineStyle(QuotaChartMarks.bridgeStroke)
                     }
                 }
                 ForEach(lines) { line in
@@ -415,28 +455,48 @@ struct QuotaHistoryChartView: View {
     }
 
     private func miniPath(in geometry: ChartBrushGeometry) -> some View {
-        Path { path in
-            for segment in miniSegments {
-                guard let first = segment.first else { continue }
-                path.move(
-                    to: CGPoint(
-                        x: geometry.x(for: first.time),
-                        y: geometry.y(forFraction: first.remainingPercent / 100)
-                    )
+        ZStack {
+            // Connectors first so the observed line always sits on top of them.
+            miniBridgePath(in: geometry)
+                .stroke(
+                    Self.bucketPalette[0].opacity(0.28),
+                    style: StrokeStyle(lineWidth: 0.7, lineCap: .round)
                 )
-                for sample in segment.dropFirst() {
-                    path.addLine(
-                        to: CGPoint(
-                            x: geometry.x(for: sample.time),
-                            y: geometry.y(forFraction: sample.remainingPercent / 100)
-                        )
-                    )
+            Path { path in
+                for segment in miniSegments {
+                    guard let first = segment.first else { continue }
+                    path.move(to: miniPoint(first, in: geometry))
+                    for sample in segment.dropFirst() {
+                        path.addLine(to: miniPoint(sample, in: geometry))
+                    }
                 }
             }
+            .stroke(
+                Self.bucketPalette[0].opacity(0.75),
+                style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round)
+            )
         }
-        .stroke(
-            Self.bucketPalette[0].opacity(0.75),
-            style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round)
+    }
+
+    /// Straight hops across the holes in the brush mini. Thin and faint rather
+    /// than dashed — at this scale a dash pattern is just noise.
+    private func miniBridgePath(in geometry: ChartBrushGeometry) -> Path {
+        Path { path in
+            guard miniSegments.count > 1 else { return }
+            for index in 0..<(miniSegments.count - 1) {
+                guard let tail = miniSegments[index].last,
+                      let head = miniSegments[index + 1].first
+                else { continue }
+                path.move(to: miniPoint(tail, in: geometry))
+                path.addLine(to: miniPoint(head, in: geometry))
+            }
+        }
+    }
+
+    private func miniPoint(_ sample: QuotaHistorySample, in geometry: ChartBrushGeometry) -> CGPoint {
+        CGPoint(
+            x: geometry.x(for: sample.time),
+            y: geometry.y(forFraction: sample.remainingPercent / 100)
         )
     }
 
@@ -830,89 +890,25 @@ struct QuotaHistoryChartView: View {
 
     // MARK: - Range pills
 
-    private struct PillOption: Identifiable, Equatable {
-        let id: String
-        let label: String
-        let span: TimeInterval?
-        let isSelected: Bool
-    }
-
-    private static let rangeSpans: [(String, TimeInterval)] = [
-        ("6h", 6 * 3_600),
-        ("24h", 24 * 3_600),
-        ("3d", 3 * 86_400),
-        ("7d", 7 * 86_400)
-    ]
-
-    private var rangeOptions: [PillOption] {
-        guard let window, window.domainSpan > 0 else { return [] }
-        var options = Self.rangeSpans
-            .filter { $0.1 < window.domainSpan }
-            .map { label, span in
-                PillOption(
-                    id: label,
-                    label: label,
-                    span: span,
-                    isSelected: !window.coversDomain
-                        && window.isAtDomainEnd
-                        && abs(window.visibleSpan - span) <= span * 0.03
-                )
-            }
-        options.append(
-            PillOption(id: "all", label: "All", span: nil, isSelected: window.coversDomain)
-        )
-        return options
-    }
-
-    private func applyRange(_ option: PillOption) {
-        guard var current = window else { return }
-        if let span = option.span {
-            current.jump(toSpan: span)
-        } else {
-            current.jump(toSpan: current.domainSpan)
+    /// Preset spans, shared with the Overview chart so both surfaces offer the
+    /// same navigation vocabulary. Rendered only once a window exists.
+    @ViewBuilder
+    private var rangePills: some View {
+        if window != nil {
+            ChartRangePills(
+                window: Binding(
+                    get: { self.window ?? ChartTimeWindow(
+                        domainStart: .distantPast,
+                        domainEnd: .distantPast,
+                        minimumSpan: 0,
+                        visibleSpan: 0
+                    ) },
+                    set: { self.window = $0 }
+                ),
+                fontSize: max(9, density.segmentedFontSize - 2),
+                onSelect: { hoverDate = nil }
+            )
         }
-        window = current
-        hoverDate = nil
-    }
-
-    private func pillGroup(
-        _ options: [PillOption],
-        action: @escaping (PillOption) -> Void
-    ) -> some View {
-        HStack(spacing: 1) {
-            ForEach(options) { option in
-                Button {
-                    action(option)
-                } label: {
-                    Text(option.label)
-                        .font(
-                            .system(
-                                size: max(9, density.segmentedFontSize - 2),
-                                weight: .semibold,
-                                design: .rounded
-                            )
-                        )
-                        .foregroundStyle(option.isSelected ? .primary : .secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .padding(.horizontal, 6)
-                        .frame(minHeight: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .focusable(false)
-                .background {
-                    if option.isSelected {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.primary.opacity(0.12))
-                    }
-                }
-                .accessibilityLabel(option.label)
-            }
-        }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
-        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: - Data selection
@@ -938,9 +934,32 @@ struct QuotaHistoryChartView: View {
     /// Forecast strokes share their bucket's hue, lifted toward white on dark
     /// backgrounds the same way `ForecastQuotaBar` lifts its forecast marker —
     /// a 1.8pt dotted line loses more contrast than a solid one.
+    ///
+    /// Resolved by the *appearance* rather than by reading
+    /// `@Environment(\.colorScheme)`: an environment read is a dependency this
+    /// view would otherwise carry into its `Equatable` contract, and a dynamic
+    /// `NSColor` re-resolves itself at draw time for free. Cached because the
+    /// palette is fixed and building one per mark would not be.
     private func forecastTint(_ base: Color) -> Color {
-        colorScheme == .dark ? base.mix(with: .white, by: 0.16) : base
+        Self.forecastTints[base] ?? base
     }
+
+    private static let forecastTints: [Color: Color] = Dictionary(
+        uniqueKeysWithValues: bucketPalette.map { base in
+            let lifted = NSColor(base.mix(with: .white, by: 0.16))
+            let plain = NSColor(base)
+            return (
+                base,
+                Color(
+                    nsColor: NSColor(name: nil) { appearance in
+                        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                            ? lifted
+                            : plain
+                    }
+                )
+            )
+        }
+    )
 
     private func fillPoints(bucketId: String) -> [FillTimelinePoint] {
         let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucketId)
@@ -1124,14 +1143,38 @@ struct QuotaHistoryChartView: View {
                     range: range,
                     limit: limit
                 ),
+                actualBridges: bridgePoints(
+                    series.actual,
+                    time: { $0.time },
+                    value: { $0.remainingPercent },
+                    kind: "actual-\(index)",
+                    range: range
+                ),
                 forecast: forecastLinePoints(
                     series.forecast,
                     kind: "forecast-\(index)",
                     range: range,
                     limit: limit
+                ),
+                forecastBridges: bridgePoints(
+                    series.forecast,
+                    time: { $0.time },
+                    value: { $0.remainingPercent },
+                    kind: "forecast-\(index)",
+                    range: range
                 )
             )
         }
+    }
+
+    private func bridgePoints<Element>(
+        _ segments: [[Element]],
+        time: (Element) -> Date,
+        value: (Element) -> Double,
+        kind: String,
+        range: ClosedRange<Date>
+    ) -> [QuotaChartLinePoint] {
+        QuotaChartMarks.bridges(segments, kind: kind, range: range, time: time, value: value)
     }
 
     private func linePoints(
@@ -1139,25 +1182,15 @@ struct QuotaHistoryChartView: View {
         kind: String,
         range: ClosedRange<Date>,
         limit: Int
-    ) -> [QuotaLinePoint] {
-        var result: [QuotaLinePoint] = []
-        for (index, segment) in segments.enumerated() {
-            let clipped = clip(segment, time: { $0.time }, to: range)
-            guard clipped.count > 0 else { continue }
-            let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
-            let key = "\(kind)-\(index)"
-            for (offset, sample) in thinned.enumerated() {
-                result.append(
-                    QuotaLinePoint(
-                        id: "\(key)-\(offset)",
-                        seriesKey: key,
-                        time: sample.time,
-                        value: sample.remainingPercent
-                    )
-                )
-            }
-        }
-        return result
+    ) -> [QuotaChartLinePoint] {
+        QuotaChartMarks.points(
+            segments,
+            kind: kind,
+            range: range,
+            limit: limit,
+            time: { $0.time },
+            value: { $0.remainingPercent }
+        )
     }
 
     private func forecastLinePoints(
@@ -1165,25 +1198,15 @@ struct QuotaHistoryChartView: View {
         kind: String,
         range: ClosedRange<Date>,
         limit: Int
-    ) -> [QuotaLinePoint] {
-        var result: [QuotaLinePoint] = []
-        for (index, segment) in segments.enumerated() {
-            let clipped = clip(segment, time: { $0.time }, to: range)
-            guard clipped.count > 0 else { continue }
-            let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
-            let key = "\(kind)-\(index)"
-            for (offset, sample) in thinned.enumerated() {
-                result.append(
-                    QuotaLinePoint(
-                        id: "\(key)-\(offset)",
-                        seriesKey: key,
-                        time: sample.time,
-                        value: sample.remainingPercent
-                    )
-                )
-            }
-        }
-        return result
+    ) -> [QuotaChartLinePoint] {
+        QuotaChartMarks.points(
+            segments,
+            kind: kind,
+            range: range,
+            limit: limit,
+            time: { $0.time },
+            value: { $0.remainingPercent }
+        )
     }
 
     private func forecastBandPoints(
@@ -1193,7 +1216,7 @@ struct QuotaHistoryChartView: View {
     ) -> [QuotaBandPoint] {
         var result: [QuotaBandPoint] = []
         for (index, segment) in segments.enumerated() {
-            let clipped = clip(segment, time: { $0.time }, to: range)
+            let clipped = QuotaChartMarks.clip(segment, time: { $0.time }, to: range)
             guard clipped.count > 1 else { continue }
             let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
             let key = "band-\(index)"
@@ -1212,38 +1235,24 @@ struct QuotaHistoryChartView: View {
         return result
     }
 
-    /// Keep one sample beyond each edge so a line entering the window starts at
-    /// the frame border instead of at its first visible observation.
-    private func clip<Element>(
-        _ segment: [Element],
-        time: (Element) -> Date,
-        to range: ClosedRange<Date>
-    ) -> [Element] {
-        guard !segment.isEmpty else { return [] }
-        var first: Int?
-        var last: Int?
-        for (index, element) in segment.enumerated() {
-            let stamp = time(element)
-            if stamp >= range.lowerBound, stamp <= range.upperBound {
-                if first == nil { first = index }
-                last = index
-            }
-        }
-        guard let first, let last else { return [] }
-        let lower = max(0, first - 1)
-        let upper = min(segment.count - 1, last + 1)
-        return Array(segment[lower...upper])
-    }
-
     // MARK: - Current values
 
     private func currentRemainingLabel(bucket: QuotaBucket) -> String {
         percent(max(0, 100 - bucket.usedPercent))
     }
 
+    /// The newest *recorded* pace reading rather than one computed against the
+    /// wall clock.
+    ///
+    /// Two reasons, and the second is the load-bearing one. It matches the end
+    /// of the pace line the reader is looking at instead of a value a few
+    /// minutes ahead of it — and it keeps this view free of `Date()`, which is
+    /// what lets `.equatable()` skip the 30-second `TimelineView` tick the
+    /// utilization card ticks on. The live wall-clock pace is already on the
+    /// row directly above.
     private func currentPaceLabel(bucket: QuotaBucket) -> String? {
-        guard let pace = UsagePace.compute(bucket: bucket, now: Date()) else { return nil }
-        return percent(max(0, 100 - pace.expectedUsedPercent))
+        guard let last = (seriesByBucket[bucket.id] ?? .empty).pace.last?.last else { return nil }
+        return percent(last.remainingPercent)
     }
 
     /// The newest *recorded* projection rather than a freshly computed one:

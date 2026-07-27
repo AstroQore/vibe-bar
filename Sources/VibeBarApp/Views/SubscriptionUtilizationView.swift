@@ -79,6 +79,22 @@ struct SubscriptionUtilizationView: View {
         let startsSection: Bool
         let groupTitle: String?
         let startsGroup: Bool
+        /// Set on the last row of a quota group. The group's history chart is
+        /// drawn here, so it lands exactly where the group visually ends —
+        /// "all models" under the all-models rows, Spark under Spark's — the
+        /// same way each row's Reset history strip sits under its own bar.
+        let endsGroup: Bool
+        /// Every bucket sharing this row's heading, in provider order. Only
+        /// populated on the row that ends the group; that is the one that
+        /// draws them.
+        let groupBuckets: [QuotaBucket]
+
+        /// Identity of the group's chart. Account- and tool-scoped and
+        /// `nil`-safe, because the ungrouped run is a group here even though it
+        /// prints no heading.
+        var groupKey: String {
+            QuotaBucketGrouping.key(accountId: accountId, itemTool: tool, title: groupTitle)
+        }
     }
 
     /// Keep live utilization and reset-cycle history on the same complete
@@ -104,9 +120,21 @@ struct SubscriptionUtilizationView: View {
         let additional = additionalQuotaSeries.map {
             RawBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
         }
+        let raw = primary + additional
+        // Chart groups are runs of adjacent rows sharing a heading — the same
+        // contiguity the heading logic below already assumes. Resolved up front
+        // so the row that *ends* a run can be identified, which is where the
+        // group's history chart goes.
+        let chartKeys = raw.map {
+            QuotaBucketGrouping.key(
+                accountId: $0.accountId,
+                itemTool: $0.tool,
+                title: quotaGroupTitle(for: $0.tool, bucket: $0.bucket)
+            )
+        }
         var previousSectionKey: String?
         var previousGroupKey: String?
-        return (primary + additional).map { item in
+        return raw.enumerated().map { index, item in
             let sectionTitle = linkedSectionTitle(for: item.tool)
             let sectionKey = sectionTitle.map { "\(item.tool.rawValue):\($0)" }
             let startsSection = sectionKey != nil && sectionKey != previousSectionKey
@@ -118,6 +146,8 @@ struct SubscriptionUtilizationView: View {
             let groupKey = groupTitle.map { "\(item.tool.rawValue):\($0)" }
             let startsGroup = groupKey != nil && groupKey != previousGroupKey
             if groupKey != nil { previousGroupKey = groupKey }
+            let chartKey = chartKeys[index]
+            let endsGroup = index == raw.count - 1 || chartKeys[index + 1] != chartKey
             return UtilizationBucket(
                 id: item.id,
                 tool: item.tool,
@@ -126,7 +156,11 @@ struct SubscriptionUtilizationView: View {
                 sectionTitle: sectionTitle,
                 startsSection: startsSection,
                 groupTitle: groupTitle,
-                startsGroup: startsGroup
+                startsGroup: startsGroup,
+                endsGroup: endsGroup,
+                groupBuckets: endsGroup
+                    ? zip(raw, chartKeys).filter { $0.1 == chartKey }.map(\.0.bucket)
+                    : []
             )
         }
     }
@@ -236,6 +270,26 @@ struct SubscriptionUtilizationView: View {
             }
             if let forecast {
                 forecastExplanation(itemID: item.id, forecast: forecast, pace: pace)
+            }
+            if item.endsGroup, let accountId = item.accountId, !item.groupBuckets.isEmpty {
+                // `.equatable()` is load-bearing, not an optimisation: this
+                // card is re-proposed every 30 seconds by the `TimelineView`
+                // the rows above need for their countdowns, and the chart
+                // reads no clock of its own. Without it every tick would
+                // re-segment and re-thin thousands of marks — and could land
+                // mid-pan.
+                QuotaHistoryChartView(
+                    tool: item.tool,
+                    accountId: accountId,
+                    group: QuotaBucketGroup(
+                        id: item.groupKey,
+                        title: item.groupTitle,
+                        buckets: item.groupBuckets
+                    ),
+                    density: density,
+                    isEmbedded: true
+                )
+                .equatable()
             }
         }
     }
