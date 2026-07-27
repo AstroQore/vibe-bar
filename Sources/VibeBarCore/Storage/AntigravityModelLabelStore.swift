@@ -2,12 +2,13 @@ import Foundation
 
 /// Maps AntiGravity's internal model ids to human labels.
 ///
-/// AntiGravity reports usage under opaque ids — `MODEL_PLACEHOLDER_M132`,
-/// `MODEL_PLACEHOLDER_M20`, … — both in the cost trajectories and in the
-/// `GetUserStatus` model config. `GetUserStatus`'s `clientModelConfigs`
-/// is the one place that also carries the label (`Gemini 3.5 Flash
-/// (High)`), so the quota adapter feeds those `id → label` pairs in here
-/// each time it refreshes, and the cost scanner reads them back to:
+/// Some AntiGravity trajectories expose only opaque ids —
+/// `MODEL_PLACEHOLDER_M132`, `MODEL_PLACEHOLDER_M20`, … — while newer
+/// database turns also carry their precise field-21 label. `GetUserStatus`'s
+/// `clientModelConfigs` independently carries the same id + label
+/// (`Gemini 3.5 Flash (High)`), so the quota adapter feeds those
+/// `id → label` pairs in here each time it refreshes. The cost scanner uses
+/// this store whenever a trajectory or RPC response lacks the embedded label:
 ///   1. show real model names instead of placeholders, and
 ///   2. price placeholder models at their real rate — a bare
 ///      `MODEL_PLACEHOLDER_*` normalizes to `antigravity-default`
