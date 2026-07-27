@@ -1,27 +1,32 @@
 import Combine
 import Foundation
 import Sparkle
+import VibeBarCore
 
 /// Owns Sparkle's standard updater UI and exposes the small amount of state
 /// needed by Vibe Bar's menu-bar and Settings surfaces.
 @MainActor
-final class AppUpdateController: ObservableObject {
+final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published private(set) var canCheckForUpdates = false
+    @Published private(set) var updateChannel: UpdateChannel
 
-    let standardUpdaterController: SPUStandardUpdaterController
-
+    private let bundle: Bundle
     private let isConfigured: Bool
     private var canCheckObservation: NSKeyValueObservation?
 
-    init(bundle: Bundle = .main) {
+    private lazy var standardUpdaterController = SPUStandardUpdaterController(
+        startingUpdater: isConfigured,
+        updaterDelegate: self,
+        userDriverDelegate: nil
+    )
+
+    init(bundle: Bundle = .main, updateChannel: UpdateChannel = .main) {
+        self.bundle = bundle
+        self.updateChannel = updateChannel
         let hasExpectedBundleIdentifier = bundle.bundleIdentifier == "com.astroqore.VibeBar"
         let hasFeedURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil
         self.isConfigured = hasExpectedBundleIdentifier && hasFeedURL
-        self.standardUpdaterController = SPUStandardUpdaterController(
-            startingUpdater: isConfigured,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
+        super.init()
 
         guard isConfigured else { return }
         canCheckObservation = standardUpdaterController.updater.observe(
@@ -35,10 +40,10 @@ final class AppUpdateController: ObservableObject {
     }
 
     var currentVersionDescription: String {
-        let version = Bundle.main.object(
+        let version = bundle.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "Development"
-        guard let build = Bundle.main.object(
+        guard let build = bundle.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String else {
             return version
@@ -49,5 +54,18 @@ final class AppUpdateController: ObservableObject {
     func checkForUpdates() {
         guard isConfigured else { return }
         standardUpdaterController.checkForUpdates(nil)
+    }
+
+    func setUpdateChannel(_ channel: UpdateChannel) {
+        guard updateChannel != channel else { return }
+        updateChannel = channel
+        guard isConfigured else { return }
+        standardUpdaterController.updater.resetUpdateCycleAfterShortDelay()
+    }
+
+    /// Main maps to Sparkle's untagged default channel. Dev adds preview
+    /// entries while Sparkle continues to consider Main entries as well.
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+        updateChannel.additionalSparkleChannels
     }
 }

@@ -173,10 +173,11 @@ blocks the first launch, right-click the app and choose **Open**. No Apple
 Developer account is required to build or run Vibe Bar locally.
 
 Starting with the first Sparkle-enabled release, Vibe Bar checks the signed
-GitHub Release feed once a day. You can also choose **Check for Updates…**
-from a menu-bar item's context menu or from **Settings → System**. Vibe Bar
-always asks before installing an update; the first Sparkle-enabled release
-still needs to be installed manually once.
+update feed once a day. **Settings → System** lets you choose the stable
+**Main** channel or the preview **Dev** channel; Dev also receives all Main
+releases. You can also choose **Check for Updates…** from a menu-bar item's
+context menu or Settings. Vibe Bar always asks before installing an update;
+the first Sparkle-enabled release still needs to be installed manually once.
 
 ### Build from source
 

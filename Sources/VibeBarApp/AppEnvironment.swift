@@ -42,8 +42,10 @@ final class AppEnvironment: ObservableObject {
     private var pricingRefreshTask: Task<Void, Never>?
 
     init() {
-        self.updateController = AppUpdateController()
         let settings = SettingsStore()
+        self.updateController = AppUpdateController(
+            updateChannel: settings.settings.updateChannel
+        )
         let accounts = AccountStore(
             codexUsageMode: settings.codexUsageMode,
             claudeUsageMode: settings.claudeUsageMode,
@@ -191,6 +193,15 @@ final class AppEnvironment: ObservableObject {
                         await self?.costService.refreshAll()
                     }
                 }
+            }
+            .store(in: &cancellables)
+
+        settings.$settings
+            .dropFirst()
+            .map(\.updateChannel)
+            .removeDuplicates()
+            .sink { [weak self] channel in
+                self?.updateController.setUpdateChannel(channel)
             }
             .store(in: &cancellables)
 

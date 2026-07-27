@@ -835,16 +835,20 @@ moment step 1 lands.
   **§ 4.5** — empty `<dict/>`, no `app-sandbox` key.
 - Run **§ 4.3 – § 4.6** before tagging or announcing a release. The GitHub
   workflow repeats those checks on a macOS 26 runner.
-- Tag the merged `main` with exactly `v` plus
-  `CFBundleShortVersionString`. The workflow creates a draft GitHub Release
-  so its assets can be inspected before publishing.
+- Main tags are exactly `v` plus `CFBundleShortVersionString`. Dev tags are
+  `v<CFBundleShortVersionString>-dev.<CFBundleVersion>`. The workflow creates
+  a draft GitHub Release so its assets can be inspected before publishing.
 - Every published release must include the ZIP, checksum, and signed
   `appcast.xml`. The workflow requires the repository Actions secret
   `SPARKLE_ED_PRIVATE_KEY`, exposes it only to the release-asset build step,
   and passes it to Sparkle over standard input. The matching public key is
   `SUPublicEDKey` in `Resources/Info.plist`.
-- The stable in-app update feed is the `appcast.xml` asset on GitHub's latest
-  published release. Never hand-edit an appcast after generation.
+- Main is Sparkle's default channel; Dev adds the `dev` channel and still
+  receives Main releases. Published release appcasts are promoted by
+  `publish-update-feed.yml`, which regenerates against the latest feed before
+  writing the machine-managed `updates` branch at
+  `https://raw.githubusercontent.com/AstroQore/vibe-bar/updates/appcast.xml`.
+  Never hand-edit that shared appcast.
 - The license is AGPL-3.0-only; don't relicense without an explicit
   board decision.
 - Releases remain ad-hoc signed when Apple credentials are absent. With the

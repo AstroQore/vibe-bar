@@ -34,6 +34,24 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.defaultRetentionDays)
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.unlimitedRetentionDays)
         XCTAssertFalse(settings.costData.privacyModeEnabled)
+        XCTAssertEqual(settings.updateChannel, .main)
+    }
+
+    func testUpdateChannelRoundTripsAndUnknownValuesFallBackToMain() throws {
+        var settings = AppSettings.default
+        settings.updateChannel = .dev
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        let unknown = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"updateChannel":"nightly"}"#.utf8)
+        )
+
+        XCTAssertEqual(decoded.updateChannel, .dev)
+        XCTAssertEqual(decoded.updateChannel.additionalSparkleChannels, ["dev"])
+        XCTAssertEqual(unknown.updateChannel, .main)
+        XCTAssertTrue(unknown.updateChannel.additionalSparkleChannels.isEmpty)
     }
 
     func testMenuBarFieldLabelsRoundTrip() throws {

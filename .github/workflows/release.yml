@@ -10,6 +10,14 @@ on:
         description: Existing v-prefixed tag to package
         required: true
         type: string
+      channel:
+        description: Sparkle update channel
+        required: true
+        default: main
+        type: choice
+        options:
+          - main
+          - dev
 
 permissions:
   contents: write
@@ -24,6 +32,7 @@ jobs:
     runs-on: macos-26
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      CHANNEL_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || '' }}
       MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -41,6 +50,38 @@ jobs:
           sw_vers -productVersion
           xcode-select -p
           swift --version
+
+      - name: Resolve release channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="$CHANNEL_INPUT"
+          if [[ -z "$channel" ]]; then
+            if [[ "$RELEASE_TAG" == v*-dev.* ]]; then
+              channel="dev"
+            else
+              channel="main"
+            fi
+          fi
+          if [[ "$channel" != "main" && "$channel" != "dev" ]]; then
+            echo "Unsupported release channel: $channel" >&2
+            exit 1
+          fi
+          echo "RELEASE_CHANNEL=$channel" >> "$GITHUB_ENV"
+
+      - name: Fetch current shared appcast
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_appcast="$RUNNER_TEMP/vibebar-appcast.xml"
+          if git ls-remote --exit-code --heads origin updates >/dev/null 2>&1; then
+            git fetch --no-tags origin \
+              refs/heads/updates:refs/remotes/origin/updates
+            git show refs/remotes/origin/updates:appcast.xml > "$base_appcast"
+            echo "VIBEBAR_BASE_APPCAST=$base_appcast" >> "$GITHUB_ENV"
+          else
+            echo "No existing shared appcast; this release will seed it."
+          fi
 
       - name: Import optional Developer ID certificate
         if: ${{ env.MACOS_CERTIFICATE_P12 != '' }}
@@ -94,7 +135,7 @@ jobs:
             echo "SPARKLE_ED_PRIVATE_KEY is required for signed in-app updates." >&2
             exit 1
           fi
-          ./Scripts/release_app.sh "$RELEASE_TAG"
+          ./Scripts/release_app.sh --channel "$RELEASE_CHANNEL" "$RELEASE_TAG"
 
       - name: Create or update draft release
         env:
@@ -103,17 +144,27 @@ jobs:
         run: |
           set -euo pipefail
           assets=(.build/release/*.zip .build/release/*.sha256 .build/release/appcast.xml)
+          release_title="Vibe Bar ${RELEASE_TAG#v}"
+          release_flags=()
+          if [[ "$RELEASE_CHANNEL" == "dev" ]]; then
+            release_title="Vibe Bar ${RELEASE_TAG#v} (Dev)"
+            release_flags+=(--prerelease --latest=false)
+          fi
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             if [[ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" != "true" ]]; then
               echo "Refusing to replace assets on a published release." >&2
               exit 1
             fi
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            if [[ "$RELEASE_CHANNEL" == "dev" ]]; then
+              gh release edit "$RELEASE_TAG" --prerelease --latest=false
+            fi
           else
             gh release create "$RELEASE_TAG" \
               "${assets[@]}" \
               --draft \
               --generate-notes \
-              --title "Vibe Bar ${RELEASE_TAG#v}" \
+              --title "$release_title" \
+              "${release_flags[@]}" \
               --verify-tag
           fi
