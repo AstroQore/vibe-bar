@@ -56,6 +56,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// own instead of being invisible until the user goes looking for it.
     public var overviewQuotaHistoryHiddenCurveIds: Set<String>
 
+    /// Per-page card arrangement chosen in Settings → Layout, keyed by
+    /// `PageLayoutPageID` raw value (`"overview"`, `"detail:claude"`, …).
+    ///
+    /// Intent only — column order and width split. The cards' measured heights
+    /// are render-time telemetry and stay in `~/.vibebar/layout.json`
+    /// (`PageLayoutStore`), for the same reason mini-window geometry does: a
+    /// settings write fans out to every Combine subscriber, and measurement
+    /// churns on every popover resize.
+    ///
+    /// Empty by default, which is exactly "no page has been customized" — a
+    /// settings file written before the layout editor existed decodes to the
+    /// built-in arrangement with no migration.
+    public var pageLayouts: [PageLayoutPageID: StoredPageLayout]
+
     public static let `default` = AppSettings(
         displayMode: .remaining,
         refreshIntervalSeconds: 600,
@@ -175,7 +189,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
         miscProviderInstances: [MiscProviderInstance]? = nil,
         costData: CostDataSettings = .default,
-        overviewQuotaHistoryHiddenCurveIds: Set<String> = []
+        overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
+        pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:]
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -209,6 +224,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
         self.costData = costData
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
+        self.pageLayouts = pageLayouts
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -237,6 +253,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case miscProviderInstances
         case costData
         case overviewQuotaHistoryHiddenCurveIds
+        case pageLayouts
     }
 
     public init(from decoder: Decoder) throws {
@@ -365,6 +382,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
         self.overviewQuotaHistoryHiddenCurveIds =
             try c.decodeIfPresent(Set<String>.self, forKey: .overviewQuotaHistoryHiddenCurveIds) ?? []
+        // `try?` rather than `try`: a layout map mangled by hand should cost
+        // the user their card arrangement, not every other setting in the file.
+        self.pageLayouts =
+            (try? c.decodeIfPresent([PageLayoutPageID: StoredPageLayout].self, forKey: .pageLayouts)) ?? [:]
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -402,6 +423,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(miscProviderInstances, forKey: .miscProviderInstances)
         try c.encode(costData, forKey: .costData)
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
+        try c.encode(pageLayouts, forKey: .pageLayouts)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {

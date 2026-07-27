@@ -1,20 +1,204 @@
 import SwiftUI
 import VibeBarCore
 
-/// Subscription Utilization sub-page. Every independently resettable quota
-/// gets its own pace row — including model-scoped buckets such as Codex Spark
-/// and Claude Fable, plus linked product tools such as AntiGravity on Gemini.
-/// The detailed view keeps both reference systems visible: the legacy
-/// wall-clock pace and the personal activity-aware plan. It also exposes the
-/// component projections, evidence coverage, confidence, target, and final
-/// forecast so the verdict is inspectable rather than a black box.
-struct SubscriptionUtilizationView: View {
+/// One quota group, resolved into everything its card needs to draw itself.
+///
+/// A "group" is exactly what `QuotaBucketGrouping` already means by one: a
+/// contiguous run of rows sharing a heading, including the unnamed run (Claude's
+/// 5 Hours + Weekly — "all models") that prints no heading. Splitting the old
+/// single Subscription Utilization card into one card per group is a layout
+/// change only; the grouping itself still comes from `QuotaBucketGrouping`, so a
+/// heading, a card boundary and a history chart can never disagree.
+struct QuotaGroupModule: Identifiable {
+    /// One live quota row inside the group.
+    struct Row: Identifiable {
+        let id: String
+        /// The tool this bucket actually came from — differs from the module's
+        /// page tool only for linked products (AntiGravity on the Gemini page).
+        let tool: ToolType
+        let accountId: String?
+        let bucket: QuotaBucket
+    }
+
+    /// Layout-engine identity: `"quota-group:<tool>:<groupKey>"`. Stable across
+    /// launches and across re-logins — see `QuotaBucketGrouping.moduleID`.
+    let id: String
+    /// The group's slug on its own, so the layout engine can rebuild this
+    /// module's identity through `PageLayoutModuleID.quotaGroup(tool:groupKey:)`
+    /// and land on the same string `id` already holds.
+    let groupKey: String
+    /// The provider page the card is drawn on.
+    let pageTool: ToolType
+    /// The tool the group's buckets came from.
     let tool: ToolType
-    let buckets: [QuotaBucket]
+    let accountId: String?
+    /// The group's heading, `nil` for the unnamed run.
+    let title: String?
+    /// Account-scoped identity of the group's history chart. Unchanged from the
+    /// pre-split card so an existing chart keeps its state.
+    let chartKey: String
+    let rows: [Row]
+    /// Set on the first card of a linked product's run. That card names the
+    /// product (icon + title) the way the in-card divider used to.
+    let linkedSectionTitle: String?
+    /// Set on the first card of the page. It inherits the provider header —
+    /// brand icon, product name, plan badge, refresh button — that the single
+    /// pre-split card carried at the top.
+    let showsProviderHeader: Bool
+
+    /// Every bucket in the group, in provider order. This is what the group's
+    /// history chart plots.
+    var groupBuckets: [QuotaBucket] { rows.map(\.bucket) }
+}
+
+/// Resolves a provider page's quota buckets into the per-group card modules the
+/// page renders, preserving the pre-split card's ordering exactly: primary
+/// buckets first in provider order, then any linked product's, split wherever
+/// `QuotaBucketGrouping.key` changes.
+enum QuotaGroupModuleBuilder {
+    private struct RawBucket {
+        let id: String
+        let tool: ToolType
+        let accountId: String?
+        let bucket: QuotaBucket
+    }
+
+    /// - Parameters:
+    ///   - pageTool: the provider page being rendered.
+    ///   - buckets: the page tool's own live quotas.
+    ///   - primaryAccountId: account behind `buckets`, `nil` when signed out.
+    ///   - additionalQuotaSeries: linked products stacked under the page tool
+    ///     (AntiGravity on the Gemini page).
+    static func modules(
+        pageTool: ToolType,
+        buckets: [QuotaBucket],
+        primaryAccountId: String?,
+        additionalQuotaSeries: [FillTimelineSeries]
+    ) -> [QuotaGroupModule] {
+        let primary = buckets.map {
+            RawBucket(
+                id: "primary:\(pageTool.rawValue):\($0.id)",
+                tool: pageTool,
+                accountId: primaryAccountId,
+                bucket: $0
+            )
+        }
+        let additional = additionalQuotaSeries.map {
+            RawBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
+        }
+        let raw = primary + additional
+        guard !raw.isEmpty else { return [] }
+
+        // Groups are runs of adjacent rows sharing a chart key — the same
+        // contiguity the pre-split card's heading logic assumed, so the card
+        // boundaries land exactly where the headings and charts already did.
+        let titles = raw.map {
+            QuotaBucketGrouping.title(pageTool: pageTool, itemTool: $0.tool, bucket: $0.bucket)
+        }
+        let chartKeys = zip(raw, titles).map {
+            QuotaBucketGrouping.key(accountId: $0.0.accountId, itemTool: $0.0.tool, title: $0.1)
+        }
+
+        var modules: [QuotaGroupModule] = []
+        var moduleIDCounts: [String: Int] = [:]
+        var seenSectionKeys: Set<String> = []
+        var index = 0
+        while index < raw.count {
+            var end = index
+            while end + 1 < raw.count, chartKeys[end + 1] == chartKeys[index] { end += 1 }
+            let head = raw[index]
+            let title = titles[index]
+
+            // A linked product's name is printed once, on the first card of its
+            // run. A section boundary always implies a group boundary, because
+            // changing tool changes the chart key too.
+            var linkedSectionTitle: String?
+            if head.tool != pageTool {
+                let sectionKey = "\(head.tool.rawValue):\(head.tool.toolName)"
+                if seenSectionKeys.insert(sectionKey).inserted {
+                    linkedSectionTitle = head.tool.toolName
+                }
+            }
+
+            // Two runs can in principle carry the same heading (a heading that
+            // reappears after another one). Keep `ForEach` identity unique
+            // without perturbing the common single-run id.
+            let groupKey = QuotaBucketGrouping.slug(title: title)
+            let baseID = QuotaBucketGrouping.moduleID(tool: head.tool, title: title)
+            let occurrence = (moduleIDCounts[baseID] ?? 0) + 1
+            moduleIDCounts[baseID] = occurrence
+
+            modules.append(
+                QuotaGroupModule(
+                    id: occurrence == 1 ? baseID : "\(baseID)#\(occurrence)",
+                    groupKey: groupKey,
+                    pageTool: pageTool,
+                    tool: head.tool,
+                    accountId: head.accountId,
+                    title: title,
+                    chartKey: chartKeys[index],
+                    rows: raw[index...end].map {
+                        QuotaGroupModule.Row(
+                            id: $0.id,
+                            tool: $0.tool,
+                            accountId: $0.accountId,
+                            bucket: $0.bucket
+                        )
+                    },
+                    linkedSectionTitle: linkedSectionTitle,
+                    showsProviderHeader: modules.isEmpty
+                )
+            )
+            index = end + 1
+        }
+        return modules
+    }
+
+    /// The card a page shows when it has no live quota at all — signed out, or
+    /// nothing fetched yet. It still carries the provider header and its
+    /// refresh button, exactly as the pre-split card did.
+    ///
+    /// Its identity is the identity of the group that will *replace* it. A
+    /// page's first real group is the page tool's own unnamed run, whose
+    /// heading is whatever `QuotaBucketGrouping.forcedTitle` imposes — `nil`
+    /// for most providers (slug `all`), "Gemini Chat" on the Gemini page (slug
+    /// `gemini-chat`). Reading it from that one function rather than hardcoding
+    /// `nil` is what keeps a layout arranged while signed out from being
+    /// discarded as a stale identifier once buckets arrive.
+    static func placeholderModule(pageTool: ToolType, accountId: String?) -> QuotaGroupModule {
+        let title = QuotaBucketGrouping.forcedTitle(pageTool: pageTool, itemTool: pageTool)
+        return QuotaGroupModule(
+            id: QuotaBucketGrouping.moduleID(tool: pageTool, title: title),
+            groupKey: QuotaBucketGrouping.slug(title: title),
+            pageTool: pageTool,
+            tool: pageTool,
+            accountId: accountId,
+            title: title,
+            chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: title),
+            rows: [],
+            linkedSectionTitle: nil,
+            showsProviderHeader: true
+        )
+    }
+}
+
+/// One quota group as a self-contained card module.
+///
+/// Fixed internal order: group header → the group's bucket rows (bar, pace and
+/// forecast markers, verdict, forecast disclosure) → each row's "Reset history"
+/// strip → the group's quota-history chart. Everything below the header is the
+/// content the pre-split Subscription Utilization card drew inline; only the
+/// card boundary is new.
+struct QuotaGroupCard: View {
+    let module: QuotaGroupModule
     let mode: DisplayMode
     let density: Theme.Density
     let now: Date
-    var additionalQuotaSeries: [FillTimelineSeries] = []
+    /// Tools the header's refresh button pumps. Only the provider-header card
+    /// draws that button, so only it needs these.
+    var refreshTools: [ToolType] = []
+    /// Drawn instead of the rows when the page has no live quota at all.
+    var emptyMessage: String?
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -23,38 +207,17 @@ struct SubscriptionUtilizationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
-            HStack(alignment: .center, spacing: 8) {
-                ProviderSectionTitle(
-                    tool: tool,
-                    title: tool.menuTitle,
-                    subtitle: providerSubtitle,
-                    titleFontSize: density.titleFontSize,
-                    subtitleFontSize: density.subtitleFontSize,
-                    iconSize: 16,
-                    badgeSize: 24
-                )
-                Spacer(minLength: 4)
-                if let providerPlanBadge {
-                    PlanBadgeView(
-                        text: providerPlanBadge,
-                        fontSize: max(9, density.subtitleFontSize - 1)
-                    )
-                }
-                SectionRefreshButton(isRefreshing: isRefreshing) {
-                    for refreshTool in refreshTools {
-                        environment.refresh(refreshTool)
-                    }
-                }
-            }
-            if utilizationBuckets.isEmpty {
-                Text("No utilization data — try refreshing.")
+            header
+            if let emptyMessage {
+                Text(emptyMessage)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 8)
             } else {
-                ForEach(utilizationBuckets) { item in
-                    row(for: item)
+                ForEach(module.rows) { row in
+                    self.row(for: row)
                 }
+                groupHistoryChart
             }
         }
         .padding(density.cardPadding)
@@ -68,100 +231,56 @@ struct SubscriptionUtilizationView: View {
         )
     }
 
-    /// One live quota row. The tool is retained so linked-product quotas can
-    /// be labelled and refreshed independently (Gemini Web + AntiGravity).
-    private struct UtilizationBucket: Identifiable {
-        let id: String
-        let tool: ToolType
-        let accountId: String?
-        let bucket: QuotaBucket
-        let sectionTitle: String?
-        let startsSection: Bool
-        let groupTitle: String?
-        let startsGroup: Bool
-        /// Set on the last row of a quota group. The group's history chart is
-        /// drawn here, so it lands exactly where the group visually ends —
-        /// "all models" under the all-models rows, Spark under Spark's — the
-        /// same way each row's Reset history strip sits under its own bar.
-        let endsGroup: Bool
-        /// Every bucket sharing this row's heading, in provider order. Only
-        /// populated on the row that ends the group; that is the one that
-        /// draws them.
-        let groupBuckets: [QuotaBucket]
+    // MARK: - Header
 
-        /// Identity of the group's chart. Account- and tool-scoped and
-        /// `nil`-safe, because the ungrouped run is a group here even though it
-        /// prints no heading.
-        var groupKey: String {
-            QuotaBucketGrouping.key(accountId: accountId, itemTool: tool, title: groupTitle)
-        }
-    }
-
-    /// Keep live utilization and reset-cycle history on the same complete
-    /// quota set. Previously this path discarded every bucket with a
-    /// `groupTitle`, which made Spark and Fable disappear even though their
-    /// history tabs were already present.
-    private var utilizationBuckets: [UtilizationBucket] {
-        struct RawBucket {
-            let id: String
-            let tool: ToolType
-            let accountId: String?
-            let bucket: QuotaBucket
-        }
-
-        let primary = buckets.map {
-            RawBucket(
-                id: "primary:\(tool.rawValue):\($0.id)",
-                tool: tool,
-                accountId: environment.account(for: tool)?.id,
-                bucket: $0
-            )
-        }
-        let additional = additionalQuotaSeries.map {
-            RawBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
-        }
-        let raw = primary + additional
-        // Chart groups are runs of adjacent rows sharing a heading — the same
-        // contiguity the heading logic below already assumes. Resolved up front
-        // so the row that *ends* a run can be identified, which is where the
-        // group's history chart goes.
-        let chartKeys = raw.map {
-            QuotaBucketGrouping.key(
-                accountId: $0.accountId,
-                itemTool: $0.tool,
-                title: quotaGroupTitle(for: $0.tool, bucket: $0.bucket)
-            )
-        }
-        var previousSectionKey: String?
-        var previousGroupKey: String?
-        return raw.enumerated().map { index, item in
-            let sectionTitle = linkedSectionTitle(for: item.tool)
-            let sectionKey = sectionTitle.map { "\(item.tool.rawValue):\($0)" }
-            let startsSection = sectionKey != nil && sectionKey != previousSectionKey
-            if startsSection {
-                previousSectionKey = sectionKey
-                previousGroupKey = nil
+    @ViewBuilder
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if module.showsProviderHeader {
+                HStack(alignment: .center, spacing: 8) {
+                    ProviderSectionTitle(
+                        tool: module.pageTool,
+                        title: module.pageTool.menuTitle,
+                        subtitle: providerSubtitle,
+                        titleFontSize: density.titleFontSize,
+                        subtitleFontSize: density.subtitleFontSize,
+                        iconSize: 16,
+                        badgeSize: 24
+                    )
+                    Spacer(minLength: 4)
+                    if let providerPlanBadge {
+                        PlanBadgeView(
+                            text: providerPlanBadge,
+                            fontSize: max(9, density.subtitleFontSize - 1)
+                        )
+                    }
+                    SectionRefreshButton(isRefreshing: isRefreshing) {
+                        for refreshTool in refreshTools {
+                            environment.refresh(refreshTool)
+                        }
+                    }
+                }
             }
-            let groupTitle = quotaGroupTitle(for: item.tool, bucket: item.bucket)
-            let groupKey = groupTitle.map { "\(item.tool.rawValue):\($0)" }
-            let startsGroup = groupKey != nil && groupKey != previousGroupKey
-            if groupKey != nil { previousGroupKey = groupKey }
-            let chartKey = chartKeys[index]
-            let endsGroup = index == raw.count - 1 || chartKeys[index + 1] != chartKey
-            return UtilizationBucket(
-                id: item.id,
-                tool: item.tool,
-                accountId: item.accountId,
-                bucket: item.bucket,
-                sectionTitle: sectionTitle,
-                startsSection: startsSection,
-                groupTitle: groupTitle,
-                startsGroup: startsGroup,
-                endsGroup: endsGroup,
-                groupBuckets: endsGroup
-                    ? zip(raw, chartKeys).filter { $0.1 == chartKey }.map(\.0.bucket)
-                    : []
-            )
+            if let linkedSectionTitle = module.linkedSectionTitle {
+                // The pre-split card separated a linked product's rows with a
+                // divider; the card boundary does that now, so only the name
+                // and brand icon survive.
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: module.tool, size: 13)
+                        .opacity(0.85)
+                    Text(linkedSectionTitle)
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                }
+            }
+            if let title = module.title {
+                Text(title)
+                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.4)
+            }
         }
     }
 
@@ -172,14 +291,51 @@ struct SubscriptionUtilizationView: View {
         }
     }
 
-    private var refreshTools: [ToolType] {
-        var seen: Set<ToolType> = []
-        let productTools = tool == .gemini ? ToolType.googleAIPair : [tool]
-        return (productTools + additionalQuotaSeries.map(\.tool)).filter { seen.insert($0).inserted }
+    private var providerSubtitle: String {
+        module.pageTool == .gemini ? module.pageTool.statusProviderName : module.pageTool.subtitle
     }
 
+    private var providerPlanBadge: String? {
+        let account = environment.account(for: module.pageTool)
+        let quotaPlan = account.flatMap { quotaService.cachedQuota(for: $0.id)?.plan }
+            ?? environment.quota(for: module.pageTool)?.plan
+        let label = settingsStore.settings.planBadgeLabel(
+            for: module.pageTool,
+            quotaPlan: quotaPlan,
+            accountPlan: account?.plan
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return label?.isEmpty == false ? label : nil
+    }
+
+    // MARK: - Group history chart
+
     @ViewBuilder
-    private func row(for item: UtilizationBucket) -> some View {
+    private var groupHistoryChart: some View {
+        if let accountId = module.accountId, !module.rows.isEmpty {
+            // `.equatable()` is load-bearing, not an optimisation: this card is
+            // re-proposed every 30 seconds by the `TimelineView` the rows above
+            // need for their countdowns, and the chart reads no clock of its
+            // own. Without it every tick would re-segment and re-thin thousands
+            // of marks — and could land mid-pan.
+            QuotaHistoryChartView(
+                tool: module.tool,
+                accountId: accountId,
+                group: QuotaBucketGroup(
+                    id: module.chartKey,
+                    title: module.title,
+                    buckets: module.groupBuckets
+                ),
+                density: density,
+                isEmbedded: true
+            )
+            .equatable()
+        }
+    }
+
+    // MARK: - Rows
+
+    @ViewBuilder
+    private func row(for item: QuotaGroupModule.Row) -> some View {
         let bucket = item.bucket
         let pace = UsagePace.compute(bucket: bucket, now: now)
         let forecast = paceForecast(for: item)
@@ -194,17 +350,6 @@ struct SubscriptionUtilizationView: View {
             )
         }
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
-            if item.startsSection, let sectionTitle = item.sectionTitle {
-                linkedProviderSection(tool: item.tool, title: sectionTitle)
-            }
-            if item.startsGroup, let groupTitle = item.groupTitle {
-                Text(groupTitle)
-                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.4)
-                    .padding(.top, item.startsSection ? 1 : 5)
-            }
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
@@ -271,26 +416,6 @@ struct SubscriptionUtilizationView: View {
             if let forecast {
                 forecastExplanation(itemID: item.id, forecast: forecast, pace: pace)
             }
-            if item.endsGroup, let accountId = item.accountId, !item.groupBuckets.isEmpty {
-                // `.equatable()` is load-bearing, not an optimisation: this
-                // card is re-proposed every 30 seconds by the `TimelineView`
-                // the rows above need for their countdowns, and the chart
-                // reads no clock of its own. Without it every tick would
-                // re-segment and re-thin thousands of marks — and could land
-                // mid-pan.
-                QuotaHistoryChartView(
-                    tool: item.tool,
-                    accountId: accountId,
-                    group: QuotaBucketGroup(
-                        id: item.groupKey,
-                        title: item.groupTitle,
-                        buckets: item.groupBuckets
-                    ),
-                    density: density,
-                    isEmbedded: true
-                )
-                .equatable()
-            }
         }
     }
 
@@ -347,7 +472,7 @@ struct SubscriptionUtilizationView: View {
         }
     }
 
-    private func paceForecast(for item: UtilizationBucket) -> QuotaPaceForecast? {
+    private func paceForecast(for item: QuotaGroupModule.Row) -> QuotaPaceForecast? {
         guard let accountId = item.accountId else { return nil }
         let snapshot = environment.costService.snapshot(for: item.tool)
         return quotaService.paceForecast(
@@ -464,6 +589,8 @@ struct SubscriptionUtilizationView: View {
             .frame(width: 5, height: 12)
         }
     }
+
+    // MARK: - Forecast disclosure
 
     private struct ForecastMetric: Identifiable {
         let id: String
@@ -669,6 +796,8 @@ struct SubscriptionUtilizationView: View {
         ]
     }
 
+    // MARK: - Formatting
+
     private func whole(_ value: Double) -> Int {
         Int(value.rounded())
     }
@@ -686,7 +815,7 @@ struct SubscriptionUtilizationView: View {
         return "\(base) \(suffix)"
     }
 
-    private func historySeries(for item: UtilizationBucket) -> FillTimelineSeries? {
+    private func historySeries(for item: QuotaGroupModule.Row) -> FillTimelineSeries? {
         guard let accountId = item.accountId else { return nil }
         return FillTimelineSeries(tool: item.tool, accountId: accountId, bucket: item.bucket)
     }
@@ -710,48 +839,5 @@ struct SubscriptionUtilizationView: View {
         guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "—" }
         let target = now.addingTimeInterval(etaSeconds)
         return ResetCountdownFormatter.string(from: target, now: now).map { "runs out in \($0)" } ?? "—"
-    }
-
-    private var providerSubtitle: String {
-        tool == .gemini ? tool.statusProviderName : tool.subtitle
-    }
-
-    private var providerPlanBadge: String? {
-        let account = environment.account(for: tool)
-        let quotaPlan = account.flatMap { quotaService.cachedQuota(for: $0.id)?.plan }
-            ?? environment.quota(for: tool)?.plan
-        let label = settingsStore.settings.planBadgeLabel(
-            for: tool,
-            quotaPlan: quotaPlan,
-            accountPlan: account?.plan
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return label?.isEmpty == false ? label : nil
-    }
-
-    private func linkedSectionTitle(for itemTool: ToolType) -> String? {
-        guard itemTool != tool else { return nil }
-        return itemTool.toolName
-    }
-
-    /// Shared with the quota-history cards below this one, so a heading printed
-    /// here and a history chart down there always describe the same group.
-    private func quotaGroupTitle(for itemTool: ToolType, bucket: QuotaBucket) -> String? {
-        QuotaBucketGrouping.title(pageTool: tool, itemTool: itemTool, bucket: bucket)
-    }
-
-    private func linkedProviderSection(tool linkedTool: ToolType, title: String) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Divider()
-                .opacity(0.18)
-                .padding(.top, 3)
-            HStack(alignment: .center, spacing: 6) {
-                ToolBrandIconView(tool: linkedTool, size: 13)
-                    .opacity(0.85)
-                Text(title)
-                    .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-            }
-        }
     }
 }

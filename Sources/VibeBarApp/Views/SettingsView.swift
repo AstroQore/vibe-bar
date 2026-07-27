@@ -4,6 +4,7 @@ import VibeBarCore
 enum SettingsSectionID: String {
     case menuBar
     case miniWindow
+    case layout
     case openAI
     case anthropic
     case googleAI
@@ -19,6 +20,7 @@ enum SettingsSectionID: String {
         switch self {
         case .menuBar: "Menu Bar"
         case .miniWindow: "Mini Window"
+        case .layout: "Layout"
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
         case .googleAI: "Google AI"
@@ -34,6 +36,7 @@ enum SettingsSectionID: String {
         switch self {
         case .menuBar: "menubar.rectangle"
         case .miniWindow: "rectangle.on.rectangle"
+        case .layout: "rectangle.split.2x1"
         case .openAI: "brain.head.profile"
         case .anthropic: "sparkles"
         case .googleAI: "diamond"
@@ -234,6 +237,13 @@ struct SettingsView: View {
                         }
                     }
                     .id(SettingsSectionID.miniWindow.rawValue)
+                    }
+
+                    if selectedSection == .layout {
+                    settingsSection("Layout") {
+                        LayoutEditorView()
+                    }
+                    .id(SettingsSectionID.layout.rawValue)
                     }
 
                     if selectedSection == .openAI {

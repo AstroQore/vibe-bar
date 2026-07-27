@@ -21,6 +21,7 @@ struct SettingsSidebarView: View {
         .privacy,
         .menuBar,
         .miniWindow,
+        .layout,
     ]
 
     var body: some View {

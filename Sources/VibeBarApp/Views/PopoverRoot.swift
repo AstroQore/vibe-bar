@@ -199,7 +199,11 @@ struct ProviderSectionTitle: View {
 
 // MARK: - Overview (per-provider columns + totals header)
 
-private enum OverviewPage: String, CaseIterable, Identifiable {
+/// The popover's tab strip, and — through `layoutPageID` — the list of pages
+/// the layout editor can arrange. Internal rather than private so the Settings
+/// editor enumerates exactly the tabs the popover is showing instead of
+/// maintaining its own idea of which providers exist.
+enum OverviewPage: String, CaseIterable, Identifiable {
     case overview
     case openAI
     case claude
@@ -208,6 +212,27 @@ private enum OverviewPage: String, CaseIterable, Identifiable {
     case misc
 
     var id: String { rawValue }
+
+    /// Tabs currently visible in the popover, in strip order.
+    static func visiblePages(settings: AppSettings) -> [OverviewPage] {
+        [.overview]
+            + settings.visibleCoreProviderList.compactMap(OverviewPage.page(for:))
+            + [.misc]
+    }
+
+    /// The layout-engine page this tab renders, or `nil` for tabs that are not
+    /// laid out as two columns of modules. Misc is a self-managing grid of
+    /// usage-only provider tiles, not a module page.
+    var layoutPageID: PageLayoutPageID? {
+        switch self {
+        case .overview: return .overview
+        case .openAI:   return .detail(.codex)
+        case .claude:   return .detail(.claude)
+        case .googleAI: return .detail(.gemini)
+        case .grok:     return .detail(.grok)
+        case .misc:     return nil
+        }
+    }
 
     /// L2 product-family labels. The tab strip used to mix L1 vendor
     /// names (OpenAI, Google AI) with L2 product names (Claude, Grok);
@@ -254,9 +279,7 @@ private struct OverviewPageSwitch: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     private var visiblePages: [OverviewPage] {
-        [.overview]
-            + settingsStore.settings.visibleCoreProviderList.compactMap(OverviewPage.page(for:))
-            + [.misc]
+        OverviewPage.visiblePages(settings: settingsStore.settings)
     }
 
     var body: some View {
@@ -346,150 +369,202 @@ private struct OverviewSwitchIcon: View {
 }
 
 /// Overview popover content, top-to-bottom:
-///   1. `CombinedTotalsRow` — cost+token grid plus live service status.
-///   2. A live-measured `ColumnMasonryLayout` covering everything else. It
-///      globally balances the four quota cards first, then places Cost cards
-///      from those seeded column heights, and finally fills the shorter side
-///      with supporting analytics. Quota rows can grow or shrink after every
-///      refresh without leaving a permanently sparse column.
+///   1. `CombinedTotalsRow` — cost+token grid plus live service status. A fixed
+///      header band, not part of the arrangeable module set: it is two
+///      half-width cards pinned to one shared height, which is not something
+///      two independently flowing columns can express.
+///   2. The module waterfall. Until the user arranges the page by hand this is
+///      the live-measured `ColumnMasonryLayout` it has always been — it
+///      globally balances the quota cards first, then places Cost cards from
+///      those seeded column heights, and finally fills the shorter side with
+///      supporting analytics. Once a saved arrangement exists, the same cards
+///      render in the saved order at the saved column widths.
 private struct OverviewWaterfall: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var layoutModel: PageLayoutModel
+    /// Same reason as `ProviderDetailView`: whether the Overview has cost and
+    /// analytics cards at all depends on whether any snapshot has found session
+    /// logs, and that answer arrives from the service, which the surrounding
+    /// view must observe for the module set to follow it.
+    @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var costService: CostUsageService
     @State private var masonrySession = ColumnMasonryLayout.Session()
 
+    private let page = PageLayoutPageID.overview
+
     var body: some View {
-        let snapshots = overviewCostSnapshots
-        let combinedHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
-        let combinedHeatmap = CostSnapshotAggregator.combinedHeatmap(snapshots)
-        let combinedModels = CostSnapshotAggregator.combinedModelBreakdowns(snapshots)
-        let hasCostData = snapshots.contains { $0.jsonlFilesFound > 0 }
-        let combinedCostSnapshot = CostSnapshotAggregator.combinedSnapshot(
-            tool: .codex,
-            snapshots: snapshots
+        let settings = settingsStore.settings
+        let descriptors = PageModuleCatalog.descriptors(
+            for: page,
+            environment: environment,
+            settings: settings
+        )
+        let snapshots = PageModuleCatalog.overviewCostSnapshots(
+            environment: environment,
+            settings: settings
+        )
+        let context = OverviewModuleContext(
+            history: CostSnapshotAggregator.combinedDailyHistory(snapshots),
+            heatmap: CostSnapshotAggregator.combinedHeatmap(snapshots),
+            models: CostSnapshotAggregator.combinedModelBreakdowns(snapshots),
+            combinedSnapshot: CostSnapshotAggregator.combinedSnapshot(
+                tool: .codex,
+                snapshots: snapshots
+            ),
+            googleAISnapshot: PageModuleCatalog.googleAICostSnapshot(environment: environment)
         )
 
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             CombinedTotalsRow(density: density)
-            ColumnMasonryLayout(
-                columns: 2,
-                spacing: density.interSectionSpacing,
-                session: masonrySession
-            ) {
-                ForEach(settingsStore.settings.visibleCoreProviderList, id: \.self) { tool in
-                    overviewQuotaCard(for: tool)
-                }
-                // Sits with the quota cards, not with the analytics: it is the
-                // cross-provider version of what they each show one slice of,
-                // and it is the only card that can answer "which of my quotas
-                // runs out first".
-                OverviewQuotaHistoryCard(density: density)
-                    .overviewMasonryItem(id: "quota-history-all", phase: .quota)
-                if hasCostData {
-                    CostHistoryView(
-                        tool: .codex,
-                        snapshot: combinedCostSnapshot,
-                        density: density,
-                        chartHeight: density.overviewCostChartHeight,
-                        titleOverride: "All Providers Cost History"
-                    )
-                    .overviewMasonryItem(id: "cost-all-providers", phase: .cost)
-                }
-                ForEach(overviewCostProviders, id: \.self) { tool in
-                    OverviewCostCard(tool: tool, density: density)
-                        .overviewMasonryItem(id: "cost-\(tool.rawValue)", phase: .cost)
-                }
+            if layoutModel.isCustomized(page) {
+                arrangedWaterfall(descriptors: descriptors, context: context)
+            } else {
+                balancedWaterfall(descriptors: descriptors, context: context)
+            }
+        }
+    }
+
+    /// The page as the user arranged it: fixed order, saved column widths.
+    private func arrangedWaterfall(
+        descriptors: [PageModuleDescriptor],
+        context: OverviewModuleContext
+    ) -> some View {
+        let defaults = PageModuleCatalog.defaultConfig(
+            for: page,
+            descriptors: descriptors,
+            measuredHeights: layoutModel.measuredHeights(for: page),
+            spacing: Double(density.interSectionSpacing)
+        )
+        let resolved = layoutModel.resolvedConfig(
+            for: page,
+            available: descriptors.map(\.id),
+            default: defaults
+        )
+        return PageLayoutColumns(
+            page: page,
+            descriptors: descriptors,
+            config: resolved,
+            widths: PageColumnWidths(density: density, ratio: resolved.ratio),
+            spacing: density.interSectionSpacing,
+            model: layoutModel
+        ) { descriptor in
+            card(for: descriptor, context: context)
+        }
+    }
+
+    /// The built-in arrangement: the auto-balancing waterfall, untouched.
+    private func balancedWaterfall(
+        descriptors: [PageModuleDescriptor],
+        context: OverviewModuleContext
+    ) -> some View {
+        ColumnMasonryLayout(
+            columns: 2,
+            spacing: density.interSectionSpacing,
+            session: masonrySession
+        ) {
+            ForEach(descriptors) { descriptor in
+                card(for: descriptor, context: context)
+                    .measuredPageModule(descriptor.id, page: page, model: layoutModel)
+                    .overviewMasonryItem(id: descriptor.id.rawValue, phase: descriptor.masonryPhase)
+            }
+        }
+    }
+
+    /// The one place an Overview module identity turns back into its card —
+    /// called by both the arranged and the balanced path, so the two can never
+    /// render a module differently.
+    ///
+    /// No module here reads the wall clock, so the Overview starts no periodic
+    /// timer of its own: a page-level tick would re-measure every card in the
+    /// masonry twice a minute. If a clock-consuming module is ever added, hoist
+    /// one `TimelineView` in `body` and pass its date through this factory —
+    /// never a timer per card.
+    @ViewBuilder
+    private func card(
+        for descriptor: PageModuleDescriptor,
+        context: OverviewModuleContext
+    ) -> some View {
+        switch descriptor.kind {
+        case let .overviewQuota(tool):
+            if tool == .gemini {
+                // Gemini Web and AntiGravity roll up to one Google AI product.
+                GeminiCombinedCard(density: density)
+            } else {
+                ProviderQuotaCard(tool: tool, density: density, compact: false)
+            }
+        case .overviewQuotaHistoryAll:
+            // Sits with the quota cards, not with the analytics: it is the
+            // cross-provider version of what they each show one slice of,
+            // and it is the only card that can answer "which of my quotas
+            // runs out first".
+            OverviewQuotaHistoryCard(density: density)
+        case .overviewCostAll:
+            CostHistoryView(
+                tool: .codex,
+                snapshot: context.combinedSnapshot,
+                density: density,
+                chartHeight: density.overviewCostChartHeight,
+                titleOverride: "All Providers Cost History"
+            )
+        case let .overviewCost(tool):
+            if tool == .gemini {
                 // Google AI (Gemini + AntiGravity) cost, surfaced as the
                 // single "Gemini" platform aligned with the other three.
                 // AntiGravity is now the only live Google/Gemini usage
                 // source (Gemini CLI no longer writes local telemetry);
                 // its `.pb`-only cascades are filled via the
                 // language-server RPC in CostUsageScanner.scanAntigravity.
-                if isVisible(.gemini) {
-                    OverviewCostCard(
-                        tool: .antigravity,
-                        density: density,
-                        snapshotOverride: googleAICostSnapshot,
-                        titleOverride: "Gemini Cost",
-                        emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
-                        toolNameOverride: "Gemini",
-                        heatmapTitleOverride: "When you use Gemini"
-                    )
-                    .overviewMasonryItem(id: "cost-gemini", phase: .cost)
-                }
-                if hasCostData {
-                    ModelRankingList(
-                        breakdowns: combinedModels,
-                        density: density,
-                        subtitle: "All providers · all time"
-                    )
-                    .overviewMasonryItem(id: "analytics-model-ranking", phase: .auxiliary)
-                    YearlyContributionHeatmapView(
-                        history: combinedHistory,
-                        density: density,
-                        toolName: "All providers"
-                    )
-                    .overviewMasonryItem(id: "analytics-year", phase: .auxiliary)
-                    UsageActivityView(
-                        heatmap: combinedHeatmap,
-                        density: density,
-                        titleOverride: "When you use everything"
-                    )
-                    .overviewMasonryItem(id: "analytics-activity", phase: .auxiliary)
-                }
+                OverviewCostCard(
+                    tool: .antigravity,
+                    density: density,
+                    snapshotOverride: context.googleAISnapshot,
+                    titleOverride: "Gemini Cost",
+                    emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
+                    toolNameOverride: "Gemini",
+                    heatmapTitleOverride: "When you use Gemini"
+                )
+            } else {
+                OverviewCostCard(tool: tool, density: density)
             }
+        case .overviewModelRanking:
+            ModelRankingList(
+                breakdowns: context.models,
+                density: density,
+                subtitle: "All providers · all time"
+            )
+        case .overviewYearHeatmap:
+            YearlyContributionHeatmapView(
+                history: context.history,
+                density: density,
+                toolName: "All providers"
+            )
+        case .overviewActivityHeatmap:
+            UsageActivityView(
+                heatmap: context.heatmap,
+                density: density,
+                titleOverride: "When you use everything"
+            )
+        case .quotaGroup, .serviceStatus, .costHeader, .costHistory,
+             .modelRanking, .yearHeatmap, .activityHeatmap, .costEmpty:
+            // Provider-page families. `PageModuleCatalog` never puts them on
+            // the Overview, and a stale identifier is dropped before it gets
+            // here, so this is unreachable rather than a fallback.
+            EmptyView()
         }
     }
+}
 
-    /// Cost providers rendered as their own per-provider
-    /// `OverviewCostCard` in the grid. Google AI is rendered separately
-    /// (combined Gemini + AntiGravity) via `googleAICostSnapshot`, so it
-    /// isn't listed here.
-    private var overviewCostProviders: [ToolType] {
-        settingsStore.settings.visibleCoreProviderList.filter { tool in
-            tool == .codex || tool == .claude || tool == .grok
-        }
-    }
-
-    @ViewBuilder
-    private func overviewQuotaCard(for tool: ToolType) -> some View {
-        if tool == .gemini {
-            // Gemini Web and AntiGravity roll up to one Google AI product.
-            GeminiCombinedCard(density: density)
-                .overviewMasonryItem(id: "quota-gemini", phase: .quota)
-        } else {
-            ProviderQuotaCard(tool: tool, density: density, compact: false)
-                .overviewMasonryItem(id: "quota-\(tool.rawValue)", phase: .quota)
-        }
-    }
-
-    private func isVisible(_ tool: ToolType) -> Bool {
-        settingsStore.settings.isCoreProviderVisible(tool)
-    }
-
-    /// Combined Gemini + AntiGravity cost, surfaced as the single
-    /// "Gemini" (Google AI) platform. Gemini CLI no longer writes local
-    /// usage, so in practice this is the AntiGravity IDE/CLI data; the
-    /// combine keeps any residual Gemini telemetry counted too. Returns
-    /// an empty snapshot (no files) when neither has data, which the
-    /// card renders as an empty state.
-    private var googleAICostSnapshot: CostSnapshot {
-        let parts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
-        return CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: parts)
-    }
-
-    /// Snapshots feeding the "All providers" rollups (model ranking,
-    /// heatmaps). Includes the combined Google AI snapshot when it has
-    /// data so Gemini / AntiGravity usage shows up there too.
-    private var overviewCostSnapshots: [CostSnapshot] {
-        var snaps = overviewCostProviders.compactMap { environment.costService.snapshot(for: $0) }
-        if isVisible(.gemini) {
-            let googleAI = googleAICostSnapshot
-            if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
-        }
-        return snaps
-    }
+/// Cross-provider rollups the Overview computes once per pass and hands to
+/// whichever modules need them.
+private struct OverviewModuleContext {
+    let history: [DailyCostPoint]
+    let heatmap: UsageHeatmap
+    let models: [CostSnapshot.ModelBreakdown]
+    let combinedSnapshot: CostSnapshot
+    let googleAISnapshot: CostSnapshot
 }
 
 private struct GrokPage: View {
@@ -657,74 +732,10 @@ private struct GeminiCombinedCard: View {
 private struct GeminiTabPage: View {
     let density: Theme.Density
 
-    @EnvironmentObject var environment: AppEnvironment
-    @EnvironmentObject var settingsStore: SettingsStore
-    @EnvironmentObject var quotaService: QuotaService
-
     var body: some View {
-        let columns = ProviderDetailColumnWidths(density: density)
-        let geminiAccounts = environment.accountStore
-            .accounts(for: .gemini)
-            .sorted { $0.id < $1.id }
-        let antigravityAccount = environment.account(for: .antigravity)
-        let antigravityQuotaSeries: [FillTimelineSeries] = antigravityAccount.map { account in
-            (quotaService.cachedQuota(for: account.id)?.buckets ?? []).map {
-                FillTimelineSeries(tool: .antigravity, accountId: account.id, bucket: $0)
-            }
-        } ?? []
-
-        HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    SubscriptionUtilizationView(
-                        tool: .gemini,
-                        buckets: geminiAccounts.first.flatMap {
-                            quotaService.cachedQuota(for: $0.id)?.buckets
-                        } ?? [],
-                        mode: settingsStore.displayMode,
-                        density: density,
-                        now: context.date,
-                        additionalQuotaSeries: antigravityQuotaSeries
-                    )
-                }
-                // Quota history is no longer a card of its own: each group's
-                // chart is drawn inside the utilization card above, directly
-                // under the rows it describes — AntiGravity's included.
-                ServiceStatusCard(tools: [.gemini], density: density)
-            }
-            .frame(
-                width: columns.left,
-                alignment: .topLeading
-            )
-
-            GeminiCostColumn(density: density)
-                .frame(width: columns.right, alignment: .topLeading)
-        }
-        .frame(width: columns.total, alignment: .topLeading)
-    }
-}
-
-/// Right-column cost and analytics flow for the combined Gemini surface.
-private struct GeminiCostColumn: View {
-    let density: Theme.Density
-
-    @EnvironmentObject var environment: AppEnvironment
-
-    var body: some View {
-        let parts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
-        let snapshot = CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: parts)
-        if snapshot.jsonlFilesFound > 0 {
-            ProviderCostStack(
-                tool: .antigravity,
-                snapshot: snapshot,
-                density: density,
-                titleOverride: "Gemini Cost",
-                toolNameOverride: "Gemini",
-                heatmapTitleOverride: "When you use Gemini"
-            )
-        } else {
-            GeminiCostEmptyCard(density: density)
-        }
+        // Gemini's page is a provider page whose cost surface is the combined
+        // Gemini + AntiGravity total, relabelled as the one "Gemini" platform.
+        ProviderDetailView(tool: .gemini, density: density)
     }
 }
 
@@ -770,44 +781,6 @@ private struct GeminiCostEmptyCard: View {
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .stroke(.separator.opacity(0.4), lineWidth: 0.5)
         )
-    }
-}
-
-private struct ProviderCostStack: View {
-    let tool: ToolType
-    let snapshot: CostSnapshot
-    let density: Theme.Density
-    var titleOverride: String? = nil
-    var toolNameOverride: String? = nil
-    var heatmapTitleOverride: String? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-            CostHeaderCard(
-                tool: tool,
-                snapshot: snapshot,
-                density: density,
-                titleOverride: titleOverride,
-                toolNameOverride: toolNameOverride
-            )
-            CostHistoryView(
-                tool: tool,
-                snapshot: snapshot,
-                density: density,
-                chartHeight: density.detailCostChartHeight
-            )
-            ModelRankingList(snapshot: snapshot, density: density)
-            YearlyContributionHeatmapView(
-                history: snapshot.dailyHistory,
-                density: density,
-                toolName: toolNameOverride ?? tool.menuTitle
-            )
-            UsageActivityView(
-                heatmap: snapshot.heatmap,
-                density: density,
-                titleOverride: heatmapTitleOverride
-            )
-        }
     }
 }
 
@@ -1408,7 +1381,9 @@ private struct CostDetailPopoverContent: View {
 /// columns size independently and do NOT have to match in height.
 ///
 /// Left column (fixed order, narrow):
-///   1. Subscription Utilization (provider header + all live quotas)
+///   1. One Subscription Utilization card per quota group, in provider order.
+///      The first carries the provider header; each carries its own rows,
+///      reset-history strips and quota-history chart.
 ///   2. Service Status
 ///
 /// Right column (wide): Cost summary → Cost History → Model Ranking →
@@ -1419,60 +1394,182 @@ private struct ProviderDetailView: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var layoutModel: PageLayoutModel
+    /// Observed so the page's *module set* tracks the data behind it. The
+    /// catalog asks these two which quota groups and which cost cards exist;
+    /// reading them only through `environment`, which publishes neither, left a
+    /// group that arrived on the first refresh — or the cost cards after the
+    /// first scan — missing until something unrelated redrew the page.
+    ///
+    /// This is a separate trigger from the clock below, and deliberately so:
+    /// a service publish re-runs `body` and rebuilds the descriptors, while a
+    /// timeline tick re-runs only the closure inside `TimelineView`, which
+    /// captures them. Ticking never re-derives the page.
+    @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var costService: CostUsageService
 
     var body: some View {
-        let columns = ProviderDetailColumnWidths(density: density)
-        let snapshot = environment.costService.snapshot(for: tool)
-        let hasCostData = (snapshot?.jsonlFilesFound ?? 0) > 0
-        HStack(alignment: .top, spacing: density.interSectionSpacing) {
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    SubscriptionUtilizationView(
-                        tool: tool,
-                        buckets: environment.quota(for: tool)?.buckets ?? [],
-                        mode: settingsStore.displayMode,
-                        density: density,
-                        now: context.date
-                    )
-                }
-                // Quota history is no longer a card of its own: each group's
-                // chart is drawn inside the utilization card above, directly
-                // under the rows it describes — "all models" under the
-                // all-models rows, Spark under Spark's.
-                ServiceStatusCard(tools: [tool], density: density)
+        let page = PageLayoutPageID.detail(tool)
+        let descriptors = PageModuleCatalog.descriptors(
+            for: page,
+            environment: environment,
+            settings: settingsStore.settings
+        )
+        let defaults = PageModuleCatalog.defaultConfig(
+            for: page,
+            descriptors: descriptors,
+            measuredHeights: layoutModel.measuredHeights(for: page),
+            spacing: Double(density.interSectionSpacing)
+        )
+        let resolved = layoutModel.resolvedConfig(
+            for: page,
+            available: descriptors.map(\.id),
+            default: defaults
+        )
+        let context = ProviderPageContext(
+            pageTool: tool,
+            groups: PageModuleCatalog.quotaGroupModules(tool: tool, environment: environment),
+            snapshot: PageModuleCatalog.detailCostSnapshot(tool: tool, environment: environment)
+        )
+        // Exactly one periodic clock per page, at the page level. The quota
+        // group cards' countdown strings are the only thing on the page that
+        // reads the wall clock; they take the tick as plain data so no card
+        // owns a timer of its own. `QuotaHistoryChartView` stays `.equatable()`
+        // inside `QuotaGroupCard`, so the chart still ignores the tick.
+        TimelineView(.periodic(from: .now, by: 30)) { timeline in
+            PageLayoutColumns(
+                page: page,
+                descriptors: descriptors,
+                config: resolved,
+                // Until the page is arranged by hand its columns keep the exact
+                // clamped narrow-left widths they have always had; the ratio
+                // presets only take over once the user picks one.
+                widths: layoutModel.isCustomized(page)
+                    ? PageColumnWidths(density: density, ratio: resolved.ratio)
+                    : ProviderDetailColumnWidths(density: density).columnWidths,
+                spacing: density.interSectionSpacing,
+                model: layoutModel
+            ) { descriptor in
+                ProviderPageModule(
+                    descriptor: descriptor,
+                    context: context,
+                    density: density,
+                    mode: settingsStore.displayMode,
+                    now: timeline.date
+                )
             }
-            .frame(
-                width: columns.left,
-                alignment: .topLeading
-            )
-
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                if let snapshot, hasCostData {
-                    CostHeaderCard(tool: tool, snapshot: snapshot, density: density)
-                    CostHistoryView(
-                        tool: tool,
-                        snapshot: snapshot,
-                        density: density,
-                        chartHeight: density.detailCostChartHeight
-                    )
-                    ModelRankingList(snapshot: snapshot, density: density)
-                    YearlyContributionHeatmapView(
-                        history: snapshot.dailyHistory,
-                        density: density,
-                        toolName: tool.menuTitle
-                    )
-                    UsageActivityView(heatmap: snapshot.heatmap, density: density)
-                } else {
-                    Text("No \(tool.menuTitle) CLI sessions found yet.")
-                        .font(.system(size: density.subtitleFontSize))
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 24)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .frame(width: columns.right, alignment: .topLeading)
         }
-        .frame(width: columns.total, alignment: .topLeading)
+    }
+}
+
+/// Everything a provider page resolves once per pass and every one of its
+/// modules draws from.
+private struct ProviderPageContext {
+    let pageTool: ToolType
+    let groups: [QuotaGroupModule]
+    let snapshot: CostSnapshot?
+
+    /// Tool the cost cards are labelled and keyed by. Gemini's page shows the
+    /// combined Gemini + AntiGravity total, which is carried on an AntiGravity
+    /// snapshot but presented as the single "Gemini" platform.
+    var costTool: ToolType { pageTool == .gemini ? .antigravity : pageTool }
+    var costTitle: String? { pageTool == .gemini ? "Gemini Cost" : nil }
+    var costToolName: String { pageTool == .gemini ? "Gemini" : pageTool.menuTitle }
+    var activityHeatmapTitle: String? { pageTool == .gemini ? "When you use Gemini" : nil }
+
+    func group(id: String) -> QuotaGroupModule? {
+        groups.first { $0.id == id }
+    }
+}
+
+/// The one place a provider-page module identity turns back into its card.
+private struct ProviderPageModule: View {
+    let descriptor: PageModuleDescriptor
+    let context: ProviderPageContext
+    let density: Theme.Density
+    let mode: DisplayMode
+    /// Tick from the page's single clock. Plain data — this view never starts
+    /// a timer, however many quota groups the page ends up arranging.
+    let now: Date
+
+    var body: some View {
+        switch descriptor.kind {
+        case let .quotaGroup(groupID):
+            if let group = context.group(id: groupID) {
+                QuotaGroupCard(
+                    module: group,
+                    mode: mode,
+                    density: density,
+                    now: now,
+                    // Only the provider-header card draws the refresh
+                    // button, so only it needs the tools behind it.
+                    refreshTools: group.showsProviderHeader
+                        ? PageModuleCatalog.quotaRefreshTools(for: context.pageTool)
+                        : [],
+                    emptyMessage: group.rows.isEmpty
+                        ? "No utilization data — try refreshing."
+                        : nil
+                )
+            }
+        case .serviceStatus:
+            ServiceStatusCard(tools: [context.pageTool], density: density)
+        case .costHeader:
+            if let snapshot = context.snapshot {
+                CostHeaderCard(
+                    tool: context.costTool,
+                    snapshot: snapshot,
+                    density: density,
+                    titleOverride: context.costTitle,
+                    toolNameOverride: context.pageTool == .gemini ? "Gemini" : nil
+                )
+            }
+        case .costHistory:
+            if let snapshot = context.snapshot {
+                CostHistoryView(
+                    tool: context.costTool,
+                    snapshot: snapshot,
+                    density: density,
+                    chartHeight: density.detailCostChartHeight
+                )
+            }
+        case .modelRanking:
+            if let snapshot = context.snapshot {
+                ModelRankingList(snapshot: snapshot, density: density)
+            }
+        case .yearHeatmap:
+            if let snapshot = context.snapshot {
+                YearlyContributionHeatmapView(
+                    history: snapshot.dailyHistory,
+                    density: density,
+                    toolName: context.costToolName
+                )
+            }
+        case .activityHeatmap:
+            if let snapshot = context.snapshot {
+                UsageActivityView(
+                    heatmap: snapshot.heatmap,
+                    density: density,
+                    titleOverride: context.activityHeatmapTitle
+                )
+            }
+        case .costEmpty:
+            if context.pageTool == .gemini {
+                GeminiCostEmptyCard(density: density)
+            } else {
+                Text("No \(context.pageTool.menuTitle) CLI sessions found yet.")
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: .infinity)
+            }
+        case .overviewQuota, .overviewQuotaHistoryAll, .overviewCostAll,
+             .overviewCost, .overviewModelRanking, .overviewYearHeatmap,
+             .overviewActivityHeatmap:
+            // Overview families. `PageModuleCatalog` never puts them on a
+            // provider page, and a stale identifier is dropped before it gets
+            // here, so this is unreachable rather than a fallback.
+            EmptyView()
+        }
     }
 }
 
@@ -1502,6 +1599,10 @@ private struct ProviderDetailColumnWidths {
         )
         left = min(preferredLeft, maximumLeft)
         right = max(0, usable - left)
+    }
+
+    var columnWidths: PageColumnWidths {
+        PageColumnWidths(left: left, right: right, total: total)
     }
 }
 
