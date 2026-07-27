@@ -63,6 +63,120 @@ final class AppSettingsTests: XCTestCase {
         )
     }
 
+    func testPageLayoutsDefaultToNoneAndRoundTrip() throws {
+        // A settings file written before the layout editor existed means "no
+        // page has been customized", which is exactly an empty map — every
+        // page keeps its built-in arrangement, no migration needed.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertTrue(legacy.pageLayouts.isEmpty)
+        XCTAssertTrue(AppSettings.default.pageLayouts.isEmpty)
+
+        var settings = AppSettings.default
+        settings.pageLayouts[.overview] = StoredPageLayout(
+            ratio: .wideNarrow,
+            columns: [[.status, .costAll], [.quotaHistoryAll]]
+        )
+        settings.pageLayouts[.detail(.claude)] = StoredPageLayout(
+            ratio: .narrowWide,
+            columns: [[.quotaGroup(tool: .claude, groupKey: "all")], [.cost(tool: .claude)]]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+
+        XCTAssertEqual(decoded.pageLayouts.count, 2)
+        XCTAssertEqual(decoded.pageLayouts[.overview]?.ratio, .wideNarrow)
+        XCTAssertEqual(decoded.pageLayouts[.overview]?.columns, [[.status, .costAll], [.quotaHistoryAll]])
+        XCTAssertEqual(
+            decoded.pageLayouts[.detail(.claude)]?.columns,
+            [[.quotaGroup(tool: .claude, groupKey: "all")], [.cost(tool: .claude)]]
+        )
+    }
+
+    func testPageLayoutsEncodeAsAPlainObjectKeyedByPageAndModuleIdentifiers() throws {
+        var settings = AppSettings.default
+        settings.pageLayouts[.detail(.codex)] = StoredPageLayout(
+            ratio: .equal,
+            columns: [[.status], [.cost(tool: .codex)]]
+        )
+
+        let data = try JSONEncoder().encode(settings)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let layouts = try XCTUnwrap(root["pageLayouts"] as? [String: Any])
+        let codex = try XCTUnwrap(layouts["detail:codex"] as? [String: Any])
+        XCTAssertEqual(codex["ratio"] as? String, "equal")
+        XCTAssertEqual(codex["columns"] as? [[String]], [["status"], ["cost:codex"]])
+        // Measured heights are render telemetry and stay in layout.json.
+        XCTAssertNil(codex["measuredHeights"])
+    }
+
+    func testPageLayoutsToleratePartialAndUnknownEntries() throws {
+        let json = #"""
+        {
+          "displayMode": "remaining",
+          "pageLayouts": {
+            "overview": {"columns": [["status"], []]},
+            "detail:claude": {"ratio": "spiral", "columns": [["cost:claude"], []]},
+            "detail:some-future-provider": {"ratio": "equal", "columns": [["future-card:v9"], []]}
+          }
+        }
+        """#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        // Missing ratio degrades to the fallback rather than dropping the page.
+        XCTAssertEqual(decoded.pageLayouts[.overview]?.ratio, .equal)
+        XCTAssertEqual(decoded.pageLayouts[.overview]?.columns.first, [.status])
+        // An unreadable ratio does the same.
+        XCTAssertEqual(decoded.pageLayouts[.detail(.claude)]?.ratio, .equal)
+        // A page and a module this build knows nothing about survive intact.
+        let future = decoded.pageLayouts[PageLayoutPageID("detail:some-future-provider")]
+        XCTAssertEqual(future?.columns.first, [PageLayoutModuleID("future-card:v9")])
+    }
+
+    func testAMangledPageLayoutMapDoesNotCostTheRestOfTheSettings() throws {
+        // `pageLayouts` decodes with `try?`: losing a hand-mangled card
+        // arrangement is acceptable, silently resetting the whole settings file
+        // is not.
+        let json = #"""
+        {"displayMode": "used", "refreshIntervalSeconds": 1800, "pageLayouts": "not-an-object"}
+        """#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertTrue(decoded.pageLayouts.isEmpty)
+        XCTAssertEqual(decoded.displayMode, .used)
+        XCTAssertEqual(decoded.refreshIntervalSeconds, 1800)
+    }
+
+    func testStoredPageLayoutAppliesTheConfigInvariants() {
+        // A hand-edited file cannot smuggle in a duplicate or a third column:
+        // the DTO round-trips through `PageLayoutConfig`'s initializer.
+        let stored = StoredPageLayout(
+            ratio: .equal,
+            columns: [[.status, .costAll], [.status], [.quotaHistoryAll]]
+        )
+        XCTAssertEqual(stored.columns.count, PageLayoutConfig.columnCount)
+        XCTAssertEqual(stored.columns[0], [.status, .costAll])
+        XCTAssertEqual(stored.columns[1], [.quotaHistoryAll])
+        XCTAssertFalse(stored.isEmpty)
+        XCTAssertTrue(StoredPageLayout().isEmpty)
+    }
+
+    func testStoredPageLayoutCarriesMeasuredHeightsBackIntoTheCanonicalModel() {
+        let stored = StoredPageLayout(ratio: .narrowWide, columns: [[.status], [.costAll]])
+        let config = stored.config(measuredHeights: [.status: 120])
+
+        XCTAssertEqual(config.ratio, .narrowWide)
+        XCTAssertEqual(config.leftColumn, [.status])
+        XCTAssertEqual(config.measuredHeight(for: .status), 120)
+        // And back again, dropping the telemetry.
+        XCTAssertEqual(StoredPageLayout(config), stored)
+    }
+
     func testUpdateChannelRoundTripsAndUnknownValuesFallBackToMain() throws {
         var settings = AppSettings.default
         settings.updateChannel = .dev

@@ -385,6 +385,12 @@ private struct OverviewWaterfall: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var layoutModel: PageLayoutModel
+    /// Same reason as `ProviderDetailView`: whether the Overview has cost and
+    /// analytics cards at all depends on whether any snapshot has found session
+    /// logs, and that answer arrives from the service, which the surrounding
+    /// view must observe for the module set to follow it.
+    @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var costService: CostUsageService
     @State private var masonrySession = ColumnMasonryLayout.Session()
 
     private let page = PageLayoutPageID.overview
@@ -1389,6 +1395,18 @@ private struct ProviderDetailView: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var layoutModel: PageLayoutModel
+    /// Observed so the page's *module set* tracks the data behind it. The
+    /// catalog asks these two which quota groups and which cost cards exist;
+    /// reading them only through `environment`, which publishes neither, left a
+    /// group that arrived on the first refresh — or the cost cards after the
+    /// first scan — missing until something unrelated redrew the page.
+    ///
+    /// This is a separate trigger from the clock below, and deliberately so:
+    /// a service publish re-runs `body` and rebuilds the descriptors, while a
+    /// timeline tick re-runs only the closure inside `TimelineView`, which
+    /// captures them. Ticking never re-derives the page.
+    @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var costService: CostUsageService
 
     var body: some View {
         let page = PageLayoutPageID.detail(tool)

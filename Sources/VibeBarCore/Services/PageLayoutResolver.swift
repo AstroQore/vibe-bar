@@ -104,7 +104,8 @@ public enum PageLayoutResolver {
     ///   that is still visible, preserving their relative order.
     /// - The ratio comes from the edit; heights merge, edit winning.
     ///
-    /// Only an explicit reset (`PageLayoutStore.resetConfig`) forgets a page.
+    /// Only an explicit reset — dropping the page from
+    /// `AppSettings.pageLayouts` — forgets a page.
     ///
     /// - Parameter edited: the arrangement the user just produced. Expected to
     ///   name every currently available module exactly once — which is what

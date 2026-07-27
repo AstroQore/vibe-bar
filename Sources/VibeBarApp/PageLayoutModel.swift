@@ -2,27 +2,28 @@ import Foundation
 import SwiftUI
 import VibeBarCore
 
-/// App-side owner of the saved page layouts.
+/// App-side owner of the per-page card arrangement, stitched from the two
+/// places its halves live.
 ///
-/// `PageLayoutStore` is an actor and the popover renders synchronously, so the
-/// views cannot await it mid-body. This model loads every page's entry once at
-/// startup, keeps it in memory, and writes through on every edit.
+/// - **Intent** — column order and width split — is a user preference, so it
+///   round-trips through `AppSettings.pageLayouts` like every other Settings
+///   control. Writing it there also repaints the popover for free:
+///   `SettingsStore` publishes, and every page already observes it.
+/// - **Measurement** — each card's last rendered height — is render-time
+///   telemetry, so it lives in `~/.vibebar/layout.json` via `PageLayoutStore`.
+///   Folding it into settings would push a Combine fan-out through every
+///   subscriber each time a card grew a row (`AGENTS.md` § 11, the same rule
+///   that keeps mini-window geometry out of `AppSettings`).
 ///
-/// Two pieces of state with deliberately different publication rules:
-///
-/// - `configs` — the user's layout *intent* (column order + ratio). Published,
-///   because changing it must repaint the popover.
-/// - `measuredHeights` — render-time measurement fed back from every card.
-///   **Not** published: it is written from inside a layout pass, and
-///   republishing it there would invalidate the very views being measured and
-///   spin. The layout editor reads it on demand instead, which is enough — it
-///   opens long after the popover has drawn at least once.
+/// Heights are held here in a plain, unpublished dictionary: they are written
+/// from inside a layout pass, and republishing there would invalidate the very
+/// views being measured and spin.
 @MainActor
 final class PageLayoutModel: ObservableObject {
-    /// User layout intent, one entry per customized page. A page with no entry
-    /// (or an entry whose columns are empty) has never been customized and
-    /// keeps its built-in arrangement.
-    @Published private(set) var configs: [PageLayoutPageID: PageLayoutConfig] = [:]
+    /// Flips once, when the first read of `layout.json` lands. Published so a
+    /// surface that rendered before then picks the heights up; it is a single
+    /// startup event, not churn.
+    @Published private(set) var measurementsLoaded = false
 
     /// Last-known rendered height per module, per page. Deliberately not
     /// `@Published` — see the type comment.
@@ -33,40 +34,39 @@ final class PageLayoutModel: ObservableObject {
     /// discard never even reaches it.
     private static let heightEpsilon: Double = 0.5
 
+    private let settingsStore: SettingsStore
     private let store: PageLayoutStore
 
-    init(store: PageLayoutStore = .shared) {
+    init(settingsStore: SettingsStore, store: PageLayoutStore = .shared) {
+        self.settingsStore = settingsStore
         self.store = store
         Task { [weak self] in
-            let loaded = await store.allConfigs()
+            let loaded = await store.allMeasuredHeights()
             guard let self else { return }
-            self.adopt(loaded)
+            self.measured = loaded
+            self.measurementsLoaded = true
         }
-    }
-
-    private func adopt(_ loaded: [PageLayoutPageID: PageLayoutConfig]) {
-        for (page, config) in loaded {
-            measured[page] = config.measuredHeights
-        }
-        // Heights-only entries carry no layout intent; keeping them out of
-        // `configs` means `isCustomized` stays honest for a page the user has
-        // only ever looked at.
-        configs = loaded.filter { !$0.value.isEmpty }
     }
 
     // MARK: - Reading
 
-    /// The saved arrangement for a page, or `nil` when it has never been
-    /// customized.
+    /// Saved intent for every page, as the user arranged it.
+    private var storedLayouts: [PageLayoutPageID: StoredPageLayout] {
+        settingsStore.settings.pageLayouts
+    }
+
+    /// The saved arrangement for a page — intent plus the measurements that go
+    /// with it — or `nil` when it has never been customized.
     func configuredConfig(for page: PageLayoutPageID) -> PageLayoutConfig? {
-        configs[page]
+        guard let stored = storedLayouts[page] else { return nil }
+        return stored.config(measuredHeights: measuredHeights(for: page))
     }
 
     /// True when the user has arranged this page by hand. Pages answer this to
     /// decide between their built-in layout path and fixed-order rendering.
     func isCustomized(_ page: PageLayoutPageID) -> Bool {
-        guard let config = configs[page] else { return false }
-        return !config.isEmpty
+        guard let stored = storedLayouts[page] else { return false }
+        return !stored.isEmpty
     }
 
     func measuredHeights(for page: PageLayoutPageID) -> [PageLayoutModuleID: Double] {
@@ -81,12 +81,12 @@ final class PageLayoutModel: ObservableObject {
         default defaultConfig: PageLayoutConfig
     ) -> PageLayoutConfig {
         var resolved = PageLayoutResolver.resolve(
-            configured: configs[page],
+            configured: configuredConfig(for: page),
             available: available,
             defaultConfig: defaultConfig
         )
-        // Measurement lives outside `configs`, so merge it back in for the
-        // editor, which sizes its blocks from these values.
+        // Measurement lives outside the saved intent, so merge it back in for
+        // the editor, which sizes its blocks from these values.
         for (moduleID, height) in measuredHeights(for: page) {
             resolved.measuredHeights[moduleID] = height
         }
@@ -95,8 +95,8 @@ final class PageLayoutModel: ObservableObject {
 
     // MARK: - Writing
 
-    /// Persist an arrangement. Immediately written to disk by the store, so a
-    /// quit right after a drag cannot lose it.
+    /// Persist an arrangement. `SettingsStore` writes through on assignment, so
+    /// a quit right after a drag cannot lose it.
     ///
     /// `config` is an edit of the *resolved* layout, so it names only what the
     /// page can draw right now. It is merged into the saved intent rather than
@@ -108,16 +108,12 @@ final class PageLayoutModel: ObservableObject {
         for page: PageLayoutPageID,
         available: [PageLayoutModuleID]
     ) {
-        var next = PageLayoutResolver.mergingEdit(
+        let merged = PageLayoutResolver.mergingEdit(
             config,
-            into: configs[page],
+            into: configuredConfig(for: page),
             available: available
         )
-        next.measuredHeights = measuredHeights(for: page)
-        configs[page] = next
-        Task { [store] in
-            await store.setConfig(next, for: page)
-        }
+        settingsStore.settings.pageLayouts[page] = StoredPageLayout(merged)
     }
 
     /// Replace only the column ratio. Materializes the currently resolved
@@ -134,12 +130,14 @@ final class PageLayoutModel: ObservableObject {
         apply(next, for: page, available: available)
     }
 
-    /// Forget a page's arrangement, returning it to the built-in layout.
+    /// Forget a page's arrangement, returning it to the built-in layout. The
+    /// only path that discards saved intent, including the positions of modules
+    /// that are not on screen.
     func reset(for page: PageLayoutPageID) {
-        configs.removeValue(forKey: page)
+        settingsStore.settings.pageLayouts.removeValue(forKey: page)
         measured.removeValue(forKey: page)
         Task { [store] in
-            await store.resetConfig(for: page)
+            await store.clearMeasuredHeights(for: page)
         }
     }
 
@@ -154,12 +152,12 @@ final class PageLayoutModel: ObservableObject {
         page: PageLayoutPageID
     ) {
         guard height.isFinite, height > 0 else { return }
-        var page_ = measured[page] ?? [:]
-        if let existing = page_[moduleID], abs(existing - height) <= Self.heightEpsilon {
+        var pageHeights = measured[page] ?? [:]
+        if let existing = pageHeights[moduleID], abs(existing - height) <= Self.heightEpsilon {
             return
         }
-        page_[moduleID] = height
-        measured[page] = page_
+        pageHeights[moduleID] = height
+        measured[page] = pageHeights
         Task { [store] in
             await store.updateMeasuredHeights([moduleID: height], for: page)
         }

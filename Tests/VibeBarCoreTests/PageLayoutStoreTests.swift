@@ -1,6 +1,8 @@
 import XCTest
 @testable import VibeBarCore
 
+/// `PageLayoutStore` owns measured card heights only. The user's arrangement
+/// moved to `AppSettings.pageLayouts` — see `AppSettingsTests`.
 final class PageLayoutStoreTests: XCTestCase {
     private var tempURL: URL!
 
@@ -15,96 +17,58 @@ final class PageLayoutStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    private func sampleConfig() -> PageLayoutConfig {
-        PageLayoutConfig(
-            ratio: .wideNarrow,
-            columns: [
-                [.quotaGroup(tool: .codex, groupKey: "weekly"), .costAll],
-                [.status]
-            ],
-            measuredHeights: [.status: 96]
-        )
-    }
-
     // MARK: - Round trip
 
     func testPersistsAndReloadsAcrossInstances() async {
         let store = PageLayoutStore(fileURL: tempURL)
-        let config = sampleConfig()
-        await store.setConfig(config, for: .overview)
-        await store.setConfig(
-            PageLayoutConfig(ratio: .narrowWide, columns: [[.cost(tool: .claude)], []]),
-            for: .detail(.claude)
-        )
+        await store.updateMeasuredHeights([.status: 96, .costAll: 240], for: .overview)
+        await store.updateMeasuredHeights([.cost(tool: .claude): 310], for: .detail(.claude))
         await store.flushPendingWrites()
 
         let reloaded = PageLayoutStore(fileURL: tempURL)
-        let overview = await reloaded.config(for: .overview)
-        let claude = await reloaded.config(for: .detail(.claude))
-        let codex = await reloaded.config(for: .detail(.codex))
-        let all = await reloaded.allConfigs()
+        let overview = await reloaded.measuredHeights(for: .overview)
+        let claude = await reloaded.measuredHeights(for: .detail(.claude))
+        let codex = await reloaded.measuredHeights(for: .detail(.codex))
+        let all = await reloaded.allMeasuredHeights()
 
-        XCTAssertEqual(overview, config)
-        XCTAssertEqual(claude?.ratio, .narrowWide)
-        XCTAssertEqual(claude?.leftColumn, [.cost(tool: .claude)])
-        XCTAssertNil(codex)
+        XCTAssertEqual(overview, [.status: 96, .costAll: 240])
+        XCTAssertEqual(claude, [.cost(tool: .claude): 310])
+        XCTAssertTrue(codex.isEmpty)
         XCTAssertEqual(all.count, 2)
     }
 
-    func testSetConfigNormalizesBeforeStoring() async {
+    func testUnmeasuredPageHasNoEntry() async {
         let store = PageLayoutStore(fileURL: tempURL)
-        await store.setConfig(
-            PageLayoutConfig(columns: [[.status, .costAll], [.status], [.quotaHistoryAll]]),
-            for: .overview
-        )
-        let stored = await store.config(for: .overview)
-        XCTAssertEqual(stored?.leftColumn, [.status, .costAll])
-        XCTAssertEqual(stored?.rightColumn, [.quotaHistoryAll])
-    }
-
-    func testUnconfiguredPageHasNoEntry() async {
-        let store = PageLayoutStore(fileURL: tempURL)
-        let overview = await store.config(for: .overview)
-        let all = await store.allConfigs()
-        XCTAssertNil(overview)
+        let overview = await store.measuredHeights(for: .overview)
+        let all = await store.allMeasuredHeights()
+        XCTAssertTrue(overview.isEmpty)
         XCTAssertTrue(all.isEmpty)
     }
 
-    // MARK: - Reset
+    // MARK: - Clearing
 
-    func testResetRemovesThePageEntryOnly() async {
+    func testClearRemovesThePageEntryOnly() async {
         let store = PageLayoutStore(fileURL: tempURL)
-        await store.setConfig(sampleConfig(), for: .overview)
-        await store.setConfig(PageLayoutConfig(columns: [[.status], []]), for: .detail(.grok))
+        await store.updateMeasuredHeights([.status: 96], for: .overview)
+        await store.updateMeasuredHeights([.status: 64], for: .detail(.grok))
 
-        await store.resetConfig(for: .overview)
-        let clearedOverview = await store.config(for: .overview)
-        let keptGrok = await store.config(for: .detail(.grok))
-        XCTAssertNil(clearedOverview)
-        XCTAssertNotNil(keptGrok)
+        await store.clearMeasuredHeights(for: .overview)
+        let clearedOverview = await store.measuredHeights(for: .overview)
+        let keptGrok = await store.measuredHeights(for: .detail(.grok))
+        XCTAssertTrue(clearedOverview.isEmpty)
+        XCTAssertEqual(keptGrok, [.status: 64])
         await store.flushPendingWrites()
 
         let reloaded = PageLayoutStore(fileURL: tempURL)
-        let reloadedOverview = await reloaded.config(for: .overview)
-        let reloadedGrok = await reloaded.config(for: .detail(.grok))
-        XCTAssertNil(reloadedOverview)
-        XCTAssertNotNil(reloadedGrok)
+        let reloadedOverview = await reloaded.measuredHeights(for: .overview)
+        let reloadedGrok = await reloaded.measuredHeights(for: .detail(.grok))
+        XCTAssertTrue(reloadedOverview.isEmpty)
+        XCTAssertEqual(reloadedGrok, [.status: 64])
     }
 
-    func testResetAlsoDropsMeasuredHeights() async {
+    func testClearOnAnUnknownPageIsANoOp() async {
         let store = PageLayoutStore(fileURL: tempURL)
-        await store.updateMeasuredHeights([.status: 120], for: .overview)
-        let before = await store.config(for: .overview)
-        XCTAssertEqual(before?.measuredHeight(for: .status), 120)
-
-        await store.resetConfig(for: .overview)
-        let after = await store.config(for: .overview)
-        XCTAssertNil(after)
-    }
-
-    func testResetOnAnUnknownPageIsANoOp() async {
-        let store = PageLayoutStore(fileURL: tempURL)
-        await store.resetConfig(for: .overview)
+        await store.clearMeasuredHeights(for: .overview)
         await store.flushPendingWrites()
         XCTAssertFalse(FileManager.default.fileExists(atPath: tempURL.path))
     }
@@ -114,30 +78,30 @@ final class PageLayoutStoreTests: XCTestCase {
     func testMeasuredHeightsMergeOnlyWhenTheChangeExceedsHalfAPoint() async {
         let store = PageLayoutStore(fileURL: tempURL)
         await store.updateMeasuredHeights([.status: 100, .costAll: 200], for: .overview)
-        var height = await store.config(for: .overview)?.measuredHeight(for: .status)
+        var height = await store.measuredHeights(for: .overview)[.status]
         XCTAssertEqual(height, 100)
 
         // Sub-threshold wobble is ignored in both directions, and 0.5 pt
         // exactly still counts as noise.
         await store.updateMeasuredHeights([.status: 100.4], for: .overview)
-        height = await store.config(for: .overview)?.measuredHeight(for: .status)
+        height = await store.measuredHeights(for: .overview)[.status]
         XCTAssertEqual(height, 100)
 
         await store.updateMeasuredHeights([.status: 99.5], for: .overview)
-        height = await store.config(for: .overview)?.measuredHeight(for: .status)
+        height = await store.measuredHeights(for: .overview)[.status]
         XCTAssertEqual(height, 100)
 
         await store.updateMeasuredHeights([.status: 100.5], for: .overview)
-        height = await store.config(for: .overview)?.measuredHeight(for: .status)
+        height = await store.measuredHeights(for: .overview)[.status]
         XCTAssertEqual(height, 100)
 
         // A real change lands.
         await store.updateMeasuredHeights([.status: 100.6], for: .overview)
-        height = await store.config(for: .overview)?.measuredHeight(for: .status)
+        height = await store.measuredHeights(for: .overview)[.status]
         XCTAssertEqual(height, 100.6)
 
         // Untouched entries survive the merge.
-        let untouched = await store.config(for: .overview)?.measuredHeight(for: .costAll)
+        let untouched = await store.measuredHeights(for: .overview)[.costAll]
         XCTAssertEqual(untouched, 200)
     }
 
@@ -147,41 +111,20 @@ final class PageLayoutStoreTests: XCTestCase {
             [.status: 0, .costAll: -12, .quotaHistoryAll: .nan, .cost(tool: .codex): .infinity],
             for: .overview
         )
-        let empty = await store.config(for: .overview)
-        XCTAssertNil(empty)
+        let empty = await store.measuredHeights(for: .overview)
+        XCTAssertTrue(empty.isEmpty)
 
         await store.updateMeasuredHeights([.status: 0, .costAll: 42], for: .overview)
-        let stored = await store.config(for: .overview)
-        XCTAssertNil(stored?.measuredHeight(for: .status))
-        XCTAssertEqual(stored?.measuredHeight(for: .costAll), 42)
-    }
-
-    func testMeasuredHeightsDoNotDisturbTheSavedArrangement() async {
-        let store = PageLayoutStore(fileURL: tempURL)
-        let config = sampleConfig()
-        await store.setConfig(config, for: .overview)
-        await store.updateMeasuredHeights([.costAll: 310], for: .overview)
-
-        let stored = await store.config(for: .overview)
-        XCTAssertEqual(stored?.columns, config.columns)
-        XCTAssertEqual(stored?.ratio, .wideNarrow)
-        XCTAssertEqual(stored?.measuredHeight(for: .costAll), 310)
-        XCTAssertEqual(stored?.measuredHeight(for: .status), 96)
-    }
-
-    func testHeightsOnlyEntryIsRecognizableAsUncustomized() async {
-        let store = PageLayoutStore(fileURL: tempURL)
-        await store.updateMeasuredHeights([.status: 64], for: .overview)
-        let stored = await store.config(for: .overview)
-        XCTAssertNotNil(stored)
-        XCTAssertEqual(stored?.isEmpty, true)
+        let stored = await store.measuredHeights(for: .overview)
+        XCTAssertNil(stored[.status])
+        XCTAssertEqual(stored[.costAll], 42)
     }
 
     // MARK: - File handling
 
     func testFileIsWrittenOwnerOnly() async throws {
         let store = PageLayoutStore(fileURL: tempURL)
-        await store.setConfig(sampleConfig(), for: .overview)
+        await store.updateMeasuredHeights([.status: 96], for: .overview)
         await store.flushPendingWrites()
 
         let attributes = try FileManager.default.attributesOfItem(atPath: tempURL.path)
@@ -190,42 +133,45 @@ final class PageLayoutStoreTests: XCTestCase {
 
     func testEraseAllRemovesTheFileAndTheCache() async {
         let store = PageLayoutStore(fileURL: tempURL)
-        await store.setConfig(sampleConfig(), for: .overview)
+        await store.updateMeasuredHeights([.status: 96], for: .overview)
         await store.flushPendingWrites()
         XCTAssertTrue(FileManager.default.fileExists(atPath: tempURL.path))
 
         await store.eraseAll()
         XCTAssertFalse(FileManager.default.fileExists(atPath: tempURL.path))
-        let inMemory = await store.allConfigs()
-        let onDisk = await PageLayoutStore(fileURL: tempURL).allConfigs()
+        let inMemory = await store.allMeasuredHeights()
+        let onDisk = await PageLayoutStore(fileURL: tempURL).allMeasuredHeights()
         XCTAssertTrue(inMemory.isEmpty)
         XCTAssertTrue(onDisk.isEmpty)
     }
 
-    func testCorruptFileLoadsEmptyAndStillAcceptsNewConfigs() async {
+    func testCorruptFileLoadsEmptyAndStillAcceptsNewHeights() async {
         try? Data("not json".utf8).write(to: tempURL, options: .atomic)
         let store = PageLayoutStore(fileURL: tempURL)
-        let initial = await store.allConfigs()
+        let initial = await store.allMeasuredHeights()
         XCTAssertTrue(initial.isEmpty)
 
-        await store.setConfig(sampleConfig(), for: .overview)
+        await store.updateMeasuredHeights([.status: 96], for: .overview)
         await store.flushPendingWrites()
-        let reloaded = await PageLayoutStore(fileURL: tempURL).config(for: .overview)
-        XCTAssertEqual(reloaded, sampleConfig())
+        let reloaded = await PageLayoutStore(fileURL: tempURL).measuredHeights(for: .overview)
+        XCTAssertEqual(reloaded, [.status: 96])
     }
 
     func testFileFromANewerSchemaIsDiscarded() async {
         let blob = Data(#"""
-        {"schemaVersion": 99, "pages": {"overview": {"ratio": "equal", "columns": [["status"], []]}}}
+        {"schemaVersion": 99, "pages": {"overview": {"measuredHeights": {"status": 77}}}}
         """#.utf8)
         try? blob.write(to: tempURL, options: .atomic)
 
         let store = PageLayoutStore(fileURL: tempURL)
-        let all = await store.allConfigs()
+        let all = await store.allMeasuredHeights()
         XCTAssertTrue(all.isEmpty)
     }
 
-    func testDecodesAFileWithUnknownFieldsPagesAndModules() async {
+    /// The arrangement used to live in this file. A developer's stale copy must
+    /// still yield its heights — and quietly drop the rest, which now belongs
+    /// to `AppSettings`.
+    func testReadsHeightsOutOfAFileThatStillCarriesTheOldArrangementFields() async {
         let blob = Data(#"""
         {
           "schemaVersion": 1,
@@ -234,7 +180,7 @@ final class PageLayoutStoreTests: XCTestCase {
             "overview": {
               "ratio": "wide-narrow",
               "columns": [["status"], ["cost-all", "future-card:v9"]],
-              "measuredHeights": {"status": 77},
+              "measuredHeights": {"status": 77, "future-card:v9": 51},
               "pinnedModules": ["status"]
             },
             "detail:claude": {
@@ -242,8 +188,7 @@ final class PageLayoutStoreTests: XCTestCase {
               "columns": [["quota-group:claude:five_hour"], []]
             },
             "detail:some-future-provider": {
-              "ratio": "spiral",
-              "columns": [["quota-history-all"], []]
+              "measuredHeights": {"quota-history-all": 123}
             }
           }
         }
@@ -251,24 +196,17 @@ final class PageLayoutStoreTests: XCTestCase {
         try? blob.write(to: tempURL, options: .atomic)
 
         let store = PageLayoutStore(fileURL: tempURL)
-        let all = await store.allConfigs()
-        XCTAssertEqual(all.count, 3)
+        let overview = await store.measuredHeights(for: .overview)
+        XCTAssertEqual(overview[.status], 77)
+        XCTAssertEqual(overview[PageLayoutModuleID("future-card:v9")], 51)
 
-        let overview = await store.config(for: .overview)
-        XCTAssertEqual(overview?.ratio, .wideNarrow)
-        XCTAssertEqual(overview?.leftColumn, [.status])
-        XCTAssertEqual(overview?.rightColumn, [.costAll, PageLayoutModuleID("future-card:v9")])
-        XCTAssertEqual(overview?.measuredHeight(for: .status), 77)
+        // A page whose entry carried only an arrangement contributes nothing.
+        let claude = await store.measuredHeights(for: .detail(.claude))
+        XCTAssertTrue(claude.isEmpty)
 
-        let claude = await store.config(for: .detail(.claude))
-        XCTAssertEqual(claude?.leftColumn, [.quotaGroup(tool: .claude, groupKey: "five_hour")])
-
-        // A page for a provider this build does not know survives intact, and
-        // its unreadable ratio degrades to the fallback rather than dropping
-        // the entry.
-        let future = await store.config(for: PageLayoutPageID("detail:some-future-provider"))
-        XCTAssertEqual(future?.ratio, .equal)
-        XCTAssertEqual(future?.leftColumn, [.quotaHistoryAll])
+        // A page for a provider this build does not know keeps its heights.
+        let future = await store.measuredHeights(for: PageLayoutPageID("detail:some-future-provider"))
+        XCTAssertEqual(future[.quotaHistoryAll], 123)
     }
 
     func testUnknownPagesAndModulesSurviveARewrite() async {
@@ -277,8 +215,6 @@ final class PageLayoutStoreTests: XCTestCase {
           "schemaVersion": 1,
           "pages": {
             "detail:some-future-provider": {
-              "ratio": "equal",
-              "columns": [["future-card:v9"], []],
               "measuredHeights": {"future-card:v9": 51}
             }
           }
@@ -287,20 +223,21 @@ final class PageLayoutStoreTests: XCTestCase {
         try? blob.write(to: tempURL, options: .atomic)
 
         let store = PageLayoutStore(fileURL: tempURL)
-        await store.setConfig(sampleConfig(), for: .overview)
+        await store.updateMeasuredHeights([.status: 96], for: .overview)
         await store.flushPendingWrites()
 
         let reloaded = PageLayoutStore(fileURL: tempURL)
-        let future = await reloaded.config(for: PageLayoutPageID("detail:some-future-provider"))
-        let overview = await reloaded.config(for: .overview)
-        XCTAssertEqual(future?.leftColumn, [PageLayoutModuleID("future-card:v9")])
-        XCTAssertEqual(future?.measuredHeight(for: PageLayoutModuleID("future-card:v9")), 51)
-        XCTAssertEqual(overview, sampleConfig())
+        let future = await reloaded.measuredHeights(
+            for: PageLayoutPageID("detail:some-future-provider")
+        )
+        let overview = await reloaded.measuredHeights(for: .overview)
+        XCTAssertEqual(future[PageLayoutModuleID("future-card:v9")], 51)
+        XCTAssertEqual(overview, [.status: 96])
     }
 
-    func testWritesUseStringKeyedPageAndModuleObjects() async throws {
+    func testWritesUseStringKeyedPageAndModuleObjectsAndNoArrangement() async throws {
         let store = PageLayoutStore(fileURL: tempURL)
-        await store.setConfig(sampleConfig(), for: .overview)
+        await store.updateMeasuredHeights([.status: 96], for: .overview)
         await store.flushPendingWrites()
 
         let data = try Data(contentsOf: tempURL)
@@ -308,12 +245,10 @@ final class PageLayoutStoreTests: XCTestCase {
         XCTAssertEqual(root["schemaVersion"] as? Int, 1)
         let pages = try XCTUnwrap(root["pages"] as? [String: Any])
         let overview = try XCTUnwrap(pages["overview"] as? [String: Any])
-        XCTAssertEqual(overview["ratio"] as? String, "wide-narrow")
-        XCTAssertEqual(
-            overview["columns"] as? [[String]],
-            [["quota-group:codex:weekly", "cost-all"], ["status"]]
-        )
         let heights = try XCTUnwrap(overview["measuredHeights"] as? [String: Double])
         XCTAssertEqual(heights["status"], 96)
+        // Arrangement is a user preference and lives in AppSettings now.
+        XCTAssertNil(overview["ratio"])
+        XCTAssertNil(overview["columns"])
     }
 }

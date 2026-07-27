@@ -156,18 +156,25 @@ enum QuotaGroupModuleBuilder {
 
     /// The card a page shows when it has no live quota at all — signed out, or
     /// nothing fetched yet. It still carries the provider header and its
-    /// refresh button, exactly as the pre-split card did, and takes the same
-    /// module identity the page's first real group would, so the saved layout
-    /// survives a logged-out launch.
+    /// refresh button, exactly as the pre-split card did.
+    ///
+    /// Its identity is the identity of the group that will *replace* it. A
+    /// page's first real group is the page tool's own unnamed run, whose
+    /// heading is whatever `QuotaBucketGrouping.forcedTitle` imposes — `nil`
+    /// for most providers (slug `all`), "Gemini Chat" on the Gemini page (slug
+    /// `gemini-chat`). Reading it from that one function rather than hardcoding
+    /// `nil` is what keeps a layout arranged while signed out from being
+    /// discarded as a stale identifier once buckets arrive.
     static func placeholderModule(pageTool: ToolType, accountId: String?) -> QuotaGroupModule {
-        QuotaGroupModule(
-            id: QuotaBucketGrouping.moduleID(tool: pageTool, title: nil),
-            groupKey: QuotaBucketGrouping.slug(title: nil),
+        let title = QuotaBucketGrouping.forcedTitle(pageTool: pageTool, itemTool: pageTool)
+        return QuotaGroupModule(
+            id: QuotaBucketGrouping.moduleID(tool: pageTool, title: title),
+            groupKey: QuotaBucketGrouping.slug(title: title),
             pageTool: pageTool,
             tool: pageTool,
             accountId: accountId,
-            title: nil,
-            chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: nil),
+            title: title,
+            chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: title),
             rows: [],
             linkedSectionTitle: nil,
             showsProviderHeader: true

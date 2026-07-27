@@ -75,7 +75,7 @@ final class AppEnvironment: ObservableObject {
         self.settingsStore = settings
         self.accountStore = accounts
         self.quotaService = service
-        self.pageLayout = PageLayoutModel()
+        self.pageLayout = PageLayoutModel(settingsStore: settings)
         self.serviceStatus = ServiceStatusController()
         let costService = CostUsageService(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false

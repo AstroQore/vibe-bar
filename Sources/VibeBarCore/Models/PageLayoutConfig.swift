@@ -147,6 +147,64 @@ public struct PageLayoutConfig: Hashable, Sendable {
     }
 }
 
+/// One page's layout **intent** — the half of `PageLayoutConfig` the user
+/// actually chose — as stored in `AppSettings`.
+///
+/// `PageLayoutConfig` stays the canonical model: the invariants live there, and
+/// this type round-trips through its `init` so a hand-edited settings file
+/// cannot smuggle in a duplicate or a third column. This is a thin DTO, not a
+/// second model.
+///
+/// It deliberately omits `measuredHeights`. Those are render-time telemetry
+/// that changes whenever a card grows a row or the popover is resized, and
+/// every `AppSettings` write fans out to every Combine subscriber — the same
+/// reason mini-window geometry is kept out of settings (`AGENTS.md` § 11).
+/// Heights stay in `~/.vibebar/layout.json` via `PageLayoutStore`; the two are
+/// recombined at render time.
+public struct StoredPageLayout: Hashable, Sendable {
+    public var ratio: PageColumnRatio
+    public private(set) var columns: [[PageLayoutModuleID]]
+
+    public init(ratio: PageColumnRatio = .equal, columns: [[PageLayoutModuleID]] = []) {
+        let normalized = PageLayoutConfig(ratio: ratio, columns: columns)
+        self.ratio = normalized.ratio
+        self.columns = normalized.columns
+    }
+
+    /// The intent half of a live config; measured heights are dropped.
+    public init(_ config: PageLayoutConfig) {
+        self.init(ratio: config.ratio, columns: config.columns)
+    }
+
+    /// Back to the canonical model, with this page's measurements folded in.
+    public func config(
+        measuredHeights: [PageLayoutModuleID: Double] = [:]
+    ) -> PageLayoutConfig {
+        PageLayoutConfig(ratio: ratio, columns: columns, measuredHeights: measuredHeights)
+    }
+
+    /// True when the entry carries no arrangement — the same "not customized"
+    /// test `PageLayoutConfig.isEmpty` makes.
+    public var isEmpty: Bool { columns.allSatisfy(\.isEmpty) }
+}
+
+extension StoredPageLayout: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case ratio
+        case columns
+    }
+
+    /// Field-by-field tolerant, like `PageLayoutConfig`'s own decoder: a page
+    /// entry written by a newer build degrades to defaults for the field it
+    /// cannot read instead of discarding the user's whole arrangement.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let ratio = (try? container.decode(PageColumnRatio.self, forKey: .ratio)) ?? .equal
+        let columns = (try? container.decode([[PageLayoutModuleID]].self, forKey: .columns)) ?? []
+        self.init(ratio: ratio, columns: columns)
+    }
+}
+
 extension PageLayoutConfig: Codable {
     private enum CodingKeys: String, CodingKey {
         case ratio

@@ -32,6 +32,21 @@ enum QuotaBucketGrouping {
            !title.isEmpty {
             return title
         }
+        return forcedTitle(pageTool: pageTool, itemTool: itemTool)
+    }
+
+    /// The heading a page imposes on a run whose buckets carry none of their
+    /// own.
+    ///
+    /// Split out from `title(pageTool:itemTool:bucket:)` because the signed-out
+    /// placeholder card has to predict the identity of the group that will
+    /// replace it, and it has no bucket to ask. Gemini's page names its own
+    /// quota "Gemini Chat" so the AntiGravity rows below it are not read as the
+    /// same allowance — which means the Gemini placeholder is
+    /// `quota-group:gemini:gemini-chat`, not `…:all`. Deriving both from this
+    /// one function is what stops a layout the user arranged while signed out
+    /// from being discarded the moment real buckets arrive.
+    static func forcedTitle(pageTool: ToolType, itemTool: ToolType) -> String? {
         if pageTool == .gemini, itemTool == .gemini {
             return "Gemini Chat"
         }
