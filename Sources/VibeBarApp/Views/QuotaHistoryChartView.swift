@@ -47,6 +47,62 @@ enum QuotaBucketGrouping {
     static func key(accountId: String?, itemTool: ToolType, title: String?) -> String {
         "\(accountId ?? "")|\(itemTool.rawValue)|\(title ?? "")"
     }
+
+    /// Identifier-safe slug for a group heading.
+    ///
+    /// Lowercase ASCII word characters survive; every other run collapses to a
+    /// single `-`. The unnamed run — the one Subscription Utilization prints no
+    /// heading for — slugs to `"all"`, which is how `quota-group:claude:all`
+    /// comes to mean "All Models" without that heading ever existing.
+    static func slug(title: String?) -> String {
+        let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return "all" }
+        var slug = ""
+        var pendingSeparator = false
+        for scalar in trimmed.lowercased().unicodeScalars {
+            let isWord = (scalar.value >= 97 && scalar.value <= 122)
+                || (scalar.value >= 48 && scalar.value <= 57)
+            if isWord {
+                if pendingSeparator, !slug.isEmpty { slug.append("-") }
+                pendingSeparator = false
+                slug.unicodeScalars.append(scalar)
+            } else {
+                pendingSeparator = true
+            }
+        }
+        // A heading with no ASCII word characters at all (a CJK one, say) would
+        // otherwise collapse onto "all" and collide with the unnamed run, so
+        // fall back to a digest that is stable across launches — unlike
+        // `hashValue`, which is seeded per process and would scramble saved
+        // layouts on every restart.
+        return slug.isEmpty ? "g\(stableDigest(trimmed))" : slug
+    }
+
+    /// Layout-module identity for one quota group's card:
+    /// `"quota-group:<tool>:<slug>"`.
+    ///
+    /// `tool` is the tool the group's buckets came from, not the page's — so a
+    /// Gemini page's AntiGravity groups get their own namespace. Deliberately
+    /// account-free: signing out and back in should not orphan a saved layout.
+    ///
+    /// The string is byte-identical to
+    /// `PageLayoutModuleID.quotaGroup(tool:groupKey:).rawValue` with
+    /// `groupKey == slug(title:)`, which is the contract the layout engine
+    /// resolves against. Keep the two in step: this is the only place the
+    /// group's `groupKey` is derived from its heading.
+    static func moduleID(tool: ToolType, title: String?) -> String {
+        "quota-group:\(tool.rawValue):\(slug(title: title))"
+    }
+
+    /// FNV-1a, base-36. Small, dependency-free, and identical on every launch.
+    private static func stableDigest(_ value: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 36)
+    }
 }
 
 /// One drawable point of the forecast's uncertainty band.

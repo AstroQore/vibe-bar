@@ -1,0 +1,836 @@
+import SwiftUI
+import VibeBarCore
+
+/// One quota group, resolved into everything its card needs to draw itself.
+///
+/// A "group" is exactly what `QuotaBucketGrouping` already means by one: a
+/// contiguous run of rows sharing a heading, including the unnamed run (Claude's
+/// 5 Hours + Weekly — "all models") that prints no heading. Splitting the old
+/// single Subscription Utilization card into one card per group is a layout
+/// change only; the grouping itself still comes from `QuotaBucketGrouping`, so a
+/// heading, a card boundary and a history chart can never disagree.
+struct QuotaGroupModule: Identifiable {
+    /// One live quota row inside the group.
+    struct Row: Identifiable {
+        let id: String
+        /// The tool this bucket actually came from — differs from the module's
+        /// page tool only for linked products (AntiGravity on the Gemini page).
+        let tool: ToolType
+        let accountId: String?
+        let bucket: QuotaBucket
+    }
+
+    /// Layout-engine identity: `"quota-group:<tool>:<groupKey>"`. Stable across
+    /// launches and across re-logins — see `QuotaBucketGrouping.moduleID`.
+    let id: String
+    /// The group's slug on its own, so the layout engine can rebuild this
+    /// module's identity through `PageLayoutModuleID.quotaGroup(tool:groupKey:)`
+    /// and land on the same string `id` already holds.
+    let groupKey: String
+    /// The provider page the card is drawn on.
+    let pageTool: ToolType
+    /// The tool the group's buckets came from.
+    let tool: ToolType
+    let accountId: String?
+    /// The group's heading, `nil` for the unnamed run.
+    let title: String?
+    /// Account-scoped identity of the group's history chart. Unchanged from the
+    /// pre-split card so an existing chart keeps its state.
+    let chartKey: String
+    let rows: [Row]
+    /// Set on the first card of a linked product's run. That card names the
+    /// product (icon + title) the way the in-card divider used to.
+    let linkedSectionTitle: String?
+    /// Set on the first card of the page. It inherits the provider header —
+    /// brand icon, product name, plan badge, refresh button — that the single
+    /// pre-split card carried at the top.
+    let showsProviderHeader: Bool
+
+    /// Every bucket in the group, in provider order. This is what the group's
+    /// history chart plots.
+    var groupBuckets: [QuotaBucket] { rows.map(\.bucket) }
+}
+
+/// Resolves a provider page's quota buckets into the per-group card modules the
+/// page renders, preserving the pre-split card's ordering exactly: primary
+/// buckets first in provider order, then any linked product's, split wherever
+/// `QuotaBucketGrouping.key` changes.
+enum QuotaGroupModuleBuilder {
+    private struct RawBucket {
+        let id: String
+        let tool: ToolType
+        let accountId: String?
+        let bucket: QuotaBucket
+    }
+
+    /// - Parameters:
+    ///   - pageTool: the provider page being rendered.
+    ///   - buckets: the page tool's own live quotas.
+    ///   - primaryAccountId: account behind `buckets`, `nil` when signed out.
+    ///   - additionalQuotaSeries: linked products stacked under the page tool
+    ///     (AntiGravity on the Gemini page).
+    static func modules(
+        pageTool: ToolType,
+        buckets: [QuotaBucket],
+        primaryAccountId: String?,
+        additionalQuotaSeries: [FillTimelineSeries]
+    ) -> [QuotaGroupModule] {
+        let primary = buckets.map {
+            RawBucket(
+                id: "primary:\(pageTool.rawValue):\($0.id)",
+                tool: pageTool,
+                accountId: primaryAccountId,
+                bucket: $0
+            )
+        }
+        let additional = additionalQuotaSeries.map {
+            RawBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
+        }
+        let raw = primary + additional
+        guard !raw.isEmpty else { return [] }
+
+        // Groups are runs of adjacent rows sharing a chart key — the same
+        // contiguity the pre-split card's heading logic assumed, so the card
+        // boundaries land exactly where the headings and charts already did.
+        let titles = raw.map {
+            QuotaBucketGrouping.title(pageTool: pageTool, itemTool: $0.tool, bucket: $0.bucket)
+        }
+        let chartKeys = zip(raw, titles).map {
+            QuotaBucketGrouping.key(accountId: $0.0.accountId, itemTool: $0.0.tool, title: $0.1)
+        }
+
+        var modules: [QuotaGroupModule] = []
+        var moduleIDCounts: [String: Int] = [:]
+        var seenSectionKeys: Set<String> = []
+        var index = 0
+        while index < raw.count {
+            var end = index
+            while end + 1 < raw.count, chartKeys[end + 1] == chartKeys[index] { end += 1 }
+            let head = raw[index]
+            let title = titles[index]
+
+            // A linked product's name is printed once, on the first card of its
+            // run. A section boundary always implies a group boundary, because
+            // changing tool changes the chart key too.
+            var linkedSectionTitle: String?
+            if head.tool != pageTool {
+                let sectionKey = "\(head.tool.rawValue):\(head.tool.toolName)"
+                if seenSectionKeys.insert(sectionKey).inserted {
+                    linkedSectionTitle = head.tool.toolName
+                }
+            }
+
+            // Two runs can in principle carry the same heading (a heading that
+            // reappears after another one). Keep `ForEach` identity unique
+            // without perturbing the common single-run id.
+            let groupKey = QuotaBucketGrouping.slug(title: title)
+            let baseID = QuotaBucketGrouping.moduleID(tool: head.tool, title: title)
+            let occurrence = (moduleIDCounts[baseID] ?? 0) + 1
+            moduleIDCounts[baseID] = occurrence
+
+            modules.append(
+                QuotaGroupModule(
+                    id: occurrence == 1 ? baseID : "\(baseID)#\(occurrence)",
+                    groupKey: groupKey,
+                    pageTool: pageTool,
+                    tool: head.tool,
+                    accountId: head.accountId,
+                    title: title,
+                    chartKey: chartKeys[index],
+                    rows: raw[index...end].map {
+                        QuotaGroupModule.Row(
+                            id: $0.id,
+                            tool: $0.tool,
+                            accountId: $0.accountId,
+                            bucket: $0.bucket
+                        )
+                    },
+                    linkedSectionTitle: linkedSectionTitle,
+                    showsProviderHeader: modules.isEmpty
+                )
+            )
+            index = end + 1
+        }
+        return modules
+    }
+
+    /// The card a page shows when it has no live quota at all — signed out, or
+    /// nothing fetched yet. It still carries the provider header and its
+    /// refresh button, exactly as the pre-split card did, and takes the same
+    /// module identity the page's first real group would, so the saved layout
+    /// survives a logged-out launch.
+    static func placeholderModule(pageTool: ToolType, accountId: String?) -> QuotaGroupModule {
+        QuotaGroupModule(
+            id: QuotaBucketGrouping.moduleID(tool: pageTool, title: nil),
+            groupKey: QuotaBucketGrouping.slug(title: nil),
+            pageTool: pageTool,
+            tool: pageTool,
+            accountId: accountId,
+            title: nil,
+            chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: nil),
+            rows: [],
+            linkedSectionTitle: nil,
+            showsProviderHeader: true
+        )
+    }
+}
+
+/// One quota group as a self-contained card module.
+///
+/// Fixed internal order: group header → the group's bucket rows (bar, pace and
+/// forecast markers, verdict, forecast disclosure) → each row's "Reset history"
+/// strip → the group's quota-history chart. Everything below the header is the
+/// content the pre-split Subscription Utilization card drew inline; only the
+/// card boundary is new.
+struct QuotaGroupCard: View {
+    let module: QuotaGroupModule
+    let mode: DisplayMode
+    let density: Theme.Density
+    let now: Date
+    /// Tools the header's refresh button pumps. Only the provider-header card
+    /// draws that button, so only it needs these.
+    var refreshTools: [ToolType] = []
+    /// Drawn instead of the rows when the page has no live quota at all.
+    var emptyMessage: String?
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var quotaService: QuotaService
+    @State private var expandedForecastIDs: Set<String> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
+            header
+            if let emptyMessage {
+                Text(emptyMessage)
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(module.rows) { row in
+                    self.row(for: row)
+                }
+                groupHistoryChart
+            }
+        }
+        .padding(density.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Header
+
+    @ViewBuilder
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if module.showsProviderHeader {
+                HStack(alignment: .center, spacing: 8) {
+                    ProviderSectionTitle(
+                        tool: module.pageTool,
+                        title: module.pageTool.menuTitle,
+                        subtitle: providerSubtitle,
+                        titleFontSize: density.titleFontSize,
+                        subtitleFontSize: density.subtitleFontSize,
+                        iconSize: 16,
+                        badgeSize: 24
+                    )
+                    Spacer(minLength: 4)
+                    if let providerPlanBadge {
+                        PlanBadgeView(
+                            text: providerPlanBadge,
+                            fontSize: max(9, density.subtitleFontSize - 1)
+                        )
+                    }
+                    SectionRefreshButton(isRefreshing: isRefreshing) {
+                        for refreshTool in refreshTools {
+                            environment.refresh(refreshTool)
+                        }
+                    }
+                }
+            }
+            if let linkedSectionTitle = module.linkedSectionTitle {
+                // The pre-split card separated a linked product's rows with a
+                // divider; the card boundary does that now, so only the name
+                // and brand icon survive.
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: module.tool, size: 13)
+                        .opacity(0.85)
+                    Text(linkedSectionTitle)
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                }
+            }
+            if let title = module.title {
+                Text(title)
+                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.4)
+            }
+        }
+    }
+
+    private var isRefreshing: Bool {
+        refreshTools.contains { refreshTool in
+            guard let id = environment.account(for: refreshTool)?.id else { return false }
+            return quotaService.inFlightAccountIds.contains(id)
+        }
+    }
+
+    private var providerSubtitle: String {
+        module.pageTool == .gemini ? module.pageTool.statusProviderName : module.pageTool.subtitle
+    }
+
+    private var providerPlanBadge: String? {
+        let account = environment.account(for: module.pageTool)
+        let quotaPlan = account.flatMap { quotaService.cachedQuota(for: $0.id)?.plan }
+            ?? environment.quota(for: module.pageTool)?.plan
+        let label = settingsStore.settings.planBadgeLabel(
+            for: module.pageTool,
+            quotaPlan: quotaPlan,
+            accountPlan: account?.plan
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return label?.isEmpty == false ? label : nil
+    }
+
+    // MARK: - Group history chart
+
+    @ViewBuilder
+    private var groupHistoryChart: some View {
+        if let accountId = module.accountId, !module.rows.isEmpty {
+            // `.equatable()` is load-bearing, not an optimisation: this card is
+            // re-proposed every 30 seconds by the `TimelineView` the rows above
+            // need for their countdowns, and the chart reads no clock of its
+            // own. Without it every tick would re-segment and re-thin thousands
+            // of marks — and could land mid-pan.
+            QuotaHistoryChartView(
+                tool: module.tool,
+                accountId: accountId,
+                group: QuotaBucketGroup(
+                    id: module.chartKey,
+                    title: module.title,
+                    buckets: module.groupBuckets
+                ),
+                density: density,
+                isEmbedded: true
+            )
+            .equatable()
+        }
+    }
+
+    // MARK: - Rows
+
+    @ViewBuilder
+    private func row(for item: QuotaGroupModule.Row) -> some View {
+        let bucket = item.bucket
+        let pace = UsagePace.compute(bucket: bucket, now: now)
+        let forecast = paceForecast(for: item)
+        let used = bucket.usedPercent
+        let timeExpected = pace.map { displayedPercent(fromUsed: $0.expectedUsedPercent) }
+        let forecastProjection = forecast.map {
+            QuotaForecastBarProjection(
+                projectedUsedLowerPercent: $0.projectedUsedLowerPercent,
+                projectedUsedUpperPercent: $0.projectedUsedUpperPercent,
+                projectedUsedMedianPercent: $0.projectedUsedPercent,
+                displayMode: mode
+            )
+        }
+        VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(bucket.title)
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    .lineLimit(1)
+                if let resetAt = bucket.resetAt,
+                   let reset = ResetCountdownFormatter.stringWithAbsoluteTime(from: resetAt, now: now) {
+                    Text("resets in \(reset)")
+                        .font(.system(size: resetCountdownFontSize(for: item.tool)))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(item.tool == .antigravity ? 0.92 : 0.80)
+                        .layoutPriority(item.tool == .antigravity ? 1 : 0)
+                }
+                Spacer(minLength: 6)
+                Text(percentLabel(used: used))
+                    .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            quotaReferenceBar(used: used, pace: pace, forecast: forecast)
+            percentageAxis
+            referenceLegend(
+                timeExpected: timeExpected,
+                forecastExpected: forecastProjection?.medianPercent,
+                forecastColor: forecast.map { QuotaForecastPalette.color(for: $0.verdict) }
+            )
+            Text(SubscriptionWindowProgress.summary(
+                usedPercent: bucket.usedPercent,
+                resetAt: bucket.resetAt,
+                rawWindowSeconds: bucket.rawWindowSeconds,
+                displayMode: mode,
+                now: now
+            ))
+                .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let forecast {
+                QuotaForecastRow(
+                    forecast: forecast,
+                    now: now,
+                    fontSize: density.subtitleFontSize,
+                    showGuidance: true,
+                    displayMode: mode
+                )
+            } else if let pace {
+                HStack(spacing: 6) {
+                    Text(pace.stageSummary)
+                        .font(.system(size: density.subtitleFontSize, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Text(etaText(pace: pace))
+                        .font(.system(size: density.subtitleFontSize))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let series = historySeries(for: item) {
+                FillTimelineChart(
+                    series: series,
+                    mode: mode,
+                    density: density,
+                    targetPercent: forecast.map(displayedTarget)
+                )
+            }
+            if let forecast {
+                forecastExplanation(itemID: item.id, forecast: forecast, pace: pace)
+            }
+        }
+    }
+
+    private func resetCountdownFontSize(for tool: ToolType) -> CGFloat {
+        tool == .antigravity
+            ? max(density.subtitleFontSize, density.resetCountdownFontSize + 1)
+            : density.resetCountdownFontSize
+    }
+
+    @ViewBuilder
+    private func quotaReferenceBar(
+        used: Double,
+        pace: UsagePace?,
+        forecast: QuotaPaceForecast?
+    ) -> some View {
+        let barHeight = max(10, density.bucketBarHeight)
+        if let forecast {
+            ForecastQuotaBar(
+                percent: displayedPercent(fromUsed: used),
+                mode: mode,
+                timePacePercent: pace.map { displayedPercent(fromUsed: $0.expectedUsedPercent) },
+                forecastProjection: QuotaForecastBarProjection(
+                    projectedUsedLowerPercent: forecast.projectedUsedLowerPercent,
+                    projectedUsedUpperPercent: forecast.projectedUsedUpperPercent,
+                    projectedUsedMedianPercent: forecast.projectedUsedPercent,
+                    displayMode: mode
+                ),
+                forecastColor: QuotaForecastPalette.color(for: forecast.verdict),
+                height: barHeight
+            )
+        } else if let pace {
+            PaceMarkerCapsule(
+                usedPercent: displayedPercent(fromUsed: used),
+                expectedPercent: displayedPercent(fromUsed: pace.expectedUsedPercent),
+                mode: mode,
+                height: barHeight
+            )
+        } else {
+            QuotaBarShape(percent: displayedPercent(fromUsed: used), mode: mode, height: barHeight)
+        }
+    }
+
+    private var percentageAxis: some View {
+        HStack(spacing: 0) {
+            ForEach([0, 25, 50, 75, 100], id: \.self) { value in
+                Text("\(value)%")
+                    .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: true, vertical: false)
+                if value < 100 {
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private func paceForecast(for item: QuotaGroupModule.Row) -> QuotaPaceForecast? {
+        guard let accountId = item.accountId else { return nil }
+        let snapshot = environment.costService.snapshot(for: item.tool)
+        return quotaService.paceForecast(
+            accountId: accountId,
+            bucket: item.bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: now
+        )
+    }
+
+    @ViewBuilder
+    private func referenceLegend(
+        timeExpected: Double?,
+        forecastExpected: Double?,
+        forecastColor: Color?
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                referenceItems(
+                    timeExpected: timeExpected,
+                    forecastExpected: forecastExpected,
+                    forecastColor: forecastColor
+                )
+                Spacer(minLength: 4)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) {
+                        referenceItems(
+                            timeExpected: timeExpected,
+                            forecastExpected: forecastExpected,
+                            forecastColor: forecastColor
+                        )
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        referenceItems(
+                            timeExpected: timeExpected,
+                            forecastExpected: forecastExpected,
+                            forecastColor: forecastColor
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func referenceItems(
+        timeExpected: Double?,
+        forecastExpected: Double?,
+        forecastColor: Color?
+    ) -> some View {
+        if let timeExpected {
+            referenceLegendItem(
+                color: .secondary,
+                markerStyle: .timePace,
+                label: "Time-only pace",
+                value: "\(Int(timeExpected.rounded()))% \(mode == .remaining ? "left" : "used")"
+            )
+        }
+        if let forecastExpected, let forecastColor {
+            referenceLegendItem(
+                color: forecastColor,
+                markerStyle: .forecast,
+                label: "Forecast at reset",
+                value: "\(Int(forecastExpected.rounded()))% \(mode == .remaining ? "left" : "used")"
+            )
+        }
+    }
+
+    private enum ReferenceMarkerStyle {
+        case timePace
+        case forecast
+    }
+
+    private func referenceLegendItem(
+        color: Color,
+        markerStyle: ReferenceMarkerStyle,
+        label: String,
+        value: String
+    ) -> some View {
+        HStack(spacing: 5) {
+            referenceMarker(style: markerStyle, color: color)
+            Text("\(label) \(value)")
+                .font(.system(size: max(8, density.subtitleFontSize - 1), weight: .medium))
+                .foregroundStyle(color)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    @ViewBuilder
+    private func referenceMarker(style: ReferenceMarkerStyle, color: Color) -> some View {
+        switch style {
+        case .timePace:
+            ZStack {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.black.opacity(0.16))
+                    .frame(width: 5, height: 12)
+                RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                    .fill(color.opacity(0.78))
+                    .frame(width: 2.4, height: 11)
+            }
+            .frame(width: 5, height: 12)
+        case .forecast:
+            ZStack {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.black.opacity(0.12))
+                    .frame(width: 5, height: 12)
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(color)
+                    .frame(width: 3, height: 11)
+            }
+            .frame(width: 5, height: 12)
+        }
+    }
+
+    // MARK: - Forecast disclosure
+
+    private struct ForecastMetric: Identifiable {
+        let id: String
+        let label: String
+        let value: String
+        let detail: String
+    }
+
+    private func forecastExplanation(
+        itemID: String,
+        forecast: QuotaPaceForecast,
+        pace: UsagePace?
+    ) -> some View {
+        let metrics = forecastMetrics(forecast: forecast, pace: pace)
+        let isExpanded = expandedForecastIDs.contains(itemID)
+        return VStack(alignment: .leading, spacing: 7) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    if isExpanded {
+                        expandedForecastIDs.remove(itemID)
+                    } else {
+                        expandedForecastIDs.insert(itemID)
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("How this forecast was calculated")
+                        .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide forecast calculation" : "Show forecast calculation")
+
+            if isExpanded {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 126), spacing: 7)],
+                    alignment: .leading,
+                    spacing: 7
+                ) {
+                    ForEach(metrics) { metric in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(metric.label.uppercased())
+                                .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                            Text(metric.value)
+                                .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.88)
+                            Text(metric.detail)
+                                .font(.system(size: max(8, density.subtitleFontSize - 1)))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: forecastMetricCardHeight,
+                            maxHeight: forecastMetricCardHeight,
+                            alignment: .topLeading
+                        )
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.primary.opacity(0.035))
+                        )
+                    }
+                }
+                Text("Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage.")
+                    .font(.system(size: max(8, density.subtitleFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private var forecastMetricCardHeight: CGFloat {
+        switch density.profile {
+        case .compact: 72
+        case .regular: 76
+        case .spacious: 84
+        }
+    }
+
+    private func forecastMetrics(
+        forecast: QuotaPaceForecast,
+        pace: UsagePace?
+    ) -> [ForecastMetric] {
+        let diagnostics = forecast.diagnostics
+        let timePaceValue = pace.map { quotaValue(fromUsed: $0.expectedUsedPercent, suffix: "expected now") } ?? "Unavailable"
+        let timePaceDetail = pace.map { "\($0.stageSummary) by wall clock" } ?? "Needs reset time and window length"
+        let recentValue = diagnostics.recentProjectionUsedPercent
+            .map { quotaValue(fromUsed: $0, suffix: "at reset") } ?? "Learning"
+        let recentDetail = diagnostics.recentSampleCount > 0
+            ? "\(diagnostics.recentSampleCount) recent intervals"
+            : "Needs at least two useful observations"
+        let historyValue = diagnostics.historicalProjectionUsedPercent
+            .map { quotaValue(fromUsed: $0, suffix: "at reset") } ?? "No comparison yet"
+        let historyDetail = diagnostics.comparableCycleCount > 0
+            ? "\(diagnostics.comparableCycleCount) comparable reset cycles"
+            : "Completed cycles will appear here"
+        let activityDetail = diagnostics.activityCoveragePercent > 0
+            ? "weekday and hour weighted"
+            : "wall-clock fallback until habits exist"
+        let trendValue = diagnostics.hasActivityTrendBaseline
+            ? String(format: "%.2f× activity", diagnostics.activityTrendMultiplier)
+            : "No baseline yet"
+        let trendDetail = diagnostics.hasActivityTrendBaseline
+            ? "last 7 days versus prior 21 days"
+            : "needs prior daily activity"
+        let range = mode == .used
+            ? forecast.projectedUsedLowerPercent...forecast.projectedUsedUpperPercent
+            : forecast.projectedRemainingRange
+        let unused = whole(forecast.potentialUnusedPercent)
+
+        return [
+            ForecastMetric(
+                id: "time",
+                label: "Time-only pace",
+                value: timePaceValue,
+                detail: timePaceDetail
+            ),
+            ForecastMetric(
+                id: "plan",
+                label: "Personal plan now",
+                value: quotaValue(fromUsed: forecast.plannedUsedPercent),
+                detail: "activity timing + \(whole(forecast.targetRemainingPercent))% safety target"
+            ),
+            ForecastMetric(
+                id: "recent",
+                label: "Recent burn",
+                value: recentValue,
+                detail: recentDetail
+            ),
+            ForecastMetric(
+                id: "history",
+                label: "Reset history",
+                value: historyValue,
+                detail: historyDetail
+            ),
+            ForecastMetric(
+                id: "activity",
+                label: "Activity timing",
+                value: "\(whole(diagnostics.behavioralProgressPercent))% elapsed",
+                detail: activityDetail
+            ),
+            ForecastMetric(
+                id: "trend",
+                label: "Recent trend",
+                value: trendValue,
+                detail: trendDetail
+            ),
+            ForecastMetric(
+                id: "forecast",
+                label: "Forecast at reset",
+                value: quotaValue(fromUsed: forecast.projectedUsedPercent),
+                detail: mode == .used
+                    ? "\(whole(forecast.projectedRemainingPercent))% expected left"
+                    : "\(whole(forecast.projectedUsedPercent))% expected used"
+            ),
+            ForecastMetric(
+                id: "range",
+                label: "Forecast range",
+                value: "\(whole(range.lowerBound))–\(whole(range.upperBound))% \(mode == .used ? "used" : "left")",
+                detail: "uncertainty interval"
+            ),
+            ForecastMetric(
+                id: "target",
+                label: "Safety target",
+                value: mode == .remaining
+                    ? "\(whole(forecast.targetRemainingPercent))% left"
+                    : "\(whole(100 - forecast.targetRemainingPercent))% used",
+                detail: unused >= 3 ? "\(unused)% capacity above target" : "inside the target range"
+            ),
+            ForecastMetric(
+                id: "evidence",
+                label: "Evidence",
+                value: "\(forecast.currentObservationCount) obs · \(forecast.completedCycleCount) cycles",
+                detail: "\(forecast.confidenceLabel) · score \(whole(forecast.confidenceScore * 100))%"
+            ),
+            ForecastMetric(
+                id: "coverage",
+                label: "Coverage",
+                value: "obs \(whole(diagnostics.observationCoveragePercent))% · history \(whole(diagnostics.historyCoveragePercent))%",
+                detail: "fresh \(whole(diagnostics.freshnessPercent))% · habits \(whole(diagnostics.activityCoveragePercent))%"
+            ),
+            ForecastMetric(
+                id: "behavior",
+                label: "Behavior fallback",
+                value: quotaValue(fromUsed: diagnostics.behavioralProjectionUsedPercent, suffix: "at reset"),
+                detail: "used when stronger evidence is sparse"
+            ),
+        ]
+    }
+
+    // MARK: - Formatting
+
+    private func whole(_ value: Double) -> Int {
+        Int(value.rounded())
+    }
+
+    private func displayedPercent(fromUsed used: Double) -> Double {
+        switch mode {
+        case .used: used
+        case .remaining: max(0, 100 - used)
+        }
+    }
+
+    private func quotaValue(fromUsed used: Double, suffix: String? = nil) -> String {
+        let base = "\(whole(displayedPercent(fromUsed: used)))% \(mode == .used ? "used" : "left")"
+        guard let suffix else { return base }
+        return "\(base) \(suffix)"
+    }
+
+    private func historySeries(for item: QuotaGroupModule.Row) -> FillTimelineSeries? {
+        guard let accountId = item.accountId else { return nil }
+        return FillTimelineSeries(tool: item.tool, accountId: accountId, bucket: item.bucket)
+    }
+
+    private func displayedTarget(_ forecast: QuotaPaceForecast) -> Double {
+        switch mode {
+        case .used: 100 - forecast.targetRemainingPercent
+        case .remaining: forecast.targetRemainingPercent
+        }
+    }
+
+    private func percentLabel(used: Double) -> String {
+        switch mode {
+        case .used:      return "\(Int(used.rounded()))% used"
+        case .remaining: return "\(Int((100 - used).rounded()))% left"
+        }
+    }
+
+    private func etaText(pace: UsagePace) -> String {
+        if pace.willLastToReset { return "lasts until reset" }
+        guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "—" }
+        let target = now.addingTimeInterval(etaSeconds)
+        return ResetCountdownFormatter.string(from: target, now: now).map { "runs out in \($0)" } ?? "—"
+    }
+}
