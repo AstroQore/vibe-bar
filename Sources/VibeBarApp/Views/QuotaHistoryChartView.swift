@@ -168,6 +168,7 @@ struct QuotaHistoryChartView: View, Equatable {
 
     @State private var forecastByBucket: [String: [ForecastTimelinePoint]] = [:]
     @State private var seriesByBucket: [String: QuotaHistorySeries] = [:]
+    @State private var lookupByBucket: [String: BucketLookup] = [:]
     @State private var miniSegments: [[QuotaHistorySample]] = []
     @State private var window: ChartTimeWindow?
     @State private var windowKey: String?
@@ -191,9 +192,10 @@ struct QuotaHistoryChartView: View, Equatable {
 
     /// Marks per line inside the visible window. Beyond this the strokes stop
     /// gaining detail and start costing frames on a zoomed-out weekly domain —
-    /// so the budget is shared out across however many buckets overlay.
-    private static let visibleMarkLimit = 520
-    private static let minimumMarkLimit = 140
+    /// so the budget is shared out across however many buckets overlay, and
+    /// then again across the segments each bucket is drawn in.
+    private static let visibleMarkBudget = 520
+    private static let minimumMarkBudget = 140
     private static let miniMarkLimit = 160
     /// Past this many reset lines the plot reads as a picket fence rather than
     /// as a set of boundaries, so a zoomed-out five-hour quota drops them.
@@ -303,14 +305,16 @@ struct QuotaHistoryChartView: View, Equatable {
         )
         let visible = window.visibleRange
         let isSingle = buckets.count == 1
-        let limit = max(Self.minimumMarkLimit, Self.visibleMarkLimit / max(1, buckets.count))
-        let lines = bucketLines(buckets: buckets, range: visible, limit: limit)
+        // One budget per bucket, shared out across however many segments that
+        // bucket happens to be drawn in.
+        let budget = max(Self.minimumMarkBudget, Self.visibleMarkBudget / max(1, buckets.count))
+        let lines = bucketLines(buckets: buckets, range: visible, budget: budget)
         let primarySeries = seriesByBucket[primary.id] ?? .empty
         // Only a single-bucket chart can afford the wall-clock reference and
         // the uncertainty band: two of them overlaid is mud, and the pace
         // reading moves into the hover tooltip instead.
         let pacePoints = isSingle
-            ? linePoints(primarySeries.pace, kind: "pace", range: visible, limit: limit)
+            ? linePoints(primarySeries.pace, kind: "pace", range: visible, budget: budget)
             : []
         let paceBridges = isSingle
             ? bridgePoints(
@@ -322,7 +326,7 @@ struct QuotaHistoryChartView: View, Equatable {
             )
             : []
         let bandPoints = isSingle
-            ? forecastBandPoints(primarySeries.forecast, range: visible, limit: limit)
+            ? forecastBandPoints(primarySeries.forecast, range: visible, budget: budget)
             : []
         let resets = resetMarks(primarySeries: primarySeries, range: visible)
 
@@ -818,6 +822,10 @@ struct QuotaHistoryChartView: View, Equatable {
     /// rounding error, so it is never bridged to the closest sample on either
     /// side. The time label follows the shortest-window quota, which is the one
     /// sampled most densely.
+    ///
+    /// Binary search rather than a scan: this runs on every pointer move, and a
+    /// densely sampled lane under unlimited retention is tens of thousands of
+    /// samples per bucket.
     private func hoverReading(
         at date: Date,
         buckets: [QuotaBucket],
@@ -829,10 +837,16 @@ struct QuotaHistoryChartView: View, Equatable {
         var readings: [QuotaHoverBucketReading] = []
         var anchor: Date?
         for (index, bucket) in buckets.enumerated() {
-            let series = seriesByBucket[bucket.id] ?? .empty
-            let actual = nearestSample(in: series.actual, to: date, tolerance: tolerance)
-            let pace = nearestSample(in: series.pace, to: date, tolerance: tolerance)
-            let forecast = nearestForecast(in: series.forecast, to: date, tolerance: tolerance)
+            let lookup = lookupByBucket[bucket.id] ?? BucketLookup()
+            let actual = ChartSampleSearch.nearest(
+                in: lookup.actual, to: date, tolerance: tolerance, time: { $0.time }
+            )
+            let pace = ChartSampleSearch.nearest(
+                in: lookup.pace, to: date, tolerance: tolerance, time: { $0.time }
+            )
+            let forecast = ChartSampleSearch.nearest(
+                in: lookup.forecast, to: date, tolerance: tolerance, time: { $0.time }
+            )
             if bucket.id == primary.id {
                 anchor = actual?.time ?? forecast?.time
             }
@@ -850,42 +864,15 @@ struct QuotaHistoryChartView: View, Equatable {
         return QuotaHoverReading(time: anchor ?? date, buckets: readings)
     }
 
-    private func nearestSample(
-        in segments: [[QuotaHistorySample]],
-        to date: Date,
-        tolerance: TimeInterval
-    ) -> QuotaHistorySample? {
-        var best: QuotaHistorySample?
-        var bestDistance = tolerance
-        for segment in segments {
-            for sample in segment {
-                let distance = abs(sample.time.timeIntervalSince(date))
-                if distance <= bestDistance {
-                    best = sample
-                    bestDistance = distance
-                }
-            }
-        }
-        return best
-    }
-
-    private func nearestForecast(
-        in segments: [[QuotaHistoryForecastSample]],
-        to date: Date,
-        tolerance: TimeInterval
-    ) -> QuotaHistoryForecastSample? {
-        var best: QuotaHistoryForecastSample?
-        var bestDistance = tolerance
-        for segment in segments {
-            for sample in segment {
-                let distance = abs(sample.time.timeIntervalSince(date))
-                if distance <= bestDistance {
-                    best = sample
-                    bestDistance = distance
-                }
-            }
-        }
-        return best
+    /// Flattened, ascending copies of one bucket's lines.
+    ///
+    /// The segments are contiguous runs of an already time-sorted array, so
+    /// concatenating them keeps the order a binary search needs. Built once per
+    /// data change rather than walked per pointer move.
+    private struct BucketLookup {
+        var actual: [QuotaHistorySample] = []
+        var pace: [QuotaHistorySample] = []
+        var forecast: [QuotaHistoryForecastSample] = []
     }
 
     // MARK: - Range pills
@@ -1020,6 +1007,7 @@ struct QuotaHistoryChartView: View, Equatable {
         let buckets = bucketsWithHistory
         guard let primary = buckets.first, let domain = domainRange(buckets: buckets) else {
             seriesByBucket = [:]
+            lookupByBucket = [:]
             miniSegments = []
             window = nil
             windowKey = nil
@@ -1035,9 +1023,17 @@ struct QuotaHistoryChartView: View, Equatable {
             )
         }
         seriesByBucket = built
-        miniSegments = (built[primary.id]?.actual ?? []).map {
-            ChartSeriesThinning.strided($0, limit: Self.miniMarkLimit)
+        lookupByBucket = built.mapValues {
+            BucketLookup(
+                actual: $0.actual.flatMap { $0 },
+                pace: $0.pace.flatMap { $0 },
+                forecast: $0.forecast.flatMap { $0 }
+            )
         }
+        miniSegments = ChartMarkBudget.thinned(
+            built[primary.id]?.actual ?? [],
+            budget: Self.miniMarkLimit
+        )
 
         let minimumSpan = minimumSpan(for: primary)
         initialSpan = initialSpan(for: primary)
@@ -1128,7 +1124,7 @@ struct QuotaHistoryChartView: View, Equatable {
     private func bucketLines(
         buckets: [QuotaBucket],
         range: ClosedRange<Date>,
-        limit: Int
+        budget: Int
     ) -> [QuotaBucketLines] {
         buckets.enumerated().map { index, bucket in
             let series = seriesByBucket[bucket.id] ?? .empty
@@ -1141,7 +1137,7 @@ struct QuotaHistoryChartView: View, Equatable {
                     series.actual,
                     kind: "actual-\(index)",
                     range: range,
-                    limit: limit
+                    budget: budget
                 ),
                 actualBridges: bridgePoints(
                     series.actual,
@@ -1154,7 +1150,7 @@ struct QuotaHistoryChartView: View, Equatable {
                     series.forecast,
                     kind: "forecast-\(index)",
                     range: range,
-                    limit: limit
+                    budget: budget
                 ),
                 forecastBridges: bridgePoints(
                     series.forecast,
@@ -1181,13 +1177,13 @@ struct QuotaHistoryChartView: View, Equatable {
         _ segments: [[QuotaHistorySample]],
         kind: String,
         range: ClosedRange<Date>,
-        limit: Int
+        budget: Int
     ) -> [QuotaChartLinePoint] {
         QuotaChartMarks.points(
             segments,
             kind: kind,
             range: range,
-            limit: limit,
+            budget: budget,
             time: { $0.time },
             value: { $0.remainingPercent }
         )
@@ -1197,13 +1193,13 @@ struct QuotaHistoryChartView: View, Equatable {
         _ segments: [[QuotaHistoryForecastSample]],
         kind: String,
         range: ClosedRange<Date>,
-        limit: Int
+        budget: Int
     ) -> [QuotaChartLinePoint] {
         QuotaChartMarks.points(
             segments,
             kind: kind,
             range: range,
-            limit: limit,
+            budget: budget,
             time: { $0.time },
             value: { $0.remainingPercent }
         )
@@ -1212,14 +1208,22 @@ struct QuotaHistoryChartView: View, Equatable {
     private func forecastBandPoints(
         _ segments: [[QuotaHistoryForecastSample]],
         range: ClosedRange<Date>,
-        limit: Int
+        budget: Int
     ) -> [QuotaBandPoint] {
-        var result: [QuotaBandPoint] = []
+        var visible: [(index: Int, samples: [QuotaHistoryForecastSample])] = []
         for (index, segment) in segments.enumerated() {
             let clipped = QuotaChartMarks.clip(segment, time: { $0.time }, to: range)
             guard clipped.count > 1 else { continue }
-            let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
-            let key = "band-\(index)"
+            visible.append((index, clipped))
+        }
+        let allowance = ChartMarkBudget.allocate(
+            segmentCounts: visible.map { $0.samples.count },
+            budget: budget
+        )
+        var result: [QuotaBandPoint] = []
+        for (slot, entry) in visible.enumerated() {
+            let thinned = ChartSeriesThinning.strided(entry.samples, limit: allowance[slot])
+            let key = "band-\(entry.index)"
             for (offset, sample) in thinned.enumerated() {
                 result.append(
                     QuotaBandPoint(

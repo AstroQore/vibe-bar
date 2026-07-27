@@ -81,6 +81,11 @@ struct OverviewQuotaHistoryCard: View {
 
     @State private var curves: [OverviewQuotaCurve] = []
     @State private var segmentsByCurve: [String: [[QuotaHistorySample]]] = [:]
+    /// Each curve's samples flattened into one ascending array — the segments
+    /// are already time-sorted and contiguous, so concatenating them keeps the
+    /// order a binary search needs. Built with the series so a pointer move
+    /// costs a search rather than a scan.
+    @State private var flatByCurve: [String: [QuotaHistorySample]] = [:]
     @State private var window: ChartTimeWindow?
     @State private var windowKey: String?
     @State private var initialSpan: TimeInterval = 7 * 86_400
@@ -91,10 +96,12 @@ struct OverviewQuotaHistoryCard: View {
     /// Shared across every visible curve, so a provider with nine quotas
     /// cannot starve the rest of the chart of detail.
     private static let visibleMarkBudget = 900
-    private static let minimumMarkLimit = 90
+    private static let minimumMarkBudget = 90
     private static let miniMarkLimit = 120
     /// Past this many rows the tooltip stops being a readout and becomes a
-    /// second chart; the rest are counted instead.
+    /// second chart; the rest are counted instead. Safe to cap only because
+    /// the rows are sorted lowest-remaining first — the quotas that get folded
+    /// into "+N more" are the ones with the most headroom.
     private static let tooltipRowLimit = 8
 
     var body: some View {
@@ -248,7 +255,11 @@ struct OverviewQuotaHistoryCard: View {
     private func chartBody(window: ChartTimeWindow) -> some View {
         let visible = window.visibleRange
         let shown = visibleCurves
-        let limit = max(Self.minimumMarkLimit, Self.visibleMarkBudget / max(1, shown.count))
+        // One budget per curve, split again across the segments that curve is
+        // drawn in — a five-hour quota over months of history is hundreds of
+        // small segments, and thinning each to the curve's budget would have
+        // meant multiplying it by their count.
+        let budget = max(Self.minimumMarkBudget, Self.visibleMarkBudget / max(1, shown.count))
         let lines = shown.map { curve -> (OverviewQuotaCurve, [QuotaChartLinePoint], [QuotaChartLinePoint]) in
             let segments = segmentsByCurve[curve.id] ?? []
             return (
@@ -257,7 +268,7 @@ struct OverviewQuotaHistoryCard: View {
                     segments,
                     kind: curve.id,
                     range: visible,
-                    limit: limit,
+                    budget: budget,
                     time: { $0.time },
                     value: { $0.remainingPercent }
                 ),
@@ -357,11 +368,14 @@ struct OverviewQuotaHistoryCard: View {
         ZStack {
             ForEach(shown) { curve in
                 Path { path in
-                    for segment in segmentsByCurve[curve.id] ?? [] {
-                        let thinned = ChartSeriesThinning.strided(segment, limit: Self.miniMarkLimit)
-                        guard let first = thinned.first else { continue }
+                    let strip = ChartMarkBudget.thinned(
+                        segmentsByCurve[curve.id] ?? [],
+                        budget: Self.miniMarkLimit
+                    )
+                    for segment in strip {
+                        guard let first = segment.first else { continue }
                         path.move(to: miniPoint(first, in: geometry))
-                        for sample in thinned.dropFirst() {
+                        for sample in segment.dropFirst() {
                             path.addLine(to: miniPoint(sample, in: geometry))
                         }
                     }
@@ -536,9 +550,16 @@ struct OverviewQuotaHistoryCard: View {
         .frame(width: Self.tooltipWidth, alignment: .leading)
     }
 
-    /// Nearest observation per curve, highest first — the reader is scanning
-    /// for who is lowest, and a sorted column makes that one glance. Curves
-    /// with no coverage near the cursor are omitted rather than shown as zero.
+    /// Nearest observation per curve, **lowest remaining first**.
+    ///
+    /// The order is the whole point of the card: the reader is looking for
+    /// whichever quota is closest to running out, and the tooltip caps its rows
+    /// — so sorting the fullest quotas to the top would have buried exactly the
+    /// curves this card exists to surface behind "+N more". Curves with no
+    /// coverage near the cursor are omitted rather than shown as zero.
+    ///
+    /// Resolved by binary search over each curve's flattened, time-sorted
+    /// samples, because this runs on every pointer move.
     private func hoverReadings(
         at date: Date,
         curves shown: [OverviewQuotaCurve]
@@ -547,28 +568,22 @@ struct OverviewQuotaHistoryCard: View {
         let tolerance = max(600, window.visibleSpan / 60)
         var result: [OverviewHoverReading] = []
         for curve in shown {
-            var best: QuotaHistorySample?
-            var bestDistance = tolerance
-            for segment in segmentsByCurve[curve.id] ?? [] {
-                for sample in segment {
-                    let distance = abs(sample.time.timeIntervalSince(date))
-                    if distance <= bestDistance {
-                        best = sample
-                        bestDistance = distance
-                    }
-                }
-            }
-            guard let best else { continue }
+            guard let sample = ChartSampleSearch.nearest(
+                in: flatByCurve[curve.id] ?? [],
+                to: date,
+                tolerance: tolerance,
+                time: { $0.time }
+            ) else { continue }
             result.append(
                 OverviewHoverReading(
                     id: curve.id,
                     label: curve.label,
                     color: curve.color,
-                    value: best.remainingPercent
+                    value: sample.remainingPercent
                 )
             )
         }
-        return result.sorted { $0.value > $1.value }
+        return result.sorted { $0.value < $1.value }
     }
 
     // MARK: - Selection
@@ -668,6 +683,7 @@ struct OverviewQuotaHistoryCard: View {
         guard !lanes.isEmpty, let domain = domainRange(lanes) else {
             curves = []
             segmentsByCurve = [:]
+            flatByCurve = [:]
             window = nil
             windowKey = nil
             return
@@ -683,6 +699,7 @@ struct OverviewQuotaHistoryCard: View {
 
         var built: [OverviewQuotaCurve] = []
         var series: [String: [[QuotaHistorySample]]] = [:]
+        var flat: [String: [QuotaHistorySample]] = [:]
         var indexPerTool: [ToolType: Int] = [:]
         for (account, bucket) in lanes {
             let id = OverviewQuotaCurve.id(
@@ -708,14 +725,17 @@ struct OverviewQuotaHistoryCard: View {
                     dash: variant.dash
                 )
             )
-            series[id] = QuotaHistorySeriesBuilder.build(
+            let actual = QuotaHistorySeriesBuilder.build(
                 fillPoints: fillPoints(accountId: account.id, bucketId: bucket.id),
                 range: domain
             ).actual
+            series[id] = actual
+            flat[id] = actual.flatMap { $0 }
         }
 
         curves = built
         segmentsByCurve = series
+        flatByCurve = flat
 
         let key = built.map(\.id).joined(separator: ",")
         let sameCurves = windowKey == key

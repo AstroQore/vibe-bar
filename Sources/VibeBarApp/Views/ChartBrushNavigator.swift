@@ -245,20 +245,34 @@ struct QuotaChartLinePoint: Identifiable {
 /// which surface you looked at.
 enum QuotaChartMarks {
     /// Clipped and thinned marks for a series' real observations.
+    ///
+    /// `budget` is the whole curve's allowance, not each segment's: the visible
+    /// segments are clipped first, then the budget is split across them by
+    /// `ChartMarkBudget`, so a curve broken into forty windows costs the same
+    /// as one drawn in a single stroke. Segment indices are preserved across
+    /// the clip so a series key stays stable while panning.
     static func points<Element>(
         _ segments: [[Element]],
         kind: String,
         range: ClosedRange<Date>,
-        limit: Int,
+        budget: Int,
         time: (Element) -> Date,
         value: (Element) -> Double
     ) -> [QuotaChartLinePoint] {
-        var result: [QuotaChartLinePoint] = []
+        var visible: [(index: Int, samples: [Element])] = []
         for (index, segment) in segments.enumerated() {
             let clipped = clip(segment, time: time, to: range)
             guard !clipped.isEmpty else { continue }
-            let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
-            let key = "\(kind)-\(index)"
+            visible.append((index, clipped))
+        }
+        let allowance = ChartMarkBudget.allocate(
+            segmentCounts: visible.map { $0.samples.count },
+            budget: budget
+        )
+        var result: [QuotaChartLinePoint] = []
+        for (slot, entry) in visible.enumerated() {
+            let thinned = ChartSeriesThinning.strided(entry.samples, limit: allowance[slot])
+            let key = "\(kind)-\(entry.index)"
             for (offset, sample) in thinned.enumerated() {
                 result.append(
                     QuotaChartLinePoint(
@@ -421,30 +435,6 @@ struct ChartRangePills: View {
     }
 }
 
-/// Uniform-stride thinning for brush minis and zoomed-out main charts.
-///
-/// Purely a drawing concern — the series itself keeps every observation, this
-/// only decides how many of them are worth turning into marks at the current
-/// scale.
-enum ChartSeriesThinning {
-    static func strided<Element>(_ elements: [Element], limit: Int) -> [Element] {
-        guard limit > 1, elements.count > limit else { return elements }
-        let step = Double(elements.count - 1) / Double(limit - 1)
-        var result: [Element] = []
-        result.reserveCapacity(limit)
-        var lastIndex = -1
-        for slot in 0..<limit {
-            let index = min(elements.count - 1, Int((Double(slot) * step).rounded()))
-            if index != lastIndex {
-                result.append(elements[index])
-                lastIndex = index
-            }
-        }
-        // The newest sample carries the "where are we now" reading, so never
-        // let rounding drop it.
-        if lastIndex != elements.count - 1 {
-            result.append(elements[elements.count - 1])
-        }
-        return result
-    }
-}
+// `ChartSeriesThinning`, `ChartMarkBudget` and `ChartSampleSearch` live in
+// VibeBarCore (`ChartSeriesPlanning.swift`) — they are pure arithmetic over a
+// series and belong where they can be tested.
