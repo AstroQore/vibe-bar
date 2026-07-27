@@ -57,12 +57,15 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
     /// bars; weekly only appears once there are enough weeks to compare, and
     /// monthly once there are at least two full months. Daily is always offered
     /// so the control never collapses to nothing.
+    ///
+    /// Weekly waits for four whole weeks rather than three: at three weeks the
+    /// chart draws three or four slabs, which reads as a bar chart of nothing.
     public static func allowed(for visibleSpan: TimeInterval) -> [CostChartGranularity] {
         let days = max(0, visibleSpan) / dayInterval
         var options: [CostChartGranularity] = []
         if days <= 7 { options.append(.hour) }
         options.append(.day)
-        if days >= 21 { options.append(.week) }
+        if days >= 28 { options.append(.week) }
         if days >= 60 { options.append(.month) }
         return options
     }
@@ -72,6 +75,38 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
         for visibleSpan: TimeInterval
     ) -> Bool {
         allowed(for: visibleSpan).contains(granularity)
+    }
+
+    /// The fewest bars a bucket width has to be able to draw before it stops
+    /// being a series and becomes a couple of slabs.
+    public static let minimumManualBuckets = 4
+
+    /// Whether `granularity` still fills the visible span with enough bars to
+    /// read as a shape.
+    public static func drawsEnoughBuckets(
+        _ granularity: CostChartGranularity,
+        for visibleSpan: TimeInterval,
+        minimum: Int = minimumManualBuckets
+    ) -> Bool {
+        guard minimum > 0 else { return true }
+        let buckets = max(0, visibleSpan) / granularity.approximateBucketSeconds
+        return buckets >= Double(minimum)
+    }
+
+    /// Whether a granularity the user picked by hand should survive a pan or a
+    /// zoom: it has to still be offered at this span *and* still draw enough
+    /// bars to be worth holding on to.
+    ///
+    /// `.day` is exempt from the bar floor. It is the one option the control
+    /// always offers, and Auto resolves to it across the same middle spans, so
+    /// dropping the user's pick there would trade a label for nothing.
+    public static func survivesManualSelection(
+        _ granularity: CostChartGranularity,
+        for visibleSpan: TimeInterval
+    ) -> Bool {
+        guard isAllowed(granularity, for: visibleSpan) else { return false }
+        guard granularity != .day else { return true }
+        return drawsEnoughBuckets(granularity, for: visibleSpan)
     }
 }
 

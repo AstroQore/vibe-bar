@@ -23,9 +23,13 @@ private struct CostGranularityOption: Identifiable, Equatable {
         }
     }
 
-    func isEnabled(allowed: [CostChartGranularity]) -> Bool {
+    /// Auto is selectable at every span. A manual width is offered only when
+    /// picking it would actually stick — the same rule that demotes a pick
+    /// after a pan or a zoom, so the control never lights up an option the
+    /// chart would immediately hand back.
+    func isEnabled(for visibleSpan: TimeInterval) -> Bool {
         guard let granularity else { return true }
-        return allowed.contains(granularity)
+        return CostChartGranularity.survivesManualSelection(granularity, for: visibleSpan)
     }
 
     static let all: [CostGranularityOption] = [
@@ -132,7 +136,14 @@ struct CostHistoryView: View {
     private static let miniMarkLimit = 180
 
     var body: some View {
-        let window = self.window
+        // Derived, not just read: `rebuildWindow()` only runs once the card is
+        // on screen, and until it does `self.window` is nil. Measuring the card
+        // in that state reports the height of the "Building history…" note —
+        // roughly a third of the real card — and any ancestor that sizes from
+        // that first pass (the Overview waterfall proposes each card the height
+        // it measured) would lay the card out too short. Seeding the window
+        // here makes the first measurement the real one.
+        let window = self.window ?? initialWindow()
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             header(window: window)
@@ -268,6 +279,42 @@ struct CostHistoryView: View {
         granularity: CostChartGranularity,
         window: Binding<ChartTimeWindow>
     ) -> some View {
+        // The bar width has to be resolved against the real plot width: Swift
+        // Charts sizes a calendar-unit bar to the whole unit, so a five-day
+        // window would otherwise draw five ~90pt slabs.
+        GeometryReader { geometry in
+            chartBody(
+                points: points,
+                average: average,
+                granularity: granularity,
+                window: window,
+                barWidth: barWidth(
+                    points: points,
+                    granularity: granularity,
+                    window: window.wrappedValue,
+                    plotWidth: geometry.size.width
+                )
+            )
+        }
+        .frame(height: chartHeight)
+        .overlay {
+            if points.isEmpty {
+                Text("No cost recorded in this range.")
+                    .font(.system(size: density.resetCountdownFontSize))
+                    .foregroundStyle(.tertiary)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func chartBody(
+        points: [CostChartPoint],
+        average: Double,
+        granularity: CostChartGranularity,
+        window: Binding<ChartTimeWindow>,
+        barWidth: MarkDimension
+    ) -> some View {
         Chart {
             if granularity == .hour {
                 ForEach(points) { point in
@@ -309,7 +356,8 @@ struct CostHistoryView: View {
                             unit: barUnit(granularity),
                             calendar: Self.barCalendar
                         ),
-                        y: .value("Cost", point.costUSD)
+                        y: .value("Cost", point.costUSD),
+                        width: barWidth
                     )
                     .foregroundStyle(point.costUSD > average * 1.5 ? Color.orange : Color.accentColor)
                     .cornerRadius(2)
@@ -345,15 +393,44 @@ struct CostHistoryView: View {
         .chartOverlay { proxy in
             interactionOverlay(proxy: proxy, points: points, window: window)
         }
-        .frame(height: chartHeight)
-        .overlay {
-            if points.isEmpty {
-                Text("No cost recorded in this range.")
-                    .font(.system(size: density.resetCountdownFontSize))
-                    .foregroundStyle(.tertiary)
-                    .allowsHitTesting(false)
-            }
-        }
+    }
+
+    /// Widest a single bar is allowed to get. Past this a bar stops reading as
+    /// a measurement and starts reading as a block of colour — a five-day
+    /// window is the common case, and its unit-wide bars are ~90pt.
+    private static let maximumBarWidth: CGFloat = 26
+    /// Gap kept between neighbouring bars once they are narrow enough that the
+    /// cap no longer applies.
+    private static let barGap: CGFloat = 2
+    /// Thinner than this and a bar disappears into the background.
+    private static let minimumBarWidth: CGFloat = 1
+
+    /// How wide to draw each bar, given how many of them share the plot.
+    ///
+    /// `.automatic` would hand every bar its whole calendar unit, so the width
+    /// has to be resolved here: take the per-bucket slice of the plot, leave a
+    /// hairline gap, and clamp it to something a reader can still compare.
+    /// Swift Charts keeps a fixed-width bar centred on the same anchor the
+    /// automatic one used — the middle of its bucket — so narrowing a bar does
+    /// not slide it off the day it represents.
+    private func barWidth(
+        points: [CostChartPoint],
+        granularity: CostChartGranularity,
+        window: ChartTimeWindow,
+        plotWidth: CGFloat
+    ) -> MarkDimension {
+        guard plotWidth > 0, !points.isEmpty else { return .automatic }
+        let span = window.visibleSpan
+        guard span > 0 else { return .automatic }
+        // Bucket count from the span rather than `points.count`: a range with
+        // gaps in the data still has to draw the bars at their true pitch.
+        let buckets = max(
+            Double(points.count),
+            span / granularity.approximateBucketSeconds
+        )
+        let pitch = CGFloat(Double(plotWidth) / max(1, buckets))
+        let width = min(Self.maximumBarWidth, pitch - Self.barGap)
+        return .fixed(max(Self.minimumBarWidth, width))
     }
 
     /// Thin daily bars for the brush strip. Always daily regardless of the main
@@ -564,6 +641,15 @@ struct CostHistoryView: View {
 
     // MARK: - Footer
 
+    /// TOTAL / AVG / PEAK plus the visible-extent note.
+    ///
+    /// The overview column is narrow enough that the four blocks cannot always
+    /// share one line, and an `HStack` given less width than it asked for lets
+    /// its children draw past the card rather than shrinking them. Offer the
+    /// same content at three widths instead and let `ViewThatFits` pick: roomy
+    /// row, tight row, then the note wrapped onto its own line. Every candidate
+    /// reports a finite ideal width — the spacer keeps a real `minLength` — so
+    /// the choice is made on what actually fits.
     @ViewBuilder
     private func footer(
         total: Double,
@@ -573,7 +659,62 @@ struct CostHistoryView: View {
         resolved: CostResolvedGranularity,
         window: ChartTimeWindow
     ) -> some View {
-        HStack(spacing: 16) {
+        let note = extentNote(resolved: resolved, window: window)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: Self.footerRowSpacing) {
+                metricsRow(
+                    spacing: Self.footerRowSpacing,
+                    total: total,
+                    average: average,
+                    peak: peak,
+                    peakDate: peakDate,
+                    resolved: resolved
+                )
+                Spacer(minLength: Self.footerRowSpacing)
+                note
+            }
+            HStack(alignment: .top, spacing: Self.footerTightSpacing) {
+                metricsRow(
+                    spacing: Self.footerTightSpacing,
+                    total: total,
+                    average: average,
+                    peak: peak,
+                    peakDate: peakDate,
+                    resolved: resolved
+                )
+                Spacer(minLength: Self.footerTightSpacing)
+                note
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                metricsRow(
+                    spacing: Self.footerTightSpacing,
+                    total: total,
+                    average: average,
+                    peak: peak,
+                    peakDate: peakDate,
+                    resolved: resolved
+                )
+                note
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    /// Gap between the metric blocks when the card has room for it.
+    private static let footerRowSpacing: CGFloat = 16
+    /// The same gap once the card is narrow enough that 16pt would push the
+    /// extent note off the card.
+    private static let footerTightSpacing: CGFloat = 8
+
+    private func metricsRow(
+        spacing: CGFloat,
+        total: Double,
+        average: Double,
+        peak: Double,
+        peakDate: Date?,
+        resolved: CostResolvedGranularity
+    ) -> some View {
+        HStack(alignment: .top, spacing: spacing) {
             metric(label: "Total", value: formatCost(total))
             metric(
                 label: "Avg/\(resolved.granularity.displayName.lowercased())",
@@ -584,22 +725,33 @@ struct CostHistoryView: View {
                 value: formatCost(peak),
                 detail: peakDate.map { peakDetail($0, granularity: resolved.granularity) }
             )
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(visibleExtentNote(window: window))
-                    .font(.system(size: density.resetCountdownFontSize))
-                    .foregroundStyle(.tertiary)
-                if resolved.hourlyFallback {
-                    Text("hourly n/a · showing daily")
-                        .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
         }
     }
 
+    @ViewBuilder
+    private func extentNote(
+        resolved: CostResolvedGranularity,
+        window: ChartTimeWindow
+    ) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(visibleExtentNote(window: window))
+                .font(.system(size: density.resetCountdownFontSize))
+                .foregroundStyle(.tertiary)
+            if resolved.hourlyFallback {
+                Text("hourly n/a · showing daily")
+                    .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    /// One metric block. The three of them line up on two shared baselines —
+    /// the label row and the value row — because the sub-label row is always
+    /// laid out, blank when a metric has nothing to say there. Peak's date
+    /// therefore hangs below the shared value baseline instead of pushing its
+    /// own column up.
     @ViewBuilder
     private func metric(label: String, value: String, detail: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -609,14 +761,14 @@ struct CostHistoryView: View {
                 .tracking(0.4)
             Text(value)
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold, design: .rounded).monospacedDigit())
-            if let detail {
-                Text(detail)
-                    .font(.system(size: max(8, density.resetCountdownFontSize - 2)))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+            Text(detail ?? " ")
+                .font(.system(size: max(8, density.resetCountdownFontSize - 2)))
+                .foregroundStyle(.tertiary)
+                .opacity(detail == nil ? 0 : 1)
+                .accessibilityHidden(detail == nil)
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: - Window
@@ -662,6 +814,21 @@ struct CostHistoryView: View {
         return start...end
     }
 
+    /// The window a card opens on, derived purely from the data. Used both to
+    /// seed `window` and to render the very first layout pass, before
+    /// `rebuildWindow()` has had a chance to run.
+    private func initialWindow() -> ChartTimeWindow? {
+        guard let domain = domainRange(), domain.upperBound > domain.lowerBound else {
+            return nil
+        }
+        return ChartTimeWindow(
+            domainStart: domain.lowerBound,
+            domainEnd: domain.upperBound,
+            minimumSpan: Self.minimumSpan,
+            visibleSpan: Self.resetSpan
+        )
+    }
+
     /// Re-anchor the window after a scan. Runs on data changes only — pans and
     /// zooms reuse the window they produced.
     private func rebuildWindow() {
@@ -688,12 +855,7 @@ struct CostHistoryView: View {
             window = next
             return
         }
-        window = ChartTimeWindow(
-            domainStart: domain.lowerBound,
-            domainEnd: domain.upperBound,
-            minimumSpan: Self.minimumSpan,
-            visibleSpan: Self.resetSpan
-        )
+        window = initialWindow()
     }
 
     // MARK: - Range presets
@@ -756,10 +918,10 @@ struct CostHistoryView: View {
 
     @ViewBuilder
     private func granularityControl(window: ChartTimeWindow) -> some View {
-        let allowed = CostChartGranularity.allowed(for: window.visibleSpan)
+        let span = window.visibleSpan
         HStack(spacing: 1) {
             ForEach(CostGranularityOption.all) { option in
-                let enabled = option.isEnabled(allowed: allowed)
+                let enabled = option.isEnabled(for: span)
                 Button {
                     granularityMode = option.mode
                 } label: {
@@ -810,9 +972,14 @@ struct CostHistoryView: View {
 
     /// A manual pick that stops making sense after a pan or a zoom returns to
     /// Auto rather than silently drawing something the span cannot carry.
+    ///
+    /// "Stops making sense" is two things: the option is no longer offered at
+    /// this span, or it is still offered but would draw fewer bars than
+    /// `CostChartGranularity.minimumManualBuckets` — a handful of slabs the
+    /// user cannot read a trend from.
     private func demoteDisallowedGranularity(span: TimeInterval?) {
         guard case .manual(let choice) = granularityMode, let span else { return }
-        if !CostChartGranularity.isAllowed(choice, for: span) {
+        if !CostChartGranularity.survivesManualSelection(choice, for: span) {
             granularityMode = .auto
         }
     }
@@ -827,7 +994,7 @@ struct CostHistoryView: View {
             // A pinch can invalidate the pick mid-gesture. Draw what the span
             // can carry straight away; `demoteDisallowedGranularity` moves the
             // selection back to Auto once the change settles.
-            requested = CostChartGranularity.isAllowed(choice, for: span)
+            requested = CostChartGranularity.survivesManualSelection(choice, for: span)
                 ? choice
                 : CostChartGranularity.resolve(autoFor: span)
         }
