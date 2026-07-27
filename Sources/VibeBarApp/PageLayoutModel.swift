@@ -97,8 +97,22 @@ final class PageLayoutModel: ObservableObject {
 
     /// Persist an arrangement. Immediately written to disk by the store, so a
     /// quit right after a drag cannot lose it.
-    func apply(_ config: PageLayoutConfig, for page: PageLayoutPageID) {
-        var next = config
+    ///
+    /// `config` is an edit of the *resolved* layout, so it names only what the
+    /// page can draw right now. It is merged into the saved intent rather than
+    /// replacing it — otherwise reordering one card would discard the saved
+    /// position of every module that is temporarily unavailable (a quota group
+    /// before the first refresh, cost cards before any session log is found).
+    func apply(
+        _ config: PageLayoutConfig,
+        for page: PageLayoutPageID,
+        available: [PageLayoutModuleID]
+    ) {
+        var next = PageLayoutResolver.mergingEdit(
+            config,
+            into: configs[page],
+            available: available
+        )
         next.measuredHeights = measuredHeights(for: page)
         configs[page] = next
         Task { [store] in
@@ -112,11 +126,12 @@ final class PageLayoutModel: ObservableObject {
     func setRatio(
         _ ratio: PageColumnRatio,
         for page: PageLayoutPageID,
-        resolved: PageLayoutConfig
+        resolved: PageLayoutConfig,
+        available: [PageLayoutModuleID]
     ) {
         var next = resolved
         next.ratio = ratio
-        apply(next, for: page)
+        apply(next, for: page, available: available)
     }
 
     /// Forget a page's arrangement, returning it to the built-in layout.

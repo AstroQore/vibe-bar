@@ -87,4 +87,64 @@ public enum PageLayoutResolver {
 
         return PageLayoutConfig(ratio: ratio, columns: columns, measuredHeights: heights)
     }
+
+    /// Fold an edit made against the *resolved* layout back into the *saved*
+    /// one, without forgetting modules that happen to be unavailable right now.
+    ///
+    /// The editor can only arrange what the page can currently draw, so the
+    /// config coming out of a drag names available modules only. Persisting
+    /// that directly would erase the saved position of every module that was
+    /// temporarily missing — a quota group before the first refresh, the cost
+    /// cards while no session logs have been found — and moving one card would
+    /// silently reset the rest of the page. So:
+    ///
+    /// - Available modules take the column and order the edit gives them.
+    /// - Modules the save file still knows about but the page cannot draw stay
+    ///   in their saved column, re-anchored behind the nearest saved neighbour
+    ///   that is still visible, preserving their relative order.
+    /// - The ratio comes from the edit; heights merge, edit winning.
+    ///
+    /// Only an explicit reset (`PageLayoutStore.resetConfig`) forgets a page.
+    ///
+    /// - Parameter edited: the arrangement the user just produced. Expected to
+    ///   name every currently available module exactly once — which is what
+    ///   `resolve(configured:available:defaultConfig:)` returns.
+    public static func mergingEdit(
+        _ edited: PageLayoutConfig,
+        into stored: PageLayoutConfig?,
+        available: [PageLayoutModuleID]
+    ) -> PageLayoutConfig {
+        guard let stored else { return edited }
+        let availableSet = Set(available)
+
+        var columns: [[PageLayoutModuleID]] = []
+        for index in 0..<PageLayoutConfig.columnCount {
+            var column = edited.column(index)
+            let savedColumn = stored.column(index)
+            for (position, moduleID) in savedColumn.enumerated() {
+                guard !availableSet.contains(moduleID),
+                      !column.contains(moduleID)
+                else { continue }
+                // Walk back through the saved order for the nearest neighbour
+                // that survived into this column and sit behind it. Because
+                // hidden modules are re-inserted in saved order, a run of them
+                // finds its own predecessor and stays intact.
+                var insertion = 0
+                for earlier in stride(from: position - 1, through: 0, by: -1) {
+                    if let anchor = column.firstIndex(of: savedColumn[earlier]) {
+                        insertion = anchor + 1
+                        break
+                    }
+                }
+                column.insert(moduleID, at: insertion)
+            }
+            columns.append(column)
+        }
+
+        var heights = stored.measuredHeights
+        for (moduleID, height) in edited.measuredHeights {
+            heights[moduleID] = height
+        }
+        return PageLayoutConfig(ratio: edited.ratio, columns: columns, measuredHeights: heights)
+    }
 }

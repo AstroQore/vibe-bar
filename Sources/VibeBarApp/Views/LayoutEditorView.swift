@@ -14,6 +14,14 @@ struct LayoutEditorView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var layoutModel: PageLayoutModel
+    /// Observed, not merely read: `PageModuleCatalog.descriptors` asks these
+    /// two which quota groups and which cost cards exist. Reaching them only
+    /// through `environment` would leave the editor showing a stale module
+    /// list until some unrelated redraw — a group that appears on the first
+    /// refresh, or the cost cards after the first log scan, would not show up
+    /// while the Layout tab is open.
+    @EnvironmentObject private var quotaService: QuotaService
+    @EnvironmentObject private var costService: CostUsageService
 
     @State private var selectedPage: PageLayoutPageID = .overview
     @State private var drag: DragState?
@@ -195,7 +203,12 @@ struct LayoutEditorView: View {
     ) -> some View {
         let isSelected = config.ratio == ratio
         return Button {
-            layoutModel.setRatio(ratio, for: page, resolved: config)
+            layoutModel.setRatio(
+                ratio,
+                for: page,
+                resolved: config,
+                available: availableModuleIDs(for: page)
+            )
         } label: {
             HStack(spacing: 6) {
                 ratioIcon(ratio)
@@ -453,7 +466,7 @@ struct LayoutEditorView: View {
                 guard let target = dropTarget(page: page, config: config) else { return }
                 let moved = config.moving(block.id, toColumn: target.column, at: target.index)
                 guard moved.columns != config.columns || !layoutModel.isCustomized(page) else { return }
-                layoutModel.apply(moved, for: page)
+                layoutModel.apply(moved, for: page, available: availableModuleIDs(for: page))
             }
     }
 
@@ -582,6 +595,18 @@ struct LayoutEditorView: View {
     }
 
     // MARK: - Helpers
+
+    /// Modules the page can draw right now. The saved layout may name more;
+    /// `PageLayoutResolver.mergingEdit` needs this set to tell "the user moved
+    /// this away" from "this is not on screen at the moment".
+    private func availableModuleIDs(for page: PageLayoutPageID) -> [PageLayoutModuleID] {
+        PageModuleCatalog.descriptors(
+            for: page,
+            environment: environment,
+            settings: settingsStore.settings
+        )
+        .map(\.id)
+    }
 
     private func resolvedConfig(
         for page: PageLayoutPageID,

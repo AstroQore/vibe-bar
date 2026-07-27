@@ -452,4 +452,191 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(once, configured)
         XCTAssertEqual(twice, once)
     }
+
+    // MARK: - PageLayoutResolver.mergingEdit
+
+    func testMergingEditWithoutASavedLayoutKeepsTheEdit() {
+        let edited = PageLayoutConfig(
+            ratio: .wideNarrow,
+            columns: [[.status], [.costAll]]
+        )
+        let merged = PageLayoutResolver.mergingEdit(
+            edited,
+            into: nil,
+            available: [.status, .costAll]
+        )
+        XCTAssertEqual(merged, edited)
+    }
+
+    func testMergingEditKeepsUnavailableModulesInTheirSavedColumn() {
+        // Saved with four cards; only two can be drawn right now.
+        let stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [
+                [.status, .quotaGroup(tool: .claude, groupKey: "weekly")],
+                [.costAll, .quotaHistoryAll]
+            ]
+        )
+        let available: [PageLayoutModuleID] = [.status, .costAll]
+        // The user dragged `status` across to the right column.
+        let edited = PageLayoutConfig(ratio: .equal, columns: [[], [.costAll, .status]])
+
+        let merged = PageLayoutResolver.mergingEdit(edited, into: stored, available: available)
+
+        // The move lands, and the two invisible cards keep their saved column.
+        XCTAssertEqual(merged.leftColumn, [.quotaGroup(tool: .claude, groupKey: "weekly")])
+        // `quotaHistoryAll` was saved directly behind `costAll`, so it stays
+        // there; the dropped card lands after both.
+        XCTAssertEqual(merged.rightColumn, [.costAll, .quotaHistoryAll, .status])
+    }
+
+    func testMergingEditReAnchorsAnUnavailableModuleBehindItsSavedNeighbour() {
+        let stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [
+                [.status, .quotaHistoryAll, .costAll],
+                []
+            ]
+        )
+        // `quotaHistoryAll` is temporarily gone; the user swapped the two that
+        // remain.
+        let available: [PageLayoutModuleID] = [.status, .costAll]
+        let edited = PageLayoutConfig(ratio: .equal, columns: [[.costAll, .status], []])
+
+        let merged = PageLayoutResolver.mergingEdit(edited, into: stored, available: available)
+
+        // It followed `status`, the saved neighbour it used to sit behind,
+        // rather than snapping back to a fixed index.
+        XCTAssertEqual(merged.leftColumn, [.costAll, .status, .quotaHistoryAll])
+    }
+
+    func testMergingEditKeepsARunOfUnavailableModulesInOrder() {
+        let stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [
+                [
+                    .status,
+                    .quotaGroup(tool: .codex, groupKey: "weekly"),
+                    .quotaGroup(tool: .claude, groupKey: "weekly"),
+                    .costAll
+                ],
+                []
+            ]
+        )
+        let available: [PageLayoutModuleID] = [.status, .costAll]
+        let edited = PageLayoutConfig(ratio: .equal, columns: [[.costAll, .status], []])
+
+        let merged = PageLayoutResolver.mergingEdit(edited, into: stored, available: available)
+
+        XCTAssertEqual(
+            merged.leftColumn,
+            [
+                .costAll,
+                .status,
+                .quotaGroup(tool: .codex, groupKey: "weekly"),
+                .quotaGroup(tool: .claude, groupKey: "weekly")
+            ]
+        )
+    }
+
+    func testMergingEditPutsAnUnavailableModuleFirstWhenItHadNoVisiblePredecessor() {
+        let stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [[.quotaHistoryAll, .status], []]
+        )
+        let edited = PageLayoutConfig(ratio: .equal, columns: [[.status], []])
+
+        let merged = PageLayoutResolver.mergingEdit(
+            edited,
+            into: stored,
+            available: [.status]
+        )
+
+        XCTAssertEqual(merged.leftColumn, [.quotaHistoryAll, .status])
+    }
+
+    func testMergingEditKeepsTheSavedColumnWhenTheAnchorMovedAway() {
+        let stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [[.status, .quotaHistoryAll], [.costAll]]
+        )
+        // `status` — the only saved neighbour of the hidden card — moved to the
+        // right column. The hidden card stays put rather than following it.
+        let edited = PageLayoutConfig(ratio: .equal, columns: [[], [.costAll, .status]])
+
+        let merged = PageLayoutResolver.mergingEdit(
+            edited,
+            into: stored,
+            available: [.status, .costAll]
+        )
+
+        XCTAssertEqual(merged.leftColumn, [.quotaHistoryAll])
+        XCTAssertEqual(merged.rightColumn, [.costAll, .status])
+    }
+
+    func testMergingEditTakesTheRatioFromTheEdit() {
+        let stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [[.status, .quotaHistoryAll], []]
+        )
+        let edited = PageLayoutConfig(ratio: .wideNarrow, columns: [[.status], []])
+
+        let merged = PageLayoutResolver.mergingEdit(
+            edited,
+            into: stored,
+            available: [.status]
+        )
+
+        XCTAssertEqual(merged.ratio, .wideNarrow)
+        XCTAssertEqual(merged.leftColumn, [.status, .quotaHistoryAll])
+    }
+
+    func testMergingEditSurvivesRepeatedEditsWhileAModuleStaysUnavailable() {
+        // The regression this guards: every drag used to persist the resolved
+        // layout, so the second drag would have already forgotten the hidden
+        // card dropped by the first.
+        var stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [[.status, .quotaHistoryAll], [.costAll]]
+        )
+        let available: [PageLayoutModuleID] = [.status, .costAll]
+
+        for _ in 0..<3 {
+            let resolved = PageLayoutResolver.resolve(
+                configured: stored,
+                available: available,
+                defaultConfig: defaultConfig
+            )
+            let moved = resolved.moving(.costAll, toColumn: 0, at: 0)
+            stored = PageLayoutResolver.mergingEdit(moved, into: stored, available: available)
+        }
+
+        XCTAssertTrue(stored.moduleIDs.contains(.quotaHistoryAll))
+        XCTAssertEqual(stored.leftColumn, [.costAll, .status, .quotaHistoryAll])
+        XCTAssertEqual(stored.rightColumn, [])
+    }
+
+    func testMergingEditMergesMeasuredHeightsWithTheEditWinning() {
+        let stored = PageLayoutConfig(
+            ratio: .equal,
+            columns: [[.status, .quotaHistoryAll], []],
+            measuredHeights: [.status: 120, .quotaHistoryAll: 300]
+        )
+        let edited = PageLayoutConfig(
+            ratio: .equal,
+            columns: [[.status], []],
+            measuredHeights: [.status: 140]
+        )
+
+        let merged = PageLayoutResolver.mergingEdit(
+            edited,
+            into: stored,
+            available: [.status]
+        )
+
+        XCTAssertEqual(merged.measuredHeight(for: .status), 140)
+        // A card that is not on screen keeps the height it last reported, so
+        // the editor can still draw it to scale.
+        XCTAssertEqual(merged.measuredHeight(for: .quotaHistoryAll), 300)
+    }
 }

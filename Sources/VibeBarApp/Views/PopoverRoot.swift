@@ -467,7 +467,15 @@ private struct OverviewWaterfall: View {
         }
     }
 
-    /// The one place an Overview module identity turns back into its card.
+    /// The one place an Overview module identity turns back into its card —
+    /// called by both the arranged and the balanced path, so the two can never
+    /// render a module differently.
+    ///
+    /// No module here reads the wall clock, so the Overview starts no periodic
+    /// timer of its own: a page-level tick would re-measure every card in the
+    /// masonry twice a minute. If a clock-consuming module is ever added, hoist
+    /// one `TimelineView` in `body` and pass its date through this factory —
+    /// never a timer per card.
     @ViewBuilder
     private func card(
         for descriptor: PageModuleDescriptor,
@@ -1405,25 +1413,33 @@ private struct ProviderDetailView: View {
             groups: PageModuleCatalog.quotaGroupModules(tool: tool, environment: environment),
             snapshot: PageModuleCatalog.detailCostSnapshot(tool: tool, environment: environment)
         )
-        PageLayoutColumns(
-            page: page,
-            descriptors: descriptors,
-            config: resolved,
-            // Until the page is arranged by hand its columns keep the exact
-            // clamped narrow-left widths they have always had; the ratio
-            // presets only take over once the user picks one.
-            widths: layoutModel.isCustomized(page)
-                ? PageColumnWidths(density: density, ratio: resolved.ratio)
-                : ProviderDetailColumnWidths(density: density).columnWidths,
-            spacing: density.interSectionSpacing,
-            model: layoutModel
-        ) { descriptor in
-            ProviderPageModule(
-                descriptor: descriptor,
-                context: context,
-                density: density,
-                mode: settingsStore.displayMode
-            )
+        // Exactly one periodic clock per page, at the page level. The quota
+        // group cards' countdown strings are the only thing on the page that
+        // reads the wall clock; they take the tick as plain data so no card
+        // owns a timer of its own. `QuotaHistoryChartView` stays `.equatable()`
+        // inside `QuotaGroupCard`, so the chart still ignores the tick.
+        TimelineView(.periodic(from: .now, by: 30)) { timeline in
+            PageLayoutColumns(
+                page: page,
+                descriptors: descriptors,
+                config: resolved,
+                // Until the page is arranged by hand its columns keep the exact
+                // clamped narrow-left widths they have always had; the ratio
+                // presets only take over once the user picks one.
+                widths: layoutModel.isCustomized(page)
+                    ? PageColumnWidths(density: density, ratio: resolved.ratio)
+                    : ProviderDetailColumnWidths(density: density).columnWidths,
+                spacing: density.interSectionSpacing,
+                model: layoutModel
+            ) { descriptor in
+                ProviderPageModule(
+                    descriptor: descriptor,
+                    context: context,
+                    density: density,
+                    mode: settingsStore.displayMode,
+                    now: timeline.date
+                )
+            }
         }
     }
 }
@@ -1454,33 +1470,28 @@ private struct ProviderPageModule: View {
     let context: ProviderPageContext
     let density: Theme.Density
     let mode: DisplayMode
+    /// Tick from the page's single clock. Plain data — this view never starts
+    /// a timer, however many quota groups the page ends up arranging.
+    let now: Date
 
     var body: some View {
         switch descriptor.kind {
         case let .quotaGroup(groupID):
             if let group = context.group(id: groupID) {
-                // The countdown strings inside the card are the only thing on
-                // the page that depends on the wall clock, and they are
-                // minute-granular. The pre-split page wrapped every group in
-                // one shared 30-second `TimelineView`; each group now carries
-                // its own so it can be arranged independently, driving exactly
-                // the content it drove before.
-                TimelineView(.periodic(from: .now, by: 30)) { timeline in
-                    QuotaGroupCard(
-                        module: group,
-                        mode: mode,
-                        density: density,
-                        now: timeline.date,
-                        // Only the provider-header card draws the refresh
-                        // button, so only it needs the tools behind it.
-                        refreshTools: group.showsProviderHeader
-                            ? PageModuleCatalog.quotaRefreshTools(for: context.pageTool)
-                            : [],
-                        emptyMessage: group.rows.isEmpty
-                            ? "No utilization data — try refreshing."
-                            : nil
-                    )
-                }
+                QuotaGroupCard(
+                    module: group,
+                    mode: mode,
+                    density: density,
+                    now: now,
+                    // Only the provider-header card draws the refresh
+                    // button, so only it needs the tools behind it.
+                    refreshTools: group.showsProviderHeader
+                        ? PageModuleCatalog.quotaRefreshTools(for: context.pageTool)
+                        : [],
+                    emptyMessage: group.rows.isEmpty
+                        ? "No utilization data — try refreshing."
+                        : nil
+                )
             }
         case .serviceStatus:
             ServiceStatusCard(tools: [context.pageTool], density: density)
