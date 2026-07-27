@@ -907,6 +907,11 @@ public enum CostUsageScanner {
         ".gemini/antigravity-cli/conversations",
         ".gemini/antigravity-ide/conversations"
     ]
+    /// v2 reads the precise field-21 model label (or field-20
+    /// `model_enum`) instead of grouping every routed field-19 alias such as
+    /// `gemini-default`. The scan cache keeps this independent of its global
+    /// schema so only `.db` events are reparsed once; `.pb` RPC events survive.
+    private static let antigravityDBParserVersion = 2
 
     private static func scanAntigravity(
         homeDirectory: String,
@@ -920,6 +925,8 @@ public enum CostUsageScanner {
         var aggregator = CostAggregator(tool: .antigravity, now: now)
         var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .antigravity, retentionDays: retentionDays)
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+        let shouldReparseDatabases =
+            cache.antigravityDBParserVersion != antigravityDBParserVersion
         // Resolve placeholder model ids (e.g. MODEL_PLACEHOLDER_M132) to
         // real names + rates using labels learned from GetUserStatus.
         let labels = AntigravityModelLabelStore.load(homeDirectory: homeDirectory)
@@ -940,7 +947,8 @@ public enum CostUsageScanner {
                 fileCount += 1
                 knownPaths.insert(dbFile.path)
                 let (mtime, size) = fileFingerprint(dbFile)
-                if let cached = cache.reusable(for: dbFile.path, mtime: mtime, size: size) {
+                let cached = cache.reusable(for: dbFile.path, mtime: mtime, size: size)
+                if let cached, !shouldReparseDatabases {
                     let retained = retainedEvents(cached, cutoff: cutoff)
                     if retained.count != cached.count {
                         cache.store(retained, for: dbFile.path, mtime: mtime, size: size)
@@ -950,10 +958,24 @@ public enum CostUsageScanner {
                     continue
                 }
                 let turns = AntigravitySessionReader.readGenMetadata(at: dbFile)
-                let parsed = antigravityEvents(fromDB: turns, sessionId: cascade.id, cutoff: cutoff)
-                cache.store(parsed, for: dbFile.path, mtime: mtime, size: size)
-                aggregateAntigravity(parsed, labels: labels, into: &aggregator)
-                if !turns.isEmpty { handledByDB = true }
+                if !turns.isEmpty {
+                    let parsed = antigravityEvents(fromDB: turns, sessionId: cascade.id, cutoff: cutoff)
+                    cache.store(parsed, for: dbFile.path, mtime: mtime, size: size)
+                    aggregateAntigravity(parsed, labels: labels, into: &aggregator)
+                    handledByDB = true
+                    continue
+                }
+                // A parser migration must never erase a previously readable
+                // conversation if a database is temporarily locked or
+                // malformed. Keep its last cooked events and continue to
+                // prefer them over a `.pb` sibling to avoid double-counting.
+                if let cached {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    aggregateAntigravity(retained, labels: labels, into: &aggregator)
+                    if !cached.isEmpty { handledByDB = true }
+                    continue
+                }
+                cache.store([], for: dbFile.path, mtime: mtime, size: size)
             }
             if handledByDB { continue }
 
@@ -998,6 +1020,7 @@ public enum CostUsageScanner {
             }
         }
         cache.prune(known: knownPaths)
+        cache.antigravityDBParserVersion = antigravityDBParserVersion
         cache.save(homeDirectory: homeDirectory, tool: .antigravity)
         return aggregator.snapshot(jsonlFilesFound: fileCount)
     }

@@ -81,22 +81,37 @@ public struct CostUsageScanCache: Codable, Sendable {
 
     public var schemaVersion: Int
     public var retentionDays: Int?
+    /// Version of the AntiGravity `.db` protobuf projection used to cook
+    /// cached events. This is deliberately separate from `schemaVersion`:
+    /// advancing it reparses only AntiGravity databases while preserving
+    /// opaque `.pb` RPC results and every other provider's warm cache.
+    public var antigravityDBParserVersion: Int?
     public var entries: [String: FileEntry]
 
-    public init(entries: [String: FileEntry] = [:], retentionDays: Int? = nil, schemaVersion: Int = Self.currentSchemaVersion) {
+    public init(
+        entries: [String: FileEntry] = [:],
+        retentionDays: Int? = nil,
+        schemaVersion: Int = Self.currentSchemaVersion,
+        antigravityDBParserVersion: Int? = nil
+    ) {
         self.schemaVersion = schemaVersion
         self.retentionDays = retentionDays.map(CostDataSettings.normalizedRetentionDays)
+        self.antigravityDBParserVersion = antigravityDBParserVersion
         self.entries = entries
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, retentionDays, entries
+        case schemaVersion, retentionDays, antigravityDBParserVersion, entries
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         self.retentionDays = try c.decodeIfPresent(Int.self, forKey: .retentionDays)
+        self.antigravityDBParserVersion = try c.decodeIfPresent(
+            Int.self,
+            forKey: .antigravityDBParserVersion
+        )
         self.entries = try c.decode([String: FileEntry].self, forKey: .entries)
     }
 

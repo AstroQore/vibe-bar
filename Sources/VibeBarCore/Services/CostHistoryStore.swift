@@ -86,7 +86,11 @@ public actor CostHistoryStore {
     /// Bumped to run a new one-time history correction on the next load.
     /// v1: drop legacy AntiGravity entries inflated by the cumulative
     /// cache-read over-count, so a corrected re-scan rebuilds them clean.
-    private static let currentHistoryCorrectionVersion = 1
+    /// v2: drop AntiGravity entries priced from coarse routed model aliases
+    /// such as `gemini-default`, so the precise per-turn model labels can
+    /// rebuild both the ranking and daily cost without max-merge pinning the
+    /// old, usually higher Gemini Pro fallback price.
+    private static let currentHistoryCorrectionVersion = 2
 
     init(
         fileURL: URL = CostHistoryStore.defaultFileURL(),
@@ -323,12 +327,10 @@ public actor CostHistoryStore {
         guard storage.historyCorrectionVersion != Self.currentHistoryCorrectionVersion else {
             return false
         }
-        // v1: the AntiGravity `.db` decoder used to re-sum the cumulative
-        // cache-read counter per turn, so historical antigravity cost +
-        // tokens were inflated and max-merge pinned the bad peak forever.
-        // Drop only the antigravity entries; the corrected scanner rebuilds
-        // them from the persistent `.db`/`.pb` conversations on the next
-        // scan. Other tools' history is untouched.
+        // v1 fixed cumulative-cache over-counting; v2 fixes pricing from
+        // coarse routed model aliases. Both corrections need the same narrow
+        // repair: drop only AntiGravity history, then let the corrected
+        // `.db`/`.pb` scanner rebuild it. Other tools stay untouched.
         let antigravityKey = ToolType.antigravity.rawValue
         storage.entries.removeAll { $0.tool == antigravityKey }
         storage.historyCorrectionVersion = Self.currentHistoryCorrectionVersion

@@ -22,7 +22,10 @@ import SQLite3
 ///     dedupe key in the scan cache
 ///   - `1.9.4.1` / `1.9.4.2` — seconds + nanoseconds of the wall
 ///     clock when the turn started
-///   - `1.19` — model id, e.g. `gemini-3-flash-a`
+///   - `1.19` — routed model alias, e.g. `gemini-default`
+///   - `1.20["model_enum"]` — internal model id, e.g.
+///     `MODEL_PLACEHOLDER_M84`
+///   - `1.21` — precise human label, e.g. `Gemini 3.5 Flash (High)`
 ///
 /// Unknown fields are ignored. Missing fields default to 0 / nil so
 /// callers never have to special-case a turn whose blob is short on
@@ -112,7 +115,20 @@ public enum AntigravitySessionReader {
         let thoughts = Int(extractVarint(bytes: usage, fieldNumber: 9) ?? 0)
         let tool = Int(extractVarint(bytes: usage, fieldNumber: 10) ?? 0)
         let requestId = extractString(bytes: usage, fieldNumber: 11)
-        let model = extractString(bytes: outer, fieldNumber: 19)
+        // Field 19 is only the routed alias in recent AntiGravity builds
+        // (`gemini-default`, `gemini-3.6-flash`, ...). The same turn also
+        // carries the precise model label in field 21 and, when that label is
+        // absent, an internal model enum in the repeated field-20 metadata.
+        // Prefer those values so cost ranking and pricing reflect the model
+        // that actually served the turn instead of the router alias.
+        let routedModel = normalized(extractString(bytes: outer, fieldNumber: 19))
+        let modelEnum = normalized(extractMetadataValue(
+            bytes: outer,
+            fieldNumber: 20,
+            key: "model_enum"
+        ))
+        let modelLabel = normalized(extractString(bytes: outer, fieldNumber: 21))
+        let model = modelLabel ?? modelEnum ?? routedModel
 
         let date: Date
         if let seconds = extractVarint(bytes: timeBlock, fieldNumber: 1) {
@@ -199,6 +215,61 @@ public enum AntigravitySessionReader {
             return nil
         }
         return String(bytes: payload, encoding: .utf8)
+    }
+
+    /// Read a string value from AntiGravity's repeated key/value metadata
+    /// entries. Each entry is a length-delimited message whose field 1 is the
+    /// key and field 2 is the value.
+    static func extractMetadataValue(
+        bytes: [UInt8],
+        fieldNumber: UInt64,
+        key: String
+    ) -> String? {
+        for payload in extractLengthDelimitedValues(bytes: bytes, fieldNumber: fieldNumber) {
+            guard extractString(bytes: payload, fieldNumber: 1) == key else { continue }
+            return extractString(bytes: payload, fieldNumber: 2)
+        }
+        return nil
+    }
+
+    private static func extractLengthDelimitedValues(
+        bytes: [UInt8],
+        fieldNumber: UInt64
+    ) -> [[UInt8]] {
+        var values: [[UInt8]] = []
+        var index = 0
+        while let (number, wireType) = readTag(bytes: bytes, index: &index) {
+            switch wireType {
+            case 0:
+                _ = readVarint(bytes: bytes, index: &index)
+            case 1:
+                guard index + 8 <= bytes.count else { return values }
+                index += 8
+            case 2:
+                guard let length = readVarint(bytes: bytes, index: &index) else { return values }
+                let end = index + Int(length)
+                guard end <= bytes.count else { return values }
+                if number == fieldNumber {
+                    values.append(Array(bytes[index..<end]))
+                }
+                index = end
+            case 5:
+                guard index + 4 <= bytes.count else { return values }
+                index += 4
+            default:
+                return values
+            }
+        }
+        return values
+    }
+
+    private static func normalized(_ raw: String?) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty
+        else {
+            return nil
+        }
+        return value
     }
 
     private static func readTag(bytes: [UInt8], index: inout Int) -> (UInt64, UInt64)? {
