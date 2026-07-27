@@ -78,6 +78,13 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("forecast_timeline.json")
     }
 
+    /// Per-page card layout chosen in the layout editor: column ratio, the two
+    /// ordered module columns, and last-known measured card heights. Kept out
+    /// of `AppSettings` because render-time height measurement writes here.
+    public static var pageLayoutURL: URL {
+        baseDirectory.appendingPathComponent("layout.json")
+    }
+
     /// Mini-window geometry is persisted out-of-band from `AppSettings` so a
     /// drag-to-move (which fires didMove repeatedly) doesn't rewrite the
     /// whole settings JSON or fan out through every Combine subscriber on
