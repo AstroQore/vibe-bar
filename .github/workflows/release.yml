@@ -145,7 +145,7 @@ jobs:
           set -euo pipefail
           assets=(.build/release/*.zip .build/release/*.sha256 .build/release/appcast.xml)
           release_title="Vibe Bar ${RELEASE_TAG#v}"
-          release_flags=()
+          release_flags=(--draft --generate-notes --verify-tag)
           if [[ "$RELEASE_CHANNEL" == "dev" ]]; then
             release_title="Vibe Bar ${RELEASE_TAG#v} (Dev)"
             release_flags+=(--prerelease --latest=false)
@@ -162,9 +162,6 @@ jobs:
           else
             gh release create "$RELEASE_TAG" \
               "${assets[@]}" \
-              --draft \
-              --generate-notes \
               --title "$release_title" \
-              "${release_flags[@]}" \
-              --verify-tag
+              "${release_flags[@]}"
           fi
