@@ -15,7 +15,11 @@ enum Theme {
     /// One profile drives the full tabbed workspace. The semantic tokens below
     /// deliberately change layout, chart presence, and information rhythm —
     /// not just every number by the same scale factor.
-    struct Density {
+    /// `Equatable` so views that are expensive to rebuild can be wrapped in
+    /// `.equatable()` and skip a parent-driven update that changed nothing —
+    /// notably the quota history chart, which lives inside a `TimelineView`
+    /// that re-proposes it every 30 seconds.
+    struct Density: Equatable {
         let profile: PopoverDensity
         let popoverPaddingH: CGFloat
         let popoverPaddingV: CGFloat
@@ -74,6 +78,17 @@ enum Theme {
             case .compact: 140
             case .regular: 172
             case .spacious: 210
+            }
+        }
+
+        /// Main plot height for the all-providers quota history chart on the
+        /// Overview. Taller than the per-group chart: it carries every
+        /// provider's curves at once and sits in a wider Overview column.
+        var overviewQuotaHistoryChartHeight: CGFloat {
+            switch profile {
+            case .compact: 172
+            case .regular: 206
+            case .spacious: 248
             }
         }
 
@@ -264,6 +279,41 @@ enum Theme {
             bucketBarHeight: base.bucketBarHeight,
             segmentedFontSize: base.segmentedFontSize
         )
+    }
+
+    /// Brand accent per provider — the hue that identifies a tool wherever a
+    /// surface has to tell providers apart by colour rather than by name.
+    ///
+    /// One table, because a provider that is teal in the mini window and green
+    /// in a chart is two providers as far as the reader is concerned.
+    static func providerAccent(for tool: ToolType) -> Color {
+        switch tool {
+        case .codex:       return Color(red: 0.30, green: 0.78, blue: 0.74)  // teal
+        case .claude:      return Color(red: 0.93, green: 0.40, blue: 0.40)  // coral
+        case .alibaba:     return Color(red: 1.00, green: 0.62, blue: 0.20)  // amber
+        case .alibabaTokenPlan: return Color(red: 1.00, green: 0.48, blue: 0.18)  // deeper amber
+        case .gemini:      return Color(red: 0.34, green: 0.62, blue: 0.96)  // google blue
+        case .antigravity: return Color(red: 0.55, green: 0.40, blue: 0.92)  // violet
+        case .grok:        return Color(red: 0.18, green: 0.18, blue: 0.18)  // xAI near-black
+        case .copilot:     return Color(red: 0.46, green: 0.46, blue: 0.46)  // graphite
+        case .zai:         return Color(red: 0.26, green: 0.74, blue: 0.55)  // emerald
+        case .minimax:     return Color(red: 0.97, green: 0.30, blue: 0.45)  // pink
+        case .kimi:        return Color(red: 0.20, green: 0.20, blue: 0.20)  // ink
+        case .cursor:      return Color(red: 0.55, green: 0.55, blue: 0.96)  // periwinkle
+        case .mimo:        return Color(red: 0.97, green: 0.50, blue: 0.20)  // xiaomi orange
+        case .iflytek:     return Color(red: 0.10, green: 0.37, blue: 0.75)  // iflytek blue
+        case .tencentHunyuan:   return Color(red: 0.00, green: 0.49, blue: 0.91)  // tencent blue
+        case .tencentTokenPlan: return Color(red: 0.18, green: 0.62, blue: 0.96)  // tencent token blue
+        case .volcengine:  return Color(red: 0.92, green: 0.30, blue: 0.30)  // doubao red
+        case .volcengineAgentPlan: return Color(red: 0.96, green: 0.45, blue: 0.22)  // doubao agent amber
+        case .baiduQianfan: return Color(red: 0.16, green: 0.40, blue: 0.93)  // baidu blue
+        case .openCodeGo:  return Color(red: 0.22, green: 0.66, blue: 0.50)  // green
+        case .kilo:        return Color(red: 0.47, green: 0.37, blue: 0.93)  // purple
+        case .kiro:        return Color(red: 0.24, green: 0.48, blue: 0.94)  // blue
+        case .ollama:      return Color(red: 0.18, green: 0.18, blue: 0.18)  // graphite
+        case .openRouter:  return Color(red: 0.98, green: 0.62, blue: 0.16)  // orange
+        case .warp:        return Color(red: 0.58, green: 0.55, blue: 0.71)  // warp violet-grey
+        }
     }
 
     static func barColor(percent: Double, mode: DisplayMode) -> Color {
