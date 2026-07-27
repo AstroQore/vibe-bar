@@ -66,6 +66,26 @@ enum Theme {
             }
         }
 
+        /// Main plot height for the quota history line chart. Slightly shorter
+        /// than the cost chart at the same density: it lives in the narrow
+        /// quota column and carries a brush strip underneath.
+        var quotaHistoryChartHeight: CGFloat {
+            switch profile {
+            case .compact: 140
+            case .regular: 172
+            case .spacious: 210
+            }
+        }
+
+        /// Height of the scrubber strip below a navigable chart.
+        var chartBrushHeight: CGFloat {
+            switch profile {
+            case .compact: 40
+            case .regular: 44
+            case .spacious: 50
+            }
+        }
+
         var utilizationBarHeight: CGFloat {
             switch profile {
             case .compact: 28

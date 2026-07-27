@@ -1,5 +1,25 @@
 import Foundation
 
+/// Activity inputs used when a quota refresh records its pace forecast.
+///
+/// The heatmap and daily token history live in the cost layer, which Core's
+/// quota path has no handle on. The App injects them through
+/// `QuotaService.activityContextProvider` so the *recorded* forecast matches
+/// the one the popover renders live; with nothing injected the forecast falls
+/// back to a time-only activity profile, which is still a valid — just less
+/// personalised — projection.
+public struct QuotaActivityContext: Sendable {
+    public let heatmap: UsageHeatmap?
+    public let dailyActivity: [DailyCostPoint]
+
+    public static let empty = QuotaActivityContext()
+
+    public init(heatmap: UsageHeatmap? = nil, dailyActivity: [DailyCostPoint] = []) {
+        self.heatmap = heatmap
+        self.dailyActivity = dailyActivity
+    }
+}
+
 /// QuotaService routes a request to the right adapter, tracks last-success
 /// quota per account so callers can fall back to cached data on transient
 /// failures, and supports a global mock-mode override.
@@ -19,6 +39,11 @@ public final class QuotaService: ObservableObject {
     /// power personal pace forecasts; completed-cycle summaries remain in
     /// `historyByAccountBucket` for Fill History and reset outcomes.
     @Published public private(set) var observationsByAccountBucket: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
+
+    /// Supplies the cost-side activity inputs for the forecast recorded after
+    /// each refresh. Optional: Core works without it, the App sets it once at
+    /// wiring time.
+    public var activityContextProvider: ((ToolType) -> QuotaActivityContext)?
 
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
@@ -206,7 +231,41 @@ public final class QuotaService: ObservableObject {
             await SubscriptionHistoryStore.shared.observe(quota, retentionDays: retention)
             await self?.refreshObservations(for: quota)
             await self?.refreshSubscriptionHistory(for: quota)
+            // Runs last so the forecast sees the observation this very refresh
+            // just recorded. Refresh-time only — the history chart must never
+            // pay for a forecast at render time.
+            await self?.recordForecastObservations(for: quota, retentionDays: retention)
         }
+    }
+
+    /// Snapshot the pace forecast for every bucket that has one, so the history
+    /// chart can later draw what was predicted instead of re-deriving it with
+    /// hindsight. Buckets without enough information to forecast are skipped
+    /// rather than recorded as zero.
+    private func recordForecastObservations(
+        for quota: AccountQuota,
+        retentionDays: Int,
+        now: Date = Date()
+    ) async {
+        let context = activityContextProvider?(quota.tool) ?? .empty
+        let observations = quota.buckets.compactMap { bucket -> BucketForecastObservation? in
+            guard let forecast = paceForecast(
+                accountId: quota.accountId,
+                bucket: bucket,
+                activityHeatmap: context.heatmap,
+                dailyActivity: context.dailyActivity,
+                now: now
+            ) else { return nil }
+            return BucketForecastObservation(bucket: bucket, forecast: forecast)
+        }
+        guard !observations.isEmpty else { return }
+        await UsageForecastTimelineStore.shared.observe(
+            observations,
+            accountId: quota.accountId,
+            tool: quota.tool,
+            now: now,
+            retentionDays: retentionDays
+        )
     }
 
     private func applyInitialObservations(_ points: [FillTimelinePoint]) {

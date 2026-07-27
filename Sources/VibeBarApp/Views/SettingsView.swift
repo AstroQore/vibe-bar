@@ -89,7 +89,7 @@ struct SettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     var dismiss: () -> Void
 
-    private let intervalOptions: [Int] = [60, 180, 300, 600, 1800]
+    private let intervalOptions = AppSettings.refreshIntervalOptions
     private let popoverRefreshCooldownOptions: [Int] = [60, 120, 300, 600]
     private let costRetentionOptions = CostDataSettings.retentionOptions
     @State private var openAICookieDeleteFailed: Bool = false

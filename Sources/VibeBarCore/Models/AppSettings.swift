@@ -71,6 +71,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
         costData: .default
     )
 
+    /// Quota refresh cadences the Settings picker offers, fastest first.
+    ///
+    /// Lives here rather than in the picker because the history charts have to
+    /// know the slowest cadence a user can pick: a sample that is merely late
+    /// must not be mistaken for coverage that stopped.
+    public static let refreshIntervalOptions: [Int] = [60, 180, 300, 600, 1_800]
+
+    /// Longest gap between two scheduled refreshes the user can configure.
+    public static var slowestRefreshIntervalSeconds: Int {
+        refreshIntervalOptions.max() ?? 1_800
+    }
+
     public static let defaultMenuBarItems: [MenuBarItemSettings] = [
         MenuBarItemSettings(
             kind: .compact,
