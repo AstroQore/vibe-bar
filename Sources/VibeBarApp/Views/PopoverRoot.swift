@@ -681,6 +681,14 @@ private struct GeminiTabPage: View {
                         additionalQuotaSeries: antigravityQuotaSeries
                     )
                 }
+                if let geminiAccount = geminiAccounts.first {
+                    QuotaHistoryChartView(
+                        tool: .gemini,
+                        accountId: geminiAccount.id,
+                        buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
+                        density: density
+                    )
+                }
                 ServiceStatusCard(tools: [.gemini], density: density)
             }
             .frame(
@@ -1425,6 +1433,14 @@ private struct ProviderDetailView: View {
                         mode: settingsStore.displayMode,
                         density: density,
                         now: context.date
+                    )
+                }
+                if let accountId = environment.account(for: tool)?.id {
+                    QuotaHistoryChartView(
+                        tool: tool,
+                        accountId: accountId,
+                        buckets: environment.quota(for: tool)?.buckets ?? [],
+                        density: density
                     )
                 }
                 ServiceStatusCard(tools: [tool], density: density)

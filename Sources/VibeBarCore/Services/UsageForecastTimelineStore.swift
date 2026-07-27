@@ -1,25 +1,30 @@
 import Foundation
 
-/// Persists quota observations used by reset history and pace forecasting.
+/// Persists the pace forecast that was actually shown for each quota bucket.
 ///
-/// Scope mirrors `SubscriptionHistoryStore` where it makes sense:
+/// Scope mirrors `UsageFillTimelineStore`:
 ///
-/// - Every quota for the five core providers is recorded, including Codex
-///   Spark, Claude Fable, and every Gemini Web / AntiGravity lane.
-/// - Slot size and retention follow the quota window so short rolling limits
-///   stay detailed without making weekly/monthly history unnecessarily large.
+/// - Same five core providers, same adaptive slot policy, last sample in a slot
+///   wins, same window-aware retention horizon.
+/// - Written only when a quota refresh succeeds. Nothing here runs at render
+///   time — the live forecast the UI draws is still computed on demand.
 ///
-/// File: `~/.vibebar/fill_timeline.json` (mode 0600).
-public actor UsageFillTimelineStore {
-    public static let shared = UsageFillTimelineStore()
+/// The chart pairs these points with the fill timeline: the fill line is what
+/// happened, this is what was predicted at the time. Recomputing an old
+/// forecast from today's history would quietly launder hindsight into the
+/// projection line, which is exactly what the feature is meant to expose.
+///
+/// File: `~/.vibebar/forecast_timeline.json` (mode 0600).
+public actor UsageForecastTimelineStore {
+    public static let shared = UsageForecastTimelineStore()
 
     private struct Storage: Codable {
         var schemaVersion: Int
-        var points: [FillTimelinePoint]
+        var points: [ForecastTimelinePoint]
 
         init(
-            schemaVersion: Int = UsageFillTimelineStore.storageSchemaVersion,
-            points: [FillTimelinePoint] = []
+            schemaVersion: Int = UsageForecastTimelineStore.storageSchemaVersion,
+            points: [ForecastTimelinePoint] = []
         ) {
             self.schemaVersion = schemaVersion
             self.points = points
@@ -32,54 +37,71 @@ public actor UsageFillTimelineStore {
     private var pendingFlushTask: Task<Void, Never>?
     private var pendingStorage: Storage?
 
-    private static let storageSchemaVersion = 2
+    private static let storageSchemaVersion = 1
     private static let saveThrottleInterval: TimeInterval = 30
+    /// Defensive cap only. Slot cardinality matches the fill timeline and each
+    /// point is roughly twice the payload, so the real file stays far under a
+    /// megabyte; a file past this size is corrupt, not legitimate history.
     private static let maxFileBytes = 24 * 1024 * 1024
     private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok]
 
-    public init(fileURL: URL = UsageFillTimelineStore.defaultFileURL()) {
+    public init(fileURL: URL = UsageForecastTimelineStore.defaultFileURL()) {
         self.fileURL = fileURL
     }
 
     public static func defaultFileURL() -> URL {
         try? VibeBarLocalStore.ensureBaseDirectory()
-        return VibeBarLocalStore.fillTimelineURL
+        return VibeBarLocalStore.forecastTimelineURL
     }
 
     // MARK: - Public API
 
+    /// Record one refresh worth of forecasts. Buckets without a forecast are
+    /// simply omitted by the caller — a missing projection is not stored as a
+    /// zero.
     public func observe(
-        _ quota: AccountQuota,
+        _ forecasts: [BucketForecastObservation],
+        accountId: String,
+        tool: ToolType,
         now: Date = Date(),
         retentionDays: Int = CostDataSettings.defaultRetentionDays
     ) {
-        guard Self.supportedTools.contains(quota.tool) else { return }
+        guard Self.supportedTools.contains(tool), !forecasts.isEmpty else { return }
 
         var storage = load()
         var dirty = false
-        for bucket in quota.buckets {
-            guard bucket.usedPercent.isFinite else { continue }
-            let percent = min(100, max(0, bucket.usedPercent))
-            let slotStart = Self.slotStart(for: now, windowSeconds: bucket.rawWindowSeconds)
+        for forecast in forecasts {
+            guard forecast.projectedUsedPercent.isFinite,
+                  forecast.projectedUsedLowerPercent.isFinite,
+                  forecast.projectedUsedUpperPercent.isFinite
+            else { continue }
+            let slotStart = UsageTimelineSlotPolicy.slotStart(
+                for: now,
+                windowSeconds: forecast.rawWindowSeconds
+            )
             if let idx = storage.points.firstIndex(where: {
-                $0.accountId == quota.accountId
-                    && $0.bucketId == bucket.id
+                $0.accountId == accountId
+                    && $0.bucketId == forecast.bucketId
                     && $0.slotStart == slotStart
             }) {
-                storage.points[idx].usedPercent = percent
                 storage.points[idx].sampledAt = now
-                storage.points[idx].resetAt = bucket.resetAt
-                storage.points[idx].rawWindowSeconds = bucket.rawWindowSeconds
+                storage.points[idx].projectedUsedPercent = forecast.projectedUsedPercent
+                storage.points[idx].projectedUsedLowerPercent = forecast.projectedUsedLowerPercent
+                storage.points[idx].projectedUsedUpperPercent = forecast.projectedUsedUpperPercent
+                storage.points[idx].resetAt = forecast.resetAt
+                storage.points[idx].rawWindowSeconds = forecast.rawWindowSeconds
             } else {
-                storage.points.append(FillTimelinePoint(
-                    accountId: quota.accountId,
-                    tool: quota.tool,
-                    bucketId: bucket.id,
+                storage.points.append(ForecastTimelinePoint(
+                    accountId: accountId,
+                    tool: tool,
+                    bucketId: forecast.bucketId,
                     slotStart: slotStart,
-                    usedPercent: percent,
                     sampledAt: now,
-                    resetAt: bucket.resetAt,
-                    rawWindowSeconds: bucket.rawWindowSeconds
+                    projectedUsedPercent: forecast.projectedUsedPercent,
+                    projectedUsedLowerPercent: forecast.projectedUsedLowerPercent,
+                    projectedUsedUpperPercent: forecast.projectedUsedUpperPercent,
+                    resetAt: forecast.resetAt,
+                    rawWindowSeconds: forecast.rawWindowSeconds
                 ))
             }
             dirty = true
@@ -90,13 +112,13 @@ public actor UsageFillTimelineStore {
     }
 
     /// Points for one account+bucket, oldest first.
-    public func points(accountId: String, bucketId: String) -> [FillTimelinePoint] {
+    public func points(accountId: String, bucketId: String) -> [ForecastTimelinePoint] {
         load().points
             .filter { $0.accountId == accountId && $0.bucketId == bucketId }
             .sorted { $0.slotStart < $1.slotStart }
     }
 
-    public func allPoints() -> [FillTimelinePoint] {
+    public func allPoints() -> [ForecastTimelinePoint] {
         load().points
     }
 
@@ -120,14 +142,6 @@ public actor UsageFillTimelineStore {
     }
 
     // MARK: - Private
-
-    static func hourSlotStart(for date: Date) -> Date {
-        Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / 3_600) * 3_600)
-    }
-
-    static func slotStart(for date: Date, windowSeconds: Int?) -> Date {
-        UsageTimelineSlotPolicy.slotStart(for: date, windowSeconds: windowSeconds)
-    }
 
     private func load() -> Storage {
         if let cached = cachedStorage { return cached }

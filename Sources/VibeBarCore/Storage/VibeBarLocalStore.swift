@@ -71,6 +71,13 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("fill_timeline.json")
     }
 
+    /// Companion to `fillTimelineURL`: what the pace forecast predicted at each
+    /// observation, so the history chart can draw the projection that was
+    /// actually shown instead of recomputing it with hindsight.
+    public static var forecastTimelineURL: URL {
+        baseDirectory.appendingPathComponent("forecast_timeline.json")
+    }
+
     /// Mini-window geometry is persisted out-of-band from `AppSettings` so a
     /// drag-to-move (which fires didMove repeatedly) doesn't rewrite the
     /// whole settings JSON or fan out through every Combine subscriber on

@@ -77,6 +77,21 @@ final class AppEnvironment: ObservableObject {
             settings?.settings.costData ?? .default
         })
         self.costService = costService
+
+        // Give the quota refresh path the same activity inputs the popover
+        // passes when it renders a forecast (see
+        // `SubscriptionUtilizationView.paceForecast(for:)`), so the projection
+        // recorded into the forecast timeline is the projection the user saw.
+        // Cached published state only — this runs after every successful quota
+        // refresh and must never trigger a cost scan.
+        service.activityContextProvider = { [weak costService] tool in
+            guard let snapshot = costService?.snapshot(for: tool) else { return .empty }
+            return QuotaActivityContext(
+                heatmap: snapshot.heatmap,
+                dailyActivity: snapshot.dailyHistory
+            )
+        }
+
         self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
         self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
         self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
