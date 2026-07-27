@@ -15,6 +15,8 @@ final class CostHistoryStoreTests: XCTestCase {
         let todayHour = try XCTUnwrap(calendar.date(byAdding: .hour, value: 10, to: today))
         let yesterday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: today))
         let yesterdayHour = try XCTUnwrap(calendar.date(byAdding: .hour, value: 17, to: yesterday))
+        let olderDay = try XCTUnwrap(calendar.date(byAdding: .day, value: -4, to: today))
+        let olderHour = try XCTUnwrap(calendar.date(byAdding: .hour, value: 11, to: olderDay))
         let todayModels = [
             CostSnapshot.ModelBreakdown(modelName: "gpt-today", costUSD: 1.5, totalTokens: 1_500)
         ]
@@ -41,6 +43,12 @@ final class CostHistoryStoreTests: XCTestCase {
             yesterdayHourlyHistory: [
                 HourlyCostPoint(date: yesterdayHour, costUSD: 2.5, totalTokens: 2_500)
             ],
+            recentHourlyHistory: [
+                HourlyCostPoint(date: olderHour, costUSD: 3.5, totalTokens: 3_500),
+                HourlyCostPoint(date: yesterdayHour, costUSD: 2.5, totalTokens: 2_500),
+                HourlyCostPoint(date: todayHour, costUSD: 1.5, totalTokens: 1_500)
+            ],
+            hourlyCoverageStart: CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: calendar),
             heatmap: .empty(tool: .codex),
             modelBreakdowns: todayModels + yesterdayModels,
             dailyModelBreakdown: [today: todayModels, yesterday: yesterdayModels],
@@ -57,6 +65,12 @@ final class CostHistoryStoreTests: XCTestCase {
 
         XCTAssertEqual(merged.todayHourlyHistory, snapshot.todayHourlyHistory)
         XCTAssertEqual(merged.yesterdayHourlyHistory, snapshot.yesterdayHourlyHistory)
+        // The merge rebuilds the daily series from the store but must carry the
+        // hourly window through untouched — it is live-scan-only data the store
+        // never sees, and dropping it here would strand the chart on two days
+        // no matter how far back the scanner reached.
+        XCTAssertEqual(merged.recentHourlyHistory, snapshot.recentHourlyHistory)
+        XCTAssertEqual(merged.hourlyCoverageStart, snapshot.hourlyCoverageStart)
         XCTAssertEqual(merged.topModels(forHour: todayHour, limit: .max), todayModels)
         XCTAssertEqual(merged.topModels(forHour: yesterdayHour, limit: .max), yesterdayModels)
     }

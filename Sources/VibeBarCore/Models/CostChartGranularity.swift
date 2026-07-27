@@ -38,16 +38,24 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
 
     /// What "Auto" resolves to for a visible span.
     ///
-    /// Thresholds are picked so each mode lands at a readable bar count: about
-    /// 62 hourly bars at the top of the hour range, about 110 daily bars at the
-    /// top of the day range, about 60 weekly bars at the top of the week range,
-    /// and months beyond that — a multi-year domain is a shape, not a series of
-    /// individual weeks.
+    /// The ladder is chosen by how many bars a mode would leave on screen, not
+    /// by how many it *could* draw:
+    ///
+    /// - **≤ 5 days → hour.** Fewer than about six daily bars is a sparse
+    ///   chart: three or four slabs floating in a wide plot. The same span
+    ///   carries 24–120 hourly points, which is where a cost chart actually
+    ///   shows the shape of a working day.
+    /// - **≤ 110 days → day.** The everyday range; 110 daily bars is about as
+    ///   dense as this card can draw before bars stop being comparable.
+    /// - **≤ 240 days → week.** Roughly 16 to 34 weekly bars.
+    /// - **beyond → month.** Eight months is already 34+ weeks; past that the
+    ///   domain is a shape, not a series of individual weeks. A ten-month
+    ///   "All" domain lands here.
     public static func resolve(autoFor visibleSpan: TimeInterval) -> CostChartGranularity {
         let days = max(0, visibleSpan) / dayInterval
-        if days <= 2.6 { return .hour }
+        if days <= 5 { return .hour }
         if days <= 110 { return .day }
-        if days <= 420 { return .week }
+        if days <= 240 { return .week }
         return .month
     }
 
@@ -57,6 +65,10 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
     /// bars; weekly only appears once there are enough weeks to compare, and
     /// monthly once there are at least two full months. Daily is always offered
     /// so the control never collapses to nothing.
+    ///
+    /// The hour unlock stays wider than the Auto threshold on purpose: Auto
+    /// stops reaching for hours at five days, but a user who wants to compare a
+    /// full week hour-by-hour can still ask for it.
     ///
     /// Weekly waits for four whole weeks rather than three: at three weeks the
     /// chart draws three or four slabs, which reads as a bar chart of nothing.

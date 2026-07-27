@@ -199,6 +199,8 @@ public actor CostHistoryStore {
             dailyHistory: dailyPoints,
             todayHourlyHistory: snapshot.todayHourlyHistory,
             yesterdayHourlyHistory: snapshot.yesterdayHourlyHistory,
+            recentHourlyHistory: snapshot.recentHourlyHistory,
+            hourlyCoverageStart: snapshot.hourlyCoverageStart,
             heatmap: snapshot.heatmap,
             modelBreakdowns: snapshot.modelBreakdowns,
             last7DaysModelBreakdowns: snapshot.last7DaysModelBreakdowns,

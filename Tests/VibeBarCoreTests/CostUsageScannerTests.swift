@@ -100,6 +100,165 @@ final class CostUsageScannerTests: XCTestCase {
         XCTAssertEqual(snapshot.todayHourlyHistory.reduce(0) { $0 + $1.totalTokens }, 300_000)
     }
 
+    /// The reason Auto's new Hour step is reachable at all: hourly buckets now
+    /// span the whole retention window, not just yesterday and today.
+    func testCodexScanKeepsHourlyBucketsAcrossTheRetentionWindow() async throws {
+        let fileManager = FileManager.default
+        let home = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostUsageRecentHourly-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: home) }
+
+        let sessions = home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try fileManager.createDirectory(at: sessions, withIntermediateDirectories: true)
+
+        var calendar = Calendar.current
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 20, hour: 20)))
+        let today = calendar.startOfDay(for: now)
+        // Four days back is inside the window and well past yesterday; twenty
+        // days back is outside it.
+        let inWindow = try XCTUnwrap(
+            calendar.date(byAdding: .hour, value: 10, to: calendar.date(byAdding: .day, value: -4, to: today)!)
+        )
+        let outOfWindow = try XCTUnwrap(
+            calendar.date(byAdding: .hour, value: 10, to: calendar.date(byAdding: .day, value: -20, to: today)!)
+        )
+        let lines = [
+            codexTokenCountLine(timestamp: outOfWindow, model: "gpt-5", input: 100_000, cached: 0, output: 0),
+            codexTokenCountLine(timestamp: inWindow, model: "gpt-5", input: 300_000, cached: 0, output: 0)
+        ]
+        try lines.joined(separator: "\n").write(
+            to: sessions.appendingPathComponent("session.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let scanned = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let snapshot = try XCTUnwrap(scanned)
+
+        XCTAssertEqual(
+            snapshot.hourlyCoverageStart,
+            CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: calendar)
+        )
+        let recentByHour = Dictionary(
+            uniqueKeysWithValues: snapshot.recentHourlyHistory.map { ($0.date, $0.totalTokens) }
+        )
+        XCTAssertEqual(recentByHour[inWindow], 200_000)
+        XCTAssertNil(recentByHour[outOfWindow], "a bucket outside the window must not be retained")
+        // Days with spend are zero-filled whole, so the line dips between
+        // sessions instead of cutting a diagonal across the idle hours.
+        XCTAssertEqual(
+            snapshot.recentHourlyHistory.filter { calendar.isDate($0.date, inSameDayAs: inWindow) }.count,
+            24
+        )
+        // Model detail follows the buckets, or the inspector would go blank for
+        // every hour older than yesterday.
+        XCTAssertEqual(snapshot.topModels(forHour: inWindow, limit: .max).count, 1)
+        XCTAssertTrue(snapshot.topModels(forHour: outOfWindow, limit: .max).isEmpty)
+    }
+
+    /// Idle days inside the window carry no buckets — `hourlyCoverageStart` is
+    /// what says they were scanned — but today and yesterday are always drawn,
+    /// so a chart opened on a quiet morning still reads as covered.
+    func testCodexScanAlwaysEmitsTodayAndYesterdayHourlyLanes() async throws {
+        let fileManager = FileManager.default
+        let home = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostUsageIdleHourly-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: home) }
+
+        let sessions = home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try fileManager.createDirectory(at: sessions, withIntermediateDirectories: true)
+
+        var calendar = Calendar.current
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 20, hour: 6)))
+        let today = calendar.startOfDay(for: now)
+        let threeDaysBack = try XCTUnwrap(
+            calendar.date(byAdding: .hour, value: 10, to: calendar.date(byAdding: .day, value: -3, to: today)!)
+        )
+        try codexTokenCountLine(timestamp: threeDaysBack, model: "gpt-5", input: 100_000, cached: 0, output: 0)
+            .write(to: sessions.appendingPathComponent("session.jsonl"), atomically: true, encoding: .utf8)
+
+        let scanned = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let snapshot = try XCTUnwrap(scanned)
+
+        let days = Set(snapshot.recentHourlyHistory.map { calendar.startOfDay(for: $0.date) })
+        let yesterday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: today))
+        XCTAssertTrue(days.contains(today))
+        XCTAssertTrue(days.contains(yesterday))
+        XCTAssertFalse(
+            days.contains(try XCTUnwrap(calendar.date(byAdding: .day, value: -2, to: today))),
+            "an idle day carries no buckets"
+        )
+        // Today stops at the hour in progress rather than drawing the rest of
+        // the day as zeros.
+        XCTAssertEqual(snapshot.recentHourlyHistory.filter { $0.date >= today }.count, 7)
+        XCTAssertEqual(snapshot.recentHourlyHistory.filter { $0.date >= today }, snapshot.todayHourlyHistory)
+        XCTAssertEqual(
+            snapshot.recentHourlyHistory.filter { calendar.isDate($0.date, inSameDayAs: yesterday) },
+            snapshot.yesterdayHourlyHistory
+        )
+    }
+
+    /// `recentHourlyHistory` is a superset of the two day lanes, so it must
+    /// never repeat an hour — a duplicate would both double the total and give
+    /// two chart marks the same identity.
+    func testRecentHourlyHistoryHasNoDuplicateHours() async throws {
+        let fileManager = FileManager.default
+        let home = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostUsageHourlyDupes-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: home) }
+
+        let sessions = home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try fileManager.createDirectory(at: sessions, withIntermediateDirectories: true)
+
+        var calendar = Calendar.current
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        // The day after a spring-forward: the window contains a 23-hour day, so
+        // fixed 24-offset arithmetic would spill one bucket into the next day.
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 3, day: 12, hour: 20)))
+        var lines: [String] = []
+        for dayOffset in 1...6 {
+            let day = try XCTUnwrap(
+                calendar.date(byAdding: .day, value: -dayOffset, to: calendar.startOfDay(for: now))
+            )
+            let stamp = try XCTUnwrap(calendar.date(byAdding: .hour, value: 12, to: day))
+            lines.append(
+                codexTokenCountLine(
+                    timestamp: stamp,
+                    model: "gpt-5",
+                    input: 100_000 * (dayOffset + 1),
+                    cached: 0,
+                    output: 0
+                )
+            )
+        }
+        try lines.joined(separator: "\n").write(
+            to: sessions.appendingPathComponent("session.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let scanned = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let snapshot = try XCTUnwrap(scanned)
+        let dates = snapshot.recentHourlyHistory.map(\.date)
+
+        XCTAssertEqual(Set(dates).count, dates.count, "hourly buckets must be unique")
+        XCTAssertEqual(dates, dates.sorted(), "hourly buckets must be ordered oldest first")
+        // The 23-hour day really is short, and the 24-hour ones really are not.
+        let shortDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 3, day: 8)))
+        XCTAssertEqual(dates.filter { calendar.isDate($0, inSameDayAs: shortDay) }.count, 23)
+        let normalDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 3, day: 9)))
+        XCTAssertEqual(dates.filter { calendar.isDate($0, inSameDayAs: normalDay) }.count, 24)
+    }
+
     func testCodexScanKeepsEveryPerHourAndPerDayModel() async throws {
         let fileManager = FileManager.default
         let home = fileManager.temporaryDirectory

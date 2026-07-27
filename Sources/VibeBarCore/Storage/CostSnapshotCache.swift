@@ -5,10 +5,18 @@ import Foundation
 ///
 /// Files: `~/.vibebar/cost_snapshots/{tool}.json` (mode 0600).
 ///
-/// The full snapshot — heatmap, model breakdowns, daily history, totals —
-/// fits in well under 1 MB even for heavy users, so we just write the whole
-/// blob each time. CostHistoryStore still owns the canonical max-merged
-/// per-day series; this cache is a snapshot of derived view data.
+/// The full snapshot — heatmap, model breakdowns, daily history, totals, and
+/// the `CostChartWindowPolicy.hourlyRetentionDays`-long hourly window — fits in
+/// well under 1 MB even for heavy users, so we just write the whole blob each
+/// time. CostHistoryStore still owns the canonical max-merged per-day series;
+/// this cache is a snapshot of derived view data.
+///
+/// No schema version of its own: every field the scanner added since is
+/// optional on decode, so an older file loads with the new fields empty and the
+/// popover still opens on real numbers. The next scan — seconds later — writes
+/// the complete shape. Wiping the file on a version bump would trade that for a
+/// blank launch. `calculationVersion` still forces a wipe, because a repricing
+/// makes the stored numbers wrong rather than merely narrow.
 public actor CostSnapshotCache {
     public static let shared = CostSnapshotCache()
 
