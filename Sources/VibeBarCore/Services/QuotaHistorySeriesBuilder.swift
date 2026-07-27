@@ -87,6 +87,22 @@ public enum QuotaHistorySeriesBuilder {
     /// (app quit, machine asleep) rather than a sample merely being due.
     private static let gapSlotMultiplier: Double = 2
 
+    /// Slack `QuotaRefreshScheduler` lets macOS add to a scheduled refresh so
+    /// it can coalesce timers. Capped at 30s there.
+    private static let refreshTimerTolerance: TimeInterval = 30
+
+    /// Floor for the coverage-gap threshold, independent of slot width.
+    ///
+    /// Five-hour windows slot at five minutes, so the slot-derived threshold is
+    /// ten — shorter than the 30-minute cadence the refresh picker offers. On a
+    /// slow cadence every sample would then become its own one-point segment
+    /// and the chart would draw nothing at all, because a line needs two
+    /// points. Two consecutive refreshes missed at the slowest supported
+    /// cadence is where coverage genuinely stopped.
+    static let minimumGapSeconds =
+        gapSlotMultiplier * TimeInterval(AppSettings.slowestRefreshIntervalSeconds)
+            + refreshTimerTolerance
+
     /// Build the three series for one `(accountId, tool, bucketId)`.
     ///
     /// Inputs must already be scoped to a single bucket — the builder filters
@@ -223,7 +239,8 @@ public enum QuotaHistorySeriesBuilder {
                     windowSeconds: windowSeconds(previous)
                 )
                 let gap = time(element).timeIntervalSince(time(previous))
-                if windowChanged || gap > slot * gapSlotMultiplier {
+                let threshold = max(slot * gapSlotMultiplier, minimumGapSeconds)
+                if windowChanged || gap > threshold {
                     if !current.isEmpty { segments.append(current) }
                     current = []
                 }

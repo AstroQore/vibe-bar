@@ -681,12 +681,26 @@ private struct GeminiTabPage: View {
                         additionalQuotaSeries: antigravityQuotaSeries
                     )
                 }
+                // One card per account, in the same order the utilization card
+                // above stacks them: Gemini first, AntiGravity as the extra
+                // series. The two quotas reset on their own schedules, so they
+                // cannot share a chart the way they share a bucket list.
                 if let geminiAccount = geminiAccounts.first {
                     QuotaHistoryChartView(
                         tool: .gemini,
                         accountId: geminiAccount.id,
                         buckets: quotaService.cachedQuota(for: geminiAccount.id)?.buckets ?? [],
-                        density: density
+                        density: density,
+                        titleOverride: "Gemini quota history"
+                    )
+                }
+                if let antigravityAccount {
+                    QuotaHistoryChartView(
+                        tool: .antigravity,
+                        accountId: antigravityAccount.id,
+                        buckets: quotaService.cachedQuota(for: antigravityAccount.id)?.buckets ?? [],
+                        density: density,
+                        titleOverride: "AntiGravity quota history"
                     )
                 }
                 ServiceStatusCard(tools: [.gemini], density: density)

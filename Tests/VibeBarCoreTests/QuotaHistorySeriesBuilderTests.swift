@@ -99,7 +99,9 @@ final class QuotaHistorySeriesBuilderTests: XCTestCase {
 
     func testSamplingGapBeyondTwoSlotsStartsNewSegment() {
         let reset = base.addingTimeInterval(TimeInterval(week))
-        // Weekly windows use hourly slots, so the split threshold is 2 hours.
+        // Weekly windows use hourly slots, so the split threshold is 2 hours —
+        // already wider than the slowest refresh cadence, so the floor does not
+        // move it.
         let series = QuotaHistorySeriesBuilder.build(
             fillPoints: [
                 fill(used: 10, at: base, resetAt: reset),
@@ -127,17 +129,53 @@ final class QuotaHistorySeriesBuilderTests: XCTestCase {
         XCTAssertEqual(series.actual[0].count, 2)
     }
 
-    func testFiveHourWindowUsesTighterGapThreshold() {
+    func testFiveHourWindowKeepsSlowestRefreshCadenceInOneSegment() {
         let reset = base.addingTimeInterval(18_000)
-        // Five-hour windows slot at 5 minutes, so an 11-minute gap splits.
+        // Five-hour windows slot at 5 minutes, so the slot-derived threshold is
+        // 10 — but 30 minutes is a cadence the refresh picker offers, and a
+        // line drawn from single-point segments draws nothing at all.
+        let cadence = TimeInterval(AppSettings.slowestRefreshIntervalSeconds)
         let series = QuotaHistorySeriesBuilder.build(
             fillPoints: [
                 fill(used: 10, at: base, resetAt: reset, windowSeconds: 18_000),
-                fill(used: 14, at: base.addingTimeInterval(660), resetAt: reset, windowSeconds: 18_000)
+                fill(used: 14, at: base.addingTimeInterval(cadence), resetAt: reset, windowSeconds: 18_000),
+                fill(
+                    used: 21,
+                    at: base.addingTimeInterval(2 * cadence),
+                    resetAt: reset,
+                    windowSeconds: 18_000
+                )
+            ],
+            range: range()
+        )
+        XCTAssertEqual(series.actual.count, 1)
+        XCTAssertEqual(series.actual[0].map(\.remainingPercent), [90, 86, 79])
+    }
+
+    func testFiveHourWindowStillSplitsOnRealCoverageGap() {
+        let reset = base.addingTimeInterval(18_000)
+        // Beyond two missed refreshes at the slowest cadence (plus the
+        // scheduler's 30s tolerance) the app really was not running.
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: [
+                fill(used: 10, at: base, resetAt: reset, windowSeconds: 18_000),
+                fill(used: 14, at: base.addingTimeInterval(65 * 60), resetAt: reset, windowSeconds: 18_000)
             ],
             range: range()
         )
         XCTAssertEqual(series.actual.count, 2)
+        XCTAssertEqual(series.actual[0].count, 1)
+        XCTAssertEqual(series.actual[1].count, 1)
+    }
+
+    func testGapFloorTracksTheSlowestSelectableRefreshInterval() {
+        // The floor is derived, not hardcoded: adding a slower option to the
+        // picker must widen it rather than silently shred slow-cadence lines.
+        XCTAssertEqual(
+            QuotaHistorySeriesBuilder.minimumGapSeconds,
+            2 * TimeInterval(AppSettings.slowestRefreshIntervalSeconds) + 30
+        )
+        XCTAssertEqual(AppSettings.slowestRefreshIntervalSeconds, 1_800)
     }
 
     // MARK: - Pace replay

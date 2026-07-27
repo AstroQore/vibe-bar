@@ -119,8 +119,12 @@ struct CostHistoryView: View {
     /// Zoom floor. Half a day still shows twelve hourly bars; anything tighter
     /// is more scrolling than signal for a cost chart.
     private static let minimumSpan: TimeInterval = 12 * 3_600
-    /// Opening span, and what a double-tap returns to.
-    private static let resetSpan: TimeInterval = 30 * 86_400
+    /// Opening span, and what a double-tap returns to. Calendar-derived like
+    /// the presets: the domain ends at the end of today, so 30 calendar days
+    /// back from it is a midnight and the chart opens on exactly 30 whole bars.
+    private static var resetSpan: TimeInterval {
+        CostChartWindowPolicy.anchoredSpan(days: 30)
+    }
     /// Marks inside the visible window. Only reachable by manually holding a
     /// fine granularity across a very wide window — beyond this the bars are
     /// thinner than a pixel and only cost frames.
@@ -694,14 +698,17 @@ struct CostHistoryView: View {
 
     // MARK: - Range presets
 
+    /// Presets are calendar spans, not multiples of 86 400 seconds: the domain
+    /// ends at the end of today, so a span measured back from there with
+    /// `Calendar` lands on a midnight even across a 23- or 25-hour DST day.
     private func applyPreset(_ preset: CostTimeframe) {
         guard var current = window else { return }
         switch preset {
         case .today:
-            current.jump(toSpan: Self.dayInterval)
+            current.jump(toSpan: CostChartWindowPolicy.anchoredSpan(days: 1))
         case .yesterday:
             // The one preset that is not anchored at the newest edge.
-            let (start, end) = Self.yesterdayBounds()
+            let (start, end) = CostChartWindowPolicy.yesterdayBounds()
             current = ChartTimeWindow(
                 domainStart: current.domainStart,
                 domainEnd: current.domainEnd,
@@ -710,9 +717,9 @@ struct CostHistoryView: View {
                 visibleEnd: end
             )
         case .week:
-            current.jump(toSpan: 7 * Self.dayInterval)
+            current.jump(toSpan: CostChartWindowPolicy.anchoredSpan(days: 7))
         case .month:
-            current.jump(toSpan: 30 * Self.dayInterval)
+            current.jump(toSpan: CostChartWindowPolicy.anchoredSpan(days: 30))
         case .all:
             current.jump(toSpan: current.domainSpan)
         }
@@ -723,30 +730,26 @@ struct CostHistoryView: View {
     /// Which pill (if any) describes the current window. Free navigation
     /// routinely lands between presets, and none being lit is the honest
     /// answer — not a reason to snap the window to the nearest one.
+    ///
+    /// Matched against the same calendar spans `applyPreset` produces, so a DST
+    /// day's extra (or missing) hour cannot push a freshly applied preset out
+    /// of its own tolerance.
     private func activePreset(window: ChartTimeWindow) -> CostTimeframe? {
         if window.coversDomain { return .all }
         let span = window.visibleSpan
         let tolerance = Self.dayInterval * 0.03
-        let (yesterdayStart, _) = Self.yesterdayBounds()
-        if abs(span - Self.dayInterval) <= tolerance,
+        let (yesterdayStart, yesterdayEnd) = CostChartWindowPolicy.yesterdayBounds()
+        if abs(span - yesterdayEnd.timeIntervalSince(yesterdayStart)) <= tolerance,
            abs(window.visibleStart.timeIntervalSince(yesterdayStart)) <= tolerance {
             return .yesterday
         }
         guard window.isAtDomainEnd else { return nil }
         let anchored: [(CostTimeframe, TimeInterval)] = [
-            (.today, Self.dayInterval),
-            (.week, 7 * Self.dayInterval),
-            (.month, 30 * Self.dayInterval)
+            (.today, CostChartWindowPolicy.anchoredSpan(days: 1)),
+            (.week, CostChartWindowPolicy.anchoredSpan(days: 7)),
+            (.month, CostChartWindowPolicy.anchoredSpan(days: 30))
         ]
         return anchored.first { abs(span - $0.1) <= $0.1 * 0.03 }?.0
-    }
-
-    private static func yesterdayBounds() -> (start: Date, end: Date) {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let start = calendar.date(byAdding: .day, value: -1, to: today)
-            ?? today.addingTimeInterval(-dayInterval)
-        return (start, today)
     }
 
     // MARK: - Granularity
@@ -844,29 +847,34 @@ struct CostHistoryView: View {
     }
 
     /// Hourly detail only exists for yesterday and today — the scanner keeps
-    /// per-hour buckets for those two days and nothing older. Any overlap with
-    /// that stretch is enough to draw hours; a window entirely outside it falls
-    /// back to daily bars.
+    /// per-hour buckets for those two days and nothing older. Reported as whole
+    /// days: inside a retained day, an hour with no bucket means nothing was
+    /// spent rather than evidence being missing.
     private var hourlyCoverage: ClosedRange<Date>? {
         guard let snapshot else { return nil }
-        let first = snapshot.yesterdayHourlyHistory.first?.date
-            ?? snapshot.todayHourlyHistory.first?.date
-        let last = snapshot.todayHourlyHistory.last?.date
-            ?? snapshot.yesterdayHourlyHistory.last?.date
-        guard let first, let last, last >= first else { return nil }
-        return first...last.addingTimeInterval(3_600)
+        return CostChartWindowPolicy.hourlyCoverage(
+            firstHour: snapshot.yesterdayHourlyHistory.first?.date
+                ?? snapshot.todayHourlyHistory.first?.date,
+            lastHour: snapshot.todayHourlyHistory.last?.date
+                ?? snapshot.yesterdayHourlyHistory.last?.date
+        )
     }
 
+    /// Hours are drawn only when hourly evidence covers the *whole* visible
+    /// range. Merely overlapping it would draw — and total — the covered days
+    /// alone, leaving the rest to read as zero with nothing on screen saying
+    /// so; the daily fallback plus the footer note is the honest answer.
     private func hasHourlyCoverage(in range: ClosedRange<Date>) -> Bool {
-        guard let coverage = hourlyCoverage else { return false }
-        return coverage.lowerBound <= range.upperBound && coverage.upperBound >= range.lowerBound
+        CostChartWindowPolicy.covers(hourlyCoverage, range: range)
     }
 
     // MARK: - Data shaping
 
-    /// Buckets that touch the visible range, oldest first. A bucket straddling
-    /// an edge is kept whole: it is a real bar the user can see, and cutting its
-    /// total to the visible slice would make the footer disagree with the chart.
+    /// Buckets that occupy visible time, oldest first. A bucket straddling an
+    /// edge is kept whole: it is a real bar the user can see, and cutting its
+    /// total to the visible slice would make the footer disagree with the
+    /// chart. A bucket merely *touching* an edge is not visible at all and is
+    /// left out — see `CostChartWindowPolicy.bucketOverlaps`.
     private func visiblePoints(
         window: ChartTimeWindow,
         granularity: CostChartGranularity
@@ -985,8 +993,11 @@ struct CostHistoryView: View {
         to range: ClosedRange<Date>
     ) -> [Element] {
         points.filter { element in
-            let start = element[keyPath: date]
-            return start <= range.upperBound && start.addingTimeInterval(bucket) >= range.lowerBound
+            CostChartWindowPolicy.bucketOverlaps(
+                start: element[keyPath: date],
+                width: bucket,
+                range: range
+            )
         }
     }
 

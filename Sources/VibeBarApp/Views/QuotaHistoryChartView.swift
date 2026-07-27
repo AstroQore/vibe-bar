@@ -60,6 +60,9 @@ struct QuotaHistoryChartView: View {
     let accountId: String
     let buckets: [QuotaBucket]
     let density: Theme.Density
+    /// Set when a page shows more than one of these cards and "Quota history"
+    /// alone would not say whose.
+    var titleOverride: String? = nil
 
     @EnvironmentObject var quotaService: QuotaService
 
@@ -121,7 +124,7 @@ struct QuotaHistoryChartView: View {
     private func header(historyBuckets: [QuotaBucket]) -> some View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("Quota history")
+                Text(titleOverride ?? "Quota history")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 8)
                 if window != nil, !rangeOptions.isEmpty {
@@ -696,8 +699,21 @@ struct QuotaHistoryChartView: View {
         return quotaService.observationsByAccountBucket[key] ?? []
     }
 
+    /// Account, bucket, and the shape of the bucket's observed fill lane.
+    ///
+    /// The forecast snapshots live in an actor-backed store this view cannot
+    /// observe, so keying only on account and bucket would freeze the forecast
+    /// line at whatever was on disk when the page opened. Every refresh that
+    /// records a projection also appends a fill point to
+    /// `QuotaService.observationsByAccountBucket`, which *is* `@Published` —
+    /// so the fill lane's count and newest timestamp are the cheapest honest
+    /// signal that there is a new projection to read.
     private var forecastLoadKey: String {
-        "\(accountId)|\(activeBucket(in: bucketsWithHistory)?.id ?? "")"
+        let bucketId = activeBucket(in: bucketsWithHistory)?.id ?? ""
+        guard !bucketId.isEmpty else { return "\(accountId)||0|0" }
+        let fills = fillPoints(bucketId: bucketId)
+        let newest = fills.last?.sampledAt.timeIntervalSince1970 ?? 0
+        return "\(accountId)|\(bucketId)|\(fills.count)|\(newest)"
     }
 
     private func loadForecastPoints(bucketId: String?) async {
