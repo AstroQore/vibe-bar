@@ -2,6 +2,99 @@ import SwiftUI
 import Charts
 import VibeBarCore
 
+/// One headed group of independently resettable quotas.
+///
+/// Claude splits its weekly allowance across model scopes ("Fable", "Opus", …)
+/// and Codex splits its by limit name; each of those is a group, and the
+/// ungrouped remainder (Claude's 5 Hours + Weekly) is a group too — the one
+/// Subscription Utilization prints no heading for.
+struct QuotaBucketGroup: Identifiable {
+    let id: String
+    let title: String?
+    let buckets: [QuotaBucket]
+}
+
+/// Single source of truth for how a provider page splits an account's quotas
+/// into headed groups.
+///
+/// `SubscriptionUtilizationView` prints the heading above the first row of each
+/// group; the quota-history cards draw one chart per group. Both have to agree
+/// on where a group starts and what it is called, so both read this.
+enum QuotaBucketGrouping {
+    /// The heading a bucket belongs under, or `nil` for the ungrouped rows the
+    /// utilization card prints without a heading.
+    ///
+    /// `pageTool` is the provider page being rendered and `itemTool` the tool
+    /// the bucket actually came from — they differ only for linked products
+    /// (AntiGravity on the Gemini page).
+    static func title(pageTool: ToolType, itemTool: ToolType, bucket: QuotaBucket) -> String? {
+        if let title = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty {
+            return title
+        }
+        if pageTool == .gemini, itemTool == .gemini {
+            return "Gemini Chat"
+        }
+        return nil
+    }
+
+    /// Split `buckets` into runs that share a heading, preserving the
+    /// provider's own bucket order.
+    ///
+    /// Contiguous by design: the utilization card decides "this row starts a
+    /// group" by comparing with the row above it, so a title that reappeared
+    /// after an interruption would print twice there. Grouping the same way
+    /// keeps one chart per printed heading rather than per distinct string.
+    static func groups(
+        pageTool: ToolType,
+        itemTool: ToolType,
+        buckets: [QuotaBucket]
+    ) -> [QuotaBucketGroup] {
+        var result: [QuotaBucketGroup] = []
+        for bucket in buckets {
+            let title = title(pageTool: pageTool, itemTool: itemTool, bucket: bucket)
+            if let last = result.last, last.title == title {
+                result[result.count - 1] = QuotaBucketGroup(
+                    id: last.id,
+                    title: last.title,
+                    buckets: last.buckets + [bucket]
+                )
+            } else {
+                result.append(
+                    QuotaBucketGroup(
+                        id: "\(itemTool.rawValue)|\(result.count)|\(title ?? "")",
+                        title: title,
+                        buckets: [bucket]
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    /// Groups worth giving a history card.
+    ///
+    /// A line needs two points, so a group nobody has observed twice yet would
+    /// render an empty card — and on a fresh install *every* group would. Keep
+    /// the ones with something to draw; when none of them has anything, keep
+    /// exactly one so the "history builds up as refreshes come in" note is
+    /// still said once instead of once per quota scope.
+    static func chartable(
+        _ groups: [QuotaBucketGroup],
+        accountId: String,
+        observations: [SubscriptionHistoryKey: [FillTimelinePoint]]
+    ) -> [QuotaBucketGroup] {
+        let drawable = groups.filter { group in
+            group.buckets.contains { bucket in
+                let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
+                return (observations[key]?.count ?? 0) > 1
+            }
+        }
+        if !drawable.isEmpty { return drawable }
+        return groups.isEmpty ? [] : [groups[0]]
+    }
+}
+
 /// One drawable point on a quota history line. Segment membership travels with
 /// the point as `seriesKey` so Swift Charts never joins two sides of a reset
 /// (or of a stretch where Vibe Bar was not running) into one stroke.
@@ -21,9 +114,20 @@ private struct QuotaBandPoint: Identifiable {
     let high: Double
 }
 
-/// What the hover crosshair resolved to at one instant.
-private struct QuotaHoverReading {
-    let time: Date
+/// Everything one bucket contributes to the plot, already clipped and thinned.
+private struct QuotaBucketLines: Identifiable {
+    let id: String
+    let color: Color
+    let forecastColor: Color
+    let actual: [QuotaLinePoint]
+    let forecast: [QuotaLinePoint]
+}
+
+/// What the hover crosshair resolved to on one bucket's lines.
+private struct QuotaHoverBucketReading: Identifiable {
+    let id: String
+    let title: String
+    let color: Color
     let actual: Double?
     let pace: Double?
     let forecast: Double?
@@ -31,72 +135,104 @@ private struct QuotaHoverReading {
     var isEmpty: Bool { actual == nil && pace == nil && forecast == nil }
 }
 
+/// What the hover crosshair resolved to at one instant, across the group.
+private struct QuotaHoverReading {
+    let time: Date
+    let buckets: [QuotaHoverBucketReading]
+
+    var isEmpty: Bool { buckets.allSatisfy(\.isEmpty) }
+}
+
 /// Everything that decides the shape of the chart. Rebuilding is keyed on this
 /// rather than on the raw arrays: a quota refresh appends one point, and only
 /// then is it worth re-segmenting the series.
 private struct QuotaSeriesSignature: Equatable {
-    var bucketId: String
-    var fillCount: Int
-    var fillStart: Date?
-    var fillEnd: Date?
-    var forecastCount: Int
-    var forecastEnd: Date?
+    struct Entry: Equatable {
+        var bucketId: String
+        var fillCount: Int
+        var fillStart: Date?
+        var fillEnd: Date?
+        var forecastCount: Int
+        var forecastEnd: Date?
+    }
+
+    var entries: [Entry]
 }
 
-/// Quota history over time: what was left, what an even burn would have left,
-/// and what the forecast said would be left at reset — each drawn only where it
-/// was actually observed.
+/// Quota history over time for one group of quotas: what was left, what an even
+/// burn would have left, and what the forecast said would be left at reset —
+/// each drawn only where it was actually observed.
 ///
-/// The three lines answer three different questions and are deliberately not
-/// merged: `actual` is evidence, `pace` is the wall-clock reference, and
-/// `forecast` is the projection *as recorded at the time*, never recomputed
-/// with hindsight. Between quota windows there is simply no line, which is why
-/// the builder hands back segments instead of flat arrays.
+/// The card follows its group the way "Reset history" follows its bucket: one
+/// chart per heading, no picker. Buckets that reset on different schedules but
+/// belong to the same scope (Claude's 5 Hours and Weekly, say) overlay in one
+/// plot and are told apart by hue, because the question "how is this scope
+/// doing" is one question.
+///
+/// The lines answer different questions and are deliberately not merged:
+/// `actual` is evidence, `pace` is the wall-clock reference, and `forecast` is
+/// the projection *as recorded at the time*, never recomputed with hindsight.
+/// Between quota windows there is simply no line, which is why the builder
+/// hands back segments instead of flat arrays.
 ///
 /// Navigation is the approved thumbnail + gesture hybrid: a brush strip covers
 /// the whole domain, while drag-pan and pinch-zoom work directly on the plot.
 struct QuotaHistoryChartView: View {
     let tool: ToolType
     let accountId: String
-    let buckets: [QuotaBucket]
+    let group: QuotaBucketGroup
     let density: Theme.Density
-    /// Set when a page shows more than one of these cards and "Quota history"
-    /// alone would not say whose.
+    /// Set when a page shows more than one of these cards for *different
+    /// products* and "Quota history" alone would not say whose.
     var titleOverride: String? = nil
+    /// Print the group's name under the title. Set when the account has more
+    /// than one group, mirroring the headings in Subscription Utilization.
+    var showsGroupTitle: Bool = false
 
     @EnvironmentObject var quotaService: QuotaService
+    @Environment(\.colorScheme) private var colorScheme
 
-    @State private var selectedBucketId: String?
-    @State private var forecastPoints: [ForecastTimelinePoint] = []
-    @State private var series: QuotaHistorySeries = .empty
+    @State private var forecastByBucket: [String: [ForecastTimelinePoint]] = [:]
+    @State private var seriesByBucket: [String: QuotaHistorySeries] = [:]
     @State private var miniSegments: [[QuotaHistorySample]] = []
     @State private var window: ChartTimeWindow?
-    @State private var windowBucketId: String?
+    @State private var windowKey: String?
     @State private var initialSpan: TimeInterval = 24 * 3_600
     @State private var hoverDate: Date?
     @State private var panBase: ChartTimeWindow?
     @State private var magnifyBase: ChartTimeWindow?
 
-    /// Same green as a healthy remaining-quota bar, so "quota left" reads the
-    /// same on the chart as it does on the bar above it.
-    private static let actualColor = Color(red: 0.18, green: 0.74, blue: 0.55)
-    private static let forecastColor = Color(red: 0.20, green: 0.56, blue: 0.88)
+    /// Hue per bucket inside one group, reused from the accents the rest of the
+    /// app already spends: the healthy-quota green, the forecast blue, the
+    /// "watch" amber, AntiGravity's violet, Claude's coral. First bucket green
+    /// keeps a single-quota chart looking exactly like it did before groups.
+    private static let bucketPalette: [Color] = [
+        Color(red: 0.18, green: 0.74, blue: 0.55),
+        Color(red: 0.20, green: 0.56, blue: 0.88),
+        Color(red: 0.97, green: 0.62, blue: 0.20),
+        Color(red: 0.55, green: 0.40, blue: 0.92),
+        Color(red: 0.93, green: 0.40, blue: 0.40)
+    ]
     private static let paceColor = Color.secondary
 
     /// Marks per line inside the visible window. Beyond this the strokes stop
-    /// gaining detail and start costing frames on a zoomed-out weekly domain.
+    /// gaining detail and start costing frames on a zoomed-out weekly domain —
+    /// so the budget is shared out across however many buckets overlay.
     private static let visibleMarkLimit = 520
+    private static let minimumMarkLimit = 140
     private static let miniMarkLimit = 160
+    /// Past this many reset lines the plot reads as a picket fence rather than
+    /// as a set of boundaries, so a zoomed-out five-hour quota drops them.
+    private static let visibleResetLimit = 24
 
     var body: some View {
-        let historyBuckets = bucketsWithHistory
-        let bucket = activeBucket(in: historyBuckets)
+        let buckets = bucketsWithHistory
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
-            header(historyBuckets: historyBuckets)
+            header
 
-            if let bucket, let window, window.domainSpan > 0 {
-                chartBody(bucket: bucket, window: window)
+            if let first = buckets.first, let window, window.domainSpan > 0 {
+                chartBody(buckets: buckets, primary: first, window: window)
             } else {
                 emptyNote
             }
@@ -111,30 +247,36 @@ struct QuotaHistoryChartView: View {
                 .stroke(.separator.opacity(0.4), lineWidth: 0.5)
         )
         .task(id: forecastLoadKey) {
-            await loadForecastPoints(bucketId: bucket?.id)
+            await loadForecastPoints()
         }
-        .onChange(of: seriesSignature(for: bucket), initial: true) { _, signature in
-            rebuild(signature: signature, bucket: bucket)
+        .onChange(of: seriesSignature, initial: true) { _, _ in
+            rebuild()
         }
     }
 
     // MARK: - Header
 
-    @ViewBuilder
-    private func header(historyBuckets: [QuotaBucket]) -> some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(titleOverride ?? "Quota history")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                Spacer(minLength: 8)
-                if window != nil, !rangeOptions.isEmpty {
-                    pillGroup(rangeOptions) { option in
-                        applyRange(option)
-                    }
+                if showsGroupTitle, let groupTitle = group.title {
+                    // Same treatment as the group heading in Subscription
+                    // Utilization, so the two surfaces read as one section.
+                    Text(groupTitle)
+                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.4)
+                        .lineLimit(1)
                 }
             }
-            if historyBuckets.count > 1 {
-                bucketPills(bucketOptions(historyBuckets))
+            Spacer(minLength: 8)
+            if window != nil, !rangeOptions.isEmpty {
+                pillGroup(rangeOptions) { option in
+                    applyRange(option)
+                }
             }
         }
     }
@@ -150,20 +292,33 @@ struct QuotaHistoryChartView: View {
     // MARK: - Chart
 
     @ViewBuilder
-    private func chartBody(bucket: QuotaBucket, window: ChartTimeWindow) -> some View {
+    private func chartBody(
+        buckets: [QuotaBucket],
+        primary: QuotaBucket,
+        window: ChartTimeWindow
+    ) -> some View {
         let binding = Binding<ChartTimeWindow>(
             get: { self.window ?? window },
             set: { self.window = $0 }
         )
         let visible = window.visibleRange
-        let actualPoints = linePoints(series.actual, kind: "actual", range: visible)
-        let pacePoints = linePoints(series.pace, kind: "pace", range: visible)
-        let forecastLine = forecastLinePoints(range: visible)
-        let bandPoints = forecastBandPoints(range: visible)
-        let resets = series.resetBoundaries.filter { visible.contains($0) }
+        let isSingle = buckets.count == 1
+        let limit = max(Self.minimumMarkLimit, Self.visibleMarkLimit / max(1, buckets.count))
+        let lines = bucketLines(buckets: buckets, range: visible, limit: limit)
+        let primarySeries = seriesByBucket[primary.id] ?? .empty
+        // Only a single-bucket chart can afford the wall-clock reference and
+        // the uncertainty band: two of them overlaid is mud, and the pace
+        // reading moves into the hover tooltip instead.
+        let pacePoints = isSingle
+            ? linePoints(primarySeries.pace, kind: "pace", range: visible, limit: limit)
+            : []
+        let bandPoints = isSingle
+            ? forecastBandPoints(primarySeries.forecast, range: visible, limit: limit)
+            : []
+        let resets = resetMarks(primarySeries: primarySeries, range: visible)
 
         VStack(alignment: .leading, spacing: 6) {
-            legend(bucket: bucket)
+            legend(buckets: buckets)
 
             Chart {
                 ForEach(bandPoints) { point in
@@ -173,7 +328,7 @@ struct QuotaHistoryChartView: View {
                         yEnd: .value("High", point.high),
                         series: .value("Band", point.seriesKey)
                     )
-                    .foregroundStyle(Self.forecastColor.opacity(0.08))
+                    .foregroundStyle(forecastTint(Self.bucketPalette[0]).opacity(0.08))
                 }
                 ForEach(resets, id: \.self) { reset in
                     RuleMark(x: .value("Reset", reset))
@@ -189,23 +344,27 @@ struct QuotaHistoryChartView: View {
                     .foregroundStyle(Self.paceColor.opacity(0.85))
                     .lineStyle(StrokeStyle(lineWidth: 1.6, dash: [5, 4]))
                 }
-                ForEach(forecastLine) { point in
-                    LineMark(
-                        x: .value("Time", point.time),
-                        y: .value("Left", point.value),
-                        series: .value("Line", point.seriesKey)
-                    )
-                    .foregroundStyle(Self.forecastColor)
-                    .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, dash: [2, 3.4]))
+                ForEach(lines) { line in
+                    ForEach(line.forecast) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("Left", point.value),
+                            series: .value("Line", point.seriesKey)
+                        )
+                        .foregroundStyle(line.forecastColor)
+                        .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, dash: [2, 3.4]))
+                    }
                 }
-                ForEach(actualPoints) { point in
-                    LineMark(
-                        x: .value("Time", point.time),
-                        y: .value("Left", point.value),
-                        series: .value("Line", point.seriesKey)
-                    )
-                    .foregroundStyle(Self.actualColor)
-                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                ForEach(lines) { line in
+                    ForEach(line.actual) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("Left", point.value),
+                            series: .value("Line", point.seriesKey)
+                        )
+                        .foregroundStyle(line.color)
+                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    }
                 }
             }
             .chartXScale(domain: visible)
@@ -229,20 +388,25 @@ struct QuotaHistoryChartView: View {
                 }
             }
             .chartOverlay { proxy in
-                interactionOverlay(proxy: proxy, bucket: bucket, window: binding)
+                interactionOverlay(
+                    proxy: proxy,
+                    buckets: buckets,
+                    primary: primary,
+                    window: binding
+                )
             }
             .frame(height: density.quotaHistoryChartHeight)
 
             ChartBrushNavigator(
                 window: binding,
-                accent: Self.actualColor,
+                accent: Self.bucketPalette[0],
                 height: density.chartBrushHeight,
                 accessibilityDescription: "Quota history range navigator"
             ) { geometry in
                 miniPath(in: geometry)
             }
 
-            Text(scopeNote(bucket: bucket, window: window))
+            Text(scopeNote(buckets: buckets, window: window))
                 .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
@@ -271,9 +435,21 @@ struct QuotaHistoryChartView: View {
             }
         }
         .stroke(
-            Self.actualColor.opacity(0.75),
+            Self.bucketPalette[0].opacity(0.75),
             style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round)
         )
+    }
+
+    /// Reset lines for the plot. In a multi-bucket chart only the
+    /// shortest-window quota's boundaries are drawn — its sawtooth is the one a
+    /// reader is trying to line up, and stacking a second schedule on top of it
+    /// just stripes the plot.
+    private func resetMarks(
+        primarySeries: QuotaHistorySeries,
+        range: ClosedRange<Date>
+    ) -> [Date] {
+        let visible = primarySeries.resetBoundaries.filter { range.contains($0) }
+        return visible.count > Self.visibleResetLimit ? [] : visible
     }
 
     // MARK: - Legend
@@ -284,51 +460,135 @@ struct QuotaHistoryChartView: View {
         case dotted
     }
 
+    /// One legend column: a stroke swatch, what it is, where it stands now, and
+    /// an optional second reading underneath.
+    private struct LegendBlock: Identifiable {
+        let id: String
+        let stroke: LegendStroke
+        let color: Color
+        let label: String
+        let value: String
+        let detail: String?
+    }
+
+    /// Legend + current readings.
+    ///
+    /// Laid out as metric columns rather than a run of inline chips so the
+    /// swatch row, the percentage row, and the at-reset row each sit on one
+    /// shared baseline no matter how long a bucket's name is — the same fix the
+    /// cost card's footer uses. The detail row is laid out for every column
+    /// (blank when a bucket has no projection) so one forecast cannot push its
+    /// own column up out of line.
     @ViewBuilder
-    private func legend(bucket: QuotaBucket) -> some View {
-        let items: [(LegendStroke, Color, String, String?)] = [
-            (.solid, Self.actualColor, "Quota left", currentRemainingLabel(bucket: bucket)),
-            (.dashed, Self.paceColor, "Time-only pace", currentPaceLabel(bucket: bucket)),
-            (.dotted, Self.forecastColor, "Forecast at reset", currentForecastLabel(bucket: bucket))
-        ]
+    private func legend(buckets: [QuotaBucket]) -> some View {
+        let blocks = legendBlocks(buckets: buckets)
+        let showsDetail = blocks.contains { $0.detail != nil }
+        let hint = forecastHint(blocks: blocks)
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    legendItem(stroke: item.0, color: item.1, label: item.2, value: item.3)
-                }
-                Spacer(minLength: 0)
+            HStack(alignment: .top, spacing: 14) {
+                legendRow(blocks, spacing: 14, showsDetail: showsDetail)
+                Spacer(minLength: 14)
+                hint
+            }
+            HStack(alignment: .top, spacing: 8) {
+                legendRow(blocks, spacing: 8, showsDetail: showsDetail)
+                Spacer(minLength: 8)
+                hint
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                legendRow(blocks, spacing: 8, showsDetail: showsDetail)
+                hint.frame(maxWidth: .infinity, alignment: .leading)
             }
             VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    legendItem(stroke: item.0, color: item.1, label: item.2, value: item.3)
+                ForEach(blocks) { block in
+                    legendBlock(block, showsDetail: showsDetail)
                 }
+                hint.frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
-    private func legendItem(
-        stroke: LegendStroke,
-        color: Color,
-        label: String,
-        value: String?
+    private func legendRow(
+        _ blocks: [LegendBlock],
+        spacing: CGFloat,
+        showsDetail: Bool
     ) -> some View {
-        HStack(spacing: 4) {
-            legendSwatch(stroke: stroke, color: color)
-            Text(label)
-                .font(.system(size: max(9, density.subtitleFontSize - 1)))
-                .foregroundStyle(.secondary)
-            if let value {
-                Text(value)
-                    .font(
-                        .system(
-                            size: max(9, density.subtitleFontSize - 1),
-                            weight: .semibold,
-                            design: .rounded
-                        ).monospacedDigit()
-                    )
-                    .foregroundStyle(color)
+        HStack(alignment: .top, spacing: spacing) {
+            ForEach(blocks) { block in
+                legendBlock(block, showsDetail: showsDetail)
             }
         }
+    }
+
+    private func legendBlocks(buckets: [QuotaBucket]) -> [LegendBlock] {
+        var blocks: [LegendBlock] = buckets.enumerated().map { index, bucket in
+            LegendBlock(
+                id: "bucket-\(bucket.id)",
+                stroke: .solid,
+                color: color(at: index),
+                label: bucket.title,
+                value: currentRemainingLabel(bucket: bucket),
+                detail: currentForecastLabel(bucket: bucket).map { "\($0) at reset" }
+            )
+        }
+        // The wall-clock reference only gets a line (and therefore a legend
+        // entry) when it is the sole thing sharing the plot with one quota.
+        if buckets.count == 1, let pace = currentPaceLabel(bucket: buckets[0]) {
+            blocks.append(
+                LegendBlock(
+                    id: "pace",
+                    stroke: .dashed,
+                    color: Self.paceColor,
+                    label: "Time-only pace",
+                    value: pace,
+                    detail: nil
+                )
+            )
+        }
+        return blocks
+    }
+
+    @ViewBuilder
+    private func forecastHint(blocks: [LegendBlock]) -> some View {
+        if blocks.contains(where: { $0.detail != nil }) {
+            HStack(spacing: 4) {
+                legendSwatch(stroke: .dotted, color: .secondary)
+                Text("forecast")
+                    .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
+                    .foregroundStyle(.tertiary)
+            }
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private func legendBlock(_ block: LegendBlock, showsDetail: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
+                legendSwatch(stroke: block.stroke, color: block.color)
+                Text(block.label.uppercased())
+                    .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .tracking(0.4)
+            }
+            Text(block.value)
+                .font(
+                    .system(
+                        size: density.bucketTitleFontSize,
+                        weight: .semibold,
+                        design: .rounded
+                    ).monospacedDigit()
+                )
+                .foregroundStyle(block.color)
+            if showsDetail {
+                Text(block.detail ?? " ")
+                    .font(.system(size: max(8, density.resetCountdownFontSize - 2)))
+                    .foregroundStyle(.tertiary)
+                    .opacity(block.detail == nil ? 0 : 1)
+                    .accessibilityHidden(block.detail == nil)
+            }
+        }
+        .lineLimit(1)
         .fixedSize(horizontal: true, vertical: false)
     }
 
@@ -351,7 +611,8 @@ struct QuotaHistoryChartView: View {
 
     private func interactionOverlay(
         proxy: ChartProxy,
-        bucket: QuotaBucket,
+        buckets: [QuotaBucket],
+        primary: QuotaBucket,
         window: Binding<ChartTimeWindow>
     ) -> some View {
         GeometryReader { geometry in
@@ -386,7 +647,7 @@ struct QuotaHistoryChartView: View {
                     }
 
                 if let hoverDate,
-                   let reading = hoverReading(at: hoverDate, bucket: bucket),
+                   let reading = hoverReading(at: hoverDate, buckets: buckets, primary: primary),
                    let x = proxy.position(forX: reading.time),
                    let plot {
                     Rectangle()
@@ -394,7 +655,7 @@ struct QuotaHistoryChartView: View {
                         .frame(width: 1, height: plot.height)
                         .offset(x: plotMinX + x, y: plot.minY)
                         .allowsHitTesting(false)
-                    tooltip(reading)
+                    tooltip(reading, showsBucketTitles: buckets.count > 1)
                         .offset(x: tooltipX(plotMinX: plotMinX, x: x, width: geometry.size.width))
                         .allowsHitTesting(false)
                 }
@@ -433,27 +694,43 @@ struct QuotaHistoryChartView: View {
     }
 
     private func tooltipX(plotMinX: CGFloat, x: CGFloat, width: CGFloat) -> CGFloat {
-        let tooltipWidth: CGFloat = 168
+        let tooltipWidth = Self.tooltipWidth
         return min(max(plotMinX + x - tooltipWidth / 2, 0), max(0, width - tooltipWidth))
     }
 
-    private func tooltip(_ reading: QuotaHoverReading) -> some View {
+    private static let tooltipWidth: CGFloat = 178
+
+    private func tooltip(_ reading: QuotaHoverReading, showsBucketTitles: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(Self.tooltipFormatter.string(from: reading.time))
                 .font(.system(size: 10, weight: .semibold))
-            if reading.isEmpty {
-                Text("No active window")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.white.opacity(0.7))
-            } else {
-                if let actual = reading.actual {
-                    tooltipRow("Quota left", percent(actual), color: Self.actualColor)
+            ForEach(reading.buckets) { bucket in
+                if showsBucketTitles {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(bucket.color)
+                            .frame(width: 5, height: 5)
+                        Text(bucket.title)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, 1)
                 }
-                if let pace = reading.pace {
-                    tooltipRow("Pace", percent(pace), color: .white.opacity(0.8))
-                }
-                if let forecast = reading.forecast {
-                    tooltipRow("At reset", percent(forecast), color: Self.forecastColor)
+                if bucket.isEmpty {
+                    Text("No active window")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.7))
+                } else {
+                    if let actual = bucket.actual {
+                        tooltipRow("Quota left", percent(actual), color: bucket.color)
+                    }
+                    if let pace = bucket.pace {
+                        tooltipRow("Pace", percent(pace), color: .white.opacity(0.8))
+                    }
+                    if let forecast = bucket.forecast {
+                        tooltipRow("At reset", percent(forecast), color: bucket.color.opacity(0.75))
+                    }
                 }
             }
         }
@@ -461,11 +738,11 @@ struct QuotaHistoryChartView: View {
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.87)))
         .foregroundStyle(.white)
-        .frame(width: 168, alignment: .leading)
+        .frame(width: Self.tooltipWidth, alignment: .leading)
     }
 
     private func tooltipRow(_ label: String, _ value: String, color: Color) -> some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(label)
                 .font(.system(size: 9))
                 .foregroundStyle(.white.opacity(0.75))
@@ -476,22 +753,41 @@ struct QuotaHistoryChartView: View {
         }
     }
 
-    /// Nearest reading on each line, or nothing at all when the cursor sits in
-    /// a stretch with no coverage — a gap is information, not a rounding error,
-    /// so it is never bridged to the closest sample on either side.
-    private func hoverReading(at date: Date, bucket: QuotaBucket) -> QuotaHoverReading? {
+    /// Nearest reading on each line, per bucket, or nothing at all for a bucket
+    /// whose coverage does not reach the cursor — a gap is information, not a
+    /// rounding error, so it is never bridged to the closest sample on either
+    /// side. The time label follows the shortest-window quota, which is the one
+    /// sampled most densely.
+    private func hoverReading(
+        at date: Date,
+        buckets: [QuotaBucket],
+        primary: QuotaBucket
+    ) -> QuotaHoverReading? {
         guard let window else { return nil }
-        let slot = UsageTimelineSlotPolicy.slotSeconds(windowSeconds: bucket.rawWindowSeconds)
+        let slot = UsageTimelineSlotPolicy.slotSeconds(windowSeconds: primary.rawWindowSeconds)
         let tolerance = max(slot * 2, window.visibleSpan / 80)
-        let actual = nearestSample(in: series.actual, to: date, tolerance: tolerance)
-        let pace = nearestSample(in: series.pace, to: date, tolerance: tolerance)
-        let forecast = nearestForecast(to: date, tolerance: tolerance)
-        return QuotaHoverReading(
-            time: actual?.time ?? forecast?.time ?? date,
-            actual: actual?.remainingPercent,
-            pace: pace?.remainingPercent,
-            forecast: forecast?.remainingPercent
-        )
+        var readings: [QuotaHoverBucketReading] = []
+        var anchor: Date?
+        for (index, bucket) in buckets.enumerated() {
+            let series = seriesByBucket[bucket.id] ?? .empty
+            let actual = nearestSample(in: series.actual, to: date, tolerance: tolerance)
+            let pace = nearestSample(in: series.pace, to: date, tolerance: tolerance)
+            let forecast = nearestForecast(in: series.forecast, to: date, tolerance: tolerance)
+            if bucket.id == primary.id {
+                anchor = actual?.time ?? forecast?.time
+            }
+            readings.append(
+                QuotaHoverBucketReading(
+                    id: bucket.id,
+                    title: bucket.title,
+                    color: color(at: index),
+                    actual: actual?.remainingPercent,
+                    pace: pace?.remainingPercent,
+                    forecast: forecast?.remainingPercent
+                )
+            )
+        }
+        return QuotaHoverReading(time: anchor ?? date, buckets: readings)
     }
 
     private func nearestSample(
@@ -514,12 +810,13 @@ struct QuotaHistoryChartView: View {
     }
 
     private func nearestForecast(
+        in segments: [[QuotaHistoryForecastSample]],
         to date: Date,
         tolerance: TimeInterval
     ) -> QuotaHistoryForecastSample? {
         var best: QuotaHistoryForecastSample?
         var bestDistance = tolerance
-        for segment in series.forecast {
+        for segment in segments {
             for sample in segment {
                 let distance = abs(sample.time.timeIntervalSince(date))
                 if distance <= bestDistance {
@@ -567,18 +864,6 @@ struct QuotaHistoryChartView: View {
         return options
     }
 
-    private func bucketOptions(_ historyBuckets: [QuotaBucket]) -> [PillOption] {
-        let active = activeBucket(in: historyBuckets)?.id
-        return historyBuckets.map { bucket in
-            PillOption(
-                id: bucket.id,
-                label: bucketLabel(bucket),
-                span: nil,
-                isSelected: bucket.id == active
-            )
-        }
-    }
-
     private func applyRange(_ option: PillOption) {
         guard var current = window else { return }
         if let span = option.span {
@@ -588,48 +873,6 @@ struct QuotaHistoryChartView: View {
         }
         window = current
         hoverDate = nil
-    }
-
-    /// Claude can expose seven independently resettable quotas, which is more
-    /// pills than the narrow quota column fits on one line. Prefer one row,
-    /// then let `ViewThatFits` fall back to two or three — chunking keeps every
-    /// label fully legible instead of scaling them into illegibility.
-    @ViewBuilder
-    private func bucketPills(_ options: [PillOption]) -> some View {
-        let select: (PillOption) -> Void = { option in
-            guard option.id != selectedBucketId else { return }
-            selectedBucketId = option.id
-            // The forecast snapshots belong to the bucket that was showing;
-            // drop them so the reload cannot flash another quota's projection
-            // over the new line.
-            forecastPoints = []
-            hoverDate = nil
-        }
-        ViewThatFits(in: .horizontal) {
-            pillRows(options, rows: 1, action: select)
-            pillRows(options, rows: 2, action: select)
-            pillRows(options, rows: 3, action: select)
-        }
-    }
-
-    private func pillRows(
-        _ options: [PillOption],
-        rows: Int,
-        action: @escaping (PillOption) -> Void
-    ) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            ForEach(Array(chunked(options, rows: rows).enumerated()), id: \.offset) { _, chunk in
-                pillGroup(chunk, action: action)
-            }
-        }
-    }
-
-    private func chunked(_ options: [PillOption], rows: Int) -> [[PillOption]] {
-        guard rows > 1, options.count > rows else { return [options] }
-        let perRow = Int(ceil(Double(options.count) / Double(rows)))
-        return stride(from: 0, to: options.count, by: perRow).map {
-            Array(options[$0..<min($0 + perRow, options.count)])
-        }
     }
 
     private func pillGroup(
@@ -675,9 +918,11 @@ struct QuotaHistoryChartView: View {
     // MARK: - Data selection
 
     /// A single observation draws nothing — a line needs two points — so a
-    /// bucket only becomes selectable once it can actually be plotted.
+    /// bucket only joins the plot once it can actually be drawn. Shortest
+    /// window first: that quota anchors the reset lines, the brush mini, and
+    /// the zoom floor.
     private var bucketsWithHistory: [QuotaBucket] {
-        buckets
+        group.buckets
             .filter { fillPoints(bucketId: $0.id).count > 1 }
             .sorted {
                 let left = $0.rawWindowSeconds ?? Int.max
@@ -686,12 +931,15 @@ struct QuotaHistoryChartView: View {
             }
     }
 
-    private func activeBucket(in historyBuckets: [QuotaBucket]) -> QuotaBucket? {
-        if let selectedBucketId,
-           let match = historyBuckets.first(where: { $0.id == selectedBucketId }) {
-            return match
-        }
-        return historyBuckets.first
+    private func color(at index: Int) -> Color {
+        Self.bucketPalette[index % Self.bucketPalette.count]
+    }
+
+    /// Forecast strokes share their bucket's hue, lifted toward white on dark
+    /// backgrounds the same way `ForecastQuotaBar` lifts its forecast marker —
+    /// a 1.8pt dotted line loses more contrast than a solid one.
+    private func forecastTint(_ base: Color) -> Color {
+        colorScheme == .dark ? base.mix(with: .white, by: 0.16) : base
     }
 
     private func fillPoints(bucketId: String) -> [FillTimelinePoint] {
@@ -699,103 +947,96 @@ struct QuotaHistoryChartView: View {
         return quotaService.observationsByAccountBucket[key] ?? []
     }
 
-    /// Account, bucket, and the shape of the bucket's observed fill lane.
+    /// Account, group, and the shape of every bucket's observed fill lane.
     ///
     /// The forecast snapshots live in an actor-backed store this view cannot
     /// observe, so keying only on account and bucket would freeze the forecast
-    /// line at whatever was on disk when the page opened. Every refresh that
+    /// lines at whatever was on disk when the page opened. Every refresh that
     /// records a projection also appends a fill point to
     /// `QuotaService.observationsByAccountBucket`, which *is* `@Published` —
-    /// so the fill lane's count and newest timestamp are the cheapest honest
-    /// signal that there is a new projection to read.
+    /// so each lane's count and newest timestamp are the cheapest honest signal
+    /// that there is a new projection to read.
     private var forecastLoadKey: String {
-        let bucketId = activeBucket(in: bucketsWithHistory)?.id ?? ""
-        guard !bucketId.isEmpty else { return "\(accountId)||0|0" }
-        let fills = fillPoints(bucketId: bucketId)
-        let newest = fills.last?.sampledAt.timeIntervalSince1970 ?? 0
-        return "\(accountId)|\(bucketId)|\(fills.count)|\(newest)"
-    }
-
-    private func loadForecastPoints(bucketId: String?) async {
-        guard let bucketId else {
-            forecastPoints = []
-            return
+        let parts = bucketsWithHistory.map { bucket -> String in
+            let fills = fillPoints(bucketId: bucket.id)
+            let newest = fills.last?.sampledAt.timeIntervalSince1970 ?? 0
+            return "\(bucket.id):\(fills.count):\(newest)"
         }
-        let points = await UsageForecastTimelineStore.shared.points(
-            accountId: accountId,
-            bucketId: bucketId
-        )
-        forecastPoints = points
+        return "\(accountId)|\(group.id)|\(parts.joined(separator: ","))"
     }
 
-    private func seriesSignature(for bucket: QuotaBucket?) -> QuotaSeriesSignature {
-        guard let bucket else {
-            return QuotaSeriesSignature(
-                bucketId: "",
-                fillCount: 0,
-                fillStart: nil,
-                fillEnd: nil,
-                forecastCount: 0,
-                forecastEnd: nil
+    private func loadForecastPoints() async {
+        var result: [String: [ForecastTimelinePoint]] = [:]
+        for bucket in bucketsWithHistory {
+            result[bucket.id] = await UsageForecastTimelineStore.shared.points(
+                accountId: accountId,
+                bucketId: bucket.id
             )
         }
+        forecastByBucket = result
+    }
+
+    private var seriesSignature: QuotaSeriesSignature {
         // Both arrays arrive time-sorted (QuotaService sorts observations,
         // the forecast store sorts by slot), so the bounds are O(1).
-        let fills = fillPoints(bucketId: bucket.id)
-        return QuotaSeriesSignature(
-            bucketId: bucket.id,
-            fillCount: fills.count,
-            fillStart: fills.first?.sampledAt,
-            fillEnd: fills.last?.sampledAt,
-            forecastCount: forecastPoints.count,
-            forecastEnd: forecastPoints.last?.sampledAt
+        QuotaSeriesSignature(
+            entries: bucketsWithHistory.map { bucket in
+                let fills = fillPoints(bucketId: bucket.id)
+                let forecasts = forecastByBucket[bucket.id] ?? []
+                return QuotaSeriesSignature.Entry(
+                    bucketId: bucket.id,
+                    fillCount: fills.count,
+                    fillStart: fills.first?.sampledAt,
+                    fillEnd: fills.last?.sampledAt,
+                    forecastCount: forecasts.count,
+                    forecastEnd: forecasts.last?.sampledAt
+                )
+            }
         )
     }
 
-    /// Re-segment the series and re-anchor the visible window. Runs on data
-    /// changes only — pans and zooms reuse the series already built.
-    private func rebuild(signature: QuotaSeriesSignature, bucket: QuotaBucket?) {
-        guard let bucket, signature.fillCount > 0 else {
-            series = .empty
+    /// Re-segment every bucket's series and re-anchor the visible window. Runs
+    /// on data changes only — pans and zooms reuse the series already built.
+    private func rebuild() {
+        let buckets = bucketsWithHistory
+        guard let primary = buckets.first, let domain = domainRange(buckets: buckets) else {
+            seriesByBucket = [:]
             miniSegments = []
             window = nil
-            windowBucketId = nil
-            return
-        }
-        let fills = fillPoints(bucketId: bucket.id)
-        guard let domain = domainRange(fills: fills) else {
-            series = .empty
-            miniSegments = []
-            window = nil
-            windowBucketId = nil
+            windowKey = nil
             return
         }
 
-        series = QuotaHistorySeriesBuilder.build(
-            fillPoints: fills,
-            forecastPoints: forecastPoints,
-            range: domain
-        )
-        miniSegments = series.actual.map {
+        var built: [String: QuotaHistorySeries] = [:]
+        for bucket in buckets {
+            built[bucket.id] = QuotaHistorySeriesBuilder.build(
+                fillPoints: fillPoints(bucketId: bucket.id),
+                forecastPoints: forecastByBucket[bucket.id] ?? [],
+                range: domain
+            )
+        }
+        seriesByBucket = built
+        miniSegments = (built[primary.id]?.actual ?? []).map {
             ChartSeriesThinning.strided($0, limit: Self.miniMarkLimit)
         }
 
-        let minimumSpan = minimumSpan(for: bucket)
-        initialSpan = initialSpan(for: bucket)
+        let minimumSpan = minimumSpan(for: primary)
+        initialSpan = initialSpan(for: primary)
 
-        // A different quota gets a fresh window: the two buckets are sampled at
+        // A different set of quotas gets a fresh window: buckets are sampled at
         // the same instants, so their domains can match to the second while the
         // sensible zoom floor and opening span are completely different.
-        let sameBucket = windowBucketId == bucket.id
-        windowBucketId = bucket.id
+        let key = buckets.map(\.id).joined(separator: ",")
+        let sameQuotas = windowKey == key
+        windowKey = key
 
-        if sameBucket,
+        if sameQuotas,
            let existing = window,
            existing.domainStart == domain.lowerBound,
            existing.domainEnd == domain.upperBound {
             return
         }
-        if sameBucket, let existing = window {
+        if sameQuotas, let existing = window {
             // Domain grew (a refresh landed) — keep the user where they were,
             // unless they were pinned to the newest edge, which should follow.
             let followsEnd = existing.isAtDomainEnd
@@ -818,17 +1059,24 @@ struct QuotaHistoryChartView: View {
         )
     }
 
-    /// Full extent of the stored evidence, floored at six hours so a
-    /// freshly-installed app does not open on a two-sample domain that no
-    /// gesture can navigate.
-    private func domainRange(fills: [FillTimelinePoint]) -> ClosedRange<Date>? {
-        var low = fills.first?.sampledAt
-        var high = fills.last?.sampledAt
-        if let first = forecastPoints.first?.sampledAt {
-            low = low.map { min($0, first) } ?? first
-        }
-        if let last = forecastPoints.last?.sampledAt {
-            high = high.map { max($0, last) } ?? last
+    /// Full extent of the stored evidence across the group, floored at six
+    /// hours so a freshly-installed app does not open on a two-sample domain
+    /// that no gesture can navigate. One shared domain, because the overlaid
+    /// lines have to be readable against the same x axis.
+    private func domainRange(buckets: [QuotaBucket]) -> ClosedRange<Date>? {
+        var low: Date?
+        var high: Date?
+        for bucket in buckets {
+            let fills = fillPoints(bucketId: bucket.id)
+            let forecasts = forecastByBucket[bucket.id] ?? []
+            for candidate in [fills.first?.sampledAt, forecasts.first?.sampledAt] {
+                guard let candidate else { continue }
+                low = low.map { min($0, candidate) } ?? candidate
+            }
+            for candidate in [fills.last?.sampledAt, forecasts.last?.sampledAt] {
+                guard let candidate else { continue }
+                high = high.map { max($0, candidate) } ?? candidate
+            }
         }
         guard let low, let high, high >= low else { return nil }
         let floorSpan: TimeInterval = 6 * 3_600
@@ -840,6 +1088,8 @@ struct QuotaHistoryChartView: View {
 
     /// Zoom floor. A five-hour quota is legible at one hour; a weekly one has
     /// hourly slots at best, so half a day is as deep as its evidence goes.
+    /// Taken from the shortest window in the group — it is the one that still
+    /// has something to say at the deepest zoom.
     private func minimumSpan(for bucket: QuotaBucket) -> TimeInterval {
         guard let windowSeconds = bucket.rawWindowSeconds, windowSeconds > 0 else {
             return 6 * 3_600
@@ -856,16 +1106,45 @@ struct QuotaHistoryChartView: View {
 
     // MARK: - Mark shaping
 
+    private func bucketLines(
+        buckets: [QuotaBucket],
+        range: ClosedRange<Date>,
+        limit: Int
+    ) -> [QuotaBucketLines] {
+        buckets.enumerated().map { index, bucket in
+            let series = seriesByBucket[bucket.id] ?? .empty
+            let hue = color(at: index)
+            return QuotaBucketLines(
+                id: bucket.id,
+                color: hue,
+                forecastColor: forecastTint(hue),
+                actual: linePoints(
+                    series.actual,
+                    kind: "actual-\(index)",
+                    range: range,
+                    limit: limit
+                ),
+                forecast: forecastLinePoints(
+                    series.forecast,
+                    kind: "forecast-\(index)",
+                    range: range,
+                    limit: limit
+                )
+            )
+        }
+    }
+
     private func linePoints(
         _ segments: [[QuotaHistorySample]],
         kind: String,
-        range: ClosedRange<Date>
+        range: ClosedRange<Date>,
+        limit: Int
     ) -> [QuotaLinePoint] {
         var result: [QuotaLinePoint] = []
         for (index, segment) in segments.enumerated() {
             let clipped = clip(segment, time: { $0.time }, to: range)
             guard clipped.count > 0 else { continue }
-            let thinned = ChartSeriesThinning.strided(clipped, limit: Self.visibleMarkLimit)
+            let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
             let key = "\(kind)-\(index)"
             for (offset, sample) in thinned.enumerated() {
                 result.append(
@@ -881,13 +1160,18 @@ struct QuotaHistoryChartView: View {
         return result
     }
 
-    private func forecastLinePoints(range: ClosedRange<Date>) -> [QuotaLinePoint] {
+    private func forecastLinePoints(
+        _ segments: [[QuotaHistoryForecastSample]],
+        kind: String,
+        range: ClosedRange<Date>,
+        limit: Int
+    ) -> [QuotaLinePoint] {
         var result: [QuotaLinePoint] = []
-        for (index, segment) in series.forecast.enumerated() {
+        for (index, segment) in segments.enumerated() {
             let clipped = clip(segment, time: { $0.time }, to: range)
             guard clipped.count > 0 else { continue }
-            let thinned = ChartSeriesThinning.strided(clipped, limit: Self.visibleMarkLimit)
-            let key = "forecast-\(index)"
+            let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
+            let key = "\(kind)-\(index)"
             for (offset, sample) in thinned.enumerated() {
                 result.append(
                     QuotaLinePoint(
@@ -902,12 +1186,16 @@ struct QuotaHistoryChartView: View {
         return result
     }
 
-    private func forecastBandPoints(range: ClosedRange<Date>) -> [QuotaBandPoint] {
+    private func forecastBandPoints(
+        _ segments: [[QuotaHistoryForecastSample]],
+        range: ClosedRange<Date>,
+        limit: Int
+    ) -> [QuotaBandPoint] {
         var result: [QuotaBandPoint] = []
-        for (index, segment) in series.forecast.enumerated() {
+        for (index, segment) in segments.enumerated() {
             let clipped = clip(segment, time: { $0.time }, to: range)
             guard clipped.count > 1 else { continue }
-            let thinned = ChartSeriesThinning.strided(clipped, limit: Self.visibleMarkLimit)
+            let thinned = ChartSeriesThinning.strided(clipped, limit: limit)
             let key = "band-\(index)"
             for (offset, sample) in thinned.enumerated() {
                 result.append(
@@ -968,6 +1256,7 @@ struct QuotaHistoryChartView: View {
     /// by more than a couple of slots: a forecast that stopped being recordable
     /// last week is history, not a current reading.
     private func currentForecastLabel(bucket: QuotaBucket) -> String? {
+        let series = seriesByBucket[bucket.id] ?? .empty
         guard let last = series.forecast.last?.last else { return nil }
         if let newestActual = series.actual.last?.last?.time {
             let slot = UsageTimelineSlotPolicy.slotSeconds(windowSeconds: bucket.rawWindowSeconds)
@@ -980,23 +1269,12 @@ struct QuotaHistoryChartView: View {
         "\(Int(value.rounded()))%"
     }
 
-    /// Pill label. Claude titles six different weekly quotas "Weekly" and only
-    /// the group name tells them apart, so the group wins when it exists —
-    /// matching the section headings in Subscription Utilization.
-    private func bucketLabel(_ bucket: QuotaBucket) -> String {
-        if let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !group.isEmpty {
-            return group
-        }
-        return bucket.title
-    }
-
-    private func scopeNote(bucket: QuotaBucket, window: ChartTimeWindow) -> String {
+    private func scopeNote(buckets: [QuotaBucket], window: ChartTimeWindow) -> String {
         let span = Self.spanLabel(window.visibleSpan)
         let total = Self.spanLabel(window.domainSpan)
-        let scope = bucket.groupTitle?.isEmpty == false
-            ? "\(bucketLabel(bucket)) · \(bucket.title)"
-            : bucket.title
+        let shown = buckets.prefix(3).map(\.title).joined(separator: " + ")
+        let names = buckets.count > 3 ? "\(shown) +\(buckets.count - 3)" : shown
+        let scope = group.title.map { "\($0) · \(names)" } ?? names
         return "\(scope) · showing \(span) of \(total) recorded"
     }
 

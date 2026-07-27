@@ -679,15 +679,10 @@ struct SubscriptionUtilizationView: View {
         return itemTool.toolName
     }
 
+    /// Shared with the quota-history cards below this one, so a heading printed
+    /// here and a history chart down there always describe the same group.
     private func quotaGroupTitle(for itemTool: ToolType, bucket: QuotaBucket) -> String? {
-        if let title = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !title.isEmpty {
-            return title
-        }
-        if tool == .gemini, itemTool == .gemini {
-            return "Gemini Chat"
-        }
-        return nil
+        QuotaBucketGrouping.title(pageTool: tool, itemTool: itemTool, bucket: bucket)
     }
 
     private func linkedProviderSection(tool linkedTool: ToolType, title: String) -> some View {
