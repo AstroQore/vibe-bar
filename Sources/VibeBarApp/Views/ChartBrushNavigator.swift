@@ -226,30 +226,215 @@ struct ChartBrushNavigator<Mini: View>: View {
     }
 }
 
-/// Uniform-stride thinning for brush minis and zoomed-out main charts.
+/// One drawable point on a quota line. Segment membership travels with the
+/// point as `seriesKey` so Swift Charts never joins two sides of a reset (or of
+/// a stretch where Vibe Bar was not running) into one stroke.
+struct QuotaChartLinePoint: Identifiable {
+    let id: String
+    let seriesKey: String
+    let time: Date
+    let value: Double
+}
+
+/// Turning segmented series into Swift Charts marks.
 ///
-/// Purely a drawing concern — the series itself keeps every observation, this
-/// only decides how many of them are worth turning into marks at the current
-/// scale.
-enum ChartSeriesThinning {
-    static func strided<Element>(_ elements: [Element], limit: Int) -> [Element] {
-        guard limit > 1, elements.count > limit else { return elements }
-        let step = Double(elements.count - 1) / Double(limit - 1)
-        var result: [Element] = []
-        result.reserveCapacity(limit)
-        var lastIndex = -1
-        for slot in 0..<limit {
-            let index = min(elements.count - 1, Int((Double(slot) * step).rounded()))
-            if index != lastIndex {
-                result.append(elements[index])
-                lastIndex = index
-            }
+/// Shared by the per-group chart inside Subscription Utilization and the
+/// all-providers chart on the Overview: both clip to the visible window, thin
+/// to a mark budget, and bridge the holes between segments, and the two have to
+/// agree on all three or the same history would read differently depending on
+/// which surface you looked at.
+enum QuotaChartMarks {
+    /// Clipped and thinned marks for a series' real observations.
+    ///
+    /// `budget` is the whole curve's allowance, not each segment's: the visible
+    /// segments are clipped first, then the budget is split across them by
+    /// `ChartMarkBudget`, so a curve broken into forty windows costs the same
+    /// as one drawn in a single stroke. Segment indices are preserved across
+    /// the clip so a series key stays stable while panning.
+    static func points<Element>(
+        _ segments: [[Element]],
+        kind: String,
+        range: ClosedRange<Date>,
+        budget: Int,
+        time: (Element) -> Date,
+        value: (Element) -> Double
+    ) -> [QuotaChartLinePoint] {
+        var visible: [(index: Int, samples: [Element])] = []
+        for (index, segment) in segments.enumerated() {
+            let clipped = clip(segment, time: time, to: range)
+            guard !clipped.isEmpty else { continue }
+            visible.append((index, clipped))
         }
-        // The newest sample carries the "where are we now" reading, so never
-        // let rounding drop it.
-        if lastIndex != elements.count - 1 {
-            result.append(elements[elements.count - 1])
+        let allowance = ChartMarkBudget.allocate(
+            segmentCounts: visible.map { $0.samples.count },
+            budget: budget
+        )
+        var result: [QuotaChartLinePoint] = []
+        for (slot, entry) in visible.enumerated() {
+            let thinned = ChartSeriesThinning.strided(entry.samples, limit: allowance[slot])
+            let key = "\(kind)-\(entry.index)"
+            for (offset, sample) in thinned.enumerated() {
+                result.append(
+                    QuotaChartLinePoint(
+                        id: "\(key)-\(offset)",
+                        seriesKey: key,
+                        time: time(sample),
+                        value: value(sample)
+                    )
+                )
+            }
         }
         return result
     }
+
+    /// Straight connectors across the holes between consecutive segments.
+    ///
+    /// A hole is real information — coverage stopped, or the window refilled —
+    /// but a plot full of orphaned stubs reads as broken rather than as honest,
+    /// so the shape is carried across it. The connector is deliberately not
+    /// drawn like data (hairline, dashed, faint), it is never thinned, and the
+    /// hover readout still reports nothing over a bridged span, because nothing
+    /// was observed there.
+    static func bridges<Element>(
+        _ segments: [[Element]],
+        kind: String,
+        range: ClosedRange<Date>,
+        time: (Element) -> Date,
+        value: (Element) -> Double
+    ) -> [QuotaChartLinePoint] {
+        guard segments.count > 1 else { return [] }
+        var result: [QuotaChartLinePoint] = []
+        for index in 0..<(segments.count - 1) {
+            guard let tail = segments[index].last,
+                  let head = segments[index + 1].first
+            else { continue }
+            let start = time(tail)
+            let end = time(head)
+            // Overlap, not containment: a bridge that spans the whole visible
+            // window has both endpoints outside it and still has to draw.
+            guard end >= range.lowerBound, start <= range.upperBound else { continue }
+            let key = "\(kind)-bridge-\(index)"
+            result.append(
+                QuotaChartLinePoint(id: "\(key)-0", seriesKey: key, time: start, value: value(tail))
+            )
+            result.append(
+                QuotaChartLinePoint(id: "\(key)-1", seriesKey: key, time: end, value: value(head))
+            )
+        }
+        return result
+    }
+
+    /// Keep one sample beyond each edge so a line entering the window starts at
+    /// the frame border instead of at its first visible observation.
+    static func clip<Element>(
+        _ segment: [Element],
+        time: (Element) -> Date,
+        to range: ClosedRange<Date>
+    ) -> [Element] {
+        guard !segment.isEmpty else { return [] }
+        var first: Int?
+        var last: Int?
+        for (index, element) in segment.enumerated() {
+            let stamp = time(element)
+            if stamp >= range.lowerBound, stamp <= range.upperBound {
+                if first == nil { first = index }
+                last = index
+            }
+        }
+        guard let first, let last else { return [] }
+        let lower = max(0, first - 1)
+        let upper = min(segment.count - 1, last + 1)
+        return Array(segment[lower...upper])
+    }
+
+    /// How a bridge is stroked, everywhere one is drawn.
+    static let bridgeStroke = StrokeStyle(lineWidth: 1, dash: [2, 3])
+    static let bridgeOpacity: Double = 0.35
 }
+
+/// Preset-span selector for a navigable chart: "6h · 24h · 3d · 7d · All".
+///
+/// Only spans the recorded domain can actually show are offered, and the
+/// current one is highlighted by comparing against the live window rather than
+/// by remembering which pill was last tapped — so a pan or a pinch quietly
+/// deselects instead of leaving a lie on screen.
+struct ChartRangePills: View {
+    @Binding var window: ChartTimeWindow
+    var fontSize: CGFloat = 10
+    /// Called after a pill changes the window, so a chart can drop a stale
+    /// hover crosshair.
+    var onSelect: () -> Void = {}
+
+    private struct Option: Identifiable, Equatable {
+        let id: String
+        let label: String
+        let span: TimeInterval?
+        let isSelected: Bool
+    }
+
+    private static let spans: [(String, TimeInterval)] = [
+        ("6h", 6 * 3_600),
+        ("24h", 24 * 3_600),
+        ("3d", 3 * 86_400),
+        ("7d", 7 * 86_400)
+    ]
+
+    private var options: [Option] {
+        guard window.domainSpan > 0 else { return [] }
+        var result = Self.spans
+            .filter { $0.1 < window.domainSpan }
+            .map { label, span in
+                Option(
+                    id: label,
+                    label: label,
+                    span: span,
+                    isSelected: !window.coversDomain
+                        && window.isAtDomainEnd
+                        && abs(window.visibleSpan - span) <= span * 0.03
+                )
+            }
+        result.append(Option(id: "all", label: "All", span: nil, isSelected: window.coversDomain))
+        return result
+    }
+
+    var isEmpty: Bool { options.isEmpty }
+
+    var body: some View {
+        let options = self.options
+        if !options.isEmpty {
+            HStack(spacing: 1) {
+                ForEach(options) { option in
+                    Button {
+                        window.jump(toSpan: option.span ?? window.domainSpan)
+                        onSelect()
+                    } label: {
+                        Text(option.label)
+                            .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                            .foregroundStyle(option.isSelected ? .primary : .secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .padding(.horizontal, 6)
+                            .frame(minHeight: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .background {
+                        if option.isSelected {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.primary.opacity(0.12))
+                        }
+                    }
+                    .accessibilityLabel(option.label)
+                }
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+}
+
+// `ChartSeriesThinning`, `ChartMarkBudget` and `ChartSampleSearch` live in
+// VibeBarCore (`ChartSeriesPlanning.swift`) — they are pure arithmetic over a
+// series and belong where they can be tested.

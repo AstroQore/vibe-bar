@@ -193,4 +193,81 @@ final class CostSnapshotAggregatorTests: XCTestCase {
         XCTAssertEqual(combined.jsonlFilesFound, 2)
         XCTAssertEqual(combined.updatedAt, hour)
     }
+
+    // MARK: - Hourly window
+
+    private func windowSnapshot(
+        tool: ToolType,
+        hours: [(Date, Double, Int)],
+        coverageStart: Date?,
+        updatedAt: Date
+    ) -> CostSnapshot {
+        CostSnapshot(
+            tool: tool,
+            todayCostUSD: 0, last7DaysCostUSD: 0, last30DaysCostUSD: 0, allTimeCostUSD: 0,
+            todayTokens: 0, last7DaysTokens: 0, last30DaysTokens: 0, allTimeTokens: 0,
+            dailyHistory: [],
+            recentHourlyHistory: hours.map {
+                HourlyCostPoint(date: $0.0, costUSD: $0.1, totalTokens: $0.2)
+            },
+            hourlyCoverageStart: coverageStart,
+            heatmap: .empty(tool: tool),
+            modelBreakdowns: [],
+            jsonlFilesFound: 1,
+            updatedAt: updatedAt
+        )
+    }
+
+    /// The all-providers card is the one AQ actually looks at, so the wide
+    /// hourly lane has to survive the combine — summed per hour, not appended.
+    func testCombinedSnapshotSumsTheHourlyWindowPerHour() throws {
+        let cal = calendar()
+        let now = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 20, hour: 9)))
+        let today = cal.startOfDay(for: now)
+        let threeDaysBack = try XCTUnwrap(
+            cal.date(byAdding: .hour, value: 10, to: cal.date(byAdding: .day, value: -3, to: today)!)
+        )
+        let start = CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: cal)
+
+        let combined = CostSnapshotAggregator.combinedSnapshot(
+            tool: .codex,
+            snapshots: [
+                windowSnapshot(tool: .codex, hours: [(threeDaysBack, 1.25, 100)], coverageStart: start, updatedAt: now),
+                windowSnapshot(tool: .claude, hours: [(threeDaysBack, 0.75, 50)], coverageStart: start, updatedAt: now)
+            ],
+            now: now,
+            calendar: cal
+        )
+
+        XCTAssertEqual(combined.recentHourlyHistory.count, 1)
+        XCTAssertEqual(combined.recentHourlyHistory.first?.costUSD ?? 0, 2.00, accuracy: 0.0001)
+        XCTAssertEqual(combined.recentHourlyHistory.first?.totalTokens, 150)
+        XCTAssertEqual(combined.hourlyCoverageStart, start)
+    }
+
+    /// A stretch is only covered once every provider in the sum covers it, and
+    /// one provider that declares nothing makes the whole thing unknown — the
+    /// alternative is drawing its missing days as zero spend.
+    func testCombinedHourlyCoverageIsTheMostConservativeStart() throws {
+        let cal = calendar()
+        let now = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 20, hour: 9)))
+        let today = cal.startOfDay(for: now)
+        let old = try XCTUnwrap(cal.date(byAdding: .day, value: -13, to: today))
+        let recent = try XCTUnwrap(cal.date(byAdding: .day, value: -2, to: today))
+
+        XCTAssertEqual(
+            CostSnapshotAggregator.combinedHourlyCoverageStart([
+                windowSnapshot(tool: .codex, hours: [], coverageStart: old, updatedAt: now),
+                windowSnapshot(tool: .claude, hours: [], coverageStart: recent, updatedAt: now)
+            ]),
+            recent
+        )
+        XCTAssertNil(
+            CostSnapshotAggregator.combinedHourlyCoverageStart([
+                windowSnapshot(tool: .codex, hours: [], coverageStart: old, updatedAt: now),
+                windowSnapshot(tool: .claude, hours: [], coverageStart: nil, updatedAt: now)
+            ])
+        )
+        XCTAssertNil(CostSnapshotAggregator.combinedHourlyCoverageStart([]))
+    }
 }

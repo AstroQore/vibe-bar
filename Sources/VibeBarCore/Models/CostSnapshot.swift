@@ -36,6 +36,25 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
     /// Per-hour series for the previous local day. Kept separately so the
     /// Yesterday range can retain the same line-chart detail as Today.
     public let yesterdayHourlyHistory: [HourlyCostPoint]
+    /// Per-hour series across the whole retained hourly window
+    /// (`CostChartWindowPolicy.hourlyRetentionDays` local days ending today),
+    /// ordered ascending.
+    ///
+    /// A **superset** of `todayHourlyHistory` and `yesterdayHourlyHistory`, not
+    /// a complement — never sum it with either. Days with no activity at all
+    /// are simply absent; `hourlyCoverageStart` is what says they were scanned
+    /// and found empty rather than never retained.
+    ///
+    /// Empty on snapshots written before the window widened, which is why the
+    /// chart still falls back to yesterday + today.
+    public let recentHourlyHistory: [HourlyCostPoint]
+    /// Midnight of the oldest day this snapshot has per-hour evidence for.
+    ///
+    /// Distinct from `recentHourlyHistory.first?.date`: an idle day inside the
+    /// window has no buckets but *is* covered — nothing was spent. `nil` on
+    /// snapshots written before the field existed, where the honest fallback is
+    /// to trust only the days that actually carry buckets.
+    public let hourlyCoverageStart: Date?
     /// 7×24 cells: weekday (1-7, Sunday=1) × hour (0-23) → token total.
     public let heatmap: UsageHeatmap
     /// Top models in the all-time window.
@@ -83,6 +102,8 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         dailyHistory: [DailyCostPoint],
         todayHourlyHistory: [HourlyCostPoint] = [],
         yesterdayHourlyHistory: [HourlyCostPoint] = [],
+        recentHourlyHistory: [HourlyCostPoint] = [],
+        hourlyCoverageStart: Date? = nil,
         heatmap: UsageHeatmap,
         modelBreakdowns: [ModelBreakdown],
         last7DaysModelBreakdowns: [ModelBreakdown] = [],
@@ -107,6 +128,8 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.dailyHistory = dailyHistory
         self.todayHourlyHistory = todayHourlyHistory
         self.yesterdayHourlyHistory = yesterdayHourlyHistory
+        self.recentHourlyHistory = recentHourlyHistory
+        self.hourlyCoverageStart = hourlyCoverageStart
         self.heatmap = heatmap
         self.modelBreakdowns = modelBreakdowns
         self.last7DaysModelBreakdowns = last7DaysModelBreakdowns
@@ -167,6 +190,16 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         let hourlyYesterday = yesterdayHourlyHistory.filter {
             calendar.isDate($0.date, inSameDayAs: yesterday)
         }
+        // The wide hourly lane is a rolling window, so it ages by dropping its
+        // oldest days rather than by being emptied: a snapshot cached two days
+        // ago still describes those two days correctly, it just no longer
+        // reaches as far back. Buckets dated past today are clock skew and go.
+        let hourlyWindowStart = CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: calendar)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        let hourlyRecent = recentHourlyHistory.filter {
+            $0.date >= hourlyWindowStart && $0.date < tomorrow
+        }
+        let coverageStart = hourlyCoverageStart.map { max($0, hourlyWindowStart) }
 
         // Request counts have no daily history — they pass through
         // verbatim except for the today bucket, which we zero out
@@ -190,6 +223,8 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
             dailyHistory: dailyHistory,
             todayHourlyHistory: hourlyToday,
             yesterdayHourlyHistory: hourlyYesterday,
+            recentHourlyHistory: hourlyRecent,
+            hourlyCoverageStart: coverageStart,
             heatmap: heatmap,
             modelBreakdowns: modelBreakdowns,
             last7DaysModelBreakdowns: last7DaysModelBreakdowns,
@@ -226,6 +261,7 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         case todayTokens, last7DaysTokens, last30DaysTokens, allTimeTokens
         case todayRequests, last7DaysRequests, last30DaysRequests, allTimeRequests
         case dailyHistory, todayHourlyHistory, yesterdayHourlyHistory, heatmap, modelBreakdowns, last7DaysModelBreakdowns
+        case recentHourlyHistory, hourlyCoverageStart
         case dailyModelBreakdown, hourlyModelBreakdown
         case jsonlFilesFound, updatedAt
     }
@@ -257,6 +293,16 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         self.dailyHistory = try c.decode([DailyCostPoint].self, forKey: .dailyHistory)
         self.todayHourlyHistory = try c.decodeIfPresent([HourlyCostPoint].self, forKey: .todayHourlyHistory) ?? []
         self.yesterdayHourlyHistory = try c.decodeIfPresent([HourlyCostPoint].self, forKey: .yesterdayHourlyHistory) ?? []
+        // Absent on snapshots cached before the hourly window widened. Empty /
+        // `nil` is the honest reading of those: the chart falls back to the two
+        // days it can prove, and the next scan fills the rest in. Wiping the
+        // cache instead would only trade a few seconds of narrower hourly range
+        // for a popover with no numbers at all on launch.
+        self.recentHourlyHistory = try c.decodeIfPresent(
+            [HourlyCostPoint].self,
+            forKey: .recentHourlyHistory
+        ) ?? []
+        self.hourlyCoverageStart = try c.decodeIfPresent(Date.self, forKey: .hourlyCoverageStart)
         self.heatmap = try c.decode(UsageHeatmap.self, forKey: .heatmap)
         self.modelBreakdowns = try c.decode([ModelBreakdown].self, forKey: .modelBreakdowns)
         self.last7DaysModelBreakdowns = try c.decodeIfPresent(
@@ -303,6 +349,8 @@ public struct CostSnapshot: Sendable, Equatable, Codable {
         try c.encode(dailyHistory, forKey: .dailyHistory)
         try c.encode(todayHourlyHistory, forKey: .todayHourlyHistory)
         try c.encode(yesterdayHourlyHistory, forKey: .yesterdayHourlyHistory)
+        try c.encode(recentHourlyHistory, forKey: .recentHourlyHistory)
+        try c.encodeIfPresent(hourlyCoverageStart, forKey: .hourlyCoverageStart)
         try c.encode(heatmap, forKey: .heatmap)
         try c.encode(modelBreakdowns, forKey: .modelBreakdowns)
         try c.encode(last7DaysModelBreakdowns, forKey: .last7DaysModelBreakdowns)
@@ -384,6 +432,30 @@ public enum CostSnapshotAggregator {
         calendar: Calendar = .current
     ) -> [HourlyCostPoint] {
         combineHourlyPoints(snapshots.flatMap(\.yesterdayHourlyHistory), calendar: calendar)
+    }
+
+    public static func combinedRecentHourlyHistory(
+        _ snapshots: [CostSnapshot],
+        calendar: Calendar = .current
+    ) -> [HourlyCostPoint] {
+        combineHourlyPoints(snapshots.flatMap(\.recentHourlyHistory), calendar: calendar)
+    }
+
+    /// Where the combined hourly lane starts being trustworthy: the *newest* of
+    /// the per-provider starts, because a stretch is only fully covered once
+    /// every provider in the sum covers it.
+    ///
+    /// One provider without a declared start (a snapshot cached before the
+    /// field existed) makes the whole combination unknown rather than
+    /// optimistic — the alternative is drawing that provider's missing days as
+    /// zero spend.
+    public static func combinedHourlyCoverageStart(_ snapshots: [CostSnapshot]) -> Date? {
+        var newest: Date?
+        for snapshot in snapshots {
+            guard let start = snapshot.hourlyCoverageStart else { return nil }
+            newest = newest.map { max($0, start) } ?? start
+        }
+        return newest
     }
 
     public static func combinedHourlyModelBreakdown(
@@ -502,6 +574,8 @@ public enum CostSnapshotAggregator {
             dailyHistory: combinedDailyHistory(rebased, calendar: calendar),
             todayHourlyHistory: combinedHourlyHistory(rebased, calendar: calendar),
             yesterdayHourlyHistory: combinedYesterdayHourlyHistory(rebased, calendar: calendar),
+            recentHourlyHistory: combinedRecentHourlyHistory(rebased, calendar: calendar),
+            hourlyCoverageStart: combinedHourlyCoverageStart(rebased),
             heatmap: combinedHeatmap(rebased, tool: tool),
             modelBreakdowns: combinedModelBreakdowns(rebased),
             last7DaysModelBreakdowns: combinedLast7DaysModelBreakdowns(rebased),

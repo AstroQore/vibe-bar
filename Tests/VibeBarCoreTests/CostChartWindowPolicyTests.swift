@@ -143,24 +143,25 @@ final class CostChartWindowPolicyTests: XCTestCase {
         XCTAssertEqual(span, day)
     }
 
-    // MARK: - Yesterday bounds
+    // MARK: - Hourly retention window
 
-    func testYesterdayBoundsAreCalendarDays() {
-        let (start, end) = CostChartWindowPolicy.yesterdayBounds(
-            now: date(2026, 6, 20, 17),
-            calendar: calendar
+    func testHourlyRetentionStartIsMidnightThirteenDaysBack() {
+        XCTAssertEqual(CostChartWindowPolicy.hourlyRetentionDays, 14)
+        XCTAssertEqual(
+            CostChartWindowPolicy.hourlyRetentionStart(now: date(2026, 6, 20, 17), calendar: calendar),
+            date(2026, 6, 7)
         )
-        XCTAssertEqual(start, date(2026, 6, 19))
-        XCTAssertEqual(end, date(2026, 6, 20))
     }
 
-    func testYesterdayBoundsKeepTheShortDayShortAcrossDst() {
-        let (start, end) = CostChartWindowPolicy.yesterdayBounds(
-            now: date(2026, 3, 9, 17),
+    /// Counted in calendar days, not in 86 400-second multiples, so the window
+    /// still starts at a midnight when a DST change falls inside it.
+    func testHourlyRetentionStartLandsOnMidnightAcrossDst() {
+        let start = CostChartWindowPolicy.hourlyRetentionStart(
+            now: date(2026, 3, 14, 17),
             calendar: calendar
         )
-        XCTAssertEqual(start, date(2026, 3, 8))
-        XCTAssertEqual(end.timeIntervalSince(start), 23 * 3_600)
+        XCTAssertEqual(start, date(2026, 3, 1))
+        XCTAssertEqual(calendar.startOfDay(for: start), start)
     }
 
     // MARK: - Hourly coverage
@@ -204,6 +205,59 @@ final class CostChartWindowPolicyTests: XCTestCase {
         let yesterday = date(2026, 6, 19)...date(2026, 6, 20)
         XCTAssertTrue(CostChartWindowPolicy.covers(coverage, range: today))
         XCTAssertTrue(CostChartWindowPolicy.covers(coverage, range: yesterday))
+    }
+
+    /// Fed the declared retention start rather than the oldest bucket, the same
+    /// function reports the whole retained window — which is what lets Auto
+    /// reach Hour at three, four and five days instead of falling back to Day
+    /// because the scan only found spend yesterday.
+    func testCoverageFromRetentionStartSpansTheWholeWindow() {
+        let now = date(2026, 6, 20, 10)
+        let coverage = CostChartWindowPolicy.hourlyCoverage(
+            firstHour: CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: calendar),
+            lastHour: date(2026, 6, 20, 10),
+            calendar: calendar
+        )
+        XCTAssertEqual(coverage?.lowerBound, date(2026, 6, 7))
+        XCTAssertEqual(coverage?.upperBound, date(2026, 6, 21))
+        for days in [3, 4, 5, 7] {
+            let start = calendar.date(byAdding: .day, value: -days, to: date(2026, 6, 21))!
+            XCTAssertTrue(
+                CostChartWindowPolicy.covers(coverage, range: start...date(2026, 6, 21)),
+                "a \(days)-day window inside the retained window should be covered"
+            )
+        }
+    }
+
+    /// A window reaching past the retained days is still not hourly, however
+    /// the coverage was derived — the point of the retention constant is that
+    /// it has an edge.
+    func testWindowOlderThanTheRetentionWindowIsNotCovered() {
+        let now = date(2026, 6, 20, 10)
+        let coverage = CostChartWindowPolicy.hourlyCoverage(
+            firstHour: CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: calendar),
+            lastHour: date(2026, 6, 20, 10),
+            calendar: calendar
+        )
+        XCTAssertFalse(
+            CostChartWindowPolicy.covers(coverage, range: date(2026, 6, 6)...date(2026, 6, 21))
+        )
+        XCTAssertFalse(
+            CostChartWindowPolicy.covers(coverage, range: date(2026, 5, 20)...date(2026, 6, 21))
+        )
+    }
+
+    /// A snapshot cached longer ago than the whole window has nothing left
+    /// inside it, and must not claim coverage from its retention start.
+    func testCoverageIsNilWhenTheNewestBucketPredatesTheWindow() {
+        let now = date(2026, 6, 20, 10)
+        XCTAssertNil(
+            CostChartWindowPolicy.hourlyCoverage(
+                firstHour: CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: calendar),
+                lastHour: date(2026, 5, 30, 9),
+                calendar: calendar
+            )
+        )
     }
 
     /// The regression: a 3-day window overlaps the retained hourly days, and

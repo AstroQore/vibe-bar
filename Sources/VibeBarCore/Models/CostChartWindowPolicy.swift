@@ -9,6 +9,28 @@ import Foundation
 public enum CostChartWindowPolicy {
     private static let dayInterval: TimeInterval = 86_400
 
+    /// How many local days of per-hour cost buckets the scanner keeps.
+    ///
+    /// Auto granularity reaches for hours at five days and under, and the user
+    /// can ask for hours across a whole week, so retaining only yesterday and
+    /// today would make Hour mode fall back to Day for almost every span that
+    /// wants it. Fourteen days covers both, plus a week of panning behind the
+    /// newest edge, at 14 × 24 = 336 buckets per tool — small next to the
+    /// per-day series the same snapshot already carries.
+    public static let hourlyRetentionDays = 14
+
+    /// Midnight on the oldest day whose per-hour buckets are still retained at
+    /// `now` — the start of the `hourlyRetentionDays`-long window ending with
+    /// today.
+    public static func hourlyRetentionStart(
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Date {
+        let today = calendar.startOfDay(for: now)
+        return calendar.date(byAdding: .day, value: -(hourlyRetentionDays - 1), to: today)
+            ?? today.addingTimeInterval(-Double(hourlyRetentionDays - 1) * dayInterval)
+    }
+
     /// Does a bucket starting at `start` and `width` seconds wide occupy any
     /// visible time inside `range`?
     ///
@@ -47,26 +69,19 @@ public enum CostChartWindowPolicy {
         return end.timeIntervalSince(start)
     }
 
-    /// Calendar bounds of the Yesterday preset — the one preset not anchored
-    /// at the newest edge.
-    public static func yesterdayBounds(
-        now: Date = Date(),
-        calendar: Calendar = .current
-    ) -> (start: Date, end: Date) {
-        let today = calendar.startOfDay(for: now)
-        let start = calendar.date(byAdding: .day, value: -1, to: today)
-            ?? today.addingTimeInterval(-dayInterval)
-        return (start, today)
-    }
-
-    /// Whole-day stretch the hourly cost lane retains, from the oldest and
-    /// newest hourly buckets on hand.
+    /// Whole-day stretch the hourly cost lane retains.
     ///
-    /// The scanner keeps per-hour buckets for yesterday and today only. Inside
-    /// a retained day an hour with no bucket means nothing was spent, not that
-    /// evidence is missing — so coverage is reported as whole days rather than
-    /// as the extent of the points themselves. Otherwise Today would read as
-    /// "not covered" for every hour after the last one that saw usage.
+    /// `firstHour` is the oldest retained instant — `hourlyRetentionStart` when
+    /// the snapshot reports one, otherwise the oldest bucket on hand — and
+    /// `lastHour` is the newest bucket the scan produced. Inside a retained day
+    /// an hour with no bucket means nothing was spent, not that evidence is
+    /// missing, so coverage is reported as whole days rather than as the extent
+    /// of the points themselves. Otherwise Today would read as "not covered"
+    /// for every hour after the last one that saw usage, and an idle Tuesday
+    /// would punch a hole in a week that was fully scanned.
+    ///
+    /// Returns `nil` when the newest bucket predates the retention start —
+    /// a snapshot that stale has nothing left inside the window.
     public static func hourlyCoverage(
         firstHour: Date?,
         lastHour: Date?,

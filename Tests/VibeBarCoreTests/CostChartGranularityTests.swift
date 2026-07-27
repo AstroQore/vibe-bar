@@ -9,24 +9,51 @@ final class CostChartGranularityTests: XCTestCase {
     func testAutoResolvesToHourForShortSpans() {
         XCTAssertEqual(CostChartGranularity.resolve(autoFor: 0), .hour)
         XCTAssertEqual(CostChartGranularity.resolve(autoFor: 3_600), .hour)
-        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 2.6 * day), .hour)
+        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 5 * day), .hour)
+    }
+
+    /// The reason Auto reaches for hours as far out as five days: below about
+    /// six daily bars the chart is a handful of slabs, and the same span has
+    /// 72–120 hourly points to draw instead.
+    func testAutoPrefersHourWhileDailyBarsWouldBeSparse() {
+        for days in [3.0, 4.0, 4.9, 5.0] {
+            XCTAssertEqual(
+                CostChartGranularity.resolve(autoFor: days * day),
+                .hour,
+                "\(days) days is only \(days) daily bars"
+            )
+        }
     }
 
     func testAutoResolvesToDayJustPastTheHourThreshold() {
-        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 2.6 * day + 1), .day)
+        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 5 * day + 1), .day)
         XCTAssertEqual(CostChartGranularity.resolve(autoFor: 30 * day), .day)
         XCTAssertEqual(CostChartGranularity.resolve(autoFor: 110 * day), .day)
     }
 
     func testAutoResolvesToWeekPastTheDayThreshold() {
         XCTAssertEqual(CostChartGranularity.resolve(autoFor: 110 * day + 1), .week)
-        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 365 * day), .week)
-        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 420 * day), .week)
+        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 180 * day), .week)
+        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 240 * day), .week)
     }
 
     func testAutoResolvesToMonthPastTheWeekThreshold() {
-        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 420 * day + 1), .month)
+        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 240 * day + 1), .month)
+        XCTAssertEqual(CostChartGranularity.resolve(autoFor: 365 * day), .month)
         XCTAssertEqual(CostChartGranularity.resolve(autoFor: 3 * 365 * day), .month)
+    }
+
+    /// A long "All" domain is the case this ladder exists for: eight calendar
+    /// months is 242–245 days however the months fall, and ten is past 300.
+    /// Both are monthly bars, not thirty-plus weekly ones.
+    func testAutoResolvesLongAllDomainsToMonth() {
+        for days in [242.0, 245.0, 305.0] {
+            XCTAssertEqual(
+                CostChartGranularity.resolve(autoFor: days * day),
+                .month,
+                "\(days) days should be a monthly shape"
+            )
+        }
     }
 
     func testAutoResolutionIsMonotonicAcrossThresholds() {
@@ -59,11 +86,39 @@ final class CostChartGranularityTests: XCTestCase {
         XCTAssertEqual(CostChartGranularity.allowed(for: 7 * day + 1), [.day])
     }
 
+    /// The manual unlock stays wider than the Auto threshold: Auto stops
+    /// reaching for hours at five days, but six and seven are still offered to
+    /// a user who wants to compare a whole week hour by hour.
+    func testHourStaysManuallyAvailablePastTheAutoThreshold() {
+        for days in [5.5, 6.0, 7.0] {
+            XCTAssertNotEqual(CostChartGranularity.resolve(autoFor: days * day), .hour)
+            XCTAssertTrue(
+                CostChartGranularity.survivesManualSelection(.hour, for: days * day),
+                "hour should still be pickable at \(days) days"
+            )
+        }
+    }
+
     func testWeekIsOfferedFromFourWeeks() {
         XCTAssertEqual(CostChartGranularity.allowed(for: 21 * day), [.day])
         XCTAssertEqual(CostChartGranularity.allowed(for: 27 * day), [.day])
         XCTAssertEqual(CostChartGranularity.allowed(for: 28 * day), [.day, .week])
         XCTAssertEqual(CostChartGranularity.allowed(for: 365 * day), [.day, .week, .month])
+    }
+
+    /// Auto's own steps have to be offered by the control that shows them, or
+    /// the selector lights up "Auto" next to a greyed-out width Auto just used.
+    func testEveryAutoStepIsOfferedAtItsOwnThreshold() {
+        let steps: [(Double, CostChartGranularity)] = [
+            (5, .hour), (110, .day), (240, .week), (241, .month)
+        ]
+        for (days, expected) in steps {
+            XCTAssertEqual(CostChartGranularity.resolve(autoFor: days * day), expected)
+            XCTAssertTrue(
+                CostChartGranularity.allowed(for: days * day).contains(expected),
+                "\(expected) is not offered at \(days) days"
+            )
+        }
     }
 
     /// The unlock threshold and the bar floor have to agree: the first span

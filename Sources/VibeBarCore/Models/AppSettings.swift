@@ -47,6 +47,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var miscProviderInstances: [MiscProviderInstance]
     public var costData: CostDataSettings
 
+    /// Curves the user switched **off** in the Overview's all-providers quota
+    /// history chart, as `"<tool>|<accountId>|<bucketId>"`.
+    ///
+    /// Hidden rather than visible on purpose: the default is "show everything",
+    /// so an empty set is the correct starting state, no migration is needed,
+    /// and a quota that only starts being recorded next week shows up on its
+    /// own instead of being invisible until the user goes looking for it.
+    public var overviewQuotaHistoryHiddenCurveIds: Set<String>
+
     public static let `default` = AppSettings(
         displayMode: .remaining,
         refreshIntervalSeconds: 600,
@@ -165,7 +174,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         visibleMiscProviders: Set<ToolType> = AppSettings.defaultVisibleMiscProviders,
         miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
         miscProviderInstances: [MiscProviderInstance]? = nil,
-        costData: CostDataSettings = .default
+        costData: CostDataSettings = .default,
+        overviewQuotaHistoryHiddenCurveIds: Set<String> = []
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -198,6 +208,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.visibleMiscProviders = Self.legacyVisibleMiscProviders(from: self.miscProviderInstances)
         self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
         self.costData = costData
+        self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -225,6 +236,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case miscProviderOrder
         case miscProviderInstances
         case costData
+        case overviewQuotaHistoryHiddenCurveIds
     }
 
     public init(from decoder: Decoder) throws {
@@ -351,6 +363,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
 
         self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
+        self.overviewQuotaHistoryHiddenCurveIds =
+            try c.decodeIfPresent(Set<String>.self, forKey: .overviewQuotaHistoryHiddenCurveIds) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -387,6 +401,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(miscProviderOrder.map(\.rawValue), forKey: .miscProviderOrder)
         try c.encode(miscProviderInstances, forKey: .miscProviderInstances)
         try c.encode(costData, forKey: .costData)
+        try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {

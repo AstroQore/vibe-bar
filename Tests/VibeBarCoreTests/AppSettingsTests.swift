@@ -37,6 +37,32 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.updateChannel, .main)
     }
 
+    func testOverviewQuotaHistoryHiddenCurvesDefaultToNoneAndRoundTrip() throws {
+        // Stored as *hidden* ids, so a settings file written before the
+        // Overview chart existed has to mean "show everything" — not "show
+        // nothing", which is what a visible-id list would have decoded to.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertTrue(legacy.overviewQuotaHistoryHiddenCurveIds.isEmpty)
+        XCTAssertTrue(AppSettings.default.overviewQuotaHistoryHiddenCurveIds.isEmpty)
+
+        var settings = AppSettings.default
+        settings.overviewQuotaHistoryHiddenCurveIds = [
+            "claude|account-1|weekly_fable",
+            "codex|account-2|five_hour"
+        ]
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertEqual(
+            decoded.overviewQuotaHistoryHiddenCurveIds,
+            ["claude|account-1|weekly_fable", "codex|account-2|five_hour"]
+        )
+    }
+
     func testUpdateChannelRoundTripsAndUnknownValuesFallBackToMain() throws {
         var settings = AppSettings.default
         settings.updateChannel = .dev

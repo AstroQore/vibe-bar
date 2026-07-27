@@ -103,6 +103,29 @@ public enum QuotaHistorySeriesBuilder {
         gapSlotMultiplier * TimeInterval(AppSettings.slowestRefreshIntervalSeconds)
             + refreshTimerTolerance
 
+    /// Slack allowed on a recorded reset instant before a later sample counts
+    /// as belonging to the next window.
+    ///
+    /// A stored `resetAt` is an *estimate*, not a fact. Several providers report
+    /// "resets in N seconds" and Vibe Bar turns that into an absolute `Date` at
+    /// fetch time, so two samples taken inside one window disagree about the
+    /// reset instant by however long each round trip took — sub-second in
+    /// practice, but never exactly equal. Sixty seconds absorbs that (and the
+    /// refresh scheduler's own timer slack) while staying far below the
+    /// one-minute-at-the-fastest sampling cadence, so a genuine crossing is
+    /// still caught on the very next sample.
+    static let resetEstimateTolerance: TimeInterval = 60
+
+    /// Fraction of a window the recorded reset has to jump forward by before
+    /// the jump alone counts as a new window.
+    ///
+    /// Belt to the crossing test's braces: a sample can land exactly *on* the
+    /// old reset instant rather than after it, and the provider will already be
+    /// reporting the next window. Half a window is far above any estimate
+    /// jitter or legitimate mid-session drift, and far below the full-window
+    /// step a real reset takes.
+    private static let resetJumpWindowFraction: Double = 0.5
+
     /// Build the three series for one `(accountId, tool, bucketId)`.
     ///
     /// Inputs must already be scoped to a single bucket — the builder filters
@@ -234,13 +257,19 @@ public enum QuotaHistorySeriesBuilder {
         var previous: Element?
         for element in elements {
             if let previous {
-                let windowChanged = resetAt(previous) != resetAt(element)
-                let slot = UsageTimelineSlotPolicy.slotSeconds(
-                    windowSeconds: windowSeconds(previous)
-                )
+                let previousWindow = windowSeconds(previous)
+                let slot = UsageTimelineSlotPolicy.slotSeconds(windowSeconds: previousWindow)
                 let gap = time(element).timeIntervalSince(time(previous))
                 let threshold = max(slot * gapSlotMultiplier, minimumGapSeconds)
-                if windowChanged || gap > threshold {
+                let boundary = windowBoundary(
+                    previousReset: resetAt(previous),
+                    previousWindowSeconds: previousWindow,
+                    elementTime: time(element),
+                    elementReset: resetAt(element),
+                    elementWindowSeconds: windowSeconds(element),
+                    gapThreshold: threshold
+                )
+                if boundary || gap > threshold {
                     if !current.isEmpty { segments.append(current) }
                     current = []
                 }
@@ -250,6 +279,59 @@ public enum QuotaHistorySeriesBuilder {
         }
         if !current.isEmpty { segments.append(current) }
         return segments
+    }
+
+    /// Did the window the previous point was measured in end before this one
+    /// was taken?
+    ///
+    /// This used to be `previousReset != elementReset`, which looked exact and
+    /// was catastrophically wrong: on providers that report a *relative* reset
+    /// the two estimates differ by milliseconds on every single pair, so every
+    /// consecutive pair read as a new window, every segment collapsed to one
+    /// point, and a one-point segment draws nothing. Whole quota lines silently
+    /// vanished from the chart while their legend readings stayed correct.
+    ///
+    /// Three honest signals replace it:
+    ///
+    /// - **Crossing.** A sample taken after the previous sample's own reset
+    ///   instant is in the next window, whatever either sample claims the
+    ///   instant is. No tolerance on the estimate is needed, and a provider
+    ///   that legitimately slides a rolling window forward mid-session does not
+    ///   tear the line.
+    /// - **A jump of at least half a window.** Covers the sample that lands
+    ///   exactly on the boundary rather than past it.
+    /// - **A different window *length*.** An integer count of seconds is not an
+    ///   estimate, so a plan whose shape actually changed is still a hard edge.
+    ///
+    /// Points recorded before Vibe Bar stored `resetAt` cannot answer any of
+    /// this; those runs fall through to sampling-gap segmentation alone, which
+    /// is what keeps the actual line drawable over legacy history.
+    private static func windowBoundary(
+        previousReset: Date?,
+        previousWindowSeconds: Int?,
+        elementTime: Date,
+        elementReset: Date?,
+        elementWindowSeconds: Int?,
+        gapThreshold: TimeInterval
+    ) -> Bool {
+        if let previousWindowSeconds,
+           let elementWindowSeconds,
+           previousWindowSeconds != elementWindowSeconds {
+            return true
+        }
+        guard let previousReset else { return false }
+        if elementTime > previousReset.addingTimeInterval(resetEstimateTolerance) {
+            return true
+        }
+        guard let elementReset else { return false }
+        // Without a window length there is nothing to take a fraction of, so
+        // fall back to the coverage-gap threshold as the "this is a big move"
+        // yardstick.
+        let jumpThreshold = previousWindowSeconds
+            .map { TimeInterval($0) * resetJumpWindowFraction }
+            ?? gapThreshold
+        return elementReset.timeIntervalSince(previousReset)
+            >= max(jumpThreshold, resetEstimateTolerance)
     }
 
     private static func clampPercent(_ value: Double) -> Double {

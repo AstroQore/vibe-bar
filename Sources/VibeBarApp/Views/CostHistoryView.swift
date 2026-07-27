@@ -57,6 +57,50 @@ private struct CostGranularityOption: Identifiable, Equatable {
     ]
 }
 
+/// Range presets the navigable cost chart offers.
+///
+/// Deliberately not `CostTimeframe`, which still carries a Yesterday case for
+/// the summary tiles. The chart dropped its Yesterday pill: free navigation
+/// reaches yesterday with one drag, and the pill's label was the widest in the
+/// busiest row of the card — it pushed the bucket-width control off the edge in
+/// a narrow Overview column for a range the user can already reach.
+private enum CostRangePreset: String, CaseIterable, Identifiable {
+    case today
+    case week
+    case month
+    case all
+
+    var id: String { rawValue }
+
+    /// Calendar days back from the end of today, or `nil` for the whole domain.
+    var days: Int? {
+        switch self {
+        case .today: 1
+        case .week: 7
+        case .month: 30
+        case .all: nil
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .today: "Today"
+        case .week: "7d"
+        case .month: "30d"
+        case .all: "All"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .today: "Today"
+        case .week: "7 days"
+        case .month: "30 days"
+        case .all: "All"
+        }
+    }
+}
+
 /// A bucket already summed by Core, before its model roll-up is attached.
 private struct CostBucketTotal {
     let start: Date
@@ -188,8 +232,19 @@ struct CostHistoryView: View {
                 }
             }
             if let window {
-                // Five presets plus five bucket widths do not fit on one line in
-                // a compact popover. Prefer the single row, then stack.
+                // Four presets plus five bucket widths do not fit on one line
+                // in a compact popover, and the two groups are the widest thing
+                // in the card. Offer the same pair at three widths and let
+                // `ViewThatFits` pick.
+                //
+                // The last candidate is the one that matters: `ViewThatFits`
+                // falls back to it when *nothing* fits, so it has to be the one
+                // that compresses. The first two hold their natural width —
+                // pills that shrink when they don't need to look broken — while
+                // the last drops `fixedSize` and lets the labels take their
+                // `minimumScaleFactor`. Before this, the narrowest candidate
+                // was still rigid, so an Overview column narrower than the two
+                // groups drew "Week Month" straight past the card edge.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 6) {
                         Spacer(minLength: 0)
@@ -200,18 +255,24 @@ struct CostHistoryView: View {
                         presetBar(window: window)
                         granularityControl(window: window)
                     }
+                    VStack(alignment: .trailing, spacing: 3) {
+                        presetBar(window: window, compressible: true)
+                        granularityControl(window: window, compressible: true)
+                    }
                 }
             }
         }
     }
 
-    private func presetBar(window: ChartTimeWindow) -> some View {
+    private func presetBar(window: ChartTimeWindow, compressible: Bool = false) -> some View {
         CostRangePresetBar(
             active: activePreset(window: window),
             density: density,
             action: applyPreset
         )
-        .fixedSize(horizontal: true, vertical: false)
+        // `fixedSize(horizontal: false)` is a no-op, so the compressible
+        // candidate simply doesn't pin the width.
+        .fixedSize(horizontal: !compressible, vertical: false)
     }
 
     private var emptyNote: some View {
@@ -292,7 +353,9 @@ struct CostHistoryView: View {
                     points: points,
                     granularity: granularity,
                     window: window.wrappedValue,
-                    plotWidth: geometry.size.width
+                    // The GeometryReader measures the whole chart, gutter
+                    // included; the bars only ever get what is left of it.
+                    plotWidth: geometry.size.width - Self.yAxisGutterWidth
                 )
             )
         }
@@ -371,6 +434,15 @@ struct CostHistoryView: View {
             }
         }
         .chartXScale(domain: window.wrappedValue.visibleRange)
+        // Marks are laid out against the scale, not against the plot rect, so a
+        // bucket that straddles the visible range's leading edge draws half its
+        // body to the left of the plot — straight across the "$0.00" label
+        // column. `visiblePoints` keeps those straddling buckets whole on
+        // purpose (cutting them would make the footer disagree with the chart),
+        // so the bar has to be clipped rather than dropped.
+        .chartPlotStyle { plotArea in
+            plotArea.clipped()
+        }
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                 AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
@@ -378,6 +450,15 @@ struct CostHistoryView: View {
                     if let raw = value.as(Double.self) {
                         Text(formatAxisCost(raw))
                             .font(.system(size: 9, design: .rounded).monospacedDigit())
+                            // Swift Charts insets the plot by whatever the
+                            // widest label reports, so a floor here is a floor
+                            // on the gutter. Without it the column is as narrow
+                            // as "$10" at some zoom levels and as wide as
+                            // "$0.00" at others, and the plot edge — and with
+                            // it the first bar — slides sideways as the user
+                            // pans. `minWidth` rather than `width` so a
+                            // four-figure total still gets the room it needs.
+                            .frame(minWidth: Self.yAxisLabelWidth, alignment: .trailing)
                     }
                 }
             }
@@ -394,6 +475,16 @@ struct CostHistoryView: View {
             interactionOverlay(proxy: proxy, points: points, window: window)
         }
     }
+
+    /// Floor for the leading y-axis label column. "$0.00" at 9pt monospaced
+    /// digits is about 24pt; the extra keeps the gutter stable when the axis
+    /// switches between "$0.00" and "$10".
+    private static let yAxisLabelWidth: CGFloat = 30
+    /// What the label column costs the plot: the label itself plus the gap
+    /// Swift Charts leaves between it and the plot edge. Subtracted before
+    /// bar widths are derived, so the pitch is measured against the width the
+    /// bars actually get rather than the width of the whole card.
+    private static let yAxisGutterWidth: CGFloat = yAxisLabelWidth + 6
 
     /// Widest a single bar is allowed to get. Past this a bar stops reading as
     /// a measurement and starts reading as a block of colour — a five-day
@@ -785,22 +876,24 @@ struct CostHistoryView: View {
             firstDay: snapshot?.dailyHistory.first?.date,
             lastDay: snapshot?.dailyHistory.last?.date,
             dayCount: snapshot?.dailyHistory.count ?? 0,
-            hourlyEnd: snapshot?.todayHourlyHistory.last?.date
+            hourlyEnd: hourlyPoints.last?.date
         )
     }
 
     /// The full navigable extent: first recorded day through the end of today.
     ///
     /// The newest edge is the end of the current day rather than this instant so
-    /// today's bar is drawn whole and the Today / Yesterday presets land exactly
-    /// on calendar-day boundaries — the same frame the old fixed-timeframe chart
+    /// today's bar is drawn whole and every preset lands exactly on a
+    /// calendar-day boundary — the same frame the old fixed-timeframe chart
     /// used. Floored at 24h so a first-run domain is still navigable.
     private func domainRange() -> ClosedRange<Date>? {
         guard let snapshot else { return nil }
         let calendar = Calendar.current
         var low = snapshot.dailyHistory.first?.date
-        if let firstHour = snapshot.yesterdayHourlyHistory.first?.date
-            ?? snapshot.todayHourlyHistory.first?.date {
+        // The oldest hourly *bucket*, not the retention start: an empty
+        // retained window is not history, and treating it as domain would open
+        // a first-run chart on two weeks of nothing.
+        if let firstHour = hourlyPoints.first?.date {
             low = low.map { min($0, firstHour) } ?? firstHour
         }
         guard let low else { return nil }
@@ -863,26 +956,14 @@ struct CostHistoryView: View {
     /// Presets are calendar spans, not multiples of 86 400 seconds: the domain
     /// ends at the end of today, so a span measured back from there with
     /// `Calendar` lands on a midnight even across a 23- or 25-hour DST day.
-    private func applyPreset(_ preset: CostTimeframe) {
+    ///
+    /// Every preset is anchored at the domain's newest edge, which is what let
+    /// the Yesterday pill go: it was the only one that wasn't.
+    private func applyPreset(_ preset: CostRangePreset) {
         guard var current = window else { return }
-        switch preset {
-        case .today:
-            current.jump(toSpan: CostChartWindowPolicy.anchoredSpan(days: 1))
-        case .yesterday:
-            // The one preset that is not anchored at the newest edge.
-            let (start, end) = CostChartWindowPolicy.yesterdayBounds()
-            current = ChartTimeWindow(
-                domainStart: current.domainStart,
-                domainEnd: current.domainEnd,
-                minimumSpan: current.minimumSpan,
-                visibleStart: start,
-                visibleEnd: end
-            )
-        case .week:
-            current.jump(toSpan: CostChartWindowPolicy.anchoredSpan(days: 7))
-        case .month:
-            current.jump(toSpan: CostChartWindowPolicy.anchoredSpan(days: 30))
-        case .all:
+        if let days = preset.days {
+            current.jump(toSpan: CostChartWindowPolicy.anchoredSpan(days: days))
+        } else {
             current.jump(toSpan: current.domainSpan)
         }
         window = current
@@ -896,28 +977,21 @@ struct CostHistoryView: View {
     /// Matched against the same calendar spans `applyPreset` produces, so a DST
     /// day's extra (or missing) hour cannot push a freshly applied preset out
     /// of its own tolerance.
-    private func activePreset(window: ChartTimeWindow) -> CostTimeframe? {
+    private func activePreset(window: ChartTimeWindow) -> CostRangePreset? {
         if window.coversDomain { return .all }
-        let span = window.visibleSpan
-        let tolerance = Self.dayInterval * 0.03
-        let (yesterdayStart, yesterdayEnd) = CostChartWindowPolicy.yesterdayBounds()
-        if abs(span - yesterdayEnd.timeIntervalSince(yesterdayStart)) <= tolerance,
-           abs(window.visibleStart.timeIntervalSince(yesterdayStart)) <= tolerance {
-            return .yesterday
-        }
         guard window.isAtDomainEnd else { return nil }
-        let anchored: [(CostTimeframe, TimeInterval)] = [
-            (.today, CostChartWindowPolicy.anchoredSpan(days: 1)),
-            (.week, CostChartWindowPolicy.anchoredSpan(days: 7)),
-            (.month, CostChartWindowPolicy.anchoredSpan(days: 30))
-        ]
-        return anchored.first { abs(span - $0.1) <= $0.1 * 0.03 }?.0
+        let span = window.visibleSpan
+        return CostRangePreset.allCases.first { preset in
+            guard let days = preset.days else { return false }
+            let anchored = CostChartWindowPolicy.anchoredSpan(days: days)
+            return abs(span - anchored) <= anchored * 0.03
+        }
     }
 
     // MARK: - Granularity
 
     @ViewBuilder
-    private func granularityControl(window: ChartTimeWindow) -> some View {
+    private func granularityControl(window: ChartTimeWindow, compressible: Bool = false) -> some View {
         let span = window.visibleSpan
         HStack(spacing: 1) {
             ForEach(CostGranularityOption.all) { option in
@@ -943,12 +1017,21 @@ struct CostHistoryView: View {
             }
         }
         .padding(2)
-        .frame(width: CGFloat(CostGranularityOption.all.count) * 32)
+        // Fixed width keeps the five options evenly pitched; the compressible
+        // candidate caps instead of pins, so a narrow card shrinks the segments
+        // (the labels already carry `minimumScaleFactor`) rather than letting
+        // the last two draw past the card.
+        .frame(
+            minWidth: compressible ? nil : Self.granularityControlWidth,
+            maxWidth: Self.granularityControlWidth
+        )
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(0.08))
         )
     }
+
+    private static let granularityControlWidth = CGFloat(CostGranularityOption.all.count) * 32
 
     private func granularityOptionLabel(
         _ option: CostGranularityOption,
@@ -1013,17 +1096,32 @@ struct CostHistoryView: View {
         currentGranularity.rawValue
     }
 
-    /// Hourly detail only exists for yesterday and today — the scanner keeps
-    /// per-hour buckets for those two days and nothing older. Reported as whole
-    /// days: inside a retained day, an hour with no bucket means nothing was
-    /// spent rather than evidence being missing.
+    /// Every per-hour bucket the snapshot carries, oldest first.
+    ///
+    /// `recentHourlyHistory` is a superset of the two day-scoped lanes, so it
+    /// is used alone when present. Snapshots cached before the window widened
+    /// have only the two days, and concatenating those is the fallback — never
+    /// both, or every bucket for yesterday and today would be counted twice.
+    private var hourlyPoints: [HourlyCostPoint] {
+        guard let snapshot else { return [] }
+        if !snapshot.recentHourlyHistory.isEmpty { return snapshot.recentHourlyHistory }
+        return snapshot.yesterdayHourlyHistory + snapshot.todayHourlyHistory
+    }
+
+    /// The stretch the chart has hourly evidence for, as whole days.
+    ///
+    /// The lower bound comes from the snapshot's declared retention start when
+    /// it has one: a day inside the retained window with no buckets was
+    /// scanned and found idle, which is coverage, whereas the oldest *bucket*
+    /// would leave an idle Monday looking like missing evidence and drop the
+    /// chart back to daily bars. Older snapshots don't declare a start, so
+    /// there the oldest bucket is all the proof there is.
     private var hourlyCoverage: ClosedRange<Date>? {
         guard let snapshot else { return nil }
+        let points = hourlyPoints
         return CostChartWindowPolicy.hourlyCoverage(
-            firstHour: snapshot.yesterdayHourlyHistory.first?.date
-                ?? snapshot.todayHourlyHistory.first?.date,
-            lastHour: snapshot.todayHourlyHistory.last?.date
-                ?? snapshot.yesterdayHourlyHistory.last?.date
+            firstHour: snapshot.hourlyCoverageStart ?? points.first?.date,
+            lastHour: points.last?.date
         )
     }
 
@@ -1050,8 +1148,7 @@ struct CostHistoryView: View {
         let range = window.visibleRange
         switch granularity {
         case .hour:
-            let hours = snapshot.yesterdayHourlyHistory + snapshot.todayHourlyHistory
-            return clip(hours, date: \.date, bucket: clipBucket(.hour), to: range).map { point in
+            return clip(hourlyPoints, date: \.date, bucket: clipBucket(.hour), to: range).map { point in
                 CostChartPoint(
                     date: point.date,
                     costUSD: point.costUSD,
@@ -1306,15 +1403,15 @@ struct CostHistoryView: View {
 
 /// The original timeframe pills, repurposed as window presets. Selection is
 /// derived from the window rather than owned here: free navigation can leave
-/// every pill unlit, which a `Binding<CostTimeframe>` could not express.
+/// every pill unlit, which a `Binding<CostRangePreset>` could not express.
 private struct CostRangePresetBar: View {
-    let active: CostTimeframe?
+    let active: CostRangePreset?
     let density: Theme.Density
-    let action: (CostTimeframe) -> Void
+    let action: (CostRangePreset) -> Void
 
     var body: some View {
         HStack(spacing: 1) {
-            ForEach(CostTimeframe.allCases) { preset in
+            ForEach(CostRangePreset.allCases) { preset in
                 Button {
                     action(preset)
                 } label: {

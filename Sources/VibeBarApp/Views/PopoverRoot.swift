@@ -380,6 +380,12 @@ private struct OverviewWaterfall: View {
                 ForEach(settingsStore.settings.visibleCoreProviderList, id: \.self) { tool in
                     overviewQuotaCard(for: tool)
                 }
+                // Sits with the quota cards, not with the analytics: it is the
+                // cross-provider version of what they each show one slice of,
+                // and it is the only card that can answer "which of my quotas
+                // runs out first".
+                OverviewQuotaHistoryCard(density: density)
+                    .overviewMasonryItem(id: "quota-history-all", phase: .quota)
                 if hasCostData {
                     CostHistoryView(
                         tool: .codex,
@@ -681,25 +687,9 @@ private struct GeminiTabPage: View {
                         additionalQuotaSeries: antigravityQuotaSeries
                     )
                 }
-                // One card per quota group, in the same order the utilization
-                // card above stacks them: Gemini's groups first, then
-                // AntiGravity's. The two products reset on their own schedules,
-                // so they never share a chart; neither do two groups inside one
-                // product.
-                if let geminiAccount = geminiAccounts.first {
-                    quotaHistoryCards(
-                        tool: .gemini,
-                        accountId: geminiAccount.id,
-                        titleOverride: "Gemini quota history"
-                    )
-                }
-                if let antigravityAccount {
-                    quotaHistoryCards(
-                        tool: .antigravity,
-                        accountId: antigravityAccount.id,
-                        titleOverride: "AntiGravity quota history"
-                    )
-                }
+                // Quota history is no longer a card of its own: each group's
+                // chart is drawn inside the utilization card above, directly
+                // under the rows it describes — AntiGravity's included.
                 ServiceStatusCard(tools: [.gemini], density: density)
             }
             .frame(
@@ -711,40 +701,6 @@ private struct GeminiTabPage: View {
                 .frame(width: columns.right, alignment: .topLeading)
         }
         .frame(width: columns.total, alignment: .topLeading)
-    }
-
-    /// Quota-history cards for one of the two products on this page. The page
-    /// tool stays `.gemini` when grouping so an ungrouped Gemini Web quota gets
-    /// the same "Gemini Chat" heading the utilization card gives it.
-    @ViewBuilder
-    private func quotaHistoryCards(
-        tool: ToolType,
-        accountId: String,
-        titleOverride: String
-    ) -> some View {
-        let allGroups = QuotaBucketGrouping.groups(
-            pageTool: .gemini,
-            itemTool: tool,
-            buckets: quotaService.cachedQuota(for: accountId)?.buckets ?? []
-        )
-        let groups = QuotaBucketGrouping.chartable(
-            allGroups,
-            accountId: accountId,
-            observations: quotaService.observationsByAccountBucket
-        )
-        ForEach(groups) { group in
-            QuotaHistoryChartView(
-                tool: tool,
-                accountId: accountId,
-                group: group,
-                density: density,
-                titleOverride: titleOverride,
-                // Unfiltered count: when other groups merely lack history yet,
-                // the surviving card still needs its group label to stay
-                // distinguishable from them.
-                showsGroupTitle: allGroups.count > 1
-            )
-        }
     }
 }
 
@@ -1463,7 +1419,6 @@ private struct ProviderDetailView: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
-    @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
         let columns = ProviderDetailColumnWidths(density: density)
@@ -1480,35 +1435,10 @@ private struct ProviderDetailView: View {
                         now: context.date
                     )
                 }
-                // One history card per quota group, in the order the
-                // utilization card above prints its group headings — Claude's
-                // ungrouped 5 Hours + Weekly in one chart, Fable in the next.
-                // Quotas that share a heading share a plot; quotas that reset
-                // on unrelated schedules never get merged behind a picker.
-                if let accountId = environment.account(for: tool)?.id {
-                    let allGroups = QuotaBucketGrouping.groups(
-                        pageTool: tool,
-                        itemTool: tool,
-                        buckets: environment.quota(for: tool)?.buckets ?? []
-                    )
-                    let groups = QuotaBucketGrouping.chartable(
-                        allGroups,
-                        accountId: accountId,
-                        observations: quotaService.observationsByAccountBucket
-                    )
-                    ForEach(groups) { group in
-                        QuotaHistoryChartView(
-                            tool: tool,
-                            accountId: accountId,
-                            group: group,
-                            density: density,
-                            // Unfiltered count, so a lone drawable group keeps
-                            // its label while sibling groups are still
-                            // accumulating history.
-                            showsGroupTitle: allGroups.count > 1
-                        )
-                    }
-                }
+                // Quota history is no longer a card of its own: each group's
+                // chart is drawn inside the utilization card above, directly
+                // under the rows it describes — "all models" under the
+                // all-models rows, Spark under Spark's.
                 ServiceStatusCard(tools: [tool], density: density)
             }
             .frame(

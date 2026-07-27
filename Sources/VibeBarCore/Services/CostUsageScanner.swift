@@ -1351,6 +1351,8 @@ public enum CostUsageScanner {
         let calendar: Calendar
         let startOfToday: Date
         let startOfYesterday: Date
+        /// Midnight of the oldest day that still gets per-hour buckets.
+        let hourlyCutoff: Date
         let weekCutoff: Date
         let monthCutoff: Date
 
@@ -1359,8 +1361,14 @@ public enum CostUsageScanner {
         var weekCost: Double = 0, weekTokens: Int = 0, weekRequests: Int = 0
         var monthCost: Double = 0, monthTokens: Int = 0, monthRequests: Int = 0
         var byDay: [Date: (cost: Double, tokens: Int)] = [:]
-        var byHourToday: [Date: (cost: Double, tokens: Int)] = [:]
-        var byHourYesterday: [Date: (cost: Double, tokens: Int)] = [:]
+        /// Per-hour buckets across the whole retained hourly window, not just
+        /// yesterday and today — the chart's Hour mode needs evidence wherever
+        /// the user can navigate to inside the window.
+        var byHour: [Date: (cost: Double, tokens: Int)] = [:]
+        /// Midnights inside the hourly window that saw at least one event. Days
+        /// with nothing at all are left out of the emitted series entirely;
+        /// `hourlyCoverageStart` is what tells the chart they were scanned.
+        var hourlyDays: Set<Date> = []
         var heatmap: [[Int]] = Array(repeating: Array(repeating: 0, count: 24), count: 7)
         /// Model ranking across every scanned session.
         var byModelAllTime: [String: (cost: Double, tokens: Int)] = [:]
@@ -1379,6 +1387,7 @@ public enum CostUsageScanner {
             self.calendar = cal
             self.startOfToday = cal.startOfDay(for: now)
             self.startOfYesterday = cal.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
+            self.hourlyCutoff = CostChartWindowPolicy.hourlyRetentionStart(now: now, calendar: cal)
             self.weekCutoff = cal.date(byAdding: .day, value: -6, to: startOfToday) ?? now
             self.monthCutoff = cal.date(byAdding: .day, value: -29, to: startOfToday) ?? now
         }
@@ -1392,19 +1401,6 @@ public enum CostUsageScanner {
                 todayCost += costUSD
                 todayTokens += tokens
                 todayRequests += 1
-                if let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
-                    var hourBucket = byHourToday[hourKey] ?? (0, 0)
-                    hourBucket.cost += costUSD
-                    hourBucket.tokens += tokens
-                    byHourToday[hourKey] = hourBucket
-                }
-            }
-            if date >= startOfYesterday, date < startOfToday,
-               let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
-                var hourBucket = byHourYesterday[hourKey] ?? (0, 0)
-                hourBucket.cost += costUSD
-                hourBucket.tokens += tokens
-                byHourYesterday[hourKey] = hourBucket
             }
             if date >= weekCutoff {
                 weekCost += costUSD
@@ -1421,6 +1417,18 @@ public enum CostUsageScanner {
             bucket.cost += costUSD
             bucket.tokens += tokens
             byDay[dayKey] = bucket
+
+            // One hourly lane for the whole retained window. Events dated after
+            // today are clock skew rather than history, and a future bucket
+            // would push the lane past the chart's domain, so they stay out.
+            if date >= hourlyCutoff, dayKey <= startOfToday,
+               let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
+                var hourBucket = byHour[hourKey] ?? (0, 0)
+                hourBucket.cost += costUSD
+                hourBucket.tokens += tokens
+                byHour[hourKey] = hourBucket
+                hourlyDays.insert(dayKey)
+            }
 
             let weekday = calendar.component(.weekday, from: date) - 1     // 0..6, Sunday=0
             let hour = calendar.component(.hour, from: date)
@@ -1447,7 +1455,7 @@ public enum CostUsageScanner {
             dayModels[model] = dayModelEntry
             byDayModel[dayKey] = dayModels
 
-            if date >= startOfYesterday,
+            if date >= hourlyCutoff, dayKey <= startOfToday,
                let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
                 var hourModels = byHourModel[hourKey] ?? [:]
                 var hourModelEntry = hourModels[model] ?? (0, 0)
@@ -1458,20 +1466,51 @@ public enum CostUsageScanner {
             }
         }
 
+        /// Zero-filled hourly buckets for one local day, oldest first.
+        ///
+        /// Walked with the calendar rather than by adding 24 fixed offsets to
+        /// midnight: a spring-forward day is 23 hours long and a fall-back day
+        /// 25, and offset arithmetic would spill the last bucket into the next
+        /// day — where it would collide with that day's own midnight bucket in
+        /// the combined series. `notAfter` stops today's lane at the hour in
+        /// progress instead of drawing the rest of the day as zeros.
+        func hourlyPoints(forDayStarting day: Date, notAfter limit: Date?) -> [HourlyCostPoint] {
+            guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: day) else { return [] }
+            var points: [HourlyCostPoint] = []
+            var hour = day
+            while hour < dayEnd {
+                if let limit, hour > limit { break }
+                let value = byHour[hour] ?? (0, 0)
+                points.append(
+                    HourlyCostPoint(date: hour, costUSD: value.cost, totalTokens: value.tokens)
+                )
+                guard let next = calendar.date(byAdding: .hour, value: 1, to: hour), next > hour else {
+                    break
+                }
+                hour = next
+            }
+            return points
+        }
+
         func snapshot(jsonlFilesFound: Int) -> CostSnapshot {
             let sortedDays = byDay
                 .sorted { $0.key < $1.key }
                 .map { DailyCostPoint(date: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
-            let currentHour = calendar.component(.hour, from: now)
-            let hourlyToday = (0...max(0, currentHour)).compactMap { offset -> HourlyCostPoint? in
-                guard let hour = calendar.date(byAdding: .hour, value: offset, to: startOfToday) else { return nil }
-                let value = byHourToday[hour] ?? (0, 0)
-                return HourlyCostPoint(date: hour, costUSD: value.cost, totalTokens: value.tokens)
-            }
-            let hourlyYesterday = (0..<24).compactMap { offset -> HourlyCostPoint? in
-                guard let hour = calendar.date(byAdding: .hour, value: offset, to: startOfYesterday) else { return nil }
-                let value = byHourYesterday[hour] ?? (0, 0)
-                return HourlyCostPoint(date: hour, costUSD: value.cost, totalTokens: value.tokens)
+            let currentHourStart = calendar.dateInterval(of: .hour, for: now)?.start ?? startOfToday
+            let hourlyToday = hourlyPoints(forDayStarting: startOfToday, notAfter: currentHourStart)
+            let hourlyYesterday = hourlyPoints(forDayStarting: startOfYesterday, notAfter: nil)
+            // Today and yesterday are always emitted, even at zero, so a chart
+            // opened on a quiet morning still reads as "covered, nothing spent"
+            // rather than falling back to daily bars.
+            let recentDays = hourlyDays
+                .union([startOfToday, startOfYesterday])
+                .filter { $0 >= hourlyCutoff && $0 <= startOfToday }
+                .sorted()
+            let hourlyRecent = recentDays.flatMap { day in
+                hourlyPoints(
+                    forDayStarting: day,
+                    notAfter: day == startOfToday ? currentHourStart : nil
+                )
             }
             let sevenDayBreakdowns = byModel7d
                 .sorted { $0.value.cost > $1.value.cost }
@@ -1513,6 +1552,8 @@ public enum CostUsageScanner {
                 dailyHistory: sortedDays,
                 todayHourlyHistory: hourlyToday,
                 yesterdayHourlyHistory: hourlyYesterday,
+                recentHourlyHistory: hourlyRecent,
+                hourlyCoverageStart: hourlyCutoff,
                 heatmap: UsageHeatmap(tool: tool, cells: heatmap, totalTokens: totalTokens),
                 modelBreakdowns: Array(allTimeBreakdowns),
                 last7DaysModelBreakdowns: Array(sevenDayBreakdowns),

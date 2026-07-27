@@ -97,6 +97,160 @@ final class QuotaHistorySeriesBuilderTests: XCTestCase {
         XCTAssertEqual(series.actual[1].map(\.remainingPercent), [98, 94])
     }
 
+    func testJitteringResetEstimatesStayInOneSegment() {
+        // The bug this guards: a provider that reports "resets in N seconds"
+        // yields a slightly different absolute instant on every fetch. Exact
+        // comparison made every consecutive pair look like a new window, so a
+        // weekly lane became a run of one-point segments and drew nothing at
+        // all while its legend kept showing the right percentage.
+        let reset = base.addingTimeInterval(TimeInterval(week) / 2)
+        let drifts: [TimeInterval] = [0, -0.81, 0.34, -0.19, 0.94]
+        let points = drifts.enumerated().map { index, drift in
+            fill(
+                used: Double(10 + index),
+                at: base.addingTimeInterval(TimeInterval(index) * 3_600),
+                resetAt: reset.addingTimeInterval(drift)
+            )
+        }
+        let series = QuotaHistorySeriesBuilder.build(fillPoints: points, range: range())
+        XCTAssertEqual(series.actual.count, 1)
+        XCTAssertEqual(series.actual[0].map(\.remainingPercent), [90, 89, 88, 87, 86])
+        XCTAssertEqual(series.pace.count, 1)
+        XCTAssertEqual(series.pace[0].count, 5)
+    }
+
+    func testSampleAfterRecordedResetStartsNewSegment() {
+        // Crossing is the honest signal: the second sample is taken past the
+        // instant the first one said the window would refill.
+        let reset = base.addingTimeInterval(3_600)
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: [
+                fill(used: 80, at: base, resetAt: reset),
+                fill(
+                    used: 3,
+                    at: reset.addingTimeInterval(QuotaHistorySeriesBuilder.resetEstimateTolerance + 1),
+                    resetAt: reset.addingTimeInterval(TimeInterval(week))
+                )
+            ],
+            range: range()
+        )
+        XCTAssertEqual(series.actual.count, 2)
+    }
+
+    func testSampleInsideTheResetToleranceStaysInOneSegment() {
+        let reset = base.addingTimeInterval(3_600)
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: [
+                fill(used: 80, at: base, resetAt: reset),
+                // Still the same window: a sample a few seconds past a reset
+                // estimate has not proved anything refilled.
+                fill(used: 82, at: reset.addingTimeInterval(5), resetAt: reset.addingTimeInterval(0.4))
+            ],
+            range: range()
+        )
+        XCTAssertEqual(series.actual.count, 1)
+        XCTAssertEqual(series.actual[0].count, 2)
+    }
+
+    func testWindowLengthChangeStartsNewSegment() {
+        let reset = base.addingTimeInterval(TimeInterval(week) / 2)
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: [
+                fill(used: 40, at: base, resetAt: reset, windowSeconds: week),
+                // A count of seconds is not an estimate — the plan's shape
+                // really did change.
+                fill(used: 41, at: base.addingTimeInterval(3_600), resetAt: reset, windowSeconds: 18_000)
+            ],
+            range: range()
+        )
+        XCTAssertEqual(series.actual.count, 2)
+    }
+
+    func testActualDrawsForPointsWithoutResetMetadata() {
+        // Legacy weekly-style history: no reset instant was ever recorded, so
+        // nothing can be replayed — but the observations themselves are still
+        // evidence and have to draw.
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: (0..<4).map { index in
+                fill(
+                    used: Double(20 + index * 5),
+                    at: base.addingTimeInterval(TimeInterval(index) * 3_600),
+                    resetAt: nil,
+                    windowSeconds: week
+                )
+            },
+            range: range()
+        )
+        XCTAssertEqual(series.actual.count, 1)
+        XCTAssertEqual(series.actual[0].map(\.remainingPercent), [80, 75, 70, 65])
+        XCTAssertTrue(series.pace.isEmpty)
+    }
+
+    func testResetMetadataAppearingMidLaneDoesNotSplitTheActualLine() {
+        // Vibe Bar started recording `resetAt` partway through this lane's
+        // history. That is a change in what *we* stored, not evidence that the
+        // quota refilled, so the line stays continuous.
+        let reset = base.addingTimeInterval(TimeInterval(week) / 2)
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: [
+                fill(used: 20, at: base, resetAt: nil, windowSeconds: week),
+                fill(used: 24, at: base.addingTimeInterval(3_600), resetAt: nil, windowSeconds: week),
+                fill(used: 28, at: base.addingTimeInterval(7_200), resetAt: reset),
+                fill(used: 31, at: base.addingTimeInterval(10_800), resetAt: reset.addingTimeInterval(0.6))
+            ],
+            range: range()
+        )
+        XCTAssertEqual(series.actual.count, 1)
+        XCTAssertEqual(series.actual[0].count, 4)
+        XCTAssertEqual(series.pace.count, 1)
+        XCTAssertEqual(series.pace[0].count, 2)
+    }
+
+    func testNilResetPointsStillSplitOnSamplingGap() {
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: [
+                fill(used: 20, at: base, resetAt: nil, windowSeconds: week),
+                fill(used: 24, at: base.addingTimeInterval(3_600), resetAt: nil, windowSeconds: week),
+                // Beyond two hourly slots: coverage genuinely stopped.
+                fill(
+                    used: 61,
+                    at: base.addingTimeInterval(TimeInterval(3 * 3_600 + 1)),
+                    resetAt: nil,
+                    windowSeconds: week
+                )
+            ],
+            range: range()
+        )
+        XCTAssertEqual(series.actual.count, 2)
+        XCTAssertEqual(series.actual[0].count, 2)
+        XCTAssertEqual(series.actual[1].count, 1)
+    }
+
+    func testForecastToleratesJitteringResetEstimates() {
+        let reset = base.addingTimeInterval(TimeInterval(week) / 2)
+        let drifts: [TimeInterval] = [0.27, -0.63, 0.11]
+        var points: [ForecastTimelinePoint] = []
+        for (index, drift) in drifts.enumerated() {
+            let at: Date = base.addingTimeInterval(TimeInterval(index) * 3_600)
+            points.append(
+                forecast(
+                    projected: Double(50 + index),
+                    lower: 40,
+                    upper: 70,
+                    at: at,
+                    resetAt: reset.addingTimeInterval(drift)
+                )
+            )
+        }
+        let series = QuotaHistorySeriesBuilder.build(
+            fillPoints: [],
+            forecastPoints: points,
+            range: range()
+        )
+        XCTAssertEqual(series.forecast.count, 1)
+        XCTAssertEqual(series.forecast[0].count, 3)
+    }
+
     func testSamplingGapBeyondTwoSlotsStartsNewSegment() {
         let reset = base.addingTimeInterval(TimeInterval(week))
         // Weekly windows use hourly slots, so the split threshold is 2 hours —
