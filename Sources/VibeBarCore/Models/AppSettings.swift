@@ -6,6 +6,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var refreshOnPopoverOpen: Bool
     public var popoverOpenRefreshCooldownSeconds: Int
     public var launchAtLogin: Bool
+    public var updateChannel: UpdateChannel
     public var menuBarTextEnabled: Bool
     public var mockEnabled: Bool
     public var codexUsageMode: CodexUsageMode
@@ -52,6 +53,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         refreshOnPopoverOpen: false,
         popoverOpenRefreshCooldownSeconds: 60,
         launchAtLogin: false,
+        updateChannel: .main,
         menuBarTextEnabled: true,
         mockEnabled: false,
         codexUsageMode: .auto,
@@ -146,6 +148,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         refreshOnPopoverOpen: Bool = false,
         popoverOpenRefreshCooldownSeconds: Int = 60,
         launchAtLogin: Bool,
+        updateChannel: UpdateChannel = .main,
         menuBarTextEnabled: Bool,
         mockEnabled: Bool,
         codexUsageMode: CodexUsageMode = .auto,
@@ -169,6 +172,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.refreshOnPopoverOpen = refreshOnPopoverOpen
         self.popoverOpenRefreshCooldownSeconds = max(60, popoverOpenRefreshCooldownSeconds)
         self.launchAtLogin = launchAtLogin
+        self.updateChannel = updateChannel
         self.menuBarTextEnabled = menuBarTextEnabled
         self.mockEnabled = false
         self.codexUsageMode = codexUsageMode
@@ -202,6 +206,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case refreshOnPopoverOpen
         case popoverOpenRefreshCooldownSeconds
         case launchAtLogin
+        case updateChannel
         case menuBarTextEnabled
         case mockEnabled
         case codexUsageMode
@@ -233,6 +238,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 ?? Self.default.popoverOpenRefreshCooldownSeconds
         )
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? Self.default.launchAtLogin
+        self.updateChannel =
+            (try? c.decodeIfPresent(UpdateChannel.self, forKey: .updateChannel))
+            ?? Self.default.updateChannel
         self.menuBarTextEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarTextEnabled) ?? Self.default.menuBarTextEnabled
         self.mockEnabled = false
         self.codexUsageMode = try c.decodeIfPresent(CodexUsageMode.self, forKey: .codexUsageMode) ?? Self.default.codexUsageMode
@@ -352,6 +360,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(refreshOnPopoverOpen, forKey: .refreshOnPopoverOpen)
         try c.encode(popoverOpenRefreshCooldownSeconds, forKey: .popoverOpenRefreshCooldownSeconds)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
+        try c.encode(updateChannel, forKey: .updateChannel)
         try c.encode(menuBarTextEnabled, forKey: .menuBarTextEnabled)
         try c.encode(mockEnabled, forKey: .mockEnabled)
         try c.encode(codexUsageMode, forKey: .codexUsageMode)

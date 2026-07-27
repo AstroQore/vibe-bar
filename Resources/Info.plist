@@ -34,7 +34,7 @@
         <false/>
     </dict>
     <key>SUFeedURL</key>
-    <string>https://github.com/AstroQore/vibe-bar/releases/latest/download/appcast.xml</string>
+    <string>https://raw.githubusercontent.com/AstroQore/vibe-bar/updates/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>o0Rf8gjkEf+Fcrq7w3T8CmyYTBy0Q57aGMuwrvzPKo8=</string>
     <key>SUEnableAutomaticChecks</key>

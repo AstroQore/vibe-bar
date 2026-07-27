@@ -1136,24 +1136,38 @@ struct SettingsView: View {
 }
 
 private struct UpdateSettingsRow: View {
+    @EnvironmentObject private var settingsStore: SettingsStore
     @ObservedObject var updateController: AppUpdateController
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Vibe Bar \(updateController.currentVersionDescription)")
-                    .font(.callout)
-                Text("Checks GitHub Releases once a day and asks before installing.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Vibe Bar \(updateController.currentVersionDescription)")
+                        .font(.callout)
+                    Text("Checks the selected channel once a day and asks before installing.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    updateController.checkForUpdates()
+                } label: {
+                    Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(!updateController.canCheckForUpdates)
             }
-            Spacer()
-            Button {
-                updateController.checkForUpdates()
-            } label: {
-                Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+
+            Picker("Update channel", selection: $settingsStore.settings.updateChannel) {
+                ForEach(UpdateChannel.allCases) { channel in
+                    Text(channel.label).tag(channel)
+                }
             }
-            .disabled(!updateController.canCheckForUpdates)
+            .pickerStyle(.segmented)
+
+            Text(settingsStore.settings.updateChannel.detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }

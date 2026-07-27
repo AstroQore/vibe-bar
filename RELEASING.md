@@ -2,7 +2,12 @@
 
 Vibe Bar releases are built from a versioned tag and uploaded to a draft
 GitHub Release. The release remains a draft until a maintainer checks the
-assets and publishes it in the GitHub UI.
+assets and publishes it in the GitHub UI. The same signed Sparkle appcast
+serves two update channels:
+
+- **Main** is Sparkle's untagged default channel and contains stable releases.
+- **Dev** uses the `dev` Sparkle channel. Dev users also receive Main releases
+  because Sparkle always includes the default channel.
 
 The same workflow supports both today's ad-hoc signature and a future
 Developer ID + notarization setup. Neither path enables the App Sandbox;
@@ -15,15 +20,30 @@ provider integrations require the current unsandboxed runtime.
    - `CFBundleShortVersionString` — user-facing version, for example `0.2.0`.
    - `CFBundleVersion` — monotonically increasing build number.
 2. Merge that version bump to `main` through a PR.
-3. From the updated `main`, create and push the matching tag:
+3. Choose the channel, then create and push the matching tag from the commit
+   being released.
 
-   ```sh
-   git tag -a v0.2.0 -m "Vibe Bar 0.2.0"
-   git push origin v0.2.0
-   ```
+For Main:
 
-The tag must be exactly `v` plus `CFBundleShortVersionString`. A mismatch
-fails before an asset is uploaded.
+```sh
+git tag -a v1.0.0 -m "Vibe Bar 1.0.0"
+git push origin v1.0.0
+```
+
+The Main tag must be exactly `v` plus `CFBundleShortVersionString`.
+
+For Dev, keep the same user-facing version and append the monotonically
+increasing `CFBundleVersion` to the tag:
+
+```sh
+git tag -a v1.0.0-dev.100 -m "Vibe Bar 1.0.0 Dev build 100"
+git push origin v1.0.0-dev.100
+```
+
+Here `CFBundleShortVersionString` is `1.0.0` and `CFBundleVersion` is `100`.
+Every later release, including the eventual Main promotion, must have a
+higher build number so Sparkle never treats it as a downgrade. Tag/channel
+mismatches fail before an asset is uploaded.
 
 ## What the workflow does
 
@@ -36,29 +56,45 @@ fails before an asset is uploaded.
 5. verifies the strict code signature and rejects sandboxed entitlements;
 6. optionally notarizes and staples a Developer ID build;
 7. creates an architecture-labelled ZIP and SHA-256 checksum;
-8. signs the ZIP with Sparkle's EdDSA key and generates `appcast.xml`; and
-9. creates or updates a draft GitHub Release.
+8. merges the current shared appcast, signs the ZIP with Sparkle's EdDSA key,
+   and adds either a Main or `dev` appcast item; and
+9. creates or updates a draft GitHub Release, marking Dev drafts as
+   prereleases.
 
 Review the generated draft and then select **Publish release** on GitHub.
 Re-running the workflow for the same tag replaces its assets. Draft releases
-do not become the live update feed: GitHub's `releases/latest` URL continues
-to resolve to the previous published release until the draft is published.
+do not become the live update feed. Once a versioned release is published,
+`.github/workflows/publish-update-feed.yml` serially regenerates its item
+against the latest shared appcast, then commits the result to the
+machine-managed `updates` branch. Regenerating at publication time prevents
+independently prepared Main and Dev drafts from overwriting each other.
 
 ## Release assets
 
 The reusable local entry point is:
 
 ```sh
-./Scripts/release_app.sh v0.2.0
+./Scripts/release_app.sh --channel main v1.0.0
+./Scripts/release_app.sh --channel dev v1.0.0-dev.100
 ```
 
 It writes architecture-labelled files under `.build/release/`, for example:
 
 ```text
-Vibe-Bar-0.2.0-macOS-arm64.zip
-Vibe-Bar-0.2.0-macOS-arm64.zip.sha256
+Vibe-Bar-1.0.0-macOS-arm64.zip
+Vibe-Bar-1.0.0-dev.100-macOS-arm64.zip
 appcast.xml
 ```
+
+Pass `--base-appcast <path>` (or set `VIBEBAR_BASE_APPCAST`) to merge an
+existing shared feed. CI downloads the current `updates` branch appcast
+automatically. Do not use the single-release appcast as a replacement for the
+shared feed unless it was generated from that base.
+
+`Scripts/generate_update_feed.sh` is the narrower publication-time companion:
+it takes the already reviewed release ZIP, merges it into the latest shared
+feed, and signs the new item without rebuilding or replacing the release
+asset.
 
 Without signing credentials this produces an ad-hoc-signed build. GitHub can
 host that build, but Gatekeeper will require users to approve it manually.
@@ -87,14 +123,16 @@ secret is absent. The value is not written to the checkout, command line,
 release assets, or workflow output. `Scripts/release_app.sh` also rejects an
 appcast that lacks an EdDSA archive signature or the expected build number.
 
-The stable feed URL is:
+The shared feed URL embedded in new builds is:
 
 ```text
-https://github.com/AstroQore/vibe-bar/releases/latest/download/appcast.xml
+https://raw.githubusercontent.com/AstroQore/vibe-bar/updates/appcast.xml
 ```
 
-Each published release must therefore contain the ZIP, its checksum, and
-`appcast.xml`. Do not hand-edit the appcast after it has been generated.
+Each published release must contain the ZIP, its checksum, and the combined
+`appcast.xml`. The `updates` branch is workflow-owned; do not edit its
+appcast by hand. Existing builds that still use GitHub's `releases/latest`
+feed bootstrap into the new system from the Main release's own appcast asset.
 
 ## Enable Developer ID signing and notarization
 
@@ -129,7 +167,7 @@ Keychain and store notarization credentials once:
 xcrun notarytool store-credentials "vibebar-release"
 VIBEBAR_CODESIGN_IDENTITY="Developer ID Application: Example (TEAMID)" \
 VIBEBAR_NOTARY_KEYCHAIN_PROFILE="vibebar-release" \
-./Scripts/release_app.sh v0.2.0
+./Scripts/release_app.sh --channel main v1.0.0
 ```
 
 Never commit certificates, passwords, Apple IDs, team IDs, or notarization

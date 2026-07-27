@@ -2,11 +2,11 @@
 # Produce a verified GitHub Release asset for the version in Info.plist.
 #
 # Usage:
-#   ./Scripts/release_app.sh [v<version>]
+#   ./Scripts/release_app.sh [--channel main|dev] [--base-appcast <path>] [tag]
 #
 # Default output:
-#   .build/release/Vibe-Bar-<version>-macOS-<arch>.zip
-#   .build/release/Vibe-Bar-<version>-macOS-<arch>.zip.sha256
+#   .build/release/Vibe-Bar-<version>[-dev.<build>]-macOS-<arch>.zip
+#   .build/release/Vibe-Bar-<version>[-dev.<build>]-macOS-<arch>.zip.sha256
 #   .build/release/appcast.xml
 #
 # Without extra environment variables the app is ad-hoc signed. To create a
@@ -28,20 +28,64 @@ APP_DIR="$ROOT/.build/Vibe Bar.app"
 DIST_DIR="$ROOT/.build/release"
 SIGN_IDENTITY="${VIBEBAR_CODESIGN_IDENTITY:--}"
 SPARKLE_KEY_ACCOUNT="${VIBEBAR_SPARKLE_KEY_ACCOUNT:-astroqore-vibe-bar}"
+RELEASE_CHANNEL="${VIBEBAR_RELEASE_CHANNEL:-main}"
+BASE_APPCAST="${VIBEBAR_BASE_APPCAST:-}"
+POSITIONAL_TAG=""
 
 usage() {
     printf '%s\n' \
         "Produce a verified GitHub Release asset for the version in Info.plist." \
         "" \
-        "Usage: ./Scripts/release_app.sh [v<version>]" \
+        "Usage: ./Scripts/release_app.sh [--channel main|dev] [--base-appcast <path>] [tag]" \
+        "" \
+        "Main tag: v<version>" \
+        "Dev tag:  v<version>-dev.<CFBundleVersion>" \
         "" \
         "Signing defaults to ad-hoc. See RELEASING.md for Developer ID" \
         "signing, notarization, GitHub secrets, and publishing instructions."
 }
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    usage
-    exit 0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --channel)
+            if [[ $# -lt 2 ]]; then
+                echo "--channel requires main or dev" >&2
+                exit 1
+            fi
+            RELEASE_CHANNEL="$2"
+            shift 2
+            ;;
+        --base-appcast)
+            if [[ $# -lt 2 ]]; then
+                echo "--base-appcast requires a file path" >&2
+                exit 1
+            fi
+            BASE_APPCAST="$2"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            if [[ -n "$POSITIONAL_TAG" ]]; then
+                echo "Only one release tag may be provided." >&2
+                exit 1
+            fi
+            POSITIONAL_TAG="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ "$RELEASE_CHANNEL" != "main" && "$RELEASE_CHANNEL" != "dev" ]]; then
+    echo "Release channel must be main or dev, got: $RELEASE_CHANNEL" >&2
+    exit 1
 fi
 
 if [[ ! -f "$PLIST" ]]; then
@@ -51,12 +95,28 @@ fi
 
 VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$PLIST")"
 BUILD_NUMBER="$(plutil -extract CFBundleVersion raw -o - "$PLIST")"
-RELEASE_TAG="${1:-${VIBEBAR_RELEASE_TAG:-v$VERSION}}"
+RELEASE_TAG="${POSITIONAL_TAG:-${VIBEBAR_RELEASE_TAG:-}}"
+if [[ -z "$RELEASE_TAG" ]]; then
+    if [[ "$RELEASE_CHANNEL" == "dev" ]]; then
+        RELEASE_TAG="v$VERSION-dev.$BUILD_NUMBER"
+    else
+        RELEASE_TAG="v$VERSION"
+    fi
+fi
 
-if [[ "$RELEASE_TAG" != "v$VERSION" ]]; then
-    echo "Release tag $RELEASE_TAG does not match Info.plist version v$VERSION" >&2
-    echo "Bump CFBundleShortVersionString before releasing this tag." >&2
-    exit 1
+if [[ "$RELEASE_CHANNEL" == "main" ]]; then
+    if [[ "$RELEASE_TAG" != "v$VERSION" ]]; then
+        echo "Main release tag $RELEASE_TAG does not match Info.plist version v$VERSION" >&2
+        echo "Bump CFBundleShortVersionString before releasing this tag." >&2
+        exit 1
+    fi
+else
+    EXPECTED_DEV_TAG="v$VERSION-dev.$BUILD_NUMBER"
+    if [[ "$RELEASE_TAG" != "$EXPECTED_DEV_TAG" ]]; then
+        echo "Dev release tag $RELEASE_TAG does not match $EXPECTED_DEV_TAG" >&2
+        echo "Dev tags include CFBundleVersion so every preview has a unique build." >&2
+        exit 1
+    fi
 fi
 
 if [[ "${VIBEBAR_SKIP_TESTS:-0}" != "1" ]]; then
@@ -94,7 +154,18 @@ fi
 
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
-ARCHIVE="$DIST_DIR/Vibe-Bar-$VERSION-macOS-$ARCH_LABEL.zip"
+if [[ -n "$BASE_APPCAST" ]]; then
+    if [[ ! -f "$BASE_APPCAST" ]]; then
+        echo "Base appcast not found at $BASE_APPCAST" >&2
+        exit 1
+    fi
+    cp "$BASE_APPCAST" "$DIST_DIR/appcast.xml"
+fi
+VERSION_LABEL="$VERSION"
+if [[ "$RELEASE_CHANNEL" == "dev" ]]; then
+    VERSION_LABEL="$VERSION-dev.$BUILD_NUMBER"
+fi
+ARCHIVE="$DIST_DIR/Vibe-Bar-$VERSION_LABEL-macOS-$ARCH_LABEL.zip"
 
 package_app() {
     rm -f "$ARCHIVE"
@@ -144,17 +215,21 @@ if [[ -z "$GENERATE_APPCAST" || ! -x "$GENERATE_APPCAST" ]]; then
 fi
 
 RELEASE_NOTES="$DIST_DIR/$(basename "${ARCHIVE%.zip}").md"
-printf '# Vibe Bar %s\n\nSee the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/%s).\n' \
-    "$VERSION" "$RELEASE_TAG" > "$RELEASE_NOTES"
+printf '# Vibe Bar %s (%s)\n\nSee the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/%s).\n' \
+    "$VERSION" "$RELEASE_CHANNEL" "$RELEASE_TAG" > "$RELEASE_NOTES"
 
-echo "==> generating signed Sparkle appcast"
+echo "==> generating signed Sparkle appcast ($RELEASE_CHANNEL channel)"
 APPCAST_ARGS=(
     --download-url-prefix "https://github.com/AstroQore/vibe-bar/releases/download/$RELEASE_TAG/"
     --link "https://github.com/AstroQore/vibe-bar/releases/tag/$RELEASE_TAG"
     --embed-release-notes
+    --versions "$BUILD_NUMBER"
     --maximum-versions 1
     -o "$DIST_DIR/appcast.xml"
 )
+if [[ "$RELEASE_CHANNEL" == "dev" ]]; then
+    APPCAST_ARGS+=(--channel dev)
+fi
 if [[ -n "${SPARKLE_ED_PRIVATE_KEY:-}" ]]; then
     printf '%s' "$SPARKLE_ED_PRIVATE_KEY" \
         | "$GENERATE_APPCAST" --ed-key-file - "${APPCAST_ARGS[@]}" "$DIST_DIR"
@@ -176,6 +251,11 @@ if ! grep -q 'sparkle:edSignature=' "$APPCAST"; then
 fi
 if ! grep -q "<sparkle:version>$BUILD_NUMBER</sparkle:version>" "$APPCAST"; then
     echo "Generated appcast does not contain build $BUILD_NUMBER." >&2
+    exit 1
+fi
+if [[ "$RELEASE_CHANNEL" == "dev" ]] \
+    && ! grep -q '<sparkle:channel>dev</sparkle:channel>' "$APPCAST"; then
+    echo "Generated appcast does not mark build $BUILD_NUMBER as dev." >&2
     exit 1
 fi
 
