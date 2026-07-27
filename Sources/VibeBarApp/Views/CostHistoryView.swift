@@ -44,8 +44,20 @@ private struct CostGranularityOption: Identifiable, Equatable {
             mode: .manual(.week),
             label: CostChartGranularity.week.displayName,
             granularity: .week
+        ),
+        CostGranularityOption(
+            mode: .manual(.month),
+            label: CostChartGranularity.month.displayName,
+            granularity: .month
         )
     ]
+}
+
+/// A bucket already summed by Core, before its model roll-up is attached.
+private struct CostBucketTotal {
+    let start: Date
+    let costUSD: Double
+    let totalTokens: Int
 }
 
 private struct CostChartPoint: Identifiable, Equatable {
@@ -161,18 +173,30 @@ struct CostHistoryView: View {
                 }
             }
             if let window {
-                HStack(spacing: 6) {
-                    Spacer(minLength: 0)
-                    CostRangePresetBar(
-                        active: activePreset(window: window),
-                        density: density,
-                        action: applyPreset
-                    )
-                    .fixedSize(horizontal: true, vertical: false)
-                    granularityControl(window: window)
+                // Five presets plus five bucket widths do not fit on one line in
+                // a compact popover. Prefer the single row, then stack.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        Spacer(minLength: 0)
+                        presetBar(window: window)
+                        granularityControl(window: window)
+                    }
+                    VStack(alignment: .trailing, spacing: 3) {
+                        presetBar(window: window)
+                        granularityControl(window: window)
+                    }
                 }
             }
         }
+    }
+
+    private func presetBar(window: ChartTimeWindow) -> some View {
+        CostRangePresetBar(
+            active: activePreset(window: window),
+            density: density,
+            action: applyPreset
+        )
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var emptyNote: some View {
@@ -198,7 +222,8 @@ struct CostHistoryView: View {
         let rendered = ChartSeriesThinning.strided(points, limit: Self.visibleMarkLimit)
         let total = points.reduce(0) { $0 + $1.costUSD }
         let average = points.isEmpty ? 0 : total / Double(points.count)
-        let peak = points.map(\.costUSD).max() ?? 0
+        let peakPoint = points.max { $0.costUSD < $1.costUSD }
+        let peak = peakPoint?.costUSD ?? 0
 
         VStack(alignment: .leading, spacing: 6) {
             chart(
@@ -226,6 +251,7 @@ struct CostHistoryView: View {
             total: total,
             average: average,
             peak: peak,
+            peakDate: peak > 0 ? peakPoint?.date : nil,
             resolved: resolved,
             window: window
         )
@@ -539,6 +565,7 @@ struct CostHistoryView: View {
         total: Double,
         average: Double,
         peak: Double,
+        peakDate: Date?,
         resolved: CostResolvedGranularity,
         window: ChartTimeWindow
     ) -> some View {
@@ -548,7 +575,11 @@ struct CostHistoryView: View {
                 label: "Avg/\(resolved.granularity.displayName.lowercased())",
                 value: formatCost(average)
             )
-            metric(label: "Peak", value: formatCost(peak))
+            metric(
+                label: "Peak",
+                value: formatCost(peak),
+                detail: peakDate.map { peakDetail($0, granularity: resolved.granularity) }
+            )
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 1) {
                 Text(visibleExtentNote(window: window))
@@ -566,7 +597,7 @@ struct CostHistoryView: View {
     }
 
     @ViewBuilder
-    private func metric(label: String, value: String) -> some View {
+    private func metric(label: String, value: String, detail: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(label.uppercased())
                 .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
@@ -574,6 +605,13 @@ struct CostHistoryView: View {
                 .tracking(0.4)
             Text(value)
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold, design: .rounded).monospacedDigit())
+            if let detail {
+                Text(detail)
+                    .font(.system(size: max(8, density.resetCountdownFontSize - 2)))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         }
     }
 
@@ -740,7 +778,7 @@ struct CostHistoryView: View {
             }
         }
         .padding(2)
-        .frame(width: 132)
+        .frame(width: CGFloat(CostGranularityOption.all.count) * 32)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(0.08))
@@ -838,7 +876,7 @@ struct CostHistoryView: View {
         switch granularity {
         case .hour:
             let hours = snapshot.yesterdayHourlyHistory + snapshot.todayHourlyHistory
-            return clip(hours, date: \.date, bucket: 3_600, to: range).map { point in
+            return clip(hours, date: \.date, bucket: clipBucket(.hour), to: range).map { point in
                 CostChartPoint(
                     date: point.date,
                     costUSD: point.costUSD,
@@ -847,7 +885,7 @@ struct CostHistoryView: View {
                 )
             }
         case .day:
-            return clip(snapshot.dailyHistory, date: \.date, bucket: Self.dayInterval, to: range)
+            return clip(snapshot.dailyHistory, date: \.date, bucket: clipBucket(.day), to: range)
                 .map { point in
                     CostChartPoint(
                         date: point.date,
@@ -857,40 +895,65 @@ struct CostHistoryView: View {
                     )
                 }
         case .week:
-            return weeklyPoints(snapshot: snapshot, range: range)
+            let calendar = Calendar.current
+            let weeks = CostChartAggregation.weekly(snapshot.dailyHistory, calendar: calendar)
+                .map { CostBucketTotal(start: $0.weekStart, costUSD: $0.costUSD, totalTokens: $0.totalTokens) }
+            return groupedPoints(
+                snapshot: snapshot,
+                buckets: weeks,
+                bucket: clipBucket(.week),
+                range: range
+            ) { CostChartAggregation.mondayStart(of: $0, calendar: calendar) }
+        case .month:
+            let calendar = Calendar.current
+            let months = CostChartAggregation.monthly(snapshot.dailyHistory, calendar: calendar)
+                .map { CostBucketTotal(start: $0.monthStart, costUSD: $0.costUSD, totalTokens: $0.totalTokens) }
+            return groupedPoints(
+                snapshot: snapshot,
+                buckets: months,
+                bucket: clipBucket(.month),
+                range: range
+            ) { CostChartAggregation.monthStart(of: $0, calendar: calendar) }
         }
     }
 
-    private func weeklyPoints(snapshot: CostSnapshot, range: ClosedRange<Date>) -> [CostChartPoint] {
-        let calendar = Calendar.current
-        let weeks = CostChartAggregation.weekly(snapshot.dailyHistory, calendar: calendar)
-        let visible = clip(weeks, date: \.weekStart, bucket: 7 * Self.dayInterval, to: range)
+    /// Attach a model roll-up to buckets Core already summed.
+    ///
+    /// Cost and tokens come straight from `CostChartAggregation`; only the model
+    /// split has to be recomputed here, because the snapshot stores it per day.
+    private func groupedPoints(
+        snapshot: CostSnapshot,
+        buckets: [CostBucketTotal],
+        bucket: TimeInterval,
+        range: ClosedRange<Date>,
+        bucketStart: (Date) -> Date?
+    ) -> [CostChartPoint] {
+        let visible = clip(buckets, date: \.start, bucket: bucket, to: range)
         guard !visible.isEmpty else { return [] }
 
-        // Only the visible weeks need a model roll-up; folding the whole history
+        // Only the visible buckets need a roll-up; folding the whole history
         // every render would be work nobody sees.
-        let wanted = Set(visible.map(\.weekStart))
+        let wanted = Set(visible.map(\.start))
         var models: [Date: [String: (cost: Double, tokens: Int)]] = [:]
         for day in snapshot.dailyHistory {
-            guard let weekStart = CostChartAggregation.mondayStart(of: day.date, calendar: calendar),
-                  wanted.contains(weekStart) else { continue }
-            var weekModels = models[weekStart] ?? [:]
+            guard let start = bucketStart(day.date), wanted.contains(start) else { continue }
+            var bucketModels = models[start] ?? [:]
             for model in snapshot.topModels(for: day.date, limit: .max) {
-                let current = weekModels[model.modelName] ?? (0, 0)
-                weekModels[model.modelName] = (
+                let current = bucketModels[model.modelName] ?? (0, 0)
+                bucketModels[model.modelName] = (
                     current.cost + model.costUSD,
                     current.tokens + model.totalTokens
                 )
             }
-            models[weekStart] = weekModels
+            models[start] = bucketModels
         }
 
-        return visible.map { week in
+        return visible.map { total in
             CostChartPoint(
-                date: week.weekStart,
-                costUSD: week.costUSD,
-                totalTokens: week.totalTokens,
-                models: (models[week.weekStart] ?? [:])
+                date: total.start,
+                costUSD: total.costUSD,
+                totalTokens: total.totalTokens,
+                models: (models[total.start] ?? [:])
                     .map {
                         CostSnapshot.ModelBreakdown(
                             modelName: $0.key,
@@ -900,6 +963,18 @@ struct CostHistoryView: View {
                     }
                     .sorted { $0.costUSD > $1.costUSD }
             )
+        }
+    }
+
+    /// Bucket width used to decide whether a bar touches the visible range.
+    /// Over-inclusive for months on purpose: the longest calendar month keeps a
+    /// 31-day bar at the edge from disappearing a day early.
+    private func clipBucket(_ granularity: CostChartGranularity) -> TimeInterval {
+        switch granularity {
+        case .hour: 3_600
+        case .day: Self.dayInterval
+        case .week: 7 * Self.dayInterval
+        case .month: 31 * Self.dayInterval
         }
     }
 
@@ -933,6 +1008,7 @@ struct CostHistoryView: View {
         case .hour: .hour
         case .day: .day
         case .week: .weekOfYear
+        case .month: .month
         }
     }
 
@@ -949,6 +1025,9 @@ struct CostHistoryView: View {
             span > Self.multiYearSpan
                 ? .dateTime.month(.abbreviated).year(.twoDigits)
                 : .dateTime.day().month(.abbreviated)
+        // Monthly bars only appear on spans where the day of the month is
+        // noise, so the label goes straight to month-and-year.
+        case .month: .dateTime.month(.abbreviated).year(.twoDigits)
         }
     }
 
@@ -1017,11 +1096,25 @@ struct CostHistoryView: View {
         case .hour: Self.hourFormatter.string(from: date)
         case .day: Self.dayFormatter.string(from: date)
         case .week: "Week of \(Self.dayFormatter.string(from: date))"
+        case .month: Self.monthFormatter.string(from: date)
+        }
+    }
+
+    /// When the peak bucket happened, in the narrowest form that still says
+    /// which bucket it was.
+    private func peakDetail(_ date: Date, granularity: CostChartGranularity) -> String {
+        switch granularity {
+        case .hour: Self.peakHourFormatter.string(from: date)
+        case .day: Self.extentFormatter.string(from: date)
+        case .week: "wk \(Self.extentFormatter.string(from: date))"
+        case .month: Self.monthFormatter.string(from: date)
         }
     }
 
     private static let hourFormatter = posixFormatter("MMM d · HH:00")
+    private static let peakHourFormatter = posixFormatter("MMM d HH:00")
     private static let dayFormatter = posixFormatter("MMM d, yyyy")
+    private static let monthFormatter = posixFormatter("MMM yyyy")
     private static let extentFormatter = posixFormatter("MMM d")
     private static let extentYearFormatter = posixFormatter("MMM yyyy")
 

@@ -9,6 +9,7 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
     case hour
     case day
     case week
+    case month
 
     public var id: String { rawValue }
 
@@ -17,16 +18,19 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
         case .hour: "Hour"
         case .day: "Day"
         case .week: "Week"
+        case .month: "Month"
         }
     }
 
     /// Approximate bucket width, for laying out bar marks before the data is
-    /// grouped.
+    /// grouped. Calendar months vary, so the monthly value is the 30-day
+    /// nominal one — anything that needs exact edges asks the calendar.
     public var approximateBucketSeconds: TimeInterval {
         switch self {
         case .hour: 3_600
         case .day: 86_400
         case .week: 7 * 86_400
+        case .month: 30 * 86_400
         }
     }
 
@@ -36,25 +40,30 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
     ///
     /// Thresholds are picked so each mode lands at a readable bar count: about
     /// 62 hourly bars at the top of the hour range, about 110 daily bars at the
-    /// top of the day range, weeks beyond that.
+    /// top of the day range, about 60 weekly bars at the top of the week range,
+    /// and months beyond that — a multi-year domain is a shape, not a series of
+    /// individual weeks.
     public static func resolve(autoFor visibleSpan: TimeInterval) -> CostChartGranularity {
         let days = max(0, visibleSpan) / dayInterval
         if days <= 2.6 { return .hour }
         if days <= 110 { return .day }
-        return .week
+        if days <= 420 { return .week }
+        return .month
     }
 
     /// Granularities the user may pick at this visible span, coarsest-last.
     ///
     /// Hourly disappears once the span could not be drawn without hundreds of
-    /// bars; weekly only appears once there are enough weeks to compare. Daily
-    /// is always offered so the control never collapses to nothing.
+    /// bars; weekly only appears once there are enough weeks to compare, and
+    /// monthly once there are at least two full months. Daily is always offered
+    /// so the control never collapses to nothing.
     public static func allowed(for visibleSpan: TimeInterval) -> [CostChartGranularity] {
         let days = max(0, visibleSpan) / dayInterval
         var options: [CostChartGranularity] = []
         if days <= 7 { options.append(.hour) }
         options.append(.day)
         if days >= 21 { options.append(.week) }
+        if days >= 60 { options.append(.month) }
         return options
     }
 
@@ -76,6 +85,21 @@ public struct WeeklyCostPoint: Sendable, Equatable, Identifiable {
 
     public init(weekStart: Date, costUSD: Double, totalTokens: Int) {
         self.weekStart = weekStart
+        self.costUSD = costUSD
+        self.totalTokens = totalTokens
+    }
+}
+
+/// One calendar month of cost history.
+public struct MonthlyCostPoint: Sendable, Equatable, Identifiable {
+    public let monthStart: Date
+    public let costUSD: Double
+    public let totalTokens: Int
+
+    public var id: Date { monthStart }
+
+    public init(monthStart: Date, costUSD: Double, totalTokens: Int) {
+        self.monthStart = monthStart
         self.costUSD = costUSD
         self.totalTokens = totalTokens
     }
@@ -115,5 +139,36 @@ public enum CostChartAggregation {
         // 2 and `(weekday + 5) % 7` is the day count back to it.
         let offset = (calendar.component(.weekday, from: startOfDay) + 5) % 7
         return calendar.date(byAdding: .day, value: -offset, to: startOfDay)
+    }
+
+    /// Sum daily points into calendar months, oldest first.
+    ///
+    /// Same contract as `weekly`: partial months at either end are real bars,
+    /// not something to hide, and a December day lands in December rather than
+    /// leaking into the next year's first bucket.
+    public static func monthly(
+        _ days: [DailyCostPoint],
+        calendar: Calendar = .current
+    ) -> [MonthlyCostPoint] {
+        var totals: [Date: (cost: Double, tokens: Int)] = [:]
+        for day in days {
+            guard let start = monthStart(of: day.date, calendar: calendar) else { continue }
+            var value = totals[start] ?? (0, 0)
+            value.cost += day.costUSD
+            value.tokens += day.totalTokens
+            totals[start] = value
+        }
+        return totals
+            .map { MonthlyCostPoint(monthStart: $0.key, costUSD: $0.value.cost, totalTokens: $0.value.tokens) }
+            .sorted { $0.monthStart < $1.monthStart }
+    }
+
+    /// Midnight on the first day of the calendar month containing `date`.
+    ///
+    /// Taken from the calendar's own month interval rather than by subtracting
+    /// days, so month lengths, leap years and the December→January rollover are
+    /// the calendar's problem rather than this function's.
+    public static func monthStart(of date: Date, calendar: Calendar = .current) -> Date? {
+        calendar.dateInterval(of: .month, for: date)?.start
     }
 }
