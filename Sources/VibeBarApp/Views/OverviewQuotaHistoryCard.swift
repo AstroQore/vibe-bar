@@ -21,6 +21,12 @@ struct OverviewQuotaCurve: Identifiable, Equatable {
     /// Masked account hint, set only when a tool has more than one account with
     /// history and the bucket titles alone would be ambiguous.
     let accountQualifier: String?
+    /// The quota's window length, carried so the hover can size its tolerance
+    /// to *this* curve's sampling rhythm. This card mixes five-hour lanes
+    /// (five-minute slots) with weekly ones (hourly slots) by design, and one
+    /// shared tolerance reads the sparse ones as blank. See
+    /// `ChartHoverTolerance`.
+    let windowSeconds: Int?
     let color: Color
     let dash: [CGFloat]
 
@@ -514,7 +520,10 @@ struct OverviewQuotaHistoryCard: View {
             Text(Self.tooltipFormatter.string(from: date))
                 .font(.system(size: 10, weight: .semibold))
             if readings.isEmpty {
-                Text("Nothing recorded here")
+                // Same wording as the per-group chart's empty row, and for the
+                // same reason: an absent sample says the app was not watching,
+                // not that the quota was between windows.
+                Text("No data recorded")
                     .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.7))
             } else {
@@ -559,19 +568,24 @@ struct OverviewQuotaHistoryCard: View {
     /// coverage near the cursor are omitted rather than shown as zero.
     ///
     /// Resolved by binary search over each curve's flattened, time-sorted
-    /// samples, because this runs on every pointer move.
+    /// samples, because this runs on every pointer move — and with a tolerance
+    /// resolved per curve, because this card exists to overlay quotas whose
+    /// windows (and therefore whose sampling rhythms) differ by orders of
+    /// magnitude.
     private func hoverReadings(
         at date: Date,
         curves shown: [OverviewQuotaCurve]
     ) -> [OverviewHoverReading] {
         guard let window else { return [] }
-        let tolerance = max(600, window.visibleSpan / 60)
         var result: [OverviewHoverReading] = []
         for curve in shown {
             guard let sample = ChartSampleSearch.nearest(
                 in: flatByCurve[curve.id] ?? [],
                 to: date,
-                tolerance: tolerance,
+                tolerance: ChartHoverTolerance.seconds(
+                    windowSeconds: curve.windowSeconds,
+                    visibleSpan: window.visibleSpan
+                ),
                 time: { $0.time }
             ) else { continue }
             result.append(
@@ -721,6 +735,7 @@ struct OverviewQuotaHistoryCard: View {
                     accountQualifier: (accountsPerTool[account.tool]?.count ?? 0) > 1
                         ? Self.qualifier(for: account)
                         : nil,
+                    windowSeconds: bucket.rawWindowSeconds,
                     color: variant.color,
                     dash: variant.dash
                 )

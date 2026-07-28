@@ -325,26 +325,16 @@ enum QuotaChartMarks {
     }
 
     /// Keep one sample beyond each edge so a line entering the window starts at
-    /// the frame border instead of at its first visible observation.
+    /// the frame border instead of at its first visible observation — and keep
+    /// the straddling pair when a segment crosses the window without landing a
+    /// sample in it. Both rules live in `ChartSegmentClip`, which is where they
+    /// are tested.
     static func clip<Element>(
         _ segment: [Element],
         time: (Element) -> Date,
         to range: ClosedRange<Date>
     ) -> [Element] {
-        guard !segment.isEmpty else { return [] }
-        var first: Int?
-        var last: Int?
-        for (index, element) in segment.enumerated() {
-            let stamp = time(element)
-            if stamp >= range.lowerBound, stamp <= range.upperBound {
-                if first == nil { first = index }
-                last = index
-            }
-        }
-        guard let first, let last else { return [] }
-        let lower = max(0, first - 1)
-        let upper = min(segment.count - 1, last + 1)
-        return Array(segment[lower...upper])
+        ChartSegmentClip.visible(segment, time: time, to: range)
     }
 
     /// How a bridge is stroked, everywhere one is drawn.

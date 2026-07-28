@@ -853,7 +853,14 @@ struct QuotaHistoryChartView: View, Equatable {
                     .padding(.top, 1)
                 }
                 if bucket.isEmpty {
-                    Text("No active window")
+                    // Deliberately about the *evidence*, not about the quota.
+                    // Nothing here means no sample was taken near this instant
+                    // — the Mac was asleep, the app was quit, a refresh was
+                    // skipped. The window itself was very probably wide open,
+                    // and nothing in a fill lane can tell the two apart, so
+                    // claiming there was no active window was a guess dressed
+                    // up as a reading.
+                    Text("No data recorded")
                         .font(.system(size: 9))
                         .foregroundStyle(.white.opacity(0.7))
                 } else {
@@ -894,6 +901,13 @@ struct QuotaHistoryChartView: View, Equatable {
     /// side. The time label follows the shortest-window quota, which is the one
     /// sampled most densely.
     ///
+    /// The tolerance is resolved **per bucket**, not once for the group. The
+    /// buckets overlaid here are sampled at different rhythms — Claude's 5
+    /// Hours is filed into five-minute slots and its Weekly into hourly ones —
+    /// so a single tolerance taken from the shortest window missed the sparse
+    /// lanes on most cursor positions and reported them as having nothing to
+    /// say while their line ran under the crosshair. See `ChartHoverTolerance`.
+    ///
     /// Binary search rather than a scan: this runs on every pointer move, and a
     /// densely sampled lane under unlimited retention is tens of thousands of
     /// samples per bucket.
@@ -903,11 +917,13 @@ struct QuotaHistoryChartView: View, Equatable {
         primary: QuotaBucket
     ) -> QuotaHoverReading? {
         guard let window else { return nil }
-        let slot = UsageTimelineSlotPolicy.slotSeconds(windowSeconds: primary.rawWindowSeconds)
-        let tolerance = max(slot * 2, window.visibleSpan / 80)
         var readings: [QuotaHoverBucketReading] = []
         var anchor: Date?
         for (index, bucket) in buckets.enumerated() {
+            let tolerance = ChartHoverTolerance.seconds(
+                windowSeconds: bucket.rawWindowSeconds,
+                visibleSpan: window.visibleSpan
+            )
             let lookup = lookupByBucket[bucket.id] ?? BucketLookup()
             let actual = ChartSampleSearch.nearest(
                 in: lookup.actual, to: date, tolerance: tolerance, time: { $0.time }

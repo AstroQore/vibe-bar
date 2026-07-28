@@ -129,6 +129,99 @@ public enum ChartMarkBudget {
     }
 }
 
+/// The slice of one segment a visible range actually has to draw.
+///
+/// Splitting this out of the mark builders because "which samples does this
+/// window need" is a question about evidence, not about SwiftUI, and because
+/// the answer has a case that is easy to get wrong: a segment can cross the
+/// visible range without putting a single sample inside it.
+public enum ChartSegmentClip {
+    /// Samples of `segment` that `range` needs, `segment` being ascending by
+    /// `time`.
+    ///
+    /// Three cases, and the third is the one this exists for:
+    ///
+    /// - Samples inside the range: they are returned with one extra sample on
+    ///   each side, so a line entering the window starts at the frame border
+    ///   rather than at its first visible observation.
+    /// - No samples anywhere near it: nothing to draw.
+    /// - **No samples inside, but samples on both sides of it.** The lane's
+    ///   line runs straight through the window and has to be drawn, so the
+    ///   straddling pair is returned. Dropping it was a real defect and a
+    ///   lopsided one: lanes are filed into slots sized by their quota window
+    ///   (`UsageTimelineSlotPolicy`), so a five-hour quota's five-minute slots
+    ///   almost always land something inside a window a user would zoom to,
+    ///   while an hourly-slotted weekly lane — and much worse, the daily slots
+    ///   a quota with no reported window length gets — often do not. The
+    ///   symptom was a chart that drew its five-hour curve and silently
+    ///   dropped the weekly one.
+    public static func visible<Element>(
+        _ segment: [Element],
+        time: (Element) -> Date,
+        to range: ClosedRange<Date>
+    ) -> [Element] {
+        guard !segment.isEmpty else { return [] }
+        var first: Int?
+        var last: Int?
+        for (index, element) in segment.enumerated() {
+            let stamp = time(element)
+            if stamp >= range.lowerBound, stamp <= range.upperBound {
+                if first == nil { first = index }
+                last = index
+            }
+        }
+        if let first, let last {
+            let lower = max(0, first - 1)
+            let upper = min(segment.count - 1, last + 1)
+            return Array(segment[lower...upper])
+        }
+        // Nothing inside. Keep the pair that brackets the range, if there is
+        // one — that is a line crossing the window, not an absence of one.
+        guard let before = segment.lastIndex(where: { time($0) < range.lowerBound }),
+              segment.indices.contains(before + 1),
+              time(segment[before + 1]) > range.upperBound
+        else { return [] }
+        return [segment[before], segment[before + 1]]
+    }
+}
+
+/// How far from the crosshair one lane's nearest sample may sit and still count
+/// as what that lane read there.
+///
+/// A quota chart overlays lanes that are deliberately *not* sampled at the same
+/// rhythm: `UsageTimelineSlotPolicy` files a five-hour quota into five-minute
+/// slots, a weekly one into hourly slots, a monthly one into six-hour slots,
+/// and a quota whose window length the provider never reported into daily ones.
+/// One tolerance sized for the densest lane therefore misses on most hover
+/// positions of every sparser lane — which is how a weekly bucket sitting
+/// mid-window, with its line drawn under the crosshair, came to report that it
+/// had nothing to say.
+///
+/// So the tolerance is per lane, and it is derived from the widest spacing that
+/// lane's own samples can legitimately have. Two things set that spacing: the
+/// slot width the lane is filed into, and the refresh cadence, because no lane
+/// is sampled more often than the app refreshes — the same pair
+/// `QuotaHistorySeriesBuilder` weighs when deciding whether coverage stopped.
+public enum ChartHoverTolerance {
+    /// Fraction of a lane's own sampling rhythm that still counts as "here".
+    ///
+    /// Above a half so a cursor parked exactly between two maximally-spaced
+    /// samples resolves to one of them instead of falling into a hole that
+    /// only exists because of where the pointer happened to stop.
+    static let cadenceFraction: Double = 0.75
+
+    /// Zoomed far out, one pixel of plot is many minutes of history and the
+    /// user cannot aim more precisely than that, so the tolerance never drops
+    /// below a slice of the visible span.
+    static let pointerSlopFraction: Double = 1.0 / 80.0
+
+    public static func seconds(windowSeconds: Int?, visibleSpan: TimeInterval) -> TimeInterval {
+        let slot = UsageTimelineSlotPolicy.slotSeconds(windowSeconds: windowSeconds)
+        let cadence = max(slot, TimeInterval(AppSettings.slowestRefreshIntervalSeconds))
+        return max(cadence * cadenceFraction, max(0, visibleSpan) * pointerSlopFraction)
+    }
+}
+
 /// Finding the observation nearest a point in time.
 ///
 /// The charts resolve a hover by asking every curve "what did you read here?".
