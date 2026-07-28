@@ -286,11 +286,12 @@ struct LayoutEditorView: View {
     private func presetsMenu(page: PageLayoutPageID, config: PageLayoutConfig) -> some View {
         let presets = layoutModel.presets(for: page)
         return Menu {
+            // Reachable even on a full page: replacing a preset by name costs
+            // no slot, and the form below is where that is explained.
             Button("Save Current…") {
                 presetName = ""
                 isNamingPreset = true
             }
-            .disabled(!layoutModel.canSavePreset(for: page))
             if presets.isEmpty {
                 Text("No saved arrangements")
             } else {
@@ -313,9 +314,9 @@ struct LayoutEditorView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help(
-            layoutModel.canSavePreset(for: page)
+            layoutModel.canAddPreset(for: page)
                 ? "Save this arrangement under a name, or put a saved one back."
-                : "This page is already holding \(AppSettings.maximumPresetsPerPage) saved arrangements."
+                : "This page is holding all \(AppSettings.maximumPresetsPerPage) saved arrangements — save over one by reusing its name."
         )
         .popover(isPresented: $isNamingPreset, arrowEdge: .bottom) {
             presetNameForm(page: page, config: config)
@@ -323,7 +324,12 @@ struct LayoutEditorView: View {
     }
 
     private func presetNameForm(page: PageLayoutPageID, config: PageLayoutConfig) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        let trimmed = StoredPageLayoutPreset.normalizedName(presetName)
+        let replaces = layoutModel.presetWouldReplace(named: trimmed, for: page)
+        // Only a genuinely new name is blocked by the cap; reusing an existing
+        // one overwrites it and leaves the count where it was.
+        let blockedByLimit = !trimmed.isEmpty && !replaces && !layoutModel.canAddPreset(for: page)
+        return VStack(alignment: .leading, spacing: 9) {
             Text("Save arrangement")
                 .font(.system(size: 12, weight: .semibold))
             Text("Saving “\(modeLabel(layoutModel.mode(for: page)))” as it stands now. Applying it later arranges the page by hand.")
@@ -335,12 +341,28 @@ struct LayoutEditorView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 230)
                 .onSubmit { savePreset(page: page, config: config) }
+            if blockedByLimit {
+                Label(
+                    "Preset limit reached — use an existing name to replace.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 230, alignment: .leading)
+            } else if replaces {
+                Label("Replaces “\(trimmed)”.", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 230, alignment: .leading)
+            }
             HStack {
                 Spacer(minLength: 0)
                 Button("Cancel") { isNamingPreset = false }
-                Button("Save") { savePreset(page: page, config: config) }
+                Button(replaces ? "Replace" : "Save") { savePreset(page: page, config: config) }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(StoredPageLayoutPreset.normalizedName(presetName).isEmpty)
+                    .disabled(!layoutModel.canSavePreset(named: presetName, for: page))
             }
         }
         .padding(13)

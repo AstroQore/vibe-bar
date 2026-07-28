@@ -749,7 +749,82 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(object["mode"] as? String, "compact")
     }
 
+    // MARK: - Returning to Manual
+
+    func testReturningToManualRestoresTheSavedArrangement() {
+        // The round trip that must not lose work: arrange by hand, switch to a
+        // computed mode, switch back. The columns kept through `compact` are
+        // the ones that come back — not whatever the packer was showing.
+        let arranged = StoredPageLayout(
+            mode: .manual,
+            ratio: .wideNarrow,
+            columns: [[.costAll], [.status, .quotaHistoryAll]]
+        )
+        let parked = StoredPageLayout(
+            mode: .compact,
+            ratio: arranged.ratio,
+            columns: arranged.columns
+        )
+
+        let restored = parked.restoredAsManual()
+
+        XCTAssertEqual(restored?.mode, .manual)
+        XCTAssertEqual(restored?.ratio, .wideNarrow)
+        XCTAssertEqual(restored?.columns, [[.costAll], [.status, .quotaHistoryAll]])
+    }
+
+    func testReturningToManualRestoresFromAutoToo() {
+        let parked = StoredPageLayout(
+            mode: .auto,
+            ratio: .narrowWide,
+            columns: [[.status], [.costAll]]
+        )
+
+        XCTAssertEqual(parked.restoredAsManual()?.columns, [[.status], [.costAll]])
+        XCTAssertEqual(parked.restoredAsManual()?.ratio, .narrowWide)
+    }
+
+    func testAPageWithNoHandArrangementHasNothingToRestore() {
+        // Nil is the caller's signal to materialize what is on screen, which is
+        // the right starting point for a first-time edit.
+        XCTAssertNil(StoredPageLayout().restoredAsManual())
+        XCTAssertNil(StoredPageLayout(mode: .compact, ratio: .equal).restoredAsManual())
+        XCTAssertNil(StoredPageLayout(mode: .auto, ratio: .wideNarrow, columns: [[], []]).restoredAsManual())
+    }
+
+    func testRestoringAsManualIsIdempotent() {
+        let manual = StoredPageLayout(mode: .manual, ratio: .equal, columns: [[.status], [.costAll]])
+
+        XCTAssertEqual(manual.restoredAsManual(), manual)
+        XCTAssertEqual(manual.restoredAsManual()?.restoredAsManual(), manual)
+    }
+
     // MARK: - StoredPageLayoutPreset
+
+    func testPresetMatchingIsCaseInsensitiveAndTrimmed() {
+        let presets = [
+            StoredPageLayoutPreset(name: "Tall left", layout: StoredPageLayout()),
+            StoredPageLayoutPreset(name: "Shortest", layout: StoredPageLayout())
+        ]
+
+        XCTAssertEqual(StoredPageLayoutPreset.index(of: "Tall left", in: presets), 0)
+        XCTAssertEqual(StoredPageLayoutPreset.index(of: "TALL LEFT", in: presets), 0)
+        XCTAssertEqual(StoredPageLayoutPreset.index(of: "  shortest  ", in: presets), 1)
+        // A new name is what costs a slot against the per-page cap.
+        XCTAssertNil(StoredPageLayoutPreset.index(of: "Widest", in: presets))
+        XCTAssertNil(StoredPageLayoutPreset.index(of: "   ", in: presets))
+        XCTAssertNil(StoredPageLayoutPreset.index(of: "Tall left", in: []))
+    }
+
+    func testPresetMatchingUsesTheSameRuleAsTheSettingsDedupe() {
+        // One rule, so saving, deleting and the settings normalizer cannot
+        // disagree about which presets are "the same".
+        let presets = [StoredPageLayoutPreset(name: "Keep", layout: StoredPageLayout())]
+        let duplicate = StoredPageLayoutPreset(name: "  keep  ", layout: StoredPageLayout())
+
+        XCTAssertEqual(duplicate.matchKey, presets[0].matchKey)
+        XCTAssertNotNil(StoredPageLayoutPreset.index(of: duplicate.name, in: presets))
+    }
 
     func testPresetTrimsAndCapsItsName() {
         XCTAssertEqual(

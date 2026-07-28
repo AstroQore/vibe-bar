@@ -236,6 +236,25 @@ public struct StoredPageLayout: Hashable, Sendable {
     /// test `PageLayoutConfig.isEmpty` makes. Independent of `mode`: an `auto`
     /// page can still be holding the columns it had before the user switched.
     public var isEmpty: Bool { columns.allSatisfy(\.isEmpty) }
+
+    /// The entry a page should get when the user switches it back to `manual`.
+    ///
+    /// `auto` and `compact` deliberately keep the columns they were handed, so
+    /// returning to `manual` has to give the user back the arrangement they
+    /// dragged — not whatever the computed mode happened to be showing when
+    /// they flipped the switch. Overwriting it with the computed columns would
+    /// make a round trip through Compact a silent, unannounced reset of a hand
+    /// arrangement, which is precisely what keeping the columns was for.
+    ///
+    /// `nil` when nothing was ever arranged by hand; the caller then
+    /// materializes what is on screen instead, which is the right starting
+    /// point for a first-time edit. The restored columns still go through
+    /// `PageLayoutResolver` at render time, so modules that came or went while
+    /// the page was computed are reconciled as usual.
+    public func restoredAsManual() -> StoredPageLayout? {
+        guard !isEmpty else { return nil }
+        return StoredPageLayout(mode: .manual, ratio: ratio, columns: columns)
+    }
 }
 
 extension StoredPageLayout: Codable {
@@ -292,6 +311,27 @@ public struct StoredPageLayoutPreset: Hashable, Sendable {
     /// A preset with no name cannot be picked out of a menu, so it is dropped
     /// on the way in rather than rendered as a blank row.
     public var isValid: Bool { !name.isEmpty }
+
+    /// Case-insensitive identity. Two presets whose names differ only by case
+    /// are the same menu entry, so they are the same preset.
+    public var matchKey: String { name.lowercased() }
+
+    /// Where `name` would land in `presets`, under the one matching rule the
+    /// whole feature uses — `AppSettings` dedupes with it, saving replaces
+    /// with it, deleting removes with it.
+    ///
+    /// `nil` means the name is new, which is also what decides whether saving
+    /// costs a slot against the per-page cap: replacing an existing preset
+    /// leaves the count unchanged and must stay available even when the page
+    /// is full.
+    public static func index(
+        of name: String,
+        in presets: [StoredPageLayoutPreset]
+    ) -> Int? {
+        let key = normalizedName(name).lowercased()
+        guard !key.isEmpty else { return nil }
+        return presets.firstIndex { $0.matchKey == key }
+    }
 }
 
 extension StoredPageLayoutPreset: Codable {

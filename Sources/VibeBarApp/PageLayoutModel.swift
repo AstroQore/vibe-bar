@@ -282,8 +282,10 @@ final class PageLayoutModel: ObservableObject {
     /// Switch a page between automatic, compact and hand-arranged.
     ///
     /// - Parameter displayed: the arrangement currently on screen. Switching
-    ///   to `manual` materializes it, so the first drag starts from what the
-    ///   user was looking at rather than from the built-in split.
+    ///   to `manual` materializes it *only* when the page has no hand
+    ///   arrangement saved, so a first drag starts from what the user was
+    ///   looking at rather than from the built-in split. A page that was
+    ///   arranged before gets its own arrangement back instead.
     func setMode(
         _ mode: PageLayoutMode,
         for page: PageLayoutPageID,
@@ -293,7 +295,18 @@ final class PageLayoutModel: ObservableObject {
         guard mode != self.mode(for: page) else { return }
         switch mode {
         case .manual:
-            apply(displayed, for: page, available: available, mode: .manual)
+            // A page that was arranged by hand before it was switched to a
+            // computed mode gets that arrangement back, not the one Compact
+            // or the balancer happened to be showing. Keeping the columns
+            // through `auto`/`compact` would be pointless if returning to
+            // Manual overwrote them. `restoredAsManual` is `nil` only when
+            // there is nothing to restore, and then the arrangement on screen
+            // is the right place for a first-time edit to start.
+            if let restored = storedLayouts[page]?.restoredAsManual() {
+                settingsStore.settings.pageLayouts[page] = restored
+            } else {
+                apply(displayed, for: page, available: available, mode: .manual)
+            }
         case .auto, .compact:
             let stored = storedLayouts[page]
             settingsStore.settings.pageLayouts[page] = StoredPageLayout(
@@ -355,8 +368,25 @@ final class PageLayoutModel: ObservableObject {
         settingsStore.settings.pageLayoutPresets[page] ?? []
     }
 
-    func canSavePreset(for page: PageLayoutPageID) -> Bool {
+    /// True when this page has room for a preset it does not already have.
+    /// Replacing one by name stays possible either way — see
+    /// `presetWouldReplace(named:for:)`.
+    func canAddPreset(for page: PageLayoutPageID) -> Bool {
         presets(for: page).count < AppSettings.maximumPresetsPerPage
+    }
+
+    /// True when saving under this name would overwrite a preset the page
+    /// already has, rather than adding one. A replacement leaves the count
+    /// unchanged, so it is allowed even on a full page.
+    func presetWouldReplace(named name: String, for page: PageLayoutPageID) -> Bool {
+        StoredPageLayoutPreset.index(of: name, in: presets(for: page)) != nil
+    }
+
+    /// Whether `savePreset` would succeed, so the editor can say why not
+    /// before the user commits to a name.
+    func canSavePreset(named name: String, for page: PageLayoutPageID) -> Bool {
+        guard !StoredPageLayoutPreset.normalizedName(name).isEmpty else { return false }
+        return presetWouldReplace(named: name, for: page) || canAddPreset(for: page)
     }
 
     /// What "save the current arrangement" captures.
@@ -377,8 +407,11 @@ final class PageLayoutModel: ObservableObject {
     }
 
     /// Save an arrangement under a name, replacing a preset of the same name in
-    /// place. Returns false when the name is blank or the page is already
-    /// holding as many presets as it may.
+    /// place and keeping its position in the menu.
+    ///
+    /// Returns false only when the name is blank, or when it is a *new* name on
+    /// a page already holding as many presets as it may. Replacing is never
+    /// blocked by the cap: it does not add anything.
     @discardableResult
     func savePreset(
         named name: String,
@@ -388,7 +421,7 @@ final class PageLayoutModel: ObservableObject {
         let preset = StoredPageLayoutPreset(name: name, layout: layout)
         guard preset.isValid else { return false }
         var entries = presets(for: page)
-        if let index = entries.firstIndex(where: { $0.name.lowercased() == preset.name.lowercased() }) {
+        if let index = StoredPageLayoutPreset.index(of: preset.name, in: entries) {
             entries[index] = preset
         } else {
             guard entries.count < AppSettings.maximumPresetsPerPage else { return false }
@@ -415,8 +448,9 @@ final class PageLayoutModel: ObservableObject {
     }
 
     func deletePreset(named name: String, for page: PageLayoutPageID) {
-        let key = StoredPageLayoutPreset.normalizedName(name).lowercased()
-        let remaining = presets(for: page).filter { $0.name.lowercased() != key }
+        var remaining = presets(for: page)
+        guard let index = StoredPageLayoutPreset.index(of: name, in: remaining) else { return }
+        remaining.remove(at: index)
         if remaining.isEmpty {
             settingsStore.settings.pageLayoutPresets.removeValue(forKey: page)
         } else {
