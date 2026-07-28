@@ -713,13 +713,16 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(StoredPageLayout.self, from: bare).mode, .auto)
     }
 
-    func testStoredLayoutWithAnUnknownModeFallsBackToItsColumnsToo() throws {
-        // A mode from a newer build is as good as no mode: the columns are
-        // still the better evidence of what the user wanted.
+    func testStoredLayoutWithAnUnknownModeFallsBackToAuto() throws {
+        // A PRESENT but unrecognized mode is a newer build's setting, not a
+        // pre-modes entry — after a downgrade the page should fall back to
+        // automatic rather than surprise-activate a fixed manual layout. The
+        // columns survive untouched for when the newer build returns.
         let json = Data(#"{"mode":"telepathic","ratio":"equal","columns":[["status"],[]]}"#.utf8)
         let decoded = try JSONDecoder().decode(StoredPageLayout.self, from: json)
 
-        XCTAssertEqual(decoded.mode, .manual)
+        XCTAssertEqual(decoded.mode, PageLayoutMode.fallback)
+        XCTAssertEqual(decoded.mode, .auto)
         XCTAssertEqual(decoded.columns.first, [.status])
     }
 

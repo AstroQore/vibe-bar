@@ -269,13 +269,20 @@ extension StoredPageLayout: Codable {
     /// cannot read instead of discarding the user's whole arrangement.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Decoded as a raw string rather than through `PageLayoutMode`'s own
-        // tolerant decoder, which cannot tell "the key is missing" from "the
-        // key says auto". Every entry written before modes existed is missing
-        // it, and those entries are arrangements the user dragged — they must
-        // come back as `manual`, not as `auto`.
-        let mode = (try? container.decode(String.self, forKey: .mode))
-            .flatMap(PageLayoutMode.init(rawValue:))
+        // Decoded by hand rather than through `PageLayoutMode`'s own tolerant
+        // decoder, because the two absence shapes mean different things. A
+        // MISSING key is an entry written before modes existed — a hand-dragged
+        // arrangement that must come back as `manual`. A PRESENT key with an
+        // unrecognized value is a newer build's mode — that falls back to
+        // `auto` instead of promoting the saved columns to a fixed manual
+        // layout after a downgrade.
+        let mode: PageLayoutMode?
+        if container.contains(.mode) {
+            mode = (try? container.decode(String.self, forKey: .mode))
+                .flatMap(PageLayoutMode.init(rawValue:)) ?? PageLayoutMode.fallback
+        } else {
+            mode = nil
+        }
         let ratio = (try? container.decode(PageColumnRatio.self, forKey: .ratio)) ?? .equal
         let columns = (try? container.decode([[PageLayoutModuleID]].self, forKey: .columns)) ?? []
         self.init(mode: mode, ratio: ratio, columns: columns)
