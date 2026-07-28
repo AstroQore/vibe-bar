@@ -419,29 +419,29 @@ private struct OverviewWaterfall: View {
 
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             CombinedTotalsRow(density: density)
-            if layoutModel.isCustomized(page) {
-                arrangedWaterfall(descriptors: descriptors, context: context)
-            } else {
+            // `auto` is the only mode the balancer runs in. `compact` and
+            // `manual` both render fixed columns — one packed for height by
+            // `PageLayoutPacker`, one arranged by hand — through the same
+            // path, so the two can never diverge in anything but their source
+            // of column order.
+            if layoutModel.mode(for: page) == .auto {
                 balancedWaterfall(descriptors: descriptors, context: context)
+            } else {
+                arrangedWaterfall(descriptors: descriptors, context: context)
             }
         }
     }
 
-    /// The page as the user arranged it: fixed order, saved column widths.
+    /// The page as it was arranged — by the user in `manual`, by the packer in
+    /// `compact`: fixed order, saved column widths.
     private func arrangedWaterfall(
         descriptors: [PageModuleDescriptor],
         context: OverviewModuleContext
     ) -> some View {
-        let defaults = PageModuleCatalog.defaultConfig(
+        let resolved = layoutModel.arrangement(
             for: page,
             descriptors: descriptors,
-            measuredHeights: layoutModel.measuredHeights(for: page),
             spacing: Double(density.interSectionSpacing)
-        )
-        let resolved = layoutModel.resolvedConfig(
-            for: page,
-            available: descriptors.map(\.id),
-            default: defaults
         )
         return PageLayoutColumns(
             page: page,
@@ -1415,16 +1415,13 @@ private struct ProviderDetailView: View {
             environment: environment,
             settings: settingsStore.settings
         )
-        let defaults = PageModuleCatalog.defaultConfig(
+        // `auto` returns the page's built-in split here, so a provider page
+        // needs no second branch: every mode renders the same fixed-order
+        // columns, only their contents differ.
+        let resolved = layoutModel.arrangement(
             for: page,
             descriptors: descriptors,
-            measuredHeights: layoutModel.measuredHeights(for: page),
             spacing: Double(density.interSectionSpacing)
-        )
-        let resolved = layoutModel.resolvedConfig(
-            for: page,
-            available: descriptors.map(\.id),
-            default: defaults
         )
         let context = ProviderPageContext(
             pageTool: tool,
@@ -1441,9 +1438,10 @@ private struct ProviderDetailView: View {
                 page: page,
                 descriptors: descriptors,
                 config: resolved,
-                // Until the page is arranged by hand its columns keep the exact
-                // clamped narrow-left widths they have always had; the ratio
-                // presets only take over once the user picks one.
+                // On `auto` the columns keep the exact clamped narrow-left
+                // widths they have always had. The ratio presets take over in
+                // the other two modes — including `compact`, where the ratio
+                // is one of the inputs the packer balanced against.
                 widths: layoutModel.isCustomized(page)
                     ? PageColumnWidths(density: density, ratio: resolved.ratio)
                     : ProviderDetailColumnWidths(density: density).columnWidths,

@@ -185,3 +185,153 @@ final class ChartSampleSearchTests: XCTestCase {
         }
     }
 }
+
+final class ChartSegmentClipTests: XCTestCase {
+    private struct Sample {
+        let time: Date
+        let value: Int
+    }
+
+    private let base = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func samples(_ offsets: [TimeInterval]) -> [Sample] {
+        offsets.enumerated().map { Sample(time: base.addingTimeInterval($0.element), value: $0.offset) }
+    }
+
+    private func range(_ from: TimeInterval, _ to: TimeInterval) -> ClosedRange<Date> {
+        base.addingTimeInterval(from)...base.addingTimeInterval(to)
+    }
+
+    private func clip(_ segment: [Sample], _ window: ClosedRange<Date>) -> [Int] {
+        ChartSegmentClip.visible(segment, time: { $0.time }, to: window).map(\.value)
+    }
+
+    func testKeepsOneSampleBeyondEachEdge() {
+        // So a line entering the window starts at the frame border rather than
+        // at its first visible observation.
+        let segment = samples([0, 300, 600, 900, 1_200])
+        XCTAssertEqual(clip(segment, range(400, 800)), [1, 2, 3])
+    }
+
+    func testSegmentCrossingTheWindowWithNoSampleInsideStillDraws() {
+        // The regression this exists for. An hourly-slotted weekly lane can
+        // step straight over a window a user zoomed into; dropping the segment
+        // erased the whole curve while the five-minute-slotted five-hour lane
+        // beside it drew normally.
+        let segment = samples([0, 3_600, 7_200])
+        XCTAssertEqual(clip(segment, range(4_000, 5_000)), [1, 2])
+    }
+
+    func testDailySlotsSurviveASixHourWindow() {
+        // A quota whose window length the provider never reported is filed into
+        // daily slots, so almost every window a user would open contains none
+        // of its samples at all.
+        let segment = samples([0, 86_400, 172_800])
+        let sixHoursIn = range(30 * 3_600, 36 * 3_600)
+        XCTAssertEqual(clip(segment, sixHoursIn), [1, 2])
+    }
+
+    func testNoCoverageNearTheWindowDrawsNothing() {
+        // A hole is information: only a segment that actually crosses the
+        // window is kept, never the nearest samples on one side of it.
+        let before = samples([0, 300])
+        XCTAssertEqual(clip(before, range(10_000, 20_000)), [])
+        let after = samples([30_000, 30_300])
+        XCTAssertEqual(clip(after, range(10_000, 20_000)), [])
+        XCTAssertEqual(clip([], range(0, 100)), [])
+    }
+
+    func testSingleSampleSegmentsAreNotInventedIntoLines() {
+        // One observation is one observation, whichever side of the window it
+        // sits on — the straddle rule needs a pair or it declines.
+        XCTAssertEqual(clip(samples([0]), range(1_000, 2_000)), [])
+        XCTAssertEqual(clip(samples([1_500]), range(1_000, 2_000)), [0])
+    }
+
+    func testSamplesOnTheBoundaryCountAsInside() {
+        let segment = samples([0, 300, 600])
+        XCTAssertEqual(clip(segment, range(300, 600)), [0, 1, 2])
+    }
+}
+
+final class ChartHoverToleranceTests: XCTestCase {
+    /// Widest spacing a lane's own samples can have: its slot width, or the
+    /// refresh cadence when that is slower.
+    private func spacing(windowSeconds: Int?) -> TimeInterval {
+        max(
+            UsageTimelineSlotPolicy.slotSeconds(windowSeconds: windowSeconds),
+            TimeInterval(AppSettings.slowestRefreshIntervalSeconds)
+        )
+    }
+
+    func testEveryLaneResolvesASampleHalfItsOwnRhythmAway() {
+        // The defect: one tolerance for the whole chart. A cursor parked
+        // between two of a lane's consecutive samples has to resolve to one of
+        // them, whatever that lane's sampling rhythm is.
+        for window: Int? in [18_000, 604_800, 30 * 86_400, 90 * 86_400, nil] {
+            let tolerance = ChartHoverTolerance.seconds(
+                windowSeconds: window,
+                visibleSpan: 6 * 3_600
+            )
+            XCTAssertGreaterThanOrEqual(
+                tolerance,
+                spacing(windowSeconds: window) / 2,
+                "window \(String(describing: window))"
+            )
+        }
+    }
+
+    func testSparseLanesGetAWiderToleranceThanDenseOnes() {
+        let visibleSpan: TimeInterval = 6 * 3_600
+        let fiveHour = ChartHoverTolerance.seconds(windowSeconds: 18_000, visibleSpan: visibleSpan)
+        let weekly = ChartHoverTolerance.seconds(windowSeconds: 604_800, visibleSpan: visibleSpan)
+        let monthly = ChartHoverTolerance.seconds(windowSeconds: 30 * 86_400, visibleSpan: visibleSpan)
+        XCTAssertLessThan(fiveHour, weekly)
+        XCTAssertLessThan(weekly, monthly)
+    }
+
+    func testAWeeklyLaneNoLongerMissesOnAFiveHourSizedTolerance() {
+        // Reproduces the reported hover: a six-hour view of a group whose
+        // shortest window is five hours. The old tolerance came from that
+        // shortest window (five-minute slots), so an hourly-slotted weekly
+        // sample half an hour from the cursor was reported as no reading at
+        // all while its line was drawn under the crosshair.
+        let visibleSpan: TimeInterval = 6 * 3_600
+        let old = max(UsageTimelineSlotPolicy.slotSeconds(windowSeconds: 18_000) * 2, visibleSpan / 80)
+        let cursor = Date(timeIntervalSince1970: 1_800_000_000)
+        let weeklySamples = [cursor.addingTimeInterval(-1_800), cursor.addingTimeInterval(1_800)]
+
+        XCTAssertNil(
+            ChartSampleSearch.nearest(in: weeklySamples, to: cursor, tolerance: old, time: { $0 })
+        )
+        XCTAssertNotNil(
+            ChartSampleSearch.nearest(
+                in: weeklySamples,
+                to: cursor,
+                tolerance: ChartHoverTolerance.seconds(
+                    windowSeconds: 604_800,
+                    visibleSpan: visibleSpan
+                ),
+                time: { $0 }
+            )
+        )
+    }
+
+    func testZoomingOutWidensTheToleranceButZoomingInNeverGoesBelowTheRhythm() {
+        let wide = ChartHoverTolerance.seconds(windowSeconds: 18_000, visibleSpan: 60 * 86_400)
+        XCTAssertGreaterThan(wide, 60 * 86_400 / 100)
+        let tight = ChartHoverTolerance.seconds(windowSeconds: 604_800, visibleSpan: 0)
+        XCTAssertEqual(tight, spacing(windowSeconds: 604_800) * ChartHoverTolerance.cadenceFraction)
+    }
+
+    func testAFastLaneStillCoversTheSlowestRefreshCadenceAUserCanPick() {
+        // Five-minute slots do not mean five-minute samples: on the slowest
+        // cadence the picker offers, even a five-hour lane is sampled half an
+        // hour apart, and the hover has to survive that.
+        let tolerance = ChartHoverTolerance.seconds(windowSeconds: 18_000, visibleSpan: 3_600)
+        XCTAssertGreaterThanOrEqual(
+            tolerance,
+            TimeInterval(AppSettings.slowestRefreshIntervalSeconds) / 2
+        )
+    }
+}
