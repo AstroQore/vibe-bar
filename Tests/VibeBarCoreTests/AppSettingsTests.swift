@@ -98,6 +98,197 @@ final class AppSettingsTests: XCTestCase {
         )
     }
 
+    func testPageLayoutModesRoundTripPerPage() throws {
+        var settings = AppSettings.default
+        settings.pageLayouts[.overview] = StoredPageLayout(mode: .compact, ratio: .wideNarrow)
+        settings.pageLayouts[.detail(.claude)] = StoredPageLayout(
+            mode: .manual,
+            ratio: .narrowWide,
+            columns: [[.quotaGroup(tool: .claude, groupKey: "all")], [.cost(tool: .claude)]]
+        )
+        settings.pageLayouts[.detail(.codex)] = StoredPageLayout(
+            mode: .auto,
+            ratio: .equal,
+            columns: [[.status], [.cost(tool: .codex)]]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+
+        XCTAssertEqual(decoded.pageLayouts[.overview]?.mode, .compact)
+        XCTAssertEqual(decoded.pageLayouts[.overview]?.ratio, .wideNarrow)
+        XCTAssertEqual(decoded.pageLayouts[.detail(.claude)]?.mode, .manual)
+        // An `auto` page keeps the arrangement it had before the switch, so
+        // going back to Manual restores it instead of starting over.
+        XCTAssertEqual(decoded.pageLayouts[.detail(.codex)]?.mode, .auto)
+        XCTAssertEqual(
+            decoded.pageLayouts[.detail(.codex)]?.columns,
+            [[.status], [.cost(tool: .codex)]]
+        )
+    }
+
+    func testLayoutsSavedBeforeModesExistedComeBackAsManual() throws {
+        // The upgrade path that matters: a settings file from the build that
+        // shipped the drag editor has no `mode` key anywhere, and every entry
+        // in it is an arrangement the user made by hand.
+        let json = #"""
+        {
+          "displayMode": "remaining",
+          "pageLayouts": {
+            "overview": {"ratio": "equal", "columns": [["status", "cost-all"], ["quota-history-all"]]},
+            "detail:claude": {"ratio": "narrow-wide", "columns": [[], []]}
+          }
+        }
+        """#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded.pageLayouts[.overview]?.mode, .manual)
+        XCTAssertEqual(
+            decoded.pageLayouts[.overview]?.columns,
+            [[.status, .costAll], [.quotaHistoryAll]]
+        )
+        // An entry with no arrangement was never a customization to begin with.
+        XCTAssertEqual(decoded.pageLayouts[.detail(.claude)]?.mode, .auto)
+    }
+
+    func testPageLayoutPresetsDefaultToNoneAndRoundTrip() throws {
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertTrue(legacy.pageLayoutPresets.isEmpty)
+        XCTAssertTrue(AppSettings.default.pageLayoutPresets.isEmpty)
+
+        var settings = AppSettings.default
+        settings.pageLayoutPresets[.overview] = [
+            StoredPageLayoutPreset(
+                name: "Cost on the left",
+                layout: StoredPageLayout(
+                    mode: .manual,
+                    ratio: .wideNarrow,
+                    columns: [[.costAll], [.status, .quotaHistoryAll]]
+                )
+            ),
+            StoredPageLayoutPreset(
+                name: "Shortest",
+                layout: StoredPageLayout(mode: .compact, ratio: .equal)
+            )
+        ]
+
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+
+        let presets = try XCTUnwrap(decoded.pageLayoutPresets[.overview])
+        XCTAssertEqual(presets.count, 2)
+        XCTAssertEqual(presets.map(\.name), ["Cost on the left", "Shortest"])
+        XCTAssertEqual(presets[0].layout.ratio, .wideNarrow)
+        XCTAssertEqual(presets[0].layout.columns, [[.costAll], [.status, .quotaHistoryAll]])
+        XCTAssertEqual(presets[1].layout.mode, .compact)
+    }
+
+    func testPageLayoutPresetsEncodeAsAPlainObjectKeyedByPage() throws {
+        var settings = AppSettings.default
+        settings.pageLayoutPresets[.detail(.codex)] = [
+            StoredPageLayoutPreset(
+                name: "Tall left",
+                layout: StoredPageLayout(mode: .manual, ratio: .equal, columns: [[.status], []])
+            )
+        ]
+
+        let data = try JSONEncoder().encode(settings)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let byPage = try XCTUnwrap(root["pageLayoutPresets"] as? [String: Any])
+        let codex = try XCTUnwrap(byPage["detail:codex"] as? [[String: Any]])
+        XCTAssertEqual(codex.count, 1)
+        XCTAssertEqual(codex[0]["name"] as? String, "Tall left")
+        let layout = try XCTUnwrap(codex[0]["layout"] as? [String: Any])
+        XCTAssertEqual(layout["mode"] as? String, "manual")
+        XCTAssertEqual(layout["columns"] as? [[String]], [["status"], []])
+    }
+
+    func testPageLayoutPresetsAreNormalizedOnTheWayIn() {
+        var settings = AppSettings.default
+        settings.pageLayoutPresets = [
+            .overview: [
+                StoredPageLayoutPreset(name: "  Keep  ", layout: StoredPageLayout()),
+                // Unnamed presets cannot be picked out of a menu.
+                StoredPageLayoutPreset(name: "   ", layout: StoredPageLayout()),
+                // A name that differs only by case is the same menu entry.
+                StoredPageLayoutPreset(name: "keep", layout: StoredPageLayout(ratio: .wideNarrow))
+            ],
+            .detail(.claude): []
+        ]
+
+        let normalized = AppSettings(
+            displayMode: .remaining,
+            refreshIntervalSeconds: 600,
+            launchAtLogin: false,
+            menuBarTextEnabled: true,
+            mockEnabled: false,
+            pageLayoutPresets: settings.pageLayoutPresets
+        )
+
+        XCTAssertEqual(normalized.pageLayoutPresets[.overview]?.map(\.name), ["Keep"])
+        // A page with nothing left keeps no empty entry.
+        XCTAssertNil(normalized.pageLayoutPresets[.detail(.claude)])
+    }
+
+    func testPageLayoutPresetsAreCappedPerPage() {
+        let tooMany = (0..<(AppSettings.maximumPresetsPerPage + 8)).map { index in
+            StoredPageLayoutPreset(name: "preset-\(index)", layout: StoredPageLayout())
+        }
+        let normalized = AppSettings(
+            displayMode: .remaining,
+            refreshIntervalSeconds: 600,
+            launchAtLogin: false,
+            menuBarTextEnabled: true,
+            mockEnabled: false,
+            pageLayoutPresets: [.overview: tooMany]
+        )
+
+        XCTAssertEqual(
+            normalized.pageLayoutPresets[.overview]?.count,
+            AppSettings.maximumPresetsPerPage
+        )
+        // The cap keeps the oldest, so saving more never reshuffles the menu.
+        XCTAssertEqual(normalized.pageLayoutPresets[.overview]?.first?.name, "preset-0")
+    }
+
+    func testMangledPageLayoutPresetsDoNotCostTheRestOfTheSettings() throws {
+        let json = #"""
+        {"displayMode": "used", "refreshIntervalSeconds": 1800, "pageLayoutPresets": "not-an-object"}
+        """#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertTrue(decoded.pageLayoutPresets.isEmpty)
+        XCTAssertEqual(decoded.displayMode, .used)
+        XCTAssertEqual(decoded.refreshIntervalSeconds, 1800)
+    }
+
+    func testPageLayoutPresetsSurviveUnknownPagesAndModules() throws {
+        let json = #"""
+        {
+          "displayMode": "remaining",
+          "pageLayoutPresets": {
+            "detail:some-future-provider": [
+              {"name": "From v9", "layout": {"mode": "manual", "ratio": "equal", "columns": [["future-card:v9"], []]}}
+            ]
+          }
+        }
+        """#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        let presets = try XCTUnwrap(
+            decoded.pageLayoutPresets[PageLayoutPageID("detail:some-future-provider")]
+        )
+        XCTAssertEqual(presets.first?.name, "From v9")
+        XCTAssertEqual(presets.first?.layout.columns.first, [PageLayoutModuleID("future-card:v9")])
+    }
+
     func testPageLayoutsEncodeAsAPlainObjectKeyedByPageAndModuleIdentifiers() throws {
         var settings = AppSettings.default
         settings.pageLayouts[.detail(.codex)] = StoredPageLayout(

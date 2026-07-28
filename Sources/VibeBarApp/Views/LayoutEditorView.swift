@@ -1,7 +1,8 @@
 import SwiftUI
 import VibeBarCore
 
-/// Settings → Layout: arrange each popover page's cards into two columns.
+/// Settings → Layout: choose how each popover page arranges its cards, and
+/// arrange them by hand when that is what you want.
 ///
 /// The blocks are drawn at the cards' *measured* heights, scaled down. A list
 /// of equal-sized rows would make the two columns look balanced when the real
@@ -10,6 +11,12 @@ import VibeBarCore
 /// Modules and their names come from `PageModuleCatalog` — the same registry
 /// the popover pages render from — so a card that appears in the popover
 /// appears here, with the same identity, without a second list to maintain.
+///
+/// The three modes are not three editors. `PageLayoutModel.arrangement` hands
+/// back whatever the selected mode currently produces, and this screen draws
+/// that; only in `manual` are the blocks draggable. So what the editor shows is
+/// what the popover shows, including a `compact` packing that will move again
+/// the next time the cards are measured.
 struct LayoutEditorView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -30,6 +37,8 @@ struct LayoutEditorView: View {
     /// other page's position.
     @State private var blockFrames: [String: CGRect] = [:]
     @State private var zoneFrames: [Int: CGRect] = [:]
+    @State private var isNamingPreset = false
+    @State private var presetName = ""
 
     private static let space = "vibebar.layout.editor"
     /// A card is never shorter than this in the editor, however short it is on
@@ -77,7 +86,8 @@ struct LayoutEditorView: View {
             environment: environment,
             settings: settingsStore.settings
         )
-        let config = resolvedConfig(for: page, descriptors: descriptors)
+        let mode = layoutModel.mode(for: page)
+        let config = displayedConfig(for: page, descriptors: descriptors)
         let blocks = Dictionary(
             descriptors.map { descriptor in
                 (descriptor.id, Block(descriptor: descriptor, measured: config.measuredHeight(for: descriptor.id)))
@@ -87,6 +97,7 @@ struct LayoutEditorView: View {
 
         VStack(alignment: .leading, spacing: 12) {
             pagePicker(pages: pages, selected: page)
+            modeRow(page: page, mode: mode, config: config)
             controlRow(page: page, config: config)
             if descriptors.isEmpty {
                 Text("This page has no arrangeable cards yet. Open it in the popover once so Vibe Bar can measure them.")
@@ -95,11 +106,11 @@ struct LayoutEditorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 HStack(alignment: .top, spacing: 14) {
-                    zones(page: page, config: config, blocks: blocks)
+                    zones(page: page, config: config, blocks: blocks, mode: mode)
                     preview(config: config, blocks: blocks)
                 }
             }
-            Text(footnote(page: page))
+            Text(footnote(page: page, mode: mode))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -117,6 +128,9 @@ struct LayoutEditorView: View {
             // A provider hidden from the popover takes its page with it.
             if selectedPage != newValue { selectedPage = newValue }
             drag = nil
+            // The name sheet belongs to the page it was opened from; carrying
+            // it across would save the new page's arrangement under it.
+            isNamingPreset = false
         }
     }
 
@@ -169,7 +183,177 @@ struct LayoutEditorView: View {
         )
     }
 
-    // MARK: - Ratio + reset
+    // MARK: - Mode + presets
+
+    private func modeRow(
+        page: PageLayoutPageID,
+        mode: PageLayoutMode,
+        config: PageLayoutConfig
+    ) -> some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 4) {
+                ForEach(PageLayoutMode.allCases, id: \.self) { candidate in
+                    modeButton(candidate, page: page, selected: mode, config: config)
+                }
+            }
+            .padding(3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            )
+            Spacer(minLength: 8)
+            presetsMenu(page: page, config: config)
+            Button {
+                layoutModel.reset(for: page)
+            } label: {
+                Label("Restore Defaults", systemImage: "arrow.uturn.backward")
+                    .font(.system(size: 11))
+            }
+            .disabled(!layoutModel.isCustomized(page))
+        }
+    }
+
+    private func modeButton(
+        _ mode: PageLayoutMode,
+        page: PageLayoutPageID,
+        selected: PageLayoutMode,
+        config: PageLayoutConfig
+    ) -> some View {
+        let isSelected = mode == selected
+        return Button {
+            layoutModel.setMode(
+                mode,
+                for: page,
+                displayed: config,
+                available: availableModuleIDs(for: page)
+            )
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: modeIcon(mode))
+                    .font(.system(size: 10, weight: .medium))
+                Text(modeLabel(mode))
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+            .padding(.horizontal, 11)
+            .frame(height: 24)
+            .background {
+                if isSelected {
+                    Capsule(style: .continuous)
+                        .fill(Color.accentColor.opacity(0.20))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
+                        )
+                }
+            }
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(modeHelp(mode, page: page))
+    }
+
+    private func modeLabel(_ mode: PageLayoutMode) -> String {
+        switch mode {
+        case .auto: "Auto"
+        case .compact: "Compact"
+        case .manual: "Manual"
+        }
+    }
+
+    private func modeIcon(_ mode: PageLayoutMode) -> String {
+        switch mode {
+        case .auto: "wand.and.stars"
+        case .compact: "arrow.down.forward.and.arrow.up.backward"
+        case .manual: "hand.point.up.left"
+        }
+    }
+
+    private func modeHelp(_ mode: PageLayoutMode, page: PageLayoutPageID) -> String {
+        switch mode {
+        case .auto:
+            return page.isOverview
+                ? "Auto — the Overview balances its columns as the cards are measured."
+                : "Auto — this page's built-in arrangement."
+        case .compact:
+            return "Compact — pack the cards into the shortest page they fit in."
+        case .manual:
+            return "Manual — your arrangement, exactly as you dragged it."
+        }
+    }
+
+    private func presetsMenu(page: PageLayoutPageID, config: PageLayoutConfig) -> some View {
+        let presets = layoutModel.presets(for: page)
+        return Menu {
+            Button("Save Current…") {
+                presetName = ""
+                isNamingPreset = true
+            }
+            .disabled(!layoutModel.canSavePreset(for: page))
+            if presets.isEmpty {
+                Text("No saved arrangements")
+            } else {
+                Divider()
+                ForEach(presets, id: \.name) { preset in
+                    Menu(preset.name) {
+                        Button("Apply") {
+                            layoutModel.applyPreset(preset, to: page)
+                        }
+                        Button("Delete", role: .destructive) {
+                            layoutModel.deletePreset(named: preset.name, for: page)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label("Presets", systemImage: "square.stack.3d.up")
+                .font(.system(size: 11))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(
+            layoutModel.canSavePreset(for: page)
+                ? "Save this arrangement under a name, or put a saved one back."
+                : "This page is already holding \(AppSettings.maximumPresetsPerPage) saved arrangements."
+        )
+        .popover(isPresented: $isNamingPreset, arrowEdge: .bottom) {
+            presetNameForm(page: page, config: config)
+        }
+    }
+
+    private func presetNameForm(page: PageLayoutPageID, config: PageLayoutConfig) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Save arrangement")
+                .font(.system(size: 12, weight: .semibold))
+            Text("Saving “\(modeLabel(layoutModel.mode(for: page)))” as it stands now. Applying it later arranges the page by hand.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 230, alignment: .leading)
+            TextField("Name", text: $presetName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 230)
+                .onSubmit { savePreset(page: page, config: config) }
+            HStack {
+                Spacer(minLength: 0)
+                Button("Cancel") { isNamingPreset = false }
+                Button("Save") { savePreset(page: page, config: config) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(StoredPageLayoutPreset.normalizedName(presetName).isEmpty)
+            }
+        }
+        .padding(13)
+    }
+
+    private func savePreset(page: PageLayoutPageID, config: PageLayoutConfig) {
+        let snapshot = layoutModel.presetSnapshot(for: page, displayed: config)
+        guard layoutModel.savePreset(named: presetName, for: page, layout: snapshot) else { return }
+        presetName = ""
+        isNamingPreset = false
+    }
+
+    // MARK: - Ratio + status
 
     private func controlRow(page: PageLayoutPageID, config: PageLayoutConfig) -> some View {
         HStack(spacing: 10) {
@@ -186,13 +370,6 @@ struct LayoutEditorView: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
-            Button {
-                layoutModel.reset(for: page)
-            } label: {
-                Label("Restore Defaults", systemImage: "arrow.uturn.backward")
-                    .font(.system(size: 11))
-            }
-            .disabled(!layoutModel.isCustomized(page))
         }
     }
 
@@ -262,25 +439,38 @@ struct LayoutEditorView: View {
     private func zones(
         page: PageLayoutPageID,
         config: PageLayoutConfig,
-        blocks: [PageLayoutModuleID: Block]
+        blocks: [PageLayoutModuleID: Block],
+        mode: PageLayoutMode
     ) -> some View {
         let totals = (0..<PageLayoutConfig.columnCount).map { index in
             config.column(index).reduce(0.0) { $0 + (blocks[$1]?.height ?? 0) }
         }
         let scale = min(0.4, Self.editorColumnHeight / max(1, totals.max() ?? 1))
-        let target = dropTarget(page: page, config: config)
-        return HStack(alignment: .top, spacing: 10) {
-            ForEach(0..<PageLayoutConfig.columnCount, id: \.self) { index in
-                zone(
-                    index,
-                    page: page,
-                    config: config,
-                    blocks: blocks,
-                    total: totals[index],
-                    scale: scale,
-                    insertionIndex: target?.column == index ? target?.index : nil
-                )
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        // Only `manual` is an editor. The other two modes show what they
+        // currently produce as a read-only picture, so a drag cannot silently
+        // discard an arrangement the app is about to recompute.
+        let isEditable = mode == .manual
+        let target = isEditable ? dropTarget(page: page, config: config) : nil
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 10) {
+                ForEach(0..<PageLayoutConfig.columnCount, id: \.self) { index in
+                    zone(
+                        index,
+                        page: page,
+                        config: config,
+                        blocks: blocks,
+                        total: totals[index],
+                        scale: scale,
+                        isEditable: isEditable,
+                        insertionIndex: target?.column == index ? target?.index : nil
+                    )
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+            if !isEditable {
+                Label("Switch to Manual to arrange by hand", systemImage: "hand.point.up.left")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
             }
         }
     }
@@ -292,6 +482,7 @@ struct LayoutEditorView: View {
         blocks: [PageLayoutModuleID: Block],
         total: Double,
         scale: Double,
+        isEditable: Bool,
         insertionIndex: Int?
     ) -> some View {
         let moduleIDs = config.column(index)
@@ -308,7 +499,7 @@ struct LayoutEditorView: View {
             VStack(spacing: Self.blockSpacing) {
                 ForEach(moduleIDs, id: \.self) { moduleID in
                     if let block = blocks[moduleID] {
-                        blockView(block, page: page, config: config, scale: scale)
+                        blockView(block, page: page, config: config, scale: scale, isEditable: isEditable)
                             // The card stays where it is, dimmed, while its
                             // ghost floats: pulling it out of the stack would
                             // shift every block below it, moving the very
@@ -375,24 +566,30 @@ struct LayoutEditorView: View {
         return frame.minY - zone.minY - Self.blockSpacing / 2
     }
 
+    @ViewBuilder
     private func blockView(
         _ block: Block,
         page: PageLayoutPageID,
         config: PageLayoutConfig,
-        scale: Double
+        scale: Double,
+        isEditable: Bool
     ) -> some View {
         let height = max(Self.minimumBlockHeight, CGFloat(block.height * scale))
-        return blockBody(block, height: height)
+        let body = blockBody(block, height: height, isEditable: isEditable)
             .onGeometryChange(for: CGRect.self) { proxy in
                 proxy.frame(in: .named(Self.space))
             } action: { frame in
                 blockFrames[frameKey(page, block.id)] = frame
             }
-            .gesture(dragGesture(block: block, page: page, config: config, height: height))
             .help("\(block.descriptor.displayName) · \(block.heightLabel)")
+        if isEditable {
+            body.gesture(dragGesture(block: block, page: page, config: config, height: height))
+        } else {
+            body
+        }
     }
 
-    private func blockBody(_ block: Block, height: CGFloat) -> some View {
+    private func blockBody(_ block: Block, height: CGFloat, isEditable: Bool) -> some View {
         let accent = block.descriptor.accent.color
         return HStack(alignment: .top, spacing: 7) {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -409,9 +606,13 @@ struct LayoutEditorView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.tertiary)
+            // The grip is the affordance, so it appears only where dragging
+            // actually does something.
+            if isEditable {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 5)
@@ -608,34 +809,34 @@ struct LayoutEditorView: View {
         .map(\.id)
     }
 
-    private func resolvedConfig(
+    /// Exactly what the popover would draw for this page right now — the same
+    /// call the popover itself makes, so the two cannot disagree.
+    private func displayedConfig(
         for page: PageLayoutPageID,
         descriptors: [PageModuleDescriptor]
     ) -> PageLayoutConfig {
-        let defaults = PageModuleCatalog.defaultConfig(
+        layoutModel.arrangement(
             for: page,
             descriptors: descriptors,
-            measuredHeights: layoutModel.measuredHeights(for: page),
-            // The popover's own card gap, so the Overview default the editor
-            // shows is the column split the balancer actually produced.
+            // The popover's own card gap, so the arrangement the editor shows
+            // is the one the popover's spacing produces.
             spacing: Double(
                 Theme.overviewDensity(for: settingsStore.settings.popoverDensity).interSectionSpacing
             )
         )
-        return layoutModel.resolvedConfig(
-            for: page,
-            available: descriptors.map(\.id),
-            default: defaults
-        )
     }
 
-    private func footnote(page: PageLayoutPageID) -> String {
-        if layoutModel.isCustomized(page) {
+    private func footnote(page: PageLayoutPageID, mode: PageLayoutMode) -> String {
+        switch mode {
+        case .manual:
             return "Drag a card to reorder it or move it between columns. Cards are drawn at their measured height, so the taller column here is the taller column in the popover. A card with no measurement yet shows “—pt”."
+        case .compact:
+            return "Compact packs the cards into whichever two columns make the page shortest, ignoring the usual quota-then-cost grouping. It re-packs when the measured heights move enough to change the answer."
+        case .auto:
+            if page.isOverview {
+                return "The Overview balances its columns automatically, quota cards first. Blocks below show what that balance currently produces."
+            }
+            return "This page uses its built-in arrangement. Pick Compact or Manual, or a width split, to take it over."
         }
-        if page.isOverview {
-            return "The Overview balances its columns automatically until you move a card. Blocks below show what that balance currently produces."
-        }
-        return "This page uses its built-in arrangement. Drag a card, or pick a width split, to take it over."
     }
 }

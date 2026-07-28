@@ -639,4 +639,174 @@ final class PageLayoutTests: XCTestCase {
         // the editor can still draw it to scale.
         XCTAssertEqual(merged.measuredHeight(for: .quotaHistoryAll), 300)
     }
+
+    // MARK: - PageLayoutMode
+
+    func testLayoutModeRoundTripsAndFallsBackForUnknownValues() throws {
+        for mode in PageLayoutMode.allCases {
+            let data = try JSONEncoder().encode([mode])
+            XCTAssertEqual(try JSONDecoder().decode([PageLayoutMode].self, from: data), [mode])
+        }
+
+        let unknown = Data(#"["telepathic"]"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode([PageLayoutMode].self, from: unknown), [.auto])
+    }
+
+    func testOnlyManualIsNotComputed() {
+        XCTAssertTrue(PageLayoutMode.auto.isComputed)
+        XCTAssertTrue(PageLayoutMode.compact.isComputed)
+        XCTAssertFalse(PageLayoutMode.manual.isComputed)
+    }
+
+    // MARK: - StoredPageLayout modes
+
+    func testStoredLayoutDerivesItsModeFromItsColumnsWhenUnspecified() {
+        // An entry that carries an arrangement is one somebody arranged.
+        let arranged = StoredPageLayout(ratio: .equal, columns: [[.status], [.costAll]])
+        XCTAssertEqual(arranged.mode, .manual)
+
+        // An entry that carries none is a page still drawing itself.
+        XCTAssertEqual(StoredPageLayout().mode, .auto)
+        XCTAssertEqual(StoredPageLayout(ratio: .wideNarrow).mode, .auto)
+    }
+
+    func testStoredLayoutHonoursAnExplicitModeOverTheDerivedOne() {
+        let compact = StoredPageLayout(mode: .compact, ratio: .equal, columns: [[.status], []])
+        XCTAssertEqual(compact.mode, .compact)
+        // The columns survive: switching modes is not a reset.
+        XCTAssertEqual(compact.columns.first, [.status])
+
+        let auto = StoredPageLayout(mode: .auto, ratio: .equal, columns: [[.status], [.costAll]])
+        XCTAssertEqual(auto.mode, .auto)
+        XCTAssertFalse(auto.isEmpty)
+
+        let manual = StoredPageLayout(mode: .manual)
+        XCTAssertEqual(manual.mode, .manual)
+        XCTAssertTrue(manual.isEmpty)
+    }
+
+    func testStoredLayoutFromAConfigTakesTheGivenMode() {
+        let config = PageLayoutConfig(
+            ratio: .narrowWide,
+            columns: [[.status], [.costAll]],
+            measuredHeights: [.status: 140]
+        )
+
+        XCTAssertEqual(StoredPageLayout(config).mode, .manual)
+        XCTAssertEqual(StoredPageLayout(config, mode: .compact).mode, .compact)
+        // Measurement never rides along into settings.
+        XCTAssertEqual(StoredPageLayout(config, mode: .compact).columns, [[.status], [.costAll]])
+    }
+
+    func testLegacyStoredLayoutWithoutAModeDecodesByItsColumns() throws {
+        // Every entry written before modes existed is an arrangement the user
+        // dragged, so it has to come back as `manual` — decoding it as `auto`
+        // would silently discard their layout on first launch.
+        let arranged = Data(#"{"ratio":"wide-narrow","columns":[["status"],["cost-all"]]}"#.utf8)
+        let decodedArranged = try JSONDecoder().decode(StoredPageLayout.self, from: arranged)
+        XCTAssertEqual(decodedArranged.mode, .manual)
+        XCTAssertEqual(decodedArranged.ratio, .wideNarrow)
+        XCTAssertEqual(decodedArranged.columns, [[.status], [.costAll]])
+
+        // A heights-only entry carried no arrangement and stays automatic.
+        let bare = Data(#"{"ratio":"equal","columns":[[],[]]}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(StoredPageLayout.self, from: bare).mode, .auto)
+    }
+
+    func testStoredLayoutWithAnUnknownModeFallsBackToItsColumnsToo() throws {
+        // A mode from a newer build is as good as no mode: the columns are
+        // still the better evidence of what the user wanted.
+        let json = Data(#"{"mode":"telepathic","ratio":"equal","columns":[["status"],[]]}"#.utf8)
+        let decoded = try JSONDecoder().decode(StoredPageLayout.self, from: json)
+
+        XCTAssertEqual(decoded.mode, .manual)
+        XCTAssertEqual(decoded.columns.first, [.status])
+    }
+
+    func testStoredLayoutRoundTripsEveryModeIncludingAutoWithColumns() throws {
+        for mode in PageLayoutMode.allCases {
+            let stored = StoredPageLayout(
+                mode: mode,
+                ratio: .narrowWide,
+                columns: [[.status], [.costAll, .quotaHistoryAll]]
+            )
+            let decoded = try JSONDecoder().decode(
+                StoredPageLayout.self,
+                from: try JSONEncoder().encode(stored)
+            )
+
+            XCTAssertEqual(decoded.mode, mode)
+            XCTAssertEqual(decoded.ratio, .narrowWide)
+            XCTAssertEqual(decoded.columns, [[.status], [.costAll, .quotaHistoryAll]])
+        }
+    }
+
+    func testStoredLayoutEncodesTheModeAsAPlainString() throws {
+        let stored = StoredPageLayout(mode: .compact, ratio: .equal, columns: [[.status], []])
+        let data = try JSONEncoder().encode(stored)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["mode"] as? String, "compact")
+    }
+
+    // MARK: - StoredPageLayoutPreset
+
+    func testPresetTrimsAndCapsItsName() {
+        XCTAssertEqual(
+            StoredPageLayoutPreset(name: "  Cost on the left  ", layout: StoredPageLayout()).name,
+            "Cost on the left"
+        )
+        let long = String(repeating: "x", count: StoredPageLayoutPreset.maximumNameLength + 40)
+        XCTAssertEqual(
+            StoredPageLayoutPreset(name: long, layout: StoredPageLayout()).name.count,
+            StoredPageLayoutPreset.maximumNameLength
+        )
+    }
+
+    func testAPresetWithNoUsableNameIsInvalid() {
+        XCTAssertFalse(StoredPageLayoutPreset(name: "   ", layout: StoredPageLayout()).isValid)
+        XCTAssertFalse(StoredPageLayoutPreset(name: "", layout: StoredPageLayout()).isValid)
+        XCTAssertTrue(StoredPageLayoutPreset(name: "Tall left", layout: StoredPageLayout()).isValid)
+    }
+
+    func testPresetRoundTripsItsWholeLayout() throws {
+        let preset = StoredPageLayoutPreset(
+            name: "Cost first",
+            layout: StoredPageLayout(
+                mode: .compact,
+                ratio: .wideNarrow,
+                columns: [[.costAll], [.status, .quotaHistoryAll]]
+            )
+        )
+
+        let decoded = try JSONDecoder().decode(
+            StoredPageLayoutPreset.self,
+            from: try JSONEncoder().encode(preset)
+        )
+
+        XCTAssertEqual(decoded.name, "Cost first")
+        XCTAssertEqual(decoded.layout.mode, .compact)
+        XCTAssertEqual(decoded.layout.ratio, .wideNarrow)
+        XCTAssertEqual(decoded.layout.columns, [[.costAll], [.status, .quotaHistoryAll]])
+    }
+
+    func testPresetDecodeToleratesMissingAndMalformedFields() throws {
+        // A nameless preset decodes, then fails `isValid` so the settings
+        // normalizer can drop it rather than showing a blank menu row.
+        let nameless = try JSONDecoder().decode(
+            StoredPageLayoutPreset.self,
+            from: Data(#"{"layout":{"mode":"manual","columns":[["status"],[]]}}"#.utf8)
+        )
+        XCTAssertFalse(nameless.isValid)
+        XCTAssertEqual(nameless.layout.columns.first, [.status])
+
+        // A mangled layout costs the arrangement, not the whole preset list.
+        let mangled = try JSONDecoder().decode(
+            StoredPageLayoutPreset.self,
+            from: Data(#"{"name":"Broken","layout":"not-an-object"}"#.utf8)
+        )
+        XCTAssertTrue(mangled.isValid)
+        XCTAssertTrue(mangled.layout.isEmpty)
+        XCTAssertEqual(mangled.layout.mode, .auto)
+    }
 }

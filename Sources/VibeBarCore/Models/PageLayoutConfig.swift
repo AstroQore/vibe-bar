@@ -37,6 +37,41 @@ public enum PageColumnRatio: String, CaseIterable, Codable, Hashable, Sendable {
     }
 }
 
+/// How a page decides where its cards go.
+///
+/// Three modes rather than a customized/not-customized flag, because "let the
+/// app arrange it" turned out to mean two different things:
+///
+/// - `auto` keeps each page's built-in behaviour — the Overview's phase-aware
+///   `ColumnMasonryLayout` balancer, a provider page's hand-coded split.
+/// - `compact` ignores phases entirely and asks `PageLayoutPacker` for the
+///   partition that makes the page as short as possible. The balancer cannot
+///   reach that arrangement: it places every quota card before any cost card,
+///   and that constraint alone can cost a page a few hundred points.
+/// - `manual` renders the arrangement the user dragged, and nothing else
+///   touches it.
+public enum PageLayoutMode: String, CaseIterable, Codable, Hashable, Sendable {
+    case auto
+    case compact
+    case manual
+
+    /// What an unrecognized mode decodes to when there is nothing better to go
+    /// on. `StoredPageLayout` has more context and uses it — see its decoder.
+    public static let fallback: PageLayoutMode = .auto
+
+    /// Forward-tolerant, like `PageColumnRatio`: a mode written by a newer
+    /// build decodes to `auto` instead of failing the enclosing value.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = PageLayoutMode(rawValue: raw) ?? Self.fallback
+    }
+
+    /// True when the page draws itself and the saved columns are only a
+    /// starting point for the editor.
+    public var isComputed: Bool { self != .manual }
+}
+
 /// One page's saved layout: the column ratio, the two ordered module columns,
 /// and the last-known measured height of each module.
 ///
@@ -162,18 +197,32 @@ public struct PageLayoutConfig: Hashable, Sendable {
 /// Heights stay in `~/.vibebar/layout.json` via `PageLayoutStore`; the two are
 /// recombined at render time.
 public struct StoredPageLayout: Hashable, Sendable {
+    /// Which arrangement the page renders. `columns` is kept in every mode:
+    /// switching to `auto` or `compact` and back must not throw away an
+    /// arrangement the user dragged by hand.
+    public var mode: PageLayoutMode
     public var ratio: PageColumnRatio
     public private(set) var columns: [[PageLayoutModuleID]]
 
-    public init(ratio: PageColumnRatio = .equal, columns: [[PageLayoutModuleID]] = []) {
+    /// - Parameter mode: `nil` derives the mode from the columns — an entry
+    ///   that carries an arrangement is a `manual` one, an entry that carries
+    ///   none is `auto`. That is the same rule the decoder applies to an entry
+    ///   written before modes existed, kept in one place so the two cannot
+    ///   drift apart.
+    public init(
+        mode: PageLayoutMode? = nil,
+        ratio: PageColumnRatio = .equal,
+        columns: [[PageLayoutModuleID]] = []
+    ) {
         let normalized = PageLayoutConfig(ratio: ratio, columns: columns)
+        self.mode = mode ?? (normalized.isEmpty ? .auto : .manual)
         self.ratio = normalized.ratio
         self.columns = normalized.columns
     }
 
     /// The intent half of a live config; measured heights are dropped.
-    public init(_ config: PageLayoutConfig) {
-        self.init(ratio: config.ratio, columns: config.columns)
+    public init(_ config: PageLayoutConfig, mode: PageLayoutMode? = nil) {
+        self.init(mode: mode, ratio: config.ratio, columns: config.columns)
     }
 
     /// Back to the canonical model, with this page's measurements folded in.
@@ -184,12 +233,14 @@ public struct StoredPageLayout: Hashable, Sendable {
     }
 
     /// True when the entry carries no arrangement — the same "not customized"
-    /// test `PageLayoutConfig.isEmpty` makes.
+    /// test `PageLayoutConfig.isEmpty` makes. Independent of `mode`: an `auto`
+    /// page can still be holding the columns it had before the user switched.
     public var isEmpty: Bool { columns.allSatisfy(\.isEmpty) }
 }
 
 extension StoredPageLayout: Codable {
     private enum CodingKeys: String, CodingKey {
+        case mode
         case ratio
         case columns
     }
@@ -199,9 +250,61 @@ extension StoredPageLayout: Codable {
     /// cannot read instead of discarding the user's whole arrangement.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Decoded as a raw string rather than through `PageLayoutMode`'s own
+        // tolerant decoder, which cannot tell "the key is missing" from "the
+        // key says auto". Every entry written before modes existed is missing
+        // it, and those entries are arrangements the user dragged — they must
+        // come back as `manual`, not as `auto`.
+        let mode = (try? container.decode(String.self, forKey: .mode))
+            .flatMap(PageLayoutMode.init(rawValue:))
         let ratio = (try? container.decode(PageColumnRatio.self, forKey: .ratio)) ?? .equal
         let columns = (try? container.decode([[PageLayoutModuleID]].self, forKey: .columns)) ?? []
-        self.init(ratio: ratio, columns: columns)
+        self.init(mode: mode, ratio: ratio, columns: columns)
+    }
+}
+
+/// One saved arrangement the user named, so a layout worth keeping can be put
+/// back later without re-dragging it.
+///
+/// Stores a whole `StoredPageLayout` — mode, ratio and columns — so a preset
+/// records what it was captured from. Applying one always lands in `manual`
+/// mode: a preset is "this exact arrangement", and re-entering `compact` would
+/// just recompute from whatever the heights happen to be now.
+public struct StoredPageLayoutPreset: Hashable, Sendable {
+    /// Long enough for "Wide left, cost on the right", short enough that a
+    /// pasted paragraph cannot bloat `settings.json`.
+    public static let maximumNameLength = 48
+
+    public var name: String
+    public var layout: StoredPageLayout
+
+    public init(name: String, layout: StoredPageLayout) {
+        self.name = Self.normalizedName(name)
+        self.layout = layout
+    }
+
+    /// Trimmed and length-capped. The UI shows the normalized form, so what
+    /// the user sees in the menu is exactly what was stored.
+    public static func normalizedName(_ raw: String) -> String {
+        String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maximumNameLength))
+    }
+
+    /// A preset with no name cannot be picked out of a menu, so it is dropped
+    /// on the way in rather than rendered as a blank row.
+    public var isValid: Bool { !name.isEmpty }
+}
+
+extension StoredPageLayoutPreset: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case layout
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let name = (try? container.decode(String.self, forKey: .name)) ?? ""
+        let layout = (try? container.decode(StoredPageLayout.self, forKey: .layout)) ?? StoredPageLayout()
+        self.init(name: name, layout: layout)
     }
 }
 

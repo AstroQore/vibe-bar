@@ -70,6 +70,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// built-in arrangement with no migration.
     public var pageLayouts: [PageLayoutPageID: StoredPageLayout]
 
+    /// Named arrangements the user saved for a page, keyed the same way as
+    /// `pageLayouts`. Applying one writes it back into `pageLayouts`; the
+    /// preset itself is never the live layout.
+    ///
+    /// Empty by default and normalized on the way in — unnamed presets are
+    /// dropped, names are trimmed and length-capped, and a page keeps at most
+    /// `maximumPresetsPerPage` of them, so a settings file cannot grow without
+    /// bound behind a menu that only shows a handful.
+    public var pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]]
+
+    /// How many named arrangements one page may keep. Generous relative to the
+    /// handful a menu stays usable with.
+    public static let maximumPresetsPerPage = 20
+
     public static let `default` = AppSettings(
         displayMode: .remaining,
         refreshIntervalSeconds: 600,
@@ -190,7 +204,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscProviderInstances: [MiscProviderInstance]? = nil,
         costData: CostDataSettings = .default,
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
-        pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:]
+        pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
+        pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:]
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -225,6 +240,28 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.costData = costData
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
         self.pageLayouts = pageLayouts
+        self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
+    }
+
+    /// Drops unnamed presets, collapses names that differ only by case (the
+    /// first wins, which is what "save over the one already in the menu"
+    /// produces), and caps each page's list.
+    static func normalizedPageLayoutPresets(
+        _ presets: [PageLayoutPageID: [StoredPageLayoutPreset]]
+    ) -> [PageLayoutPageID: [StoredPageLayoutPreset]] {
+        var result: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:]
+        for (page, entries) in presets {
+            var seen = Set<String>()
+            var kept: [StoredPageLayoutPreset] = []
+            for preset in entries where preset.isValid {
+                guard seen.insert(preset.name.lowercased()).inserted else { continue }
+                kept.append(preset)
+                if kept.count == maximumPresetsPerPage { break }
+            }
+            guard !kept.isEmpty else { continue }
+            result[page] = kept
+        }
+        return result
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -254,6 +291,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case costData
         case overviewQuotaHistoryHiddenCurveIds
         case pageLayouts
+        case pageLayoutPresets
     }
 
     public init(from decoder: Decoder) throws {
@@ -386,6 +424,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // the user their card arrangement, not every other setting in the file.
         self.pageLayouts =
             (try? c.decodeIfPresent([PageLayoutPageID: StoredPageLayout].self, forKey: .pageLayouts)) ?? [:]
+        // Same `try?` reasoning: a mangled preset list costs the user their
+        // saved arrangements, not the rest of the file.
+        self.pageLayoutPresets = Self.normalizedPageLayoutPresets(
+            (try? c.decodeIfPresent(
+                [PageLayoutPageID: [StoredPageLayoutPreset]].self,
+                forKey: .pageLayoutPresets
+            )) ?? [:]
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -424,6 +470,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(costData, forKey: .costData)
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
         try c.encode(pageLayouts, forKey: .pageLayouts)
+        try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {
