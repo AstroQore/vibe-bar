@@ -114,11 +114,16 @@ public enum OverviewMasonryPlanner {
         let auxiliary = group.filter { $0.phase == .auxiliary }
 
         // The summary band is a row, not a balanced pair: its cards carry one
-        // pinned height, so declaration order decides which side each takes and
-        // the band seeds every column equally. Balancing it instead would stack
-        // two equal cards in one column the moment a third appeared.
+        // pinned height, so declaration order decides the pairing. Balancing it
+        // instead would stack two equal cards in one column the moment a third
+        // appeared. The *columns* are taken shorter-first, though: after an
+        // asymmetric earlier group the row has to start in the hole that group
+        // left, not on top of its taller side. With level columns — the default
+        // segmentation, where summary comes first — this is the old
+        // left-then-right placement exactly.
+        let summaryColumns = heights[0] <= heights[1] ? [0, 1] : [1, 0]
         for (offset, item) in summaries.enumerated() {
-            append(item, to: offset % columnCount, spacing: spacing, heights: &heights, positions: &positions)
+            append(item, to: summaryColumns[offset % columnCount], spacing: spacing, heights: &heights, positions: &positions)
         }
 
         // AQ's Overview has four quota cards. Enumerating all 24 orders lets
@@ -126,7 +131,7 @@ public enum OverviewMasonryPlanner {
         // two quota cards per column. For any other count, use deterministic
         // shortest-column placement rather than making brittle assumptions.
         if quotas.count == 4 {
-            let order = bestQuotaOrder(quotas, spacing: spacing)
+            let order = bestQuotaOrder(quotas, seededBy: heights, spacing: spacing)
             for (offset, item) in order.enumerated() {
                 let column = offset < 2 ? 0 : 1
                 append(item, to: column, spacing: spacing, heights: &heights, positions: &positions)
@@ -211,11 +216,11 @@ public enum OverviewMasonryPlanner {
         return result.filter { !$0.isEmpty }
     }
 
-    private static func bestQuotaOrder(_ items: [Item], spacing: Double) -> [Item] {
+    private static func bestQuotaOrder(_ items: [Item], seededBy seed: [Double], spacing: Double) -> [Item] {
         var best = items
-        var bestScore = quotaScore(items, spacing: spacing)
+        var bestScore = quotaScore(items, seededBy: seed, spacing: spacing)
         for permutation in permutations(items) {
-            let score = quotaScore(permutation, spacing: spacing)
+            let score = quotaScore(permutation, seededBy: seed, spacing: spacing)
             if score.lexicographicallyPrecedes(bestScore) {
                 best = permutation
                 bestScore = score
@@ -224,12 +229,23 @@ public enum OverviewMasonryPlanner {
         return best
     }
 
-    /// Balance the quota block itself first. The lexicographic tail is a
-    /// stable tie-breaker that favors original declaration order.
-    private static func quotaScore(_ order: [Item], spacing: Double) -> [Double] {
-        let left = stackedHeight(Array(order.prefix(2)), spacing: spacing)
-        let right = stackedHeight(Array(order.dropFirst(2)), spacing: spacing)
+    /// Balance the quota columns as they will *end up*, seeds included: after
+    /// an asymmetric earlier group the heavier pair belongs under the shorter
+    /// column. With level seeds — no earlier group, or the default
+    /// segmentation's equal-height summary row — every candidate shifts by the
+    /// same constant, so this picks exactly what the old block-only balance
+    /// picked. The lexicographic tail is a stable tie-breaker that favors
+    /// original declaration order.
+    private static func quotaScore(_ order: [Item], seededBy seed: [Double], spacing: Double) -> [Double] {
+        let left = stacked(onto: seed.first ?? 0, Array(order.prefix(2)), spacing: spacing)
+        let right = stacked(onto: seed.count > 1 ? seed[1] : 0, Array(order.dropFirst(2)), spacing: spacing)
         return [abs(left - right), max(left, right)]
+    }
+
+    /// `append`'s arithmetic, folded over a stack: a card pays the gap iff the
+    /// column already carries anything — seed or earlier card.
+    private static func stacked(onto seed: Double, _ items: [Item], spacing: Double) -> Double {
+        items.reduce(seed) { appendedHeight($0, $1.height, spacing: spacing) }
     }
 
     private static func bestCostColumns(
@@ -289,11 +305,6 @@ public enum OverviewMasonryPlanner {
 
     private static func appendedHeight(_ current: Double, _ item: Double, spacing: Double) -> Double {
         current + (current > 0 ? spacing : 0) + item
-    }
-
-    private static func stackedHeight(_ items: [Item], spacing: Double) -> Double {
-        guard !items.isEmpty else { return 0 }
-        return items.reduce(0) { appendedHeight($0, $1.height, spacing: spacing) }
     }
 
     private static func shortestColumn(_ heights: [Double]) -> Int {

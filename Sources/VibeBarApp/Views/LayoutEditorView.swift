@@ -115,7 +115,7 @@ struct LayoutEditorView: View {
 
         VStack(alignment: .leading, spacing: 12) {
             pagePicker(pages: pages, selected: page)
-            modeRow(page: page, mode: mode, arrangement: arrangement)
+            modeRow(page: page, mode: mode, arrangement: arrangement, descriptors: descriptors)
             controlRow(page: page, config: config)
             if descriptors.isEmpty {
                 Text("This page has no arrangeable cards yet. Open it in the popover once so Vibe Bar can measure them.")
@@ -218,7 +218,8 @@ struct LayoutEditorView: View {
     private func modeRow(
         page: PageLayoutPageID,
         mode: PageLayoutMode,
-        arrangement: PageLayoutArrangement
+        arrangement: PageLayoutArrangement,
+        descriptors: [PageModuleDescriptor]
     ) -> some View {
         HStack(spacing: 10) {
             HStack(spacing: 4) {
@@ -232,7 +233,7 @@ struct LayoutEditorView: View {
                     .fill(Color.primary.opacity(0.045))
             )
             Spacer(minLength: 8)
-            presetsMenu(page: page, arrangement: arrangement)
+            presetsMenu(page: page, arrangement: arrangement, descriptors: descriptors)
             Button {
                 layoutModel.reset(for: page)
             } label: {
@@ -313,7 +314,7 @@ struct LayoutEditorView: View {
         }
     }
 
-    private func presetsMenu(page: PageLayoutPageID, arrangement: PageLayoutArrangement) -> some View {
+    private func presetsMenu(page: PageLayoutPageID, arrangement: PageLayoutArrangement, descriptors: [PageModuleDescriptor]) -> some View {
         let presets = layoutModel.presets(for: page)
         return Menu {
             // Reachable even on a full page: replacing a preset by name costs
@@ -349,11 +350,11 @@ struct LayoutEditorView: View {
                 : "This page is holding all \(AppSettings.maximumPresetsPerPage) saved arrangements — save over one by reusing its name."
         )
         .popover(isPresented: $isNamingPreset, arrowEdge: .bottom) {
-            presetNameForm(page: page, arrangement: arrangement)
+            presetNameForm(page: page, arrangement: arrangement, descriptors: descriptors)
         }
     }
 
-    private func presetNameForm(page: PageLayoutPageID, arrangement: PageLayoutArrangement) -> some View {
+    private func presetNameForm(page: PageLayoutPageID, arrangement: PageLayoutArrangement, descriptors: [PageModuleDescriptor]) -> some View {
         let trimmed = StoredPageLayoutPreset.normalizedName(presetName)
         let replaces = layoutModel.presetWouldReplace(named: trimmed, for: page)
         // Only a genuinely new name is blocked by the cap; reusing an existing
@@ -370,7 +371,7 @@ struct LayoutEditorView: View {
             TextField("Name", text: $presetName)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 230)
-                .onSubmit { savePreset(page: page, arrangement: arrangement) }
+                .onSubmit { savePreset(page: page, arrangement: arrangement, descriptors: descriptors) }
             if blockedByLimit {
                 Label(
                     "Preset limit reached — use an existing name to replace.",
@@ -390,7 +391,7 @@ struct LayoutEditorView: View {
             HStack {
                 Spacer(minLength: 0)
                 Button("Cancel") { isNamingPreset = false }
-                Button(replaces ? "Replace" : "Save") { savePreset(page: page, arrangement: arrangement) }
+                Button(replaces ? "Replace" : "Save") { savePreset(page: page, arrangement: arrangement, descriptors: descriptors) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!layoutModel.canSavePreset(named: presetName, for: page))
             }
@@ -398,8 +399,8 @@ struct LayoutEditorView: View {
         .padding(13)
     }
 
-    private func savePreset(page: PageLayoutPageID, arrangement: PageLayoutArrangement) {
-        let snapshot = layoutModel.presetSnapshot(for: page, displayed: arrangement)
+    private func savePreset(page: PageLayoutPageID, arrangement: PageLayoutArrangement, descriptors: [PageModuleDescriptor]) {
+        let snapshot = layoutModel.presetSnapshot(for: page, displayed: arrangement, descriptors: descriptors)
         guard layoutModel.savePreset(named: presetName, for: page, layout: snapshot) else { return }
         presetName = ""
         isNamingPreset = false

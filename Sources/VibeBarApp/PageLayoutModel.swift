@@ -658,7 +658,8 @@ final class PageLayoutModel: ObservableObject {
     /// arrangement it is showing is captured instead.
     func presetSnapshot(
         for page: PageLayoutPageID,
-        displayed: PageLayoutArrangement
+        displayed: PageLayoutArrangement,
+        descriptors: [PageModuleDescriptor]
     ) -> StoredPageLayout {
         let mode = mode(for: page)
         if mode == .manual, let stored = storedLayouts[page], !stored.isEmpty {
@@ -672,8 +673,17 @@ final class PageLayoutModel: ObservableObject {
             // now, so the resolved segments are captured rather than the saved
             // ones: a preset taken before the user re-grouped anything still
             // restores the page they were looking at instead of an empty "use
-            // the default" marker.
-            segments: displayed.moduleSegments,
+            // the default" marker. The displayed segments cannot contain a
+            // hidden card, though — the arrangement filtered it — while the
+            // preset's hidden list does. Merging the hidden-inclusive
+            // resolution back in keeps that card's membership, so unhiding it
+            // after applying the preset restores the captured grouping rather
+            // than the default one.
+            segments: PageLayoutSegments.mergingEdit(
+                displayed.moduleSegments,
+                into: resolvedSegments(for: page, descriptors: descriptors, includingHidden: true),
+                available: visibleModuleIDs(for: page, descriptors: descriptors)
+            ),
             hidden: storedLayouts[page]?.hidden ?? []
         )
     }

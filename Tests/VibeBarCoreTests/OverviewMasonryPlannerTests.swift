@@ -277,4 +277,55 @@ final class OverviewMasonryPlannerTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(locked.positions["summary-cost"]).y, 0)
         XCTAssertEqual(try XCTUnwrap(locked.positions["summary-status"]).y, 0)
     }
+
+    func testASummaryRowAfterAnAsymmetricGroupStartsInTheShorterColumn() throws {
+        // A custom segmentation puts one tall card ahead of the summary row.
+        // The row's first card must start in the hole that group left, not on
+        // top of its taller side — the pairing (declaration order) is
+        // unchanged, only the column choice flips.
+        let items: [OverviewMasonryPlanner.Item] = [
+            .init(id: "tall", height: 400, phase: .auxiliary),
+            .init(id: "summary-cost", height: 150, phase: .summary),
+            .init(id: "summary-status", height: 150, phase: .summary)
+        ]
+
+        let plan = OverviewMasonryPlanner.plan(
+            items: items,
+            groups: [["tall"], ["summary-cost", "summary-status"]],
+            spacing: 12
+        )
+
+        XCTAssertEqual(plan.positions["tall"]?.column, 0)
+        XCTAssertEqual(plan.positions["summary-cost"]?.column, 1)
+        XCTAssertEqual(try XCTUnwrap(plan.positions["summary-cost"]).y, 0)
+        XCTAssertEqual(plan.positions["summary-status"]?.column, 0)
+    }
+
+    func testTheQuotaBlockAfterAnAsymmetricGroupBalancesTheFinalColumns() throws {
+        // Balancing the quota block in isolation would split the pairs
+        // 10+400 / 10+400 (a perfect block balance) and then stack one of them
+        // on the already-tall column: 400+410 = 810 against 410. Balancing the
+        // *totals* puts the light pair under the seeded column instead:
+        // 420 against 800, a shorter page.
+        let items: [OverviewMasonryPlanner.Item] = [
+            .init(id: "seed", height: 400, phase: .auxiliary),
+            .init(id: "q1", height: 10, phase: .quota),
+            .init(id: "q2", height: 10, phase: .quota),
+            .init(id: "q3", height: 400, phase: .quota),
+            .init(id: "q4", height: 400, phase: .quota)
+        ]
+
+        let plan = OverviewMasonryPlanner.plan(
+            items: items,
+            groups: [["seed"], ["q1", "q2", "q3", "q4"]],
+            spacing: 0
+        )
+
+        XCTAssertEqual(plan.positions["seed"]?.column, 0)
+        XCTAssertEqual(plan.positions["q1"]?.column, 0)
+        XCTAssertEqual(plan.positions["q2"]?.column, 0)
+        XCTAssertEqual(plan.positions["q3"]?.column, 1)
+        XCTAssertEqual(plan.positions["q4"]?.column, 1)
+        XCTAssertEqual(plan.columnHeights, [420, 800])
+    }
 }
