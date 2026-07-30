@@ -145,8 +145,13 @@ public enum PageLayoutSegments {
     /// cards before any session log is found — and moving one card would
     /// silently reset the rest of the page.
     ///
-    /// A hidden module stays in the band index it was saved in, clamped into
-    /// range. Only an explicit reset forgets a page.
+    /// A hidden module follows its surviving bandmates — the user dragged (or
+    /// left) the band, and the module belongs to it wherever it went. A band
+    /// whose every module is hidden has no bandmate to follow and is re-created
+    /// where it was saved, next to its nearest surviving stored neighbour:
+    /// clamping it into the last visible band instead would collapse the saved
+    /// grouping the first time the user dragged anything else, and the module
+    /// would come back in the wrong band. Only an explicit reset forgets a page.
     public static func mergingEdit(
         _ edited: [[PageLayoutModuleID]],
         into stored: [[PageLayoutModuleID]],
@@ -154,13 +159,40 @@ public enum PageLayoutSegments {
     ) -> [[PageLayoutModuleID]] {
         let availableSet = Set(available)
         var segments = normalized(edited)
-        guard !segments.isEmpty else { return normalized(stored) }
+        let storedBands = normalized(stored)
+        guard !segments.isEmpty else { return storedBands }
 
-        for (index, band) in normalized(stored).enumerated() {
-            for moduleID in band where !availableSet.contains(moduleID) {
-                guard !segments.contains(where: { $0.contains(moduleID) }) else { continue }
-                segments[min(index, segments.count - 1)].append(moduleID)
+        var editedIndex: [PageLayoutModuleID: Int] = [:]
+        for (index, band) in segments.enumerated() {
+            for moduleID in band { editedIndex[moduleID] = index }
+        }
+
+        // Bands that lost every module to unavailability, queued for
+        // re-insertion after the band holding their nearest preceding stored
+        // anchor. The user may have reordered bands, so positions are not
+        // necessarily monotone in stored order — a stable sort by position
+        // (stored order as the tie-break) makes the offset insertion exact.
+        var pending: [(position: Int, band: [PageLayoutModuleID])] = []
+        var lastAnchoredPosition = -1
+        for band in storedBands {
+            let hidden = band.filter { !availableSet.contains($0) && editedIndex[$0] == nil }
+            if let anchor = band.first(where: { editedIndex[$0] != nil }) {
+                let anchorIndex = editedIndex[anchor]!
+                lastAnchoredPosition = anchorIndex
+                guard !hidden.isEmpty else { continue }
+                segments[anchorIndex].append(contentsOf: hidden)
+            } else if !hidden.isEmpty {
+                pending.append((position: lastAnchoredPosition + 1, band: hidden))
             }
+        }
+        let ordered = pending.enumerated().sorted {
+            ($0.element.position, $0.offset) < ($1.element.position, $1.offset)
+        }
+        for (inserted, item) in ordered.enumerated() {
+            segments.insert(
+                item.element.band,
+                at: min(item.element.position + inserted, segments.count)
+            )
         }
         return normalized(segments)
     }

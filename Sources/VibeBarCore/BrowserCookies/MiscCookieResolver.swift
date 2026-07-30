@@ -336,7 +336,17 @@ public enum MiscCookieResolver {
     @discardableResult
     public static func silentReimport(spec: Spec, instanceID: String) -> Bool {
         let settings = currentSettings(for: spec.tool, instanceID: instanceID)
-        guard SlotFilter(settings: settings) != .none else { return false }
+        // Only when browser-origin slots can actually be used. `manualOnly` is
+        // an explicit "do not touch my browser" — reading the cookie stores
+        // for a slot the resolver would then filter out anyway would be a
+        // background read the user opted out of. (Source modes are normalized
+        // to auto today, but this guard is what honors them if they return.)
+        switch SlotFilter(settings: settings) {
+        case .all, .browserOnly:
+            break
+        case .manualOnly, .none:
+            return false
+        }
 
         let refreshable = MiscCookieSlotStore
             .slots(for: spec.tool, instanceID: instanceID)
