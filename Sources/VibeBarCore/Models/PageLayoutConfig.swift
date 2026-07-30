@@ -182,6 +182,56 @@ public struct PageLayoutConfig: Hashable, Sendable {
     }
 }
 
+/// A page's cards as they will be drawn: one or more bands, each a two-column
+/// arrangement of its own, stacked in reading order.
+///
+/// Every mode produces one of these. `auto` and `manual` produce exactly one
+/// band, so they render through the same path as a segmented `compact` page and
+/// cannot drift from it — one band is, by construction, the single `HStack` the
+/// pages have always been.
+public struct PageLayoutArrangement: Hashable, Sendable {
+    /// Never empty: a page with nothing to draw is one empty band, so callers
+    /// can read `ratio` and the first band without unwrapping.
+    public var segments: [PageLayoutConfig]
+
+    public init(segments: [PageLayoutConfig]) {
+        self.segments = segments.isEmpty ? [PageLayoutConfig()] : segments
+    }
+
+    /// One band — every mode but `compact`.
+    public init(_ config: PageLayoutConfig) {
+        self.init(segments: [config])
+    }
+
+    /// Width split the whole page renders at. There is one ratio per page, not
+    /// one per band: a band boundary is a horizontal cut, and cutting the
+    /// columns at different widths per band would read as two different pages.
+    public var ratio: PageColumnRatio { segments[0].ratio }
+
+    /// Band membership in reading order — what the editor persists and what a
+    /// preset captures. Order *within* a band is the packer's answer, not
+    /// intent, so it is not what gets stored.
+    public var moduleSegments: [[PageLayoutModuleID]] { segments.map(\.moduleIDs) }
+
+    /// The whole arrangement as one two-column config: every band's left column
+    /// stacked, then every band's right column.
+    ///
+    /// The shape the page-wide controls work in — the drag editor, the ratio
+    /// buttons, the preset snapshot — none of which are per band.
+    public var flattened: PageLayoutConfig {
+        guard segments.count > 1 else { return segments[0] }
+        var columns = [[PageLayoutModuleID]](repeating: [], count: PageLayoutConfig.columnCount)
+        var heights: [PageLayoutModuleID: Double] = [:]
+        for segment in segments {
+            for index in columns.indices {
+                columns[index].append(contentsOf: segment.column(index))
+            }
+            heights.merge(segment.measuredHeights) { _, latest in latest }
+        }
+        return PageLayoutConfig(ratio: ratio, columns: columns, measuredHeights: heights)
+    }
+}
+
 /// One page's layout **intent** — the half of `PageLayoutConfig` the user
 /// actually chose — as stored in `AppSettings`.
 ///
@@ -204,25 +254,42 @@ public struct StoredPageLayout: Hashable, Sendable {
     public var ratio: PageColumnRatio
     public private(set) var columns: [[PageLayoutModuleID]]
 
+    /// Ordered bands `compact` packs one at a time, normalized by
+    /// `PageLayoutSegments`. Empty means "no chosen segmentation": the page
+    /// falls back to the default for its family, which is what every page did
+    /// before segments existed.
+    ///
+    /// Deliberately a sibling of `columns` rather than something folded into it:
+    /// `PageLayoutConfig.normalized` flattens everything past the second column
+    /// into the last one, which would destroy this.
+    public private(set) var segments: [[PageLayoutModuleID]]
+
     /// - Parameter mode: `nil` derives the mode from the columns — an entry
     ///   that carries an arrangement is a `manual` one, an entry that carries
     ///   none is `auto`. That is the same rule the decoder applies to an entry
     ///   written before modes existed, kept in one place so the two cannot
-    ///   drift apart.
+    ///   drift apart. Bands deliberately do not take part: a page can carry a
+    ///   segmentation and still be drawing itself automatically.
     public init(
         mode: PageLayoutMode? = nil,
         ratio: PageColumnRatio = .equal,
-        columns: [[PageLayoutModuleID]] = []
+        columns: [[PageLayoutModuleID]] = [],
+        segments: [[PageLayoutModuleID]] = []
     ) {
         let normalized = PageLayoutConfig(ratio: ratio, columns: columns)
         self.mode = mode ?? (normalized.isEmpty ? .auto : .manual)
         self.ratio = normalized.ratio
         self.columns = normalized.columns
+        self.segments = PageLayoutSegments.normalized(segments)
     }
 
     /// The intent half of a live config; measured heights are dropped.
-    public init(_ config: PageLayoutConfig, mode: PageLayoutMode? = nil) {
-        self.init(mode: mode, ratio: config.ratio, columns: config.columns)
+    public init(
+        _ config: PageLayoutConfig,
+        mode: PageLayoutMode? = nil,
+        segments: [[PageLayoutModuleID]] = []
+    ) {
+        self.init(mode: mode, ratio: config.ratio, columns: config.columns, segments: segments)
     }
 
     /// Back to the canonical model, with this page's measurements folded in.
@@ -235,6 +302,10 @@ public struct StoredPageLayout: Hashable, Sendable {
     /// True when the entry carries no arrangement — the same "not customized"
     /// test `PageLayoutConfig.isEmpty` makes. Independent of `mode`: an `auto`
     /// page can still be holding the columns it had before the user switched.
+    ///
+    /// Bands are deliberately not consulted. This question is "is there a hand
+    /// arrangement to return to", and a segmentation is not one: it is an input
+    /// to `compact`, which computes its own columns.
     public var isEmpty: Bool { columns.allSatisfy(\.isEmpty) }
 
     /// The entry a page should get when the user switches it back to `manual`.
@@ -253,7 +324,10 @@ public struct StoredPageLayout: Hashable, Sendable {
     /// the page was computed are reconciled as usual.
     public func restoredAsManual() -> StoredPageLayout? {
         guard !isEmpty else { return nil }
-        return StoredPageLayout(mode: .manual, ratio: ratio, columns: columns)
+        // The bands ride along for the same reason the columns do on the way
+        // out: a round trip through Manual must not be a silent reset of the
+        // segmentation the user chose for Compact.
+        return StoredPageLayout(mode: .manual, ratio: ratio, columns: columns, segments: segments)
     }
 }
 
@@ -262,6 +336,7 @@ extension StoredPageLayout: Codable {
         case mode
         case ratio
         case columns
+        case segments
     }
 
     /// Field-by-field tolerant, like `PageLayoutConfig`'s own decoder: a page
@@ -285,17 +360,23 @@ extension StoredPageLayout: Codable {
         }
         let ratio = (try? container.decode(PageColumnRatio.self, forKey: .ratio)) ?? .equal
         let columns = (try? container.decode([[PageLayoutModuleID]].self, forKey: .columns)) ?? []
-        self.init(mode: mode, ratio: ratio, columns: columns)
+        // A missing key is an entry written before segments existed, and a
+        // malformed one is a file somebody edited by hand: both mean "no chosen
+        // segmentation", which is the page's default banding, not an empty page.
+        let segments = (try? container.decode([[PageLayoutModuleID]].self, forKey: .segments)) ?? []
+        self.init(mode: mode, ratio: ratio, columns: columns, segments: segments)
     }
 }
 
 /// One saved arrangement the user named, so a layout worth keeping can be put
 /// back later without re-dragging it.
 ///
-/// Stores a whole `StoredPageLayout` — mode, ratio and columns — so a preset
-/// records what it was captured from. Applying one always lands in `manual`
-/// mode: a preset is "this exact arrangement", and re-entering `compact` would
-/// just recompute from whatever the heights happen to be now.
+/// Stores a whole `StoredPageLayout` — mode, ratio, columns and bands — so a
+/// preset records what it was captured from, and applying one restores that
+/// mode. A `manual` preset puts its exact columns back; a `compact` preset puts
+/// its bands back and lets the packer re-derive the columns inside them, because
+/// on a packed page the segmentation is the arrangement worth keeping and one
+/// particular packing of it is not.
 public struct StoredPageLayoutPreset: Hashable, Sendable {
     /// Long enough for "Wide left, cost on the right", short enough that a
     /// pasted paragraph cannot bloat `settings.json`.
@@ -318,6 +399,23 @@ public struct StoredPageLayoutPreset: Hashable, Sendable {
     /// A preset with no name cannot be picked out of a menu, so it is dropped
     /// on the way in rather than rendered as a blank row.
     public var isValid: Bool { !name.isEmpty }
+
+    /// The layout applying this preset should install.
+    ///
+    /// A `compact` preset captured before bands existed carries the packed
+    /// columns and no segments. When it was saved, applying it entered Manual
+    /// and put those exact columns back; restoring it as `compact` today would
+    /// discard the saved columns and re-pack under the default bands — a
+    /// different arrangement than the one the user named. So a compact preset
+    /// with columns but no bands comes back as the manual layout it always
+    /// effectively was. Presets captured by current builds store their resolved
+    /// bands, so they never take this path.
+    public var layoutToApply: StoredPageLayout {
+        guard layout.mode == .compact, !layout.isEmpty, layout.segments.isEmpty else {
+            return layout
+        }
+        return StoredPageLayout(mode: .manual, ratio: layout.ratio, columns: layout.columns)
+    }
 
     /// Case-insensitive identity. Two presets whose names differ only by case
     /// are the same menu entry, so they are the same preset.

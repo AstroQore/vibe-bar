@@ -58,12 +58,17 @@ final class PageLayoutModel: ObservableObject {
     /// One `compact` page's chosen partition, plus everything it depended on.
     private struct CompactPacking {
         var moduleIDs: [PageLayoutModuleID]
+        /// Band membership the partition was computed under. Part of the key,
+        /// not of the answer: re-banding a page changes what "shortest" means,
+        /// so a cached packing from the old bands cannot be reused.
+        var segments: [[PageLayoutModuleID]]
         var ratio: PageColumnRatio
         var spacing: Double
         /// Heights the partition was packed from — the baseline drift is
         /// measured against.
         var heights: [PageLayoutModuleID: Double]
-        var columns: [[PageLayoutModuleID]]
+        /// Two columns per band, in band order.
+        var segmentColumns: [[[PageLayoutModuleID]]]
     }
 
     private let settingsStore: SettingsStore
@@ -142,6 +147,22 @@ final class PageLayoutModel: ObservableObject {
 
     // MARK: - Modes
 
+    /// Bands this page's `compact` mode packs one at a time: the ones the user
+    /// chose, or the page's default banding when they have not.
+    ///
+    /// Every currently drawable module lands in exactly one band, so this is
+    /// also the membership the editor drags against.
+    func resolvedSegments(
+        for page: PageLayoutPageID,
+        descriptors: [PageModuleDescriptor]
+    ) -> [[PageLayoutModuleID]] {
+        PageLayoutSegments.resolve(
+            stored: storedLayouts[page]?.segments ?? [],
+            available: descriptors.map(\.id),
+            defaultSegments: PageModuleCatalog.defaultSegments(for: page, descriptors: descriptors)
+        )
+    }
+
     /// The arrangement this page should render right now, for whichever mode
     /// it is in.
     ///
@@ -151,11 +172,14 @@ final class PageLayoutModel: ObservableObject {
     /// does not render from this: it hands its cards to `ColumnMasonryLayout`
     /// and lets SwiftUI balance them live. What comes back here for that case
     /// is the same planner's answer the editor has always previewed.
+    ///
+    /// `auto` and `manual` return a single band — the two-column page they have
+    /// always been — and only `compact` can return more than one.
     func arrangement(
         for page: PageLayoutPageID,
         descriptors: [PageModuleDescriptor],
         spacing: Double
-    ) -> PageLayoutConfig {
+    ) -> PageLayoutArrangement {
         let defaults = PageModuleCatalog.defaultConfig(
             for: page,
             descriptors: descriptors,
@@ -168,19 +192,26 @@ final class PageLayoutModel: ObservableObject {
             for (moduleID, height) in measuredHeights(for: page) {
                 config.measuredHeights[moduleID] = height
             }
-            return config
+            return PageLayoutArrangement(config)
         case .compact:
-            return compactConfig(for: page, descriptors: descriptors, spacing: spacing)
+            return compactArrangement(for: page, descriptors: descriptors, spacing: spacing)
         case .manual:
-            return resolvedConfig(
-                for: page,
-                available: descriptors.map(\.id),
-                default: defaults
+            return PageLayoutArrangement(
+                resolvedConfig(
+                    for: page,
+                    available: descriptors.map(\.id),
+                    default: defaults
+                )
             )
         }
     }
 
-    /// The shortest two-column arrangement of this page's cards.
+    /// The shortest arrangement of this page's cards, band by band.
+    ///
+    /// Each band is packed on its own and the bands stack in order, so the page
+    /// is as short as it can be *without* reordering the groups the user reads
+    /// it in. A page with one band is the plain shortest-page packing `compact`
+    /// has always produced.
     ///
     /// Memoized, and deliberately sticky. `PageLayoutPacker` is cheap, but the
     /// answer it gives depends on heights that are still settling on the first
@@ -188,14 +219,16 @@ final class PageLayoutModel: ObservableObject {
     /// width and therefore height. So a page is re-packed only once its cards
     /// have moved by more than `compactRepackThreshold` in total, and the new
     /// packing only replaces the visible one if it is shorter by more than
-    /// `compactRepackHysteresis`.
-    func compactConfig(
+    /// `compactRepackHysteresis` — measured across the whole segmented page,
+    /// including the gaps between bands.
+    func compactArrangement(
         for page: PageLayoutPageID,
         descriptors: [PageModuleDescriptor],
         spacing: Double
-    ) -> PageLayoutConfig {
+    ) -> PageLayoutArrangement {
         let ratio = ratio(for: page)
         let moduleIDs = descriptors.map(\.id)
+        let segments = resolvedSegments(for: page, descriptors: descriptors)
         let measured = measuredHeights(for: page)
         // A card the page has never drawn still has to be placed somewhere;
         // its family's stand-in is what the editor draws it at too.
@@ -203,29 +236,37 @@ final class PageLayoutModel: ObservableObject {
         for descriptor in descriptors {
             heights[descriptor.id] = measured[descriptor.id] ?? descriptor.fallbackHeight
         }
-        let items = descriptors.map {
-            PageLayoutPacker.Item(id: $0.id, height: heights[$0.id] ?? 0)
-        }
 
         var packing: CompactPacking
         if var cached = compactPackings[page],
            cached.moduleIDs == moduleIDs,
+           cached.segments == segments,
            cached.ratio == ratio,
            cached.spacing == spacing {
             let drift = moduleIDs.reduce(0.0) { total, moduleID in
                 total + abs((heights[moduleID] ?? 0) - (cached.heights[moduleID] ?? 0))
             }
             if drift <= Self.compactRepackThreshold {
-                return config(columns: cached.columns, ratio: ratio, measured: measured)
+                return arrangement(segmentColumns: cached.segmentColumns, ratio: ratio, measured: measured)
             }
-            let candidate = PageLayoutPacker.pack(items: items, spacing: spacing, ratio: ratio)
-            let onScreen = PageLayoutPacker.pageHeight(
-                columns: cached.columns,
+            let candidate = Self.packedSegmentColumns(
+                segments: segments,
+                heights: heights,
+                spacing: spacing,
+                ratio: ratio
+            )
+            let candidateHeight = PageLayoutPacker.pageHeight(
+                segments: candidate,
                 heights: heights,
                 spacing: spacing
             )
-            if candidate.pageHeight < onScreen - Self.compactRepackHysteresis {
-                cached.columns = candidate.columns
+            let onScreen = PageLayoutPacker.pageHeight(
+                segments: cached.segmentColumns,
+                heights: heights,
+                spacing: spacing
+            )
+            if candidateHeight < onScreen - Self.compactRepackHysteresis {
+                cached.segmentColumns = candidate
             }
             // Either way the baseline moves forward, so a page that keeps its
             // arrangement is not re-evaluated on every single pass.
@@ -234,22 +275,47 @@ final class PageLayoutModel: ObservableObject {
         } else {
             packing = CompactPacking(
                 moduleIDs: moduleIDs,
+                segments: segments,
                 ratio: ratio,
                 spacing: spacing,
                 heights: heights,
-                columns: PageLayoutPacker.pack(items: items, spacing: spacing, ratio: ratio).columns
+                segmentColumns: Self.packedSegmentColumns(
+                    segments: segments,
+                    heights: heights,
+                    spacing: spacing,
+                    ratio: ratio
+                )
             )
         }
         compactPackings[page] = packing
-        return config(columns: packing.columns, ratio: ratio, measured: measured)
+        return arrangement(segmentColumns: packing.segmentColumns, ratio: ratio, measured: measured)
     }
 
-    private func config(
-        columns: [[PageLayoutModuleID]],
+    private static func packedSegmentColumns(
+        segments: [[PageLayoutModuleID]],
+        heights: [PageLayoutModuleID: Double],
+        spacing: Double,
+        ratio: PageColumnRatio
+    ) -> [[[PageLayoutModuleID]]] {
+        PageLayoutPacker.packedSegmentColumns(
+            segments: segments.map { segment in
+                segment.map { PageLayoutPacker.Item(id: $0, height: heights[$0] ?? 0) }
+            },
+            spacing: spacing,
+            ratio: ratio
+        )
+    }
+
+    private func arrangement(
+        segmentColumns: [[[PageLayoutModuleID]]],
         ratio: PageColumnRatio,
         measured: [PageLayoutModuleID: Double]
-    ) -> PageLayoutConfig {
-        PageLayoutConfig(ratio: ratio, columns: columns, measuredHeights: measured)
+    ) -> PageLayoutArrangement {
+        PageLayoutArrangement(
+            segments: segmentColumns.map { columns in
+                PageLayoutConfig(ratio: ratio, columns: columns, measuredHeights: measured)
+            }
+        )
     }
 
     // MARK: - Writing
@@ -276,7 +342,40 @@ final class PageLayoutModel: ObservableObject {
             into: configuredConfig(for: page),
             available: available
         )
-        settingsStore.settings.pageLayouts[page] = StoredPageLayout(merged, mode: mode)
+        settingsStore.settings.pageLayouts[page] = StoredPageLayout(
+            merged,
+            mode: mode,
+            // Columns and bands are separate intents. Dragging a card in Manual
+            // says nothing about how the user banded the page for Compact, so
+            // the bands ride through untouched.
+            segments: storedLayouts[page]?.segments ?? []
+        )
+    }
+
+    /// Persist a banding the user just dragged in the editor.
+    ///
+    /// `compact` is the only mode that packs bands, and the editor only offers
+    /// the controls there, so writing a banding also selects it — that keeps a
+    /// page from ending up with bands nothing reads.
+    func applySegments(
+        _ segments: [[PageLayoutModuleID]],
+        for page: PageLayoutPageID,
+        available: [PageLayoutModuleID]
+    ) {
+        let stored = storedLayouts[page]
+        settingsStore.settings.pageLayouts[page] = StoredPageLayout(
+            mode: .compact,
+            ratio: stored?.ratio ?? PageModuleCatalog.defaultRatio(for: page),
+            // Same reason `apply` keeps the bands: a hand arrangement survives
+            // being re-banded.
+            columns: stored?.columns ?? [],
+            segments: PageLayoutSegments.mergingEdit(
+                segments,
+                into: stored?.segments ?? [],
+                available: available
+            )
+        )
+        compactPackings.removeValue(forKey: page)
     }
 
     /// Switch a page between automatic, compact and hand-arranged.
@@ -289,7 +388,7 @@ final class PageLayoutModel: ObservableObject {
     func setMode(
         _ mode: PageLayoutMode,
         for page: PageLayoutPageID,
-        displayed: PageLayoutConfig,
+        displayed: PageLayoutArrangement,
         available: [PageLayoutModuleID]
     ) {
         guard mode != self.mode(for: page) else { return }
@@ -305,7 +404,10 @@ final class PageLayoutModel: ObservableObject {
             if let restored = storedLayouts[page]?.restoredAsManual() {
                 settingsStore.settings.pageLayouts[page] = restored
             } else {
-                apply(displayed, for: page, available: available, mode: .manual)
+                // A segmented page flattens into the two columns Manual works
+                // in, band by band, so a first hand edit starts from the cards
+                // in the order they were just on screen.
+                apply(displayed.flattened, for: page, available: available, mode: .manual)
             }
         case .auto, .compact:
             let stored = storedLayouts[page]
@@ -314,8 +416,9 @@ final class PageLayoutModel: ObservableObject {
                 ratio: stored?.ratio ?? displayed.ratio,
                 // A hand arrangement survives a trip through the computed
                 // modes: switching away and back is not a reset, and only
-                // `reset(for:)` forgets a page.
-                columns: stored?.columns ?? []
+                // `reset(for:)` forgets a page. The same holds for the bands.
+                columns: stored?.columns ?? [],
+                segments: stored?.segments ?? []
             )
         }
         compactPackings.removeValue(forKey: page)
@@ -339,7 +442,8 @@ final class PageLayoutModel: ObservableObject {
             settingsStore.settings.pageLayouts[page] = StoredPageLayout(
                 mode: .compact,
                 ratio: ratio,
-                columns: stored?.columns ?? []
+                columns: stored?.columns ?? [],
+                segments: stored?.segments ?? []
             )
             compactPackings.removeValue(forKey: page)
             return
@@ -397,13 +501,24 @@ final class PageLayoutModel: ObservableObject {
     /// arrangement it is showing is captured instead.
     func presetSnapshot(
         for page: PageLayoutPageID,
-        displayed: PageLayoutConfig
+        displayed: PageLayoutArrangement
     ) -> StoredPageLayout {
         let mode = mode(for: page)
         if mode == .manual, let stored = storedLayouts[page], !stored.isEmpty {
             return stored
         }
-        return StoredPageLayout(mode: mode, ratio: displayed.ratio, columns: displayed.columns)
+        return StoredPageLayout(
+            mode: mode,
+            ratio: displayed.ratio,
+            columns: displayed.flattened.columns,
+            // On a packed page the bands *are* the arrangement, so the resolved
+            // ones are captured rather than the saved ones: a preset taken
+            // before the user re-banded anything still restores the page they
+            // were looking at instead of an empty "use the default" marker.
+            segments: mode == .compact
+                ? displayed.moduleSegments
+                : (storedLayouts[page]?.segments ?? [])
+        )
     }
 
     /// Save an arrangement under a name, replacing a preset of the same name in
@@ -431,19 +546,26 @@ final class PageLayoutModel: ObservableObject {
         return true
     }
 
-    /// Put a saved arrangement back. Always lands in `manual`: a preset is one
-    /// specific arrangement, and re-entering `compact` would recompute from
-    /// whatever the heights happen to be now instead of restoring it.
+    /// Put a saved arrangement back, in the mode it was captured in.
     ///
-    /// The columns are written verbatim; `PageLayoutResolver` reconciles them
-    /// against the modules the page can actually draw at render time, so a
-    /// preset saved when a provider was signed in still applies afterwards.
+    /// This used to force `manual` on the grounds that a preset is one specific
+    /// arrangement. Bands made that wrong: what is worth keeping about a packed
+    /// page is how it is grouped, not the particular packing those heights
+    /// produced, and restoring a `compact` preset as a frozen manual layout
+    /// threw the grouping away and froze the packing. So a `manual` preset
+    /// restores its exact columns and a `compact` one restores its bands and
+    /// lets the packer work inside them.
+    ///
+    /// Columns and bands are written verbatim; `PageLayoutResolver` and
+    /// `PageLayoutSegments` reconcile them against the modules the page can
+    /// actually draw at render time, so a preset saved when a provider was
+    /// signed in still applies afterwards.
+    ///
+    /// `layoutToApply` rather than `layout`: a compact preset saved before
+    /// bands existed restores as the manual arrangement it captured, not as a
+    /// re-pack under default bands it never saw.
     func applyPreset(_ preset: StoredPageLayoutPreset, to page: PageLayoutPageID) {
-        settingsStore.settings.pageLayouts[page] = StoredPageLayout(
-            mode: .manual,
-            ratio: preset.layout.ratio,
-            columns: preset.layout.columns
-        )
+        settingsStore.settings.pageLayouts[page] = preset.layoutToApply
         compactPackings.removeValue(forKey: page)
     }
 

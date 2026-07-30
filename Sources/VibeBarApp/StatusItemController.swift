@@ -39,6 +39,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Records the time each kind's popover most recently started closing.
     /// Used by `togglePopover` to ignore the click that triggered the close.
     private var popoverCloseStamps: [MenuBarItemKind: Date] = [:]
+    /// Coalescing state for `resizePopover`.
+    private var lastPopoverResizeAt: [MenuBarItemKind: Date] = [:]
+    private var pendingPopoverHeights: [MenuBarItemKind: CGFloat] = [:]
+    private var popoverResizeTasks: [MenuBarItemKind: Task<Void, Never>] = [:]
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -128,10 +132,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
         // Coalesce all render triggers into one throttled pipeline so a burst
         // of quota, settings, account, and status updates only redraws once.
+        //
+        // Observations, cycle history, and cost snapshots are in the set
+        // because forecast coloring depends on them, and they land *after*
+        // `$lastSuccessByAccount` — a refresh publishes the new quota first and
+        // records the observation in a follow-up task. Without them the color
+        // would always describe the previous refresh. The extra churn is
+        // bounded: observations publish once per account per refresh.
         let renderTriggers: [AnyPublisher<Void, Never>] = [
             environment.settingsStore.$settings.map { _ in () }.eraseToAnyPublisher(),
             environment.quotaService.$lastSuccessByAccount.map { _ in () }.eraseToAnyPublisher(),
             environment.quotaService.$lastErrorByAccount.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$observationsByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$historyByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
+            environment.costService.$snapshots.map { _ in () }.eraseToAnyPublisher(),
             environment.accountStore.$accounts.map { _ in () }.eraseToAnyPublisher(),
             environment.serviceStatus.$snapshotByTool.map { _ in () }.eraseToAnyPublisher()
         ]
@@ -171,6 +185,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             enabled: settings.refreshOnPopoverOpen,
             cooldownSeconds: settings.popoverOpenRefreshCooldownSeconds
         )
+        // Set before `show`: the refresh above publishes into the popover's own
+        // render pass, and anything that would rather not compete with it (the
+        // hidden Claude budget WebView) checks this flag.
+        environment.setPopoverVisible(true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
@@ -183,6 +201,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 self.popoverCloseStamps[kind] = Date()
                 break
             }
+            self.environment.setPopoverVisible(
+                self.popovers.values.contains { $0.isShown && $0 !== popover }
+            )
         }
     }
 
@@ -217,7 +238,50 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// Height reports arrive per layout pass, and a refresh relayouts the
+    /// popover many times in a row — every one of which used to write
+    /// `contentSize`, which itself forces another layout pass and another
+    /// report. Apply the first report of a burst immediately (so opening the
+    /// popover still sizes without a visible delay) and coalesce the rest into
+    /// one trailing resize, which lands on the final height.
+    private static let popoverResizeCoalesceWindow: TimeInterval = 0.1
+
     private func resizePopover(kind: MenuBarItemKind, toContentHeight height: CGFloat) {
+        guard height.isFinite, height > 0 else { return }
+        let sinceLast = lastPopoverResizeAt[kind].map { Date().timeIntervalSince($0) }
+        if let sinceLast, sinceLast < Self.popoverResizeCoalesceWindow {
+            pendingPopoverHeights[kind] = height
+            scheduleCoalescedResize(
+                kind: kind,
+                after: Self.popoverResizeCoalesceWindow - sinceLast
+            )
+            return
+        }
+        // A trailing task may still be queued from the previous burst — on a
+        // busy main actor it can wake after its deadline, land here *after*
+        // this newer report, and resize the popover back to the stale height
+        // it captured. Supersede both the task and its pending height.
+        popoverResizeTasks.removeValue(forKey: kind)?.cancel()
+        pendingPopoverHeights.removeValue(forKey: kind)
+        applyPopoverResize(kind: kind, toContentHeight: height)
+    }
+
+    private func scheduleCoalescedResize(kind: MenuBarItemKind, after delay: TimeInterval) {
+        guard popoverResizeTasks[kind] == nil else { return }
+        popoverResizeTasks[kind] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(Int(max(10, delay * 1_000))))
+            // Checked before touching shared state: an immediate resize may
+            // have superseded this task and re-registered a fresh one, whose
+            // bookkeeping a cancelled sleeper must not clobber.
+            guard let self, !Task.isCancelled else { return }
+            self.popoverResizeTasks[kind] = nil
+            guard let height = self.pendingPopoverHeights.removeValue(forKey: kind) else { return }
+            self.applyPopoverResize(kind: kind, toContentHeight: height)
+        }
+    }
+
+    private func applyPopoverResize(kind: MenuBarItemKind, toContentHeight height: CGFloat) {
+        lastPopoverResizeAt[kind] = Date()
         guard let popover = popovers[kind] else { return }
         guard height.isFinite, height > 0 else { return }
         let maxHeight = maxPopoverHeight(for: popover)
@@ -466,7 +530,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             attributed.append(menuPiece(
                 label: label,
                 percent: percent,
-                color: barColor(for: percent, mode: settings.displayMode),
+                color: percentColor(for: field, bucket: bucket, settings: settings),
                 fontSize: fontSize
             ))
             displayed += 1
@@ -506,7 +570,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return menuTextPiece(
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
-                color: barColor(for: percent, mode: settings.displayMode),
+                color: percentColor(for: field, bucket: bucket, settings: settings),
                 fontSize: fontSize
             )
         }
@@ -577,7 +641,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return menuTextPiece(
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
-                color: barColor(for: percent, mode: settings.displayMode),
+                color: percentColor(for: field, bucket: bucket, settings: settings),
                 fontSize: MenuBarStatusMetrics.twoRowFontSize
             )
         }
@@ -762,16 +826,53 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         compactStatusItem
     }
 
-    private func barColor(for percent: Double, mode: DisplayMode) -> NSColor {
-        switch mode {
-        case .remaining:
-            if percent < 10 { return NSColor.systemRed }
-            if percent < 30 { return NSColor.systemOrange }
-            return NSColor.systemGreen
-        case .used:
-            if percent >= 90 { return NSColor.systemRed }
-            if percent >= 70 { return NSColor.systemOrange }
-            return NSColor.systemGreen
+    /// Color for one rendered menu-bar percentage. The thresholds and the
+    /// verdict mapping live in `MenuBarPercentColor`; this only resolves the
+    /// forecast input and translates the result to AppKit.
+    private func percentColor(
+        for field: MenuBarFieldOption,
+        bucket: QuotaBucket,
+        settings: AppSettings
+    ) -> NSColor {
+        let basis = settings.menuBarColorBasis
+        let verdict = basis == .forecast ? forecastVerdict(for: field.tool, bucket: bucket) : nil
+        return Self.nsColor(
+            for: MenuBarPercentColor.resolve(
+                basis: basis,
+                verdict: verdict,
+                percent: bucket.displayPercent(settings.displayMode),
+                displayMode: settings.displayMode
+            )
+        )
+    }
+
+    /// Forecast verdict for one menu-bar bucket, computed at render time.
+    ///
+    /// Affordable here because every input is already in memory — cached quota
+    /// observations, cached cycle history, and a rebased cost snapshot — and
+    /// only the handful of buckets the user put in the menu bar are asked for.
+    private func forecastVerdict(for tool: ToolType, bucket: QuotaBucket) -> QuotaPaceForecast.Verdict? {
+        guard let accountId = environment.account(for: tool)?.id else { return nil }
+        let snapshot = environment.costService.snapshot(for: tool)
+        return environment.quotaService.paceForecast(
+            accountId: accountId,
+            bucket: bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: Date()
+        )?.verdict
+    }
+
+    /// AppKit twin of `QuotaForecastPalette`. System colors rather than the
+    /// popover's literal RGB values: the menu bar has to stay legible against
+    /// light, dark, and tinted wallpapers, and these are the exact colors the
+    /// pre-forecast menu bar used.
+    private static func nsColor(for color: MenuBarPercentColor) -> NSColor {
+        switch color {
+        case .healthy: return NSColor.systemGreen
+        case .surplus: return NSColor.systemBlue
+        case .watch: return NSColor.systemOrange
+        case .risk: return NSColor.systemRed
         }
     }
 }

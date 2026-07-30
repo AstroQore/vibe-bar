@@ -64,6 +64,20 @@ private struct OverviewSeriesSignature: Equatable {
     var entries: [Entry]
 }
 
+/// What building one lane produced, plus everything that decides whether the
+/// result is still valid.
+private struct OverviewLaneBuild {
+    var signature: OverviewSeriesSignature.Entry
+    /// The palette slot and the account qualifier depend on the *set* of lanes
+    /// rather than on this lane alone — a second Claude account appearing
+    /// renames every Claude curve — so both belong to the validity check.
+    var variantIndex: Int
+    var qualifier: String?
+    var curve: OverviewQuotaCurve
+    var segments: [[QuotaHistorySample]]
+    var flat: [QuotaHistorySample]
+}
+
 /// Every recorded quota, from every provider and account, on one time axis.
 ///
 /// The per-provider cards answer "how am I doing on this one quota"; this one
@@ -86,6 +100,9 @@ struct OverviewQuotaHistoryCard: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     @State private var curves: [OverviewQuotaCurve] = []
+    /// Last build output per curve, so a refresh that appends one point to one
+    /// provider's lane re-segments that lane instead of all thirty.
+    @State private var laneCache: [String: OverviewLaneBuild] = [:]
     @State private var segmentsByCurve: [String: [[QuotaHistorySample]]] = [:]
     /// Each curve's samples flattened into one ascending array — the segments
     /// are already time-sorted and contiguous, so concatenating them keeps the
@@ -94,7 +111,7 @@ struct OverviewQuotaHistoryCard: View {
     @State private var flatByCurve: [String: [QuotaHistorySample]] = [:]
     @State private var window: ChartTimeWindow?
     @State private var windowKey: String?
-    @State private var initialSpan: TimeInterval = 7 * 86_400
+    @State private var initialSpan: TimeInterval = OverviewQuotaHistoryCard.preferredInitialSpan
     @State private var hoverDate: Date?
     @State private var panBase: ChartTimeWindow?
     @State private var magnifyBase: ChartTimeWindow?
@@ -671,31 +688,47 @@ struct OverviewQuotaHistoryCard: View {
 
     private var seriesSignature: OverviewSeriesSignature {
         OverviewSeriesSignature(
-            entries: candidateLanes.map { account, bucket in
-                let points = fillPoints(accountId: account.id, bucketId: bucket.id)
-                return OverviewSeriesSignature.Entry(
-                    curveId: OverviewQuotaCurve.id(
-                        tool: account.tool,
-                        accountId: account.id,
-                        bucketId: bucket.id
-                    ),
-                    // Titles are part of the signature because a plan change can
-                    // rename a bucket without adding an observation.
-                    title: bucket.title,
-                    count: points.count,
-                    first: points.first?.sampledAt,
-                    last: points.last?.sampledAt
-                )
-            }
+            entries: candidateLanes.map { signatureEntry(account: $0.account, bucket: $0.bucket) }
+        )
+    }
+
+    /// One lane's shape. Shared by the rebuild trigger and by the per-lane cache
+    /// key so the two can never disagree about what "changed".
+    private func signatureEntry(
+        account: AccountIdentity,
+        bucket: QuotaBucket
+    ) -> OverviewSeriesSignature.Entry {
+        let points = fillPoints(accountId: account.id, bucketId: bucket.id)
+        return OverviewSeriesSignature.Entry(
+            curveId: OverviewQuotaCurve.id(
+                tool: account.tool,
+                accountId: account.id,
+                bucketId: bucket.id
+            ),
+            // Titles are part of the signature because a plan change can
+            // rename a bucket without adding an observation.
+            title: bucketTitle(bucket),
+            count: points.count,
+            first: points.first?.sampledAt,
+            last: points.last?.sampledAt
         )
     }
 
     // MARK: - Rebuild
 
+    /// Re-segment the lanes whose inputs changed and keep the rest.
+    ///
+    /// Reusing a lane built against an *earlier* domain is safe because the
+    /// domain is the union of every lane's own span, only ever widened (the
+    /// six-hour floor extends the lower bound downwards): every lane's samples
+    /// therefore always lie inside it, so the builder's range filter never drops
+    /// one, and this card draws only `.actual` — the one part of the series that
+    /// does not otherwise depend on the range.
     private func rebuild() {
         let lanes = candidateLanes
         guard !lanes.isEmpty, let domain = domainRange(lanes) else {
             curves = []
+            laneCache = [:]
             segmentsByCurve = [:]
             flatByCurve = [:]
             window = nil
@@ -714,6 +747,7 @@ struct OverviewQuotaHistoryCard: View {
         var built: [OverviewQuotaCurve] = []
         var series: [String: [[QuotaHistorySample]]] = [:]
         var flat: [String: [QuotaHistorySample]] = [:]
+        var rebuiltCache: [String: OverviewLaneBuild] = [:]
         var indexPerTool: [ToolType: Int] = [:]
         for (account, bucket) in lanes {
             let id = OverviewQuotaCurve.id(
@@ -723,39 +757,64 @@ struct OverviewQuotaHistoryCard: View {
             )
             let index = indexPerTool[account.tool, default: 0]
             indexPerTool[account.tool] = index + 1
+            let qualifier = (accountsPerTool[account.tool]?.count ?? 0) > 1
+                ? Self.qualifier(for: account)
+                : nil
+            let signature = signatureEntry(account: account, bucket: bucket)
+            if let cached = laneCache[id],
+               cached.signature == signature,
+               cached.variantIndex == index,
+               cached.qualifier == qualifier {
+                built.append(cached.curve)
+                series[id] = cached.segments
+                flat[id] = cached.flat
+                rebuiltCache[id] = cached
+                continue
+            }
+
             let variant = Self.variant(Theme.providerAccent(for: account.tool), index: index)
-            built.append(
-                OverviewQuotaCurve(
-                    id: id,
-                    tool: account.tool,
-                    accountId: account.id,
-                    bucketId: bucket.id,
-                    toolTitle: displayTitle(for: account.tool),
-                    bucketTitle: bucketTitle(bucket),
-                    accountQualifier: (accountsPerTool[account.tool]?.count ?? 0) > 1
-                        ? Self.qualifier(for: account)
-                        : nil,
-                    windowSeconds: bucket.rawWindowSeconds,
-                    color: variant.color,
-                    dash: variant.dash
-                )
+            let curve = OverviewQuotaCurve(
+                id: id,
+                tool: account.tool,
+                accountId: account.id,
+                bucketId: bucket.id,
+                toolTitle: displayTitle(for: account.tool),
+                bucketTitle: bucketTitle(bucket),
+                accountQualifier: qualifier,
+                windowSeconds: bucket.rawWindowSeconds,
+                color: variant.color,
+                dash: variant.dash
             )
             let actual = QuotaHistorySeriesBuilder.build(
                 fillPoints: fillPoints(accountId: account.id, bucketId: bucket.id),
                 range: domain
             ).actual
+            let flattened = actual.flatMap { $0 }
+            built.append(curve)
             series[id] = actual
-            flat[id] = actual.flatMap { $0 }
+            flat[id] = flattened
+            rebuiltCache[id] = OverviewLaneBuild(
+                signature: signature,
+                variantIndex: index,
+                qualifier: qualifier,
+                curve: curve,
+                segments: actual,
+                flat: flattened
+            )
         }
 
         curves = built
+        laneCache = rebuiltCache
         segmentsByCurve = series
         flatByCurve = flat
 
         let key = built.map(\.id).joined(separator: ",")
         let sameCurves = windowKey == key
         windowKey = key
-        initialSpan = min(7 * 86_400, max(6 * 3_600, domain.upperBound.timeIntervalSince(domain.lowerBound)))
+        initialSpan = min(
+            Self.preferredInitialSpan,
+            max(6 * 3_600, domain.upperBound.timeIntervalSince(domain.lowerBound))
+        )
 
         if sameCurves,
            let existing = window,
@@ -788,6 +847,12 @@ struct OverviewQuotaHistoryCard: View {
     /// enough for the fast ones to show their sawtooth, shallow enough that a
     /// weekly line is never a single flat pixel-row.
     private static let minimumSpan: TimeInterval = 3 * 3_600
+
+    /// Opening zoom, matching the per-group chart: one day of recent movement
+    /// rather than a whole week compressed into the card's width. Still clamped
+    /// to the stored domain, so a chart with only a few hours of evidence opens
+    /// on what it actually has.
+    private static let preferredInitialSpan: TimeInterval = 24 * 3_600
 
     private func domainRange(
         _ lanes: [(account: AccountIdentity, bucket: QuotaBucket)]

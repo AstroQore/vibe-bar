@@ -106,7 +106,11 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
         guard !cookieResolutions.isEmpty else {
             throw QuotaError.noCredential
         }
-        let results = await MiscQuotaAggregator.gatherSlotResults(cookieResolutions) { resolution in
+        let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
+            spec: AlibabaQuotaAdapter.cookieSpec,
+            account: account,
+            resolutions: cookieResolutions
+        ) { resolution in
             try await self.fetchViaCookieSlot(
                 resolution: resolution,
                 regions: preferred,

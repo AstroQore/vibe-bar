@@ -6,7 +6,9 @@ import Combine
 /// recent data survives CLI log rotation without keeping an unlimited profile.
 @MainActor
 public final class CostUsageService: ObservableObject {
-    @Published public private(set) var snapshots: [ToolType: CostSnapshot] = [:]
+    @Published public private(set) var snapshots: [ToolType: CostSnapshot] = [:] {
+        didSet { aggregations.setSource(snapshots) }
+    }
     @Published public private(set) var extrasByTool: [ToolType: ProviderExtras] = [:]
     @Published public private(set) var isRefreshing: Bool = false
     @Published public private(set) var lastRefreshedAt: Date?
@@ -35,6 +37,13 @@ public final class CostUsageService: ObservableObject {
     private let homeDirectory: String
     private let mockProvider: () -> Bool
     private let costDataSettingsProvider: () -> CostDataSettings
+    /// Every value the UI derives from `snapshots` — rebased per-tool
+    /// snapshots, combined platform snapshots, the Overview rollups — is a pure
+    /// function of the snapshots and the local day, and the popover asks for
+    /// them dozens of times per render pass. The cache keeps that work at once
+    /// per refresh instead of once per read; it is dropped automatically by the
+    /// `snapshots` observer above and on day rollover.
+    private let aggregations = CostAggregationCache()
 
     public init(
         homeDirectory: String = RealHomeDirectory.path,
@@ -55,9 +64,15 @@ public final class CostUsageService: ObservableObject {
                 return
             }
             let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
-            for (tool, snap) in cached where self.snapshots[tool] == nil {
-                self.snapshots[tool] = snap
+            // One assignment, not one per tool: every write to a `@Published`
+            // dictionary is its own publish, and the popover re-renders on each.
+            var hydrated = self.snapshots
+            var addedAny = false
+            for (tool, snap) in cached where hydrated[tool] == nil {
+                hydrated[tool] = snap
+                addedAny = true
             }
+            if addedAny { self.snapshots = hydrated }
             if !cached.isEmpty {
                 self.lastRefreshedAt = cached.values.map(\.updatedAt).max()
             }
@@ -65,7 +80,35 @@ public final class CostUsageService: ObservableObject {
     }
 
     public func snapshot(for tool: ToolType) -> CostSnapshot? {
-        snapshots[tool]?.rebasedForCurrentDay()
+        aggregations.snapshot(for: tool)
+    }
+
+    /// Cost for several tools the product presents as one platform (Gemini Web
+    /// + AntiGravity as "Gemini").
+    public func combinedSnapshot(of tools: [ToolType], labelledAs label: ToolType) -> CostSnapshot {
+        aggregations.combinedSnapshot(of: tools, labelledAs: label)
+    }
+
+    /// Cross-provider rollups for the Overview's "all providers" cards.
+    public func rollup(
+        individualTools: [ToolType],
+        groups: [CostSnapshotGroup] = [],
+        labelledAs label: ToolType
+    ) -> CostRollup {
+        aggregations.rollup(individualTools: individualTools, groups: groups, labelledAs: label)
+    }
+
+    /// Headline cost and token totals over a set of providers.
+    public func totals(of tools: [ToolType]) -> CostTotals {
+        aggregations.totals(of: tools)
+    }
+
+    /// Whether any of these providers has found session logs. Deliberately
+    /// reads the raw file count instead of a rebased or combined snapshot:
+    /// `jsonlFilesFound` survives both untouched, and this is asked on every
+    /// render pass to decide whether the cost cards exist at all.
+    public func hasJSONLFiles(in tools: [ToolType]) -> Bool {
+        aggregations.hasJSONLFiles(in: tools)
     }
 
     public func extras(for tool: ToolType) -> ProviderExtras? {

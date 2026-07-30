@@ -1,4 +1,5 @@
 import Foundation
+import os.lock
 import SweetCookieKit
 
 /// Picks `Cookie:` headers for a misc-provider adapter at fetch time.
@@ -206,9 +207,251 @@ public enum MiscCookieResolver {
         appendBrowserImport(for: spec, instanceID: instanceID)
     }
 
+    // MARK: - Batch import
+
+    /// One provider instance to import cookies for.
+    public struct BatchImportTarget {
+        public let spec: Spec
+        public let instanceID: String
+
+        public init(spec: Spec, instanceID: String) {
+            self.spec = spec
+            self.instanceID = instanceID
+        }
+
+        public var tool: ToolType { spec.tool }
+    }
+
+    /// What happened for one target in a batch import.
+    public struct BatchImportOutcome {
+        public enum Result: Equatable {
+            /// A new (or refreshed) slot now holds a browser session.
+            case imported(sourceLabel: String)
+            /// The browsers we were allowed to read had no usable
+            /// session for this provider's domains.
+            case noSessionFound
+            /// The provider's source mode bans cookies entirely, so we
+            /// never looked.
+            case cookiesDisabled
+            /// A session was found but the Keychain write failed.
+            case saveFailed
+        }
+
+        public let tool: ToolType
+        public let instanceID: String
+        public let result: Result
+
+        public init(tool: ToolType, instanceID: String, result: Result) {
+            self.tool = tool
+            self.instanceID = instanceID
+            self.result = result
+        }
+    }
+
+    /// Import browser cookies for many provider instances in one pass.
+    ///
+    /// This is the "do all of them" version of `appendBrowserImport`,
+    /// and it exists for two reasons beyond saving the user twelve
+    /// clicks:
+    ///
+    /// 1. `BrowserDetection` caches its filesystem probes **per
+    ///    instance**, so building one per provider re-stats every
+    ///    browser profile twelve times over. One shared instance turns
+    ///    that into a single pass. (The Chromium "Safe Storage" key
+    ///    itself is cached per browser in a SweetCookieKit static, so
+    ///    the user sees at most one Keychain prompt per distinct
+    ///    Chromium browser regardless — but the shared
+    ///    `BrowserCookieClient` keeps the whole batch on one handle.)
+    /// 2. Targets are walked **sequentially**. Every append rewrites the
+    ///    same Keychain item through `VibeBarCredentialVault`, so
+    ///    parallel writes would just contend on the vault's lock and
+    ///    risk interleaved read-modify-write.
+    ///
+    /// The one-Chromium-browser-per-call prompt cap in
+    /// `cookieImportCandidates` still applies per target, which is what
+    /// keeps a batch from fanning out into a stack of password prompts.
+    public static func appendBrowserImports(
+        for targets: [BatchImportTarget]
+    ) -> [BatchImportOutcome] {
+        let context = BrowserImportContext()
+        return targets.map { target in
+            let settings = currentSettings(for: target.tool, instanceID: target.instanceID)
+            guard SlotFilter(settings: settings) != .none else {
+                return BatchImportOutcome(
+                    tool: target.tool,
+                    instanceID: target.instanceID,
+                    result: .cookiesDisabled
+                )
+            }
+            guard let imported = importFromBrowsers(
+                spec: target.spec,
+                settings: settings,
+                allowKeychainPrompt: true,
+                context: context
+            ) else {
+                return BatchImportOutcome(
+                    tool: target.tool,
+                    instanceID: target.instanceID,
+                    result: .noSessionFound
+                )
+            }
+            let slot = MiscCookieSlot(
+                cookieHeader: imported.header,
+                sourceLabel: imported.sourceLabel,
+                importedAt: Date(),
+                origin: .browserImport
+            )
+            guard MiscCookieSlotStore.append(
+                slot,
+                for: target.tool,
+                instanceID: target.instanceID
+            ) else {
+                return BatchImportOutcome(
+                    tool: target.tool,
+                    instanceID: target.instanceID,
+                    result: .saveFailed
+                )
+            }
+            return BatchImportOutcome(
+                tool: target.tool,
+                instanceID: target.instanceID,
+                result: .imported(sourceLabel: imported.sourceLabel)
+            )
+        }
+    }
+
+    // MARK: - Silent re-import
+
+    /// Refresh the provider's existing browser-origin slots from the
+    /// browser without ever prompting for the Keychain password.
+    ///
+    /// Used by `MiscCookieAutoImporter` when a fetch came back
+    /// `needsLogin`. Slots are replaced **in place** with origin
+    /// `.autoRefresh`; `origin == .manual` slots are left alone, the
+    /// same policy `HiddenCookieRefresher` follows — a cookie the user
+    /// pasted by hand is theirs to manage.
+    ///
+    /// Returns `true` when at least one slot's header actually changed,
+    /// which is the caller's signal that a retry is worth a round-trip.
+    @discardableResult
+    public static func silentReimport(spec: Spec, instanceID: String) -> Bool {
+        let settings = currentSettings(for: spec.tool, instanceID: instanceID)
+        guard SlotFilter(settings: settings) != .none else { return false }
+
+        let refreshable = MiscCookieSlotStore
+            .slots(for: spec.tool, instanceID: instanceID)
+            .filter { $0.origin != .manual }
+        guard !refreshable.isEmpty else { return false }
+
+        let sessions = browserSessions(
+            spec: spec,
+            settings: settings,
+            allowKeychainPrompt: false,
+            context: BrowserImportContext(),
+            maxSessions: nil
+        )
+        guard !sessions.isEmpty else { return false }
+
+        var unclaimed = sessions
+        var changed = false
+        for slot in refreshable {
+            // Prefer the browser session whose label matches the slot's
+            // — that's how a user with stacked work / personal profiles
+            // keeps each slot pointed at its own account. With exactly
+            // one refreshable slot and one session, fall back to taking
+            // that session so the common case still self-heals; the
+            // slot's `sourceLabel` is rewritten too, so if the browser
+            // has since switched accounts the Settings row says which
+            // profile the slot now follows rather than hiding it.
+            let matchIndex = unclaimed.firstIndex { $0.sourceLabel == slot.sourceLabel }
+                ?? (refreshable.count == 1 && unclaimed.count == 1 ? 0 : nil)
+            guard let matchIndex else { continue }
+            let session = unclaimed.remove(at: matchIndex)
+            guard session.header != slot.cookieHeader else { continue }
+            let ok = MiscCookieSlotStore.updateHeader(
+                slotID: slot.id,
+                for: spec.tool,
+                instanceID: instanceID,
+                header: session.header,
+                sourceLabel: session.sourceLabel,
+                importedAt: Date(),
+                origin: .autoRefresh
+            )
+            if ok {
+                changed = true
+                // Length + hash only. A cookie header is a live
+                // credential and never belongs in a log line.
+                SafeLog.info(
+                    "MiscCookieResolver auto re-import tool=\(spec.tool.rawValue) slot=\(slot.id.uuidString.prefix(8)) len=\(session.header.count) fp=\(headerFingerprint(session.header))"
+                )
+            }
+        }
+        // `MiscCookieSlotStore.updateHeader` posts its own change
+        // notification, which is what redraws the Settings slot list.
+        // No quota refresh is posted here: the caller is mid-fetch and
+        // retries with the fresh header itself.
+        return changed
+    }
+
+    // MARK: - Chromium Keychain warmth
+
+    /// Browsers whose Chromium "Safe Storage" key SweetCookieKit has
+    /// already decrypted in this process, courtesy of a user-initiated
+    /// import that was allowed to prompt.
+    ///
+    /// This exists to bridge a mismatch: SweetCookieKit caches that key
+    /// in a process-wide `[Browser: Data]` static, but
+    /// `BrowserCookieAccessGate`'s non-interactive preflight can still
+    /// report `interactionRequired` and install a 6-hour cooldown —
+    /// vetoing a silent read that would in fact have decrypted fine from
+    /// the cache. Once a browser is warm we ask for its records with
+    /// `allowKeychainPrompt: true`, which is the gate's own documented
+    /// bypass rather than a poke at its internals, and which cannot
+    /// actually surface a prompt while that browser's key is cached.
+    ///
+    /// Tracked per browser, not as one global flag, because the upstream
+    /// cache is per browser: Chrome being unlocked says nothing about
+    /// whether reading Brave would prompt.
+    private static let warmKeychainBrowsers = OSAllocatedUnfairLock<Set<String>>(initialState: [])
+
+    static func markKeychainWarm(_ browser: Browser) {
+        guard browser.usesKeychainForCookieDecryption else { return }
+        warmKeychainBrowsers.withLock { $0.insert(browser.rawValue) }
+    }
+
+    static func clearKeychainWarmth(_ browser: Browser) {
+        warmKeychainBrowsers.withLock { $0.remove(browser.rawValue) }
+    }
+
+    static var warmKeychainBrowserIDs: Set<String> {
+        warmKeychainBrowsers.withLock { $0 }
+    }
+
+    /// Test hook — process-global state has to be resettable between
+    /// cases or the suite's ordering starts to matter.
+    static func resetKeychainWarmthForTesting() {
+        warmKeychainBrowsers.withLock { $0.removeAll() }
+    }
+
     // MARK: - Internals
 
-    private struct BrowserImportResult {
+    /// Shared browser-access objects. Building one per import is the
+    /// wrong shape for a batch: `BrowserDetection`'s probe cache and
+    /// SweetCookieKit's decrypted-key state both live on the instance.
+    struct BrowserImportContext {
+        let detection: BrowserDetection
+        let client: BrowserCookieClient
+
+        init(
+            detection: BrowserDetection = BrowserDetection(),
+            client: BrowserCookieClient = BrowserCookieClient()
+        ) {
+            self.detection = detection
+            self.client = client
+        }
+    }
+
+    struct BrowserImportResult {
         let header: String
         let sourceLabel: String
     }
@@ -216,36 +459,71 @@ public enum MiscCookieResolver {
     private static func importFromBrowsers(
         spec: Spec,
         settings: MiscProviderSettings,
-        allowKeychainPrompt: Bool = false
+        allowKeychainPrompt: Bool = false,
+        context: BrowserImportContext = BrowserImportContext()
     ) -> BrowserImportResult? {
-        let detection = BrowserDetection()
+        browserSessions(
+            spec: spec,
+            settings: settings,
+            allowKeychainPrompt: allowKeychainPrompt,
+            context: context,
+            maxSessions: 1
+        ).first
+    }
+
+    /// Walk the candidate browsers and return every usable session for
+    /// `spec`'s domains.
+    ///
+    /// `maxSessions: 1` reproduces the single-import behaviour exactly —
+    /// stop at the first usable session so we never touch a browser we
+    /// didn't need to. Pass `nil` only when the caller genuinely needs
+    /// the full list (the silent re-import matches sessions to slots by
+    /// label).
+    private static func browserSessions(
+        spec: Spec,
+        settings: MiscProviderSettings,
+        allowKeychainPrompt: Bool,
+        context: BrowserImportContext,
+        maxSessions: Int?
+    ) -> [BrowserImportResult] {
         let preferred: [Browser]
         if let kind = settings.preferredBrowser {
             preferred = kind.sweetCookieKitBrowsers
         } else {
             preferred = spec.importOrder
         }
+        let warm = allowKeychainPrompt ? [] : warmKeychainBrowserIDs
         let candidates = preferred.cookieImportCandidates(
-            using: detection,
-            allowKeychainPrompt: allowKeychainPrompt
+            using: context.detection,
+            allowKeychainPrompt: allowKeychainPrompt,
+            warmKeychainBrowsers: warm
         )
-        guard !candidates.isEmpty else { return nil }
+        guard !candidates.isEmpty else { return [] }
 
         let query = BrowserCookieQuery(domains: spec.domains)
 
-        let client = BrowserCookieClient()
+        var collected: [BrowserImportResult] = []
         for browser in candidates {
+            let mayPrompt = allowKeychainPrompt || warm.contains(browser.rawValue)
             let records: [BrowserCookieStoreRecords]
             do {
-                records = try client.vibeBarRecords(
+                records = try context.client.vibeBarRecords(
                     matching: query,
                     in: browser,
-                    allowKeychainPrompt: allowKeychainPrompt,
+                    allowKeychainPrompt: mayPrompt,
                     logger: nil
                 )
             } catch {
                 BrowserCookieAccessGate.recordIfNeeded(error)
+                // A warm browser that suddenly refuses means the cached
+                // Safe Storage key is gone (keychain relocked, browser
+                // rotated it). Forget the warmth so we stop bypassing
+                // the gate and risking a prompt the user didn't ask for.
+                clearKeychainWarmth(browser)
                 continue
+            }
+            if allowKeychainPrompt, !records.isEmpty {
+                markKeychainWarm(browser)
             }
             for session in mergedSessions(from: records) {
                 let cookies = session.records
@@ -257,10 +535,23 @@ public enum MiscCookieResolver {
                 guard spec.requiredNames.isEmpty || !pairs.isEmpty else { continue }
                 let header = pairs.joined(separator: "; ")
                 guard !header.isEmpty, spec.hasRequiredCredential(in: header) else { continue }
-                return BrowserImportResult(header: header, sourceLabel: session.label)
+                collected.append(BrowserImportResult(header: header, sourceLabel: session.label))
+                if let maxSessions, collected.count >= maxSessions { return collected }
             }
         }
-        return nil
+        return collected
+    }
+
+    /// Hash a cookie header so a log line can say "did this change?"
+    /// without writing the secret anywhere. Same idiom as
+    /// `HiddenCookieRefresher`.
+    static func headerFingerprint(_ header: String) -> String {
+        guard !header.isEmpty else { return "empty" }
+        var hash: UInt64 = 5381
+        for byte in header.utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        return String(hash, radix: 16)
     }
 
     private struct BrowserSession {

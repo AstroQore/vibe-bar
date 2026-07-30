@@ -47,6 +47,28 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var miscProviderInstances: [MiscProviderInstance]
     public var costData: CostDataSettings
 
+    /// Silently re-import a cookie-sourced misc provider's browser
+    /// session when its stored jar has gone stale, instead of leaving
+    /// the card on "Needs re-login" until the user clicks Import.
+    ///
+    /// Off by default, and deliberately so: an existing settings file
+    /// must not start doing background Keychain work because it was
+    /// opened by a newer build. When it is on, the re-import runs with
+    /// `allowKeychainPrompt: false`, so the worst case is that it finds
+    /// nothing — it can never surface a password prompt the user didn't
+    /// ask for.
+    public var miscCookieAutoImportEnabled: Bool
+
+    /// Which signal colors the menu bar's percentages.
+    ///
+    /// `.forecast` is the product behavior, not an opt-in: a quota at 24%
+    /// remaining that the forecast says will comfortably survive until reset is
+    /// not a warning, and orange there trains the user to ignore the color.
+    /// The setting exists so someone who wants the old raw-threshold reading
+    /// can ask for it, which is why an absent key decodes to `.forecast` — the
+    /// new behavior — rather than to the pre-forecast thresholds.
+    public var menuBarColorBasis: MenuBarColorBasis
+
     /// Curves the user switched **off** in the Overview's all-providers quota
     /// history chart, as `"<tool>|<accountId>|<bucketId>"`.
     ///
@@ -205,7 +227,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         costData: CostDataSettings = .default,
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
-        pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:]
+        pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
+        miscCookieAutoImportEnabled: Bool = false,
+        menuBarColorBasis: MenuBarColorBasis = .forecast
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -241,6 +265,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
         self.pageLayouts = pageLayouts
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
+        self.miscCookieAutoImportEnabled = miscCookieAutoImportEnabled
+        self.menuBarColorBasis = menuBarColorBasis
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
@@ -292,6 +318,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case overviewQuotaHistoryHiddenCurveIds
         case pageLayouts
         case pageLayoutPresets
+        case miscCookieAutoImportEnabled
+        case menuBarColorBasis
     }
 
     public init(from decoder: Decoder) throws {
@@ -432,6 +460,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 forKey: .pageLayoutPresets
             )) ?? [:]
         )
+        // Absent key means "settings written before auto re-import
+        // existed", which must decode to off — an upgrade cannot start
+        // reading browser cookie stores in the background on its own.
+        self.miscCookieAutoImportEnabled =
+            try c.decodeIfPresent(Bool.self, forKey: .miscCookieAutoImportEnabled)
+            ?? Self.default.miscCookieAutoImportEnabled
+        // An absent key deliberately means `.forecast`, unlike most fields
+        // added here: forecast coloring is the intended menu-bar behavior, so
+        // an existing settings file has to pick it up on upgrade. `try?` keeps
+        // an unknown raw value from failing the whole file.
+        self.menuBarColorBasis =
+            (try? c.decodeIfPresent(MenuBarColorBasis.self, forKey: .menuBarColorBasis))
+            ?? Self.default.menuBarColorBasis
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -471,6 +512,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
         try c.encode(pageLayouts, forKey: .pageLayouts)
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
+        try c.encode(miscCookieAutoImportEnabled, forKey: .miscCookieAutoImportEnabled)
+        try c.encode(menuBarColorBasis, forKey: .menuBarColorBasis)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {

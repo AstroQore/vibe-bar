@@ -368,17 +368,23 @@ private struct OverviewSwitchIcon: View {
     }
 }
 
-/// Overview popover content, top-to-bottom:
-///   1. `CombinedTotalsRow` — cost+token grid plus live service status. A fixed
-///      header band, not part of the arrangeable module set: it is two
-///      half-width cards pinned to one shared height, which is not something
-///      two independently flowing columns can express.
-///   2. The module waterfall. Until the user arranges the page by hand this is
-///      the live-measured `ColumnMasonryLayout` it has always been — it
-///      globally balances the quota cards first, then places Cost cards from
-///      those seeded column heights, and finally fills the shorter side with
-///      supporting analytics. Once a saved arrangement exists, the same cards
-///      render in the saved order at the saved column widths.
+/// Overview popover content: one module waterfall, cost and status summary
+/// included.
+///
+/// The two summary cards used to be a hard-coded header row above the
+/// waterfall, on the grounds that "two half-width cards pinned to one shared
+/// height" was not something two independently flowing columns could express.
+/// They are ordinary modules now, carrying `OverviewMasonryPhase.summary`: the
+/// planner places a summary phase across the columns in declaration order
+/// rather than balancing it, which reproduces that row exactly while making the
+/// two cards arrangeable like everything else.
+///
+/// Until the user arranges the page by hand this is the live-measured
+/// `ColumnMasonryLayout` it has always been — summary row first, then the quota
+/// cards balanced globally, then Cost from those seeded column heights, and
+/// finally the shorter side filled with supporting analytics. Once a saved
+/// arrangement exists, the same cards render in the saved order at the saved
+/// column widths.
 private struct OverviewWaterfall: View {
     let density: Theme.Density
 
@@ -402,33 +408,34 @@ private struct OverviewWaterfall: View {
             environment: environment,
             settings: settings
         )
-        let snapshots = PageModuleCatalog.overviewCostSnapshots(
+        // One rollup for the whole pass. Every aggregation below used to be
+        // re-derived per card — and the module catalog above derived them a
+        // fourth time — which is why an unrelated quota publish could cost the
+        // Overview several full cross-provider combines per re-render.
+        let rollup = PageModuleCatalog.overviewRollup(
             environment: environment,
             settings: settings
         )
         let context = OverviewModuleContext(
-            history: CostSnapshotAggregator.combinedDailyHistory(snapshots),
-            heatmap: CostSnapshotAggregator.combinedHeatmap(snapshots),
-            models: CostSnapshotAggregator.combinedModelBreakdowns(snapshots),
-            combinedSnapshot: CostSnapshotAggregator.combinedSnapshot(
-                tool: .codex,
-                snapshots: snapshots
-            ),
-            googleAISnapshot: PageModuleCatalog.googleAICostSnapshot(environment: environment)
+            history: rollup.dailyHistory,
+            heatmap: rollup.heatmap,
+            models: rollup.modelBreakdowns,
+            combinedSnapshot: rollup.combinedSnapshot,
+            // Present exactly when the Gemini card is: the rollup only carries
+            // the group when the provider is visible, and the module that reads
+            // this exists under the same condition.
+            googleAISnapshot: rollup.groupSnapshots.first ?? .empty(tool: .antigravity)
         )
 
-        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-            CombinedTotalsRow(density: density)
-            // `auto` is the only mode the balancer runs in. `compact` and
-            // `manual` both render fixed columns — one packed for height by
-            // `PageLayoutPacker`, one arranged by hand — through the same
-            // path, so the two can never diverge in anything but their source
-            // of column order.
-            if layoutModel.mode(for: page) == .auto {
-                balancedWaterfall(descriptors: descriptors, context: context)
-            } else {
-                arrangedWaterfall(descriptors: descriptors, context: context)
-            }
+        // `auto` is the only mode the balancer runs in. `compact` and `manual`
+        // both render fixed columns — one packed for height by
+        // `PageLayoutPacker`, band by band, one arranged by hand — through the
+        // same path, so the two can never diverge in anything but their source
+        // of column order.
+        if layoutModel.mode(for: page) == .auto {
+            balancedWaterfall(descriptors: descriptors, context: context)
+        } else {
+            arrangedWaterfall(descriptors: descriptors, context: context)
         }
     }
 
@@ -446,7 +453,7 @@ private struct OverviewWaterfall: View {
         return PageLayoutColumns(
             page: page,
             descriptors: descriptors,
-            config: resolved,
+            arrangement: resolved,
             widths: PageColumnWidths(density: density, ratio: resolved.ratio),
             spacing: density.interSectionSpacing,
             model: layoutModel
@@ -488,6 +495,14 @@ private struct OverviewWaterfall: View {
         context: OverviewModuleContext
     ) -> some View {
         switch descriptor.kind {
+        case .overviewCostSummary:
+            OverviewCostSummaryCard(density: density)
+        case .overviewStatusSummary:
+            OverviewStatusSummaryCard(
+                density: density,
+                minHeight: density.overviewSummaryHeight,
+                tools: settingsStore.settings.visibleCoreProviderList
+            )
         case let .overviewQuota(tool):
             if tool == .gemini {
                 // Gemini Web and AntiGravity roll up to one Google AI product.
@@ -784,15 +799,19 @@ private struct GeminiCostEmptyCard: View {
     }
 }
 
-/// Sits above the per-provider columns: cost and token summary on the left,
-/// current provider status on the right. The two cards use equal columns so
-/// the Overview header aligns with the waterfall below it.
-private struct CombinedTotalsRow: View {
+/// The Overview's cost and token headline grid — the left half of what used to
+/// be a hard-coded header row, now an arrangeable module.
+///
+/// It keeps its pinned height (`Theme.Density.overviewSummaryHeight`), which is
+/// what makes it read as one row with the status card beside it; the width comes
+/// from whichever column the layout puts it in, like every other card.
+private struct OverviewCostSummaryCard: View {
     let density: Theme.Density
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
     @EnvironmentObject var settingsStore: SettingsStore
+
     var body: some View {
         // Headline totals span every cost-aware provider, including
         // Google AI (Gemini + AntiGravity): AntiGravity usage is now
@@ -801,119 +820,83 @@ private struct CombinedTotalsRow: View {
         let visibleCostProviders = ToolType.costAwareProviders.filter {
             settingsStore.settings.isCoreProviderVisible($0)
         }
-        let snapshots = visibleCostProviders
-            .compactMap { environment.costService.snapshot(for: $0) }
-        let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
-        let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
-        let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
-        let yesterdayCost = snapshots.reduce(0.0) { $0 + CostTimeframe.yesterday.cost(in: $1) }
-        let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
-        let monthCost = snapshots.reduce(0.0) { $0 + $1.last30DaysCostUSD }
-        let totalTokens = snapshots.reduce(0) { $0 + $1.allTimeTokens }
-        let todayTokens = snapshots.reduce(0) { $0 + $1.todayTokens }
-        let yesterdayTokens = snapshots.reduce(0) { $0 + CostTimeframe.yesterday.tokens(in: $1) }
-        let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
-        let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
-        // Cost and token peaks are independent: the most expensive day
-        // is not necessarily the day with the highest token volume.
-        let peakDayCost = CostSnapshotAggregator.peakDailyCost(in: dailyHistory)
-        let peakTokenDayTokens = CostSnapshotAggregator.peakDailyTokens(in: dailyHistory)
-        GeometryReader { geometry in
-            let spacing = density.interSectionSpacing
-            let availableWidth = max(0, geometry.size.width - spacing)
-            let columnWidth = availableWidth / 2
-
-            HStack(alignment: .top, spacing: spacing) {
-                VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Cost")
-                        .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                    Spacer()
-                    if let lastRefreshed = costService.lastRefreshedAt {
-                        Text(ResetCountdownFormatter.updatedAgo(from: lastRefreshed, now: Date()))
-                            .font(.system(size: max(9, density.subtitleFontSize - 1)))
-                            .foregroundStyle(.tertiary)
-                    }
-                    if costService.isRefreshing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(width: 12, height: 12)
-                    }
-                    BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh cost data") {
-                        environment.refreshCostUsage()
-                    }
-                    .disabled(costService.isRefreshing)
+        // Ten reduce passes, a per-provider calendar scan for "yesterday", and
+        // two peak scans over the combined daily history — all of it derived
+        // once per cost refresh in Core rather than once per render pass here.
+        let totals = costService.totals(of: visibleCostProviders)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Cost")
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                Spacer()
+                if let lastRefreshed = costService.lastRefreshedAt {
+                    Text(ResetCountdownFormatter.updatedAgo(from: lastRefreshed, now: Date()))
+                        .font(.system(size: max(9, density.subtitleFontSize - 1)))
+                        .foregroundStyle(.tertiary)
                 }
-                    // 4 × 3 summary: durable all-time/peak context first,
-                    // followed by matching cost and token timeframes. The
-                    // flexible gaps use the full height shared with Status,
-                    // instead of leaving one empty band below the third row.
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack(alignment: .top, spacing: 0) {
-                            metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
-                            divider
-                            metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
-                            divider
-                            metric(label: "PEAK DAY", value: formatCost(peakDayCost))
-                            divider
-                            metric(label: "PEAK TOK DAY", value: formatTokens(peakTokenDayTokens))
-                        }
-                        Spacer(minLength: 8)
-                        HStack(alignment: .top, spacing: 0) {
-                            metric(label: "TODAY", value: formatCost(todayCost))
-                            divider
-                            metric(label: "YESTERDAY", value: formatCost(yesterdayCost))
-                            divider
-                            metric(label: "7-DAY", value: formatCost(weekCost))
-                            divider
-                            metric(label: "30-DAY", value: formatCost(monthCost))
-                        }
-                        Spacer(minLength: 8)
-                        HStack(alignment: .top, spacing: 0) {
-                            metric(label: "TODAY TOK", value: formatTokens(todayTokens))
-                            divider
-                            metric(label: "YESTERDAY TOK", value: formatTokens(yesterdayTokens))
-                            divider
-                            metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
-                            divider
-                            metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
-                        }
-                    }
-                    .frame(maxHeight: .infinity)
+                if costService.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
                 }
-                .padding(density.cardPadding)
-                .frame(
-                    minWidth: columnWidth,
-                    idealWidth: columnWidth,
-                    maxWidth: columnWidth,
-                    minHeight: density.overviewSummaryHeight,
-                    idealHeight: density.overviewSummaryHeight,
-                    maxHeight: density.overviewSummaryHeight,
-                    alignment: .topLeading
-                )
-                .background(
-                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                        .fill(.background.tertiary.opacity(0.6))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                        .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-                )
-
-                OverviewStatusSummaryCard(
-                    density: density,
-                    minHeight: density.overviewSummaryHeight,
-                    tools: settingsStore.settings.visibleCoreProviderList
-                )
-                    .frame(
-                        minWidth: columnWidth,
-                        idealWidth: columnWidth,
-                        maxWidth: columnWidth,
-                        alignment: .topLeading
-                    )
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh cost data") {
+                    environment.refreshCostUsage()
+                }
+                .disabled(costService.isRefreshing)
             }
+            // 4 × 3 summary: durable all-time/peak context first, followed by
+            // matching cost and token timeframes. The flexible gaps use the
+            // full pinned height, instead of leaving one empty band below the
+            // third row.
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 0) {
+                    metric(label: "TOTAL COST", value: formatCost(totals.allTimeCostUSD), highlight: true)
+                    divider
+                    metric(label: "TOTAL TOK", value: formatTokens(totals.allTimeTokens), highlight: true)
+                    divider
+                    metric(label: "PEAK DAY", value: formatCost(totals.peakDayCostUSD))
+                    divider
+                    metric(label: "PEAK TOK DAY", value: formatTokens(totals.peakDayTokens))
+                }
+                Spacer(minLength: 8)
+                HStack(alignment: .top, spacing: 0) {
+                    metric(label: "TODAY", value: formatCost(totals.todayCostUSD))
+                    divider
+                    metric(label: "YESTERDAY", value: formatCost(totals.yesterdayCostUSD))
+                    divider
+                    metric(label: "7-DAY", value: formatCost(totals.last7DaysCostUSD))
+                    divider
+                    metric(label: "30-DAY", value: formatCost(totals.last30DaysCostUSD))
+                }
+                Spacer(minLength: 8)
+                HStack(alignment: .top, spacing: 0) {
+                    metric(label: "TODAY TOK", value: formatTokens(totals.todayTokens))
+                    divider
+                    metric(label: "YESTERDAY TOK", value: formatTokens(totals.yesterdayTokens))
+                    divider
+                    metric(label: "7-DAY TOK", value: formatTokens(totals.last7DaysTokens))
+                    divider
+                    metric(label: "30-DAY TOK", value: formatTokens(totals.last30DaysTokens))
+                }
+            }
+            .frame(maxHeight: .infinity)
         }
-        .frame(height: density.overviewSummaryHeight)
+        .padding(density.cardPadding)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: density.overviewSummaryHeight,
+            idealHeight: density.overviewSummaryHeight,
+            maxHeight: density.overviewSummaryHeight,
+            alignment: .topLeading
+        )
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
     }
 
     private var divider: some View {
@@ -963,6 +946,12 @@ private struct CombinedTotalsRow: View {
     }
 }
 
+/// The Overview's live provider-status grid — the right half of the old header
+/// row, now an arrangeable module.
+///
+/// Pinned to `minHeight` rather than an exact height so it matches the cost
+/// summary beside it at any density but can still grow rather than clip if the
+/// user has enough providers visible to need a third row of tiles.
 private struct OverviewStatusSummaryCard: View {
     let density: Theme.Density
     let minHeight: CGFloat
@@ -1437,7 +1426,7 @@ private struct ProviderDetailView: View {
             PageLayoutColumns(
                 page: page,
                 descriptors: descriptors,
-                config: resolved,
+                arrangement: resolved,
                 // On `auto` the columns keep the exact clamped narrow-left
                 // widths they have always had. The ratio presets take over in
                 // the other two modes — including `compact`, where the ratio
@@ -1560,9 +1549,9 @@ private struct ProviderPageModule: View {
                     .padding(.vertical, 24)
                     .frame(maxWidth: .infinity)
             }
-        case .overviewQuota, .overviewQuotaHistoryAll, .overviewCostAll,
-             .overviewCost, .overviewModelRanking, .overviewYearHeatmap,
-             .overviewActivityHeatmap:
+        case .overviewCostSummary, .overviewStatusSummary, .overviewQuota,
+             .overviewQuotaHistoryAll, .overviewCostAll, .overviewCost,
+             .overviewModelRanking, .overviewYearHeatmap, .overviewActivityHeatmap:
             // Overview families. `PageModuleCatalog` never puts them on a
             // provider page, and a stale identifier is dropped before it gets
             // here, so this is unreachable rather than a fallback.

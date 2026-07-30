@@ -29,6 +29,10 @@ enum PageModuleAccent {
 /// views.
 enum PageModuleKind: Hashable {
     // Overview
+    /// The cost + token headline grid. A module like any other since the
+    /// summary band stopped being hard-coded above the waterfall.
+    case overviewCostSummary
+    case overviewStatusSummary
     case overviewQuota(ToolType)
     case overviewQuotaHistoryAll
     case overviewCostAll
@@ -82,6 +86,10 @@ enum PageModuleCatalog {
         static let analytics: Double = 200
         static let status: Double = 150
         static let placeholder: Double = 90
+        /// The summary cards are pinned to `Theme.Density.overviewSummaryHeight`
+        /// (148 / 178 / 210), so this stand-in only has to be the right order of
+        /// magnitude until the first measurement replaces it.
+        static let summary: Double = 150
     }
 
     // MARK: - Pages
@@ -120,6 +128,34 @@ enum PageModuleCatalog {
         // Order below is the order `OverviewWaterfall` hands the cards to
         // `ColumnMasonryLayout`. The planner's quota/cost pairing depends on
         // it, so the two must not diverge.
+        //
+        // The two summary cards come first and carry the `.summary` phase, which
+        // is what puts them side by side in the top row in `auto` and in their
+        // own band in `compact`. They used to be a hard-coded header row above
+        // the waterfall, which is why they were the two cards on the Overview
+        // the user could not move.
+        result.append(
+            PageModuleDescriptor(
+                id: .custom("overview-summary-cost"),
+                kind: .overviewCostSummary,
+                displayName: "Cost Summary",
+                defaultColumn: 0,
+                accent: .cost,
+                masonryPhase: .summary,
+                fallbackHeight: FallbackHeight.summary
+            )
+        )
+        result.append(
+            PageModuleDescriptor(
+                id: .custom("overview-summary-status"),
+                kind: .overviewStatusSummary,
+                displayName: "Status Summary",
+                defaultColumn: 1,
+                accent: .neutral,
+                masonryPhase: .summary,
+                fallbackHeight: FallbackHeight.summary
+            )
+        )
         for tool in settings.visibleCoreProviderList {
             result.append(
                 PageModuleDescriptor(
@@ -404,10 +440,17 @@ enum PageModuleCatalog {
 
     /// Combined Gemini + AntiGravity cost, surfaced as the single "Gemini"
     /// (Google AI) platform.
+    ///
+    /// Routed through the service's memo rather than combining here: combining
+    /// re-rebases both providers and re-buckets ~720 hourly keys, and this is
+    /// asked for from the module catalog, the Overview's Gemini card, and the
+    /// Gemini page — all within one render pass.
     @MainActor
     static func googleAICostSnapshot(environment: AppEnvironment) -> CostSnapshot {
-        let parts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
-        return CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: parts)
+        environment.costService.combinedSnapshot(
+            of: ToolType.googleAIPair,
+            labelledAs: .antigravity
+        )
     }
 
     /// Cost providers rendered as their own per-provider card on the Overview.
@@ -419,25 +462,46 @@ enum PageModuleCatalog {
         }
     }
 
-    /// Snapshots feeding the Overview's "All providers" rollups.
+    /// Every cross-provider rollup the Overview's "all providers" cards need,
+    /// as one memoized value: the per-provider snapshots, the combined daily
+    /// history, heatmap, model ranking and combined snapshot.
+    ///
+    /// One call per render pass, and the answer is cached in
+    /// `CostUsageService` until the next cost refresh or the next local day.
+    /// The Overview used to derive these four separate times per `body` — once
+    /// inside the module catalog, once for the context, once for the
+    /// all-providers cost card and once for the Gemini card — each of which
+    /// re-rebased every provider's whole daily history.
     @MainActor
-    static func overviewCostSnapshots(
+    static func overviewRollup(
         environment: AppEnvironment,
         settings: AppSettings
-    ) -> [CostSnapshot] {
-        var snaps = overviewCostProviders(settings: settings)
-            .compactMap { environment.costService.snapshot(for: $0) }
-        if settings.isCoreProviderVisible(.gemini) {
-            let googleAI = googleAICostSnapshot(environment: environment)
-            if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
-        }
-        return snaps
+    ) -> CostRollup {
+        environment.costService.rollup(
+            individualTools: overviewCostProviders(settings: settings),
+            // The Gemini group is labelled `.antigravity` for the same reason
+            // `googleAICostSnapshot` is: AntiGravity is the live Google usage
+            // source, and both call sites must land on the same cached snapshot.
+            groups: settings.isCoreProviderVisible(.gemini)
+                ? [CostSnapshotGroup(label: .antigravity, tools: ToolType.googleAIPair)]
+                : [],
+            labelledAs: .codex
+        )
     }
 
+    /// Whether the Overview has any cost data at all.
+    ///
+    /// Answered from raw file counts, never from a rollup: `jsonlFilesFound`
+    /// survives rebasing and combining untouched, so the question that decides
+    /// whether the cost and analytics modules exist costs a handful of
+    /// dictionary lookups instead of a full cross-provider combine.
     @MainActor
     static func hasCostData(environment: AppEnvironment, settings: AppSettings) -> Bool {
-        overviewCostSnapshots(environment: environment, settings: settings)
-            .contains { $0.jsonlFilesFound > 0 }
+        var tools = overviewCostProviders(settings: settings)
+        if settings.isCoreProviderVisible(.gemini) {
+            tools.append(contentsOf: ToolType.googleAIPair)
+        }
+        return environment.costService.hasJSONLFiles(in: tools)
     }
 
     // MARK: - Default configuration
@@ -498,5 +562,27 @@ enum PageModuleCatalog {
     /// design; the Overview balances two equal columns.
     static func defaultRatio(for page: PageLayoutPageID) -> PageColumnRatio {
         page.isOverview ? .equal : .narrowWide
+    }
+
+    // MARK: - Default segmentation
+
+    /// The bands `compact` packs one at a time when the user has not chosen a
+    /// segmentation of their own.
+    ///
+    /// Derived from the modules' `masonryPhase`, so the grouping the Overview
+    /// reads in is the grouping `compact` respects — this is the whole reason a
+    /// packed Overview no longer slots a heatmap between two quota cards. The
+    /// policy itself is `PageLayoutSegments.defaultSegments`; this is the
+    /// adapter from the catalog's descriptors to it.
+    static func defaultSegments(
+        for page: PageLayoutPageID,
+        descriptors: [PageModuleDescriptor]
+    ) -> [[PageLayoutModuleID]] {
+        PageLayoutSegments.defaultSegments(
+            modules: descriptors.map {
+                PageLayoutSegments.Module(id: $0.id, phase: $0.masonryPhase.corePhase)
+            },
+            page: page
+        )
     }
 }

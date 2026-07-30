@@ -36,6 +36,94 @@ public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable
     }
 }
 
+/// Which signal decides the color of a menu-bar percentage.
+///
+/// Declaration order is the Settings picker order, so the default sits first.
+public enum MenuBarColorBasis: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Color by the bucket's pace forecast: whether the quota is projected to
+    /// survive until it refills, and whether a chunk of it is projected to go
+    /// unused.
+    case forecast
+    /// Color by the displayed percentage alone, against fixed thresholds.
+    case actual
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .forecast: return "Forecast"
+        case .actual: return "Actual"
+        }
+    }
+
+    /// Spelled out for the Settings caption: the menu bar has no room for a
+    /// legend, and blue is the one color whose meaning nobody can guess.
+    public var detail: String {
+        switch self {
+        case .forecast:
+            return "Green projected to last · blue a chunk will likely go unused · "
+                + "orange may run short · red projected to run out. "
+                + "Falls back to the percentage while a quota has too little history to forecast."
+        case .actual:
+            return "Colored by the displayed percentage alone, ignoring the forecast."
+        }
+    }
+}
+
+/// The semantic color one menu-bar percentage should be painted in.
+///
+/// Kept as a value rather than a platform color so the thresholds and the
+/// verdict mapping are testable without AppKit; `StatusItemController` owns the
+/// `NSColor` translation.
+public enum MenuBarPercentColor: Equatable, Sendable {
+    case healthy
+    case surplus
+    case watch
+    case risk
+
+    /// Resolves the color for one rendered percentage.
+    ///
+    /// `verdict` is `nil` when the bucket has no forecast at all (no account,
+    /// no observations yet) and `.learning` while the forecast is still
+    /// gathering evidence. Both fall back to the `.actual` thresholds on
+    /// purpose: the menu bar shows one colored number with no legend and no
+    /// room for an explanation, so a distinct "no opinion" shade would read as
+    /// a broken app rather than as a forecast that has not converged.
+    public static func resolve(
+        basis: MenuBarColorBasis,
+        verdict: QuotaPaceForecast.Verdict?,
+        percent: Double,
+        displayMode: DisplayMode
+    ) -> MenuBarPercentColor {
+        guard basis == .forecast, let verdict else {
+            return threshold(percent: percent, displayMode: displayMode)
+        }
+        switch verdict {
+        case .enough: return .healthy
+        case .surplus: return .surplus
+        case .watch: return .watch
+        case .atRisk: return .risk
+        case .learning: return threshold(percent: percent, displayMode: displayMode)
+        }
+    }
+
+    /// The pre-forecast thresholds, unchanged so `.actual` is exact parity with
+    /// what the menu bar has always shown. Never yields `.surplus`: an isolated
+    /// percentage cannot tell whether capacity is going to waste.
+    private static func threshold(percent: Double, displayMode: DisplayMode) -> MenuBarPercentColor {
+        switch displayMode {
+        case .remaining:
+            if percent < 10 { return .risk }
+            if percent < 30 { return .watch }
+            return .healthy
+        case .used:
+            if percent >= 90 { return .risk }
+            if percent >= 70 { return .watch }
+            return .healthy
+        }
+    }
+}
+
 public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     public var kind: MenuBarItemKind
     public var isVisible: Bool

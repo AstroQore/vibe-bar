@@ -87,6 +87,43 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         XCTAssertLessThan(points[0].slotStart, points[1].slotStart)
     }
 
+    /// The batch read exists so `QuotaService` can republish every bucket of an
+    /// account in one main-actor tick instead of one per bucket. It has to agree
+    /// with the single-bucket read exactly, stay scoped to the account, and omit
+    /// buckets it has nothing for.
+    func testBatchPointsMatchPerBucketReadsAndStayScopedToTheAccount() async {
+        let store = UsageFillTimelineStore(fileURL: tempURL)
+        let base = Date(timeIntervalSince1970: 1_780_000_000)
+        await store.observe(quota(buckets: [
+            bucket(id: "five_hour", used: 41, windowSeconds: 18_000),
+            bucket(id: "weekly", used: 12)
+        ]), now: base)
+        await store.observe(quota(buckets: [
+            bucket(id: "five_hour", used: 48, windowSeconds: 18_000),
+            bucket(id: "weekly", used: 14)
+        ]), now: base.addingTimeInterval(4_000))
+        await store.observe(quota(
+            accountId: "acct-2",
+            buckets: [bucket(id: "weekly", used: 90)]
+        ), now: base)
+
+        let batch = await store.points(
+            accountId: "acct-1",
+            bucketIds: ["five_hour", "weekly", "never_seen"]
+        )
+        let fiveHour = await store.points(accountId: "acct-1", bucketId: "five_hour")
+        let weekly = await store.points(accountId: "acct-1", bucketId: "weekly")
+        XCTAssertEqual(batch["five_hour"], fiveHour)
+        XCTAssertEqual(batch["weekly"], weekly)
+        XCTAssertNil(batch["never_seen"])
+        XCTAssertEqual(batch.count, 2)
+        XCTAssertEqual(batch["weekly"]?.map(\.usedPercent), [12, 14])
+        XCTAssertFalse(batch.values.flatMap { $0 }.contains { $0.usedPercent == 90 })
+
+        let empty = await store.points(accountId: "acct-1", bucketIds: [])
+        XCTAssertTrue(empty.isEmpty)
+    }
+
     func testMiscProvidersAreDropped() async {
         let store = UsageFillTimelineStore(fileURL: tempURL)
         await store.observe(quota(tool: .zai, buckets: [bucket(id: "weekly", used: 50)]))
