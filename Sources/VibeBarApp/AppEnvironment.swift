@@ -43,6 +43,11 @@ final class AppEnvironment: ObservableObject {
     private var browserGeminiCookieImportInFlight = false
     private var browserGrokCookieImportInFlight = false
     private var pricingRefreshTask: Task<Void, Never>?
+    private var webCookiePresenceProbedAt: Date?
+    /// Long enough to fold the probes of one refresh burst — the Gemini card
+    /// refreshes two providers back to back — and short enough that a cookie
+    /// change made outside Vibe Bar still shows up on the next manual refresh.
+    private static let webCookiePresenceTTL: TimeInterval = 5
 
     init() {
         let settings = SettingsStore()
@@ -102,7 +107,12 @@ final class AppEnvironment: ObservableObject {
         self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
         self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
         self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
-        self.routeHealth = PrimaryProviderRouteHealthChecker.checkAll()
+        // Filled in by the async probe at the end of `init`. Checking all
+        // twelve routes synchronously here meant launch blocked on a dozen
+        // Keychain round trips plus a `/bin/ps` spawn before the menu bar item
+        // even appeared; the surfaces that read this treat a missing route as
+        // "not checked yet", which for the first few milliseconds is the truth.
+        self.routeHealth = [:]
 
         let scheduler = QuotaRefreshScheduler(
             service: service,
@@ -243,6 +253,7 @@ final class AppEnvironment: ObservableObject {
                 }
             }
         }
+        recheckPrimaryRouteHealth()
         importPersistentClaudeCookiesAndRefreshIfNeeded()
         importClaudeBrowserCookiesAndRefreshIfNeeded()
         importPersistentOpenAICookiesAndRefreshIfNeeded()
@@ -294,10 +305,10 @@ final class AppEnvironment: ObservableObject {
     }
 
     func reloadProviderCredentialsAndRefresh() {
-        hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
-        hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
-        hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
-        hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+        // Forced: this is the path a login, a sign-out, or an explicit "reload
+        // credentials" takes, so a cached presence reading would be exactly the
+        // wrong answer.
+        refreshWebCookiePresence(force: true)
         recheckPrimaryRouteHealth()
         importPersistentOpenAICookiesAndRefreshIfNeeded()
         importOpenAIBrowserCookiesAndRefreshIfNeeded()
@@ -337,10 +348,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func refresh(_ tool: ToolType) {
-        hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
-        hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
-        hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
-        hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+        refreshWebCookiePresence()
         recheckPrimaryRouteHealth(provider: tool)
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
@@ -364,14 +372,59 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
+    /// Re-probe the credential routes behind one provider, or all of them.
+    ///
+    /// Runs off the main actor: every route reads a credential file, a Keychain
+    /// item, or — for AntiGravity — spawns `/bin/ps` and blocks on it, and this
+    /// is reached from every refresh, including the one a popover open triggers.
+    /// The results land back in one published assignment.
     func recheckPrimaryRouteHealth(provider: ToolType? = nil) {
         let routes = provider.map(PrimaryProviderRoute.routes(for:)) ?? PrimaryProviderRoute.allCases
-        var next = routeHealth
-        let now = Date()
-        for route in routes {
-            next[route] = PrimaryProviderRouteHealthChecker.check(route, now: now)
+        Task { @MainActor [weak self] in
+            let checked = await PrimaryProviderRouteHealthChecker.checkOffActor(routes, now: Date())
+            guard let self else { return }
+            self.routeHealth = self.routeHealth.merging(checked) { _, fresh in fresh }
         }
-        routeHealth = next
+    }
+
+    /// Whether each provider has a saved web session cookie.
+    ///
+    /// Four Keychain round trips, and `SecureCookieHeaderStore` only caches
+    /// *found* items — a provider the user has never signed into re-queries the
+    /// Keychain every single time. That used to happen on the main actor once
+    /// per refresh and once per *provider* refresh, so opening the Gemini card
+    /// alone paid for eight of them. Probed off the actor, and reused inside one
+    /// refresh burst so the Gemini pair does not probe twice.
+    private func refreshWebCookiePresence(force: Bool = false) {
+        let now = Date()
+        if !force,
+           let probedAt = webCookiePresenceProbedAt,
+           now.timeIntervalSince(probedAt) < Self.webCookiePresenceTTL {
+            return
+        }
+        webCookiePresenceProbedAt = now
+        Task { @MainActor [weak self] in
+            let presence = await Task.detached(priority: .userInitiated) {
+                WebCookiePresence(
+                    claude: ClaudeWebCookieStore.hasCookieHeader(),
+                    openAI: OpenAIWebCookieStore.hasCookieHeader(),
+                    gemini: GeminiWebCookieStore.hasCookieHeader(),
+                    grok: GrokWebCookieStore.hasCookieHeader()
+                )
+            }.value
+            guard let self else { return }
+            self.hasClaudeWebCookies = presence.claude
+            self.hasOpenAIWebCookies = presence.openAI
+            self.hasGeminiWebCookies = presence.gemini
+            self.hasGrokWebCookies = presence.grok
+        }
+    }
+
+    private struct WebCookiePresence: Sendable {
+        let claude: Bool
+        let openAI: Bool
+        let gemini: Bool
+        let grok: Bool
     }
 
     func showSettingsWindow() {
@@ -789,6 +842,27 @@ final class AppEnvironment: ObservableObject {
     /// at the next refresh anyway.
     private static let routineBudgetFailureCooldown: TimeInterval = 3600
 
+    /// How long the probe waits when the popover is on screen.
+    ///
+    /// Every Claude refresh reaches this, and opening the popover triggers a
+    /// refresh — so the WebView used to boot in the same run-loop turns the
+    /// popover was laying itself out in, on the main actor, next to the
+    /// rendering. Waiting lets the refresh settle first. Deliberately a delay
+    /// rather than "skip while visible": the routines bucket only gets its
+    /// "used / limit" label from this probe, and a user who leaves the popover
+    /// open would otherwise never see it.
+    private static let routineBudgetVisiblePopoverDelay: TimeInterval = 2
+
+    /// Set by `StatusItemController` when the popover is shown or dismissed.
+    /// Deliberately not `@Published`: nothing renders from it, and publishing it
+    /// would invalidate every view observing this object at the exact moment the
+    /// popover is trying to appear.
+    private(set) var isPopoverVisible = false
+
+    func setPopoverVisible(_ isVisible: Bool) {
+        isPopoverVisible = isVisible
+    }
+
     private func scheduleClaudeRoutineBudgetPatchIfNeeded(for quota: AccountQuota) {
         guard quota.tool == .claude, !settingsStore.mockEnabled else { return }
         guard let routine = quota.bucket(id: "daily_routines") else { return }
@@ -806,9 +880,13 @@ final class AppEnvironment: ObservableObject {
         routineBudgetInFlightAccountIds.insert(quota.accountId)
         lastRoutineBudgetAttemptByAccount[quota.accountId] = now
 
+        let deferBy = isPopoverVisible ? Self.routineBudgetVisiblePopoverDelay : 0
         Task { @MainActor [weak self, accountId = quota.accountId] in
             guard let self else { return }
             defer { self.routineBudgetInFlightAccountIds.remove(accountId) }
+            if deferBy > 0 {
+                try? await Task.sleep(for: .seconds(deferBy))
+            }
             guard let result = await ClaudeRoutineBudgetWebViewFetcher.fetch() else { return }
             self.quotaService.replaceBucket(self.routinesBucket(from: result), for: accountId)
             // Success: clear the cooldown so a future cookie rotation can

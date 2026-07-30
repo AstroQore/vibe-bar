@@ -375,28 +375,86 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         )
     }
 
-    private struct ActivityProfile {
-        let heatmap: UsageHeatmap?
+    /// Time-of-week activity weighting, evaluated as the integral of a per-hour
+    /// weight curve.
+    ///
+    /// `weight(from:to:)` is asked for once per completed cycle **and** once per
+    /// stored observation by `historicalRemainingUsage`, and the profile is
+    /// rebuilt per bucket. Walking the window hour by hour therefore cost two
+    /// `Calendar` round trips per hour of every window it was asked about —
+    /// six figures of them for a monthly bucket, sometimes from inside a
+    /// SwiftUI `body`. This version answers a query with integer arithmetic
+    /// against a table built once per profile.
+    ///
+    /// **The hour grid, and where it approximates.** Blocks are laid out
+    /// uniformly 3600s apart, phased so a boundary lands on a local hour
+    /// boundary at the table's anchor. That is exact, not approximate, for
+    /// every zone whose DST shift is a whole hour: changing the UTC offset by
+    /// 3600 leaves `offset % 3600` alone, so local hour boundaries stay on the
+    /// same epoch grid and only their (weekday, hour) *labels* move — which is
+    /// all the weight depends on. A spring-forward day simply has no block
+    /// labelled 02:00, and a fall-back day has two labelled 01:00; both are the
+    /// honest reading of a weekday×hour habit curve. Only the half-hour DST
+    /// oddities (Lord Howe Island) shift the grid: there a block straddles two
+    /// local hours across the transition and takes the weight of the hour its
+    /// start falls in — at most half an hour of misattribution, twice a year,
+    /// on a curve whose entire job is to say "this person tends to work around
+    /// this time of week".
+    final class ActivityProfile {
         let calendar: Calendar
-        let maximumCell: Double
+
+        /// Flattened 7×24 weights, or `nil` when the heatmap carries no usable
+        /// shape and every hour weighs the same. The uniform case then needs no
+        /// table at all — the integral is just the elapsed duration.
+        private let cellWeights: [Double]?
+        /// Offset of every block boundary from the epoch, in `[0, 3600)`.
+        /// Resolved on the first table build and then frozen, so growing the
+        /// table never moves the grid underneath cached values.
+        private var phase: TimeInterval?
+        private var table: HourTable?
+
+        /// Widest span one table may cover. Real spans are bounded by the
+        /// retention horizon (weeks), so this only exists to keep a corrupt
+        /// stored date from asking for a hundred-million-entry array; wider
+        /// queries are answered chunk by chunk instead.
+        private static let maximumTableSeconds: TimeInterval = 400 * 86_400
+        /// Slack added around a requested span so the usual sequence of queries
+        /// (this window, then each older cycle) grows the table a few times
+        /// rather than once per query.
+        private static let tablePaddingSeconds: TimeInterval = 2 * 86_400
 
         init(heatmap: UsageHeatmap?, calendar: Calendar) {
-            self.heatmap = heatmap
             self.calendar = calendar
-            self.maximumCell = Double(heatmap?.cells.flatMap { $0 }.max() ?? 0)
+            let maximum = Double(heatmap?.cells.flatMap { $0 }.max() ?? 0)
+            guard let heatmap, heatmap.totalTokens > 0, maximum > 0 else {
+                self.cellWeights = nil
+                return
+            }
+            var weights = [Double](repeating: 1, count: 7 * 24)
+            for weekday in 0..<7 where heatmap.cells.indices.contains(weekday) {
+                let row = heatmap.cells[weekday]
+                for hour in 0..<24 where row.indices.contains(hour) {
+                    let normalized = sqrt(Double(row[hour]) / maximum)
+                    // Laplace-like floor prevents an empty historical cell from
+                    // asserting that future work there is impossible.
+                    weights[weekday * 24 + hour] = 0.15 + normalized * 0.85
+                }
+            }
+            self.cellWeights = weights
         }
 
         func weight(from start: Date, to end: Date) -> Double {
             guard end > start else { return 0 }
-            var cursor = start
+            guard cellWeights != nil else {
+                return end.timeIntervalSince(start) / 3_600
+            }
+            let upper = end.timeIntervalSince1970
+            var lower = start.timeIntervalSince1970
             var total = 0.0
-            while cursor < end {
-                let nextHour = calendar.date(byAdding: .hour, value: 1, to: calendar.dateInterval(of: .hour, for: cursor)?.start ?? cursor)
-                    ?? cursor.addingTimeInterval(3_600)
-                let next = min(end, max(cursor.addingTimeInterval(60), nextHour))
-                let hours = next.timeIntervalSince(cursor) / 3_600
-                total += hourWeight(at: cursor) * hours
-                cursor = next
+            while lower < upper {
+                let chunkEnd = min(upper, lower + Self.maximumTableSeconds)
+                total += table(covering: lower, chunkEnd).integral(from: lower, to: chunkEnd)
+                lower = chunkEnd
             }
             return total
         }
@@ -419,15 +477,148 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             return nil
         }
 
-        private func hourWeight(at date: Date) -> Double {
-            guard let heatmap, heatmap.totalTokens > 0, maximumCell > 0 else { return 1 }
-            let weekday = max(0, min(6, calendar.component(.weekday, from: date) - 1))
-            let hour = max(0, min(23, calendar.component(.hour, from: date)))
-            guard heatmap.cells.indices.contains(weekday), heatmap.cells[weekday].indices.contains(hour) else { return 1 }
-            let normalized = sqrt(Double(heatmap.cells[weekday][hour]) / maximumCell)
-            // Laplace-like floor prevents an empty historical cell from
-            // asserting that future work there is impossible.
-            return 0.15 + normalized * 0.85
+        func hourWeight(at date: Date) -> Double {
+            guard cellWeights != nil else { return 1 }
+            let time = date.timeIntervalSince1970
+            return table(covering: time, time).weight(at: time)
+        }
+
+        // MARK: - Hour table
+
+        /// Per-block weights with prefix sums, so a query costs two block
+        /// lookups and one subtraction whatever its span.
+        private struct HourTable {
+            let phase: TimeInterval
+            let firstIndex: Int
+            let weights: [Double]
+            /// `cumulative[i]` is the total weight, in weight-hours, of the
+            /// blocks `[firstIndex, firstIndex + i)`.
+            let cumulative: [Double]
+
+            func index(for time: TimeInterval) -> Int {
+                Int(((time - phase) / 3_600).rounded(.down))
+            }
+
+            func blockStart(_ index: Int) -> TimeInterval {
+                Double(index) * 3_600 + phase
+            }
+
+            func covers(_ time: TimeInterval) -> Bool {
+                let index = index(for: time) - firstIndex
+                return index >= 0 && index < weights.count
+            }
+
+            func weight(at time: TimeInterval) -> Double {
+                let index = index(for: time) - firstIndex
+                guard weights.indices.contains(index) else { return 1 }
+                return weights[index]
+            }
+
+            func integral(from lower: TimeInterval, to upper: TimeInterval) -> Double {
+                guard upper > lower else { return 0 }
+                let lowerBlock = index(for: lower)
+                let upperBlock = index(for: upper)
+                if lowerBlock == upperBlock {
+                    return weight(at: lower) * (upper - lower) / 3_600
+                }
+                var total = weight(at: lower) * (blockStart(lowerBlock + 1) - lower) / 3_600
+                total += weight(at: upper) * (upper - blockStart(upperBlock)) / 3_600
+                let from = lowerBlock + 1 - firstIndex
+                let to = upperBlock - firstIndex
+                if to > from, cumulative.indices.contains(from), cumulative.indices.contains(to) {
+                    total += cumulative[to] - cumulative[from]
+                }
+                return total
+            }
+        }
+
+        private func table(covering lower: TimeInterval, _ upper: TimeInterval) -> HourTable {
+            if let table, table.covers(lower), table.covers(upper) { return table }
+            let phase = self.phase ?? Self.hourPhase(
+                for: Date(timeIntervalSince1970: lower),
+                timeZone: calendar.timeZone
+            )
+            self.phase = phase
+
+            var from = min(lower, upper) - Self.tablePaddingSeconds
+            var to = max(lower, upper) + Self.tablePaddingSeconds
+            // Grow to cover what the table already answered so a query that
+            // walks backwards through history does not thrash the build.
+            if let table {
+                let existingFrom = table.blockStart(table.firstIndex)
+                let existingTo = table.blockStart(table.firstIndex + table.weights.count)
+                if max(to, existingTo) - min(from, existingFrom) <= Self.maximumTableSeconds {
+                    from = min(from, existingFrom)
+                    to = max(to, existingTo)
+                }
+            }
+            let built = buildTable(phase: phase, from: from, to: to)
+            table = built
+            return built
+        }
+
+        private func buildTable(phase: TimeInterval, from: TimeInterval, to: TimeInterval) -> HourTable {
+            let firstIndex = Int(((from - phase) / 3_600).rounded(.down))
+            let lastIndex = Int(((to - phase) / 3_600).rounded(.down))
+            let count = max(1, lastIndex - firstIndex + 1)
+            let cells = cellWeights ?? [Double](repeating: 1, count: 7 * 24)
+
+            let timeZone = calendar.timeZone
+            let anchorStart = Double(firstIndex) * 3_600 + phase
+            let anchorDate = Date(timeIntervalSince1970: anchorStart)
+            var offset = timeZone.secondsFromGMT(for: anchorDate)
+            // Weekday numbering is read off the calendar once and then advanced
+            // by whole days, instead of hardcoding "epoch day zero was a
+            // Thursday" — a non-Gregorian calendar still lands on the heatmap
+            // row it was written with.
+            let anchorWeekday = max(0, min(6, calendar.component(.weekday, from: anchorDate) - 1))
+            let anchorDay = Self.floorDiv(Int(anchorStart.rounded(.down)) + offset, 86_400)
+            var nextTransition = timeZone
+                .nextDaylightSavingTimeTransition(after: anchorDate)?
+                .timeIntervalSince1970
+
+            var weights = [Double](repeating: 1, count: count)
+            var cumulative = [Double](repeating: 0, count: count + 1)
+            for step in 0..<count {
+                let blockStart = Double(firstIndex + step) * 3_600 + phase
+                while let transition = nextTransition, blockStart >= transition {
+                    offset = timeZone.secondsFromGMT(for: Date(timeIntervalSince1970: blockStart))
+                    nextTransition = timeZone
+                        .nextDaylightSavingTimeTransition(after: Date(timeIntervalSince1970: transition))?
+                        .timeIntervalSince1970
+                }
+                let local = Int(blockStart.rounded(.down)) + offset
+                let hour = Self.floorMod(Self.floorDiv(local, 3_600), 24)
+                let weekday = Self.floorMod(
+                    anchorWeekday + Self.floorDiv(local, 86_400) - anchorDay,
+                    7
+                )
+                weights[step] = cells[weekday * 24 + hour]
+                cumulative[step + 1] = cumulative[step] + weights[step]
+            }
+            return HourTable(
+                phase: phase,
+                firstIndex: firstIndex,
+                weights: weights,
+                cumulative: cumulative
+            )
+        }
+
+        /// Where the local hour boundaries sit on the epoch grid, for the
+        /// offset in force at `date`. Zones offset by a half or quarter hour
+        /// (India, Nepal) land on a non-zero phase; that is the point.
+        private static func hourPhase(for date: Date, timeZone: TimeZone) -> TimeInterval {
+            TimeInterval(floorMod(-timeZone.secondsFromGMT(for: date), 3_600))
+        }
+
+        private static func floorDiv(_ value: Int, _ divisor: Int) -> Int {
+            let quotient = value / divisor
+            return (value % divisor != 0 && (value < 0) != (divisor < 0)) ? quotient - 1 : quotient
+        }
+
+        private static func floorMod(_ value: Int, _ divisor: Int) -> Int {
+            let remainder = value % divisor
+            return remainder < 0 ? remainder + divisor : remainder
         }
     }
 

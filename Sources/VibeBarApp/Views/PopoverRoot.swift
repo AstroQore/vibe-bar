@@ -402,19 +402,23 @@ private struct OverviewWaterfall: View {
             environment: environment,
             settings: settings
         )
-        let snapshots = PageModuleCatalog.overviewCostSnapshots(
+        // One rollup for the whole pass. Every aggregation below used to be
+        // re-derived per card — and the module catalog above derived them a
+        // fourth time — which is why an unrelated quota publish could cost the
+        // Overview several full cross-provider combines per re-render.
+        let rollup = PageModuleCatalog.overviewRollup(
             environment: environment,
             settings: settings
         )
         let context = OverviewModuleContext(
-            history: CostSnapshotAggregator.combinedDailyHistory(snapshots),
-            heatmap: CostSnapshotAggregator.combinedHeatmap(snapshots),
-            models: CostSnapshotAggregator.combinedModelBreakdowns(snapshots),
-            combinedSnapshot: CostSnapshotAggregator.combinedSnapshot(
-                tool: .codex,
-                snapshots: snapshots
-            ),
-            googleAISnapshot: PageModuleCatalog.googleAICostSnapshot(environment: environment)
+            history: rollup.dailyHistory,
+            heatmap: rollup.heatmap,
+            models: rollup.modelBreakdowns,
+            combinedSnapshot: rollup.combinedSnapshot,
+            // Present exactly when the Gemini card is: the rollup only carries
+            // the group when the provider is visible, and the module that reads
+            // this exists under the same condition.
+            googleAISnapshot: rollup.groupSnapshots.first ?? .empty(tool: .antigravity)
         )
 
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
@@ -801,23 +805,10 @@ private struct CombinedTotalsRow: View {
         let visibleCostProviders = ToolType.costAwareProviders.filter {
             settingsStore.settings.isCoreProviderVisible($0)
         }
-        let snapshots = visibleCostProviders
-            .compactMap { environment.costService.snapshot(for: $0) }
-        let dailyHistory = CostSnapshotAggregator.combinedDailyHistory(snapshots)
-        let totalCost = snapshots.reduce(0.0) { $0 + $1.allTimeCostUSD }
-        let todayCost = snapshots.reduce(0.0) { $0 + $1.todayCostUSD }
-        let yesterdayCost = snapshots.reduce(0.0) { $0 + CostTimeframe.yesterday.cost(in: $1) }
-        let weekCost = snapshots.reduce(0.0) { $0 + $1.last7DaysCostUSD }
-        let monthCost = snapshots.reduce(0.0) { $0 + $1.last30DaysCostUSD }
-        let totalTokens = snapshots.reduce(0) { $0 + $1.allTimeTokens }
-        let todayTokens = snapshots.reduce(0) { $0 + $1.todayTokens }
-        let yesterdayTokens = snapshots.reduce(0) { $0 + CostTimeframe.yesterday.tokens(in: $1) }
-        let weekTokens = snapshots.reduce(0) { $0 + $1.last7DaysTokens }
-        let monthTokens = snapshots.reduce(0) { $0 + $1.last30DaysTokens }
-        // Cost and token peaks are independent: the most expensive day
-        // is not necessarily the day with the highest token volume.
-        let peakDayCost = CostSnapshotAggregator.peakDailyCost(in: dailyHistory)
-        let peakTokenDayTokens = CostSnapshotAggregator.peakDailyTokens(in: dailyHistory)
+        // Ten reduce passes, a per-provider calendar scan for "yesterday", and
+        // two peak scans over the combined daily history — all of it derived
+        // once per cost refresh in Core rather than once per render pass here.
+        let totals = costService.totals(of: visibleCostProviders)
         GeometryReader { geometry in
             let spacing = density.interSectionSpacing
             let availableWidth = max(0, geometry.size.width - spacing)
@@ -850,33 +841,33 @@ private struct CombinedTotalsRow: View {
                     // instead of leaving one empty band below the third row.
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(alignment: .top, spacing: 0) {
-                            metric(label: "TOTAL COST", value: formatCost(totalCost), highlight: true)
+                            metric(label: "TOTAL COST", value: formatCost(totals.allTimeCostUSD), highlight: true)
                             divider
-                            metric(label: "TOTAL TOK", value: formatTokens(totalTokens), highlight: true)
+                            metric(label: "TOTAL TOK", value: formatTokens(totals.allTimeTokens), highlight: true)
                             divider
-                            metric(label: "PEAK DAY", value: formatCost(peakDayCost))
+                            metric(label: "PEAK DAY", value: formatCost(totals.peakDayCostUSD))
                             divider
-                            metric(label: "PEAK TOK DAY", value: formatTokens(peakTokenDayTokens))
+                            metric(label: "PEAK TOK DAY", value: formatTokens(totals.peakDayTokens))
                         }
                         Spacer(minLength: 8)
                         HStack(alignment: .top, spacing: 0) {
-                            metric(label: "TODAY", value: formatCost(todayCost))
+                            metric(label: "TODAY", value: formatCost(totals.todayCostUSD))
                             divider
-                            metric(label: "YESTERDAY", value: formatCost(yesterdayCost))
+                            metric(label: "YESTERDAY", value: formatCost(totals.yesterdayCostUSD))
                             divider
-                            metric(label: "7-DAY", value: formatCost(weekCost))
+                            metric(label: "7-DAY", value: formatCost(totals.last7DaysCostUSD))
                             divider
-                            metric(label: "30-DAY", value: formatCost(monthCost))
+                            metric(label: "30-DAY", value: formatCost(totals.last30DaysCostUSD))
                         }
                         Spacer(minLength: 8)
                         HStack(alignment: .top, spacing: 0) {
-                            metric(label: "TODAY TOK", value: formatTokens(todayTokens))
+                            metric(label: "TODAY TOK", value: formatTokens(totals.todayTokens))
                             divider
-                            metric(label: "YESTERDAY TOK", value: formatTokens(yesterdayTokens))
+                            metric(label: "YESTERDAY TOK", value: formatTokens(totals.yesterdayTokens))
                             divider
-                            metric(label: "7-DAY TOK", value: formatTokens(weekTokens))
+                            metric(label: "7-DAY TOK", value: formatTokens(totals.last7DaysTokens))
                             divider
-                            metric(label: "30-DAY TOK", value: formatTokens(monthTokens))
+                            metric(label: "30-DAY TOK", value: formatTokens(totals.last30DaysTokens))
                         }
                     }
                     .frame(maxHeight: .infinity)

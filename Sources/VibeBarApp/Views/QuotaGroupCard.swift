@@ -325,11 +325,36 @@ struct QuotaGroupCard: View {
                     title: module.title,
                     buckets: module.groupBuckets
                 ),
+                fillPointsByBucket: fillPointsByBucket(
+                    accountId: accountId,
+                    buckets: module.groupBuckets
+                ),
                 density: density,
                 isEmbedded: true
             )
             .equatable()
         }
+    }
+
+    /// The chart's fill lanes, read here instead of inside the chart.
+    ///
+    /// This card already observes `QuotaService`, so pulling the lanes out here
+    /// costs nothing extra — while an `@EnvironmentObject` read *inside* the
+    /// `.equatable()` chart invalidated it directly on every service publish,
+    /// straight past the diff that is supposed to keep a refresh from
+    /// re-segmenting thousands of marks.
+    private func fillPointsByBucket(
+        accountId: String,
+        buckets: [QuotaBucket]
+    ) -> [String: [FillTimelinePoint]] {
+        var lanes: [String: [FillTimelinePoint]] = [:]
+        for bucket in buckets {
+            let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
+            if let points = quotaService.observationsByAccountBucket[key] {
+                lanes[bucket.id] = points
+            }
+        }
+        return lanes
     }
 
     // MARK: - Rows

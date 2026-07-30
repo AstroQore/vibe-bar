@@ -180,7 +180,9 @@ public final class QuotaService: ObservableObject {
         lastSuccessByAccount.removeValue(forKey: accountId)
         lastErrorByAccount.removeValue(forKey: accountId)
         lastUpdatedByAccount.removeValue(forKey: accountId)
-        try? QuotaCacheStore.delete(accountId: accountId)
+        // Through the writer so a coalesced write for this account cannot land
+        // after the delete and resurrect the file.
+        Task { await QuotaCacheWriter.shared.delete(accountId: accountId) }
     }
 
     public func replaceBucket(_ bucket: QuotaBucket, for accountId: String) {
@@ -215,11 +217,6 @@ public final class QuotaService: ObservableObject {
         lastSuccessByAccount[success.accountId] = success
         lastErrorByAccount.removeValue(forKey: success.accountId)
         lastUpdatedByAccount[success.accountId] = success.queriedAt
-        do {
-            try QuotaCacheStore.save(success)
-        } catch {
-            SafeLog.warn("Saving quota cache failed: \(SafeLog.sanitize(error.localizedDescription))")
-        }
 
         // Store both the point observations used by the personal forecast and
         // the inferred completed cycles used by reset history. Both paths
@@ -227,6 +224,10 @@ public final class QuotaService: ObservableObject {
         let retention = retentionProvider()
         let quota = success
         Task { [weak self] in
+            // Every step below is deliberately actor work rather than main-actor
+            // work: the cache write is an encode plus an atomic file write, and
+            // the two stores parse and prune their whole file.
+            await QuotaCacheWriter.shared.save(quota)
             await UsageFillTimelineStore.shared.observe(quota, retentionDays: retention)
             await SubscriptionHistoryStore.shared.observe(quota, retentionDays: retention)
             await self?.refreshObservations(for: quota)
@@ -248,16 +249,21 @@ public final class QuotaService: ObservableObject {
         now: Date = Date()
     ) async {
         let context = activityContextProvider?(quota.tool) ?? .empty
-        let observations = quota.buckets.compactMap { bucket -> BucketForecastObservation? in
-            guard let forecast = paceForecast(
-                accountId: quota.accountId,
+        let inputs = quota.buckets.map { bucket in
+            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
+            return ForecastInput(
                 bucket: bucket,
-                activityHeatmap: context.heatmap,
-                dailyActivity: context.dailyActivity,
-                now: now
-            ) else { return nil }
-            return BucketForecastObservation(bucket: bucket, forecast: forecast)
+                observations: observationsByAccountBucket[key] ?? [],
+                cycles: historyByAccountBucket[key] ?? []
+            )
         }
+        // Snapshot the inputs here, blend them there: the forecast is pure value
+        // math, but it is a full blend per bucket over every stored observation,
+        // and a thirty-bucket account paid for all of it on the main actor while
+        // the popover was trying to draw.
+        let observations = await Task.detached(priority: .utility) {
+            Self.forecastObservations(inputs: inputs, context: context, now: now)
+        }.value
         guard !observations.isEmpty else { return }
         await UsageForecastTimelineStore.shared.observe(
             observations,
@@ -266,6 +272,32 @@ public final class QuotaService: ObservableObject {
             now: now,
             retentionDays: retentionDays
         )
+    }
+
+    /// One bucket's forecast inputs, snapshotted from main-actor state so the
+    /// blend itself can run off it.
+    private struct ForecastInput: Sendable {
+        let bucket: QuotaBucket
+        let observations: [FillTimelinePoint]
+        let cycles: [SubscriptionWindowSample]
+    }
+
+    private nonisolated static func forecastObservations(
+        inputs: [ForecastInput],
+        context: QuotaActivityContext,
+        now: Date
+    ) -> [BucketForecastObservation] {
+        inputs.compactMap { input in
+            guard let forecast = QuotaPaceForecast.compute(
+                bucket: input.bucket,
+                observations: input.observations,
+                cycles: input.cycles,
+                activityHeatmap: context.heatmap,
+                dailyActivity: context.dailyActivity,
+                now: now
+            ) else { return nil }
+            return BucketForecastObservation(bucket: input.bucket, forecast: forecast)
+        }
     }
 
     private func applyInitialObservations(_ points: [FillTimelinePoint]) {
@@ -277,15 +309,28 @@ public final class QuotaService: ObservableObject {
         observationsByAccountBucket = grouped.mapValues { $0.sorted { $0.sampledAt < $1.sampledAt } }
     }
 
+    /// Republish every bucket's observation lane for one account.
+    ///
+    /// Gathering across the single `await` and applying the result in one
+    /// assignment is load-bearing, not tidiness: this dictionary is
+    /// `@Published`, and the previous shape — one store round trip and one
+    /// assignment per bucket — put every bucket in its own main-actor tick.
+    /// A Claude account with thirty buckets therefore re-rendered the whole
+    /// popover thirty times per refresh, and the all-providers history card
+    /// re-segmented every lane on each of them.
     private func refreshObservations(for quota: AccountQuota) async {
-        for bucket in quota.buckets {
-            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
-            let points = await UsageFillTimelineStore.shared.points(
-                accountId: quota.accountId,
-                bucketId: bucket.id
-            )
-            observationsByAccountBucket[key] = points
+        let bucketIds = quota.buckets.map(\.id)
+        guard !bucketIds.isEmpty else { return }
+        let grouped = await UsageFillTimelineStore.shared.points(
+            accountId: quota.accountId,
+            bucketIds: bucketIds
+        )
+        var updated = observationsByAccountBucket
+        for bucketId in bucketIds {
+            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucketId)
+            updated[key] = grouped[bucketId] ?? []
         }
+        observationsByAccountBucket = updated
     }
 
     private func applyInitialSubscriptionHistory(_ samples: [SubscriptionWindowSample]) {
@@ -310,9 +355,12 @@ public final class QuotaService: ObservableObject {
             let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
             updates[key] = samples
         }
+        // Same one-publish rule as `refreshObservations`.
+        var merged = historyByAccountBucket
         for (key, samples) in updates {
-            historyByAccountBucket[key] = samples
+            merged[key] = samples
         }
+        historyByAccountBucket = merged
     }
 
     private func store(error: QuotaError, for account: AccountIdentity) {

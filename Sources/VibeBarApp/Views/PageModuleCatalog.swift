@@ -404,10 +404,17 @@ enum PageModuleCatalog {
 
     /// Combined Gemini + AntiGravity cost, surfaced as the single "Gemini"
     /// (Google AI) platform.
+    ///
+    /// Routed through the service's memo rather than combining here: combining
+    /// re-rebases both providers and re-buckets ~720 hourly keys, and this is
+    /// asked for from the module catalog, the Overview's Gemini card, and the
+    /// Gemini page — all within one render pass.
     @MainActor
     static func googleAICostSnapshot(environment: AppEnvironment) -> CostSnapshot {
-        let parts = ToolType.googleAIPair.compactMap { environment.costService.snapshot(for: $0) }
-        return CostSnapshotAggregator.combinedSnapshot(tool: .antigravity, snapshots: parts)
+        environment.costService.combinedSnapshot(
+            of: ToolType.googleAIPair,
+            labelledAs: .antigravity
+        )
     }
 
     /// Cost providers rendered as their own per-provider card on the Overview.
@@ -419,25 +426,46 @@ enum PageModuleCatalog {
         }
     }
 
-    /// Snapshots feeding the Overview's "All providers" rollups.
+    /// Every cross-provider rollup the Overview's "all providers" cards need,
+    /// as one memoized value: the per-provider snapshots, the combined daily
+    /// history, heatmap, model ranking and combined snapshot.
+    ///
+    /// One call per render pass, and the answer is cached in
+    /// `CostUsageService` until the next cost refresh or the next local day.
+    /// The Overview used to derive these four separate times per `body` — once
+    /// inside the module catalog, once for the context, once for the
+    /// all-providers cost card and once for the Gemini card — each of which
+    /// re-rebased every provider's whole daily history.
     @MainActor
-    static func overviewCostSnapshots(
+    static func overviewRollup(
         environment: AppEnvironment,
         settings: AppSettings
-    ) -> [CostSnapshot] {
-        var snaps = overviewCostProviders(settings: settings)
-            .compactMap { environment.costService.snapshot(for: $0) }
-        if settings.isCoreProviderVisible(.gemini) {
-            let googleAI = googleAICostSnapshot(environment: environment)
-            if googleAI.jsonlFilesFound > 0 { snaps.append(googleAI) }
-        }
-        return snaps
+    ) -> CostRollup {
+        environment.costService.rollup(
+            individualTools: overviewCostProviders(settings: settings),
+            // The Gemini group is labelled `.antigravity` for the same reason
+            // `googleAICostSnapshot` is: AntiGravity is the live Google usage
+            // source, and both call sites must land on the same cached snapshot.
+            groups: settings.isCoreProviderVisible(.gemini)
+                ? [CostSnapshotGroup(label: .antigravity, tools: ToolType.googleAIPair)]
+                : [],
+            labelledAs: .codex
+        )
     }
 
+    /// Whether the Overview has any cost data at all.
+    ///
+    /// Answered from raw file counts, never from a rollup: `jsonlFilesFound`
+    /// survives rebasing and combining untouched, so the question that decides
+    /// whether the cost and analytics modules exist costs a handful of
+    /// dictionary lookups instead of a full cross-provider combine.
     @MainActor
     static func hasCostData(environment: AppEnvironment, settings: AppSettings) -> Bool {
-        overviewCostSnapshots(environment: environment, settings: settings)
-            .contains { $0.jsonlFilesFound > 0 }
+        var tools = overviewCostProviders(settings: settings)
+        if settings.isCoreProviderVisible(.gemini) {
+            tools.append(contentsOf: ToolType.googleAIPair)
+        }
+        return environment.costService.hasJSONLFiles(in: tools)
     }
 
     // MARK: - Default configuration

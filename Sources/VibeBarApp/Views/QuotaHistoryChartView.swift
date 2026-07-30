@@ -200,10 +200,11 @@ private struct QuotaSeriesSignature: Equatable {
 /// so the pace rows can re-read the wall clock. Every tick re-proposes this
 /// view; without `.equatable()` each tick would re-segment, re-clip and
 /// re-thin thousands of marks and could land in the middle of a pan. The
-/// comparison covers exactly the inputs that change what is drawn — the
-/// `@State`/`@EnvironmentObject` storage is deliberately excluded, because
-/// those invalidate the view through their own dependency, not through the
-/// parent's diff.
+/// comparison covers exactly the inputs that change what is drawn, which is
+/// why every one of them is a plain `let`: the `@State` storage is excluded
+/// because it invalidates through its own dependency, and this view holds no
+/// `@EnvironmentObject` at all — an environment read here would bypass the
+/// diff entirely and re-run the body on every unrelated service publish.
 ///
 /// The other half of that contract: **this view must never read the current
 /// time**. There is no `now` parameter and no `Date()` anywhere in it — every
@@ -213,6 +214,17 @@ struct QuotaHistoryChartView: View, Equatable {
     let tool: ToolType
     let accountId: String
     let group: QuotaBucketGroup
+    /// Recorded fill observations per bucket id, handed down as plain values.
+    ///
+    /// This used to be read from `QuotaService` through an
+    /// `@EnvironmentObject` in here, which quietly defeated the `.equatable()`
+    /// the parent wraps this view in: an environment object invalidates the
+    /// views that read it *directly*, so every publish from the service — and a
+    /// refresh publishes repeatedly — re-ran this body and re-segmented every
+    /// lane, `==` or no `==`. The parent already observes the service, so it
+    /// reads the lanes and passes them in; comparing them is nearly free
+    /// because unchanged lanes are the same array buffer.
+    let fillPointsByBucket: [String: [FillTimelinePoint]]
     let density: Theme.Density
     /// Set when a page shows more than one of these charts for *different
     /// products* and "Quota history" alone would not say whose.
@@ -225,12 +237,11 @@ struct QuotaHistoryChartView: View, Equatable {
     /// like the "Reset history" strip it sits beside.
     var isEmbedded: Bool = false
 
-    @EnvironmentObject var quotaService: QuotaService
-
     static func == (lhs: QuotaHistoryChartView, rhs: QuotaHistoryChartView) -> Bool {
         lhs.tool == rhs.tool
             && lhs.accountId == rhs.accountId
             && lhs.group == rhs.group
+            && lhs.fillPointsByBucket == rhs.fillPointsByBucket
             && lhs.density == rhs.density
             && lhs.titleOverride == rhs.titleOverride
             && lhs.showsGroupTitle == rhs.showsGroupTitle
@@ -1036,8 +1047,7 @@ struct QuotaHistoryChartView: View, Equatable {
     )
 
     private func fillPoints(bucketId: String) -> [FillTimelinePoint] {
-        let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucketId)
-        return quotaService.observationsByAccountBucket[key] ?? []
+        fillPointsByBucket[bucketId] ?? []
     }
 
     /// Account, group, and the shape of every bucket's observed fill lane.

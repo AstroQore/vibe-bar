@@ -85,11 +85,33 @@ public struct PrimaryProviderRouteHealth: Identifiable, Sendable, Equatable {
 
 public enum PrimaryProviderRouteHealthChecker {
     public static func checkAll(now: Date = Date()) -> [PrimaryProviderRoute: PrimaryProviderRouteHealth] {
+        check(PrimaryProviderRoute.allCases, now: now)
+    }
+
+    public static func check(
+        _ routes: [PrimaryProviderRoute],
+        now: Date = Date()
+    ) -> [PrimaryProviderRoute: PrimaryProviderRouteHealth] {
         Dictionary(
-            uniqueKeysWithValues: PrimaryProviderRoute.allCases.map { route in
+            uniqueKeysWithValues: routes.map { route in
                 (route, check(route, now: now))
             }
         )
+    }
+
+    /// Same answers, computed off the calling actor.
+    ///
+    /// Every route here does blocking work — Keychain round trips, credential
+    /// file reads, and for AntiGravity a `/bin/ps` spawn drained
+    /// synchronously — and the App re-checks routes on every refresh. None of
+    /// that belongs on the main actor while the popover is drawing.
+    public static func checkOffActor(
+        _ routes: [PrimaryProviderRoute],
+        now: Date = Date()
+    ) async -> [PrimaryProviderRoute: PrimaryProviderRouteHealth] {
+        await Task.detached(priority: .userInitiated) {
+            check(routes, now: now)
+        }.value
     }
 
     public static func check(_ route: PrimaryProviderRoute, now: Date = Date()) -> PrimaryProviderRouteHealth {
@@ -161,7 +183,7 @@ public enum PrimaryProviderRouteHealthChecker {
             .appendingPathComponent(".gemini/antigravity")
         return antigravityLocalProbeHealth(
             route: route,
-            languageServerRunning: antigravityLanguageServerIsRunning(),
+            languageServerRunning: antigravityLanguageServerIsRunning(now: now),
             hasLocalData: FileManager.default.fileExists(atPath: dataRoot.path),
             now: now
         )
@@ -239,7 +261,46 @@ public enum PrimaryProviderRouteHealthChecker {
         }
     }
 
-    private static func antigravityLanguageServerIsRunning() -> Bool {
+    /// How long a language-server probe result is reused.
+    ///
+    /// The probe spawns `/bin/ps -ax`, drains its whole stdout and waits for it
+    /// to exit — tens of milliseconds of blocking work for a question whose
+    /// answer is "is AntiGravity open". Route health is re-checked on every
+    /// refresh and on every per-provider refresh, so without a TTL a Gemini
+    /// card refresh alone spawned it twice. A language server does not start
+    /// and stop inside a minute of itself, and a stale "running" reading only
+    /// delays the switch to the cached-data wording by that minute.
+    private static let languageServerProbeTTL: TimeInterval = 60
+    private static let languageServerProbeLock = NSLock()
+    private nonisolated(unsafe) static var languageServerProbe: (checkedAt: Date, isRunning: Bool)?
+
+    static func antigravityLanguageServerIsRunning(
+        now: Date = Date(),
+        probe: () -> Bool = probeAntigravityLanguageServer
+    ) -> Bool {
+        languageServerProbeLock.lock()
+        let cached = languageServerProbe
+        languageServerProbeLock.unlock()
+        if let cached, now.timeIntervalSince(cached.checkedAt) < languageServerProbeTTL {
+            return cached.isRunning
+        }
+
+        let isRunning = probe()
+        languageServerProbeLock.lock()
+        languageServerProbe = (now, isRunning)
+        languageServerProbeLock.unlock()
+        return isRunning
+    }
+
+    /// Drops the cached probe result. Test hook, and the honest thing to call
+    /// if a future caller learns AntiGravity just launched.
+    public static func invalidateLanguageServerProbeCache() {
+        languageServerProbeLock.lock()
+        languageServerProbe = nil
+        languageServerProbeLock.unlock()
+    }
+
+    private static func probeAntigravityLanguageServer() -> Bool {
         guard let result = captureProcessOutput(
             executablePath: "/bin/ps",
             arguments: ["-ax", "-o", "command="]

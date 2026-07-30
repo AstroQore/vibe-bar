@@ -55,4 +55,43 @@ final class PrimaryProviderRouteHealthTests: XCTestCase {
         XCTAssertEqual(health.status, .missing)
         XCTAssertEqual(health.detail, "No local Antigravity data")
     }
+
+    /// The probe spawns `/bin/ps` and blocks until it exits, and route health is
+    /// re-checked on every refresh — including per provider, so refreshing the
+    /// Gemini card alone used to spawn it twice. Inside the TTL the answer is
+    /// reused; past it, and after an explicit invalidation, it is re-probed.
+    func testLanguageServerProbeIsCachedForItsTTL() {
+        PrimaryProviderRouteHealthChecker.invalidateLanguageServerProbeCache()
+        defer { PrimaryProviderRouteHealthChecker.invalidateLanguageServerProbeCache() }
+
+        var probes = 0
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let probe: () -> Bool = {
+            probes += 1
+            return true
+        }
+
+        XCTAssertTrue(PrimaryProviderRouteHealthChecker.antigravityLanguageServerIsRunning(
+            now: start,
+            probe: probe
+        ))
+        XCTAssertTrue(PrimaryProviderRouteHealthChecker.antigravityLanguageServerIsRunning(
+            now: start.addingTimeInterval(30),
+            probe: probe
+        ))
+        XCTAssertEqual(probes, 1)
+
+        XCTAssertTrue(PrimaryProviderRouteHealthChecker.antigravityLanguageServerIsRunning(
+            now: start.addingTimeInterval(61),
+            probe: probe
+        ))
+        XCTAssertEqual(probes, 2)
+
+        PrimaryProviderRouteHealthChecker.invalidateLanguageServerProbeCache()
+        XCTAssertTrue(PrimaryProviderRouteHealthChecker.antigravityLanguageServerIsRunning(
+            now: start.addingTimeInterval(61),
+            probe: probe
+        ))
+        XCTAssertEqual(probes, 3)
+    }
 }

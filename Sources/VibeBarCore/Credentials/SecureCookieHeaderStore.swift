@@ -135,7 +135,11 @@ public enum SecureCookieHeaderStore {
                 : .found(entry.cookieHeader)
         } catch KeychainStore.KeychainError.itemNotFound {
             cacheLock.lock()
-            cache[account] = nil
+            // `cache[account] = nil` would remove the key, so a provider the
+            // user never signed into would hit the Keychain on every call.
+            // `updateValue` stores the negative entry the `.some(.none)` case
+            // above reads back as `.missing`.
+            cache.updateValue(nil, forKey: account)
             cacheLock.unlock()
             return .missing
         } catch KeychainStore.KeychainError.interactionNotAllowed {

@@ -96,6 +96,24 @@ public actor UsageFillTimelineStore {
             .sorted { $0.slotStart < $1.slotStart }
     }
 
+    /// Points for several buckets of one account, oldest first per bucket.
+    ///
+    /// One actor hop for the whole account instead of one per bucket: the
+    /// caller republishes the result into `@Published` state, and an `await`
+    /// between buckets meant every bucket landed in its own main-actor tick —
+    /// which is a full popover re-render each, thirty-odd of them per refresh.
+    /// Buckets with no recorded points are absent from the result.
+    public func points(accountId: String, bucketIds: [String]) -> [String: [FillTimelinePoint]] {
+        let wanted = Set(bucketIds)
+        guard !wanted.isEmpty else { return [:] }
+        var grouped: [String: [FillTimelinePoint]] = [:]
+        for point in load().points
+        where point.accountId == accountId && wanted.contains(point.bucketId) {
+            grouped[point.bucketId, default: []].append(point)
+        }
+        return grouped.mapValues { $0.sorted { $0.slotStart < $1.slotStart } }
+    }
+
     public func allPoints() -> [FillTimelinePoint] {
         load().points
     }

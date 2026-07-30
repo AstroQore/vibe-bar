@@ -39,6 +39,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Records the time each kind's popover most recently started closing.
     /// Used by `togglePopover` to ignore the click that triggered the close.
     private var popoverCloseStamps: [MenuBarItemKind: Date] = [:]
+    /// Coalescing state for `resizePopover`.
+    private var lastPopoverResizeAt: [MenuBarItemKind: Date] = [:]
+    private var pendingPopoverHeights: [MenuBarItemKind: CGFloat] = [:]
+    private var popoverResizeTasks: [MenuBarItemKind: Task<Void, Never>] = [:]
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -171,6 +175,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             enabled: settings.refreshOnPopoverOpen,
             cooldownSeconds: settings.popoverOpenRefreshCooldownSeconds
         )
+        // Set before `show`: the refresh above publishes into the popover's own
+        // render pass, and anything that would rather not compete with it (the
+        // hidden Claude budget WebView) checks this flag.
+        environment.setPopoverVisible(true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
@@ -183,6 +191,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 self.popoverCloseStamps[kind] = Date()
                 break
             }
+            self.environment.setPopoverVisible(
+                self.popovers.values.contains { $0.isShown && $0 !== popover }
+            )
         }
     }
 
@@ -217,7 +228,41 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// Height reports arrive per layout pass, and a refresh relayouts the
+    /// popover many times in a row — every one of which used to write
+    /// `contentSize`, which itself forces another layout pass and another
+    /// report. Apply the first report of a burst immediately (so opening the
+    /// popover still sizes without a visible delay) and coalesce the rest into
+    /// one trailing resize, which lands on the final height.
+    private static let popoverResizeCoalesceWindow: TimeInterval = 0.1
+
     private func resizePopover(kind: MenuBarItemKind, toContentHeight height: CGFloat) {
+        guard height.isFinite, height > 0 else { return }
+        let sinceLast = lastPopoverResizeAt[kind].map { Date().timeIntervalSince($0) }
+        if let sinceLast, sinceLast < Self.popoverResizeCoalesceWindow {
+            pendingPopoverHeights[kind] = height
+            scheduleCoalescedResize(
+                kind: kind,
+                after: Self.popoverResizeCoalesceWindow - sinceLast
+            )
+            return
+        }
+        applyPopoverResize(kind: kind, toContentHeight: height)
+    }
+
+    private func scheduleCoalescedResize(kind: MenuBarItemKind, after delay: TimeInterval) {
+        guard popoverResizeTasks[kind] == nil else { return }
+        popoverResizeTasks[kind] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(Int(max(10, delay * 1_000))))
+            guard let self else { return }
+            self.popoverResizeTasks[kind] = nil
+            guard let height = self.pendingPopoverHeights.removeValue(forKey: kind) else { return }
+            self.applyPopoverResize(kind: kind, toContentHeight: height)
+        }
+    }
+
+    private func applyPopoverResize(kind: MenuBarItemKind, toContentHeight height: CGFloat) {
+        lastPopoverResizeAt[kind] = Date()
         guard let popover = popovers[kind] else { return }
         guard height.isFinite, height > 0 else { return }
         let maxHeight = maxPopoverHeight(for: popover)
