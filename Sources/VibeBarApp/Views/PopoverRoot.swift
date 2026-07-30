@@ -967,9 +967,10 @@ private struct OverviewCostSummaryCard: View {
 /// The Overview's live provider-status grid — the right half of the old header
 /// row, now an arrangeable module.
 ///
-/// Pinned to `minHeight` rather than an exact height so it matches the cost
-/// summary beside it at any density but can still grow rather than clip if the
-/// user has enough providers visible to need a third row of tiles.
+/// Pinned to exactly `minHeight` — before its background, mirroring the cost
+/// summary's frame — so the two cards always read as one aligned pair, the way
+/// the old header row's outer pin kept them. The tile grid divides the pinned
+/// interior rather than growing the card.
 private struct OverviewStatusSummaryCard: View {
     let density: Theme.Density
     let minHeight: CGFloat
@@ -1023,7 +1024,17 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+        // Pinned exactly, and before the background, so the rounded card is
+        // drawn at this height rather than at whatever the tile grid would
+        // prefer — a frame applied outside the background would leave the
+        // oversized card bleeding past it. Mirrors the cost summary's frame.
+        .frame(
+            maxWidth: .infinity,
+            minHeight: minHeight,
+            idealHeight: minHeight,
+            maxHeight: minHeight,
+            alignment: .topLeading
+        )
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))
@@ -1036,20 +1047,21 @@ private struct OverviewStatusSummaryCard: View {
 
     private func statusTileHeight(rowCount: Int) -> CGFloat {
         let rows = max(1, rowCount)
-        let headerHeight = max(18, density.bucketTitleFontSize + 6)
+        // The refresh button keeps the header at least 22 pt tall regardless
+        // of the title font, so budgeting less would overdraw the pin below.
+        let headerHeight = max(22, density.bucketTitleFontSize + 6)
         let gridSpacing = CGFloat(max(0, rows - 1)) * density.cardSpacing
         let available = minHeight
             - density.cardPadding * 2
             - headerHeight
             - density.cardSpacing
             - gridSpacing
-        let minimum: CGFloat
-        switch density.profile {
-        case .compact: minimum = 46
-        case .regular: minimum = 58
-        case .spacious: minimum = 70
-        }
-        return max(minimum, available / CGFloat(rows))
+        // The card's pinned height is authoritative — the tiles divide what is
+        // left rather than growing the card past the cost summary beside it.
+        // The floor is a last-resort legibility guard: the core-provider list
+        // caps at four tools (two rows), so at every density two rows fit and
+        // the floor only bites in degenerate configurations.
+        return max(44, available / CGFloat(rows))
     }
 
     private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
@@ -1061,9 +1073,17 @@ private struct OverviewStatusSummaryCard: View {
                     .font(.system(size: density.bucketTitleFontSize + 1, weight: .semibold))
                     .foregroundStyle(state.color)
                     .frame(width: 17, height: 17)
+                // Framed at its drawn size, not a fixed 22 pt box: the icon row
+                // sets the tile's tallest line, and the pinned card leaves each
+                // tile (height − chrome) / rows — at compact density that is
+                // 45 pt, and four points of air here were what pushed the
+                // detail line out of it.
                 ToolBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
                     .opacity(0.9)
-                    .frame(width: 22, height: 22)
+                    .frame(
+                        width: density.bucketTitleFontSize + 6,
+                        height: density.bucketTitleFontSize + 6
+                    )
                 Text(statusTitle(for: tool))
                     .font(.system(size: density.subtitleFontSize + 1, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
@@ -1089,7 +1109,12 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(.horizontal, density.cardPadding - 2)
-        .padding(.vertical, max(6, density.cardPadding - 4))
+        // The vertical budget is fixed by the pinned card: icon row + row
+        // spacing + one detail line + this padding must fit within
+        // (summary height − card chrome) / 2 at every density — 45/54/66 pt.
+        // With the old max(6, padding − 4) the interior needed more than the
+        // pin allowed and the detail line was compressed to nothing.
+        .padding(.vertical, max(4, density.cardPadding - 9))
         .frame(minHeight: height, maxHeight: height, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
