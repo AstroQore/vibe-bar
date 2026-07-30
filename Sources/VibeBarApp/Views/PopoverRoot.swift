@@ -1073,9 +1073,17 @@ private struct OverviewStatusSummaryCard: View {
                     .font(.system(size: density.bucketTitleFontSize + 1, weight: .semibold))
                     .foregroundStyle(state.color)
                     .frame(width: 17, height: 17)
+                // Framed at its drawn size, not a fixed 22 pt box: the icon row
+                // sets the tile's tallest line, and the pinned card leaves each
+                // tile (height − chrome) / rows — at compact density that is
+                // 45 pt, and four points of air here were what pushed the
+                // detail line out of it.
                 ToolBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
                     .opacity(0.9)
-                    .frame(width: 22, height: 22)
+                    .frame(
+                        width: density.bucketTitleFontSize + 6,
+                        height: density.bucketTitleFontSize + 6
+                    )
                 Text(statusTitle(for: tool))
                     .font(.system(size: density.subtitleFontSize + 1, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
@@ -1101,7 +1109,12 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(.horizontal, density.cardPadding - 2)
-        .padding(.vertical, max(6, density.cardPadding - 4))
+        // The vertical budget is fixed by the pinned card: icon row + row
+        // spacing + one detail line + this padding must fit within
+        // (summary height − card chrome) / 2 at every density — 45/54/66 pt.
+        // With the old max(6, padding − 4) the interior needed more than the
+        // pin allowed and the detail line was compressed to nothing.
+        .padding(.vertical, max(4, density.cardPadding - 9))
         .frame(minHeight: height, maxHeight: height, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
