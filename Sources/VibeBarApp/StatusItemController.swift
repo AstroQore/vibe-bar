@@ -257,6 +257,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             )
             return
         }
+        // A trailing task may still be queued from the previous burst — on a
+        // busy main actor it can wake after its deadline, land here *after*
+        // this newer report, and resize the popover back to the stale height
+        // it captured. Supersede both the task and its pending height.
+        popoverResizeTasks.removeValue(forKey: kind)?.cancel()
+        pendingPopoverHeights.removeValue(forKey: kind)
         applyPopoverResize(kind: kind, toContentHeight: height)
     }
 
@@ -264,7 +270,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         guard popoverResizeTasks[kind] == nil else { return }
         popoverResizeTasks[kind] = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(Int(max(10, delay * 1_000))))
-            guard let self else { return }
+            // Checked before touching shared state: an immediate resize may
+            // have superseded this task and re-registered a fresh one, whose
+            // bookkeeping a cancelled sleeper must not clobber.
+            guard let self, !Task.isCancelled else { return }
             self.popoverResizeTasks[kind] = nil
             guard let height = self.pendingPopoverHeights.removeValue(forKey: kind) else { return }
             self.applyPopoverResize(kind: kind, toContentHeight: height)

@@ -400,6 +400,23 @@ public struct StoredPageLayoutPreset: Hashable, Sendable {
     /// on the way in rather than rendered as a blank row.
     public var isValid: Bool { !name.isEmpty }
 
+    /// The layout applying this preset should install.
+    ///
+    /// A `compact` preset captured before bands existed carries the packed
+    /// columns and no segments. When it was saved, applying it entered Manual
+    /// and put those exact columns back; restoring it as `compact` today would
+    /// discard the saved columns and re-pack under the default bands — a
+    /// different arrangement than the one the user named. So a compact preset
+    /// with columns but no bands comes back as the manual layout it always
+    /// effectively was. Presets captured by current builds store their resolved
+    /// bands, so they never take this path.
+    public var layoutToApply: StoredPageLayout {
+        guard layout.mode == .compact, !layout.isEmpty, layout.segments.isEmpty else {
+            return layout
+        }
+        return StoredPageLayout(mode: .manual, ratio: layout.ratio, columns: layout.columns)
+    }
+
     /// Case-insensitive identity. Two presets whose names differ only by case
     /// are the same menu entry, so they are the same preset.
     public var matchKey: String { name.lowercased() }

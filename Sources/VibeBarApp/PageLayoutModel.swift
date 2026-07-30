@@ -560,13 +560,12 @@ final class PageLayoutModel: ObservableObject {
     /// `PageLayoutSegments` reconcile them against the modules the page can
     /// actually draw at render time, so a preset saved when a provider was
     /// signed in still applies afterwards.
+    ///
+    /// `layoutToApply` rather than `layout`: a compact preset saved before
+    /// bands existed restores as the manual arrangement it captured, not as a
+    /// re-pack under default bands it never saw.
     func applyPreset(_ preset: StoredPageLayoutPreset, to page: PageLayoutPageID) {
-        settingsStore.settings.pageLayouts[page] = StoredPageLayout(
-            mode: preset.layout.mode,
-            ratio: preset.layout.ratio,
-            columns: preset.layout.columns,
-            segments: preset.layout.segments
-        )
+        settingsStore.settings.pageLayouts[page] = preset.layoutToApply
         compactPackings.removeValue(forKey: page)
     }
 

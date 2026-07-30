@@ -997,6 +997,39 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(decoded.layout.segments, [[.status], [.costAll, .quotaHistoryAll]])
     }
 
+    func testALegacyCompactPresetAppliesAsTheManualLayoutItCaptured() {
+        // Saved by a build where presets existed but bands did not: mode is
+        // compact, the packed columns were snapshotted, segments are absent.
+        // Back then applying it entered Manual with exactly these columns;
+        // restoring it as compact today would throw the columns away and
+        // re-pack under default bands the preset never saw.
+        let legacy = StoredPageLayoutPreset(
+            name: "Old packing",
+            layout: StoredPageLayout(
+                mode: .compact,
+                ratio: .wideNarrow,
+                columns: [[.status, .costAll], [.quotaHistoryAll]]
+            )
+        )
+        let applied = legacy.layoutToApply
+        XCTAssertEqual(applied.mode, .manual)
+        XCTAssertEqual(applied.ratio, .wideNarrow)
+        XCTAssertEqual(applied.columns, [[.status, .costAll], [.quotaHistoryAll]])
+
+        // A compact preset that does carry bands is current-format and applies
+        // verbatim; so does a manual preset with columns.
+        let current = StoredPageLayoutPreset(
+            name: "Banded",
+            layout: StoredPageLayout(mode: .compact, segments: [[.status], [.costAll]])
+        )
+        XCTAssertEqual(current.layoutToApply, current.layout)
+        let manual = StoredPageLayoutPreset(
+            name: "Hand made",
+            layout: StoredPageLayout(mode: .manual, columns: [[.status], [.costAll]])
+        )
+        XCTAssertEqual(manual.layoutToApply, manual.layout)
+    }
+
     // MARK: - PageLayoutSegments
 
     private static let summaryCost = PageLayoutModuleID("overview-summary-cost")
