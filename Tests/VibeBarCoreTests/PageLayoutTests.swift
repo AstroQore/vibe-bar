@@ -1220,6 +1220,42 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(merged, [[.status, .quotaHistoryAll], [.costAll]])
     }
 
+    func testMergingAnEditRecreatesABandWhoseEveryModuleIsHidden() {
+        // The middle band's only module is off screen. Dragging costAll into
+        // status's band must not collapse the hidden band into a neighbour:
+        // it comes back as its own band, after its preceding stored neighbour.
+        let merged = PageLayoutSegments.mergingEdit(
+            [[.status, .costAll]],
+            into: [[.status], [.quotaHistoryAll], [.costAll]],
+            available: [.status, .costAll]
+        )
+
+        XCTAssertEqual(merged, [[.status, .costAll], [.quotaHistoryAll]])
+    }
+
+    func testMergingAnEditKeepsAHiddenModuleWithItsDraggedBandmates() {
+        // status and the hidden quota history share a stored band; the user
+        // drags status into the second band. The hidden module belongs to its
+        // band, so it follows status instead of staying behind at index 0.
+        let merged = PageLayoutSegments.mergingEdit(
+            [[.costAll], [.status]],
+            into: [[.status, .quotaHistoryAll], [.costAll]],
+            available: [.status, .costAll]
+        )
+
+        XCTAssertEqual(merged, [[.costAll], [.status, .quotaHistoryAll]])
+    }
+
+    func testMergingAnEditRecreatesALeadingHiddenBandFirst() {
+        let merged = PageLayoutSegments.mergingEdit(
+            [[.status], [.costAll]],
+            into: [[.quotaHistoryAll], [.status], [.costAll]],
+            available: [.status, .costAll]
+        )
+
+        XCTAssertEqual(merged, [[.quotaHistoryAll], [.status], [.costAll]])
+    }
+
     func testMergingAnEditHonoursTheMoveItWasGiven() {
         let merged = PageLayoutSegments.mergingEdit(
             [[.status, .costAll], [.quotaHistoryAll]],
