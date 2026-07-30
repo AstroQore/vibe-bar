@@ -521,6 +521,12 @@ private struct OverviewWaterfall: View {
                 minHeight: density.overviewSummaryHeight,
                 tools: settingsStore.settings.visibleCoreProviderList
             )
+            // The old header row pinned both summary cards to this height from
+            // the outside; without the pin the tile grid's legibility floor can
+            // push this card a few points past the cost card and the pair reads
+            // misaligned. The core-provider list caps at four tools (two rows),
+            // so the clamp never costs a visible row.
+            .frame(height: density.overviewSummaryHeight)
         case let .overviewQuota(tool):
             if tool == .gemini {
                 // Gemini Web and AntiGravity roll up to one Google AI product.
@@ -967,9 +973,11 @@ private struct OverviewCostSummaryCard: View {
 /// The Overview's live provider-status grid — the right half of the old header
 /// row, now an arrangeable module.
 ///
-/// Pinned to `minHeight` rather than an exact height so it matches the cost
-/// summary beside it at any density but can still grow rather than clip if the
-/// user has enough providers visible to need a third row of tiles.
+/// `minHeight` sizes the tile grid's ideal layout; the module render site pins
+/// the card to exactly that height, the way the old header row pinned both
+/// summary cards, so this card and the cost summary always read as one aligned
+/// pair. The tile legibility floor compresses inside the pin instead of
+/// growing past it.
 private struct OverviewStatusSummaryCard: View {
     let density: Theme.Density
     let minHeight: CGFloat
