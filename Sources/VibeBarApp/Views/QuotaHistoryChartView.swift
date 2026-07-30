@@ -254,7 +254,7 @@ struct QuotaHistoryChartView: View, Equatable {
     @State private var miniSegments: [[QuotaHistorySample]] = []
     @State private var window: ChartTimeWindow?
     @State private var windowKey: String?
-    @State private var initialSpan: TimeInterval = 24 * 3_600
+    @State private var initialSpan: TimeInterval = QuotaHistoryChartView.defaultInitialSpan
     @State private var hoverDate: Date?
     @State private var panBase: ChartTimeWindow?
     @State private var magnifyBase: ChartTimeWindow?
@@ -1133,7 +1133,7 @@ struct QuotaHistoryChartView: View, Equatable {
         )
 
         let minimumSpan = minimumSpan(for: primary)
-        initialSpan = initialSpan(for: primary)
+        initialSpan = Self.defaultInitialSpan
 
         // A different set of quotas gets a fresh window: buckets are sampled at
         // the same instants, so their domains can match to the second while the
@@ -1209,12 +1209,14 @@ struct QuotaHistoryChartView: View, Equatable {
         return min(max(TimeInterval(windowSeconds) / 5, 3_600), 12 * 3_600)
     }
 
-    private func initialSpan(for bucket: QuotaBucket) -> TimeInterval {
-        guard let windowSeconds = bucket.rawWindowSeconds, windowSeconds > 0 else {
-            return 7 * 86_400
-        }
-        return windowSeconds <= 6 * 3_600 ? 24 * 3_600 : 7 * 86_400
-    }
+    /// Opening zoom, one day for every group regardless of its shortest window.
+    /// A weekly quota used to open on all seven days, which answers the wrong
+    /// question first: a week of samples squeezed into the card's width flattens
+    /// the recent movement the chart is opened to read. Zooming out is one
+    /// gesture, and double-tap comes back here.
+    ///
+    /// Never below `minimumSpan(for:)`, which tops out at half a day.
+    private static let defaultInitialSpan: TimeInterval = 24 * 3_600
 
     // MARK: - Mark shaping
 

@@ -57,6 +57,38 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(decoded.miscCookieAutoImportEnabled)
     }
 
+    func testMenuBarColorBasisDefaultsToForecastAndRoundTrips() throws {
+        // Deliberately the opposite of the usual "absent key keeps the old
+        // behavior" rule: forecast coloring is the intended menu-bar reading,
+        // so a settings file written before the picker existed has to adopt it
+        // on upgrade. The picker exists to opt *back* into raw thresholds.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(legacy.menuBarColorBasis, .forecast)
+        XCTAssertEqual(AppSettings.default.menuBarColorBasis, .forecast)
+
+        var settings = AppSettings.default
+        settings.menuBarColorBasis = .actual
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertEqual(decoded.menuBarColorBasis, .actual)
+    }
+
+    func testUnknownMenuBarColorBasisFallsBackWithoutFailingTheFile() throws {
+        // A hand-edited or downgraded raw value must cost the user this one
+        // preference, not every other setting in the file.
+        let settings = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","menuBarColorBasis":"vibes"}"#.utf8)
+        )
+        XCTAssertEqual(settings.menuBarColorBasis, .forecast)
+        XCTAssertEqual(settings.displayMode, .used)
+    }
+
     func testOverviewQuotaHistoryHiddenCurvesDefaultToNoneAndRoundTrip() throws {
         // Stored as *hidden* ids, so a settings file written before the
         // Overview chart existed has to mean "show everything" — not "show

@@ -111,7 +111,7 @@ struct OverviewQuotaHistoryCard: View {
     @State private var flatByCurve: [String: [QuotaHistorySample]] = [:]
     @State private var window: ChartTimeWindow?
     @State private var windowKey: String?
-    @State private var initialSpan: TimeInterval = 7 * 86_400
+    @State private var initialSpan: TimeInterval = OverviewQuotaHistoryCard.preferredInitialSpan
     @State private var hoverDate: Date?
     @State private var panBase: ChartTimeWindow?
     @State private var magnifyBase: ChartTimeWindow?
@@ -811,7 +811,10 @@ struct OverviewQuotaHistoryCard: View {
         let key = built.map(\.id).joined(separator: ",")
         let sameCurves = windowKey == key
         windowKey = key
-        initialSpan = min(7 * 86_400, max(6 * 3_600, domain.upperBound.timeIntervalSince(domain.lowerBound)))
+        initialSpan = min(
+            Self.preferredInitialSpan,
+            max(6 * 3_600, domain.upperBound.timeIntervalSince(domain.lowerBound))
+        )
 
         if sameCurves,
            let existing = window,
@@ -844,6 +847,12 @@ struct OverviewQuotaHistoryCard: View {
     /// enough for the fast ones to show their sawtooth, shallow enough that a
     /// weekly line is never a single flat pixel-row.
     private static let minimumSpan: TimeInterval = 3 * 3_600
+
+    /// Opening zoom, matching the per-group chart: one day of recent movement
+    /// rather than a whole week compressed into the card's width. Still clamped
+    /// to the stored domain, so a chart with only a few hours of evidence opens
+    /// on what it actually has.
+    private static let preferredInitialSpan: TimeInterval = 24 * 3_600
 
     private func domainRange(
         _ lanes: [(account: AccountIdentity, bucket: QuotaBucket)]

@@ -754,6 +754,13 @@ struct SettingsView: View {
             Text(settingsStore.settings.popoverDensity.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+            Picker("Percent color", selection: menuBarColorBasisBinding()) {
+                ForEach(MenuBarColorBasis.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Text(settingsStore.settings.menuBarColorBasis.detail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
                 Text("Fields")
                     .font(.caption)
@@ -992,6 +999,13 @@ struct SettingsView: View {
                 item.layout = value
                 settingsStore.settings.setMenuBarItem(item)
             }
+        )
+    }
+
+    private func menuBarColorBasisBinding() -> Binding<MenuBarColorBasis> {
+        Binding(
+            get: { settingsStore.settings.menuBarColorBasis },
+            set: { settingsStore.settings.menuBarColorBasis = $0 }
         )
     }
 
