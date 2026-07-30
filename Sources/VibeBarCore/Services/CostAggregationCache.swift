@@ -153,7 +153,8 @@ public final class CostAggregationCache {
         let label: ToolType
     }
 
-    private let calendar: Calendar
+    private var calendar: Calendar
+    private var timeZoneObserver: NSObjectProtocol?
 
     private var source: [ToolType: CostSnapshot] = [:]
     private var rebasedByTool: [ToolType: CostSnapshot] = [:]
@@ -165,6 +166,36 @@ public final class CostAggregationCache {
 
     public init(calendar: Calendar = .current) {
         self.calendar = calendar
+        // `Calendar.current` freezes the time zone it was read under, and this
+        // cache lives as long as the menu bar does. Without this, a system
+        // zone change (travel, DST rule updates) would keep "today" cut at the
+        // old midnight until relaunch, because `refreshDay`'s fast path never
+        // consults the zone again. Main queue on purpose: the cache is owned
+        // by the `@MainActor` service and is not thread-safe.
+        timeZoneObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.adoptCalendar(.current)
+        }
+    }
+
+    deinit {
+        if let timeZoneObserver {
+            NotificationCenter.default.removeObserver(timeZoneObserver)
+        }
+    }
+
+    /// Switch to a calendar (and thus time zone) and drop every derived value —
+    /// the memos were all cut at the old midnight. Internal so a test can hand
+    /// in a fixed-zone calendar; production only ever passes `.current`, which
+    /// also overwrites an injected calendar the moment the system zone really
+    /// changes, matching what the default initializer would have captured.
+    func adoptCalendar(_ calendar: Calendar) {
+        self.calendar = calendar
+        dayRange = nil
+        invalidateDerived()
     }
 
     /// Replace the raw snapshots and drop every derived value.

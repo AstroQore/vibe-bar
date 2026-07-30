@@ -81,6 +81,36 @@ final class CostAggregationCacheTests: XCTestCase {
         )
     }
 
+    func testAdoptingACalendarDropsEveryMemoAndMovesTheDayBoundary() throws {
+        let now = day(2026, 7, 30)
+        let source = snapshot(
+            tool: .codex,
+            history: [(day(2026, 7, 30, hour: 9), 2, 200)],
+            updatedAt: now
+        )
+        let cache = CostAggregationCache(calendar: calendar)
+        cache.setSource([.codex: source])
+        XCTAssertNotNil(cache.snapshot(for: .codex, now: now))
+
+        // Prove the memo is warm, then change the zone the way the system
+        // notification handler does. The swapped-in source must become visible
+        // without any `setSource`: a zone change re-cuts "today", so serving
+        // the old memo would keep totals offset until relaunch.
+        let replaced = snapshot(tool: .codex, history: [(day(2026, 7, 30, hour: 9), 99, 9)], updatedAt: now)
+        cache.setSourceWithoutInvalidatingForTesting([.codex: replaced])
+        XCTAssertEqual(cache.snapshot(for: .codex, now: now)?.todayCostUSD ?? 0, 2, accuracy: 0.0001)
+
+        var tokyo = Calendar(identifier: .gregorian)
+        tokyo.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        cache.adoptCalendar(tokyo)
+        XCTAssertEqual(cache.snapshot(for: .codex, now: now)?.todayCostUSD ?? 0, 99, accuracy: 0.0001)
+
+        // And the answer is the Tokyo-day answer, not the LA memo re-served:
+        // recomputing directly under the adopted calendar must agree exactly.
+        let tokyoExpected = replaced.rebasedForCurrentDay(now: now, calendar: tokyo)
+        XCTAssertEqual(cache.snapshot(for: .codex, now: now), tokyoExpected)
+    }
+
     func testDayRolloverDropsEveryMemo() throws {
         let today = day(2026, 7, 30)
         let source = snapshot(
