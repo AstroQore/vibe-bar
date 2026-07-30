@@ -44,6 +44,9 @@ final class AppEnvironment: ObservableObject {
     private var browserGrokCookieImportInFlight = false
     private var pricingRefreshTask: Task<Void, Never>?
     private var webCookiePresenceProbedAt: Date?
+    private var webCookiePresenceGeneration: UInt64 = 0
+    private var routeHealthProbeGeneration: UInt64 = 0
+    private var routeHealthWriteGeneration: [PrimaryProviderRoute: UInt64] = [:]
     /// Long enough to fold the probes of one refresh burst — the Gemini card
     /// refreshes two providers back to back — and short enough that a cookie
     /// change made outside Vibe Bar still shows up on the next manual refresh.
@@ -380,10 +383,22 @@ final class AppEnvironment: ObservableObject {
     /// The results land back in one published assignment.
     func recheckPrimaryRouteHealth(provider: ToolType? = nil) {
         let routes = provider.map(PrimaryProviderRoute.routes(for:)) ?? PrimaryProviderRoute.allCases
+        // Probes overlap: a slow all-route sweep can still be reading files
+        // when a credential change fires a short provider-specific probe. The
+        // newer probe describes the newer world, so each route remembers the
+        // generation that last wrote it and an older sweep cannot roll it back.
+        routeHealthProbeGeneration &+= 1
+        let generation = routeHealthProbeGeneration
         Task { @MainActor [weak self] in
             let checked = await PrimaryProviderRouteHealthChecker.checkOffActor(routes, now: Date())
             guard let self else { return }
-            self.routeHealth = self.routeHealth.merging(checked) { _, fresh in fresh }
+            var merged = self.routeHealth
+            for (route, health) in checked {
+                if let written = self.routeHealthWriteGeneration[route], written > generation { continue }
+                merged[route] = health
+                self.routeHealthWriteGeneration[route] = generation
+            }
+            self.routeHealth = merged
         }
     }
 
@@ -403,6 +418,11 @@ final class AppEnvironment: ObservableObject {
             return
         }
         webCookiePresenceProbedAt = now
+        // The snapshot is all-or-nothing, so only the newest probe may publish:
+        // a login or cookie deletion forces a fresh probe, and a still-running
+        // older one finishing after it must not put the pre-login state back.
+        webCookiePresenceGeneration &+= 1
+        let generation = webCookiePresenceGeneration
         Task { @MainActor [weak self] in
             let presence = await Task.detached(priority: .userInitiated) {
                 WebCookiePresence(
@@ -412,7 +432,7 @@ final class AppEnvironment: ObservableObject {
                     grok: GrokWebCookieStore.hasCookieHeader()
                 )
             }.value
-            guard let self else { return }
+            guard let self, generation == self.webCookiePresenceGeneration else { return }
             self.hasClaudeWebCookies = presence.claude
             self.hasOpenAIWebCookies = presence.openAI
             self.hasGeminiWebCookies = presence.gemini
