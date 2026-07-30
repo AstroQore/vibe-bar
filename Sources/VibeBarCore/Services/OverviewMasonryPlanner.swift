@@ -8,6 +8,13 @@ import Foundation
 /// cards finally fill the shorter column. Keeping this policy in Core makes the
 /// behavior deterministic and testable while SwiftUI remains responsible only
 /// for live height measurement.
+///
+/// The *grouping* those phases run inside is an input rather than a constant:
+/// the page's resolved `PageLayoutSegments` decide which cards are planned
+/// together and in what order, so `auto` obeys a segmentation the user chose
+/// exactly the way `compact` does. Passing no grouping means "group by phase",
+/// which is the Overview's default segmentation and therefore the behaviour this
+/// planner has always had.
 public enum OverviewMasonryPlanner {
     public enum Phase: Int, Sendable, Comparable {
         /// The Overview's header band: cards pinned to one shared height that
@@ -56,8 +63,15 @@ public enum OverviewMasonryPlanner {
         }
     }
 
+    /// - Parameter groups: ordered groups the cards are planned in — the page's
+    ///   resolved segments. Every group is planned from the column heights the
+    ///   one before it finished at, so a later group's cards flow up into
+    ///   whichever column is shorter; the two columns are never aligned at a
+    ///   group boundary. Empty means "group by phase", which reproduces the
+    ///   Overview's default segmentation.
     public static func plan(
         items: [Item],
+        groups: [[String]] = [],
         columns: Int = 2,
         spacing: Double
     ) -> Plan {
@@ -66,12 +80,38 @@ public enum OverviewMasonryPlanner {
             return greedyPlan(items: items, columns: columnCount, spacing: spacing)
         }
 
-        let summaries = items.filter { $0.phase == .summary }
-        let quotas = items.filter { $0.phase == .quota }
-        let costs = items.filter { $0.phase == .cost }
-        let auxiliary = items.filter { $0.phase == .auxiliary }
         var positions: [String: Position] = [:]
         var heights = Array(repeating: 0.0, count: columnCount)
+        for group in grouped(items, by: groups) {
+            plan(
+                group: group,
+                columnCount: columnCount,
+                spacing: spacing,
+                heights: &heights,
+                positions: &positions
+            )
+        }
+        return Plan(positions: positions, columnHeights: heights)
+    }
+
+    /// One group's cards, placed from the column heights already accumulated.
+    ///
+    /// The phases keep their own strategies *inside* the group, and run in phase
+    /// order: with the default phase grouping every group holds exactly one
+    /// phase, so this is byte-for-byte the placement policy the Overview has
+    /// always used. A user-chosen segmentation only decides which cards share a
+    /// group and which group comes first.
+    private static func plan(
+        group: [Item],
+        columnCount: Int,
+        spacing: Double,
+        heights: inout [Double],
+        positions: inout [String: Position]
+    ) {
+        let summaries = group.filter { $0.phase == .summary }
+        let quotas = group.filter { $0.phase == .quota }
+        let costs = group.filter { $0.phase == .cost }
+        let auxiliary = group.filter { $0.phase == .auxiliary }
 
         // The summary band is a row, not a balanced pair: its cards carry one
         // pinned height, so declaration order decides which side each takes and
@@ -112,17 +152,17 @@ public enum OverviewMasonryPlanner {
             let column = shortestColumn(heights)
             append(item, to: column, spacing: spacing, heights: &heights, positions: &positions)
         }
-        return Plan(positions: positions, columnHeights: heights)
     }
 
     /// Rebuild positions from a previously chosen column assignment while
     /// honoring each item's current height. Interactive card expansion can
     /// therefore push later cards down within the same column without making
     /// any card jump to the other side. Declaration order remains the vertical
-    /// order within each phase.
+    /// order within each phase of each group.
     public static func plan(
         items: [Item],
         fixedColumns: [String: Int],
+        groups: [[String]] = [],
         columns: Int = 2,
         spacing: Double
     ) -> Plan {
@@ -130,20 +170,45 @@ public enum OverviewMasonryPlanner {
         var positions: [String: Position] = [:]
         var heights = Array(repeating: 0.0, count: columnCount)
 
-        for phase in [Phase.summary, .quota, .cost, .auxiliary] {
-            for item in items where item.phase == phase {
-                let preferred = fixedColumns[item.id] ?? shortestColumn(heights)
-                let column = min(max(0, preferred), columnCount - 1)
-                append(
-                    item,
-                    to: column,
-                    spacing: spacing,
-                    heights: &heights,
-                    positions: &positions
-                )
+        for group in grouped(items, by: groups) {
+            for phase in [Phase.summary, .quota, .cost, .auxiliary] {
+                for item in group where item.phase == phase {
+                    let preferred = fixedColumns[item.id] ?? shortestColumn(heights)
+                    let column = min(max(0, preferred), columnCount - 1)
+                    append(
+                        item,
+                        to: column,
+                        spacing: spacing,
+                        heights: &heights,
+                        positions: &positions
+                    )
+                }
             }
         }
         return Plan(positions: positions, columnHeights: heights)
+    }
+
+    /// The items split into the groups they are planned in, in group order.
+    ///
+    /// An item no group claims joins the last one, for the same reason
+    /// `PageLayoutSegments.resolve` clamps a newcomer into range: visible at the
+    /// end beats silently unplaced. No grouping at all means one group per
+    /// phase, in phase order.
+    private static func grouped(_ items: [Item], by groups: [[String]]) -> [[Item]] {
+        guard !groups.isEmpty else {
+            return [Phase.summary, .quota, .cost, .auxiliary]
+                .map { phase in items.filter { $0.phase == phase } }
+                .filter { !$0.isEmpty }
+        }
+        var rank: [String: Int] = [:]
+        for (index, group) in groups.enumerated() {
+            for id in group where rank[id] == nil { rank[id] = index }
+        }
+        var result = [[Item]](repeating: [], count: groups.count)
+        for item in items {
+            result[min(rank[item.id] ?? groups.count - 1, groups.count - 1)].append(item)
+        }
+        return result.filter { !$0.isEmpty }
     }
 
     private static func bestQuotaOrder(_ items: [Item], spacing: Double) -> [Item] {

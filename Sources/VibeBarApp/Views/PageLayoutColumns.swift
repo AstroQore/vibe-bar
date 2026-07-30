@@ -29,15 +29,19 @@ struct PageColumnWidths {
 /// Renders a page as fixed-order columns straight out of a
 /// `PageLayoutArrangement`.
 ///
-/// Used whenever the user has arranged the page by hand, and on provider pages
-/// always — their built-in split is itself a fixed two-column arrangement, so
-/// the default config reproduces it exactly and there is no second code path
-/// to keep in sync.
+/// Used whenever the page is not drawing itself with the live-measured
+/// `ColumnMasonryLayout`, and on provider pages always — their built-in split is
+/// itself a fixed two-column arrangement, so the default config reproduces it
+/// exactly and there is no second code path to keep in sync. A module the user
+/// switched off is simply absent from the arrangement, so nothing here has to
+/// know about visibility.
 ///
-/// A `compact` page can hand over several bands, which stack vertically at the
-/// page's own card gap. One band renders as exactly the single two-column
-/// `HStack` this view has always drawn, which is what `auto` and `manual` pass,
-/// so segmentation cannot change how an unsegmented page looks.
+/// A segmented page is drawn as one two-column `HStack`, not as a stack of
+/// per-segment rows. Segments are an ordering constraint inside each column —
+/// segment *k*'s cards above segment *k+1*'s — and the columns are never made to
+/// line up at a boundary. Drawing them as bands made the shorter column wait for
+/// the taller one, which is exactly the blank rectangle the user reported; the
+/// arrangement's `flattened` columns are what the page has to render instead.
 ///
 /// Every card reports its rendered height back to the model on the way past;
 /// the layout editor draws its blocks from those measurements.
@@ -56,15 +60,12 @@ struct PageLayoutColumns<Content: View>: View {
         // descriptor set every pass and skip anything stale rather than
         // trusting the saved identifiers.
         let byID = Dictionary(descriptors.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        VStack(alignment: .leading, spacing: spacing) {
-            ForEach(Array(arrangement.segments.enumerated()), id: \.offset) { _, segment in
-                HStack(alignment: .top, spacing: spacing) {
-                    column(segment.column(0), byID: byID)
-                        .frame(width: widths.left, alignment: .topLeading)
-                    column(segment.column(1), byID: byID)
-                        .frame(width: widths.right, alignment: .topLeading)
-                }
-            }
+        let flowed = arrangement.flattened
+        HStack(alignment: .top, spacing: spacing) {
+            column(flowed.column(0), byID: byID)
+                .frame(width: widths.left, alignment: .topLeading)
+            column(flowed.column(1), byID: byID)
+                .frame(width: widths.right, alignment: .topLeading)
         }
         .frame(width: widths.total, alignment: .topLeading)
     }

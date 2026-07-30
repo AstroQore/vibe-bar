@@ -1030,6 +1030,171 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(manual.layoutToApply, manual.layout)
     }
 
+    // MARK: - Hidden modules
+
+    func testStoredLayoutRoundTripsItsHiddenModules() throws {
+        let stored = StoredPageLayout(
+            mode: .manual,
+            ratio: .wideNarrow,
+            columns: [[.status], [.costAll]],
+            segments: [[.status], [.costAll]],
+            hidden: [.quotaHistoryAll]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            StoredPageLayout.self,
+            from: try JSONEncoder().encode(stored)
+        )
+
+        XCTAssertEqual(decoded.hidden, [.quotaHistoryAll])
+        XCTAssertTrue(decoded.isHidden(.quotaHistoryAll))
+        XCTAssertFalse(decoded.isHidden(.status))
+        // The rest of the entry is untouched by visibility.
+        XCTAssertEqual(decoded.columns, [[.status], [.costAll]])
+        XCTAssertEqual(decoded.segments, [[.status], [.costAll]])
+    }
+
+    func testStoredLayoutEncodesHiddenAsAnArrayOfIdentifierStrings() throws {
+        let stored = StoredPageLayout(mode: .compact, hidden: [.status, .costAll])
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try JSONEncoder().encode(stored)) as? [String: Any]
+        )
+
+        XCTAssertEqual(object["hidden"] as? [String], ["status", "cost-all"])
+    }
+
+    func testStoredLayoutWithoutHiddenDecodesToNothingHidden() throws {
+        // Every entry written before per-module visibility existed. Showing
+        // everything is what those pages were already doing.
+        let legacy = Data(#"{"mode":"manual","ratio":"equal","columns":[["status"],[]]}"#.utf8)
+        let decoded = try JSONDecoder().decode(StoredPageLayout.self, from: legacy)
+
+        XCTAssertEqual(decoded.hidden, [])
+        XCTAssertEqual(decoded.columns.first, [.status])
+    }
+
+    func testMalformedHiddenCostsTheVisibilityAndNothingElse() throws {
+        let mangled = Data(#"{"mode":"manual","columns":[["status"],[]],"hidden":{"a":1}}"#.utf8)
+        let decoded = try JSONDecoder().decode(StoredPageLayout.self, from: mangled)
+
+        XCTAssertEqual(decoded.hidden, [])
+        XCTAssertEqual(decoded.columns.first, [.status])
+    }
+
+    func testStoredHiddenIsDedupedAndKeepsUnknownIdentifiers() {
+        let future = PageLayoutModuleID("overview-something-new:v3")
+        let stored = StoredPageLayout(
+            hidden: [.status, .status, PageLayoutModuleID(""), future]
+        )
+
+        // A downgrade must not silently switch a card back on that a newer build
+        // let the user switch off.
+        XCTAssertEqual(stored.hidden, [.status, future])
+    }
+
+    func testSettingHiddenTogglesOneModuleAndLeavesEverythingElseAlone() {
+        let base = StoredPageLayout(
+            mode: .compact,
+            ratio: .wideNarrow,
+            columns: [[.status], [.costAll]],
+            segments: [[.status], [.costAll]]
+        )
+
+        let hidden = base.settingHidden(.costAll, true)
+        XCTAssertEqual(hidden.hidden, [.costAll])
+        XCTAssertEqual(hidden.mode, .compact)
+        XCTAssertEqual(hidden.ratio, .wideNarrow)
+        XCTAssertEqual(hidden.columns, [[.status], [.costAll]])
+        XCTAssertEqual(hidden.segments, [[.status], [.costAll]])
+
+        // Un-hiding is a true undo, and both directions are idempotent.
+        XCTAssertEqual(hidden.settingHidden(.costAll, true), hidden)
+        XCTAssertEqual(hidden.settingHidden(.costAll, false), base)
+        XCTAssertEqual(base.settingHidden(.costAll, false), base)
+    }
+
+    func testAnEntryCanHideCardsAndStillCountAsUncustomized() {
+        // `isEmpty` asks "is there a hand arrangement to go back to". Switching
+        // a card off is not one.
+        let stored = StoredPageLayout(mode: .auto, hidden: [.status])
+
+        XCTAssertTrue(stored.isEmpty)
+        XCTAssertNil(stored.restoredAsManual())
+    }
+
+    func testReturningToManualKeepsTheHiddenCards() {
+        let parked = StoredPageLayout(
+            mode: .compact,
+            columns: [[.costAll], [.status]],
+            hidden: [.quotaHistoryAll]
+        )
+
+        XCTAssertEqual(parked.restoredAsManual()?.hidden, [.quotaHistoryAll])
+    }
+
+    func testPresetCarriesTheHiddenCardsItWasCapturedFrom() throws {
+        let preset = StoredPageLayoutPreset(
+            name: "No heatmaps",
+            layout: StoredPageLayout(
+                mode: .compact,
+                segments: [[.status], [.costAll]],
+                hidden: [.quotaHistoryAll]
+            )
+        )
+
+        let decoded = try JSONDecoder().decode(
+            StoredPageLayoutPreset.self,
+            from: try JSONEncoder().encode(preset)
+        )
+
+        XCTAssertEqual(decoded.layout.hidden, [.quotaHistoryAll])
+        XCTAssertEqual(decoded.layoutToApply.hidden, [.quotaHistoryAll])
+    }
+
+    func testALegacyCompactPresetKeepsItsHiddenCardsWhileItsModeIsReinterpreted() {
+        // Only the *mode* is ambiguous on a pre-segments compact preset. What
+        // the user switched off is not, so it applies exactly as captured.
+        let legacy = StoredPageLayoutPreset(
+            name: "Old packing",
+            layout: StoredPageLayout(
+                mode: .compact,
+                columns: [[.status, .costAll], [.quotaHistoryAll]],
+                hidden: [.costAll]
+            )
+        )
+
+        XCTAssertEqual(legacy.layoutToApply.mode, .manual)
+        XCTAssertEqual(legacy.layoutToApply.hidden, [.costAll])
+    }
+
+    func testAHiddenModuleKeepsItsSavedColumnBecauseItIsMergedAsUnavailable() {
+        // The whole reason visibility is modelled as a subtraction from
+        // `available`: the merge machinery already preserves the position of
+        // anything it cannot see, so switching a card off and back on returns it
+        // to exactly where it was.
+        let stored = PageLayoutConfig(columns: [[.status, .costAll], [.quotaHistoryAll]])
+        // The editor can only arrange the two cards still on screen.
+        let edited = PageLayoutConfig(columns: [[.status], [.quotaHistoryAll]])
+
+        let merged = PageLayoutResolver.mergingEdit(
+            edited,
+            into: stored,
+            available: [.status, .quotaHistoryAll]
+        )
+
+        XCTAssertEqual(merged.columns, [[.status, .costAll], [.quotaHistoryAll]])
+    }
+
+    func testAHiddenModuleKeepsItsSegmentForTheSameReason() {
+        let merged = PageLayoutSegments.mergingEdit(
+            [[.status], [.quotaHistoryAll]],
+            into: [[.status, .costAll], [.quotaHistoryAll]],
+            available: [.status, .quotaHistoryAll]
+        )
+
+        XCTAssertEqual(merged, [[.status, .costAll], [.quotaHistoryAll]])
+    }
+
     // MARK: - PageLayoutSegments
 
     private static let summaryCost = PageLayoutModuleID("overview-summary-cost")
@@ -1273,6 +1438,61 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(merged, [[m[0]], [m[1], hidden], [m[2]], [m[3]], [m[4]], [m[5]]])
     }
 
+    // MARK: - Segments as an ordering constraint
+
+    func testOrderingRanksEveryModuleByTheSegmentThatClaimsItFirst() {
+        let ordering = PageLayoutSegments.ordering(
+            [[.status, .costAll], [.quotaHistoryAll], [.status]]
+        )
+
+        XCTAssertEqual(ordering[.status], 0)
+        XCTAssertEqual(ordering[.costAll], 0)
+        XCTAssertEqual(ordering[.quotaHistoryAll], 1)
+        XCTAssertNil(ordering[PageLayoutModuleID("never-seen")])
+    }
+
+    func testSortedColumnsPutEarlierSegmentsFirstAndKeepHandOrderInside() {
+        // How `manual` obeys a segmentation without giving up its drag editor:
+        // the user still owns the column and the order among a card's own
+        // segment-mates, and the segmentation owns which block of the column
+        // that is.
+        let a = PageLayoutModuleID("a")
+        let b = PageLayoutModuleID("b")
+        let c = PageLayoutModuleID("c")
+        let d = PageLayoutModuleID("d")
+
+        let sorted = PageLayoutSegments.sortedColumns(
+            [[c, a, b], [d]],
+            segments: [[a, b], [c, d]]
+        )
+
+        // `c` belongs to the second segment, so it drops below `a` and `b` —
+        // and `a` before `b` is the hand order, preserved by the stable sort.
+        XCTAssertEqual(sorted, [[a, b, c], [d]])
+    }
+
+    func testSortedColumnsLeaveAPageWithOneSegmentExactlyAsItWas() {
+        let columns: [[PageLayoutModuleID]] = [[.costAll, .status], [.quotaHistoryAll]]
+
+        XCTAssertEqual(
+            PageLayoutSegments.sortedColumns(columns, segments: [[.status, .costAll]]),
+            columns
+        )
+        XCTAssertEqual(PageLayoutSegments.sortedColumns(columns, segments: []), columns)
+    }
+
+    func testAModuleNoSegmentClaimsSortsToTheEndOfItsColumn() {
+        let stranger = PageLayoutModuleID("stranger")
+
+        XCTAssertEqual(
+            PageLayoutSegments.sortedColumns(
+                [[stranger, .costAll, .status], []],
+                segments: [[.status], [.costAll]]
+            ),
+            [[.status, .costAll, stranger], []]
+        )
+    }
+
     func testMergingAnEditHonoursTheMoveItWasGiven() {
         let merged = PageLayoutSegments.mergingEdit(
             [[.status, .costAll], [.quotaHistoryAll]],
@@ -1285,13 +1505,13 @@ final class PageLayoutTests: XCTestCase {
 
     // MARK: - Compact, end to end
 
-    func testCompactOverviewPacksTheQuotaCardsAsTheirOwnBand() {
-        // The user's actual complaint: on a packed Overview the quota cards must
+    func testCompactOverviewPacksTheQuotaCardsAsTheirOwnSegment() {
+        // The user's first complaint: on a packed Overview the quota cards must
         // form one minimal-height block, with the summary above them and
         // everything else below — no stored segmentation required.
         //
         // This is the pipeline `PageLayoutModel.compactArrangement` runs:
-        // default banding from the catalog's phases, then one packing per band.
+        // default grouping from the catalog's phases, then the relay packing.
         let modules = overviewModules()
         let heights: [PageLayoutModuleID: Double] = [
             Self.summaryCost: 178,
@@ -1327,7 +1547,7 @@ final class PageLayoutTests: XCTestCase {
                 .quotaHistoryAll
             ])
         )
-        // Nothing from below leaks into the quota band, which is exactly what
+        // Nothing from below leaks into the quota segment, which is exactly what
         // the unsegmented packer was free to do.
         XCTAssertEqual(
             Set(packed[2].flatMap { $0 }),
@@ -1338,10 +1558,31 @@ final class PageLayoutTests: XCTestCase {
                 PageLayoutModuleID("heatmap-year:all")
             ])
         )
-        // The summary band is one row: one card per column.
+        // The summary segment is one row: one card per column.
         XCTAssertEqual(packed[0][0].count, 1)
         XCTAssertEqual(packed[0][1].count, 1)
-        // And each band is genuinely balanced, not just grouped.
+
+        // The user's second complaint, on the same page: the columns flow, so
+        // the page is its taller column and nothing waits at a boundary. Summing
+        // each segment's taller column plus a gap — what the retired bands
+        // measured — is strictly worse, and the difference is the hole.
+        let flowed = PageLayoutPacker.pageHeight(
+            segments: packed,
+            heights: heights,
+            spacing: 12
+        )
+        let asRigidBands = packed
+            .map { PageLayoutPacker.pageHeight(columns: $0, heights: heights, spacing: 12) }
+            .reduce(0) { $0 + $1 } + 12 * Double(packed.count - 1)
+        XCTAssertLessThan(flowed, asRigidBands)
+        XCTAssertEqual(
+            flowed,
+            PageLayoutPacker.flowColumns(segments: packed)
+                .map { PageLayoutPacker.stackedHeight($0, heights: heights, spacing: 12) }
+                .max()
+        )
+
+        // And each segment is genuinely balanced, not just grouped.
         let quotaColumns = packed[1].map {
             PageLayoutPacker.stackedHeight($0, heights: heights, spacing: 12)
         }

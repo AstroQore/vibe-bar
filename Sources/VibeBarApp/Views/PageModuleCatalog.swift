@@ -510,16 +510,22 @@ enum PageModuleCatalog {
     /// editor sees.
     ///
     /// Provider pages have a hand-coded split, so their default is simply the
-    /// descriptors' own `defaultColumn`. The Overview has no hand-coded split —
-    /// it auto-balances — so its default is what the balancer would produce
-    /// from the last measured heights, computed with the same Core planner the
-    /// live waterfall uses. That keeps the editor's "before you touched it"
+    /// descriptors' own `defaultColumn`, re-ordered to obey the segmentation.
+    /// The Overview has no hand-coded split — it auto-balances — so its default
+    /// is what the balancer would produce from the last measured heights,
+    /// computed with the same Core planner the live waterfall uses, and handed
+    /// the same segments. That keeps the editor's "before you touched it"
     /// picture honest instead of showing an arrangement the popover never had.
+    ///
+    /// - Parameter segments: the page's resolved segmentation. Empty falls back
+    ///   to "no grouping", which on the Overview means the planner's own phase
+    ///   grouping.
     static func defaultConfig(
         for page: PageLayoutPageID,
         descriptors: [PageModuleDescriptor],
         measuredHeights: [PageLayoutModuleID: Double],
-        spacing: Double
+        spacing: Double,
+        segments: [[PageLayoutModuleID]] = []
     ) -> PageLayoutConfig {
         guard page.isOverview else {
             var columns = [[PageLayoutModuleID]](repeating: [], count: PageLayoutConfig.columnCount)
@@ -527,7 +533,13 @@ enum PageModuleCatalog {
                 let column = min(max(0, descriptor.defaultColumn), PageLayoutConfig.columnCount - 1)
                 columns[column].append(descriptor.id)
             }
-            return PageLayoutConfig(ratio: defaultRatio(for: page), columns: columns)
+            return PageLayoutConfig(
+                ratio: defaultRatio(for: page),
+                // A provider page's built-in split decides the column; the
+                // segmentation decides the order down it. Catalog order survives
+                // inside a segment because the sort is stable.
+                columns: PageLayoutSegments.sortedColumns(columns, segments: segments)
+            )
         }
 
         let items = descriptors.map { descriptor in
@@ -537,7 +549,12 @@ enum PageModuleCatalog {
                 phase: descriptor.masonryPhase.corePhase
             )
         }
-        let plan = OverviewMasonryPlanner.plan(items: items, columns: 2, spacing: spacing)
+        let plan = OverviewMasonryPlanner.plan(
+            items: items,
+            groups: segments.map { $0.map(\.rawValue) },
+            columns: 2,
+            spacing: spacing
+        )
         var columns = [[(module: PageLayoutModuleID, y: Double)]](
             repeating: [],
             count: PageLayoutConfig.columnCount
@@ -566,14 +583,16 @@ enum PageModuleCatalog {
 
     // MARK: - Default segmentation
 
-    /// The bands `compact` packs one at a time when the user has not chosen a
+    /// The groups every mode arranges within when the user has not chosen a
     /// segmentation of their own.
     ///
     /// Derived from the modules' `masonryPhase`, so the grouping the Overview
-    /// reads in is the grouping `compact` respects — this is the whole reason a
-    /// packed Overview no longer slots a heatmap between two quota cards. The
-    /// policy itself is `PageLayoutSegments.defaultSegments`; this is the
-    /// adapter from the catalog's descriptors to it.
+    /// reads in is the grouping every mode respects — this is the whole reason a
+    /// packed Overview no longer slots a heatmap between two quota cards, and
+    /// the reason handing these to `auto` changes nothing about an Overview
+    /// nobody has re-grouped: the planner's phase grouping *is* this. The policy
+    /// itself is `PageLayoutSegments.defaultSegments`; this is the adapter from
+    /// the catalog's descriptors to it.
     static func defaultSegments(
         for page: PageLayoutPageID,
         descriptors: [PageModuleDescriptor]

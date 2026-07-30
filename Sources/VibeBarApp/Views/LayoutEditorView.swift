@@ -17,14 +17,15 @@ import VibeBarCore
 /// that. So what the editor shows is what the popover shows, including a
 /// `compact` packing that will move again the next time the cards are measured.
 ///
-/// What is editable follows from what each mode leaves to the user:
+/// One editor for all three modes, laid out as the page's segments, because
+/// segments belong to all three. The header controls — reorder, merge, add,
+/// hide — work the same everywhere; what a *drag* decides is the only thing
+/// that follows from the mode:
 ///
-/// - `manual` — two column zones, and a drag decides both column and position.
-/// - `compact` — one zone per segment. Position inside a segment belongs to the
-///   packer, so a drag only decides *which* segment a card is in; the header
-///   controls reorder, merge and add segments.
-/// - `auto` — read-only. The page arranges itself, and a drag would be
-///   discarded on the next measurement.
+/// - `manual` — segment, column and position.
+/// - `compact` / `auto` — segment only. Position inside a segment belongs to the
+///   packer or the balancer, and a drag deciding it would be discarded on the
+///   next measurement.
 struct LayoutEditorView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -49,7 +50,7 @@ struct LayoutEditorView: View {
     /// Segments the user has added but not dragged anything into yet.
     ///
     /// An empty segment is never stored — `PageLayoutSegments.normalized` drops
-    /// it, which is what keeps a saved layout from accumulating bands nothing
+    /// it, which is what keeps a saved layout from accumulating groups nothing
     /// renders. So "add a segment, then drag a card into it" only works if the
     /// empty one lives in view state until it has a card, which is what this is.
     @State private var pendingSegments = 0
@@ -123,7 +124,13 @@ struct LayoutEditorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 HStack(alignment: .top, spacing: 14) {
-                    zones(page: page, arrangement: arrangement, blocks: blocks, mode: mode)
+                    zones(
+                        page: page,
+                        arrangement: arrangement,
+                        blocks: blocks,
+                        mode: mode,
+                        descriptors: descriptors
+                    )
                     preview(arrangement: arrangement, blocks: blocks)
                 }
             }
@@ -172,7 +179,7 @@ struct LayoutEditorView: View {
                     HStack(spacing: 5) {
                         Text(entry.title)
                             .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                        if layoutModel.isCustomized(entry.page) {
+                        if layoutModel.hasSavedIntent(entry.page) {
                             Circle()
                                 .fill(Color.accentColor)
                                 .frame(width: 5, height: 5)
@@ -195,7 +202,7 @@ struct LayoutEditorView: View {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .help(layoutModel.isCustomized(entry.page) ? "\(entry.title) — customized" : entry.title)
+                .help(layoutModel.hasSavedIntent(entry.page) ? "\(entry.title) — customized" : entry.title)
             }
             Spacer(minLength: 0)
         }
@@ -232,7 +239,7 @@ struct LayoutEditorView: View {
                 Label("Restore Defaults", systemImage: "arrow.uturn.backward")
                     .font(.system(size: 11))
             }
-            .disabled(!layoutModel.isCustomized(page))
+            .disabled(!layoutModel.hasSavedIntent(page))
         }
     }
 
@@ -300,7 +307,7 @@ struct LayoutEditorView: View {
                 ? "Auto — the Overview balances its columns as the cards are measured."
                 : "Auto — this page's built-in arrangement."
         case .compact:
-            return "Compact — pack each segment into the shortest band its cards fit in."
+            return "Compact — pack each segment into the shortest arrangement its cards fit in."
         case .manual:
             return "Manual — your arrangement, exactly as you dragged it."
         }
@@ -406,7 +413,7 @@ struct LayoutEditorView: View {
                 ratioButton(ratio, page: page, config: config)
             }
             Spacer(minLength: 8)
-            if layoutModel.isCustomized(page) {
+            if layoutModel.hasSavedIntent(page) {
                 Text("Customized")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
@@ -481,187 +488,45 @@ struct LayoutEditorView: View {
 
     // MARK: - Zones
 
-    /// The editable picture of the page. Two column zones in `manual` and
-    /// `auto`, one zone per segment in `compact` — which is the only mode where
-    /// segments exist, because it is the only mode that packs.
-    @ViewBuilder
+    /// The editable picture of the page: one bordered group per segment, each
+    /// holding that segment's slice of the two columns.
+    ///
+    /// One editor for all three modes, because segments now belong to all three.
+    /// What a drag decides is the only thing that differs:
+    ///
+    /// - `manual` — segment, column and position, with an insertion line.
+    /// - `compact` / `auto` — segment only. Where the card lands inside it is
+    ///   the packer's or the balancer's answer, so a drop into its own segment
+    ///   is deliberately a no-op rather than a re-order that would be discarded
+    ///   on the next measurement.
+    ///
+    /// The groups are drawn as boxes; the popover draws no boundary at all. That
+    /// is the point of the picture — the boxes say what the ordering constraint
+    /// is, and the preview beside them says what it produces.
     private func zones(
         page: PageLayoutPageID,
         arrangement: PageLayoutArrangement,
         blocks: [PageLayoutModuleID: Block],
-        mode: PageLayoutMode
+        mode: PageLayoutMode,
+        descriptors: [PageModuleDescriptor]
     ) -> some View {
-        if mode == .compact {
-            segmentZones(page: page, arrangement: arrangement, blocks: blocks)
-        } else {
-            columnZones(page: page, config: arrangement.flattened, blocks: blocks, mode: mode)
-        }
-    }
-
-    // MARK: - Column zones
-
-    private func columnZones(
-        page: PageLayoutPageID,
-        config: PageLayoutConfig,
-        blocks: [PageLayoutModuleID: Block],
-        mode: PageLayoutMode
-    ) -> some View {
-        let totals = (0..<PageLayoutConfig.columnCount).map { index in
-            config.column(index).reduce(0.0) { $0 + (blocks[$1]?.height ?? 0) }
-        }
-        let scale = min(0.4, Self.editorColumnHeight / max(1, totals.max() ?? 1))
-        // `auto` shows what the page currently produces as a read-only picture,
-        // so a drag cannot silently discard an arrangement the app is about to
-        // recompute.
-        let isEditable = mode == .manual
-        let target = isEditable ? dropTarget(page: page, config: config) : nil
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .top, spacing: 10) {
-                ForEach(0..<PageLayoutConfig.columnCount, id: \.self) { index in
-                    zone(
-                        index,
-                        page: page,
-                        config: config,
-                        blocks: blocks,
-                        total: totals[index],
-                        scale: scale,
-                        isEditable: isEditable,
-                        insertionIndex: target?.column == index ? target?.index : nil
-                    )
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-            }
-            if !isEditable {
-                Label("Switch to Compact or Manual to arrange this page", systemImage: "hand.point.up.left")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private func zone(
-        _ index: Int,
-        page: PageLayoutPageID,
-        config: PageLayoutConfig,
-        blocks: [PageLayoutModuleID: Block],
-        total: Double,
-        scale: Double,
-        isEditable: Bool,
-        insertionIndex: Int?
-    ) -> some View {
-        let moduleIDs = config.column(index)
-        let others = moduleIDs.filter { $0 != drag?.moduleID }
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                Text(index == 0 ? "Left column" : "Right column")
-                    .font(.system(size: 11, weight: .semibold))
-                Spacer(minLength: 4)
-                Text("\(moduleIDs.count) card\(moduleIDs.count == 1 ? "" : "s") · \(Int(total.rounded()))pt")
-                    .font(.system(size: 10, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            VStack(spacing: Self.blockSpacing) {
-                ForEach(moduleIDs, id: \.self) { moduleID in
-                    if let block = blocks[moduleID] {
-                        blockView(block, page: page, scale: scale, isEditable: isEditable) {
-                            applyColumnDrop(block, page: page, config: config)
-                        }
-                        // The card stays where it is, dimmed, while its ghost
-                        // floats: pulling it out of the stack would shift every
-                        // block below it, moving the very frames the drop
-                        // target is computed from.
-                        .opacity(drag?.engaged == true && drag?.moduleID == moduleID ? 0.25 : 1)
-                    }
-                }
-                if moduleIDs.isEmpty {
-                    Text("Empty")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .top)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(
-                    insertionIndex == nil ? Color.primary.opacity(0.07) : Color.accentColor.opacity(0.45),
-                    lineWidth: 0.8
-                )
-        )
-        // Drawn as an overlay, not inserted into the stack, for the same
-        // reason: an inline 2.5 pt line would nudge every block below it.
-        .overlay(alignment: .top) {
-            if let insertionIndex,
-               let offset = insertionOffset(page: page, column: index, at: insertionIndex, others: others) {
-                Capsule(style: .continuous)
-                    .fill(Color.accentColor)
-                    .frame(height: 2.5)
-                    .padding(.horizontal, 8)
-                    .offset(y: offset)
-            }
-        }
-        .onGeometryChange(for: CGRect.self) { proxy in
-            proxy.frame(in: .named(Self.space))
-        } action: { frame in
-            zoneFrames[index] = frame
-        }
-    }
-
-    /// Vertical position of the insertion line, measured from the top of the
-    /// column zone, from the frames the blocks actually occupy.
-    private func insertionOffset(
-        page: PageLayoutPageID,
-        column: Int,
-        at index: Int,
-        others: [PageLayoutModuleID]
-    ) -> CGFloat? {
-        guard let zone = zoneFrames[column] else { return nil }
-        guard !others.isEmpty else { return 34 }
-        if index >= others.count {
-            guard let last = blockFrames[frameKey(page, others[others.count - 1])] else { return nil }
-            return last.maxY - zone.minY + Self.blockSpacing / 2
-        }
-        guard let frame = blockFrames[frameKey(page, others[index])] else { return nil }
-        return frame.minY - zone.minY - Self.blockSpacing / 2
-    }
-
-    // MARK: - Segment zones
-
-    /// One bordered group per segment, each holding that segment's own packed
-    /// two columns.
-    ///
-    /// Order *inside* a segment is the packer's answer, not intent, so there is
-    /// no insertion line here and dropping a card back into its own segment does
-    /// nothing. What a drag decides is membership.
-    private func segmentZones(
-        page: PageLayoutPageID,
-        arrangement: PageLayoutArrangement,
-        blocks: [PageLayoutModuleID: Block]
-    ) -> some View {
-        let bands = displayedBands(arrangement)
-        let membership = bands.map { $0.flatMap { $0 } }
-        let heights = bands.map { segmentHeight($0, blocks: blocks) }
+        let structure = segmentStructure(page: page, arrangement: arrangement, descriptors: descriptors)
+        let heights = structure.map { segmentHeight($0.columns, blocks: blocks) }
         // Scaled against the whole page, not one segment, so a tall segment
         // still reads as the tall one.
         let scale = min(0.4, Self.editorColumnHeight / max(1, heights.reduce(0, +)))
-        let target = segmentDropTarget(count: bands.count)
+        let target = segmentDropTarget(count: structure.count)
         return VStack(alignment: .leading, spacing: 7) {
-            ForEach(Array(bands.enumerated()), id: \.offset) { index, columns in
+            ForEach(Array(structure.enumerated()), id: \.offset) { index, segment in
                 segmentZone(
                     index,
                     page: page,
-                    columns: columns,
-                    membership: membership,
+                    segment: segment,
+                    structure: structure,
                     blocks: blocks,
                     height: heights[index],
                     scale: scale,
+                    mode: mode,
                     isTarget: target == index
                 )
             }
@@ -672,9 +537,9 @@ struct LayoutEditorView: View {
                     Label("Add Segment", systemImage: "plus.rectangle.on.rectangle")
                         .font(.system(size: 11))
                 }
-                .disabled(bands.count >= PageLayoutSegments.maximumCount)
+                .disabled(structure.count >= PageLayoutSegments.maximumCount)
                 .help(
-                    bands.count >= PageLayoutSegments.maximumCount
+                    structure.count >= PageLayoutSegments.maximumCount
                         ? "A page holds at most \(PageLayoutSegments.maximumCount) segments."
                         : "Add an empty segment, then drag a card into it."
                 )
@@ -683,16 +548,85 @@ struct LayoutEditorView: View {
         }
     }
 
-    /// The segments on screen: the ones the arrangement produced, plus any the
-    /// user added and has not filled yet.
-    private func displayedBands(_ arrangement: PageLayoutArrangement) -> [[[PageLayoutModuleID]]] {
-        let empty = [[PageLayoutModuleID]](repeating: [], count: PageLayoutConfig.columnCount)
-        return arrangement.segments.map(\.columns)
-            + [[[PageLayoutModuleID]]](repeating: empty, count: pendingSegments)
+    /// One segment as the editor draws it.
+    private struct SegmentSlice {
+        /// Everything the segment holds, switched-off cards included — this is
+        /// what an edit persists, so a hidden card keeps its group.
+        let members: [PageLayoutModuleID]
+        /// The visible cards, split the way the page will actually render them.
+        let columns: [[PageLayoutModuleID]]
+        /// Cards the user switched off, shown dimmed so they can be found and
+        /// switched back on.
+        let hidden: [PageLayoutModuleID]
     }
 
-    /// What one segment contributes to the page: its taller column, the same
-    /// rule `PageLayoutPacker.pageHeight` measures a packed page by.
+    /// The segments on screen: the page's resolved grouping — including cards
+    /// switched off, which is the only place they can be found — with each
+    /// segment's visible cards placed in the columns the arrangement gave them,
+    /// plus any empty segment the user added and has not filled yet.
+    private func segmentStructure(
+        page: PageLayoutPageID,
+        arrangement: PageLayoutArrangement,
+        descriptors: [PageModuleDescriptor]
+    ) -> [SegmentSlice] {
+        let groups = layoutModel.resolvedSegments(
+            for: page,
+            descriptors: descriptors,
+            includingHidden: true
+        )
+        let flowed = arrangement.flattened
+        var placement: [PageLayoutModuleID: (column: Int, rank: Int)] = [:]
+        for index in 0..<PageLayoutConfig.columnCount {
+            for (rank, moduleID) in flowed.column(index).enumerated() {
+                placement[moduleID] = (index, rank)
+            }
+        }
+        var slices = groups.map { members -> SegmentSlice in
+            var columns = [[PageLayoutModuleID]](
+                repeating: [],
+                count: PageLayoutConfig.columnCount
+            )
+            var hidden: [PageLayoutModuleID] = []
+            for moduleID in members {
+                // Classified by what the user chose, not by what happens to be
+                // missing from the arrangement: the eye has to toggle the same
+                // flag it is drawn from, or a card could get stuck showing
+                // "hidden" with no way back. Anything else the arrangement did
+                // not place is still shown, at the end of the left column.
+                guard !layoutModel.isHidden(moduleID, on: page) else {
+                    hidden.append(moduleID)
+                    continue
+                }
+                columns[placement[moduleID]?.column ?? 0].append(moduleID)
+            }
+            // The arrangement's own order down each column, not the segment's
+            // membership order, so the editor stacks the blocks the way the page
+            // stacks the cards.
+            columns = columns.map { column in
+                column.sorted {
+                    (placement[$0]?.rank ?? .max) < (placement[$1]?.rank ?? .max)
+                }
+            }
+            return SegmentSlice(members: members, columns: columns, hidden: hidden)
+        }
+        slices.append(
+            contentsOf: (0..<pendingSegments).map { _ in
+                SegmentSlice(
+                    members: [],
+                    columns: [[PageLayoutModuleID]](
+                        repeating: [],
+                        count: PageLayoutConfig.columnCount
+                    ),
+                    hidden: []
+                )
+            }
+        )
+        return slices
+    }
+
+    /// What one segment contributes to the page: its taller column. Cards the
+    /// user switched off contribute nothing, because the popover will not draw
+    /// them.
     private func segmentHeight(
         _ columns: [[PageLayoutModuleID]],
         blocks: [PageLayoutModuleID: Block]
@@ -705,17 +639,23 @@ struct LayoutEditorView: View {
     private func segmentZone(
         _ index: Int,
         page: PageLayoutPageID,
-        columns: [[PageLayoutModuleID]],
-        membership: [[PageLayoutModuleID]],
+        segment: SegmentSlice,
+        structure: [SegmentSlice],
         blocks: [PageLayoutModuleID: Block],
         height: Double,
         scale: Double,
+        mode: PageLayoutMode,
         isTarget: Bool
     ) -> some View {
-        let cards = columns.flatMap { $0 }
+        let membership = structure.map(\.members)
+        let cards = segment.columns.flatMap { $0 }
+        let isEmpty = segment.members.isEmpty
         // An empty segment is always one the user just added, so it is only ever
         // trailing: moving a card past it, or a segment below it, is meaningless.
         let nextIsEmpty = membership.indices.contains(index + 1) && membership[index + 1].isEmpty
+        let target = mode == .manual
+            ? manualDropTarget(page: page, segment: segment, at: index, count: structure.count)
+            : nil
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("Segment \(index + 1)")
@@ -727,12 +667,12 @@ struct LayoutEditorView: View {
                 segmentButton("chevron.up", help: "Move this segment up") {
                     moveSegment(index, by: -1, page: page, membership: membership)
                 }
-                .disabled(index == 0 || cards.isEmpty)
+                .disabled(index == 0 || isEmpty)
                 segmentButton("chevron.down", help: "Move this segment down") {
                     moveSegment(index, by: 1, page: page, membership: membership)
                 }
-                .disabled(index >= membership.count - 1 || cards.isEmpty || nextIsEmpty)
-                if cards.isEmpty {
+                .disabled(index >= membership.count - 1 || isEmpty || nextIsEmpty)
+                if isEmpty {
                     segmentButton("xmark", help: "Remove this empty segment") {
                         pendingSegments = max(0, pendingSegments - 1)
                     }
@@ -748,21 +688,23 @@ struct LayoutEditorView: View {
             }
             HStack(alignment: .top, spacing: 10) {
                 ForEach(0..<PageLayoutConfig.columnCount, id: \.self) { column in
-                    VStack(spacing: Self.blockSpacing) {
-                        ForEach(columns.indices.contains(column) ? columns[column] : [], id: \.self) { moduleID in
-                            if let block = blocks[moduleID] {
-                                blockView(block, page: page, scale: scale, isEditable: true) {
-                                    applySegmentDrop(block, page: page, membership: membership)
-                                }
-                                .opacity(drag?.engaged == true && drag?.moduleID == moduleID ? 0.25 : 1)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
+                    segmentColumn(
+                        column,
+                        page: page,
+                        segment: segment,
+                        structure: structure,
+                        blocks: blocks,
+                        scale: scale,
+                        mode: mode,
+                        insertionIndex: target?.column == column ? target?.index : nil
+                    )
                 }
             }
+            if !segment.hidden.isEmpty {
+                hiddenStrip(segment.hidden, page: page, blocks: blocks)
+            }
             if cards.isEmpty {
-                Text("Empty — drag a card here")
+                Text(isEmpty ? "Empty — drag a card here" : "Every card here is hidden")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: 38)
@@ -786,6 +728,94 @@ struct LayoutEditorView: View {
         } action: { frame in
             segmentFrames[index] = frame
         }
+    }
+
+    private func segmentColumn(
+        _ column: Int,
+        page: PageLayoutPageID,
+        segment: SegmentSlice,
+        structure: [SegmentSlice],
+        blocks: [PageLayoutModuleID: Block],
+        scale: Double,
+        mode: PageLayoutMode,
+        insertionIndex: Int?
+    ) -> some View {
+        let moduleIDs = segment.columns.indices.contains(column) ? segment.columns[column] : []
+        let others = moduleIDs.filter { $0 != drag?.moduleID }
+        return VStack(spacing: Self.blockSpacing) {
+            ForEach(moduleIDs, id: \.self) { moduleID in
+                if let block = blocks[moduleID] {
+                    blockView(block, page: page, scale: scale, isEditable: true, isHidden: false) {
+                        applyDrop(block, page: page, mode: mode, structure: structure)
+                    }
+                    // The card stays where it is, dimmed, while its ghost
+                    // floats: pulling it out of the stack would shift every
+                    // block below it, moving the very frames the drop target
+                    // is computed from.
+                    .opacity(drag?.engaged == true && drag?.moduleID == moduleID ? 0.25 : 1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+        // Drawn as an overlay, not inserted into the stack, for the same
+        // reason: an inline 2.5 pt line would nudge every block below it.
+        .overlay(alignment: .top) {
+            if let insertionIndex,
+               let offset = insertionOffset(page: page, at: insertionIndex, others: others) {
+                Capsule(style: .continuous)
+                    .fill(Color.accentColor)
+                    .frame(height: 2.5)
+                    .offset(y: offset)
+            }
+        }
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .named(Self.space))
+        } action: { frame in
+            // Every segment reports the same two x ranges, so the last writer
+            // wins harmlessly: the column hit test only reads `x`.
+            zoneFrames[column] = frame
+        }
+    }
+
+    /// Cards switched off in this segment, kept on screen so they can be found
+    /// and switched back on. They are not draggable — a card that renders
+    /// nowhere has no position to choose — and they carry no height.
+    private func hiddenStrip(
+        _ moduleIDs: [PageLayoutModuleID],
+        page: PageLayoutPageID,
+        blocks: [PageLayoutModuleID: Block]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Self.blockSpacing) {
+            Text("Hidden")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            ForEach(moduleIDs, id: \.self) { moduleID in
+                if let block = blocks[moduleID] {
+                    blockView(block, page: page, scale: 0, isEditable: false, isHidden: true) {}
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    /// Vertical position of the insertion line, measured from the top of the
+    /// segment's column stack, from the frames the blocks actually occupy.
+    private func insertionOffset(
+        page: PageLayoutPageID,
+        at index: Int,
+        others: [PageLayoutModuleID]
+    ) -> CGFloat? {
+        guard !others.isEmpty else { return 0 }
+        if index >= others.count {
+            guard let last = blockFrames[frameKey(page, others[others.count - 1])],
+                  let first = blockFrames[frameKey(page, others[0])]
+            else { return nil }
+            return last.maxY - first.minY + Self.blockSpacing / 2
+        }
+        guard let frame = blockFrames[frameKey(page, others[index])],
+              let first = blockFrames[frameKey(page, others[0])]
+        else { return nil }
+        return frame.minY - first.minY - Self.blockSpacing / 2
     }
 
     private func segmentButton(
@@ -812,24 +842,66 @@ struct LayoutEditorView: View {
         page: PageLayoutPageID,
         scale: Double,
         isEditable: Bool,
+        isHidden: Bool,
         onRelease: @escaping () -> Void
     ) -> some View {
-        let height = max(Self.minimumBlockHeight, CGFloat(block.height * scale))
-        let body = blockBody(block, height: height, isEditable: isEditable)
+        // A hidden card is drawn at the minimum height whatever it measures: it
+        // contributes nothing to the page, so drawing it proportionally would
+        // make a switched-off chart dominate the picture of a page it is not on.
+        let height = isHidden
+            ? Self.minimumBlockHeight
+            : max(Self.minimumBlockHeight, CGFloat(block.height * scale))
+        let body = blockBody(block, height: height, isEditable: isEditable, isHidden: isHidden)
             .onGeometryChange(for: CGRect.self) { proxy in
                 proxy.frame(in: .named(Self.space))
             } action: { frame in
                 blockFrames[frameKey(page, block.id)] = frame
             }
             .help("\(block.descriptor.displayName) · \(block.heightLabel)")
-        if isEditable {
-            body.gesture(dragGesture(block: block, page: page, height: height, onRelease: onRelease))
-        } else {
-            body
+        Group {
+            if isEditable {
+                body.gesture(dragGesture(block: block, page: page, height: height, onRelease: onRelease))
+            } else {
+                body
+            }
+        }
+        // On top of the block rather than beside it, so the eye is inside the
+        // card's own bounds and — being the topmost view — takes the click that
+        // the drag gesture underneath would otherwise capture.
+        .overlay(alignment: .topTrailing) {
+            visibilityToggle(block, page: page, isHidden: isHidden)
         }
     }
 
-    private func blockBody(_ block: Block, height: CGFloat, isEditable: Bool) -> some View {
+    private func visibilityToggle(
+        _ block: Block,
+        page: PageLayoutPageID,
+        isHidden: Bool
+    ) -> some View {
+        Button {
+            layoutModel.setHidden(!isHidden, for: block.id, page: page)
+        } label: {
+            Image(systemName: isHidden ? "eye.slash" : "eye")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(
+            isHidden
+                ? "Show “\(block.descriptor.displayName)” on this page"
+                : "Hide “\(block.descriptor.displayName)” from this page"
+        )
+    }
+
+    private func blockBody(
+        _ block: Block,
+        height: CGFloat,
+        isEditable: Bool,
+        isHidden: Bool
+    ) -> some View {
         let accent = block.descriptor.accent.color
         return HStack(alignment: .top, spacing: 7) {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -841,7 +913,7 @@ struct LayoutEditorView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text(block.heightLabel)
+                Text(isHidden ? "hidden" : block.heightLabel)
                     .font(.system(size: 9, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -854,20 +926,26 @@ struct LayoutEditorView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 7)
+        .padding(.leading, 7)
+        // Room for the eye, which floats over the block's trailing edge.
+        .padding(.trailing, 22)
         .padding(.vertical, 5)
         .frame(height: height, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(accent.opacity(0.11))
+                .fill(accent.opacity(isHidden ? 0.05 : 0.11))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(accent.opacity(0.30), lineWidth: 0.7)
+                .stroke(
+                    accent.opacity(isHidden ? 0.14 : 0.30),
+                    style: StrokeStyle(lineWidth: 0.7, dash: isHidden ? [3, 2] : [])
+                )
         )
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .opacity(isHidden ? 0.5 : 1)
     }
 
     // MARK: - Dragging
@@ -910,39 +988,125 @@ struct LayoutEditorView: View {
             }
     }
 
-    /// Manual: the card takes the column and position it was dropped at.
-    private func applyColumnDrop(
+    /// The card joins the segment it was dropped on — and, in `manual`, the
+    /// column and position too.
+    ///
+    /// In the computed modes a drop inside the card's own segment is
+    /// deliberately a no-op: where it sits inside is the packer's or the
+    /// balancer's answer, and a re-order would be discarded on the next pass.
+    private func applyDrop(
         _ block: Block,
         page: PageLayoutPageID,
-        config: PageLayoutConfig
+        mode: PageLayoutMode,
+        structure: [SegmentSlice]
     ) {
-        guard let target = dropTarget(page: page, config: config) else { return }
-        let moved = config.moving(block.id, toColumn: target.column, at: target.index)
-        guard moved.columns != config.columns || !layoutModel.isCustomized(page) else { return }
-        layoutModel.apply(moved, for: page, available: availableModuleIDs(for: page))
-    }
-
-    /// Compact: the card joins the segment it was dropped on. Where it lands
-    /// inside that segment is the packer's call, so a drop inside its own
-    /// segment is deliberately a no-op rather than a re-order.
-    private func applySegmentDrop(
-        _ block: Block,
-        page: PageLayoutPageID,
-        membership: [[PageLayoutModuleID]]
-    ) {
-        guard let target = segmentDropTarget(count: membership.count),
-              membership.indices.contains(target)
+        let membership = structure.map(\.members)
+        guard let target = segmentDropTarget(count: structure.count),
+              structure.indices.contains(target)
         else { return }
-        guard !membership[target].contains(block.id) else { return }
+
         var next = membership
         for index in next.indices {
             next[index].removeAll { $0 == block.id }
         }
         next[target].append(block.id)
-        layoutModel.applySegments(next, for: page, available: availableModuleIDs(for: page))
-        // Whatever is still empty cannot be stored, so it goes back to being a
-        // pending segment instead of vanishing under the user's pointer.
+
+        guard mode == .manual else {
+            guard !membership[target].contains(block.id) else { return }
+            layoutModel.applySegments(next, for: page, available: availableModuleIDs(for: page))
+            // Whatever is still empty cannot be stored, so it goes back to being
+            // a pending segment instead of vanishing under the user's pointer.
+            pendingSegments = next.filter(\.isEmpty).count
+            return
+        }
+
+        let movedColumns = manualDropTarget(
+            page: page,
+            segment: structure[target],
+            at: target,
+            count: structure.count
+        )
+        .flatMap { spot in
+            manualColumns(
+                moving: block.id,
+                to: spot,
+                inSegment: target,
+                structure: structure,
+                membership: next,
+                ratio: layoutModel.ratio(for: page)
+            )
+        }
+        // The two halves of a manual drop change independently: a card can
+        // change segment without changing its place in the column (the segment
+        // below starts exactly where it already sat), and it can move within its
+        // own segment without changing group. Either one alone is an edit; a
+        // click-sized drag that does neither must not write the settings file.
+        let changedSegment = !membership[target].contains(block.id)
+        guard changedSegment || movedColumns != nil else { return }
+        layoutModel.applySegments(
+            next,
+            columns: movedColumns,
+            for: page,
+            available: availableModuleIDs(for: page)
+        )
         pendingSegments = next.filter(\.isEmpty).count
+    }
+
+    /// Where the dragged block would land inside the segment it is over — the
+    /// column, and the index among that segment's cards in it.
+    ///
+    /// `nil` unless the pointer is actually over this segment, so only the
+    /// segment being targeted draws an insertion line.
+    private func manualDropTarget(
+        page: PageLayoutPageID,
+        segment: SegmentSlice,
+        at index: Int,
+        count: Int
+    ) -> (column: Int, index: Int)? {
+        guard let drag, drag.engaged, segmentDropTarget(count: count) == index else { return nil }
+        let column = nearestColumn(to: drag.location)
+        let others = (segment.columns.indices.contains(column) ? segment.columns[column] : [])
+            .filter { $0 != drag.moduleID }
+        var position = others.count
+        for (offset, moduleID) in others.enumerated() {
+            guard let frame = blockFrames[frameKey(page, moduleID)] else { continue }
+            if drag.location.y < frame.midY {
+                position = offset
+                break
+            }
+        }
+        return (column, position)
+    }
+
+    /// The page's two columns with `moduleID` moved to `spot` inside segment
+    /// `index` — the absolute position that local drop implies once the earlier
+    /// segments' share of the column is counted.
+    ///
+    /// `nil` when nothing actually moved, so a click-sized drag does not write
+    /// the settings file.
+    private func manualColumns(
+        moving moduleID: PageLayoutModuleID,
+        to spot: (column: Int, index: Int),
+        inSegment index: Int,
+        structure: [SegmentSlice],
+        membership: [[PageLayoutModuleID]],
+        ratio: PageColumnRatio
+    ) -> PageLayoutConfig? {
+        var columns = [[PageLayoutModuleID]](repeating: [], count: PageLayoutConfig.columnCount)
+        for segment in structure {
+            for column in columns.indices where segment.columns.indices.contains(column) {
+                columns[column].append(contentsOf: segment.columns[column])
+            }
+        }
+        let before = columns
+        let rank = PageLayoutSegments.ordering(membership)
+        let preceding = columns[spot.column]
+            .filter { $0 != moduleID && (rank[$0] ?? index) < index }
+            .count
+        let moved = PageLayoutConfig(ratio: ratio, columns: columns)
+            .moving(moduleID, toColumn: spot.column, at: preceding + spot.index)
+        guard moved.columns != before else { return nil }
+        return moved
     }
 
     private func moveSegment(
@@ -991,23 +1155,6 @@ struct LayoutEditorView: View {
             }
         }
         return best
-    }
-
-    /// Where the dragged block would land if the pointer were released now.
-    private func dropTarget(page: PageLayoutPageID, config: PageLayoutConfig) -> (column: Int, index: Int)? {
-        guard let drag, drag.engaged else { return nil }
-        let point = drag.location
-        let column = nearestColumn(to: point)
-        let others = config.column(column).filter { $0 != drag.moduleID }
-        var index = others.count
-        for (offset, moduleID) in others.enumerated() {
-            guard let frame = blockFrames[frameKey(page, moduleID)] else { continue }
-            if point.y < frame.midY {
-                index = offset
-                break
-            }
-        }
-        return (column, index)
     }
 
     private func frameKey(_ page: PageLayoutPageID, _ moduleID: PageLayoutModuleID) -> String {
@@ -1059,10 +1206,14 @@ struct LayoutEditorView: View {
         arrangement: PageLayoutArrangement,
         blocks: [PageLayoutModuleID: Block]
     ) -> some View {
-        // The same segments the popover will stack, through the same
-        // arrangement call, so the preview cannot disagree with the page.
-        let bands = arrangement.segments.map(\.columns)
-        let pageHeight = bands.reduce(0.0) { $0 + segmentHeight($1, blocks: blocks) }
+        // Exactly what the popover will draw: the two continuous columns, from
+        // the same arrangement call the popover makes. The zones beside this
+        // show the segment boxes; this shows what they produce, which is a page
+        // with no boundary in it at all.
+        let flowed = arrangement.flattened
+        let pageHeight = (0..<PageLayoutConfig.columnCount)
+            .map { index in flowed.column(index).reduce(0.0) { $0 + (blocks[$1]?.height ?? 0) } }
+            .max() ?? 0
         let scale = min(0.12, Self.previewColumnHeight / max(1, pageHeight))
         let width: CGFloat = 150
         let gap: CGFloat = 4
@@ -1077,21 +1228,11 @@ struct LayoutEditorView: View {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(Color.primary.opacity(0.14))
                     .frame(height: 7)
-                ForEach(Array(bands.enumerated()), id: \.offset) { _, columns in
-                    HStack(alignment: .top, spacing: gap) {
-                        previewColumn(
-                            columns.indices.contains(0) ? columns[0] : [],
-                            blocks: blocks,
-                            scale: scale
-                        )
+                HStack(alignment: .top, spacing: gap) {
+                    previewColumn(flowed.column(0), blocks: blocks, scale: scale)
                         .frame(width: leftWidth)
-                        previewColumn(
-                            columns.indices.contains(1) ? columns[1] : [],
-                            blocks: blocks,
-                            scale: scale
-                        )
+                    previewColumn(flowed.column(1), blocks: blocks, scale: scale)
                         .frame(width: max(0, width - gap - leftWidth))
-                    }
                 }
             }
             .padding(7)
@@ -1133,13 +1274,18 @@ struct LayoutEditorView: View {
     /// Modules the page can draw right now. The saved layout may name more;
     /// `PageLayoutResolver.mergingEdit` needs this set to tell "the user moved
     /// this away" from "this is not on screen at the moment".
+    ///
+    /// Cards the user switched off count as not on screen, which is what makes
+    /// switching one back on return it to the column and segment it left.
     private func availableModuleIDs(for page: PageLayoutPageID) -> [PageLayoutModuleID] {
-        PageModuleCatalog.descriptors(
+        layoutModel.visibleModuleIDs(
             for: page,
-            environment: environment,
-            settings: settingsStore.settings
+            descriptors: PageModuleCatalog.descriptors(
+                for: page,
+                environment: environment,
+                settings: settingsStore.settings
+            )
         )
-        .map(\.id)
     }
 
     /// Exactly what the popover would draw for this page right now — the same
@@ -1160,16 +1306,17 @@ struct LayoutEditorView: View {
     }
 
     private func footnote(page: PageLayoutPageID, mode: PageLayoutMode) -> String {
+        let shared = "Segments are a reading order, not a row: a segment's cards sit above the next segment's inside each column, and the columns never wait for each other, so the page has no gap at a boundary. The eye on a card hides it from this page — it keeps its place and comes back where it was. An empty segment is forgotten once you leave this screen."
         switch mode {
         case .manual:
-            return "Drag a card to reorder it or move it between columns. Cards are drawn at their measured height, so the taller column here is the taller column in the popover. A card with no measurement yet shows “—pt”."
+            return "Drag a card to reorder it, move it between columns, or move it into another segment. Cards are drawn at their measured height, so the taller column here is the taller column in the popover; a card with no measurement yet shows “—pt”. \(shared)"
         case .compact:
-            return "Compact packs each segment on its own into whichever two columns make it shortest, and stacks the segments in the order shown. Drag a card onto another segment to move it — where it lands inside is the packer's call. It re-packs when the measured heights move enough to change the answer, and an empty segment is forgotten once you leave this screen."
+            return "Compact packs each segment into whichever two columns make the page shortest, starting each one from the heights the segment above left behind. Drag a card onto another segment to move it — where it lands inside is the packer's call. It re-packs when the measured heights move enough to change the answer. \(shared)"
         case .auto:
-            if page.isOverview {
-                return "The Overview balances its columns automatically, quota cards first. Blocks below show what that balance currently produces."
-            }
-            return "This page uses its built-in arrangement. Pick Compact or Manual, or a width split, to take it over."
+            let intro = page.isOverview
+                ? "The Overview balances its columns automatically, quota cards first, inside the segments shown."
+                : "This page uses its built-in split, ordered by the segments shown. Pick Compact or Manual, or a width split, to take the columns over too."
+            return "\(intro) Drag a card onto another segment to re-group it; which column it lands in stays automatic. \(shared)"
         }
     }
 }

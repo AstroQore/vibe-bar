@@ -139,6 +139,122 @@ final class OverviewMasonryPlannerTests: XCTestCase {
         }
     }
 
+    // MARK: - Grouping
+
+    func testPlanningWithNoGroupingIsExactlyGroupingByPhase() {
+        // The compatibility pin: `auto` gets its grouping from the page's
+        // resolved segments now, and an Overview with no chosen segmentation
+        // resolves to the phase grouping. The two must be the same plan, or
+        // shipping segments to `auto` would silently re-arrange every untouched
+        // Overview.
+        let items: [OverviewMasonryPlanner.Item] = [
+            .init(id: "s1", height: 178, phase: .summary),
+            .init(id: "s2", height: 178, phase: .summary),
+            .init(id: "q1", height: 300, phase: .quota),
+            .init(id: "q2", height: 280, phase: .quota),
+            .init(id: "q3", height: 120, phase: .quota),
+            .init(id: "q4", height: 100, phase: .quota),
+            .init(id: "c1", height: 320, phase: .cost),
+            .init(id: "c2", height: 210, phase: .cost),
+            .init(id: "a1", height: 80, phase: .auxiliary)
+        ]
+
+        XCTAssertEqual(
+            OverviewMasonryPlanner.plan(items: items, spacing: 12),
+            OverviewMasonryPlanner.plan(
+                items: items,
+                groups: [["s1", "s2"], ["q1", "q2", "q3", "q4"], ["c1", "c2"], ["a1"]],
+                spacing: 12
+            )
+        )
+    }
+
+    func testAChosenGroupingDecidesWhatIsBalancedTogether() throws {
+        let items: [OverviewMasonryPlanner.Item] = [
+            .init(id: "q1", height: 300, phase: .quota),
+            .init(id: "q2", height: 100, phase: .quota),
+            .init(id: "c1", height: 300, phase: .cost),
+            .init(id: "c2", height: 100, phase: .cost)
+        ]
+
+        // By phase: both quota cards are placed before either cost card, so q2
+        // balances against q1 and lands on the right.
+        let byPhase = OverviewMasonryPlanner.plan(items: items, spacing: 0)
+        XCTAssertEqual(try XCTUnwrap(byPhase.positions["q1"]).column, 0)
+        XCTAssertEqual(try XCTUnwrap(byPhase.positions["q2"]).column, 1)
+
+        // Grouped {q1, c1} then {q2, c2}: q2 is now planned after c1 took the
+        // right column, so it goes left instead. Same page height, different
+        // reading order — which is the point of letting the user group.
+        let grouped = OverviewMasonryPlanner.plan(
+            items: items,
+            groups: [["q1", "c1"], ["q2", "c2"]],
+            spacing: 0
+        )
+        XCTAssertEqual(try XCTUnwrap(grouped.positions["q1"]).column, 0)
+        XCTAssertEqual(try XCTUnwrap(grouped.positions["c1"]).column, 1)
+        XCTAssertEqual(try XCTUnwrap(grouped.positions["q2"]).column, 0)
+        XCTAssertEqual(try XCTUnwrap(grouped.positions["c2"]).column, 1)
+        XCTAssertEqual(grouped.columnHeights, [400, 400])
+    }
+
+    func testALaterGroupFlowsIntoTheColumnTheEarlierOneLeftShort() throws {
+        // The planner's half of the fix the packer got: a group starts from the
+        // column heights the one before it finished at, so its cards fill the
+        // short side instead of waiting for the tall one.
+        let plan = OverviewMasonryPlanner.plan(
+            items: [
+                .init(id: "tall", height: 400, phase: .quota),
+                .init(id: "short", height: 100, phase: .quota),
+                .init(id: "a", height: 50, phase: .auxiliary),
+                .init(id: "b", height: 50, phase: .auxiliary)
+            ],
+            groups: [["tall", "short"], ["a", "b"]],
+            spacing: 0
+        )
+
+        XCTAssertEqual(try XCTUnwrap(plan.positions["a"]).column, 1)
+        XCTAssertEqual(try XCTUnwrap(plan.positions["a"]).y, 100)
+        XCTAssertEqual(try XCTUnwrap(plan.positions["b"]).column, 1)
+        XCTAssertEqual(try XCTUnwrap(plan.positions["b"]).y, 150)
+        XCTAssertEqual(plan.columnHeights, [400, 200])
+    }
+
+    func testAnItemNoGroupClaimsJoinsTheLastGroup() throws {
+        // Same rule `PageLayoutSegments.resolve` clamps a newcomer by: visible
+        // at the end beats silently unplaced.
+        let plan = OverviewMasonryPlanner.plan(
+            items: [
+                .init(id: "known", height: 100, phase: .quota),
+                .init(id: "stranger", height: 100, phase: .quota)
+            ],
+            groups: [["known"]],
+            spacing: 0
+        )
+
+        XCTAssertNotNil(plan.positions["stranger"])
+        XCTAssertEqual(plan.columnHeights, [100, 100])
+    }
+
+    func testFixedColumnsFollowTheGroupOrderRatherThanThePhaseOrder() throws {
+        let items: [OverviewMasonryPlanner.Item] = [
+            .init(id: "quota", height: 100, phase: .quota),
+            .init(id: "cost", height: 200, phase: .cost)
+        ]
+
+        // Both pinned to the left column, and the grouping says cost reads
+        // first. Without the grouping the phase order would put quota on top.
+        let locked = OverviewMasonryPlanner.plan(
+            items: items,
+            fixedColumns: ["quota": 0, "cost": 0],
+            groups: [["cost"], ["quota"]],
+            spacing: 10
+        )
+
+        XCTAssertEqual(try XCTUnwrap(locked.positions["cost"]).y, 0)
+        XCTAssertEqual(try XCTUnwrap(locked.positions["quota"]).y, 210)
+    }
+
     func testALockedSessionKeepsTheSummaryBandWhereItWas() throws {
         let items: [OverviewMasonryPlanner.Item] = [
             .init(id: "summary-cost", height: 178, phase: .summary),

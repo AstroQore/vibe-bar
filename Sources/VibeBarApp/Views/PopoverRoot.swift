@@ -462,21 +462,39 @@ private struct OverviewWaterfall: View {
         }
     }
 
-    /// The built-in arrangement: the auto-balancing waterfall, untouched.
+    /// The built-in arrangement: the auto-balancing waterfall, planned inside
+    /// the page's segments.
+    ///
+    /// The segments are handed to the layout rather than derived from the
+    /// descriptors' phases, so a grouping the user chose in Settings changes what
+    /// the balancer balances. With no chosen grouping the resolved segments *are*
+    /// the phase grouping, so the untouched Overview plans exactly as before.
     private func balancedWaterfall(
         descriptors: [PageModuleDescriptor],
         context: OverviewModuleContext
     ) -> some View {
-        ColumnMasonryLayout(
+        let visible = layoutModel.visibleDescriptors(for: page, descriptors: descriptors)
+        let groups = layoutModel
+            .resolvedSegments(for: page, descriptors: descriptors)
+            .map { $0.map(\.rawValue) }
+        return ColumnMasonryLayout(
             columns: 2,
             spacing: density.interSectionSpacing,
+            groups: groups,
             session: masonrySession
         ) {
-            ForEach(descriptors) { descriptor in
+            ForEach(visible) { descriptor in
                 card(for: descriptor, context: context)
                     .measuredPageModule(descriptor.id, page: page, model: layoutModel)
                     .overviewMasonryItem(id: descriptor.id.rawValue, phase: descriptor.masonryPhase)
             }
+        }
+        // The session lock exists so refreshes cannot reshuffle the dashboard
+        // under the user. Re-grouping the page is not a refresh — it is the user
+        // asking for a different arrangement — so the lock is released for one
+        // pass and the planner answers the new question.
+        .onChange(of: groups) { _, _ in
+            masonrySession.columnsByID = [:]
         }
     }
 

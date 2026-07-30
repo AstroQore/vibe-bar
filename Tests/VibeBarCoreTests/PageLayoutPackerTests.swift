@@ -392,10 +392,14 @@ final class PageLayoutPackerTests: XCTestCase {
 
     // MARK: - Segments
 
-    func testEachSegmentIsPackedOnItsOwn() {
-        // The point of segments: a card can only be balanced against the cards
-        // in its own band, so the tall one in band 0 cannot pull the small ones
-        // from band 1 up beside it.
+    func testALaterSegmentFlowsUpIntoTheColumnAnEarlierOneLeftShort() {
+        // The bug segments used to have, in one test. Segment 0 is lopsided:
+        // 400 pt on the left, 100 pt on the right. Packed as independent bands,
+        // segment 1 split its two cards one per column and both waited for the
+        // 400 pt column to finish — a 300 pt hole under `short`, and a page of
+        // 400 + 10 + 50 = 460 pt. As a relay, segment 1 starts from (400, 100)
+        // and puts *both* its cards in the short column, filling the hole and
+        // leaving the page exactly as tall as segment 0 already made it.
         let packed = PageLayoutPacker.pack(
             segments: [
                 items([("tall", 400), ("short", 100)]),
@@ -406,7 +410,46 @@ final class PageLayoutPackerTests: XCTestCase {
 
         XCTAssertEqual(packed.count, 2)
         XCTAssertEqual(packed[0].columns, [[module("tall")], [module("short")]])
-        XCTAssertEqual(packed[1].columns, [[module("a")], [module("b")]])
+        XCTAssertEqual(packed[0].columnHeights, [400, 100])
+        XCTAssertEqual(packed[1].columns, [[], [module("a"), module("b")]])
+        // Seeds included, so the last segment's heights are the page's.
+        XCTAssertEqual(packed[1].columnHeights, [400, 220])
+        XCTAssertEqual(packed[1].pageHeight, 400)
+        XCTAssertLessThan(packed[1].pageHeight, 460)
+
+        // Membership still never crosses a segment: that is the constraint the
+        // relay preserves while removing the gap.
+        XCTAssertEqual(
+            Set(packed[0].columns.flatMap { $0 }),
+            [module("tall"), module("short")]
+        )
+        XCTAssertEqual(Set(packed[1].columns.flatMap { $0 }), [module("a"), module("b")])
+    }
+
+    func testSegmentingCanStillCostHeightBecauseEarlierSegmentsChooseFirst() {
+        // The relay is greedy across segments, not globally optimal, so
+        // segmenting is still a trade — it just no longer pays for a gap.
+        // Free, {a,b} and {c} pair off into a 20 pt page. Segment 0 has only its
+        // own two cards to balance, splits them one each, and leaves segment 1's
+        // single 20 pt card nowhere better than a 30 pt column.
+        let first = items([("a", 10), ("b", 10)])
+        let second = items([("c", 20)])
+        let heights = Dictionary(
+            uniqueKeysWithValues: (first + second).map { ($0.id, $0.height) }
+        )
+
+        let free = PageLayoutPacker.pack(items: first + second, spacing: 0)
+        let relayed = PageLayoutPacker.pageHeight(
+            segments: PageLayoutPacker.packedSegmentColumns(
+                segments: [first, second],
+                spacing: 0
+            ),
+            heights: heights,
+            spacing: 0
+        )
+
+        XCTAssertEqual(free.pageHeight, 20)
+        XCTAssertEqual(relayed, 30)
     }
 
     func testSegmentPackingIsTheSameAnswerAsPackingThatBandAlone() {
@@ -429,35 +472,90 @@ final class PageLayoutPackerTests: XCTestCase {
         XCTAssertEqual(packed[1].columns.flatMap { $0 }, [module("b")])
     }
 
-    func testAnEmptySegmentPacksToEmptyColumns() {
-        let packed = PageLayoutPacker.pack(segments: [[], items([("a", 100)])], spacing: 10)
+    func testAnEmptySegmentPacksToEmptyColumnsAndHandsTheRelayOnUntouched() {
+        let packed = PageLayoutPacker.pack(
+            segments: [items([("a", 100)]), [], items([("b", 100)])],
+            spacing: 10
+        )
 
-        XCTAssertEqual(packed[0].columns, [[], []])
-        XCTAssertEqual(packed[0].pageHeight, 0)
-        XCTAssertEqual(packed[1].pageHeight, 100)
+        XCTAssertEqual(packed[1].columns, [[], []])
+        // A segment with nothing in it must not reset the columns to zero, or
+        // everything below it would be planned against a page that does not
+        // exist.
+        XCTAssertEqual(packed[1].columnHeights, packed[0].columnHeights)
+        XCTAssertEqual(packed[0].columnHeights, [100, 0])
+        // `b` still lands beside `a` rather than under it.
+        XCTAssertEqual(packed[2].columns, [[], [module("b")]])
+        XCTAssertEqual(packed[2].columnHeights, [100, 100])
     }
 
-    func testSegmentedPageHeightSumsTheBandsAndTheGapsBetweenThem() {
+    func testSeedsShiftWhereThePackerStartsAndCountTowardsTheAnswer() {
+        // The relay's primitive, on its own: with the left column already 300 pt
+        // tall and occupied, a 100 pt card belongs on the right even though the
+        // right column would be the taller one considered in isolation.
+        let seeded = PageLayoutPacker.pack(
+            items: items([("a", 100)]),
+            spacing: 10,
+            seeds: [
+                PageLayoutPacker.ColumnSeed(height: 300, isOccupied: true),
+                PageLayoutPacker.ColumnSeed(height: 0, isOccupied: false)
+            ]
+        )
+
+        XCTAssertEqual(seeded.columns, [[], [module("a")]])
+        // The right column was empty, so the card pays no gap; the left column's
+        // seed rides through untouched.
+        XCTAssertEqual(seeded.columnHeights, [300, 100])
+        XCTAssertEqual(seeded.pageHeight, 300)
+
+        // Occupied but zero-height is not the same as empty: the gap is owed to
+        // the card that is there, not to the height it happens to measure.
+        let occupiedButEmptyLooking = PageLayoutPacker.pack(
+            items: items([("a", 100)]),
+            spacing: 10,
+            seeds: [
+                PageLayoutPacker.ColumnSeed(height: 0, isOccupied: true),
+                PageLayoutPacker.ColumnSeed(height: 0, isOccupied: true)
+            ]
+        )
+        XCTAssertEqual(occupiedButEmptyLooking.columnHeights, [110, 0])
+    }
+
+    func testFlowColumnsConcatenateEachColumnInSegmentOrder() {
+        let flowed = PageLayoutPacker.flowColumns(
+            segments: [
+                [[module("a")], [module("b")]],
+                [[], [module("c")]],
+                [[module("d")], []]
+            ]
+        )
+
+        XCTAssertEqual(flowed, [[module("a"), module("d")], [module("b"), module("c")]])
+    }
+
+    func testSegmentedPageHeightIsTheTallerColumnOnceEverySegmentHasFlowedIn() {
         let heights: [PageLayoutModuleID: Double] = [
             module("a"): 100,
             module("b"): 50,
             module("c"): 200
         ]
 
-        // Band 0 measures 100 (its taller column), band 1 measures 200, and one
-        // gap sits between them.
+        // The left column holds only `a`; the right holds `b` then `c` with one
+        // gap between them. Nothing lines up at the boundary, so the page is
+        // 260 pt — not the 100 + 10 + 200 = 310 pt a stack of rigid bands cost,
+        // which is the 50 pt hole the user was looking at.
         XCTAssertEqual(
             PageLayoutPacker.pageHeight(
                 segments: [
                     [[module("a")], [module("b")]],
-                    [[module("c")], []]
+                    [[], [module("c")]]
                 ],
                 heights: heights,
                 spacing: 10
             ),
-            310
+            260
         )
-        // One band is a plain page, gap-free.
+        // One segment is a plain page.
         XCTAssertEqual(
             PageLayoutPacker.pageHeight(
                 segments: [[[module("a")], [module("b")]]],
@@ -474,39 +572,31 @@ final class PageLayoutPackerTests: XCTestCase {
 
     func testSegmentedPageHeightMeasuresWhatTheSegmentedPackerChose() {
         let bands = [items([("a", 300), ("b", 200)]), items([("c", 150), ("d", 50)])]
-        let packed = PageLayoutPacker.packedSegmentColumns(segments: bands, spacing: 7)
+        let packed = PageLayoutPacker.pack(segments: bands, spacing: 7)
         let heights = Dictionary(
             uniqueKeysWithValues: bands.flatMap { $0 }.map { ($0.id, $0.height) }
         )
 
+        // Segment 0 splits 300 / 200; segment 1 then puts the 150 under the 200
+        // and the 50 under the 300, landing both columns on 357.
+        XCTAssertEqual(packed[1].columns, [[module("d")], [module("c")]])
         XCTAssertEqual(
-            PageLayoutPacker.pageHeight(segments: packed, heights: heights, spacing: 7),
-            PageLayoutPacker.pack(segments: bands, spacing: 7)
-                .map(\.pageHeight)
-                .reduce(0) { $0 + $1 } + 7
-        )
-    }
-
-    func testSegmentingCostsHeightComparedToPackingTheWholePage() {
-        // Segments are a deliberate trade: the page is taller than the freest
-        // packing, and in exchange the grouping the user reads it in survives.
-        let quota = items([("q1", 300), ("q2", 100)])
-        let rest = items([("c1", 300), ("c2", 100)])
-
-        let free = PageLayoutPacker.pack(items: quota + rest, spacing: 10).pageHeight
-        let heights = Dictionary(
-            uniqueKeysWithValues: (quota + rest).map { ($0.id, $0.height) }
-        )
-        let banded = PageLayoutPacker.pageHeight(
-            segments: PageLayoutPacker.packedSegmentColumns(
-                segments: [quota, rest],
-                spacing: 10
+            PageLayoutPacker.pageHeight(
+                segments: packed.map(\.columns),
+                heights: heights,
+                spacing: 7
             ),
-            heights: heights,
-            spacing: 10
+            357
         )
-
-        XCTAssertEqual(free, 410)
-        XCTAssertEqual(banded, 610)
+        // The measurement and the packer agree, and the last segment's own
+        // heights already carry the whole page.
+        XCTAssertEqual(
+            PageLayoutPacker.pageHeight(
+                segments: packed.map(\.columns),
+                heights: heights,
+                spacing: 7
+            ),
+            packed[packed.count - 1].pageHeight
+        )
     }
 }

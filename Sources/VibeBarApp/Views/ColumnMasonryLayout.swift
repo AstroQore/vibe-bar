@@ -47,11 +47,20 @@ struct ColumnMasonryLayout: Layout {
 
     var columns: Int = 2
     var spacing: CGFloat = 12
+    /// Ordered groups the planner places in, i.e. the page's resolved segments.
+    /// Empty means "group by phase", the Overview's default segmentation.
+    var groups: [[String]] = []
     let session: Session
 
-    init(columns: Int = 2, spacing: CGFloat = 12, session: Session = Session()) {
+    init(
+        columns: Int = 2,
+        spacing: CGFloat = 12,
+        groups: [[String]] = [],
+        session: Session = Session()
+    ) {
         self.columns = columns
         self.spacing = spacing
+        self.groups = groups
         self.session = session
     }
 
@@ -111,6 +120,7 @@ struct ColumnMasonryLayout: Layout {
         if session.columnsByID.isEmpty, columnWidth > 0, !items.isEmpty {
             let optimized = OverviewMasonryPlanner.plan(
                 items: items,
+                groups: groups,
                 columns: columns,
                 spacing: Double(spacing)
             )
@@ -119,6 +129,7 @@ struct ColumnMasonryLayout: Layout {
         if session.columnsByID.isEmpty {
             return OverviewMasonryPlanner.plan(
                 items: items,
+                groups: groups,
                 columns: columns,
                 spacing: Double(spacing)
             )
@@ -126,6 +137,7 @@ struct ColumnMasonryLayout: Layout {
         return OverviewMasonryPlanner.plan(
             items: items,
             fixedColumns: session.columnsByID,
+            groups: groups,
             columns: columns,
             spacing: Double(spacing)
         )
