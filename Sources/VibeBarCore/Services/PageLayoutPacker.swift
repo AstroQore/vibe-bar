@@ -127,6 +127,39 @@ public enum PageLayoutPacker {
         )
     }
 
+    // MARK: - Segments
+
+    /// Pack each band on its own, in order.
+    ///
+    /// A band is packed exactly the way a whole page is — its two columns are
+    /// still balanced for height — but nothing crosses a band boundary, so the
+    /// grouping the user chose survives the packing. See `PageLayoutSegments`
+    /// for why that grouping exists.
+    ///
+    /// Identifiers are deduplicated across bands as well as within one, keeping
+    /// the first occurrence, so a hand-edited file cannot render one card twice.
+    public static func pack(
+        segments: [[Item]],
+        spacing: Double,
+        ratio: PageColumnRatio = .equal
+    ) -> [Packing] {
+        var seen = Set<PageLayoutModuleID>()
+        return segments.map { segment in
+            let unique = segment.filter { !$0.id.rawValue.isEmpty && seen.insert($0.id).inserted }
+            return pack(items: unique, spacing: spacing, ratio: ratio)
+        }
+    }
+
+    /// `pack(segments:spacing:ratio:)` as the per-band columns the renderer
+    /// draws.
+    public static func packedSegmentColumns(
+        segments: [[Item]],
+        spacing: Double,
+        ratio: PageColumnRatio = .equal
+    ) -> [[[PageLayoutModuleID]]] {
+        pack(segments: segments, spacing: spacing, ratio: ratio).map(\.columns)
+    }
+
     // MARK: - Measuring an arrangement
 
     /// Height of one column: its cards plus a gap between each neighbouring
@@ -157,6 +190,28 @@ public enum PageLayoutPacker {
         columns
             .map { stackedHeight($0, heights: heights, spacing: spacing) }
             .max() ?? 0
+    }
+
+    /// What a *segmented* arrangement would measure: every band's taller column,
+    /// plus one inter-band gap between neighbours.
+    ///
+    /// The number `compact`'s re-pack hysteresis has to compare once a page has
+    /// bands. Comparing one band's height against a whole page's would let a
+    /// segmented page grow without ever being re-packed.
+    public static func pageHeight(
+        segments: [[[PageLayoutModuleID]]],
+        heights: [PageLayoutModuleID: Double],
+        spacing: Double
+    ) -> Double {
+        let gap = spacing.isFinite ? max(0, spacing) : 0
+        var total = 0.0
+        var count = 0
+        for segment in segments {
+            let height = pageHeight(columns: segment, heights: heights, spacing: gap)
+            total = appended(total, count, height, spacing: gap)
+            count += 1
+        }
+        return total
     }
 
     // MARK: - Exact search

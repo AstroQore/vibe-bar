@@ -2,12 +2,14 @@ import SwiftUI
 import VibeBarCore
 
 enum OverviewMasonryPhase: Int {
+    case summary
     case quota
     case cost
     case auxiliary
 
     var corePhase: OverviewMasonryPlanner.Phase {
         switch self {
+        case .summary: .summary
         case .quota: .quota
         case .cost: .cost
         case .auxiliary: .auxiliary

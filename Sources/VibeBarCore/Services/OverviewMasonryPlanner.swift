@@ -2,13 +2,19 @@ import Foundation
 
 /// Pure layout planner for the Overview's two-column waterfall.
 ///
-/// Placement is deliberately phased: quota cards are balanced first without
-/// considering anything below them, cost cards are then balanced from those
-/// seeded column heights, and auxiliary cards finally fill the shorter column.
-/// Keeping this policy in Core makes the behavior deterministic and testable
-/// while SwiftUI remains responsible only for live height measurement.
+/// Placement is deliberately phased: the summary band takes the top row, quota
+/// cards are balanced below it without considering anything further down, cost
+/// cards are then balanced from those seeded column heights, and auxiliary
+/// cards finally fill the shorter column. Keeping this policy in Core makes the
+/// behavior deterministic and testable while SwiftUI remains responsible only
+/// for live height measurement.
 public enum OverviewMasonryPlanner {
     public enum Phase: Int, Sendable, Comparable {
+        /// The Overview's header band: cards pinned to one shared height that
+        /// read as a single row. Placed across the columns in declaration
+        /// order rather than balanced, because a band whose cards are all the
+        /// same height has nothing to balance.
+        case summary
         case quota
         case cost
         case auxiliary
@@ -60,11 +66,20 @@ public enum OverviewMasonryPlanner {
             return greedyPlan(items: items, columns: columnCount, spacing: spacing)
         }
 
+        let summaries = items.filter { $0.phase == .summary }
         let quotas = items.filter { $0.phase == .quota }
         let costs = items.filter { $0.phase == .cost }
         let auxiliary = items.filter { $0.phase == .auxiliary }
         var positions: [String: Position] = [:]
         var heights = Array(repeating: 0.0, count: columnCount)
+
+        // The summary band is a row, not a balanced pair: its cards carry one
+        // pinned height, so declaration order decides which side each takes and
+        // the band seeds every column equally. Balancing it instead would stack
+        // two equal cards in one column the moment a third appeared.
+        for (offset, item) in summaries.enumerated() {
+            append(item, to: offset % columnCount, spacing: spacing, heights: &heights, positions: &positions)
+        }
 
         // AQ's Overview has four quota cards. Enumerating all 24 orders lets
         // either pair occupy either column while preserving the invariant of
@@ -115,7 +130,7 @@ public enum OverviewMasonryPlanner {
         var positions: [String: Position] = [:]
         var heights = Array(repeating: 0.0, count: columnCount)
 
-        for phase in [Phase.quota, .cost, .auxiliary] {
+        for phase in [Phase.summary, .quota, .cost, .auxiliary] {
             for item in items where item.phase == phase {
                 let preferred = fixedColumns[item.id] ?? shortestColumn(heights)
                 let column = min(max(0, preferred), columnCount - 1)

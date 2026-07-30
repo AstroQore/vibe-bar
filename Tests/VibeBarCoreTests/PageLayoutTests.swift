@@ -887,4 +887,378 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertTrue(mangled.layout.isEmpty)
         XCTAssertEqual(mangled.layout.mode, .auto)
     }
+
+    // MARK: - Stored segments
+
+    func testStoredLayoutRoundTripsItsSegments() throws {
+        let stored = StoredPageLayout(
+            mode: .compact,
+            ratio: .wideNarrow,
+            columns: [[.status], [.costAll]],
+            segments: [[.status], [.costAll, .quotaHistoryAll]]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            StoredPageLayout.self,
+            from: try JSONEncoder().encode(stored)
+        )
+
+        XCTAssertEqual(decoded.mode, .compact)
+        XCTAssertEqual(decoded.columns, [[.status], [.costAll]])
+        XCTAssertEqual(decoded.segments, [[.status], [.costAll, .quotaHistoryAll]])
+    }
+
+    func testStoredLayoutEncodesSegmentsAsArraysOfIdentifierStrings() throws {
+        let stored = StoredPageLayout(
+            mode: .compact,
+            segments: [[.status], [.costAll, .quotaHistoryAll]]
+        )
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try JSONEncoder().encode(stored)) as? [String: Any]
+        )
+
+        XCTAssertEqual(
+            object["segments"] as? [[String]],
+            [["status"], ["cost-all", "quota-history-all"]]
+        )
+    }
+
+    func testStoredLayoutWithoutSegmentsDecodesToNoChosenSegmentation() throws {
+        // Every entry written before segments existed: the page falls back to
+        // its default banding, which is what it was already doing.
+        let legacy = Data(#"{"mode":"compact","ratio":"equal","columns":[["status"],[]]}"#.utf8)
+        let decoded = try JSONDecoder().decode(StoredPageLayout.self, from: legacy)
+
+        XCTAssertEqual(decoded.segments, [])
+        XCTAssertEqual(decoded.mode, .compact)
+        XCTAssertEqual(decoded.columns.first, [.status])
+    }
+
+    func testMalformedSegmentsCostTheSegmentationAndNothingElse() throws {
+        let mangled = Data(#"{"mode":"compact","columns":[["status"],[]],"segments":"nope"}"#.utf8)
+        let decoded = try JSONDecoder().decode(StoredPageLayout.self, from: mangled)
+
+        XCTAssertEqual(decoded.segments, [])
+        XCTAssertEqual(decoded.columns.first, [.status])
+    }
+
+    func testStoredSegmentsAreNormalizedOnTheWayIn() {
+        // A duplicate across bands would render one card twice; an empty band
+        // would draw a header with nothing under it.
+        let stored = StoredPageLayout(
+            mode: .compact,
+            segments: [[.status, .costAll], [], [.costAll, .quotaHistoryAll], [PageLayoutModuleID("")]]
+        )
+
+        XCTAssertEqual(stored.segments, [[.status, .costAll], [.quotaHistoryAll]])
+    }
+
+    func testAnEntryCanCarrySegmentsAndStillCountAsUncustomized() {
+        // `isEmpty` asks "is there a hand arrangement to go back to". A banding
+        // is an input to Compact, not a hand arrangement.
+        let stored = StoredPageLayout(mode: .compact, segments: [[.status], [.costAll]])
+
+        XCTAssertTrue(stored.isEmpty)
+        XCTAssertNil(stored.restoredAsManual())
+    }
+
+    func testReturningToManualKeepsTheSegmentation() {
+        let parked = StoredPageLayout(
+            mode: .compact,
+            ratio: .wideNarrow,
+            columns: [[.costAll], [.status]],
+            segments: [[.status], [.costAll]]
+        )
+
+        let restored = parked.restoredAsManual()
+
+        XCTAssertEqual(restored?.mode, .manual)
+        XCTAssertEqual(restored?.segments, [[.status], [.costAll]])
+    }
+
+    func testPresetCarriesTheSegmentationItWasCapturedFrom() throws {
+        let preset = StoredPageLayoutPreset(
+            name: "Quotas first",
+            layout: StoredPageLayout(
+                mode: .compact,
+                ratio: .equal,
+                segments: [[.status], [.costAll, .quotaHistoryAll]]
+            )
+        )
+
+        let decoded = try JSONDecoder().decode(
+            StoredPageLayoutPreset.self,
+            from: try JSONEncoder().encode(preset)
+        )
+
+        // The mode rides along too: applying a Compact preset has to put the
+        // page back into Compact, not freeze one packing of it as Manual.
+        XCTAssertEqual(decoded.layout.mode, .compact)
+        XCTAssertEqual(decoded.layout.segments, [[.status], [.costAll, .quotaHistoryAll]])
+    }
+
+    // MARK: - PageLayoutSegments
+
+    private static let summaryCost = PageLayoutModuleID("overview-summary-cost")
+    private static let summaryStatus = PageLayoutModuleID("overview-summary-status")
+
+    /// The Overview's module set, in catalog declaration order, with the phases
+    /// `PageModuleCatalog` gives them.
+    private func overviewModules() -> [PageLayoutSegments.Module] {
+        [
+            .init(id: Self.summaryCost, phase: .summary),
+            .init(id: Self.summaryStatus, phase: .summary),
+            .init(id: PageLayoutModuleID("overview-quota:codex"), phase: .quota),
+            .init(id: PageLayoutModuleID("overview-quota:claude"), phase: .quota),
+            .init(id: PageLayoutModuleID("overview-quota:gemini"), phase: .quota),
+            .init(id: PageLayoutModuleID("overview-quota:grok"), phase: .quota),
+            .init(id: .quotaHistoryAll, phase: .quota),
+            .init(id: .costAll, phase: .cost),
+            .init(id: .cost(tool: .codex), phase: .cost),
+            .init(id: PageLayoutModuleID("model-breakdown:all"), phase: .auxiliary),
+            .init(id: PageLayoutModuleID("heatmap-year:all"), phase: .auxiliary)
+        ]
+    }
+
+    func testOverviewDefaultsToSummaryThenQuotaThenEverythingElse() {
+        let segments = PageLayoutSegments.defaultSegments(
+            modules: overviewModules(),
+            page: .overview
+        )
+
+        XCTAssertEqual(segments.count, 3)
+        XCTAssertEqual(segments[0], [Self.summaryCost, Self.summaryStatus])
+        XCTAssertEqual(
+            segments[1],
+            [
+                PageLayoutModuleID("overview-quota:codex"),
+                PageLayoutModuleID("overview-quota:claude"),
+                PageLayoutModuleID("overview-quota:gemini"),
+                PageLayoutModuleID("overview-quota:grok"),
+                .quotaHistoryAll
+            ]
+        )
+        // Cost and the analytics derived from it read as one block.
+        XCTAssertEqual(
+            segments[2],
+            [
+                .costAll,
+                .cost(tool: .codex),
+                PageLayoutModuleID("model-breakdown:all"),
+                PageLayoutModuleID("heatmap-year:all")
+            ]
+        )
+    }
+
+    func testAProviderPageDefaultsToASingleSegment() {
+        // `compact` on a provider page keeps meaning exactly what it meant
+        // before segments existed: one packing of the whole page.
+        let modules: [PageLayoutSegments.Module] = [
+            .init(id: .quotaGroup(tool: .claude, groupKey: "five_hour"), phase: .quota),
+            .init(id: .status, phase: .quota),
+            .init(id: .cost(tool: .claude), phase: .cost),
+            .init(id: .modelBreakdown(tool: .claude), phase: .auxiliary)
+        ]
+
+        let segments = PageLayoutSegments.defaultSegments(modules: modules, page: .detail(.claude))
+
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertEqual(segments[0].count, 4)
+    }
+
+    func testEmptyPhasesDoNotProduceEmptySegments() {
+        // A page with no cost data at all is two bands, not three with a hole.
+        let segments = PageLayoutSegments.defaultSegments(
+            modules: [
+                .init(id: Self.summaryCost, phase: .summary),
+                .init(id: .quotaHistoryAll, phase: .quota)
+            ],
+            page: .overview
+        )
+
+        XCTAssertEqual(segments, [[Self.summaryCost], [.quotaHistoryAll]])
+    }
+
+    func testSegmentNormalizationFoldsBandsPastTheCapIntoTheLast() {
+        let overflowing = (0..<(PageLayoutSegments.maximumCount + 2)).map {
+            [PageLayoutModuleID("card-\($0)")]
+        }
+
+        let normalized = PageLayoutSegments.normalized(overflowing)
+
+        XCTAssertEqual(normalized.count, PageLayoutSegments.maximumCount)
+        // Folding rather than dropping: no card is lost to the cap.
+        XCTAssertEqual(normalized.flatMap { $0 }.count, PageLayoutSegments.maximumCount + 2)
+        XCTAssertEqual(
+            normalized[PageLayoutSegments.maximumCount - 1],
+            [
+                PageLayoutModuleID("card-\(PageLayoutSegments.maximumCount - 1)"),
+                PageLayoutModuleID("card-\(PageLayoutSegments.maximumCount)"),
+                PageLayoutModuleID("card-\(PageLayoutSegments.maximumCount + 1)")
+            ]
+        )
+    }
+
+    func testSegmentNormalizationKeepsIdentifiersThisBuildDoesNotKnow() {
+        let future = PageLayoutModuleID("overview-something-new:v3")
+
+        XCTAssertEqual(
+            PageLayoutSegments.normalized([[future], [.status]]),
+            [[future], [.status]]
+        )
+    }
+
+    func testResolvingWithoutStoredSegmentsUsesThePageDefault() {
+        let modules = overviewModules()
+        let defaults = PageLayoutSegments.defaultSegments(modules: modules, page: .overview)
+
+        let resolved = PageLayoutSegments.resolve(
+            stored: [],
+            available: modules.map(\.id),
+            defaultSegments: defaults
+        )
+
+        XCTAssertEqual(resolved, defaults)
+    }
+
+    func testResolvingDropsModulesThePageCannotDrawAndTheirEmptyBands() {
+        let resolved = PageLayoutSegments.resolve(
+            stored: [[.status], [.costAll], [.quotaHistoryAll]],
+            available: [.status, .quotaHistoryAll],
+            defaultSegments: [[.status], [.quotaHistoryAll]]
+        )
+
+        XCTAssertEqual(resolved, [[.status], [.quotaHistoryAll]])
+    }
+
+    func testANewModuleJoinsTheBandItsFamilyDefaultsTo() {
+        // The case that matters in practice: a build adds a card, or a provider
+        // is switched back on, while the user has a saved banding.
+        let resolved = PageLayoutSegments.resolve(
+            stored: [[Self.summaryCost], [.quotaHistoryAll], [.costAll]],
+            available: [Self.summaryCost, Self.summaryStatus, .quotaHistoryAll, .costAll],
+            defaultSegments: [
+                [Self.summaryCost, Self.summaryStatus],
+                [.quotaHistoryAll],
+                [.costAll]
+            ]
+        )
+
+        XCTAssertEqual(resolved[0], [Self.summaryCost, Self.summaryStatus])
+        XCTAssertEqual(resolved[1], [.quotaHistoryAll])
+        XCTAssertEqual(resolved[2], [.costAll])
+    }
+
+    func testANewModuleWithNowhereToGoLandsInTheLastBand() {
+        // A page saved with fewer bands than the default has no band for the
+        // newcomer's family; visible at the end beats silently missing.
+        let resolved = PageLayoutSegments.resolve(
+            stored: [[Self.summaryCost, Self.summaryStatus]],
+            available: [Self.summaryCost, Self.summaryStatus, .costAll],
+            defaultSegments: [[Self.summaryCost, Self.summaryStatus], [.quotaHistoryAll], [.costAll]]
+        )
+
+        XCTAssertEqual(resolved, [[Self.summaryCost, Self.summaryStatus, .costAll]])
+    }
+
+    func testResolvingPlacesEveryAvailableModuleExactlyOnce() {
+        let modules = overviewModules()
+        let resolved = PageLayoutSegments.resolve(
+            // A hand-edited file: duplicated, unknown and missing entries.
+            stored: [[.costAll, .costAll], [PageLayoutModuleID("gone:forever")]],
+            available: modules.map(\.id),
+            defaultSegments: PageLayoutSegments.defaultSegments(modules: modules, page: .overview)
+        )
+
+        let placed = resolved.flatMap { $0 }
+        XCTAssertEqual(Set(placed), Set(modules.map(\.id)))
+        XCTAssertEqual(placed.count, modules.count)
+    }
+
+    func testMergingAnEditKeepsBandsForModulesThatAreNotOnScreen() {
+        // The quota card of a provider that is mid-refresh must not lose its
+        // band because the user dragged something else.
+        let merged = PageLayoutSegments.mergingEdit(
+            [[.status], [.costAll]],
+            into: [[.status, .quotaHistoryAll], [.costAll]],
+            available: [.status, .costAll]
+        )
+
+        XCTAssertEqual(merged, [[.status, .quotaHistoryAll], [.costAll]])
+    }
+
+    func testMergingAnEditHonoursTheMoveItWasGiven() {
+        let merged = PageLayoutSegments.mergingEdit(
+            [[.status, .costAll], [.quotaHistoryAll]],
+            into: [[.status], [.costAll, .quotaHistoryAll]],
+            available: [.status, .costAll, .quotaHistoryAll]
+        )
+
+        XCTAssertEqual(merged, [[.status, .costAll], [.quotaHistoryAll]])
+    }
+
+    // MARK: - Compact, end to end
+
+    func testCompactOverviewPacksTheQuotaCardsAsTheirOwnBand() {
+        // The user's actual complaint: on a packed Overview the quota cards must
+        // form one minimal-height block, with the summary above them and
+        // everything else below — no stored segmentation required.
+        //
+        // This is the pipeline `PageLayoutModel.compactArrangement` runs:
+        // default banding from the catalog's phases, then one packing per band.
+        let modules = overviewModules()
+        let heights: [PageLayoutModuleID: Double] = [
+            Self.summaryCost: 178,
+            Self.summaryStatus: 178,
+            PageLayoutModuleID("overview-quota:codex"): 300,
+            PageLayoutModuleID("overview-quota:claude"): 260,
+            PageLayoutModuleID("overview-quota:gemini"): 220,
+            PageLayoutModuleID("overview-quota:grok"): 180,
+            .quotaHistoryAll: 300,
+            .costAll: 340,
+            .cost(tool: .codex): 320,
+            PageLayoutModuleID("model-breakdown:all"): 200,
+            PageLayoutModuleID("heatmap-year:all"): 210
+        ]
+        let segments = PageLayoutSegments.defaultSegments(modules: modules, page: .overview)
+
+        let packed = PageLayoutPacker.packedSegmentColumns(
+            segments: segments.map { band in
+                band.map { PageLayoutPacker.Item(id: $0, height: heights[$0] ?? 0) }
+            },
+            spacing: 12
+        )
+
+        XCTAssertEqual(packed.count, 3)
+        XCTAssertEqual(Set(packed[0].flatMap { $0 }), [Self.summaryCost, Self.summaryStatus])
+        XCTAssertEqual(
+            Set(packed[1].flatMap { $0 }),
+            Set([
+                PageLayoutModuleID("overview-quota:codex"),
+                PageLayoutModuleID("overview-quota:claude"),
+                PageLayoutModuleID("overview-quota:gemini"),
+                PageLayoutModuleID("overview-quota:grok"),
+                .quotaHistoryAll
+            ])
+        )
+        // Nothing from below leaks into the quota band, which is exactly what
+        // the unsegmented packer was free to do.
+        XCTAssertEqual(
+            Set(packed[2].flatMap { $0 }),
+            Set([
+                .costAll,
+                .cost(tool: .codex),
+                PageLayoutModuleID("model-breakdown:all"),
+                PageLayoutModuleID("heatmap-year:all")
+            ])
+        )
+        // The summary band is one row: one card per column.
+        XCTAssertEqual(packed[0][0].count, 1)
+        XCTAssertEqual(packed[0][1].count, 1)
+        // And each band is genuinely balanced, not just grouped.
+        let quotaColumns = packed[1].map {
+            PageLayoutPacker.stackedHeight($0, heights: heights, spacing: 12)
+        }
+        XCTAssertLessThan(abs(quotaColumns[0] - quotaColumns[1]), 100)
+    }
 }

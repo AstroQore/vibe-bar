@@ -87,4 +87,78 @@ final class OverviewMasonryPlannerTests: XCTestCase {
             XCTAssertGreaterThan(following.y, detail.y + 420)
         }
     }
+
+    func testTheSummaryBandTakesTheTopRowBeforeAnythingIsBalanced() throws {
+        // The Overview's cost and status summaries used to be a hard-coded row
+        // above the waterfall. As modules they have to land exactly where that
+        // row was: one per column, at the top, whatever the quota cards do.
+        let items: [OverviewMasonryPlanner.Item] = [
+            .init(id: "summary-cost", height: 178, phase: .summary),
+            .init(id: "summary-status", height: 178, phase: .summary),
+            .init(id: "q1", height: 300, phase: .quota),
+            .init(id: "q2", height: 280, phase: .quota),
+            .init(id: "q3", height: 120, phase: .quota),
+            .init(id: "q4", height: 100, phase: .quota),
+            .init(id: "cost", height: 320, phase: .cost)
+        ]
+
+        let plan = OverviewMasonryPlanner.plan(items: items, spacing: 12)
+
+        let cost = try XCTUnwrap(plan.positions["summary-cost"])
+        let status = try XCTUnwrap(plan.positions["summary-status"])
+        XCTAssertEqual(cost.column, 0)
+        XCTAssertEqual(status.column, 1)
+        XCTAssertEqual(cost.y, 0)
+        XCTAssertEqual(status.y, 0)
+        // Everything below starts under the band, in both columns.
+        for id in ["q1", "q2", "q3", "q4", "cost"] {
+            XCTAssertGreaterThanOrEqual(try XCTUnwrap(plan.positions[id]).y, 190)
+        }
+    }
+
+    func testTheSummaryBandSeedsBothColumnsEquallySoQuotaBalancingIsUnchanged() throws {
+        let quotas: [OverviewMasonryPlanner.Item] = [
+            .init(id: "q1", height: 300, phase: .quota),
+            .init(id: "q2", height: 280, phase: .quota),
+            .init(id: "q3", height: 120, phase: .quota),
+            .init(id: "q4", height: 100, phase: .quota)
+        ]
+        let summaries: [OverviewMasonryPlanner.Item] = [
+            .init(id: "s1", height: 178, phase: .summary),
+            .init(id: "s2", height: 178, phase: .summary)
+        ]
+
+        let withoutBand = OverviewMasonryPlanner.plan(items: quotas, spacing: 12)
+        let withBand = OverviewMasonryPlanner.plan(items: summaries + quotas, spacing: 12)
+
+        for item in quotas {
+            XCTAssertEqual(
+                withBand.positions[item.id]?.column,
+                withoutBand.positions[item.id]?.column
+            )
+        }
+    }
+
+    func testALockedSessionKeepsTheSummaryBandWhereItWas() throws {
+        let items: [OverviewMasonryPlanner.Item] = [
+            .init(id: "summary-cost", height: 178, phase: .summary),
+            .init(id: "summary-status", height: 178, phase: .summary),
+            .init(id: "q1", height: 200, phase: .quota),
+            .init(id: "q2", height: 180, phase: .quota)
+        ]
+        let fixedColumns = OverviewMasonryPlanner.plan(items: items, spacing: 12)
+            .positions
+            .mapValues(\.column)
+
+        let locked = OverviewMasonryPlanner.plan(
+            items: items,
+            fixedColumns: fixedColumns,
+            spacing: 12
+        )
+
+        XCTAssertEqual(locked.positions["summary-cost"]?.column, 0)
+        XCTAssertEqual(locked.positions["summary-status"]?.column, 1)
+        XCTAssertEqual(try XCTUnwrap(locked.positions["summary-cost"]).y, 0)
+        XCTAssertEqual(try XCTUnwrap(locked.positions["summary-status"]).y, 0)
+    }
 }

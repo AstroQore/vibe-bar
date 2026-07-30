@@ -389,4 +389,124 @@ final class PageLayoutPackerTests: XCTestCase {
         // Straight through `PageLayoutConfig`, so the invariants hold.
         XCTAssertEqual(Set(config.moduleIDs).count, config.moduleIDs.count)
     }
+
+    // MARK: - Segments
+
+    func testEachSegmentIsPackedOnItsOwn() {
+        // The point of segments: a card can only be balanced against the cards
+        // in its own band, so the tall one in band 0 cannot pull the small ones
+        // from band 1 up beside it.
+        let packed = PageLayoutPacker.pack(
+            segments: [
+                items([("tall", 400), ("short", 100)]),
+                items([("a", 50), ("b", 50)])
+            ],
+            spacing: 10
+        )
+
+        XCTAssertEqual(packed.count, 2)
+        XCTAssertEqual(packed[0].columns, [[module("tall")], [module("short")]])
+        XCTAssertEqual(packed[1].columns, [[module("a")], [module("b")]])
+    }
+
+    func testSegmentPackingIsTheSameAnswerAsPackingThatBandAlone() {
+        let band = items([("a", 300), ("b", 200), ("c", 150), ("d", 50)])
+
+        XCTAssertEqual(
+            PageLayoutPacker.pack(segments: [band], spacing: 8, ratio: .wideNarrow)[0].columns,
+            PageLayoutPacker.pack(items: band, spacing: 8, ratio: .wideNarrow).columns
+        )
+    }
+
+    func testAnIdentifierInTwoSegmentsIsKeptOnlyInTheFirst() {
+        // A hand-edited file must not make one card render twice.
+        let packed = PageLayoutPacker.pack(
+            segments: [items([("a", 100)]), items([("a", 100), ("b", 40)])],
+            spacing: 10
+        )
+
+        XCTAssertEqual(packed[0].columns.flatMap { $0 }, [module("a")])
+        XCTAssertEqual(packed[1].columns.flatMap { $0 }, [module("b")])
+    }
+
+    func testAnEmptySegmentPacksToEmptyColumns() {
+        let packed = PageLayoutPacker.pack(segments: [[], items([("a", 100)])], spacing: 10)
+
+        XCTAssertEqual(packed[0].columns, [[], []])
+        XCTAssertEqual(packed[0].pageHeight, 0)
+        XCTAssertEqual(packed[1].pageHeight, 100)
+    }
+
+    func testSegmentedPageHeightSumsTheBandsAndTheGapsBetweenThem() {
+        let heights: [PageLayoutModuleID: Double] = [
+            module("a"): 100,
+            module("b"): 50,
+            module("c"): 200
+        ]
+
+        // Band 0 measures 100 (its taller column), band 1 measures 200, and one
+        // gap sits between them.
+        XCTAssertEqual(
+            PageLayoutPacker.pageHeight(
+                segments: [
+                    [[module("a")], [module("b")]],
+                    [[module("c")], []]
+                ],
+                heights: heights,
+                spacing: 10
+            ),
+            310
+        )
+        // One band is a plain page, gap-free.
+        XCTAssertEqual(
+            PageLayoutPacker.pageHeight(
+                segments: [[[module("a")], [module("b")]]],
+                heights: heights,
+                spacing: 10
+            ),
+            100
+        )
+        XCTAssertEqual(
+            PageLayoutPacker.pageHeight(segments: [], heights: heights, spacing: 10),
+            0
+        )
+    }
+
+    func testSegmentedPageHeightMeasuresWhatTheSegmentedPackerChose() {
+        let bands = [items([("a", 300), ("b", 200)]), items([("c", 150), ("d", 50)])]
+        let packed = PageLayoutPacker.packedSegmentColumns(segments: bands, spacing: 7)
+        let heights = Dictionary(
+            uniqueKeysWithValues: bands.flatMap { $0 }.map { ($0.id, $0.height) }
+        )
+
+        XCTAssertEqual(
+            PageLayoutPacker.pageHeight(segments: packed, heights: heights, spacing: 7),
+            PageLayoutPacker.pack(segments: bands, spacing: 7)
+                .map(\.pageHeight)
+                .reduce(0) { $0 + $1 } + 7
+        )
+    }
+
+    func testSegmentingCostsHeightComparedToPackingTheWholePage() {
+        // Segments are a deliberate trade: the page is taller than the freest
+        // packing, and in exchange the grouping the user reads it in survives.
+        let quota = items([("q1", 300), ("q2", 100)])
+        let rest = items([("c1", 300), ("c2", 100)])
+
+        let free = PageLayoutPacker.pack(items: quota + rest, spacing: 10).pageHeight
+        let heights = Dictionary(
+            uniqueKeysWithValues: (quota + rest).map { ($0.id, $0.height) }
+        )
+        let banded = PageLayoutPacker.pageHeight(
+            segments: PageLayoutPacker.packedSegmentColumns(
+                segments: [quota, rest],
+                spacing: 10
+            ),
+            heights: heights,
+            spacing: 10
+        )
+
+        XCTAssertEqual(free, 410)
+        XCTAssertEqual(banded, 610)
+    }
 }

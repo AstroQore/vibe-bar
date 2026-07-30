@@ -29,6 +29,10 @@ enum PageModuleAccent {
 /// views.
 enum PageModuleKind: Hashable {
     // Overview
+    /// The cost + token headline grid. A module like any other since the
+    /// summary band stopped being hard-coded above the waterfall.
+    case overviewCostSummary
+    case overviewStatusSummary
     case overviewQuota(ToolType)
     case overviewQuotaHistoryAll
     case overviewCostAll
@@ -82,6 +86,10 @@ enum PageModuleCatalog {
         static let analytics: Double = 200
         static let status: Double = 150
         static let placeholder: Double = 90
+        /// The summary cards are pinned to `Theme.Density.overviewSummaryHeight`
+        /// (148 / 178 / 210), so this stand-in only has to be the right order of
+        /// magnitude until the first measurement replaces it.
+        static let summary: Double = 150
     }
 
     // MARK: - Pages
@@ -120,6 +128,34 @@ enum PageModuleCatalog {
         // Order below is the order `OverviewWaterfall` hands the cards to
         // `ColumnMasonryLayout`. The planner's quota/cost pairing depends on
         // it, so the two must not diverge.
+        //
+        // The two summary cards come first and carry the `.summary` phase, which
+        // is what puts them side by side in the top row in `auto` and in their
+        // own band in `compact`. They used to be a hard-coded header row above
+        // the waterfall, which is why they were the two cards on the Overview
+        // the user could not move.
+        result.append(
+            PageModuleDescriptor(
+                id: .custom("overview-summary-cost"),
+                kind: .overviewCostSummary,
+                displayName: "Cost Summary",
+                defaultColumn: 0,
+                accent: .cost,
+                masonryPhase: .summary,
+                fallbackHeight: FallbackHeight.summary
+            )
+        )
+        result.append(
+            PageModuleDescriptor(
+                id: .custom("overview-summary-status"),
+                kind: .overviewStatusSummary,
+                displayName: "Status Summary",
+                defaultColumn: 1,
+                accent: .neutral,
+                masonryPhase: .summary,
+                fallbackHeight: FallbackHeight.summary
+            )
+        )
         for tool in settings.visibleCoreProviderList {
             result.append(
                 PageModuleDescriptor(
@@ -526,5 +562,27 @@ enum PageModuleCatalog {
     /// design; the Overview balances two equal columns.
     static func defaultRatio(for page: PageLayoutPageID) -> PageColumnRatio {
         page.isOverview ? .equal : .narrowWide
+    }
+
+    // MARK: - Default segmentation
+
+    /// The bands `compact` packs one at a time when the user has not chosen a
+    /// segmentation of their own.
+    ///
+    /// Derived from the modules' `masonryPhase`, so the grouping the Overview
+    /// reads in is the grouping `compact` respects — this is the whole reason a
+    /// packed Overview no longer slots a heatmap between two quota cards. The
+    /// policy itself is `PageLayoutSegments.defaultSegments`; this is the
+    /// adapter from the catalog's descriptors to it.
+    static func defaultSegments(
+        for page: PageLayoutPageID,
+        descriptors: [PageModuleDescriptor]
+    ) -> [[PageLayoutModuleID]] {
+        PageLayoutSegments.defaultSegments(
+            modules: descriptors.map {
+                PageLayoutSegments.Module(id: $0.id, phase: $0.masonryPhase.corePhase)
+            },
+            page: page
+        )
     }
 }
