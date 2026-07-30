@@ -37,6 +37,26 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.updateChannel, .main)
     }
 
+    func testMiscCookieAutoImportDefaultsToOffAndRoundTrips() throws {
+        // Must decode to `false` for a settings file written before the
+        // toggle existed: opening an old config with a newer build cannot
+        // be what starts background browser / Keychain reads.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertFalse(legacy.miscCookieAutoImportEnabled)
+        XCTAssertFalse(AppSettings.default.miscCookieAutoImportEnabled)
+
+        var settings = AppSettings.default
+        settings.miscCookieAutoImportEnabled = true
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertTrue(decoded.miscCookieAutoImportEnabled)
+    }
+
     func testOverviewQuotaHistoryHiddenCurvesDefaultToNoneAndRoundTrip() throws {
         // Stored as *hidden* ids, so a settings file written before the
         // Overview chart existed has to mean "show everything" — not "show

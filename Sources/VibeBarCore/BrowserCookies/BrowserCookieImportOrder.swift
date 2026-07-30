@@ -11,9 +11,18 @@ extension Array where Element == Browser {
     /// Filter to browsers that are worth attempting a cookie read
     /// against right now — installed, with profile data on disk, and
     /// not in `BrowserCookieAccessGate`'s cooldown window.
+    ///
+    /// `warmKeychainBrowsers` carries the `Browser.rawValue`s whose
+    /// Safe Storage key SweetCookieKit already holds in this process
+    /// (see `MiscCookieResolver.markKeychainWarm`). Those skip the gate
+    /// on a silent read, because the gate's veto there is a
+    /// false positive: its preflight reports "would need interaction"
+    /// while the cached key would in fact have decrypted the jar
+    /// without any prompt.
     public func cookieImportCandidates(
         using detection: BrowserDetection,
-        allowKeychainPrompt: Bool = false
+        allowKeychainPrompt: Bool = false,
+        warmKeychainBrowsers: Set<String> = []
     ) -> [Browser] {
         let candidates = filter { browser in
             if !allowKeychainPrompt,
@@ -35,7 +44,10 @@ extension Array where Element == Browser {
             }
             return scoped
         }
-        return candidates.filter { BrowserCookieAccessGate.shouldAttempt($0) }
+        return candidates.filter { browser in
+            warmKeychainBrowsers.contains(browser.rawValue)
+                || BrowserCookieAccessGate.shouldAttempt(browser)
+        }
     }
 
     /// Filter to browsers with usable profile data, ignoring the

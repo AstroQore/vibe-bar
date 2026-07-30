@@ -65,7 +65,11 @@ public struct CursorQuotaAdapter: QuotaAdapter {
         guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
         let queriedAt = now()
-        let results = await MiscQuotaAggregator.gatherSlotResults(resolutions) { resolution in
+        let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
+            spec: CursorQuotaAdapter.cookieSpec,
+            account: account,
+            resolutions: resolutions
+        ) { resolution in
             try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
         }
         return MiscQuotaAggregator.aggregate(

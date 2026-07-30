@@ -529,9 +529,7 @@ struct SettingsView: View {
                         MiscProviderSettingsSection(instance: instance)
                     } else {
                         settingsSection("Misc Provider") {
-                            Text("Select a provider from the sidebar. Hidden providers keep their saved setup and credentials.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            MiscProviderLandingView()
                         }
                     }
                     }

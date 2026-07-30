@@ -47,6 +47,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var miscProviderInstances: [MiscProviderInstance]
     public var costData: CostDataSettings
 
+    /// Silently re-import a cookie-sourced misc provider's browser
+    /// session when its stored jar has gone stale, instead of leaving
+    /// the card on "Needs re-login" until the user clicks Import.
+    ///
+    /// Off by default, and deliberately so: an existing settings file
+    /// must not start doing background Keychain work because it was
+    /// opened by a newer build. When it is on, the re-import runs with
+    /// `allowKeychainPrompt: false`, so the worst case is that it finds
+    /// nothing — it can never surface a password prompt the user didn't
+    /// ask for.
+    public var miscCookieAutoImportEnabled: Bool
+
     /// Curves the user switched **off** in the Overview's all-providers quota
     /// history chart, as `"<tool>|<accountId>|<bucketId>"`.
     ///
@@ -205,7 +217,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         costData: CostDataSettings = .default,
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
-        pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:]
+        pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
+        miscCookieAutoImportEnabled: Bool = false
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -241,6 +254,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
         self.pageLayouts = pageLayouts
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
+        self.miscCookieAutoImportEnabled = miscCookieAutoImportEnabled
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
@@ -292,6 +306,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case overviewQuotaHistoryHiddenCurveIds
         case pageLayouts
         case pageLayoutPresets
+        case miscCookieAutoImportEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -432,6 +447,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 forKey: .pageLayoutPresets
             )) ?? [:]
         )
+        // Absent key means "settings written before auto re-import
+        // existed", which must decode to off — an upgrade cannot start
+        // reading browser cookie stores in the background on its own.
+        self.miscCookieAutoImportEnabled =
+            try c.decodeIfPresent(Bool.self, forKey: .miscCookieAutoImportEnabled)
+            ?? Self.default.miscCookieAutoImportEnabled
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -471,6 +492,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
         try c.encode(pageLayouts, forKey: .pageLayouts)
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
+        try c.encode(miscCookieAutoImportEnabled, forKey: .miscCookieAutoImportEnabled)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {

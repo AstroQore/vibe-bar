@@ -124,7 +124,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .alibaba,
                     instanceID: instanceID,
-                    spec: AlibabaQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste console.aliyun.com Cookie header (login_aliyunid_csrf=…; cna=…; …)"
                 )
                 MiscWebLoginRow(
@@ -150,7 +149,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .alibabaTokenPlan,
                     instanceID: instanceID,
-                    spec: AlibabaTokenPlanQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste console.aliyun.com Cookie header (login_aliyunid_csrf=…; cna=…; …)"
                 )
                 MiscWebLoginRow(
@@ -173,14 +171,12 @@ struct MiscProviderSettingsSection: View {
             CookieSourceControls(
                 tool: .kimi,
                 instanceID: instanceID,
-                spec: KimiQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste www.kimi.com Cookie header (kimi-auth=eyJ...)"
             )
         case .cursor:
             CookieSourceControls(
                 tool: .cursor,
                 instanceID: instanceID,
-                spec: CursorQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
             )
         case .mimo:
@@ -188,7 +184,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .mimo,
                     instanceID: instanceID,
-                    spec: MimoQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste platform.xiaomimimo.com Cookie header (userId=...; api-platform_slh=...; api-platform_ph=...; api-platform_serviceToken=...)"
                 )
                 MiscWebLoginRow(
@@ -201,7 +196,6 @@ struct MiscProviderSettingsSection: View {
             CookieSourceControls(
                 tool: .iflytek,
                 instanceID: instanceID,
-                spec: IFlyTekQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste maas.xfyun.cn Cookie header (atp-auth-token=…; account_id=…; ssoSessionId=…; tenantToken=…)"
             )
         case .tencentHunyuan:
@@ -209,7 +203,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .tencentHunyuan,
                     instanceID: instanceID,
-                    spec: TencentHunyuanQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste cloud.tencent.com Cookie header (skey=…; uin=…; …)"
                 )
                 MiscWebLoginRow(
@@ -224,7 +217,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .tencentTokenPlan,
                     instanceID: instanceID,
-                    spec: TencentTokenPlanQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste cloud.tencent.com Cookie header (skey=…; uin=…; …)"
                 )
                 MiscWebLoginRow(
@@ -238,7 +230,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .volcengine,
                     instanceID: instanceID,
-                    spec: VolcengineQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste console.volcengine.com Cookie header (csrfToken=…; AccountID=…; …)"
                 )
                 MiscWebLoginRow(
@@ -260,7 +251,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .baiduQianfan,
                     instanceID: instanceID,
-                    spec: BaiduQianfanQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste console.bce.baidu.com Cookie header (BDUSS=…; STOKEN=…; __bid_n=…; …)"
                 )
                 MiscWebLoginRow(
@@ -274,7 +264,6 @@ struct MiscProviderSettingsSection: View {
                 CookieSourceControls(
                     tool: .openCodeGo,
                     instanceID: instanceID,
-                    spec: OpenCodeGoQuotaAdapter.cookieSpec,
                     manualPrompt: "Paste opencode.ai Cookie header (__Host-auth=... or auth=...)"
                 )
                 WorkspaceIDField(
@@ -296,7 +285,6 @@ struct MiscProviderSettingsSection: View {
             CookieSourceControls(
                 tool: .ollama,
                 instanceID: instanceID,
-                spec: OllamaQuotaAdapter.cookieSpec,
                 manualPrompt: "Paste ollama.com Cookie header (session=... or next-auth.session-token=...)"
             )
         case .openRouter:
@@ -759,7 +747,6 @@ struct KiroStatusRow: View {
 struct CookieSourceControls: View {
     let tool: ToolType
     let instanceID: String
-    let spec: MiscCookieResolver.Spec
     let manualPrompt: String
 
     @EnvironmentObject var environment: AppEnvironment
@@ -769,7 +756,26 @@ struct CookieSourceControls: View {
     @State private var manualDraft: String = ""
     @State private var importStatus: String?
 
+    /// Which cookies to look for. Comes from `MiscCookieSpecCatalog`
+    /// rather than the caller so this row and the all-providers batch
+    /// import can never disagree about a provider's domains. `nil` means
+    /// a provider row was wired up without registering a spec, which is
+    /// a programmer error rather than a user-facing state.
+    private var spec: MiscCookieResolver.Spec? {
+        MiscCookieSpecCatalog.spec(for: tool)
+    }
+
     var body: some View {
+        if spec == nil {
+            Text("No cookie spec is registered for \(tool.menuTitle).")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        } else {
+            controls
+        }
+    }
+
+    private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
             if slots.isEmpty {
                 Text("No cookies imported yet — import from your browser or paste below.")
@@ -829,8 +835,8 @@ struct CookieSourceControls: View {
     }
 
     private func importNow() {
+        guard let snapshotSpec = spec else { return }
         importStatus = "Importing…"
-        let snapshotSpec = spec
         let snapshotInstanceID = instanceID
         DispatchQueue.global(qos: .userInitiated).async {
             let result = MiscCookieResolver.appendBrowserImport(for: snapshotSpec, instanceID: snapshotInstanceID)
@@ -901,14 +907,14 @@ struct CookieSourceControls: View {
     }
 
     private func normalizedManualCookie(from raw: String) -> String? {
-        if spec.requiredNames.isEmpty {
+        guard let spec, !spec.requiredNames.isEmpty else {
             return CookieHeaderNormalizer.normalize(raw)
         }
         return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: spec.requiredNames)
     }
 
     private var missingCookieMessage: String {
-        if spec.requiredNames.isEmpty {
+        guard let spec, !spec.requiredNames.isEmpty else {
             return "No usable cookie found in pasted text."
         }
         return "No \(spec.requiredNames.sorted().joined(separator: ", ")) cookie found in pasted text."

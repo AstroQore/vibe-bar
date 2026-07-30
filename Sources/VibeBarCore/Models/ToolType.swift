@@ -7,6 +7,7 @@ import Foundation
 /// - MockDataProvider.swift: sampleQuota
 /// - ServiceStatusClient.swift: fetch (or short-circuit on `!supportsStatusPage`)
 /// - AccountStore.swift: autoDetect helper
+/// - MiscCookieSpecCatalog.swift: cookie-sourced or not
 /// - PopoverRoot.swift: emptyMessage / sections
 /// - SettingsView.swift: menuItemIcon
 /// - StatusItemController.swift: status item tag mapping
