@@ -182,42 +182,48 @@ public struct PageLayoutConfig: Hashable, Sendable {
     }
 }
 
-/// A page's cards as they will be drawn: one or more bands, each a two-column
-/// arrangement of its own, stacked in reading order.
+/// A page's cards as they will be drawn: an ordered list of segments, each a
+/// two-column arrangement of its own.
 ///
-/// Every mode produces one of these. `auto` and `manual` produce exactly one
-/// band, so they render through the same path as a segmented `compact` page and
-/// cannot drift from it — one band is, by construction, the single `HStack` the
-/// pages have always been.
+/// The segments are **not** drawn as bands. `flattened` concatenates them into
+/// the two columns the page actually renders, so segment *k*'s cards sit above
+/// segment *k+1*'s inside each column and the two columns never wait for each
+/// other at a boundary. Keeping the per-segment structure here anyway is what
+/// lets the editor show the grouping, and what lets the packer be handed one
+/// segment at a time.
+///
+/// Every mode produces one of these. `auto` and `manual` produce exactly the
+/// same shape as `compact`, so all three render through one path.
 public struct PageLayoutArrangement: Hashable, Sendable {
-    /// Never empty: a page with nothing to draw is one empty band, so callers
-    /// can read `ratio` and the first band without unwrapping.
+    /// Never empty: a page with nothing to draw is one empty segment, so callers
+    /// can read `ratio` and the first segment without unwrapping.
     public var segments: [PageLayoutConfig]
 
     public init(segments: [PageLayoutConfig]) {
         self.segments = segments.isEmpty ? [PageLayoutConfig()] : segments
     }
 
-    /// One band — every mode but `compact`.
+    /// One segment — a page with no chosen grouping.
     public init(_ config: PageLayoutConfig) {
         self.init(segments: [config])
     }
 
     /// Width split the whole page renders at. There is one ratio per page, not
-    /// one per band: a band boundary is a horizontal cut, and cutting the
-    /// columns at different widths per band would read as two different pages.
+    /// one per segment: the columns run the full height of the page, and a
+    /// segment boundary does not cut them.
     public var ratio: PageColumnRatio { segments[0].ratio }
 
-    /// Band membership in reading order — what the editor persists and what a
-    /// preset captures. Order *within* a band is the packer's answer, not
-    /// intent, so it is not what gets stored.
+    /// Segment membership in reading order — what the editor persists and what a
+    /// preset captures. Order *within* a segment is the arranging mode's answer,
+    /// not intent, so it is not what gets stored.
     public var moduleSegments: [[PageLayoutModuleID]] { segments.map(\.moduleIDs) }
 
-    /// The whole arrangement as one two-column config: every band's left column
-    /// stacked, then every band's right column.
+    /// The whole arrangement as the two columns the page renders: every
+    /// segment's left column concatenated, then every segment's right column.
     ///
-    /// The shape the page-wide controls work in — the drag editor, the ratio
-    /// buttons, the preset snapshot — none of which are per band.
+    /// This is the rendered truth, not a convenience view of it — the renderer
+    /// draws exactly this — and it is also the shape the page-wide controls work
+    /// in: the drag editor, the ratio buttons, the preset snapshot.
     public var flattened: PageLayoutConfig {
         guard segments.count > 1 else { return segments[0] }
         var columns = [[PageLayoutModuleID]](repeating: [], count: PageLayoutConfig.columnCount)
@@ -254,7 +260,7 @@ public struct StoredPageLayout: Hashable, Sendable {
     public var ratio: PageColumnRatio
     public private(set) var columns: [[PageLayoutModuleID]]
 
-    /// Ordered bands `compact` packs one at a time, normalized by
+    /// Ordered groups every mode arranges within, normalized by
     /// `PageLayoutSegments`. Empty means "no chosen segmentation": the page
     /// falls back to the default for its family, which is what every page did
     /// before segments existed.
@@ -264,32 +270,90 @@ public struct StoredPageLayout: Hashable, Sendable {
     /// into the last one, which would destroy this.
     public private(set) var segments: [[PageLayoutModuleID]]
 
+    /// Modules the user switched off on this page.
+    ///
+    /// A hidden module is treated exactly like one the page cannot draw right
+    /// now: it is filtered out of `available` before anything is arranged, so
+    /// `PageLayoutResolver` and `PageLayoutSegments` preserve its saved column
+    /// and segment for free, and un-hiding puts it back where it was rather than
+    /// appending it as a newcomer. That reuse is the whole reason visibility is
+    /// modelled as a subtraction from availability instead of as a fourth column.
+    ///
+    /// Identifiers this build does not recognize are preserved, for the same
+    /// reason `segments` preserves them: a downgrade must not silently un-hide a
+    /// card the newer build let the user switch off.
+    public private(set) var hidden: [PageLayoutModuleID]
+
     /// - Parameter mode: `nil` derives the mode from the columns — an entry
     ///   that carries an arrangement is a `manual` one, an entry that carries
     ///   none is `auto`. That is the same rule the decoder applies to an entry
     ///   written before modes existed, kept in one place so the two cannot
-    ///   drift apart. Bands deliberately do not take part: a page can carry a
-    ///   segmentation and still be drawing itself automatically.
+    ///   drift apart. Segments and hidden modules deliberately do not take part:
+    ///   a page can carry a segmentation, or a switched-off card, and still be
+    ///   drawing itself automatically.
     public init(
         mode: PageLayoutMode? = nil,
         ratio: PageColumnRatio = .equal,
         columns: [[PageLayoutModuleID]] = [],
-        segments: [[PageLayoutModuleID]] = []
+        segments: [[PageLayoutModuleID]] = [],
+        hidden: [PageLayoutModuleID] = []
     ) {
         let normalized = PageLayoutConfig(ratio: ratio, columns: columns)
         self.mode = mode ?? (normalized.isEmpty ? .auto : .manual)
         self.ratio = normalized.ratio
         self.columns = normalized.columns
         self.segments = PageLayoutSegments.normalized(segments)
+        self.hidden = Self.normalizedHidden(hidden)
     }
 
     /// The intent half of a live config; measured heights are dropped.
     public init(
         _ config: PageLayoutConfig,
         mode: PageLayoutMode? = nil,
-        segments: [[PageLayoutModuleID]] = []
+        segments: [[PageLayoutModuleID]] = [],
+        hidden: [PageLayoutModuleID] = []
     ) {
-        self.init(mode: mode, ratio: config.ratio, columns: config.columns, segments: segments)
+        self.init(
+            mode: mode,
+            ratio: config.ratio,
+            columns: config.columns,
+            segments: segments,
+            hidden: hidden
+        )
+    }
+
+    /// Deduplicated, order-preserving, empty identifiers dropped — the same
+    /// treatment `PageLayoutConfig` gives a column.
+    static func normalizedHidden(_ hidden: [PageLayoutModuleID]) -> [PageLayoutModuleID] {
+        var seen = Set<PageLayoutModuleID>()
+        return hidden.filter { !$0.rawValue.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// True when this page should not draw `moduleID` at all.
+    public func isHidden(_ moduleID: PageLayoutModuleID) -> Bool {
+        hidden.contains(moduleID)
+    }
+
+    /// The same entry with `moduleID` switched on or off. Everything else —
+    /// mode, ratio, columns, segments — rides through untouched, because
+    /// switching a card off is not an arrangement edit.
+    public func settingHidden(_ moduleID: PageLayoutModuleID, _ isHidden: Bool) -> StoredPageLayout {
+        guard !moduleID.rawValue.isEmpty else { return self }
+        var next = hidden
+        if isHidden {
+            guard !next.contains(moduleID) else { return self }
+            next.append(moduleID)
+        } else {
+            guard next.contains(moduleID) else { return self }
+            next.removeAll { $0 == moduleID }
+        }
+        return StoredPageLayout(
+            mode: mode,
+            ratio: ratio,
+            columns: columns,
+            segments: segments,
+            hidden: next
+        )
     }
 
     /// Back to the canonical model, with this page's measurements folded in.
@@ -324,10 +388,17 @@ public struct StoredPageLayout: Hashable, Sendable {
     /// the page was computed are reconciled as usual.
     public func restoredAsManual() -> StoredPageLayout? {
         guard !isEmpty else { return nil }
-        // The bands ride along for the same reason the columns do on the way
+        // The segments ride along for the same reason the columns do on the way
         // out: a round trip through Manual must not be a silent reset of the
-        // segmentation the user chose for Compact.
-        return StoredPageLayout(mode: .manual, ratio: ratio, columns: columns, segments: segments)
+        // segmentation the user chose — and even less of the cards they switched
+        // off, which are not an arrangement at all.
+        return StoredPageLayout(
+            mode: .manual,
+            ratio: ratio,
+            columns: columns,
+            segments: segments,
+            hidden: hidden
+        )
     }
 }
 
@@ -337,6 +408,7 @@ extension StoredPageLayout: Codable {
         case ratio
         case columns
         case segments
+        case hidden
     }
 
     /// Field-by-field tolerant, like `PageLayoutConfig`'s own decoder: a page
@@ -364,19 +436,24 @@ extension StoredPageLayout: Codable {
         // malformed one is a file somebody edited by hand: both mean "no chosen
         // segmentation", which is the page's default banding, not an empty page.
         let segments = (try? container.decode([[PageLayoutModuleID]].self, forKey: .segments)) ?? []
-        self.init(mode: mode, ratio: ratio, columns: columns, segments: segments)
+        // Same rule again: an entry written before per-module visibility existed
+        // has nothing switched off, and neither does one somebody mangled by
+        // hand. "Show everything" is the safe reading of both — a card the user
+        // can see and switch off again beats one that vanished.
+        let hidden = (try? container.decode([PageLayoutModuleID].self, forKey: .hidden)) ?? []
+        self.init(mode: mode, ratio: ratio, columns: columns, segments: segments, hidden: hidden)
     }
 }
 
 /// One saved arrangement the user named, so a layout worth keeping can be put
 /// back later without re-dragging it.
 ///
-/// Stores a whole `StoredPageLayout` — mode, ratio, columns and bands — so a
-/// preset records what it was captured from, and applying one restores that
-/// mode. A `manual` preset puts its exact columns back; a `compact` preset puts
-/// its bands back and lets the packer re-derive the columns inside them, because
-/// on a packed page the segmentation is the arrangement worth keeping and one
-/// particular packing of it is not.
+/// Stores a whole `StoredPageLayout` — mode, ratio, columns, segments and the
+/// cards switched off — so a preset records what it was captured from, and
+/// applying one restores that mode. A `manual` preset puts its exact columns
+/// back; a `compact` preset puts its segments back and lets the packer re-derive
+/// the columns inside them, because on a packed page the segmentation is the
+/// arrangement worth keeping and one particular packing of it is not.
 public struct StoredPageLayoutPreset: Hashable, Sendable {
     /// Long enough for "Wide left, cost on the right", short enough that a
     /// pasted paragraph cannot bloat `settings.json`.
@@ -414,7 +491,15 @@ public struct StoredPageLayoutPreset: Hashable, Sendable {
         guard layout.mode == .compact, !layout.isEmpty, layout.segments.isEmpty else {
             return layout
         }
-        return StoredPageLayout(mode: .manual, ratio: layout.ratio, columns: layout.columns)
+        return StoredPageLayout(
+            mode: .manual,
+            ratio: layout.ratio,
+            columns: layout.columns,
+            // Only the *mode* is being reinterpreted here. What the user
+            // switched off is not part of that legacy ambiguity, so it applies
+            // exactly as captured.
+            hidden: layout.hidden
+        )
     }
 
     /// Case-insensitive identity. Two presets whose names differ only by case
