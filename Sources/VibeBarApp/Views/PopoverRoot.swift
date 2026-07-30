@@ -521,12 +521,6 @@ private struct OverviewWaterfall: View {
                 minHeight: density.overviewSummaryHeight,
                 tools: settingsStore.settings.visibleCoreProviderList
             )
-            // The old header row pinned both summary cards to this height from
-            // the outside; without the pin the tile grid's legibility floor can
-            // push this card a few points past the cost card and the pair reads
-            // misaligned. The core-provider list caps at four tools (two rows),
-            // so the clamp never costs a visible row.
-            .frame(height: density.overviewSummaryHeight)
         case let .overviewQuota(tool):
             if tool == .gemini {
                 // Gemini Web and AntiGravity roll up to one Google AI product.
@@ -973,11 +967,10 @@ private struct OverviewCostSummaryCard: View {
 /// The Overview's live provider-status grid — the right half of the old header
 /// row, now an arrangeable module.
 ///
-/// `minHeight` sizes the tile grid's ideal layout; the module render site pins
-/// the card to exactly that height, the way the old header row pinned both
-/// summary cards, so this card and the cost summary always read as one aligned
-/// pair. The tile legibility floor compresses inside the pin instead of
-/// growing past it.
+/// Pinned to exactly `minHeight` — before its background, mirroring the cost
+/// summary's frame — so the two cards always read as one aligned pair, the way
+/// the old header row's outer pin kept them. The tile grid divides the pinned
+/// interior rather than growing the card.
 private struct OverviewStatusSummaryCard: View {
     let density: Theme.Density
     let minHeight: CGFloat
@@ -1031,7 +1024,17 @@ private struct OverviewStatusSummaryCard: View {
             }
         }
         .padding(density.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+        // Pinned exactly, and before the background, so the rounded card is
+        // drawn at this height rather than at whatever the tile grid would
+        // prefer — a frame applied outside the background would leave the
+        // oversized card bleeding past it. Mirrors the cost summary's frame.
+        .frame(
+            maxWidth: .infinity,
+            minHeight: minHeight,
+            idealHeight: minHeight,
+            maxHeight: minHeight,
+            alignment: .topLeading
+        )
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .fill(.background.tertiary.opacity(0.6))
@@ -1044,20 +1047,21 @@ private struct OverviewStatusSummaryCard: View {
 
     private func statusTileHeight(rowCount: Int) -> CGFloat {
         let rows = max(1, rowCount)
-        let headerHeight = max(18, density.bucketTitleFontSize + 6)
+        // The refresh button keeps the header at least 22 pt tall regardless
+        // of the title font, so budgeting less would overdraw the pin below.
+        let headerHeight = max(22, density.bucketTitleFontSize + 6)
         let gridSpacing = CGFloat(max(0, rows - 1)) * density.cardSpacing
         let available = minHeight
             - density.cardPadding * 2
             - headerHeight
             - density.cardSpacing
             - gridSpacing
-        let minimum: CGFloat
-        switch density.profile {
-        case .compact: minimum = 46
-        case .regular: minimum = 58
-        case .spacious: minimum = 70
-        }
-        return max(minimum, available / CGFloat(rows))
+        // The card's pinned height is authoritative — the tiles divide what is
+        // left rather than growing the card past the cost summary beside it.
+        // The floor is a last-resort legibility guard: the core-provider list
+        // caps at four tools (two rows), so at every density two rows fit and
+        // the floor only bites in degenerate configurations.
+        return max(44, available / CGFloat(rows))
     }
 
     private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
