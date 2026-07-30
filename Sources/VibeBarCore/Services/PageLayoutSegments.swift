@@ -188,11 +188,21 @@ public enum PageLayoutSegments {
         let ordered = pending.enumerated().sorted {
             ($0.element.position, $0.offset) < ($1.element.position, $1.offset)
         }
-        for (inserted, item) in ordered.enumerated() {
-            segments.insert(
-                item.element.band,
-                at: min(item.element.position + inserted, segments.count)
-            )
+        var insertedCount = 0
+        for item in ordered {
+            let position = min(item.element.position + insertedCount, segments.count)
+            if segments.count < maximumCount {
+                segments.insert(item.element.band, at: position)
+                insertedCount += 1
+            } else {
+                // The editor offered "Add Segment" against the bands it could
+                // see, so the page can be at the cap before the hidden band is
+                // back. Folding here, into the hidden band's preceding
+                // neighbour, keeps the final `normalized` from collapsing a
+                // band the user just made — losing an invisible band's
+                // separateness costs less than losing a visible one's.
+                segments[max(0, position - 1)].append(contentsOf: item.element.band)
+            }
         }
         return normalized(segments)
     }
