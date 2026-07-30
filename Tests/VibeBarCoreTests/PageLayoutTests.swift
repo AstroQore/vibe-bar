@@ -1256,6 +1256,23 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(merged, [[.quotaHistoryAll], [.status], [.costAll]])
     }
 
+    func testMergingAtTheBandCapFoldsTheHiddenBandNotTheUsersNewOne() {
+        // Six saved bands (the cap), one entirely hidden. The editor saw five,
+        // so it let the user split one into a sixth visible band. Reinserting
+        // the hidden band would make seven, and `normalized` would collapse the
+        // *last* band — the user's newest. The hidden band folds into its
+        // preceding neighbour instead, and every visible band survives.
+        let m = (0 ..< 6).map { PageLayoutModuleID("mod-\($0)") }
+        let hidden = PageLayoutModuleID("mod-hidden")
+        let stored = [[m[0]], [m[1]], [hidden], [m[2]], [m[3]], [m[4], m[5]]]
+        let edited = [[m[0]], [m[1]], [m[2]], [m[3]], [m[4]], [m[5]]]
+
+        let merged = PageLayoutSegments.mergingEdit(edited, into: stored, available: m)
+
+        XCTAssertEqual(merged.count, PageLayoutSegments.maximumCount)
+        XCTAssertEqual(merged, [[m[0]], [m[1], hidden], [m[2]], [m[3]], [m[4]], [m[5]]])
+    }
+
     func testMergingAnEditHonoursTheMoveItWasGiven() {
         let merged = PageLayoutSegments.mergingEdit(
             [[.status, .costAll], [.quotaHistoryAll]],
