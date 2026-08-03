@@ -10,6 +10,9 @@ struct RemoteCoreConfigSink {
     var storeIdentity: (RemoteCoreIdentity) throws -> Void
     var storeBearerToken: (String, UUID) throws -> Void
     var deleteBearerToken: (UUID) throws -> Void
+    var storePendingEnrollment: (RemoteEnrollmentResult) throws -> Void
+    var loadPendingEnrollment: () throws -> RemoteEnrollmentResult
+    var deletePendingEnrollment: () throws -> Void
 
     static let live = RemoteCoreConfigSink(
         loadConfig: { try RemoteCoreConfigStore.load() },
@@ -20,7 +23,10 @@ struct RemoteCoreConfigSink {
         storeBearerToken: {
             try RemoteCoreIdentityStore.storeRelayBearerToken($0, workspaceID: $1)
         },
-        deleteBearerToken: { try RemoteCoreIdentityStore.deleteRelayBearerToken(workspaceID: $0) }
+        deleteBearerToken: { try RemoteCoreIdentityStore.deleteRelayBearerToken(workspaceID: $0) },
+        storePendingEnrollment: { try RemoteCoreIdentityStore.storePendingEnrollment($0) },
+        loadPendingEnrollment: { try RemoteCoreIdentityStore.pendingEnrollment() },
+        deletePendingEnrollment: { try RemoteCoreIdentityStore.deletePendingEnrollment() }
     )
 }
 
@@ -96,6 +102,59 @@ public enum RemoteCoreConfigStore {
     ) throws {
         try sink.storeIdentity(enrollment.identity)
         try install(enrollment.provisioning, sink: sink)
+        // The binding has committed, so the recovery record has done its job.
+        // Best-effort: a leftover record is harmless — `pendingEnrollment()`
+        // refuses to hand back one once a workspace is installed, and clears
+        // it then.
+        try? sink.deletePendingEnrollment()
+    }
+
+    // MARK: - Pending enrollment recovery
+
+    /// Remember an enrollment the control center has already consumed, before
+    /// trying to install it.
+    ///
+    /// A pairing code is spent the moment the control center answers, so the
+    /// window between "accepted" and "saved" must survive a failed write, a
+    /// closed window, and a quit. The record carries the Relay credential and
+    /// this Mac's Core private keys, so it goes into the credential Vault and
+    /// nowhere else.
+    public static func retainPendingEnrollment(_ enrollment: RemoteEnrollmentResult) throws {
+        try retainPendingEnrollment(enrollment, sink: .live)
+    }
+
+    static func retainPendingEnrollment(
+        _ enrollment: RemoteEnrollmentResult,
+        sink: RemoteCoreConfigSink
+    ) throws {
+        try sink.storePendingEnrollment(enrollment)
+    }
+
+    /// A retained enrollment that never finished installing, if any.
+    ///
+    /// Returns nil once this Mac is bound to a workspace: the record is stale
+    /// then, and is cleared rather than offered as a resumable action.
+    public static func pendingEnrollment() -> RemoteEnrollmentResult? {
+        pendingEnrollment(sink: .live)
+    }
+
+    static func pendingEnrollment(sink: RemoteCoreConfigSink) -> RemoteEnrollmentResult? {
+        guard (try? sink.loadConfig()) == nil else {
+            try? sink.deletePendingEnrollment()
+            return nil
+        }
+        return try? sink.loadPendingEnrollment()
+    }
+
+    /// Forget a retained enrollment. The workspace still counts this Mac as
+    /// its Core, so the user's way back is to revoke this device in the web
+    /// control center and join again with a fresh code.
+    public static func discardPendingEnrollment() {
+        discardPendingEnrollment(sink: .live)
+    }
+
+    static func discardPendingEnrollment(sink: RemoteCoreConfigSink) {
+        try? sink.deletePendingEnrollment()
     }
 
     /// Persist a probe roster learned from the Relay during a sync. Only the

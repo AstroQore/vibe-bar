@@ -354,6 +354,9 @@ final class RemoteEnrollmentTests: XCTestCase {
         var tokens: [UUID: String] = [:]
         var failNextConfigWrite = false
         var configWriteAttempts = 0
+        /// Stored the way the live sink stores it — encoded — so the tests
+        /// exercise the real Vault payload rather than an object reference.
+        var pendingRecord: Data?
 
         func make() -> RemoteCoreConfigSink {
             RemoteCoreConfigSink(
@@ -371,7 +374,17 @@ final class RemoteEnrollmentTests: XCTestCase {
                 },
                 storeIdentity: { self.identity = $0 },
                 storeBearerToken: { token, workspaceID in self.tokens[workspaceID] = token },
-                deleteBearerToken: { self.tokens[$0] = nil }
+                deleteBearerToken: { self.tokens[$0] = nil },
+                storePendingEnrollment: {
+                    self.pendingRecord = try RemoteCoreIdentityStore.encodePendingEnrollment($0)
+                },
+                loadPendingEnrollment: {
+                    guard let data = self.pendingRecord else {
+                        throw KeychainStore.KeychainError.itemNotFound
+                    }
+                    return try RemoteCoreIdentityStore.decodePendingEnrollment(data)
+                },
+                deletePendingEnrollment: { self.pendingRecord = nil }
             )
         }
     }
@@ -413,6 +426,108 @@ final class RemoteEnrollmentTests: XCTestCase {
         XCTAssertNoThrow(try RemoteCoreConfigStore.install(enrollment, sink: sink.make()))
         XCTAssertEqual(sink.config, installed)
         XCTAssertEqual(sink.tokens.count, 1)
+    }
+
+    // MARK: - Durable pending-enrollment recovery
+
+    func testPendingEnrollmentRecordRoundTripsIntact() async throws {
+        respond(status: 201, json: successBody())
+        let enrollment = try await makeClient().enrollCore(
+            code: "VB-ABCDE-23456",
+            deviceName: "Example Mac"
+        )
+
+        let encoded = try RemoteCoreIdentityStore.encodePendingEnrollment(enrollment)
+        let restored = try RemoteCoreIdentityStore.decodePendingEnrollment(encoded)
+
+        XCTAssertEqual(restored.provisioning.workspaceID, workspace)
+        XCTAssertEqual(restored.provisioning.coreDeviceID, device)
+        XCTAssertEqual(restored.provisioning.relayURL, enrollment.provisioning.relayURL)
+        XCTAssertEqual(restored.provisioning.relayBearerToken, bearer)
+        XCTAssertEqual(restored.provisioning.coreEpoch, 1)
+        XCTAssertEqual(restored.provisioning.ingestKeyID, "ingest-epoch-1")
+        XCTAssertEqual(restored.deviceName, "Example Mac")
+        // Both private halves survive, or the workspace's registered Core key
+        // would be unusable after a resume.
+        XCTAssertEqual(
+            restored.identity.signingPrivateKey.rawRepresentation,
+            enrollment.identity.signingPrivateKey.rawRepresentation
+        )
+        XCTAssertEqual(
+            restored.identity.recipientPrivateKey.rawRepresentation,
+            enrollment.identity.recipientPrivateKey.rawRepresentation
+        )
+        // A corrupt or future-schema record fails closed rather than
+        // installing something half-understood.
+        XCTAssertThrowsError(
+            try RemoteCoreIdentityStore.decodePendingEnrollment(Data("{}".utf8))
+        )
+    }
+
+    func testPendingEnrollmentSurvivesAFailedInstallAndResumesLater() async throws {
+        respond(status: 201, json: successBody())
+        let enrollment = try await makeClient().enrollCore(
+            code: "VB-ABCDE-23456",
+            deviceName: "Example Mac"
+        )
+
+        let sink = RecordingSink()
+        // The pane retains the enrollment before the first install attempt.
+        try RemoteCoreConfigStore.retainPendingEnrollment(enrollment, sink: sink.make())
+        sink.failNextConfigWrite = true
+        XCTAssertThrowsError(try RemoteCoreConfigStore.install(enrollment, sink: sink.make()))
+        XCTAssertNotNil(sink.pendingRecord, "A failed install must not drop the record")
+        XCTAssertNil(sink.config)
+
+        // A later session finds it and resumes — no HTTP, no new code.
+        let resumed = try XCTUnwrap(RemoteCoreConfigStore.pendingEnrollment(sink: sink.make()))
+        XCTAssertEqual(resumed.provisioning.workspaceID, workspace)
+        XCTAssertNoThrow(try RemoteCoreConfigStore.install(resumed, sink: sink.make()))
+
+        let installed = try XCTUnwrap(sink.config)
+        XCTAssertEqual(installed.workspaceID, workspace)
+        XCTAssertEqual(installed.coreDeviceID, device)
+        XCTAssertEqual(sink.tokens[workspace], bearer)
+        XCTAssertEqual(
+            sink.identity?.recipientPrivateKey.rawRepresentation,
+            enrollment.identity.recipientPrivateKey.rawRepresentation
+        )
+        XCTAssertNil(sink.pendingRecord, "A committed install clears the record")
+        // Nothing is offered once the Mac is bound to a workspace.
+        XCTAssertNil(RemoteCoreConfigStore.pendingEnrollment(sink: sink.make()))
+    }
+
+    func testInstalledWorkspaceClearsAStalePendingRecord() async throws {
+        respond(status: 201, json: successBody())
+        let enrollment = try await makeClient().enrollCore(
+            code: "VB-ABCDE-23456",
+            deviceName: "Example Mac"
+        )
+        let sink = RecordingSink()
+        try RemoteCoreConfigStore.install(enrollment, sink: sink.make())
+        // A record left behind by an earlier failure is stale once a binding
+        // exists: never offered, and cleaned up on the way past.
+        try RemoteCoreConfigStore.retainPendingEnrollment(enrollment, sink: sink.make())
+        XCTAssertNil(RemoteCoreConfigStore.pendingEnrollment(sink: sink.make()))
+        XCTAssertNil(sink.pendingRecord)
+    }
+
+    func testDiscardingAPendingEnrollmentDeletesTheRecord() async throws {
+        respond(status: 201, json: successBody())
+        let enrollment = try await makeClient().enrollCore(
+            code: "VB-ABCDE-23456",
+            deviceName: "Example Mac"
+        )
+        let sink = RecordingSink()
+        try RemoteCoreConfigStore.retainPendingEnrollment(enrollment, sink: sink.make())
+        XCTAssertNotNil(sink.pendingRecord)
+
+        RemoteCoreConfigStore.discardPendingEnrollment(sink: sink.make())
+        XCTAssertNil(sink.pendingRecord)
+        XCTAssertNil(RemoteCoreConfigStore.pendingEnrollment(sink: sink.make()))
+        // Discarding twice is safe.
+        RemoteCoreConfigStore.discardPendingEnrollment(sink: sink.make())
+        XCTAssertNil(sink.pendingRecord)
     }
 
     func testFreshlyJoinedWorkspaceHasNoRegisteredProbes() throws {

@@ -24,11 +24,15 @@ struct RemoteSettingsSection: View {
     @State private var showControlURLField = false
     @State private var isJoining = false
     @State private var joinError: String?
-    /// A workspace that accepted this Mac but whose credential could not be
-    /// saved locally. The pairing code is single-use and already spent, so the
-    /// result is held in memory — never rendered, never logged — until the
-    /// save succeeds or the user discards it.
+    /// A workspace that accepted this Mac but whose credential is not saved
+    /// yet. Mirrors the record in the credential Vault so the pane can offer a
+    /// resume; never rendered, never logged.
     @State private var pendingEnrollment: RemoteEnrollmentResult?
+    /// True when the pending record came from the Vault on appearance rather
+    /// than from a failure in this session — the affordance is then "resume",
+    /// not "retry", and deserves an explanation.
+    @State private var pendingWasRestored = false
+    @State private var confirmingDiscardPending = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -38,6 +42,9 @@ struct RemoteSettingsSection: View {
                 disconnectSection
             }
         }
+        // Only here, and only as an offer: a join is never completed behind
+        // the user's back.
+        .onAppear { restorePendingEnrollment() }
     }
 
     // MARK: - Status
@@ -172,16 +179,31 @@ struct RemoteSettingsSection: View {
                     .textSelection(.enabled)
             }
             if pendingEnrollment != nil {
+                if pendingWasRestored {
+                    Text("A previous join was accepted by the control center but never finished saving on this Mac. Its pairing code is already spent, so resume the save instead of requesting a new code.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 HStack(spacing: 10) {
                     Button {
                         retrySavingEnrollment()
                     } label: {
-                        Label("Retry saving", systemImage: "arrow.clockwise")
+                        Label(
+                            pendingWasRestored ? "Resume saving" : "Retry saving",
+                            systemImage: "arrow.clockwise"
+                        )
                     }
-                    Button("Discard") {
-                        pendingEnrollment = nil
-                        joinError = nil
-                    }
+                    Button("Discard") { confirmingDiscardPending = true }
+                }
+                .confirmationDialog(
+                    "Discard this pending join?",
+                    isPresented: $confirmingDiscardPending,
+                    titleVisibility: .visible
+                ) {
+                    Button("Discard", role: .destructive) { discardPendingEnrollment() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Its pairing code is already spent, and the workspace still counts this Mac as its Core. To join again, revoke this Mac in the web control center, then create a fresh code.")
                 }
             }
         }
@@ -213,6 +235,13 @@ struct RemoteSettingsSection: View {
                 )
                 let enrollment = try await client.enrollCore(code: code)
                 joinCode = ""
+                // The code is spent the moment the control center answers, so
+                // put the result somewhere durable *before* touching the
+                // config — quitting between here and a successful save must
+                // not destroy the only copy. Starting another join supersedes
+                // this record; if the Vault write itself fails we simply fall
+                // through to the in-memory path, which is no worse than before.
+                try? RemoteCoreConfigStore.retainPendingEnrollment(enrollment)
                 saveEnrollment(enrollment)
             } catch let error as RemoteEnrollmentError {
                 joinError = error.message
@@ -229,14 +258,16 @@ struct RemoteSettingsSection: View {
     @MainActor
     private func saveEnrollment(_ enrollment: RemoteEnrollmentResult) {
         do {
+            // install() clears the retained record once the binding commits.
             try RemoteCoreConfigStore.install(enrollment)
             pendingEnrollment = nil
+            pendingWasRestored = false
             joinError = nil
             service.reconfigure()
             importStatus = "Joined the workspace as this Mac's Core. Syncing with the Relay; machines appear automatically as probes enroll."
         } catch {
             pendingEnrollment = enrollment
-            joinError = "The workspace accepted this Mac, but saving its credential here failed: \(shortCode(error)). The pairing code is already used — don't request a new one. Fix the problem (unlock the Keychain, free up disk space) and choose Retry saving."
+            joinError = "The workspace accepted this Mac, but saving its credential here failed: \(shortCode(error)). The pairing code is already used — don't request a new one. Fix the problem (unlock the Keychain, free up disk space) and save again; the join is kept until you do."
         }
     }
 
@@ -244,6 +275,25 @@ struct RemoteSettingsSection: View {
     private func retrySavingEnrollment() {
         guard let enrollment = pendingEnrollment else { return }
         saveEnrollment(enrollment)
+    }
+
+    /// Offer an unfinished join from an earlier session. Read-only: the
+    /// install itself still waits for the user to ask for it.
+    @MainActor
+    private func restorePendingEnrollment() {
+        guard pendingEnrollment == nil, !service.isConfigured,
+              let retained = RemoteCoreConfigStore.pendingEnrollment()
+        else { return }
+        pendingEnrollment = retained
+        pendingWasRestored = true
+    }
+
+    @MainActor
+    private func discardPendingEnrollment() {
+        RemoteCoreConfigStore.discardPendingEnrollment()
+        pendingEnrollment = nil
+        pendingWasRestored = false
+        joinError = nil
     }
 
     private func exportDescriptor() {
@@ -341,7 +391,7 @@ struct RemoteSettingsSection: View {
             exportStatus = nil
             joinError = nil
             joinCode = ""
-            pendingEnrollment = nil
+            discardPendingEnrollment()
         } catch {
             importError = "Disconnect failed: \(shortCode(error))"
         }
