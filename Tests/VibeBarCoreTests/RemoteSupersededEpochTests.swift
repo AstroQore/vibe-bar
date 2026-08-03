@@ -181,7 +181,10 @@ final class RemoteSupersededEpochTests: XCTestCase {
         // Both cursors were acknowledged so the Relay GC can reclaim them, and
         // the ledger cursor advanced past BOTH batches.
         XCTAssertEqual(Set(StubRelay.acknowledged()), ["c1", "c2"])
-        let cursor = try await ledger.relayCursor(workspaceID: workspace)
+        let cursor = try await ledger.relayCursor(
+            workspaceID: workspace,
+            coreDeviceID: config.coreDeviceID
+        )
         XCTAssertEqual(cursor, "c2")
     }
 

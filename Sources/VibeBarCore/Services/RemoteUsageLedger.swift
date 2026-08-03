@@ -97,12 +97,59 @@ public actor RemoteUsageLedger {
                 workspace_id TEXT PRIMARY KEY,
                 relay_cursor TEXT,
                 last_sync_at INTEGER,
-                last_error_code TEXT
+                last_error_code TEXT,
+                core_device_id TEXT
             );
             """
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
             throw RemoteSyncError.invalidConfiguration
         }
+        try migrateSyncStateCoreDevice(database)
+    }
+
+    /// The relay cursor is HMAC-bound to the consuming device, so a cursor
+    /// stored by a previous Core (same workspace, different `core_device_id`)
+    /// is rejected by the Relay if replayed. `core_device_id` records which
+    /// Core minted the stored cursor; `relayCursor(workspaceID:coreDeviceID:)`
+    /// drops any cursor that does not belong to the current Core. Databases
+    /// created before this column exists must gain it without losing data, so
+    /// add it idempotently: brand-new DBs already have it from the CREATE
+    /// above (skip), pre-migration DBs get it as NULL (self-heals on the next
+    /// sync, no re-join needed).
+    private static func migrateSyncStateCoreDevice(_ database: OpaquePointer) throws {
+        guard !columnExists(database, table: "remote_sync_state", column: "core_device_id") else {
+            return
+        }
+        guard sqlite3_exec(
+            database,
+            "ALTER TABLE remote_sync_state ADD COLUMN core_device_id TEXT",
+            nil, nil, nil
+        ) == SQLITE_OK else {
+            throw RemoteSyncError.invalidConfiguration
+        }
+    }
+
+    /// Whether `table` already has `column`, via `PRAGMA table_info`. Both
+    /// arguments are fixed internal identifiers, never user input.
+    private static func columnExists(
+        _ database: OpaquePointer,
+        table: String,
+        column: String
+    ) -> Bool {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "PRAGMA table_info(\(table))",
+            -1, &statement, nil
+        ) == SQLITE_OK, let statement else { return false }
+        defer { sqlite3_finalize(statement) }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let raw = sqlite3_column_text(statement, 1),
+               String(cString: raw) == column {
+                return true
+            }
+        }
+        return false
     }
 
     @discardableResult
@@ -238,34 +285,62 @@ public actor RemoteUsageLedger {
         }
     }
 
-    public func relayCursor(workspaceID: UUID) throws -> String? {
-        try scalarText(
-            "SELECT relay_cursor FROM remote_sync_state WHERE workspace_id = ?",
-            [.text(workspaceID.uuidString.lowercased())]
+    /// The stored relay cursor for this workspace, but only when it was minted
+    /// by `coreDeviceID`. The Relay HMAC-binds every cursor to the device that
+    /// consumed it, so a cursor left by an earlier Core (revoked, then this Mac
+    /// re-joined as a new Core with the same workspace) would make the Relay
+    /// reject the replay with a 400 and wedge the stream. Returning nil on a
+    /// mismatch — including a pre-migration row whose `core_device_id` is NULL
+    /// — makes the next fetch pass `after: nil`, so the Relay serves from this
+    /// device's own server-side cursor and the local stale cursor is discarded.
+    public func relayCursor(workspaceID: UUID, coreDeviceID: UUID) throws -> String? {
+        let statement = try prepare(
+            "SELECT relay_cursor, core_device_id FROM remote_sync_state WHERE workspace_id = ?"
         )
+        defer { sqlite3_finalize(statement) }
+        bind(.text(workspaceID.uuidString.lowercased()), at: 1, to: statement)
+        let result = sqlite3_step(statement)
+        if result == SQLITE_DONE { return nil }
+        guard result == SQLITE_ROW else { throw RemoteSyncError.invalidPayload }
+        guard let storedDevice = columnText(statement, 1),
+              storedDevice == coreDeviceID.uuidString.lowercased()
+        else { return nil }
+        return columnText(statement, 0)
     }
 
     public func recordSync(
         workspaceID: UUID,
+        coreDeviceID: UUID,
         cursor: String?,
         errorCode: String?,
         at date: Date = Date()
     ) throws {
+        // `core_device_id` moves in lockstep with `relay_cursor`: it is only
+        // (re)written when a fresh cursor is supplied, and preserved verbatim
+        // whenever the cursor is carried over via COALESCE (the error path
+        // passes cursor: nil). That invariant matters — stamping the current
+        // device onto a carried-over cursor from another Core would re-arm the
+        // exact 400 wedge this fix removes.
         try run(
             """
             INSERT INTO remote_sync_state(
-                   workspace_id, relay_cursor, last_sync_at, last_error_code
-               ) VALUES(?, ?, ?, ?)
+                   workspace_id, relay_cursor, last_sync_at, last_error_code, core_device_id
+               ) VALUES(?, ?, ?, ?, ?)
                ON CONFLICT(workspace_id) DO UPDATE SET
                    relay_cursor = COALESCE(excluded.relay_cursor, remote_sync_state.relay_cursor),
                    last_sync_at = excluded.last_sync_at,
-                   last_error_code = excluded.last_error_code
+                   last_error_code = excluded.last_error_code,
+                   core_device_id = CASE
+                       WHEN excluded.relay_cursor IS NOT NULL THEN excluded.core_device_id
+                       ELSE remote_sync_state.core_device_id
+                   END
             """,
             [
                 .text(workspaceID.uuidString.lowercased()),
                 cursor.map(Binding.text) ?? .null,
                 .integer(Int64(date.timeIntervalSince1970)),
-                errorCode.map(Binding.text) ?? .null
+                errorCode.map(Binding.text) ?? .null,
+                .text(coreDeviceID.uuidString.lowercased())
             ]
         )
     }
