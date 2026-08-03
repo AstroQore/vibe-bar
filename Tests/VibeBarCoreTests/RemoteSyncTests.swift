@@ -124,14 +124,58 @@ final class RemoteSyncTests: XCTestCase {
         )
     }
 
-    private func payload(sequence: Int, previous: Int?, generation: Int) throws -> Data {
+    func testLedgerExcludesFutureEventsUntilTheyOccur() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("remote-ledger-future-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ledger = try RemoteUsageLedger(url: directory.appendingPathComponent("ledger.sqlite3"))
+        let current = try RemotePayloadDecoder.decode(
+            payload(sequence: 1, previous: nil, generation: 1)
+        )
+        let future = try RemotePayloadDecoder.decode(
+            payload(
+                sequence: 2,
+                previous: 1,
+                generation: 1,
+                occurredAt: "2026-08-04T06:00:00Z"
+            )
+        )
+        _ = try await ledger.importBatch(current, sequence: 1, receivedAt: Date())
+        _ = try await ledger.importBatch(future, sequence: 2, receivedAt: Date())
+
+        let before = try await ledger.machineSummaries(
+            workspaceID: workspace,
+            now: ISO8601DateFormatter().date(from: "2026-08-03T12:00:00Z")!
+        )
+        XCTAssertEqual(before[0].todayTokens, 15)
+        XCTAssertEqual(before[0].last7DaysTokens, 15)
+        XCTAssertEqual(before[0].last30DaysTokens, 15)
+        XCTAssertEqual(before[0].allTimeTokens, 15)
+
+        let after = try await ledger.machineSummaries(
+            workspaceID: workspace,
+            now: ISO8601DateFormatter().date(from: "2026-08-04T12:00:00Z")!
+        )
+        XCTAssertEqual(after[0].todayTokens, 15)
+        XCTAssertEqual(after[0].last7DaysTokens, 30)
+        XCTAssertEqual(after[0].last30DaysTokens, 30)
+        XCTAssertEqual(after[0].allTimeTokens, 30)
+    }
+
+    private func payload(
+        sequence: Int,
+        previous: Int?,
+        generation: Int,
+        occurredAt: String = "2026-08-03T06:00:00Z"
+    ) throws -> Data {
         let operation: [String: Any] = [
             "op": "usage_upsert",
             "source_key": String(repeating: "s", count: 43),
             "source_generation": generation,
             "event_key": String(repeating: "e", count: 42) + String(sequence),
             "tool": "codex",
-            "occurred_at": "2026-08-03T06:00:00Z",
+            "occurred_at": occurredAt,
             "observed_at": "2026-08-03T06:01:00Z",
             "model": "example-model",
             "tokens": [

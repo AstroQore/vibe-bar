@@ -349,6 +349,10 @@ public actor RemoteUsageLedger {
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let tool = columnText(statement, 0) else { continue }
             let date = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 1)))
+            // A signed Probe may still have a clock that is ahead of Core.
+            // Keep the fact in the ledger, but do not surface it in any usage
+            // aggregate until its occurrence time has actually arrived.
+            guard date <= now else { continue }
             let row = UsageRow(
                 tool: tool,
                 model: columnText(statement, 2),
