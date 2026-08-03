@@ -185,7 +185,10 @@ public final class RemoteProbeService: ObservableObject {
         config = await synchronizedProbeRoster(config, client: client, generation: generation)
         guard generation == configurationGeneration else { return }
         do {
-            var cursor = try await ledger.relayCursor(workspaceID: config.workspaceID)
+            var cursor = try await ledger.relayCursor(
+                workspaceID: config.workspaceID,
+                coreDeviceID: config.coreDeviceID
+            )
             var pageCount = 0
             var skippedSuperseded = 0
             while pageCount < 100 {
@@ -225,6 +228,7 @@ public final class RemoteProbeService: ObservableObject {
                     cursor = batch.cursor
                     try await ledger.recordSync(
                         workspaceID: config.workspaceID,
+                        coreDeviceID: config.coreDeviceID,
                         cursor: cursor,
                         errorCode: nil
                     )
@@ -248,6 +252,7 @@ public final class RemoteProbeService: ObservableObject {
             lastErrorCode = code
             try? await ledger.recordSync(
                 workspaceID: config.workspaceID,
+                coreDeviceID: config.coreDeviceID,
                 cursor: nil,
                 errorCode: code
             )
