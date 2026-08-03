@@ -3,8 +3,23 @@
     <channel>
         <title>Vibe Bar</title>
         <item>
+            <title>1.3.0</title>
+            <pubDate>Mon, 03 Aug 2026 11:02:28 +0000</pubDate>
+            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.3.0-dev.15</link>
+            <sparkle:channel>dev</sparkle:channel>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.3.0 (dev)
+
+See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.3.0-dev.15).
+]]></description>
+            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.3.0-dev.15/Vibe-Bar-1.3.0-dev.15-macOS-arm64.zip" length="8008202" type="application/octet-stream" sparkle:edSignature="x56+oagnoLsd5HSw4hZGYBGAGKbtJ3WSsbB35lpxc43SfvcxfWN/vOsu4yBrw+cZqfyESdtASHFyQa/xMfF9CA=="/>
+        </item>
+        <item>
             <title>1.2.0</title>
-            <pubDate>Fri, 31 Jul 2026 05:41:44 +0000</pubDate>
+            <pubDate>Mon, 03 Aug 2026 11:02:27 +0000</pubDate>
             <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.2.0</link>
             <sparkle:version>14</sparkle:version>
             <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
@@ -15,21 +30,6 @@
 See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.2.0).
 ]]></description>
             <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.2.0/Vibe-Bar-1.2.0-macOS-arm64.zip" length="7829930" type="application/octet-stream" sparkle:edSignature="QY/wLJtvhZuVkmXyiTr6IKec225YcXxTvYZXhJgCYOzZ/ejWHPDBOctft8klSz5q2wSb0WTzO9K+Y9iMUkjeBA=="/>
-        </item>
-        <item>
-            <title>1.2.0</title>
-            <pubDate>Fri, 31 Jul 2026 05:41:44 +0000</pubDate>
-            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.2.0-dev.13</link>
-            <sparkle:channel>dev</sparkle:channel>
-            <sparkle:version>13</sparkle:version>
-            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.2.0 (dev)
-
-See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.2.0-dev.13).
-]]></description>
-            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.2.0-dev.13/Vibe-Bar-1.2.0-dev.13-macOS-arm64.zip" length="7829900" type="application/octet-stream" sparkle:edSignature="unENyQJi2t6Fuo+VsgWSRufdIywL6WzQZDiXjLVslKj5GqAWhi9h/siaRvicH6Xg2wvjqMP4V/MikLouiE8fCA=="/>
         </item>
     </channel>
 </rss>
