@@ -13,6 +13,7 @@ enum SettingsSectionID: String {
     case system
     case costData
     case privacy
+    case remote
 
     var id: String { rawValue }
 
@@ -29,6 +30,7 @@ enum SettingsSectionID: String {
         case .system: "System"
         case .costData: "Cost Data"
         case .privacy: "Privacy"
+        case .remote: "Remote Probes"
         }
     }
 
@@ -45,6 +47,7 @@ enum SettingsSectionID: String {
         case .system: "desktopcomputer"
         case .costData: "chart.bar.xaxis"
         case .privacy: "hand.raised.fill"
+        case .remote: "antenna.radiowaves.left.and.right"
         }
     }
 }
@@ -578,6 +581,11 @@ struct SettingsView: View {
                             .foregroundStyle(.tertiary)
                     }
                     .id(SettingsSectionID.costData.id)
+                    }
+
+                    if selectedSection == .remote {
+                    RemoteSettingsSection(service: environment.remoteProbeService)
+                        .id(SettingsSectionID.remote.id)
                     }
 
                     if selectedSection == .privacy {

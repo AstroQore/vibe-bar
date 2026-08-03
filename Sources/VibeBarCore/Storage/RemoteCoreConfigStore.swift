@@ -19,6 +19,7 @@ public enum RemoteCoreConfigStore {
 
     public static func install(_ provisioning: RemoteCoreProvisioning) throws {
         guard provisioning.schema == 1 else { throw RemoteSyncError.invalidConfiguration }
+        let previous = try? load()
         let config = try RemoteCoreConfig(
             workspaceID: provisioning.workspaceID,
             coreDeviceID: provisioning.coreDeviceID,
@@ -34,6 +35,15 @@ public enum RemoteCoreConfigStore {
             workspaceID: provisioning.workspaceID
         )
         try VibeBarLocalStore.writeJSON(config, to: VibeBarLocalStore.remoteCoreConfigURL)
+        // Replacing workspace A with workspace B must not strand A's
+        // still-valid Relay credential in the Vault. Best-effort, and only
+        // after the new configuration has committed, so a cleanup failure
+        // can't break an otherwise successful install.
+        if let previous, previous.workspaceID != provisioning.workspaceID {
+            try? RemoteCoreIdentityStore.deleteRelayBearerToken(
+                workspaceID: previous.workspaceID
+            )
+        }
     }
 
     public static func install(from url: URL) throws {
@@ -51,6 +61,19 @@ public enum RemoteCoreConfigStore {
             from: Data(contentsOf: url)
         )
         try install(provisioning)
+    }
+
+    /// Remove this Mac's workspace binding. The relay credential leaves the
+    /// Vault first, then the non-secret config file — mirroring install(),
+    /// which stores the secret first. The decrypted usage ledger stays: it
+    /// is the user's own data and re-provisioning must not lose history.
+    public static func uninstall() throws {
+        if let config = try? load() {
+            try RemoteCoreIdentityStore.deleteRelayBearerToken(
+                workspaceID: config.workspaceID
+            )
+        }
+        try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.remoteCoreConfigURL)
     }
 
     public static func writePublicDescriptor(to url: URL) throws {
