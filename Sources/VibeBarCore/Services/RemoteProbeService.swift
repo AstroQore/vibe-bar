@@ -35,6 +35,22 @@ public final class RemoteProbeService: ObservableObject {
         loadConfiguration()
     }
 
+    /// Test seam: build a service already bound to an in-memory configuration
+    /// and stubbed relay/ledger, bypassing the Keychain and `~/.vibebar` reads
+    /// the production initializer performs. Not used by product code.
+    init(
+        config: RemoteCoreConfig,
+        identity: RemoteCoreIdentity,
+        client: RemoteRelayClient,
+        ledger: RemoteUsageLedger
+    ) {
+        self.config = config
+        self.identity = identity
+        self.client = client
+        self.ledger = ledger
+        self.isConfigured = true
+    }
+
     private func loadConfiguration() {
         configurationGeneration += 1
         do {
@@ -171,27 +187,40 @@ public final class RemoteProbeService: ObservableObject {
         do {
             var cursor = try await ledger.relayCursor(workspaceID: config.workspaceID)
             var pageCount = 0
+            var skippedSuperseded = 0
             while pageCount < 100 {
                 pageCount += 1
                 let page = try await client.fetch(after: cursor)
                 guard generation == configurationGeneration else { return }
                 guard !page.batches.isEmpty else { break }
                 for batch in page.batches {
-                    let opened = try RemoteProtocolCrypto.openIngestEnvelope(
-                        batch.envelope,
-                        config: config,
-                        identity: identity,
-                        acceptedAt: batch.receivedAt
-                    )
-                    let payload = try RemotePayloadDecoder.decode(opened.plaintext)
-                    guard payload.workspaceID == config.workspaceID,
-                          payload.producerID == opened.producerID
-                    else { throw RemoteSyncError.invalidPayload }
-                    _ = try await ledger.importBatch(
-                        payload,
-                        sequence: opened.sequence,
-                        receivedAt: batch.receivedAt
-                    )
+                    do {
+                        let opened = try RemoteProtocolCrypto.openIngestEnvelope(
+                            batch.envelope,
+                            config: config,
+                            identity: identity,
+                            acceptedAt: batch.receivedAt
+                        )
+                        let payload = try RemotePayloadDecoder.decode(opened.plaintext)
+                        guard payload.workspaceID == config.workspaceID,
+                              payload.producerID == opened.producerID
+                        else { throw RemoteSyncError.invalidPayload }
+                        _ = try await ledger.importBatch(
+                            payload,
+                            sequence: opened.sequence,
+                            receivedAt: batch.receivedAt
+                        )
+                    } catch RemoteSyncError.supersededEnvelope {
+                        // Authenticated backlog from a revoked Core generation:
+                        // encrypted to a recipient key no current device holds,
+                        // so it can never be imported. Acknowledge it anyway so
+                        // the Relay's cursor-aware GC reclaims it, then keep
+                        // going. Aborting here (the old behavior) would wedge the
+                        // cursor and make every later sync repeat this failure.
+                        // Every non-superseded error still propagates to the
+                        // outer catch, unchanged.
+                        skippedSuperseded += 1
+                    }
                     try await client.acknowledge(cursor: batch.cursor)
                     cursor = batch.cursor
                     try await ledger.recordSync(
@@ -201,6 +230,12 @@ public final class RemoteProbeService: ObservableObject {
                     )
                 }
                 if page.batches.count < 10 { break }
+            }
+            if skippedSuperseded > 0 {
+                // Count only — never envelope contents or keys.
+                SafeLog.warn(
+                    "remote sync skipped \(skippedSuperseded) superseded-epoch batch(es)"
+                )
             }
             let summaries = try await ledger.machineSummaries(workspaceID: config.workspaceID)
             guard generation == configurationGeneration else { return }
