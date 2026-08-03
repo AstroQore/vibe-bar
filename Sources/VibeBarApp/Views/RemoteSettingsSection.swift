@@ -24,6 +24,11 @@ struct RemoteSettingsSection: View {
     @State private var showControlURLField = false
     @State private var isJoining = false
     @State private var joinError: String?
+    /// A workspace that accepted this Mac but whose credential could not be
+    /// saved locally. The pairing code is single-use and already spent, so the
+    /// result is held in memory — never rendered, never logged — until the
+    /// save succeeds or the user discards it.
+    @State private var pendingEnrollment: RemoteEnrollmentResult?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -166,6 +171,19 @@ struct RemoteSettingsSection: View {
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
             }
+            if pendingEnrollment != nil {
+                HStack(spacing: 10) {
+                    Button {
+                        retrySavingEnrollment()
+                    } label: {
+                        Label("Retry saving", systemImage: "arrow.clockwise")
+                    }
+                    Button("Discard") {
+                        pendingEnrollment = nil
+                        joinError = nil
+                    }
+                }
+            }
         }
     }
 
@@ -185,6 +203,7 @@ struct RemoteSettingsSection: View {
         joinError = nil
         importStatus = nil
         importError = nil
+        pendingEnrollment = nil
         isJoining = true
         Task {
             defer { isJoining = false }
@@ -193,16 +212,38 @@ struct RemoteSettingsSection: View {
                     controlURL: RemoteEnrollmentClient.controlURL(from: control)
                 )
                 let enrollment = try await client.enrollCore(code: code)
-                try RemoteCoreConfigStore.install(enrollment)
-                service.reconfigure()
                 joinCode = ""
-                importStatus = "Joined the workspace as this Mac's Core. Syncing with the Relay now. Enroll your other machines in the control center to see them here."
+                saveEnrollment(enrollment)
             } catch let error as RemoteEnrollmentError {
                 joinError = error.message
             } catch {
-                joinError = "Join failed: \(shortCode(error)). The code was accepted but this Mac could not store the credential."
+                joinError = "Join failed: \(shortCode(error))."
             }
         }
+    }
+
+    /// The only place the enrollment reaches disk and the Keychain. Splitting
+    /// it out of the network exchange is what makes "Retry saving" possible:
+    /// the code has already been consumed by the time this runs, so a local
+    /// failure must never send the user back for a second code.
+    @MainActor
+    private func saveEnrollment(_ enrollment: RemoteEnrollmentResult) {
+        do {
+            try RemoteCoreConfigStore.install(enrollment)
+            pendingEnrollment = nil
+            joinError = nil
+            service.reconfigure()
+            importStatus = "Joined the workspace as this Mac's Core. Syncing with the Relay; machines appear automatically as probes enroll."
+        } catch {
+            pendingEnrollment = enrollment
+            joinError = "The workspace accepted this Mac, but saving its credential here failed: \(shortCode(error)). The pairing code is already used — don't request a new one. Fix the problem (unlock the Keychain, free up disk space) and choose Retry saving."
+        }
+    }
+
+    @MainActor
+    private func retrySavingEnrollment() {
+        guard let enrollment = pendingEnrollment else { return }
+        saveEnrollment(enrollment)
     }
 
     private func exportDescriptor() {
@@ -300,6 +341,7 @@ struct RemoteSettingsSection: View {
             exportStatus = nil
             joinError = nil
             joinCode = ""
+            pendingEnrollment = nil
         } catch {
             importError = "Disconnect failed: \(shortCode(error))"
         }

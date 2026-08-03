@@ -343,6 +343,78 @@ final class RemoteEnrollmentTests: XCTestCase {
         }
     }
 
+    // MARK: - Install retry
+
+    /// Records what `install` persisted, and can fail the config write once so
+    /// the spent-code recovery path is exercised without touching the real
+    /// credential Vault or `~/.vibebar/`.
+    private final class RecordingSink: @unchecked Sendable {
+        var config: RemoteCoreConfig?
+        var identity: RemoteCoreIdentity?
+        var tokens: [UUID: String] = [:]
+        var failNextConfigWrite = false
+        var configWriteAttempts = 0
+
+        func make() -> RemoteCoreConfigSink {
+            RemoteCoreConfigSink(
+                loadConfig: {
+                    guard let config = self.config else { throw RemoteSyncError.notConfigured }
+                    return config
+                },
+                writeConfig: { value in
+                    self.configWriteAttempts += 1
+                    if self.failNextConfigWrite {
+                        self.failNextConfigWrite = false
+                        throw CocoaError(.fileWriteNoPermission)
+                    }
+                    self.config = value
+                },
+                storeIdentity: { self.identity = $0 },
+                storeBearerToken: { token, workspaceID in self.tokens[workspaceID] = token },
+                deleteBearerToken: { self.tokens[$0] = nil }
+            )
+        }
+    }
+
+    func testFailedInstallIsRecoverableWithTheSameEnrollment() async throws {
+        respond(status: 201, json: successBody())
+        let enrollment = try await makeClient().enrollCore(
+            code: "VB-ABCDE-23456",
+            deviceName: "Example Mac"
+        )
+
+        let sink = RecordingSink()
+        sink.failNextConfigWrite = true
+        XCTAssertThrowsError(
+            try RemoteCoreConfigStore.install(enrollment, sink: sink.make()),
+            "A failing config write must surface, not be swallowed"
+        )
+        // The one-time code is already spent, so what did land stays landed…
+        XCTAssertNotNil(sink.identity)
+        XCTAssertEqual(sink.tokens[workspace], bearer)
+        XCTAssertNil(sink.config, "The binding must not claim to be usable yet")
+
+        // …and retrying the local save with the retained result converges,
+        // with no second HTTP call and no second code.
+        XCTAssertNoThrow(try RemoteCoreConfigStore.install(enrollment, sink: sink.make()))
+        let installed = try XCTUnwrap(sink.config)
+        XCTAssertEqual(installed.workspaceID, workspace)
+        XCTAssertEqual(installed.coreDeviceID, device)
+        XCTAssertEqual(installed.coreEpoch, 1)
+        XCTAssertEqual(installed.ingestKeyID, "ingest-epoch-1")
+        XCTAssertEqual(sink.tokens[workspace], bearer)
+        XCTAssertEqual(
+            sink.identity?.recipientPrivateKey.rawRepresentation,
+            enrollment.identity.recipientPrivateKey.rawRepresentation
+        )
+        XCTAssertEqual(sink.configWriteAttempts, 2)
+
+        // Installing a third time is still safe: every write is last-wins.
+        XCTAssertNoThrow(try RemoteCoreConfigStore.install(enrollment, sink: sink.make()))
+        XCTAssertEqual(sink.config, installed)
+        XCTAssertEqual(sink.tokens.count, 1)
+    }
+
     func testFreshlyJoinedWorkspaceHasNoRegisteredProbes() throws {
         // A Core that just joined authorizes no producer yet; the config must
         // still be representable, because probes enroll afterwards.

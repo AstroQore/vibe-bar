@@ -26,6 +26,64 @@ struct RemoteRelayPage: Sendable {
     let nextCursor: String
 }
 
+/// One row of the Relay's device roster. Public material only: who the device
+/// is, whether the workspace still trusts it, and the signing key its
+/// envelopes must carry. `signingPublicKey` is nil when the Relay omitted it
+/// or it was not an uncompressed P-256 x963 point.
+struct RemoteRelayDevice: Sendable, Equatable {
+    let deviceID: UUID
+    let role: String
+    let status: String
+    let signingPublicKey: Data?
+}
+
+/// Turns the Relay's device roster into the set of producers a Core
+/// authorizes. Kept pure and separate from both the HTTP client and the
+/// service so the "which probes may publish to me" rule is testable on its
+/// own.
+enum RemoteProbeRoster {
+    struct Resolution: Equatable {
+        let keys: [UUID: Data]
+        /// Active probes the Core had to ignore because their signing key was
+        /// missing or unusable. Counted so the failure is observable without
+        /// ever logging the offending value.
+        let skipped: Int
+    }
+
+    static func resolve(from devices: [RemoteRelayDevice]) -> Resolution {
+        var keys: [UUID: Data] = [:]
+        var skipped = 0
+        for device in devices where device.role == "probe" && device.status == "active" {
+            guard let key = device.signingPublicKey else {
+                skipped += 1
+                continue
+            }
+            keys[device.deviceID] = key
+        }
+        return Resolution(keys: keys, skipped: skipped)
+    }
+
+    /// The configuration this Core should adopt, or nil when the installed
+    /// roster already matches — the caller then skips both the store write and
+    /// the in-memory swap, so an unchanged workspace costs one GET per cycle
+    /// and nothing else.
+    static func updatedConfiguration(
+        for config: RemoteCoreConfig,
+        resolution: Resolution
+    ) throws -> RemoteCoreConfig? {
+        guard resolution.keys != config.probeSigningPublicKeys else { return nil }
+        return try RemoteCoreConfig(
+            schema: config.schema,
+            workspaceID: config.workspaceID,
+            coreDeviceID: config.coreDeviceID,
+            relayURL: config.relayURL,
+            coreEpoch: config.coreEpoch,
+            ingestKeyID: config.ingestKeyID,
+            probeSigningPublicKeys: resolution.keys
+        )
+    }
+}
+
 struct RemoteRelayClient: Sendable {
     let config: RemoteCoreConfig
     let bearerToken: String
@@ -98,6 +156,49 @@ struct RemoteRelayClient: Sendable {
         return RemoteRelayPage(batches: batches, nextCursor: nextCursor)
     }
 
+    /// The workspace's current device roster. Same device-bearer credential,
+    /// no-redirect session, and bounded response as the batch calls; the Relay
+    /// requires the caller to be the workspace's Core.
+    func fetchDevices() async throws -> [RemoteRelayDevice] {
+        var request = URLRequest(url: workspaceEndpoint(resource: "devices"))
+        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 30
+        let (data, response) = try await HTTPResponseLimit.boundedData(
+            from: session,
+            for: request,
+            maxBytes: 1_048_576
+        )
+        try validate(response)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawDevices = object["devices"] as? [[String: Any]],
+              rawDevices.count <= 4096
+        else { throw RemoteSyncError.invalidResponse }
+        return try rawDevices.map { raw in
+            guard let idRaw = raw["device_id"] as? String,
+                  let deviceID = UUID(uuidString: idRaw),
+                  let role = raw["role"] as? String,
+                  let status = raw["status"] as? String
+            else { throw RemoteSyncError.invalidResponse }
+            // A key this Core cannot use is not a malformed roster: the row is
+            // still authoritative about the device's role and status, so keep
+            // it and let the roster policy decide (and count) the skip.
+            var signingPublicKey: Data?
+            if let keyRaw = raw["signing_public_key"] as? String,
+               let key = Data(base64Encoded: keyRaw),
+               key.count == 65, key.first == 0x04 {
+                signingPublicKey = key
+            }
+            return RemoteRelayDevice(
+                deviceID: deviceID,
+                role: role,
+                status: status,
+                signingPublicKey: signingPublicKey
+            )
+        }
+    }
+
     func acknowledge(cursor: String) async throws {
         var request = URLRequest(url: endpoint(resource: "acks"))
         request.httpMethod = "POST"
@@ -121,12 +222,16 @@ struct RemoteRelayClient: Sendable {
     }
 
     private func endpoint(resource: String) -> URL {
+        workspaceEndpoint(resource: "streams")
+            .appendingPathComponent("ingest")
+            .appendingPathComponent(resource)
+    }
+
+    private func workspaceEndpoint(resource: String) -> URL {
         config.relayURL
             .appendingPathComponent("v1")
             .appendingPathComponent("workspaces")
             .appendingPathComponent(config.workspaceID.uuidString.lowercased())
-            .appendingPathComponent("streams")
-            .appendingPathComponent("ingest")
             .appendingPathComponent(resource)
     }
 

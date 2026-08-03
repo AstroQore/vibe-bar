@@ -119,13 +119,55 @@ public final class RemoteProbeService: ObservableObject {
         activeRefresh = nil
     }
 
+    /// Learn the workspace's current probe roster from the Relay before any
+    /// envelope is opened.
+    ///
+    /// A Core that joined with a one-time code authorizes nobody at all until
+    /// this runs, and a Core provisioned from a file goes stale the moment its
+    /// workspace enrolls or revokes a probe — so both paths repair themselves
+    /// here, once per cycle. A roster fetch that fails keeps the installed
+    /// map: an unreachable or older Relay must degrade to "no new probes",
+    /// never to "reject everything".
+    private func synchronizedProbeRoster(
+        _ config: RemoteCoreConfig,
+        client: RemoteRelayClient,
+        generation: Int
+    ) async -> RemoteCoreConfig {
+        do {
+            let devices = try await client.fetchDevices()
+            guard generation == configurationGeneration else { return config }
+            let resolution = RemoteProbeRoster.resolve(from: devices)
+            if resolution.skipped > 0 {
+                SafeLog.warn(
+                    "remote roster: skipped \(resolution.skipped) active probe(s) with an unusable signing key"
+                )
+            }
+            guard let updated = try RemoteProbeRoster.updatedConfiguration(
+                for: config,
+                resolution: resolution
+            ) else { return config }
+            try RemoteCoreConfigStore.updateProbeRoster(updated)
+            self.config = updated
+            SafeLog.net("remote roster updated: \(updated.probeSigningPublicKeys.count) authorized probe(s)")
+            return updated
+        } catch {
+            SafeLog.net(
+                "remote roster refresh skipped: \((error as? RemoteSyncError)?.code ?? "unavailable")"
+            )
+            return config
+        }
+    }
+
     private func performRefresh() async {
         guard !isRefreshing,
-              let config, let identity, let client, let ledger
+              var config = self.config,
+              let identity, let client, let ledger
         else { return }
         let generation = configurationGeneration
         isRefreshing = true
         defer { isRefreshing = false }
+        config = await synchronizedProbeRoster(config, client: client, generation: generation)
+        guard generation == configurationGeneration else { return }
         do {
             var cursor = try await ledger.relayCursor(workspaceID: config.workspaceID)
             var pageCount = 0
