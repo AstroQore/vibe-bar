@@ -93,6 +93,19 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("mini_window_geometry.json")
     }
 
+    /// Non-secret workspace, Relay, and registered Probe metadata. Relay
+    /// bearer credentials and Core private keys live in the credential Vault.
+    public static var remoteCoreConfigURL: URL {
+        baseDirectory.appendingPathComponent("remote_core.json")
+    }
+
+    /// Source-aware remote event ledger and consumer cursor. This is separate
+    /// from `cost_history.json`: max-merged daily totals cannot represent
+    /// multiple producers or replay safely.
+    public static var remoteUsageLedgerURL: URL {
+        baseDirectory.appendingPathComponent("remote_usage.sqlite3")
+    }
+
     public static func readData(from url: URL) throws -> Data {
         try Data(contentsOf: url)
     }

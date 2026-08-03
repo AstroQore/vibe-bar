@@ -1,0 +1,55 @@
+{
+  "description": "Synthetic P-256/HKDF-SHA256/AES-256-GCM/P-256-ECDSA ingest vector",
+  "expected": {
+    "envelope": {
+      "ciphertext": "jaKiZeNAHQ20VXLaGAZHzvtHko5b/yedgS0jqhtZ3Tegdx2nnOv2eb04ih/+3UOevA26cjGGUB5g1jYDBOARrBky3iGUULUzVOU1vLkwgOyohQNmX4XM9KCW0byUUqj6/Cqg8CW8UR8qu1SIzfZeK4cyQkBBvAXUdGdJRrdPf2gr8B0EedU/zv01Ae0c05lbxVjCbMEqntEpkinjbjk4wdFS/rKmQoIT3UWuBeL3drDXRLT5AZKJ5dYUSmVD9uytAAZ2r+COc+CSJlXHM3F9B5KqVYEnitpTo0RfUQUoVG1eK2THkscJ2vfhnoViWUO4AxiypCEzSXK2cuUBF+eSoLMo/XnNFyn8raXN2W0sltaC9qyaCNggE/gTnh1wiSxRI6tmYtWMC7cWFQh8kIonWMSMmIVnWphJK+DjveFOGr6u7dSQKGJe71DCyTalEorRkL/xRT/qyqo0QfQvyzFBHtnhqM00/lnvKXFC1TsBSZyEY5ZI6RnlCoO0AlK1FkdwaVSn39ZWMSn+mDqoLjedLxZx2EJtYd+wCeBWeoz+FspNKmxvOnJfy84DMvWFq9VF2e+rpuekjpX6+bFCvWg06HC6nb2i64fRFg==",
+      "core_epoch": 1,
+      "created_at": "2026-08-03T06:01:00Z",
+      "ephemeral_public_key": "BI5TO2+gv3tGJbswZnwB+2B++fi4qA/vWzAGKHAxh7Kjc+sdveAzGDZtBp+DpvWQAFPHNjPLBBshxV4ahsH0ALQ=",
+      "expires_at": "2026-09-02T06:01:00Z",
+      "key_id": "ingest-epoch-1",
+      "minimum_consumer_version": 1,
+      "nonce": "AAECAwQFBgcICQoL",
+      "producer_id": "22222222-2222-4222-8222-222222222222",
+      "protocol_version": 1,
+      "sequence": 1,
+      "signature": "8WdodvC8HMtmze1gJoRWIsnvoyd9NwwPqvf8iDr7EjB9uLuMx3eMmztPQVu8Eo0Li+n3nDkvWLJi0TEKFJaKyw==",
+      "signing_public_key": "BFFZC3pRUUDS14TIVghmj9/vjIL9H1vlJCFVSg3D0DPt4MF9qJBKcn2K4b82v4p5Jg0BLwDU2AiI0dC7RP2hbaQ=",
+      "stream": "ingest",
+      "workspace_id": "11111111-1111-4111-8111-111111111111"
+    },
+    "recipient_public_key": "BF7L5NGmMwpEyPfvlR1L8WXmxrch762phftBZhvG5/1shzRkDEmY/343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI=",
+    "signing_public_key": "BFFZC3pRUUDS14TIVghmj9/vjIL9H1vlJCFVSg3D0DPt4MF9qJBKcn2K4b82v4p5Jg0BLwDU2AiI0dC7RP2hbaQ="
+  },
+  "inputs": {
+    "ephemeral_private_scalar_hex": "0000000000000000000000000000000000000000000000000000000000000007",
+    "nonce_hex": "000102030405060708090a0b",
+    "payload": {
+      "operations": [],
+      "previous_sequence": null,
+      "probe": {
+        "alias": "Example machine",
+        "platform": "linux-x86_64",
+        "timezone": "UTC",
+        "version": "0.1.0"
+      },
+      "producer_id": "22222222-2222-4222-8222-222222222222",
+      "schema": 1,
+      "status": {
+        "applied_control_sequence": 0,
+        "backlog_batches": 1,
+        "last_scan_at": "2026-08-03T06:01:00Z",
+        "sources": {
+          "antigravity": "absent",
+          "claude": "absent",
+          "codex": "absent",
+          "grok": "absent"
+        }
+      },
+      "workspace_id": "11111111-1111-4111-8111-111111111111"
+    },
+    "recipient_private_scalar_hex": "0000000000000000000000000000000000000000000000000000000000000003",
+    "signing_private_scalar_hex": "0000000000000000000000000000000000000000000000000000000000000005"
+  },
+  "schema": 1
+}

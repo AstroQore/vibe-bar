@@ -54,6 +54,9 @@ let package = Package(
         .testTarget(
             name: "VibeBarCoreTests",
             dependencies: ["VibeBarCore"],
+            resources: [
+                .copy("Fixtures/RemoteSync")
+            ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]

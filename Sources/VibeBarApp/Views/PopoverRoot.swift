@@ -11,6 +11,7 @@ struct PopoverRoot: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var remoteProbeService: RemoteProbeService
     @State private var overviewPage: OverviewPage = .overview
 
     var body: some View {
@@ -91,6 +92,8 @@ struct PopoverRoot: View {
             GrokPage(density: density)
         case .misc:
             MiscProvidersPage(density: density)
+        case .machines:
+            RemoteMachinesPage(density: density)
         }
     }
 
@@ -102,6 +105,7 @@ struct PopoverRoot: View {
         case .googleAI: return "Gemini"
         case .grok: return "Grok"
         case .misc: return "Misc Providers"
+        case .machines: return "Machines"
         }
     }
 
@@ -113,6 +117,7 @@ struct PopoverRoot: View {
         case .googleAI: return "Gemini Web + AntiGravity · quota & status"
         case .grok: return "xAI · monthly credits, cost & status"
         case .misc: return "Usage-only · sign in or paste a key"
+        case .machines: return "End-to-end encrypted remote usage"
         }
     }
 
@@ -130,6 +135,9 @@ struct PopoverRoot: View {
         if overviewPage == .grok {
             return [.grok]
         }
+        if overviewPage == .machines {
+            return []
+        }
         switch overviewPage {
         case .overview:
             return settingsStore.settings.visibleCoreProviderList
@@ -138,16 +146,19 @@ struct PopoverRoot: View {
         case .googleAI: return ToolType.googleAIPair
         case .grok: return [.grok]
         case .misc: return settingsStore.settings.visibleMiscProviderList
+        case .machines: return []
         }
     }
 
     private var latestUpdated: Date? {
-        visibleAccounts
+        if overviewPage == .machines { return remoteProbeService.lastUpdated }
+        return visibleAccounts
             .compactMap { quotaService.lastUpdatedByAccount[$0.id] }
             .max()
     }
 
     private var isRefreshing: Bool {
+        if overviewPage == .machines { return remoteProbeService.isRefreshing }
         let ids = visibleAccounts.map(\.id)
         return ids.contains { quotaService.inFlightAccountIds.contains($0) }
     }
@@ -210,6 +221,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
     case googleAI
     case grok
     case misc
+    case machines
 
     var id: String { rawValue }
 
@@ -217,7 +229,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
     static func visiblePages(settings: AppSettings) -> [OverviewPage] {
         [.overview]
             + settings.visibleCoreProviderList.compactMap(OverviewPage.page(for:))
-            + [.misc]
+            + [.machines, .misc]
     }
 
     /// The layout-engine page this tab renders, or `nil` for tabs that are not
@@ -231,6 +243,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .googleAI: return .detail(.gemini)
         case .grok:     return .detail(.grok)
         case .misc:     return nil
+        case .machines: return nil
         }
     }
 
@@ -248,6 +261,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .googleAI: return "Gemini"
         case .grok:     return "Grok"
         case .misc:     return "Misc"
+        case .machines: return "Machines"
         }
     }
 
@@ -257,7 +271,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude: return .claude
         case .googleAI: return .gemini
         case .grok: return .grok
-        case .overview, .misc: return nil
+        case .overview, .misc, .machines: return nil
         }
     }
 
@@ -352,6 +366,9 @@ private struct OverviewSwitchIcon: View {
                     .font(.system(size: Self.iconSize, weight: .semibold))
             case .misc:
                 Image(systemName: "square.grid.2x2")
+                    .font(.system(size: Self.iconSize, weight: .medium))
+            case .machines:
+                Image(systemName: "server.rack")
                     .font(.system(size: Self.iconSize, weight: .medium))
             case .openAI:
                 ToolBrandIconView(tool: .codex, size: Self.iconSize)

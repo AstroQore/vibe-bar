@@ -10,6 +10,7 @@ final class AppEnvironment: ObservableObject {
     let scheduler: QuotaRefreshScheduler
     let serviceStatus: ServiceStatusController
     let costService: CostUsageService
+    let remoteProbeService: RemoteProbeService
     let updateController: AppUpdateController
     /// Per-page card arrangement, shared by the popover and the Settings
     /// layout editor. Loads `~/.vibebar/layout.json` once at startup.
@@ -91,6 +92,7 @@ final class AppEnvironment: ObservableObject {
             settings?.settings.costData ?? .default
         })
         self.costService = costService
+        self.remoteProbeService = RemoteProbeService()
 
         // Give the quota refresh path the same activity inputs the popover
         // passes when it renders a forecast (see
@@ -224,6 +226,7 @@ final class AppEnvironment: ObservableObject {
 
         scheduler.start()
         serviceStatus.start()
+        remoteProbeService.start()
 
         // Kick off an initial cost scan in the background. Cost data updates
         // slowly compared to live quota, so we re-scan only on app relaunch,
@@ -336,6 +339,9 @@ final class AppEnvironment: ObservableObject {
 
     func refreshAll() {
         reloadProviderCredentialsAndRefresh()
+        Task { @MainActor [weak self] in
+            await self?.remoteProbeService.refresh()
+        }
     }
 
     func refreshCostUsage() {
