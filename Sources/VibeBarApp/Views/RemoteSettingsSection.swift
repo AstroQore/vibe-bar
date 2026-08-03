@@ -66,7 +66,7 @@ struct RemoteSettingsSection: View {
 
     private var provisioningSection: some View {
         section("Provisioning") {
-            Text("Pairing runs in three steps: export this Mac's Core identity, register it with your Relay to produce a provisioning file, then import that file here. The provisioning file embeds a Relay credential — it is stored in the macOS Keychain, never on disk.")
+            Text("Pairing runs in three steps: export this Mac's Core identity, register it with your Relay to produce a provisioning file, then import that file here. Importing moves the Relay credential into the macOS Keychain — but the provisioning file itself still contains that credential, so delete the file once the import succeeds.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -110,6 +110,11 @@ struct RemoteSettingsSection: View {
         panel.title = "Export Core Identity Descriptor"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
+            // Narrow, deliberate exception to the "never write outside
+            // ~/.vibebar/" rule (AGENTS.md § coding conventions): the
+            // destination is chosen by the user in a save panel, the payload
+            // is public-key material only, and the file lands 0600 — the
+            // same contract as the --remote-identity-descriptor launch flag.
             try RemoteCoreConfigStore.writePublicDescriptor(to: url)
             exportStatus = "Descriptor exported. It contains public keys only."
         } catch {
@@ -130,7 +135,7 @@ struct RemoteSettingsSection: View {
         do {
             try RemoteCoreConfigStore.install(from: url)
             service.reconfigure()
-            importStatus = "Provisioning installed. Syncing with the Relay now."
+            importStatus = "Provisioning installed. Syncing with the Relay now. Delete the provisioning file — it still contains the Relay credential."
         } catch {
             importError = importHint(for: url, underlying: error)
         }
@@ -144,9 +149,16 @@ struct RemoteSettingsSection: View {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         if let permissions = attributes?[.posixPermissions] as? NSNumber,
            permissions.intValue & 0o077 != 0 {
-            return "Import failed: the file must be readable by you alone. Run: chmod 600 \"\(url.path)\" and import again."
+            return "Import failed: the file must be readable by you alone. Run: chmod 600 \(shellQuoted(url.path)) and import again."
         }
         return "Import failed: \(shortCode(error)). Check that this is an unmodified provisioning file for this Mac."
+    }
+
+    /// POSIX single-quote escaping so a filename containing shell
+    /// metacharacters (quotes, `$(...)`) stays inert if the user copies the
+    /// suggested command into Terminal.
+    private func shellQuoted(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: - Disconnect
