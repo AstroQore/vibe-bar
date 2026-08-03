@@ -53,6 +53,19 @@ public enum RemoteCoreConfigStore {
         try install(provisioning)
     }
 
+    /// Remove this Mac's workspace binding. The relay credential leaves the
+    /// Vault first, then the non-secret config file — mirroring install(),
+    /// which stores the secret first. The decrypted usage ledger stays: it
+    /// is the user's own data and re-provisioning must not lose history.
+    public static func uninstall() throws {
+        if let config = try? load() {
+            try RemoteCoreIdentityStore.deleteRelayBearerToken(
+                workspaceID: config.workspaceID
+            )
+        }
+        try VibeBarLocalStore.deleteFile(at: VibeBarLocalStore.remoteCoreConfigURL)
+    }
+
     public static func writePublicDescriptor(to url: URL) throws {
         let descriptor = try RemoteCoreIdentityStore.loadOrCreate().publicDescriptor
         let encoder = JSONEncoder()

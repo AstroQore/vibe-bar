@@ -84,6 +84,17 @@ public enum RemoteCoreIdentityStore {
         )
     }
 
+    static func deleteRelayBearerToken(workspaceID: UUID) throws {
+        do {
+            try VibeBarCredentialVault.delete(
+                service: service,
+                account: relayAccount(workspaceID)
+            )
+        } catch KeychainStore.KeychainError.itemNotFound {
+            // Already gone — deletion is idempotent.
+        }
+    }
+
     private static func relayAccount(_ workspaceID: UUID) -> String {
         "relay:" + workspaceID.uuidString.lowercased()
     }

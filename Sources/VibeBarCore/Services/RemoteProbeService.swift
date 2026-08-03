@@ -9,13 +9,23 @@ public final class RemoteProbeService: ObservableObject {
     @Published public private(set) var lastUpdated: Date?
     @Published public private(set) var lastErrorCode: String?
 
-    private let config: RemoteCoreConfig?
-    private let identity: RemoteCoreIdentity?
-    private let client: RemoteRelayClient?
-    private let ledger: RemoteUsageLedger?
+    private var config: RemoteCoreConfig?
+    private var identity: RemoteCoreIdentity?
+    private var client: RemoteRelayClient?
+    private var ledger: RemoteUsageLedger?
     private var refreshLoop: Task<Void, Never>?
 
+    /// Workspace this Core is bound to, for status display. Never a secret.
+    public var workspaceID: UUID? { config?.workspaceID }
+    public var coreDeviceID: UUID? { config?.coreDeviceID }
+    public var relayURL: URL? { config?.relayURL }
+    public var registeredProbeCount: Int { config?.probeSigningPublicKeys.count ?? 0 }
+
     public init() {
+        loadConfiguration()
+    }
+
+    private func loadConfiguration() {
         do {
             let config = try RemoteCoreConfigStore.load()
             let identity = try RemoteCoreIdentityStore.loadOrCreate()
@@ -28,13 +38,27 @@ public final class RemoteProbeService: ObservableObject {
             self.client = RemoteRelayClient(config: config, bearerToken: bearer)
             self.ledger = ledger
             self.isConfigured = true
+            self.lastErrorCode = nil
         } catch {
             self.config = nil
             self.identity = nil
             self.client = nil
             self.ledger = nil
             self.isConfigured = false
+            self.machines = []
+            self.lastUpdated = nil
             self.lastErrorCode = (error as? RemoteSyncError)?.code
+        }
+    }
+
+    /// Re-read provisioning from disk after the settings pane installs or
+    /// removes it, so a restart is never required. Stops the refresh loop,
+    /// reloads, and resumes only when a valid configuration is present.
+    public func reconfigure() {
+        stop()
+        loadConfiguration()
+        if isConfigured {
+            start()
         }
     }
 
