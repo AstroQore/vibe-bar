@@ -14,6 +14,12 @@ public final class RemoteProbeService: ObservableObject {
     private var client: RemoteRelayClient?
     private var ledger: RemoteUsageLedger?
     private var refreshLoop: Task<Void, Never>?
+    /// The one sync currently executing, whether the loop, the settings
+    /// pane's Sync now, or AppEnvironment started it. refresh() serializes
+    /// on this so syncs never overlap, and reconfigure() drains it so no
+    /// refresh from the old configuration is still running when the new one
+    /// loads.
+    private var activeRefresh: Task<Void, Never>?
     /// Bumped by every (re)load. An in-flight refresh() captured the previous
     /// configuration; it must stop publishing (and acknowledging) the moment
     /// this no longer matches the generation it started under.
@@ -67,6 +73,12 @@ public final class RemoteProbeService: ObservableObject {
         refreshLoop = nil
         Task { [weak self] in
             await oldLoop?.value
+            // Also drain refreshes launched outside the loop (Sync now,
+            // AppEnvironment.refreshAll) so the restarted loop's first pass
+            // runs immediately instead of skipping and sleeping 60s.
+            while let active = self?.activeRefresh {
+                await active.value
+            }
             guard let self else { return }
             self.loadConfiguration()
             if self.isConfigured {
@@ -95,6 +107,19 @@ public final class RemoteProbeService: ObservableObject {
     }
 
     public func refresh() async {
+        // Serialize: wait out any in-flight sync, then run a full pass of our
+        // own. Piled-up callers each get a pass; the cursor-based protocol
+        // makes back-to-back passes cheap no-ops.
+        while let existing = activeRefresh {
+            await existing.value
+        }
+        let task = Task { await performRefresh() }
+        activeRefresh = task
+        await task.value
+        activeRefresh = nil
+    }
+
+    private func performRefresh() async {
         guard !isRefreshing,
               let config, let identity, let client, let ledger
         else { return }
