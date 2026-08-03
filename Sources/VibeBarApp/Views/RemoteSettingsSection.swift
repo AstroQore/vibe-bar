@@ -17,6 +17,22 @@ struct RemoteSettingsSection: View {
     @State private var importStatus: String?
     @State private var importError: String?
     @State private var confirmingDisconnect = false
+    @State private var joinCode = ""
+    /// The hosted control center. Editable so a self-hosted deployment can be
+    /// paired without a provisioning file; the client still requires HTTPS.
+    @State private var controlURL = "https://vibebar.aqor.io"
+    @State private var showControlURLField = false
+    @State private var isJoining = false
+    @State private var joinError: String?
+    /// A workspace that accepted this Mac but whose credential is not saved
+    /// yet. Mirrors the record in the credential Vault so the pane can offer a
+    /// resume; never rendered, never logged.
+    @State private var pendingEnrollment: RemoteEnrollmentResult?
+    /// True when the pending record came from the Vault on appearance rather
+    /// than from a failure in this session — the affordance is then "resume",
+    /// not "retry", and deserves an explanation.
+    @State private var pendingWasRestored = false
+    @State private var confirmingDiscardPending = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -26,6 +42,9 @@ struct RemoteSettingsSection: View {
                 disconnectSection
             }
         }
+        // Only here, and only as an offer: a join is never completed behind
+        // the user's back.
+        .onAppear { restorePendingEnrollment() }
     }
 
     // MARK: - Status
@@ -66,6 +85,13 @@ struct RemoteSettingsSection: View {
 
     private var provisioningSection: some View {
         section("Provisioning") {
+            if !service.isConfigured {
+                joinWithCode
+                Divider()
+                Text("Or pair manually.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
             Text("Pairing runs in three steps: export this Mac's Core identity, register it with your Relay to produce a provisioning file, then import that file here. Importing moves the Relay credential into the macOS Keychain — but the provisioning file itself still contains that credential, so delete the file once the import succeeds.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -100,6 +126,174 @@ struct RemoteSettingsSection: View {
                     .textSelection(.enabled)
             }
         }
+    }
+
+    // MARK: - Join with code
+
+    /// The one-step path: paste the one-time code the web control center
+    /// shows, and this Mac mints a fresh Core keypair, registers its public
+    /// halves, and installs the same configuration a provisioning file would
+    /// have carried. The code is single-use and short-lived, so it is never
+    /// persisted or logged.
+    private var joinWithCode: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Join with a code")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Text("Create a Core code in the Vibe Bar control center, then paste it here. This Mac joins as “\(deviceName)”.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                TextField("VB-XXXXX-XXXXX", text: $joinCode)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 190)
+                    .disabled(isJoining)
+                    .onSubmit { join() }
+                Button("Join") { join() }
+                    .disabled(isJoining || trimmedJoinCode.isEmpty)
+                if isJoining {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Toggle("Use a different control center", isOn: $showControlURLField)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .disabled(isJoining)
+            if showControlURLField {
+                TextField("https://vibebar.aqor.io", text: $controlURL)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(maxWidth: 320)
+                    .disabled(isJoining)
+            }
+
+            if let joinError {
+                Text(joinError)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+            if pendingEnrollment != nil {
+                if pendingWasRestored {
+                    Text("A previous join was accepted by the control center but never finished saving on this Mac. Its pairing code is already spent, so resume the save instead of requesting a new code.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 10) {
+                    Button {
+                        retrySavingEnrollment()
+                    } label: {
+                        Label(
+                            pendingWasRestored ? "Resume saving" : "Retry saving",
+                            systemImage: "arrow.clockwise"
+                        )
+                    }
+                    Button("Discard") { confirmingDiscardPending = true }
+                }
+                .confirmationDialog(
+                    "Discard this pending join?",
+                    isPresented: $confirmingDiscardPending,
+                    titleVisibility: .visible
+                ) {
+                    Button("Discard", role: .destructive) { discardPendingEnrollment() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Its pairing code is already spent, and the workspace still counts this Mac as its Core. To join again, revoke this Mac in the web control center, then create a fresh code.")
+                }
+            }
+        }
+    }
+
+    private var trimmedJoinCode: String {
+        joinCode.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var deviceName: String {
+        RemoteEnrollmentClient.defaultDeviceName()
+    }
+
+    @MainActor
+    private func join() {
+        guard !isJoining, !trimmedJoinCode.isEmpty else { return }
+        let code = trimmedJoinCode
+        let control = controlURL
+        joinError = nil
+        importStatus = nil
+        importError = nil
+        pendingEnrollment = nil
+        isJoining = true
+        Task {
+            defer { isJoining = false }
+            do {
+                let client = try RemoteEnrollmentClient(
+                    controlURL: RemoteEnrollmentClient.controlURL(from: control)
+                )
+                let enrollment = try await client.enrollCore(code: code)
+                joinCode = ""
+                // The code is spent the moment the control center answers, so
+                // put the result somewhere durable *before* touching the
+                // config — quitting between here and a successful save must
+                // not destroy the only copy. Starting another join supersedes
+                // this record; if the Vault write itself fails we simply fall
+                // through to the in-memory path, which is no worse than before.
+                try? RemoteCoreConfigStore.retainPendingEnrollment(enrollment)
+                saveEnrollment(enrollment)
+            } catch let error as RemoteEnrollmentError {
+                joinError = error.message
+            } catch {
+                joinError = "Join failed: \(shortCode(error))."
+            }
+        }
+    }
+
+    /// The only place the enrollment reaches disk and the Keychain. Splitting
+    /// it out of the network exchange is what makes "Retry saving" possible:
+    /// the code has already been consumed by the time this runs, so a local
+    /// failure must never send the user back for a second code.
+    @MainActor
+    private func saveEnrollment(_ enrollment: RemoteEnrollmentResult) {
+        do {
+            // install() clears the retained record once the binding commits.
+            try RemoteCoreConfigStore.install(enrollment)
+            pendingEnrollment = nil
+            pendingWasRestored = false
+            joinError = nil
+            service.reconfigure()
+            importStatus = "Joined the workspace as this Mac's Core. Syncing with the Relay; machines appear automatically as probes enroll."
+        } catch {
+            pendingEnrollment = enrollment
+            joinError = "The workspace accepted this Mac, but saving its credential here failed: \(shortCode(error)). The pairing code is already used — don't request a new one. Fix the problem (unlock the Keychain, free up disk space) and save again; the join is kept until you do."
+        }
+    }
+
+    @MainActor
+    private func retrySavingEnrollment() {
+        guard let enrollment = pendingEnrollment else { return }
+        saveEnrollment(enrollment)
+    }
+
+    /// Offer an unfinished join from an earlier session. Read-only: the
+    /// install itself still waits for the user to ask for it.
+    @MainActor
+    private func restorePendingEnrollment() {
+        guard pendingEnrollment == nil, !service.isConfigured,
+              let retained = RemoteCoreConfigStore.pendingEnrollment()
+        else { return }
+        pendingEnrollment = retained
+        pendingWasRestored = true
+    }
+
+    @MainActor
+    private func discardPendingEnrollment() {
+        RemoteCoreConfigStore.discardPendingEnrollment()
+        pendingEnrollment = nil
+        pendingWasRestored = false
+        joinError = nil
     }
 
     private func exportDescriptor() {
@@ -183,7 +377,7 @@ struct RemoteSettingsSection: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Reconnecting later requires a new provisioning file.")
+                Text("Reconnecting later requires a new pairing code or provisioning file.")
             }
         }
     }
@@ -195,6 +389,9 @@ struct RemoteSettingsSection: View {
             importStatus = nil
             importError = nil
             exportStatus = nil
+            joinError = nil
+            joinCode = ""
+            discardPendingEnrollment()
         } catch {
             importError = "Disconnect failed: \(shortCode(error))"
         }
