@@ -1,6 +1,9 @@
 import Foundation
 
-private final class RemoteNoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+/// Shared by every remote-sync session (Relay batches and control-center
+/// enrollment): a redirect off the configured origin would move a bearer
+/// token or a one-time pairing code to a host the user never approved.
+final class RemoteNoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,

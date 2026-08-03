@@ -17,6 +17,13 @@ struct RemoteSettingsSection: View {
     @State private var importStatus: String?
     @State private var importError: String?
     @State private var confirmingDisconnect = false
+    @State private var joinCode = ""
+    /// The hosted control center. Editable so a self-hosted deployment can be
+    /// paired without a provisioning file; the client still requires HTTPS.
+    @State private var controlURL = "https://vibebar.aqor.io"
+    @State private var showControlURLField = false
+    @State private var isJoining = false
+    @State private var joinError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -66,6 +73,13 @@ struct RemoteSettingsSection: View {
 
     private var provisioningSection: some View {
         section("Provisioning") {
+            if !service.isConfigured {
+                joinWithCode
+                Divider()
+                Text("Or pair manually.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
             Text("Pairing runs in three steps: export this Mac's Core identity, register it with your Relay to produce a provisioning file, then import that file here. Importing moves the Relay credential into the macOS Keychain — but the provisioning file itself still contains that credential, so delete the file once the import succeeds.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -98,6 +112,95 @@ struct RemoteSettingsSection: View {
                     .font(.caption2)
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
+            }
+        }
+    }
+
+    // MARK: - Join with code
+
+    /// The one-step path: paste the one-time code the web control center
+    /// shows, and this Mac mints a fresh Core keypair, registers its public
+    /// halves, and installs the same configuration a provisioning file would
+    /// have carried. The code is single-use and short-lived, so it is never
+    /// persisted or logged.
+    private var joinWithCode: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Join with a code")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Text("Create a Core code in the Vibe Bar control center, then paste it here. This Mac joins as “\(deviceName)”.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                TextField("VB-XXXXX-XXXXX", text: $joinCode)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 190)
+                    .disabled(isJoining)
+                    .onSubmit { join() }
+                Button("Join") { join() }
+                    .disabled(isJoining || trimmedJoinCode.isEmpty)
+                if isJoining {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Toggle("Use a different control center", isOn: $showControlURLField)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .disabled(isJoining)
+            if showControlURLField {
+                TextField("https://vibebar.aqor.io", text: $controlURL)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(maxWidth: 320)
+                    .disabled(isJoining)
+            }
+
+            if let joinError {
+                Text(joinError)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private var trimmedJoinCode: String {
+        joinCode.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var deviceName: String {
+        RemoteEnrollmentClient.defaultDeviceName()
+    }
+
+    @MainActor
+    private func join() {
+        guard !isJoining, !trimmedJoinCode.isEmpty else { return }
+        let code = trimmedJoinCode
+        let control = controlURL
+        joinError = nil
+        importStatus = nil
+        importError = nil
+        isJoining = true
+        Task {
+            defer { isJoining = false }
+            do {
+                let client = try RemoteEnrollmentClient(
+                    controlURL: RemoteEnrollmentClient.controlURL(from: control)
+                )
+                let enrollment = try await client.enrollCore(code: code)
+                try RemoteCoreConfigStore.install(enrollment)
+                service.reconfigure()
+                joinCode = ""
+                importStatus = "Joined the workspace as this Mac's Core. Syncing with the Relay now. Enroll your other machines in the control center to see them here."
+            } catch let error as RemoteEnrollmentError {
+                joinError = error.message
+            } catch {
+                joinError = "Join failed: \(shortCode(error)). The code was accepted but this Mac could not store the credential."
             }
         }
     }
@@ -183,7 +286,7 @@ struct RemoteSettingsSection: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Reconnecting later requires a new provisioning file.")
+                Text("Reconnecting later requires a new pairing code or provisioning file.")
             }
         }
     }
@@ -195,6 +298,8 @@ struct RemoteSettingsSection: View {
             importStatus = nil
             importError = nil
             exportStatus = nil
+            joinError = nil
+            joinCode = ""
         } catch {
             importError = "Disconnect failed: \(shortCode(error))"
         }

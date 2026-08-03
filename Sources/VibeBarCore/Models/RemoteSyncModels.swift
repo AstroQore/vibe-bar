@@ -27,9 +27,13 @@ public struct RemoteCoreConfig: Codable, Equatable, Sendable {
               relayURL.query == nil,
               relayURL.fragment == nil
         else { throw RemoteSyncError.invalidConfiguration }
+        // An empty probe map is legitimate: a Mac that has just joined a
+        // workspace is the Core before any probe has enrolled. It simply
+        // authorizes no producer yet, so every envelope is refused until the
+        // workspace registers its first probe.
         guard (1..<Int(Int32.max)).contains(coreEpoch),
               (1...128).contains(ingestKeyID.count),
-              (1...4096).contains(probeSigningPublicKeys.count),
+              (0...4096).contains(probeSigningPublicKeys.count),
               probeSigningPublicKeys.values.allSatisfy({ $0.count == 65 && $0.first == 0x04 })
         else { throw RemoteSyncError.invalidConfiguration }
         self.schema = schema

@@ -46,6 +46,15 @@ public enum RemoteCoreConfigStore {
         }
     }
 
+    /// Commit an enrollment obtained from the web control center. Identical to
+    /// the provisioning-file path once the identity is in place: the Core keys
+    /// were minted during the exchange rather than before it, so they have to
+    /// land in the Vault before the workspace binding that depends on them.
+    public static func install(_ enrollment: RemoteEnrollmentResult) throws {
+        try RemoteCoreIdentityStore.store(enrollment.identity)
+        try install(enrollment.provisioning)
+    }
+
     public static func install(from url: URL) throws {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         guard attributes[.type] as? FileAttributeType == .typeRegular,

@@ -50,20 +50,29 @@ public enum RemoteCoreIdentityStore {
                 signingPrivateKey: P256.Signing.PrivateKey(),
                 recipientPrivateKey: P256.KeyAgreement.PrivateKey()
             )
-            let payload = Payload(
-                schema: 1,
-                signingPrivateKey: identity.signingPrivateKey.rawRepresentation,
-                recipientPrivateKey: identity.recipientPrivateKey.rawRepresentation
-            )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            try VibeBarCredentialVault.writeData(
-                service: service,
-                account: identityAccount,
-                data: try encoder.encode(payload)
-            )
+            try store(identity)
             return identity
         }
+    }
+
+    /// Persist an identity generated elsewhere. Joining a workspace with a
+    /// one-time code mints a fresh keypair and registers its public halves
+    /// with the control center, so the private halves must replace whatever
+    /// this Mac held — the previously exported descriptor no longer describes
+    /// the workspace's Core recipient key.
+    static func store(_ identity: RemoteCoreIdentity) throws {
+        let payload = Payload(
+            schema: 1,
+            signingPrivateKey: identity.signingPrivateKey.rawRepresentation,
+            recipientPrivateKey: identity.recipientPrivateKey.rawRepresentation
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try VibeBarCredentialVault.writeData(
+            service: service,
+            account: identityAccount,
+            data: try encoder.encode(payload)
+        )
     }
 
     public static func relayBearerToken(workspaceID: UUID) throws -> String {
