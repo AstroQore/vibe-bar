@@ -235,6 +235,12 @@ public enum RemoteSyncError: Error, Equatable, Sendable {
     case invalidSignature
     case decryptionFailed
     case invalidPayload
+    /// An authenticated batch from an earlier, superseded Core generation
+    /// (a strictly lower `core_epoch`). Its recipient key was revoked when the
+    /// Core rotated, so no current device can ever decrypt it. This is not a
+    /// failure: the batch is skipped and acknowledged so the Relay's
+    /// cursor-aware GC can reclaim it, and the stream keeps advancing.
+    case supersededEnvelope
     case sequenceGap(expected: Int64, received: Int64)
     case rollback
     case http(Int)
@@ -249,6 +255,7 @@ public enum RemoteSyncError: Error, Equatable, Sendable {
         case .invalidSignature: return "invalid_signature"
         case .decryptionFailed: return "decryption_failed"
         case .invalidPayload: return "invalid_payload"
+        case .supersededEnvelope: return "superseded_envelope"
         case .sequenceGap: return "sequence_gap"
         case .rollback: return "rollback"
         case .http: return "relay_http_error"

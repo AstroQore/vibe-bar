@@ -95,6 +95,14 @@ enum RemoteProtocolCrypto {
         identity: RemoteCoreIdentity,
         acceptedAt: Date = Date()
     ) throws -> RemoteOpenedEnvelope {
+        // Structural validation. Every check here is exactly as before EXCEPT
+        // the two that pin an envelope to the *current* generation —
+        // `core_epoch` and `key_id`. Those are decided below, after the
+        // signature proves the producer, so that an authenticated batch from an
+        // earlier generation can be classified `.supersededEnvelope` instead of
+        // a fatal `.invalidEnvelope`. `core_epoch` is still required to be a
+        // positive integer and `key_id` a string; only their equality with the
+        // config moves.
         guard data.count <= 1_048_576,
               let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               Set(object.keys) == requiredEnvelopeKeys,
@@ -108,8 +116,8 @@ enum RemoteProtocolCrypto {
               let producerID = UUID(uuidString: producerRaw),
               let expectedSigningKey = config.probeSigningPublicKeys[producerID],
               let sequence = exactInteger(object["sequence"]), sequence > 0,
-              exactInteger(object["core_epoch"]) == Int64(config.coreEpoch),
-              object["key_id"] as? String == config.ingestKeyID,
+              let coreEpoch = exactInteger(object["core_epoch"]), coreEpoch > 0,
+              let keyID = object["key_id"] as? String,
               let createdRaw = object["created_at"] as? String,
               let expiresRaw = object["expires_at"] as? String,
               let createdAt = parseTimestamp(createdRaw),
@@ -132,6 +140,21 @@ enum RemoteProtocolCrypto {
               let signatureData = Data(base64Encoded: signatureRaw), signatureData.count == 64
         else { throw RemoteSyncError.invalidEnvelope }
 
+        // Generation gates that must stay fatal are decided BEFORE the signature
+        // check, so their error (`.invalidEnvelope`) is preserved exactly as the
+        // pre-restructure guard produced it, whether the signature is valid or
+        // not:
+        //   * current epoch but a key id that is not the current generation's;
+        //   * a future epoch — the Core is behind and this must surface, never
+        //     silently skip forward.
+        let expectedEpoch = Int64(config.coreEpoch)
+        if coreEpoch == expectedEpoch, keyID != config.ingestKeyID {
+            throw RemoteSyncError.invalidEnvelope
+        }
+        if coreEpoch > expectedEpoch {
+            throw RemoteSyncError.invalidEnvelope
+        }
+
         var unsigned = object
         unsigned.removeValue(forKey: "signature")
         let signature = try P256.Signing.ECDSASignature(rawRepresentation: signatureData)
@@ -140,6 +163,17 @@ enum RemoteProtocolCrypto {
             signature,
             for: try RemoteCanonicalJSON.encode(unsigned)
         ) else { throw RemoteSyncError.invalidSignature }
+
+        // The signature verified against a producer key already in the config's
+        // roster: forging it requires that probe's signing private key, which is
+        // game-over-equivalent. Only now, with the producer proven, is a batch
+        // from a strictly earlier Core generation classified as superseded
+        // backlog. It is never decrypted or imported — the caller skips and
+        // acknowledges it. A current-generation envelope (equal epoch, matching
+        // key id) falls through to decryption unchanged.
+        if coreEpoch < expectedEpoch {
+            throw RemoteSyncError.supersededEnvelope
+        }
 
         let ephemeralKey = try P256.KeyAgreement.PublicKey(x963Representation: ephemeralData)
         let secret = try identity.recipientPrivateKey.sharedSecretFromKeyAgreement(
