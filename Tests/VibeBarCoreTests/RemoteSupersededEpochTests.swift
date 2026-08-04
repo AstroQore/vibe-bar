@@ -188,9 +188,11 @@ final class RemoteSupersededEpochTests: XCTestCase {
         XCTAssertEqual(service.machines.first?.producerID, producer)
         XCTAssertEqual(service.machines.first?.allTimeTokens, 15)
 
-        // Both cursors were acknowledged so the Relay GC can reclaim them, and
-        // the ledger cursor advanced past BOTH batches.
-        XCTAssertEqual(Set(StubRelay.acknowledged()), ["c1", "c2"])
+        // Both batches were acknowledged so the Relay GC can reclaim them, and
+        // the ledger cursor advanced past BOTH batches. The ack is a monotonic
+        // watermark, so the page sends exactly one — at the last batch it
+        // processed, which covers the superseded one underneath it.
+        XCTAssertEqual(StubRelay.acknowledged(), ["c2"])
         let cursor = try await ledger.relayCursor(
             workspaceID: workspace,
             coreDeviceID: config.coreDeviceID
@@ -275,8 +277,9 @@ final class RemoteSupersededEpochTests: XCTestCase {
         // just the one it imported.
         XCTAssertEqual(service.machines.first?.lastSequence, 3)
 
-        // Every batch was acknowledged and the cursor advanced past all three.
-        XCTAssertEqual(Set(StubRelay.acknowledged()), ["c1", "c2", "c3"])
+        // Every batch was acknowledged and the cursor advanced past all three —
+        // through one watermark ack at the last processed batch, not three.
+        XCTAssertEqual(StubRelay.acknowledged(), ["c3"])
         let cursor = try await ledger.relayCursor(
             workspaceID: workspace,
             coreDeviceID: config.coreDeviceID

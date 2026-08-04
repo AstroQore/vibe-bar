@@ -24,6 +24,11 @@ public final class RemoteProbeService: ObservableObject {
     /// configuration; it must stop publishing (and acknowledging) the moment
     /// this no longer matches the generation it started under.
     private var configurationGeneration = 0
+    /// Waits between retries of a Relay request the Relay asked us to repeat
+    /// (429/503): 1s, then 2s, so three attempts in all. A stored property
+    /// rather than a constant only so the test seam can collapse it to
+    /// near-zero; it is deliberately not part of the public API.
+    private var relayRetryDelays: [Duration] = [.seconds(1), .seconds(2)]
 
     /// Workspace this Core is bound to, for status display. Never a secret.
     public var workspaceID: UUID? { config?.workspaceID }
@@ -42,12 +47,14 @@ public final class RemoteProbeService: ObservableObject {
         config: RemoteCoreConfig,
         identity: RemoteCoreIdentity,
         client: RemoteRelayClient,
-        ledger: RemoteUsageLedger
+        ledger: RemoteUsageLedger,
+        relayRetryDelays: [Duration] = [.seconds(1), .seconds(2)]
     ) {
         self.config = config
         self.identity = identity
         self.client = client
         self.ledger = ledger
+        self.relayRetryDelays = relayRetryDelays
         self.isConfigured = true
     }
 
@@ -174,6 +181,77 @@ public final class RemoteProbeService: ObservableObject {
         }
     }
 
+    /// Thrown when `reconfigure()` replaced the configuration while a cycle was
+    /// asleep between Relay retries. It travels to `performRefresh`'s outer
+    /// catch, which already returns without publishing once the generation no
+    /// longer matches — so the stale cycle unwinds quietly instead of resuming
+    /// against a configuration it never validated.
+    private struct RefreshSuperseded: Error {}
+
+    /// Perform one Relay request, retrying a bounded number of times when the
+    /// Relay asks us to come back shortly.
+    ///
+    /// The Relay sits behind an nginx rate limiter. A burst of requests is
+    /// answered 429, and nginx (like most CDNs) also sheds load with 503.
+    /// Neither says the request was malformed, yet both used to abort the whole
+    /// cycle: the cursor stopped advancing and the UI reported
+    /// `relay_http_error` / "Last sync: never" even though every batch before
+    /// the burst had imported fine. Three attempts spread over 1s + 2s ride out
+    /// a limiter window; if they are exhausted the error propagates exactly as
+    /// before and the cycle records it.
+    ///
+    /// Only 429 and 503 are retried. 400 (a cursor replayed against the wrong
+    /// principal), 401, and 403 are real failures that will not fix themselves,
+    /// and retrying them would just delay the error the user needs to see.
+    ///
+    /// `Retry-After` is **not** honored. `RemoteRelayClient.validate` collapses
+    /// every non-200 into `RemoteSyncError.http(statusCode)`; widening that
+    /// public, `Equatable` error case to carry a response header would ripple
+    /// through the model, the client, and their tests for very little gain over
+    /// a fixed schedule.
+    private func withRelayRetry<T>(
+        generation: Int,
+        _ request: () async throws -> T
+    ) async throws -> T {
+        for delay in relayRetryDelays {
+            do {
+                return try await request()
+            } catch let error as RemoteSyncError {
+                guard case .http(let status) = error, status == 429 || status == 503 else {
+                    throw error
+                }
+                try await Task.sleep(for: delay)
+                guard generation == configurationGeneration else { throw RefreshSuperseded() }
+            }
+        }
+        // Retries exhausted: this attempt's failure is the cycle's failure.
+        return try await request()
+    }
+
+    /// Commit one page's progress: a single ack for the last batch the page
+    /// processed, then a single local cursor write at the same position.
+    ///
+    /// Both are watermarks, which is what makes the batching safe — the Relay
+    /// stores `MAX(existing, through)` and the ledger's `relay_cursor` is simply
+    /// where the next fetch resumes.
+    private func commitPage(
+        through cursor: String,
+        config: RemoteCoreConfig,
+        client: RemoteRelayClient,
+        ledger: RemoteUsageLedger,
+        generation: Int
+    ) async throws {
+        try await withRelayRetry(generation: generation) {
+            try await client.acknowledge(cursor: cursor)
+        }
+        try await ledger.recordSync(
+            workspaceID: config.workspaceID,
+            coreDeviceID: config.coreDeviceID,
+            cursor: cursor,
+            errorCode: nil
+        )
+    }
+
     private func performRefresh() async {
         guard !isRefreshing,
               var config = self.config,
@@ -193,63 +271,107 @@ public final class RemoteProbeService: ObservableObject {
             var skippedSuperseded = 0
             while pageCount < 100 {
                 pageCount += 1
-                let page = try await client.fetch(after: cursor)
+                let page = try await withRelayRetry(generation: generation) {
+                    try await client.fetch(after: cursor)
+                }
                 guard generation == configurationGeneration else { return }
                 guard !page.batches.isEmpty else { break }
-                for batch in page.batches {
-                    do {
-                        let opened = try RemoteProtocolCrypto.openIngestEnvelope(
-                            batch.envelope,
+                // One ack per page, not one per batch. The Relay's ack is a
+                // monotonic watermark (`last_batch_id = MAX(existing, through)`),
+                // so acknowledging only the last batch a page actually processed
+                // is exactly equivalent to acknowledging each of them — at a
+                // tenth of the requests. Draining a backlog of a few hundred
+                // queued batches used to fire that many POST /acks in a tight
+                // burst, which tripped the Relay's nginx rate limit; the
+                // resulting 429 is not the superseded case, so it escaped the
+                // per-batch catch and aborted the whole cycle with the cursor
+                // still parked at its starting position.
+                //
+                // Crash safety: if the app dies after a page is processed but
+                // before its ack lands, the next fetch re-delivers those
+                // batches. `importBatch` dedups on `remote_imported_batches` and
+                // `noteSupersededBatch` inserts with ON CONFLICT DO NOTHING, so
+                // a redelivery is a no-op — the work is repeated at worst, never
+                // double-counted.
+                var processed: String?
+                do {
+                    for batch in page.batches {
+                        do {
+                            let opened = try RemoteProtocolCrypto.openIngestEnvelope(
+                                batch.envelope,
+                                config: config,
+                                identity: identity,
+                                acceptedAt: batch.receivedAt
+                            )
+                            let payload = try RemotePayloadDecoder.decode(opened.plaintext)
+                            guard payload.workspaceID == config.workspaceID,
+                                  payload.producerID == opened.producerID
+                            else { throw RemoteSyncError.invalidPayload }
+                            _ = try await ledger.importBatch(
+                                payload,
+                                sequence: opened.sequence,
+                                receivedAt: batch.receivedAt
+                            )
+                        } catch RemoteSyncError.supersededEnvelope(let producerID, let sequence) {
+                            // Authenticated backlog from a revoked Core
+                            // generation: encrypted to a recipient key no current
+                            // device holds, so it can never be imported. Count it
+                            // as processed anyway so the page's ack lets the
+                            // Relay's cursor-aware GC reclaim it, then keep going.
+                            // Aborting here (the old behavior) would wedge the
+                            // cursor and make every later sync repeat this
+                            // failure. Every non-superseded error still propagates
+                            // to the outer catch, unchanged.
+                            //
+                            // Skipping is not the same as ignoring: the sequence
+                            // is recorded so the producer's watermark moves past
+                            // it. Advancing only the Relay cursor (the dev.18
+                            // behavior) left the ledger at 0 while the cursor
+                            // walked over the whole superseded backlog, so the
+                            // first current-epoch batch arrived as a
+                            // `sequence_gap` and wedged the sync in a different
+                            // place. The producer and sequence come from the error
+                            // itself — both were signature-verified inside
+                            // `openIngestEnvelope`, so the envelope is never
+                            // parsed a second time here.
+                            skippedSuperseded += 1
+                            try await ledger.noteSupersededBatch(
+                                workspaceID: config.workspaceID,
+                                producerID: producerID,
+                                sequence: sequence,
+                                receivedAt: batch.receivedAt
+                            )
+                        }
+                        processed = batch.cursor
+                    }
+                } catch {
+                    // A non-superseded failure still aborts the cycle, exactly as
+                    // before — but the batches this page already imported must not
+                    // be replayed on every future cycle, so their watermark is
+                    // committed before the error propagates. Both halves are
+                    // best-effort on purpose: the batch failure is the one the
+                    // cycle has to report, so neither a refused ack nor a ledger
+                    // write may replace it.
+                    if let processed {
+                        try? await commitPage(
+                            through: processed,
                             config: config,
-                            identity: identity,
-                            acceptedAt: batch.receivedAt
-                        )
-                        let payload = try RemotePayloadDecoder.decode(opened.plaintext)
-                        guard payload.workspaceID == config.workspaceID,
-                              payload.producerID == opened.producerID
-                        else { throw RemoteSyncError.invalidPayload }
-                        _ = try await ledger.importBatch(
-                            payload,
-                            sequence: opened.sequence,
-                            receivedAt: batch.receivedAt
-                        )
-                    } catch RemoteSyncError.supersededEnvelope(let producerID, let sequence) {
-                        // Authenticated backlog from a revoked Core generation:
-                        // encrypted to a recipient key no current device holds,
-                        // so it can never be imported. Acknowledge it anyway so
-                        // the Relay's cursor-aware GC reclaims it, then keep
-                        // going. Aborting here (the old behavior) would wedge the
-                        // cursor and make every later sync repeat this failure.
-                        // Every non-superseded error still propagates to the
-                        // outer catch, unchanged.
-                        //
-                        // Skipping is not the same as ignoring: the sequence is
-                        // recorded so the producer's watermark moves past it.
-                        // Advancing only the Relay cursor (the dev.18 behavior)
-                        // left the ledger at 0 while the cursor walked over the
-                        // whole superseded backlog, so the first current-epoch
-                        // batch arrived as a `sequence_gap` and wedged the sync
-                        // in a different place. The producer and sequence come
-                        // from the error itself — both were signature-verified
-                        // inside `openIngestEnvelope`, so the envelope is never
-                        // parsed a second time here.
-                        skippedSuperseded += 1
-                        try await ledger.noteSupersededBatch(
-                            workspaceID: config.workspaceID,
-                            producerID: producerID,
-                            sequence: sequence,
-                            receivedAt: batch.receivedAt
+                            client: client,
+                            ledger: ledger,
+                            generation: generation
                         )
                     }
-                    try await client.acknowledge(cursor: batch.cursor)
-                    cursor = batch.cursor
-                    try await ledger.recordSync(
-                        workspaceID: config.workspaceID,
-                        coreDeviceID: config.coreDeviceID,
-                        cursor: cursor,
-                        errorCode: nil
-                    )
+                    throw error
                 }
+                guard let processed else { break }
+                try await commitPage(
+                    through: processed,
+                    config: config,
+                    client: client,
+                    ledger: ledger,
+                    generation: generation
+                )
+                cursor = processed
                 if page.batches.count < 10 { break }
             }
             if skippedSuperseded > 0 {
