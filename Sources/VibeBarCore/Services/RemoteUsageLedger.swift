@@ -173,17 +173,33 @@ public actor RemoteUsageLedger {
                 try execute("COMMIT")
                 return false
             }
-            let previous = try scalarInt64(
+            let watermark = try scalarInt64(
                 """
                 SELECT last_sequence FROM remote_machines
                 WHERE workspace_id = ? AND producer_id = ?
                 """,
                 [.text(workspace), .text(producer)]
-            )
-            let expected = (previous ?? 0) + 1
-            guard sequence == expected else {
+            ) ?? 0
+            let expected = watermark + 1
+            if sequence != expected {
                 if sequence < expected { throw RemoteSyncError.rollback }
-                throw RemoteSyncError.sequenceGap(expected: expected, received: sequence)
+                // Adopt-on-first-batch. A Core that joins an already-running
+                // workspace — or whose earlier backlog was superseded by a Core
+                // rotation, or garbage-collected at the Relay — has no way to
+                // ever see sequence 1. Refusing to start is a permanent wedge:
+                // every later cycle re-reads the same unreachable expectation
+                // and reports `sequence_gap` forever. Adopting the first
+                // sequence this Core can actually decrypt only means "history
+                // before this point is not in this Core's ledger", which is
+                // exactly true and already how a freshly enrolled Core behaves.
+                //
+                // The relaxation applies only while no watermark exists. Once
+                // this producer has a recorded position (> 0), a forward jump is
+                // a real mid-stream gap and still throws, and a lower sequence
+                // still throws `.rollback` above.
+                guard watermark == 0 else {
+                    throw RemoteSyncError.sequenceGap(expected: expected, received: sequence)
+                }
             }
             guard payload.previousSequence == (sequence == 1 ? nil : sequence - 1) else {
                 throw RemoteSyncError.sequenceGap(expected: expected, received: sequence)
@@ -285,6 +301,64 @@ public actor RemoteUsageLedger {
         }
     }
 
+    /// Account for a batch that was skipped because it belongs to a superseded
+    /// Core generation (`RemoteSyncError.supersededEnvelope`).
+    ///
+    /// Its ciphertext is encrypted to a recipient key no current device holds,
+    /// so no device will ever import it — but it still occupies a slot in that
+    /// producer's sequence chain. Leaving the watermark behind makes the first
+    /// importable batch look like a `sequenceGap` and wedges the stream, so the
+    /// skip is recorded exactly like an import for bookkeeping purposes:
+    /// `remote_imported_batches` gains the sequence (a re-delivery then dedups)
+    /// and the producer's watermark moves forward.
+    ///
+    /// The watermark only ever moves forward (`MAX`), so a page delivered out of
+    /// order can never lower a position an import already reached. The
+    /// `remote_machines` row is created when absent, but with none of the probe
+    /// metadata invented: the descriptive columns are left at the empty
+    /// placeholder the NOT NULL schema requires, and `machineSummaries` skips
+    /// such a row so a producer that has only ever sent superseded batches does
+    /// not render as a nameless machine. A later current-epoch import fills the
+    /// real metadata in through the ordinary upsert.
+    func noteSupersededBatch(
+        workspaceID: UUID,
+        producerID: UUID,
+        sequence: Int64,
+        receivedAt: Date
+    ) throws {
+        guard sequence > 0 else { throw RemoteSyncError.invalidPayload }
+        let workspace = workspaceID.uuidString.lowercased()
+        let producer = producerID.uuidString.lowercased()
+        let stamp = Int64(receivedAt.timeIntervalSince1970)
+        try execute("BEGIN IMMEDIATE")
+        do {
+            try run(
+                """
+                INSERT INTO remote_imported_batches(
+                       workspace_id, producer_id, sequence, imported_at
+                   ) VALUES(?, ?, ?, ?)
+                   ON CONFLICT(workspace_id, producer_id, sequence) DO NOTHING
+                """,
+                [.text(workspace), .text(producer), .integer(sequence), .integer(stamp)]
+            )
+            try run(
+                """
+                INSERT INTO remote_machines(
+                       workspace_id, producer_id, alias, platform, timezone, probe_version,
+                       last_seen_at, last_scan_at, last_sequence, source_status_json
+                   ) VALUES(?, ?, '', '', '', '', 0, 0, ?, '{}')
+                   ON CONFLICT(workspace_id, producer_id) DO UPDATE SET
+                       last_sequence = MAX(remote_machines.last_sequence, excluded.last_sequence)
+                """,
+                [.text(workspace), .text(producer), .integer(sequence)]
+            )
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
     /// The stored relay cursor for this workspace, but only when it was minted
     /// by `coreDeviceID`. The Relay HMAC-binds every cursor to the device that
     /// consumed it, so a cursor left by an earlier Core (revoked, then this Mac
@@ -350,11 +424,16 @@ public actor RemoteUsageLedger {
         now: Date = Date()
     ) throws -> [RemoteMachineSummary] {
         let workspace = workspaceID.uuidString.lowercased()
+        // `alias <> ''` excludes the watermark-only rows `noteSupersededBatch`
+        // creates for a producer whose batches were all superseded. A real
+        // import always carries a 1...96 character alias (the payload decoder
+        // enforces it), so this can never hide a machine that actually reported.
         let statement = try prepare(
             """
             SELECT producer_id, alias, platform, probe_version, last_seen_at,
                       last_scan_at, last_sequence, source_status_json
-               FROM remote_machines WHERE workspace_id = ? ORDER BY alias, producer_id
+               FROM remote_machines WHERE workspace_id = ? AND alias <> ''
+               ORDER BY alias, producer_id
             """
         )
         defer { sqlite3_finalize(statement) }

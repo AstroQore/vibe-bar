@@ -240,7 +240,13 @@ public enum RemoteSyncError: Error, Equatable, Sendable {
     /// Core rotated, so no current device can ever decrypt it. This is not a
     /// failure: the batch is skipped and acknowledged so the Relay's
     /// cursor-aware GC can reclaim it, and the stream keeps advancing.
-    case supersededEnvelope
+    ///
+    /// The producer and sequence travel with the error because the caller has
+    /// to record the skip in the ledger — a skipped sequence still consumes a
+    /// slot in that producer's chain, so the watermark must move past it or the
+    /// next importable batch looks like a `sequenceGap`. Both values are
+    /// signature-verified before this is thrown, and neither is a secret.
+    case supersededEnvelope(producerID: UUID, sequence: Int64)
     case sequenceGap(expected: Int64, received: Int64)
     case rollback
     case http(Int)
