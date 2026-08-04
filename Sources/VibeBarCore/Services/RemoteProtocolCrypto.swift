@@ -172,7 +172,10 @@ enum RemoteProtocolCrypto {
         // acknowledges it. A current-generation envelope (equal epoch, matching
         // key id) falls through to decryption unchanged.
         if coreEpoch < expectedEpoch {
-            throw RemoteSyncError.supersededEnvelope
+            throw RemoteSyncError.supersededEnvelope(
+                producerID: producerID,
+                sequence: sequence
+            )
         }
 
         let ephemeralKey = try P256.KeyAgreement.PublicKey(x963Representation: ephemeralData)

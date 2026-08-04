@@ -44,8 +44,12 @@ final class RemoteSupersededEpochTests: XCTestCase {
                 acceptedAt: iso("2026-08-03T06:01:00Z")
             )
         ) { error in
+            // The classification carries the producer and sequence the caller
+            // needs to record the skip in the ledger, so the envelope never has
+            // to be parsed twice.
             XCTAssertEqual(
-                error as? RemoteSyncError, .supersededEnvelope,
+                error as? RemoteSyncError,
+                .supersededEnvelope(producerID: producer, sequence: 1),
                 "An authenticated older-epoch batch must be superseded, not invalid_envelope"
             )
         }
@@ -81,7 +85,10 @@ final class RemoteSupersededEpochTests: XCTestCase {
             // The signature gate fires before the superseded decision, so a
             // forged old-epoch batch is rejected, never silently skipped.
             XCTAssertEqual(error as? RemoteSyncError, .invalidSignature)
-            XCTAssertNotEqual(error as? RemoteSyncError, .supersededEnvelope)
+            XCTAssertNotEqual(
+                error as? RemoteSyncError,
+                .supersededEnvelope(producerID: producer, sequence: 1)
+            )
         }
     }
 
@@ -137,14 +144,17 @@ final class RemoteSupersededEpochTests: XCTestCase {
             plaintext: Data("cannot be opened".utf8)
         )
         // Second batch: current epoch, encrypted to this Core's recipient key,
-        // carrying a real usage payload at sequence 1.
+        // carrying a real usage payload at the next sequence. A probe's chain is
+        // monotonic across a Core rotation — the superseded backlog occupies the
+        // sequences below the first current-epoch batch — so the current batch
+        // continues the chain rather than restarting it.
         let current = try seal(
             signer: producerSigningKey,
             recipient: identity.recipientPrivateKey.publicKey,
             coreEpoch: 2,
             keyID: "ingest-epoch-2",
-            sequence: 1,
-            plaintext: try usagePayload(sequence: 1)
+            sequence: 2,
+            plaintext: try usagePayload(sequence: 2)
         )
 
         let received = Int64(iso("2026-08-03T06:01:00Z").timeIntervalSince1970)
@@ -186,6 +196,92 @@ final class RemoteSupersededEpochTests: XCTestCase {
             coreDeviceID: config.coreDeviceID
         )
         XCTAssertEqual(cursor, "c2")
+    }
+
+    /// The regression this file's fix originally missed: skipping a superseded
+    /// batch has to move the producer's sequence watermark too. With a run of
+    /// superseded batches ahead of the first importable one, a skip that only
+    /// advanced the Relay cursor left the ledger expecting sequence 1 forever,
+    /// so the current-epoch batch arrived as a `sequence_gap` and aborted every
+    /// later cycle.
+    @MainActor
+    func testRefreshAdvancesTheWatermarkAcrossASupersededRun() async throws {
+        let identity = makeIdentity()
+        let producerSigningKey = P256.Signing.PrivateKey()
+        let config = try makeConfig(
+            coreEpoch: 2,
+            ingestKeyID: "ingest-epoch-2",
+            keys: [producer: producerSigningKey.publicKey.x963Representation]
+        )
+
+        let revokedRecipient = P256.KeyAgreement.PrivateKey().publicKey
+        let firstSuperseded = try seal(
+            signer: producerSigningKey,
+            recipient: revokedRecipient,
+            coreEpoch: 1,
+            keyID: "ingest-epoch-1",
+            sequence: 1,
+            plaintext: Data("cannot be opened".utf8)
+        )
+        let secondSuperseded = try seal(
+            signer: producerSigningKey,
+            recipient: revokedRecipient,
+            coreEpoch: 1,
+            keyID: "ingest-epoch-1",
+            sequence: 2,
+            plaintext: Data("cannot be opened either".utf8)
+        )
+        let current = try seal(
+            signer: producerSigningKey,
+            recipient: identity.recipientPrivateKey.publicKey,
+            coreEpoch: 2,
+            keyID: "ingest-epoch-2",
+            sequence: 3,
+            plaintext: try usagePayload(sequence: 3)
+        )
+
+        let received = Int64(iso("2026-08-03T06:01:00Z").timeIntervalSince1970)
+        StubRelay.reset()
+        StubRelay.deviceKey = producerSigningKey.publicKey.x963Representation
+        StubRelay.producer = producer
+        StubRelay.core = config.coreDeviceID
+        StubRelay.page = [
+            ["cursor": "c1", "received_at": received, "envelope": firstSuperseded],
+            ["cursor": "c2", "received_at": received, "envelope": secondSuperseded],
+            ["cursor": "c3", "received_at": received, "envelope": current]
+        ]
+        StubRelay.nextCursor = "c3"
+        defer { StubRelay.reset() }
+
+        let client = makeClient(config)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("remote-superseded-run-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ledger = try RemoteUsageLedger(url: directory.appendingPathComponent("ledger.sqlite3"))
+
+        let service = RemoteProbeService(
+            config: config, identity: identity, client: client, ledger: ledger
+        )
+        await service.refresh()
+
+        // Two skips and one import, with no error: the run of superseded
+        // sequences did not turn into a gap.
+        XCTAssertNil(service.lastErrorCode)
+        XCTAssertEqual(service.machines.count, 1)
+        XCTAssertEqual(service.machines.first?.producerID, producer)
+        XCTAssertEqual(service.machines.first?.allTimeTokens, 15)
+        // The watermark accounts for every sequence the Core walked past, not
+        // just the one it imported.
+        XCTAssertEqual(service.machines.first?.lastSequence, 3)
+
+        // Every batch was acknowledged and the cursor advanced past all three.
+        XCTAssertEqual(Set(StubRelay.acknowledged()), ["c1", "c2", "c3"])
+        let cursor = try await ledger.relayCursor(
+            workspaceID: workspace,
+            coreDeviceID: config.coreDeviceID
+        )
+        XCTAssertEqual(cursor, "c3")
     }
 
     // MARK: - Fixtures

@@ -213,7 +213,7 @@ public final class RemoteProbeService: ObservableObject {
                             sequence: opened.sequence,
                             receivedAt: batch.receivedAt
                         )
-                    } catch RemoteSyncError.supersededEnvelope {
+                    } catch RemoteSyncError.supersededEnvelope(let producerID, let sequence) {
                         // Authenticated backlog from a revoked Core generation:
                         // encrypted to a recipient key no current device holds,
                         // so it can never be imported. Acknowledge it anyway so
@@ -222,7 +222,24 @@ public final class RemoteProbeService: ObservableObject {
                         // cursor and make every later sync repeat this failure.
                         // Every non-superseded error still propagates to the
                         // outer catch, unchanged.
+                        //
+                        // Skipping is not the same as ignoring: the sequence is
+                        // recorded so the producer's watermark moves past it.
+                        // Advancing only the Relay cursor (the dev.18 behavior)
+                        // left the ledger at 0 while the cursor walked over the
+                        // whole superseded backlog, so the first current-epoch
+                        // batch arrived as a `sequence_gap` and wedged the sync
+                        // in a different place. The producer and sequence come
+                        // from the error itself — both were signature-verified
+                        // inside `openIngestEnvelope`, so the envelope is never
+                        // parsed a second time here.
                         skippedSuperseded += 1
+                        try await ledger.noteSupersededBatch(
+                            workspaceID: config.workspaceID,
+                            producerID: producerID,
+                            sequence: sequence,
+                            receivedAt: batch.receivedAt
+                        )
                     }
                     try await client.acknowledge(cursor: batch.cursor)
                     cursor = batch.cursor
