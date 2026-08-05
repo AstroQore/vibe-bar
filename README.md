@@ -52,7 +52,10 @@ It answers two questions that raw quota percentages do not:
   component uptime in the same place as quota data.
 - **Two floating layouts** — a spacious gauge view and a compact view that
   can stay pinned above your work.
-- **Local-first storage** — no Vibe Bar account, telemetry, or hosted backend.
+- **End-to-end encrypted remote machines** — outbound-only Linux Probes can
+  join selected cost/token totals without giving Relay or Control plaintext.
+- **Local-first usage** — no telemetry or hosted plaintext analytics backend;
+  the optional account/control service stores workspace/device metadata only.
 
 ## One Overview, Not Four Dashboards
 
@@ -95,6 +98,19 @@ patterns on the right.
   </tr>
 </table>
 
+## Remote Machines
+
+The separate [VibeBar Probe](https://github.com/AstroQore/vibebar-probe) can
+observe supported CLI logs on a systemd Linux machine without opening an
+inbound port. Probe facts are buffered locally, encrypted to the active Core,
+and routed through an opaque Relay. Each remote machine is excluded from totals
+until you explicitly enable **Include in totals**; selected usage then joins
+this Mac's local snapshots across Overview and the four core cost pages.
+
+See the [Remote Probe guide](https://vibebar.aqor.io/docs/guide/remote-probes)
+for binary installation, enrollment, updates, rollback, and the Web/iOS E2EE
+freshness model.
+
 ## More Coding Plans
 
 The Misc page keeps provider-specific quota semantics intentionally simple and
@@ -132,8 +148,10 @@ data as a successful update.
 
 ## Privacy and Local Data
 
-Vibe Bar has no account system, telemetry pipeline, or hosted analytics
-backend. Derived state stays under:
+Vibe Bar has no telemetry pipeline or hosted plaintext analytics backend.
+Local and remote-Probe usage analysis stays on the active Core. The optional
+hosted account/control service stores workspace, enrollment, Relay directory,
+and audit metadata only. Derived state stays under:
 
 ```text
 ~/.vibebar/
@@ -142,6 +160,8 @@ backend. Derived state stays under:
 ├── cost_snapshots/
 ├── scan_cache/
 ├── service_status.json
+├── remote_core.json
+├── remote_usage.sqlite3
 └── cost_history.json
 ```
 

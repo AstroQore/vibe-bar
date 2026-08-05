@@ -48,6 +48,7 @@ final class AppEnvironment: ObservableObject {
     private var webCookiePresenceGeneration: UInt64 = 0
     private var routeHealthProbeGeneration: UInt64 = 0
     private var routeHealthWriteGeneration: [PrimaryProviderRoute: UInt64] = [:]
+    private var remoteCostAggregationGeneration: UInt64 = 0
     /// Long enough to fold the probes of one refresh burst — the Gemini card
     /// refreshes two providers back to back — and short enough that a cookie
     /// change made outside Vibe Bar still shows up on the next manual refresh.
@@ -224,6 +225,21 @@ final class AppEnvironment: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Remote facts become visible to cost surfaces only after the user
+        // selects their machine IDs. Rebuild after either a successful Relay
+        // import or a selection change; generation fencing prevents a slower
+        // old selection from publishing after a newer click.
+        remoteProbeService.$machines
+            .combineLatest(
+                settings.$settings
+                    .map(\.remoteCostIncludedMachineIDs)
+                    .removeDuplicates()
+            )
+            .sink { [weak self] _, machineIDs in
+                self?.scheduleRemoteCostAggregation(machineIDs: machineIDs)
+            }
+            .store(in: &cancellables)
+
         scheduler.start()
         serviceStatus.start()
         remoteProbeService.start()
@@ -284,6 +300,19 @@ final class AppEnvironment: ObservableObject {
 
     deinit {
         pricingRefreshTask?.cancel()
+    }
+
+    private func scheduleRemoteCostAggregation(machineIDs: Set<String>) {
+        remoteCostAggregationGeneration &+= 1
+        let generation = remoteCostAggregationGeneration
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let snapshots = await remoteProbeService.costSnapshots(
+                includingMachineIDs: machineIDs
+            )
+            guard generation == remoteCostAggregationGeneration else { return }
+            costService.setRemoteSnapshots(snapshots)
+        }
     }
 
     func account(for tool: ToolType) -> AccountIdentity? {

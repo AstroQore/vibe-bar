@@ -12,6 +12,7 @@ import VibeBarCore
 /// which routes the bearer token straight into the credential Vault.
 struct RemoteSettingsSection: View {
     @ObservedObject var service: RemoteProbeService
+    @EnvironmentObject private var settingsStore: SettingsStore
 
     @State private var exportStatus: String?
     @State private var importStatus: String?
@@ -39,12 +40,40 @@ struct RemoteSettingsSection: View {
             statusSection
             provisioningSection
             if service.isConfigured {
+                aggregationSection
                 disconnectSection
             }
         }
         // Only here, and only as an offer: a join is never completed behind
         // the user's back.
         .onAppear { restorePendingEnrollment() }
+    }
+
+    private var aggregationSection: some View {
+        section("Cost aggregation") {
+            Text("Choose which remote machines join this Mac's local cost and token totals. Selection and aggregation stay on this Core; the Relay never sees plaintext usage.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if service.machines.isEmpty {
+                Text("Machines appear here after their first encrypted batch is imported.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            } else {
+                ForEach(service.machines) { machine in
+                    Toggle(isOn: includedInTotals(machine)) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(machine.alias)
+                                .font(.caption.weight(.medium))
+                            Text("\(machine.platform) · Probe \(machine.probeVersion)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                }
+            }
+        }
     }
 
     // MARK: - Status
@@ -413,6 +442,19 @@ struct RemoteSettingsSection: View {
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
         }
+    }
+
+    private func includedInTotals(_ machine: RemoteMachineSummary) -> Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.remoteCostIncludedMachineIDs.contains(machine.id) },
+            set: { included in
+                if included {
+                    settingsStore.settings.remoteCostIncludedMachineIDs.insert(machine.id)
+                } else {
+                    settingsStore.settings.remoteCostIncludedMachineIDs.remove(machine.id)
+                }
+            }
+        )
     }
 
     /// Mirrors SettingsView.settingsSection so this pane matches the other

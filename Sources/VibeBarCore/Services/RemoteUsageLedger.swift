@@ -454,6 +454,10 @@ public actor RemoteUsageLedger {
                 producer: producerRaw,
                 now: now
             )
+            let expectedReportInterval = try expectedReportIntervalSeconds(
+                workspace: workspace,
+                producer: producerRaw
+            )
             summaries.append(
                 RemoteMachineSummary(
                     workspaceID: workspaceID,
@@ -463,6 +467,7 @@ public actor RemoteUsageLedger {
                     probeVersion: version,
                     lastSeenAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 4))),
                     lastScanAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 5))),
+                    expectedReportIntervalSeconds: expectedReportInterval,
                     lastSequence: sqlite3_column_int64(statement, 6),
                     sourceStatuses: sourceStatuses,
                     todayTokens: usage.today,
@@ -475,6 +480,109 @@ public actor RemoteUsageLedger {
             )
         }
         return summaries
+    }
+
+    /// Build provider snapshots from only the machines the user selected for
+    /// this Core's totals. The caller passes the same stable IDs shown by
+    /// `machineSummaries`; unknown, revoked, and cross-workspace IDs simply do
+    /// not match a row.
+    public func costSnapshots(
+        workspaceID: UUID,
+        selectedMachineIDs: Set<String>,
+        now: Date = Date()
+    ) throws -> [ToolType: CostSnapshot] {
+        let workspace = workspaceID.uuidString.lowercased()
+        let prefix = workspace + ":"
+        let selectedProducers = Set(selectedMachineIDs.compactMap { raw -> String? in
+            let normalized = raw.lowercased()
+            guard normalized.hasPrefix(prefix) else { return nil }
+            let producer = String(normalized.dropFirst(prefix.count))
+            guard UUID(uuidString: producer) != nil else { return nil }
+            return producer
+        })
+        guard !selectedProducers.isEmpty else { return [:] }
+
+        let statement = try prepare(
+            """
+            SELECT producer_id, tool, occurred_at, model, input_tokens, output_tokens,
+                   cache_read_tokens, cache_creation_tokens, reasoning_tokens,
+                   tool_tokens, total_only_tokens, request_count, service_tier
+              FROM remote_usage_facts WHERE workspace_id = ?
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(.text(workspace), at: 1, to: statement)
+        var builders: [ToolType: RemoteCostSnapshotBuilder] = [:]
+        var contributingProducers: [ToolType: Set<String>] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let producer = columnText(statement, 0),
+                  selectedProducers.contains(producer),
+                  let rawTool = columnText(statement, 1),
+                  let tool = ToolType(rawValue: rawTool),
+                  tool.supportsTokenCost
+            else { continue }
+            let occurredAt = Date(
+                timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 2))
+            )
+            guard occurredAt <= now else { continue }
+            let row = UsageRow(
+                tool: rawTool,
+                model: columnText(statement, 3),
+                input: Int(sqlite3_column_int64(statement, 4)),
+                output: Int(sqlite3_column_int64(statement, 5)),
+                cacheRead: Int(sqlite3_column_int64(statement, 6)),
+                cacheCreation: Int(sqlite3_column_int64(statement, 7)),
+                reasoning: Int(sqlite3_column_int64(statement, 8)),
+                toolTokens: Int(sqlite3_column_int64(statement, 9)),
+                totalOnly: sqlite3_column_type(statement, 10) == SQLITE_NULL
+                    ? nil : Int(sqlite3_column_int64(statement, 10)),
+                serviceTier: columnText(statement, 12)
+            )
+            var builder = builders[tool] ?? RemoteCostSnapshotBuilder(tool: tool, now: now)
+            builder.add(
+                occurredAt: occurredAt,
+                model: row.model,
+                tokens: row.tokenTotal,
+                costUSD: costUSD(row),
+                requestCount: Int(sqlite3_column_int64(statement, 11))
+            )
+            builders[tool] = builder
+            contributingProducers[tool, default: []].insert(producer)
+        }
+        return Dictionary(uniqueKeysWithValues: builders.map { tool, builder in
+            (tool, builder.snapshot(sourceCount: contributingProducers[tool]?.count ?? 0))
+        })
+    }
+
+    private func expectedReportIntervalSeconds(
+        workspace: String,
+        producer: String
+    ) throws -> TimeInterval? {
+        let statement = try prepare(
+            """
+            SELECT imported_at FROM remote_imported_batches
+             WHERE workspace_id = ? AND producer_id = ?
+             ORDER BY sequence DESC LIMIT 8
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(.text(workspace), at: 1, to: statement)
+        bind(.text(producer), at: 2, to: statement)
+        var stamps: [Int64] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            stamps.append(sqlite3_column_int64(statement, 0))
+        }
+        let ordered = stamps.sorted()
+        let gaps = zip(ordered, ordered.dropFirst())
+            .map { $1 - $0 }
+            .filter { $0 >= 15 && $0 <= 86_400 }
+            .sorted()
+        guard !gaps.isEmpty else { return nil }
+        let middle = gaps.count / 2
+        if gaps.count.isMultiple(of: 2) {
+            return TimeInterval(gaps[middle - 1] + gaps[middle]) / 2
+        }
+        return TimeInterval(gaps[middle])
     }
 
     private func aggregateUsage(

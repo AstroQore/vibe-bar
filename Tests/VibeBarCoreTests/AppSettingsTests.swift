@@ -35,6 +35,28 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.unlimitedRetentionDays)
         XCTAssertFalse(settings.costData.privacyModeEnabled)
         XCTAssertEqual(settings.updateChannel, .main)
+        XCTAssertTrue(settings.remoteCostIncludedMachineIDs.isEmpty)
+    }
+
+    func testRemoteCostMachineSelectionDefaultsEmptyNormalizesAndRoundTrips() throws {
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertTrue(legacy.remoteCostIncludedMachineIDs.isEmpty)
+
+        var settings = AppSettings.default
+        settings.remoteCostIncludedMachineIDs = [
+            "11111111-1111-4111-8111-111111111111:AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+        ]
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertEqual(
+            decoded.remoteCostIncludedMachineIDs,
+            ["11111111-1111-4111-8111-111111111111:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]
+        )
     }
 
     func testMiscCookieAutoImportDefaultsToOffAndRoundTrips() throws {
