@@ -5,6 +5,7 @@ struct RemoteMachinesPage: View {
     let density: Theme.Density
 
     @EnvironmentObject private var service: RemoteProbeService
+    @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
@@ -73,7 +74,7 @@ struct RemoteMachinesPage: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                freshness(machine.lastSeenAt)
+                freshness(machine)
             }
 
             HStack(spacing: 0) {
@@ -126,6 +127,11 @@ struct RemoteMachinesPage: View {
                         .background(Capsule().fill(Color.primary.opacity(0.04)))
                 }
                 Spacer(minLength: 0)
+                Toggle("Include in totals", isOn: includedInTotals(machine))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .font(.caption2)
+                    .help("Add this machine's decrypted usage to Overview and provider cost pages on this Core")
                 Text("seq \(machine.lastSequence)")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
@@ -146,17 +152,21 @@ struct RemoteMachinesPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func freshness(_ date: Date) -> some View {
-        let age = Date().timeIntervalSince(date)
+    private func freshness(_ machine: RemoteMachineSummary) -> some View {
+        let freshness = RemoteMachineFreshness.evaluate(
+            lastSeenAt: machine.lastSeenAt,
+            expectedReportIntervalSeconds: machine.expectedReportIntervalSeconds
+        )
         let label: String
         let color: Color
-        if age <= 120 {
+        switch freshness {
+        case .live:
             label = "Live"
             color = .green
-        } else if age <= 600 {
+        case .delayed:
             label = "Delayed"
             color = .orange
-        } else {
+        case .stale:
             label = "Stale"
             color = .red
         }
@@ -168,6 +178,19 @@ struct RemoteMachinesPage: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Capsule().fill(color.opacity(0.10)))
+    }
+
+    private func includedInTotals(_ machine: RemoteMachineSummary) -> Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.remoteCostIncludedMachineIDs.contains(machine.id) },
+            set: { included in
+                if included {
+                    settingsStore.settings.remoteCostIncludedMachineIDs.insert(machine.id)
+                } else {
+                    settingsStore.settings.remoteCostIncludedMachineIDs.remove(machine.id)
+                }
+            }
+        )
     }
 
     private var cardBackground: some View {

@@ -50,7 +50,10 @@ Vibe Bar 把 ChatGPT/Codex、Claude Code、Gemini Web、AntiGravity、Grok
 - **服务状态** —— OpenAI、Anthropic、Google、xAI 的事故信息、组件状态与
   Uptime 和额度放在同一个界面。
 - **两种迷你浮窗** —— 真正不同的信息密度，可固定在第二块屏幕或全屏工作区上方。
-- **本地优先** —— 没有 Vibe Bar 账号、遥测系统或托管分析后端。
+- **端到端加密远端机器** —— 只出站的 Linux Probe 可按选择并入成本/Token，
+  Relay 与 Control 不会得到明文。
+- **用量本地优先** —— 没有遥测或托管明文分析后端；可选账号/控制服务只保存
+  Workspace 与设备元数据。
 
 ## 一个 Overview，而不是四个网页
 
@@ -90,6 +93,17 @@ Vibe Bar 把 ChatGPT/Codex、Claude Code、Gemini Web、AntiGravity、Grok
   </tr>
 </table>
 
+## 远端机器
+
+独立的 [VibeBar Probe](https://github.com/AstroQore/vibebar-probe) 可以观察带
+systemd 的 Linux 机器上的受支持 CLI Log，无需开放入站端口。Probe 在本地缓冲事实，
+加密给当前活跃 Core，再通过不透明 Relay 路由。每台远端机器默认不加入总计；只有
+明确打开 **Include in totals** 后，所选用量才会与这台 Mac 的本地 Snapshot 合并，
+显示在 Overview 与四个核心成本页面。
+
+二进制安装、纳管、更新、回滚以及 Web/iOS E2EE 新鲜度模型见
+[远端探针指南](https://vibebar.aqor.io/docs/zh/guide/remote-probes)。
+
 ## 更多 Coding Plan
 
 Misc 页面保留各服务商原本的额度语义，同时统一成容易扫读的卡片。现有集成包括
@@ -124,7 +138,9 @@ OpenCode Go、Ollama Cloud、智谱 GLM、小米 MiMo、Kimi、MiniMax、阿里�
 
 ## 隐私与本地数据
 
-Vibe Bar 没有账号系统、遥测管线或托管分析后端。衍生数据只保存在：
+Vibe Bar 没有遥测管线或托管明文分析后端。本地与远端 Probe 用量分析都留在当前
+活跃 Core 上；可选托管账号/控制服务只保存 Workspace、纳管、Relay 目录与审计
+元数据。衍生数据保存在：
 
 ```text
 ~/.vibebar/
@@ -133,6 +149,8 @@ Vibe Bar 没有账号系统、遥测管线或托管分析后端。衍生数据�
 ├── cost_snapshots/
 ├── scan_cache/
 ├── service_status.json
+├── remote_core.json
+├── remote_usage.sqlite3
 └── cost_history.json
 ```
 

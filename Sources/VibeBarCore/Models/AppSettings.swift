@@ -47,6 +47,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var miscProviderInstances: [MiscProviderInstance]
     public var costData: CostDataSettings
 
+    /// Stable `workspace:producer` identifiers for remote machines whose
+    /// decrypted usage should join this Core's local cost snapshots.
+    ///
+    /// Empty by default on purpose: upgrading Vibe Bar must not silently add a
+    /// second machine's history to totals the user already understands. The
+    /// selection is local Core intent and never leaves this Mac.
+    public var remoteCostIncludedMachineIDs: Set<String>
+
     /// Silently re-import a cookie-sourced misc provider's browser
     /// session when its stored jar has gone stale, instead of leaving
     /// the card on "Needs re-login" until the user clicks Import.
@@ -129,7 +137,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         visibleMiscProviders: Self.defaultVisibleMiscProviders,
         miscProviderOrder: Self.defaultMiscProviderOrder,
         miscProviderInstances: Self.defaultMiscProviderInstances,
-        costData: .default
+        costData: .default,
+        remoteCostIncludedMachineIDs: []
     )
 
     /// Quota refresh cadences the Settings picker offers, fastest first.
@@ -225,6 +234,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
         miscProviderInstances: [MiscProviderInstance]? = nil,
         costData: CostDataSettings = .default,
+        remoteCostIncludedMachineIDs: Set<String> = [],
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
         pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
@@ -262,6 +272,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.visibleMiscProviders = Self.legacyVisibleMiscProviders(from: self.miscProviderInstances)
         self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
         self.costData = costData
+        self.remoteCostIncludedMachineIDs = Set(
+            remoteCostIncludedMachineIDs.map { $0.lowercased() }
+        )
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
         self.pageLayouts = pageLayouts
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
@@ -315,6 +328,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case miscProviderOrder
         case miscProviderInstances
         case costData
+        case remoteCostIncludedMachineIDs
         case overviewQuotaHistoryHiddenCurveIds
         case pageLayouts
         case pageLayoutPresets
@@ -446,6 +460,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
 
         self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
+        self.remoteCostIncludedMachineIDs = Set(
+            (try c.decodeIfPresent(Set<String>.self, forKey: .remoteCostIncludedMachineIDs) ?? [])
+                .map { $0.lowercased() }
+        )
         self.overviewQuotaHistoryHiddenCurveIds =
             try c.decodeIfPresent(Set<String>.self, forKey: .overviewQuotaHistoryHiddenCurveIds) ?? []
         // `try?` rather than `try`: a layout map mangled by hand should cost
@@ -509,6 +527,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(miscProviderOrder.map(\.rawValue), forKey: .miscProviderOrder)
         try c.encode(miscProviderInstances, forKey: .miscProviderInstances)
         try c.encode(costData, forKey: .costData)
+        try c.encode(
+            Set(remoteCostIncludedMachineIDs.map { $0.lowercased() }),
+            forKey: .remoteCostIncludedMachineIDs
+        )
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
         try c.encode(pageLayouts, forKey: .pageLayouts)
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)

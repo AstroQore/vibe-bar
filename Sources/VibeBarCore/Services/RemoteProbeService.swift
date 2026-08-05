@@ -36,6 +36,26 @@ public final class RemoteProbeService: ObservableObject {
     public var relayURL: URL? { config?.relayURL }
     public var registeredProbeCount: Int { config?.probeSigningPublicKeys.count ?? 0 }
 
+    /// Decrypted, local-only cost snapshots for the machines the user chose to
+    /// merge into this Core. Returning an empty map on a transient ledger
+    /// failure keeps the ordinary local snapshots usable.
+    public func costSnapshots(
+        includingMachineIDs machineIDs: Set<String>,
+        now: Date = Date()
+    ) async -> [ToolType: CostSnapshot] {
+        guard let config, let ledger, !machineIDs.isEmpty else { return [:] }
+        do {
+            return try await ledger.costSnapshots(
+                workspaceID: config.workspaceID,
+                selectedMachineIDs: machineIDs,
+                now: now
+            )
+        } catch {
+            SafeLog.warn("remote cost aggregation skipped: invalid local ledger state")
+            return [:]
+        }
+    }
+
     public init() {
         loadConfiguration()
     }

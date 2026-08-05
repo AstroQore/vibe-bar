@@ -208,6 +208,9 @@ public struct RemoteMachineSummary: Identifiable, Equatable, Sendable {
     public let probeVersion: String
     public let lastSeenAt: Date
     public let lastScanAt: Date
+    /// Median Relay receipt cadence learned from recent batches. `nil` until
+    /// enough batches exist to distinguish a real interval from a first sync.
+    public let expectedReportIntervalSeconds: TimeInterval?
     public let lastSequence: Int64
     public let sourceStatuses: [String: String]
     public let todayTokens: Int
@@ -217,7 +220,10 @@ public struct RemoteMachineSummary: Identifiable, Equatable, Sendable {
     public let last30DaysCostUSD: Double
     public let byTool: [RemoteToolUsageSummary]
 
-    public var id: String { workspaceID.uuidString + ":" + producerID.uuidString }
+    /// Stable local settings key. It is metadata, not a credential.
+    public var id: String {
+        workspaceID.uuidString.lowercased() + ":" + producerID.uuidString.lowercased()
+    }
 }
 
 public struct RemoteToolUsageSummary: Identifiable, Equatable, Sendable {

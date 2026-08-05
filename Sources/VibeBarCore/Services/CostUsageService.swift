@@ -37,6 +37,11 @@ public final class CostUsageService: ObservableObject {
     private let homeDirectory: String
     private let mockProvider: () -> Bool
     private let costDataSettingsProvider: () -> CostDataSettings
+    /// Keep authoritative local and selected-remote sources separate. Only the
+    /// merged dictionary is published, so remote facts are never written into
+    /// the local scan cache/history and cannot be counted again after relaunch.
+    private var localSnapshots: [ToolType: CostSnapshot] = [:]
+    private var remoteSnapshots: [ToolType: CostSnapshot] = [:]
     /// Every value the UI derives from `snapshots` — rebased per-tool
     /// snapshots, combined platform snapshots, the Overview rollups — is a pure
     /// function of the snapshots and the local day, and the popover asks for
@@ -66,13 +71,16 @@ public final class CostUsageService: ObservableObject {
             let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
             // One assignment, not one per tool: every write to a `@Published`
             // dictionary is its own publish, and the popover re-renders on each.
-            var hydrated = self.snapshots
+            var hydrated = self.localSnapshots
             var addedAny = false
             for (tool, snap) in cached where hydrated[tool] == nil {
                 hydrated[tool] = snap
                 addedAny = true
             }
-            if addedAny { self.snapshots = hydrated }
+            if addedAny {
+                self.localSnapshots = hydrated
+                self.publishMergedSnapshots()
+            }
             if !cached.isEmpty {
                 self.lastRefreshedAt = cached.values.map(\.updatedAt).max()
             }
@@ -115,6 +123,15 @@ public final class CostUsageService: ObservableObject {
         extrasByTool[tool]
     }
 
+    /// Replace the selected Probe contribution. The caller supplies snapshots
+    /// built from the Core's decrypted ledger; this service keeps them in
+    /// memory only and combines them with local CLI snapshots for every
+    /// Overview/provider surface through the existing aggregation cache.
+    public func setRemoteSnapshots(_ snapshots: [ToolType: CostSnapshot]) {
+        remoteSnapshots = snapshots
+        publishMergedSnapshots()
+    }
+
     public func refreshAll() async {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -140,7 +157,8 @@ public final class CostUsageService: ObservableObject {
                     mockExtras[tool] = e
                 }
             }
-            snapshots = results
+            localSnapshots = results
+            publishMergedSnapshots()
             extrasByTool = mockExtras
             lastRefreshedAt = now
             return
@@ -180,7 +198,7 @@ public final class CostUsageService: ObservableObject {
             case .completed(let snapshot):
                 scanned = snapshot
             case .timedOut:
-                if let previous = snapshots[tool] { results[tool] = previous }
+                if let previous = localSnapshots[tool] { results[tool] = previous }
                 continue
             }
             if let scanned {
@@ -195,7 +213,8 @@ public final class CostUsageService: ObservableObject {
                 await CostSnapshotCache.shared.save(merged, retentionDays: retentionDays)
             }
         }
-        snapshots = results
+        localSnapshots = results
+        publishMergedSnapshots()
         // Extras (credits / overage) display was removed from the UI — see the
         // user-feedback round that turned them off because the loaders weren't
         // reliable. Parsing infrastructure for Claude.providerExtras is kept
@@ -243,7 +262,8 @@ public final class CostUsageService: ObservableObject {
         }
         await CostHistoryStore.shared.prune(retentionDays: costData.retentionDays)
         let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
-        snapshots = cached
+        localSnapshots = cached
+        publishMergedSnapshots()
         lastRefreshedAt = cached.values.map(\.updatedAt).max()
     }
 
@@ -251,8 +271,35 @@ public final class CostUsageService: ObservableObject {
         await CostHistoryStore.shared.eraseAll()
         await CostSnapshotCache.shared.eraseAll()
         CostUsageScanCache.eraseAll(homeDirectory: homeDirectory)
-        snapshots = [:]
+        localSnapshots = [:]
+        publishMergedSnapshots()
         extrasByTool = [:]
         lastRefreshedAt = nil
+    }
+
+    private func publishMergedSnapshots(now: Date = Date()) {
+        guard !costDataSettingsProvider().privacyModeEnabled else {
+            snapshots = [:]
+            return
+        }
+        // Mock mode is a self-contained preview and must never leak real Probe
+        // totals into screenshots or tests.
+        guard !mockProvider() else {
+            snapshots = localSnapshots
+            return
+        }
+        var merged = localSnapshots
+        for (tool, remote) in remoteSnapshots {
+            if let local = localSnapshots[tool] {
+                merged[tool] = CostSnapshotAggregator.combinedSnapshot(
+                    tool: tool,
+                    snapshots: [local, remote],
+                    now: now
+                )
+            } else {
+                merged[tool] = remote
+            }
+        }
+        snapshots = merged
     }
 }
