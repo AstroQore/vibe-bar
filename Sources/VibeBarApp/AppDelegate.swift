@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.accessory)
         }
 
+        installMainMenuIfNeeded()
+
         let env = AppEnvironment()
         self.environment = env
         do {
@@ -51,6 +53,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    /// Clicking the Dock icon — which only exists while the Workbench holds a
+    /// Dock token — should bring that window back rather than do nothing. The
+    /// Workbench is never created here: a Dock icon without a live Workbench
+    /// means the window is mid-teardown, and resurrecting it would fight the
+    /// close the user just asked for.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        environment?.frontWorkbenchIfOpen()
+        return true
+    }
+
+    /// An `LSUIElement` app starts with no main menu, and without one the
+    /// standard key equivalents never reach a window — ⌘W won't close the
+    /// Workbench and ⌘C/⌘V won't work in its text fields. Installed once, and
+    /// only when nothing else has claimed the menu bar.
+    private func installMainMenuIfNeeded() {
+        guard NSApp.mainMenu == nil else { return }
+        let mainMenu = NSMenu()
+        mainMenu.addItem(appMenuItem())
+        mainMenu.addItem(fileMenuItem())
+        mainMenu.addItem(editMenuItem())
+        mainMenu.addItem(windowMenuItem())
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func appMenuItem() -> NSMenuItem {
+        let appName = "Vibe Bar"
+        let menu = NSMenu(title: appName)
+        menu.addItem(NSMenuItem(
+            title: "About \(appName)",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: ""
+        ))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(
+            title: "Quit \(appName)",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        ))
+        return submenuItem(title: appName, submenu: menu)
+    }
+
+    private func fileMenuItem() -> NSMenuItem {
+        let menu = NSMenu(title: "File")
+        menu.addItem(NSMenuItem(
+            title: "Close",
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        ))
+        return submenuItem(title: "File", submenu: menu)
+    }
+
+    private func editMenuItem() -> NSMenuItem {
+        let menu = NSMenu(title: "Edit")
+        menu.addItem(NSMenuItem(
+            title: "Undo",
+            action: NSSelectorFromString("undo:"),
+            keyEquivalent: "z"
+        ))
+        let redo = NSMenuItem(
+            title: "Redo",
+            action: NSSelectorFromString("redo:"),
+            keyEquivalent: "z"
+        )
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(redo)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        menu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        menu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        menu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        return submenuItem(title: "Edit", submenu: menu)
+    }
+
+    private func windowMenuItem() -> NSMenuItem {
+        let menu = NSMenu(title: "Window")
+        menu.addItem(NSMenuItem(
+            title: "Minimize",
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m"
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Zoom",
+            action: #selector(NSWindow.performZoom(_:)),
+            keyEquivalent: ""
+        ))
+        let item = submenuItem(title: "Window", submenu: menu)
+        NSApp.windowsMenu = menu
+        return item
+    }
+
+    private func submenuItem(title: String, submenu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

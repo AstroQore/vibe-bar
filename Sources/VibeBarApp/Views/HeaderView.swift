@@ -14,6 +14,7 @@ struct HeaderView: View {
     let accessory: AnyView?
     let onRefresh: () -> Void
     let onToggleMiniWindow: () -> Void
+    let onShowWorkbench: () -> Void
     let onShowSettings: () -> Void
 
     @State private var rotation: Double = 0
@@ -53,6 +54,12 @@ struct HeaderView: View {
                 help: "Mini",
                 size: max(11, subtitleFontSize),
                 action: onToggleMiniWindow
+            )
+            BorderlessIconButton(
+                systemImage: "macwindow",
+                help: "Open Workbench",
+                size: max(11, subtitleFontSize),
+                action: onShowWorkbench
             )
             BorderlessIconButton(
                 systemImage: "gearshape",

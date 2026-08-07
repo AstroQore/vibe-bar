@@ -34,6 +34,7 @@ final class AppEnvironment: ObservableObject {
     private let claudeWebLoginController = ClaudeWebLoginController()
     private let miscWebLoginRegistry = MiscWebLoginRegistry()
     private let settingsWindowController = SettingsWindowController()
+    private let workbenchWindowController = WorkbenchWindowController()
     private var cancellables: Set<AnyCancellable> = []
     private var routineBudgetInFlightAccountIds: Set<String> = []
     private var lastRoutineBudgetAttemptByAccount: [String: Date] = [:]
@@ -484,6 +485,17 @@ final class AppEnvironment: ObservableObject {
 
     func showSettingsWindow() {
         settingsWindowController.show(environment: self)
+    }
+
+    func showWorkbench(page: WorkbenchPage? = nil) {
+        workbenchWindowController.show(environment: self, page: page)
+    }
+
+    /// Front an already-open Workbench without creating one. Used by the Dock
+    /// reopen path, which must not resurrect a window the user just closed.
+    @discardableResult
+    func frontWorkbenchIfOpen() -> Bool {
+        workbenchWindowController.frontExistingWindow()
     }
 
     func openClaudeWebLogin() {
