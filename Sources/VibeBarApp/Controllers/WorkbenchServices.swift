@@ -12,14 +12,18 @@ import VibeBarCore
 final class WorkbenchServices: ObservableObject {
     private let usageLedger: UsageEventLedger?
     private let costService: CostUsageService
+    private let settingsStore: SettingsStore
 
-    init(usageLedger: UsageEventLedger?, costService: CostUsageService) {
+    init(usageLedger: UsageEventLedger?, costService: CostUsageService, settingsStore: SettingsStore) {
         self.usageLedger = usageLedger
         self.costService = costService
+        self.settingsStore = settingsStore
     }
 
     lazy var usageStats = UsageStatsViewModel(
         ledger: usageLedger,
         costService: costService
     )
+
+    lazy var sessions = SessionManagerModel(settingsStore: settingsStore)
 }

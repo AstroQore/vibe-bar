@@ -74,7 +74,9 @@ struct WorkbenchRootView: View {
         switch page {
         case .usageStats:
             UsageStatsPage(density: density, model: workbench.usageStats)
-        case .sessionManager, .skillsManager:
+        case .sessionManager:
+            SessionManagerPage(density: density, model: workbench.sessions)
+        case .skillsManager:
             WorkbenchPlaceholderPage(page: page, density: density)
         }
     }

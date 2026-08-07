@@ -100,6 +100,40 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.menuBarColorBasis, .actual)
     }
 
+    func testSessionPreferencesDefaultAndRoundTrip() throws {
+        // A settings file written before the Sessions page existed has to
+        // land on the shipping behavior: Terminal.app, bodies indexed.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(legacy.preferredTerminal, .terminal)
+        XCTAssertTrue(legacy.sessionBodyIndexingEnabled)
+        XCTAssertEqual(AppSettings.default.preferredTerminal, .terminal)
+        XCTAssertTrue(AppSettings.default.sessionBodyIndexingEnabled)
+
+        var settings = AppSettings.default
+        settings.preferredTerminal = .iterm2
+        settings.sessionBodyIndexingEnabled = false
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertEqual(decoded.preferredTerminal, .iterm2)
+        XCTAssertFalse(decoded.sessionBodyIndexingEnabled)
+    }
+
+    func testUnknownPreferredTerminalFallsBackWithoutFailingTheFile() throws {
+        // Same rule the color-basis picker follows: an unknown raw value
+        // costs the user this one preference, not every other setting.
+        let settings = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining","preferredTerminal":"kitty"}"#.utf8)
+        )
+        XCTAssertEqual(settings.preferredTerminal, .terminal)
+        XCTAssertEqual(settings.displayMode, .remaining)
+    }
+
     func testUnknownMenuBarColorBasisFallsBackWithoutFailingTheFile() throws {
         // A hand-edited or downgraded raw value must cost the user this one
         // preference, not every other setting in the file.

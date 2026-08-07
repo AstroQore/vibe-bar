@@ -319,6 +319,17 @@ immediately afterward. The app reads (never writes) Codex and Claude CLI
 credential files and their session JSONL logs. Treat those as read-only
 inputs.
 
+There is exactly one exception, and it is whole-session deletion:
+`Sources/VibeBarCore/Sessions/SessionDeleter.swift` removes a session's
+own log files, only when the user explicitly asks for that session to go
+from the Workbench's Sessions page. It is fenced accordingly — every
+target is canonicalized and must resolve strictly below one of the owning
+adapter's provider roots, a target that is itself a symlink is refused,
+and the session file is re-parsed immediately before removal so a stale
+summary cannot delete a different session. Vibe Bar never edits the
+*contents* of a session file, never deletes a credential file at all, and
+no other code path may remove anything outside `~/.vibebar/`.
+
 ## 6. Home Directory (and why we no longer sandbox)
 
 Vibe Bar runs **unsandboxed**. Every Foundation home API returns the

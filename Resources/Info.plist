@@ -26,6 +26,8 @@
 	<string>26.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Vibe Bar asks Terminal or iTerm2 to run a session's resume command when you choose "Open in Terminal". Without this permission the command is copied to the clipboard instead.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

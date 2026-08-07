@@ -165,7 +165,9 @@ and audit metadata only. Derived state stays under:
 └── cost_history.json
 ```
 
-- CLI credential and session files are read-only inputs.
+- CLI credential and session files are read-only inputs. The one exception
+  is whole-session deletion from the Workbench's Sessions page, performed
+  only at your explicit request and never editing a session file's contents.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
 - Privacy Mode clears derived cost data and keeps cost history off disk while

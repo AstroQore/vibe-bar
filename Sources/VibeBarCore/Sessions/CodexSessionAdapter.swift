@@ -118,8 +118,9 @@ public struct CodexSessionAdapter: SessionProviderAdapter {
 
     /// The VS Code extension prefixes the first prompt with a block of
     /// editor context. The user's actual sentence follows the request
-    /// marker, and that is what a title should show.
-    static func strippingIDEEnvelope(_ text: String) -> String {
+    /// marker, and that is what a title — or a transcript outline entry —
+    /// should show.
+    public static func strippingIDEEnvelope(_ text: String) -> String {
         guard text.contains(ideContextMarker),
               let marker = text.range(of: ideRequestMarker)
         else { return text }

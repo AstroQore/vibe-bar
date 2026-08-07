@@ -151,4 +151,12 @@ public final class SettingsStore: ObservableObject {
         get { settings.costData }
         set { settings.costData = newValue }
     }
+    public var preferredTerminal: PreferredTerminal {
+        get { settings.preferredTerminal }
+        set { settings.preferredTerminal = newValue }
+    }
+    public var sessionBodyIndexingEnabled: Bool {
+        get { settings.sessionBodyIndexingEnabled }
+        set { settings.sessionBodyIndexingEnabled = newValue }
+    }
 }
