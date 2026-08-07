@@ -15,6 +15,10 @@ final class AppEnvironment: ObservableObject {
     /// Per-page card arrangement, shared by the popover and the Settings
     /// layout editor. Loads `~/.vibebar/layout.json` once at startup.
     let pageLayout: PageLayoutModel
+    /// Per-request usage ledger, opened once. `nil` when the SQLite file
+    /// cannot be opened — every reader treats that as "no history", so a
+    /// broken ledger costs the usage page, not the app.
+    let usageLedger: UsageEventLedger?
 
     @Published private(set) var hasClaudeWebCookies: Bool
     @Published private(set) var hasOpenAIWebCookies: Bool
@@ -35,6 +39,7 @@ final class AppEnvironment: ObservableObject {
     private let miscWebLoginRegistry = MiscWebLoginRegistry()
     private let settingsWindowController = SettingsWindowController()
     private let workbenchWindowController = WorkbenchWindowController()
+    private var workbenchServicesStorage: WorkbenchServices?
     private var cancellables: Set<AnyCancellable> = []
     private var routineBudgetInFlightAccountIds: Set<String> = []
     private var lastRoutineBudgetAttemptByAccount: [String: Date] = [:]
@@ -88,11 +93,19 @@ final class AppEnvironment: ObservableObject {
         self.quotaService = service
         self.pageLayout = PageLayoutModel(settingsStore: settings)
         self.serviceStatus = ServiceStatusController()
+        let ledger: UsageEventLedger?
+        do {
+            ledger = try UsageEventLedger()
+        } catch {
+            SafeLog.warn("Opening the usage ledger failed: \(SafeLog.sanitize(error.localizedDescription))")
+            ledger = nil
+        }
+        self.usageLedger = ledger
         let costService = CostUsageService(mockProvider: { [weak settings] in
             settings?.mockEnabled ?? false
         }, costDataSettingsProvider: { [weak settings] in
             settings?.settings.costData ?? .default
-        })
+        }, usageLedger: ledger)
         self.costService = costService
         self.remoteProbeService = RemoteProbeService()
 
@@ -489,6 +502,16 @@ final class AppEnvironment: ObservableObject {
 
     func showWorkbench(page: WorkbenchPage? = nil) {
         workbenchWindowController.show(environment: self, page: page)
+    }
+
+    /// Built on the first Workbench open and kept for the process lifetime, so
+    /// reopening the window lands on the state the user left rather than on a
+    /// fresh set of queries.
+    var workbenchServices: WorkbenchServices {
+        if let workbenchServicesStorage { return workbenchServicesStorage }
+        let services = WorkbenchServices(usageLedger: usageLedger, costService: costService)
+        workbenchServicesStorage = services
+        return services
     }
 
     /// Front an already-open Workbench without creating one. Used by the Dock

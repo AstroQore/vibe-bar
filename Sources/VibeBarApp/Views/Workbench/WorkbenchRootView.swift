@@ -35,6 +35,7 @@ struct WorkbenchRootView: View {
     let initialPage: WorkbenchPage?
 
     @EnvironmentObject private var settingsStore: SettingsStore
+    @EnvironmentObject private var workbench: WorkbenchServices
     @AppStorage("workbench.selectedPage") private var storedPage: String = WorkbenchPage.usageStats.rawValue
     @State private var selection: WorkbenchPage?
 
@@ -55,7 +56,7 @@ struct WorkbenchRootView: View {
             }
             .navigationSplitViewColumnWidth(min: 188, ideal: 208, max: 268)
         } detail: {
-            WorkbenchPlaceholderPage(page: page, density: density)
+            detail(for: page, density: density)
                 .navigationTitle(page.title)
         }
         .onAppear {
@@ -65,6 +66,16 @@ struct WorkbenchRootView: View {
         .onChange(of: selection) { _, newValue in
             guard let newValue else { return }
             storedPage = newValue.rawValue
+        }
+    }
+
+    @ViewBuilder
+    private func detail(for page: WorkbenchPage, density: Theme.Density) -> some View {
+        switch page {
+        case .usageStats:
+            UsageStatsPage(density: density, model: workbench.usageStats)
+        case .sessionManager, .skillsManager:
+            WorkbenchPlaceholderPage(page: page, density: density)
         }
     }
 }

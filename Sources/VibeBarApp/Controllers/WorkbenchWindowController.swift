@@ -38,6 +38,7 @@ final class WorkbenchWindowController: NSObject {
                 .environmentObject(environment.costService)
                 .environmentObject(environment.remoteProbeService)
                 .environmentObject(environment.pageLayout)
+                .environmentObject(environment.workbenchServices)
         )
         let initialSize = NSSize(width: 1180, height: 820)
         let win = NSWindow(
