@@ -3,9 +3,9 @@ import Foundation
 /// A CLI whose local session logs Vibe Bar can list, read, resume, and
 /// (on explicit request) delete.
 ///
-/// `antigravity` is declared here so persisted values and switch
-/// statements are stable, but it has no adapter yet — anything routed
-/// through the registry for it fails closed with
+/// `antigravity` is listed and readable like the rest, but its sessions
+/// cannot be deleted: the CLI and IDE hold live SQLite handles on the
+/// conversation databases, so its adapter fails closed with
 /// `SessionDeleteError.unsupportedProvider`.
 public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
     case claude

@@ -28,6 +28,19 @@ final class SessionResumeCommandBuilderTests: XCTestCase {
         assertThrows(.resumeUnavailable) {
             try SessionResumeCommandBuilder.command(provider: .antigravity, sessionID: uuid, variant: "ide")
         }
+        assertThrows(.resumeUnavailable) {
+            try SessionResumeCommandBuilder.command(provider: .antigravity, sessionID: uuid, variant: "ide2")
+        }
+    }
+
+    /// The adapter's variant strings and the builder's one resumable
+    /// variant have to stay the same three values.
+    func testAntigravityVariantsMatchTheAdapter() {
+        XCTAssertEqual(AntigravitySessionAdapter.cliVariant, SessionResumeCommandBuilder.antigravityCLIVariant)
+        XCTAssertEqual(
+            AntigravitySessionAdapter.surfaces.map(\.variant),
+            ["ide", "cli", "ide2"]
+        )
     }
 
     func testSurroundingWhitespaceIsTrimmedNotRejected() throws {

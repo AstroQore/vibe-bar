@@ -113,6 +113,13 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("usage_events.sqlite3")
     }
 
+    /// Session list / full-text index written by `SessionIndexStore`. It is
+    /// a derived artifact: every row can be rebuilt by re-walking the CLIs'
+    /// own session logs, so deleting it costs a re-scan and nothing else.
+    public static var sessionIndexURL: URL {
+        baseDirectory.appendingPathComponent("session_index.sqlite3")
+    }
+
     public static func readData(from url: URL) throws -> Data {
         try Data(contentsOf: url)
     }

@@ -83,15 +83,16 @@ public struct SessionProviderRegistry: Sendable {
         self.byProvider = map
     }
 
-    /// The adapters shipped today. AntiGravity is intentionally absent:
-    /// its adapter lands in a follow-up, and until then the deleter
-    /// fails closed for it instead of guessing at a layout.
+    /// The adapters shipped today. AntiGravity lists and reads like the
+    /// others but refuses to plan a delete — see
+    /// `AntigravitySessionAdapter.deletionPlan`.
     public static func standard(homeDirectory: String = RealHomeDirectory.path) -> SessionProviderRegistry {
         SessionProviderRegistry(adapters: [
             ClaudeSessionAdapter(),
             CodexSessionAdapter(homeDirectory: homeDirectory),
             GrokSessionAdapter(),
-            GeminiSessionAdapter()
+            GeminiSessionAdapter(),
+            AntigravitySessionAdapter()
         ])
     }
 
