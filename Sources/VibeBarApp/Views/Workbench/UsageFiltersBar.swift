@@ -1,0 +1,273 @@
+import SwiftUI
+import VibeBarCore
+
+/// Everything that narrows the Usage Stats page: provider chips, a model
+/// picker, the date range, and how often the page re-queries.
+///
+/// Providers are chips rather than another menu because they are the filter
+/// users reach for most, and because a chip can carry the brand accent —
+/// which is how this app says "provider" everywhere else.
+struct UsageFiltersBar: View {
+    let density: Theme.Density
+    @ObservedObject var model: UsageStatsViewModel
+
+    @State private var showsCustomRange = false
+
+    var body: some View {
+        CardShell(density: density, spacing: density.cardSpacing) {
+            providerChips
+            Divider().opacity(0.35)
+            controlRow
+        }
+    }
+
+    // MARK: - Providers
+
+    private var providerChips: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                allProvidersChip
+                ForEach(model.knownTools, id: \.self) { tool in
+                    providerChip(tool)
+                }
+            }
+            .padding(.vertical, 1)
+        }
+        .scrollIndicators(.never)
+    }
+
+    private var allProvidersChip: some View {
+        Button {
+            model.setSelectedTools(nil)
+        } label: {
+            Text("All providers")
+                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                .foregroundStyle(model.selectedTools == nil ? .primary : .secondary)
+                .padding(.horizontal, 10)
+                .frame(minHeight: 24)
+        }
+        .buttonStyle(.plain)
+        .background(chipBackground(tint: .accentColor, selected: model.selectedTools == nil))
+        .accessibilityLabel("Show every provider")
+    }
+
+    private func providerChip(_ tool: ToolType) -> some View {
+        let accent = Theme.providerAccent(for: tool)
+        let selected = model.selectedTools?.contains(tool) ?? true
+        return Button {
+            model.toggleTool(tool)
+        } label: {
+            HStack(spacing: 5) {
+                ToolBrandIconView(tool: tool, size: density.segmentedFontSize + 1)
+                Text(tool.menuTitle)
+                    .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 9)
+            .frame(minHeight: 24)
+        }
+        .buttonStyle(.plain)
+        .background(chipBackground(tint: accent, selected: selected))
+        // Unselected chips stay legible but recede — the accent is the signal
+        // that a provider is in the query, so an off chip must not wear it.
+        .opacity(selected ? 1 : 0.45)
+        .saturation(selected ? 1 : 0.2)
+        .help(tool.displayName)
+        .accessibilityLabel(tool.displayName)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    private func chipBackground(tint: Color, selected: Bool) -> some View {
+        ZStack {
+            Capsule().fill(tint.opacity(selected ? 0.16 : 0.05))
+            Capsule().stroke(tint.opacity(selected ? 0.55 : 0.18), lineWidth: 0.8)
+        }
+    }
+
+    // MARK: - Controls
+
+    private var controlRow: some View {
+        HStack(spacing: 8) {
+            rangeMenu
+            modelMenu
+            refreshMenu
+            Spacer(minLength: 8)
+            statusText
+            SectionRefreshButton(isRefreshing: model.isLoading) {
+                model.refresh()
+            }
+            .help("Re-run every usage query now")
+        }
+    }
+
+    private var rangeMenu: some View {
+        Menu {
+            ForEach(UsageStatsViewModel.RangePreset.allCases) { preset in
+                Button {
+                    model.rangePreset = preset
+                    if preset == .custom { showsCustomRange = true }
+                } label: {
+                    Label(preset.title, systemImage: preset.systemImage)
+                }
+            }
+            Divider()
+            Button("Edit custom range…") {
+                model.rangePreset = .custom
+                showsCustomRange = true
+            }
+        } label: {
+            menuLabel(systemImage: "calendar", title: model.rangePreset.title, detail: rangeSummary)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.glass)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .popover(isPresented: $showsCustomRange, arrowEdge: .bottom) {
+            customRangeEditor
+        }
+        .accessibilityLabel("Choose the date range")
+    }
+
+    private var customRangeEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("CUSTOM RANGE")
+                .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .tracking(0.4)
+            DatePicker(
+                "From",
+                selection: $model.customStart,
+                in: ...Date(),
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            DatePicker(
+                "To",
+                selection: $model.customEnd,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            Text("Buckets switch from hourly to daily past a 24-hour span.")
+                .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
+                .foregroundStyle(.tertiary)
+        }
+        .datePickerStyle(.compact)
+        .padding(14)
+        .frame(width: 300)
+    }
+
+    private var modelMenu: some View {
+        Menu {
+            Button("All models") { model.setSelectedModels(nil) }
+            if model.availableModels.isEmpty {
+                Text("No models in range")
+            } else {
+                Divider()
+                ForEach(model.availableModels, id: \.self) { name in
+                    Toggle(isOn: modelBinding(name)) {
+                        Text(name)
+                    }
+                }
+            }
+        } label: {
+            menuLabel(systemImage: "cpu", title: "Models", detail: modelSummary)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.glass)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Choose which models to include")
+    }
+
+    private var refreshMenu: some View {
+        Menu {
+            Picker("Auto refresh", selection: $model.refreshInterval) {
+                ForEach(UsageStatsViewModel.RefreshInterval.allCases) { interval in
+                    Text(interval == .off ? "Off" : "Every \(interval.rawValue)s")
+                        .tag(interval)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            menuLabel(
+                systemImage: model.refreshInterval == .off ? "pause.circle" : "arrow.clockwise.circle",
+                title: "Auto",
+                detail: model.refreshInterval.title
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(.glass)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Choose how often the page re-queries")
+    }
+
+    private var statusText: some View {
+        Text(statusSummary)
+            .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded)
+                .monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+    }
+
+    // MARK: - Labels
+
+    private func menuLabel(systemImage: String, title: String, detail: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.system(size: max(8, density.segmentedFontSize - 2), weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(title.uppercased())
+                .font(.system(size: max(8, density.segmentedFontSize - 3), weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .tracking(0.4)
+            Text(detail)
+                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold, design: .rounded)
+                    .monospacedDigit())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .frame(minHeight: 22)
+    }
+
+    private func modelBinding(_ name: String) -> Binding<Bool> {
+        Binding(
+            get: { model.selectedModels?.contains(name) ?? true },
+            set: { _ in model.toggleModel(name) }
+        )
+    }
+
+    private var rangeSummary: String {
+        let range = model.range
+        let formatter = range.duration <= 86_400 ? Self.hourFormatter : Self.dayFormatter
+        return "\(formatter.string(from: range.start)) – \(formatter.string(from: range.end))"
+    }
+
+    private static let hourFormatter = localizedFormatter("MMMd HH:mm")
+    private static let dayFormatter = localizedFormatter("MMMd")
+
+    private static let updatedFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    private static func localizedFormatter(_ template: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter
+    }
+
+    private var modelSummary: String {
+        guard let selected = model.selectedModels else { return "All" }
+        if selected.count == 1, let only = selected.first { return only }
+        return "\(selected.count) selected"
+    }
+
+    private var statusSummary: String {
+        guard model.isLedgerAvailable else { return "ledger unavailable" }
+        guard let updated = model.lastUpdatedAt else { return "loading…" }
+        return "updated \(Self.updatedFormatter.string(from: updated))"
+    }
+}

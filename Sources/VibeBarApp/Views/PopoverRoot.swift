@@ -30,6 +30,7 @@ struct PopoverRoot: View {
                 accessory: AnyView(OverviewPageSwitch(selection: $overviewPage, density: shellDensity)),
                 onRefresh: { environment.refreshAll() },
                 onToggleMiniWindow: onToggleMiniWindow,
+                onShowWorkbench: { environment.showWorkbench() },
                 onShowSettings: { environment.showSettingsWindow() }
             )
             .frame(height: shellDensity.headerHeight, alignment: .center)

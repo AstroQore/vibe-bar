@@ -350,6 +350,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menu.addItem(.separator())
         menu.addItem(actionMenuItem("Refresh", action: #selector(refreshFromContextMenu(_:)), keyEquivalent: "r"))
         menu.addItem(actionMenuItem("Open Mini Window", action: #selector(toggleMiniFromContextMenu(_:))))
+        menu.addItem(actionMenuItem("Open Workbench", action: #selector(openWorkbenchFromContextMenu(_:))))
         menu.addItem(actionMenuItem("Open Settings", action: #selector(openSettingsFromContextMenu(_:)), keyEquivalent: ","))
         let updateItem = actionMenuItem(
             "Check for Updates…",
@@ -445,6 +446,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     @objc private func toggleMiniFromContextMenu(_ sender: NSMenuItem) {
         toggleMiniWindow()
+    }
+
+    @objc private func openWorkbenchFromContextMenu(_ sender: NSMenuItem) {
+        environment.showWorkbench()
     }
 
     @objc private func openSettingsFromContextMenu(_ sender: NSMenuItem) {
