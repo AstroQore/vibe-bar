@@ -21,18 +21,18 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.3.0</string>
 	<key>CFBundleVersion</key>
-	<string>22</string>
+	<string>23</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Vibe Bar asks Terminal or iTerm2 to run a session's resume command when you choose "Open in Terminal". Without this permission the command is copied to the clipboard instead.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 	</dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Vibe Bar asks Terminal or iTerm2 to run a session's resume command when you choose "Open in Terminal". Without this permission the command is copied to the clipboard instead.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 AstroQore. Licensed under AGPL-3.0.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
