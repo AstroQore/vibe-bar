@@ -304,14 +304,7 @@ private struct MiscProviderCardShell<Content: View>: View {
         }
         .padding(density.cardPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-        )
+        .cardSurface(density: density)
     }
 }
 
