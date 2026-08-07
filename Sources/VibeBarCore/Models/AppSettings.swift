@@ -77,6 +77,21 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// new behavior — rather than to the pre-forecast thresholds.
     public var menuBarColorBasis: MenuBarColorBasis
 
+    /// How the Skills manager projects a skill from `~/.agents/skills` into an
+    /// agent CLI's skills directory.
+    ///
+    /// `.auto` — symlink, falling back to a copy where linking fails — is the
+    /// only value that keeps every app reading the same bytes, so it is both
+    /// the default and what an absent key decodes to. The two explicit values
+    /// exist for machines where one side of the pair is wrong: a tool that
+    /// refuses to follow symlinks needs `.copy`, and a layout already built out
+    /// of links stays honest with `.symlink`.
+    ///
+    /// The list of repositories the discovery browser reads is deliberately
+    /// *not* here — that is state the skills UI edits, and it lives in
+    /// `~/.vibebar/skills.json` next to the registry it describes.
+    public var skillsSyncMethod: SkillSyncMethod
+
     /// Curves the user switched **off** in the Overview's all-providers quota
     /// history chart, as `"<tool>|<accountId>|<bucketId>"`.
     ///
@@ -257,7 +272,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscCookieAutoImportEnabled: Bool = false,
         menuBarColorBasis: MenuBarColorBasis = .forecast,
         preferredTerminal: PreferredTerminal = .terminal,
-        sessionBodyIndexingEnabled: Bool = true
+        sessionBodyIndexingEnabled: Bool = true,
+        skillsSyncMethod: SkillSyncMethod = .auto
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -300,6 +316,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.menuBarColorBasis = menuBarColorBasis
         self.preferredTerminal = preferredTerminal
         self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
+        self.skillsSyncMethod = skillsSyncMethod
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
@@ -356,6 +373,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case menuBarColorBasis
         case preferredTerminal
         case sessionBodyIndexingEnabled
+        case skillsSyncMethod
     }
 
     public init(from decoder: Decoder) throws {
@@ -522,6 +540,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.sessionBodyIndexingEnabled =
             try c.decodeIfPresent(Bool.self, forKey: .sessionBodyIndexingEnabled)
             ?? Self.default.sessionBodyIndexingEnabled
+        // `.auto` is the only value that keeps the app dirs pointing at one
+        // copy of a skill, so both an absent key and an unrecognized one land
+        // there rather than costing the user the rest of the file.
+        self.skillsSyncMethod =
+            (try? c.decodeIfPresent(SkillSyncMethod.self, forKey: .skillsSyncMethod))
+            ?? Self.default.skillsSyncMethod
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -569,6 +593,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(menuBarColorBasis, forKey: .menuBarColorBasis)
         try c.encode(preferredTerminal, forKey: .preferredTerminal)
         try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
+        try c.encode(skillsSyncMethod, forKey: .skillsSyncMethod)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {

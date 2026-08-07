@@ -450,6 +450,26 @@ Tests keep working because they pass an explicit value.
   discipline a sandboxed app would: read only the credential / cookie /
   config files you actually need, never write outside `~/.vibebar/`,
   and never log raw secrets.
+- **The Skills manager is a narrow, documented exception to that write
+  scope.** It writes to exactly two things: `~/.agents/skills/` — the
+  single source of truth every agent CLI is projected from — and the
+  seven managed app skills directories (`~/.claude/skills`,
+  `~/.codex/skills`, `~/.gemini/skills`, `~/.grok/skills`,
+  `~/.hermes/skills`, `~/.config/opencode/skills`,
+  `~/.gemini/config/skills`). Nothing else, and never directly: every
+  create, link, copy, and delete goes through `SkillSyncEngine` /
+  `SkillsService`, which validate each directory name as a single safe
+  path segment, refuse any resolved path outside those roots, require a
+  `SKILL.md` before any sync, create missing ancestors one component at
+  a time, never follow a symlink while deleting, and remove only
+  symlinks that resolve back into the SSOT or copies whose recorded
+  content hash still matches — so a folder the user authored or edited
+  is left in place. Vibe Bar reads `~/.agents/.skill-lock.json` for
+  provenance and never writes it, and pre-uninstall snapshots stay under
+  `~/.vibebar/skill_backups/`. `~/.gemini/config/skills` is
+  AntiGravity's customization root, not the Gemini CLI's — nothing else
+  under `~/.gemini/config/` may be touched. New code that needs a skills
+  path goes through those two types; do not add a second write path.
 - **Performance.** Avoid `TimelineView(.periodic(...))` in deep view
   trees that may be eagerly instantiated; prefer scoping to the visible
   surface. The mini window's screen position is persisted to its own
@@ -669,7 +689,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 - **Avoid `TimelineView(.periodic(...))` in deep view trees** that may
   be eagerly instantiated. Scope live timers to the visible surface.
 - **New persistent state** goes through `VibeBarLocalStore` and lives
-  under `~/.vibebar/`. Do not write to `~/` directly from new code.
+  under `~/.vibebar/`. Do not write to `~/` directly from new code. The
+  only exception is the skills write allow-list in § 7, and it is
+  reached exclusively through `SkillSyncEngine` / `SkillsService`.
 - **Every user-facing Settings control must round-trip through
   `AppSettings`.** Add its Codable key, a backward-compatible decode default,
   and a round-trip test. Migrations must be one-time and evidence-based; never

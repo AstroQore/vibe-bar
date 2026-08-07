@@ -74,9 +74,12 @@ See `AGENTS.md` § 6 for the full reasoning.
   the user's filesystem with the same discipline a sandboxed app would:
   read only the credential / cookie / config files you actually need,
   never write outside `~/.vibebar/`, and never log raw secrets.
-- The single exception is whole-session deletion through `SessionDeleter`,
-  performed only at the user's explicit request and on the containment /
-  symlink / re-parsed-session-id terms `AGENTS.md` § 5 sets out.
+- There are exactly two exceptions: whole-session deletion through
+  `SessionDeleter`, performed only at the user's explicit request and on
+  the containment / symlink / re-parsed-session-id terms `AGENTS.md` § 5
+  sets out; and the Skills manager, which writes only to
+  `~/.agents/skills/` and the seven managed app skills directories, and
+  only through `SkillSyncEngine` / `SkillsService` (`AGENTS.md` § 7).
 
 ## Implementation Notes
 

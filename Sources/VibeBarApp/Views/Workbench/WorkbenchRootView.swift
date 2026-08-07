@@ -77,7 +77,7 @@ struct WorkbenchRootView: View {
         case .sessionManager:
             SessionManagerPage(density: density, model: workbench.sessions)
         case .skillsManager:
-            WorkbenchPlaceholderPage(page: page, density: density)
+            SkillsManagerPage(density: density, model: workbench.skills)
         }
     }
 }
