@@ -4,7 +4,13 @@ public enum VibeBarLocalStore {
     public static let directoryName = ".vibebar"
 
     public static var baseDirectory: URL {
-        RealHomeDirectory.url
+        baseDirectory(homeDirectory: RealHomeDirectory.path)
+    }
+
+    /// Explicit-home variant for stores that take a `homeDirectory:`
+    /// parameter (test isolation — see AGENTS.md § 6.4).
+    public static func baseDirectory(homeDirectory: String) -> URL {
+        URL(fileURLWithPath: homeDirectory, isDirectory: true)
             .appendingPathComponent(directoryName, isDirectory: true)
     }
 
@@ -120,14 +126,35 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("session_index.sqlite3")
     }
 
+    /// Skills manager registry: which skills are installed in the SSOT
+    /// (`~/.agents/skills`) and how each one is materialized per agent CLI.
+    /// The skill payloads themselves live in the SSOT, not here.
+    public static func skillsStoreURL(homeDirectory: String = RealHomeDirectory.path) -> URL {
+        baseDirectory(homeDirectory: homeDirectory).appendingPathComponent("skills.json")
+    }
+
+    /// Pre-uninstall snapshots of skill directories, so removing a skill is
+    /// recoverable without going back to its origin repository.
+    public static func skillBackupsDirectoryURL(homeDirectory: String = RealHomeDirectory.path) -> URL {
+        baseDirectory(homeDirectory: homeDirectory)
+            .appendingPathComponent("skill_backups", isDirectory: true)
+    }
+
     public static func readData(from url: URL) throws -> Data {
         try Data(contentsOf: url)
     }
 
     public static func writeData(_ data: Data, to url: URL) throws {
-        try ensureBaseDirectory()
+        try writeData(data, to: url, base: baseDirectory)
+    }
+
+    /// Explicit-base variant for stores that take a `homeDirectory:`
+    /// parameter: same atomic write and 0600 mode, but it creates
+    /// `<home>/.vibebar` instead of the real-home one.
+    public static func writeData(_ data: Data, to url: URL, base: URL) throws {
+        try ensureDirectory(base)
         let parent = url.deletingLastPathComponent()
-        if parent.path != baseDirectory.path {
+        if parent.path != base.path {
             try ensureDirectory(parent)
         }
         try data.write(to: url, options: [.atomic])
@@ -155,10 +182,14 @@ public enum VibeBarLocalStore {
     }
 
     public static func writeJSON<T: Encodable>(_ value: T, to url: URL) throws {
+        try writeJSON(value, to: url, base: baseDirectory)
+    }
+
+    public static func writeJSON<T: Encodable>(_ value: T, to url: URL, base: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(value)
-        try writeData(data, to: url)
+        try writeData(data, to: url, base: base)
     }
 
     public static func deleteFile(at url: URL) throws {
