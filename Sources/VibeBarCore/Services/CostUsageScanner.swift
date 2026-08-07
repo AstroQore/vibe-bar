@@ -1750,7 +1750,9 @@ public enum CostUsageScanner {
     private static let lineChunkSize = 64 * 1024
     private static let newlineData = Data([0x0A])
 
-    private static func forEachJSONLLine(in file: URL, _ body: (Data) -> Void) -> Bool {
+    /// Internal rather than private so the session adapters can reuse the
+    /// same O(n) line walk instead of copying it.
+    static func forEachJSONLLine(in file: URL, _ body: (Data) -> Void) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
         defer { try? handle.close() }
 
