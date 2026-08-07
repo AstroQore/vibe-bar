@@ -116,6 +116,55 @@ final class SkillsStoreTests: XCTestCase {
         XCTAssertTrue(corrupt.isEmpty)
     }
 
+    func testDiscoverReposSeedTheDefaultsAndRoundTrip() async throws {
+        let home = try SkillTestHome()
+        let store = SkillsStore(homeDirectory: home.path)
+
+        // Never configured → the shipped seed list.
+        let seeded = await store.discoverRepos()
+        XCTAssertEqual(seeded, SkillsStore.defaultDiscoverRepos)
+        let refs = await store.discoverRepoRefs()
+        XCTAssertEqual(refs.map(\.slug).first, "anthropics/skills")
+        XCTAssertEqual(refs.first { $0.repo == "myclaude" }?.branch, "master")
+
+        // Writing a skill must persist the list alongside it.
+        try await store.upsert(makeSkill(.local(directory: "alpha")))
+        let reloaded = await SkillsStore(homeDirectory: home.path).discoverRepos()
+        XCTAssertEqual(reloaded, SkillsStore.defaultDiscoverRepos)
+
+        let added = try await store.addDiscoverRepo("acme/extra@dev")
+        XCTAssertTrue(added)
+        let addedAgain = try await store.addDiscoverRepo("ACME/EXTRA@dev")
+        XCTAssertFalse(addedAgain, "Duplicates are case-insensitive")
+        let addedJunk = try await store.addDiscoverRepo("not a repo")
+        XCTAssertFalse(addedJunk)
+        let removed = try await store.removeDiscoverRepo("anthropics/skills")
+        XCTAssertTrue(removed)
+        let removedAgain = try await store.removeDiscoverRepo("anthropics/skills")
+        XCTAssertFalse(removedAgain)
+
+        let afterEdits = await SkillsStore(homeDirectory: home.path).discoverRepos()
+        XCTAssertFalse(afterEdits.contains("anthropics/skills"))
+        XCTAssertTrue(afterEdits.contains("acme/extra@dev"))
+        let survivors = await SkillsStore(homeDirectory: home.path).all()
+        XCTAssertEqual(survivors.map(\.directory), ["alpha"])
+    }
+
+    func testSetDiscoverReposNormalizesAndAnEmptyListStaysEmpty() async throws {
+        let home = try SkillTestHome()
+        let store = SkillsStore(homeDirectory: home.path)
+
+        try await store.setDiscoverRepos(["  acme/one  ", "acme/one", "junk", "acme/two@dev", "a/b/c"])
+        let normalized = await store.discoverRepos()
+        XCTAssertEqual(normalized, ["acme/one", "acme/two@dev"])
+
+        // An explicitly cleared list is a decision, not an absent key: it must
+        // not re-seed on the next load.
+        try await store.setDiscoverRepos([])
+        let cleared = await SkillsStore(homeDirectory: home.path).discoverRepos()
+        XCTAssertTrue(cleared.isEmpty)
+    }
+
     func testSkillIDSerializationRoundTrip() {
         XCTAssertEqual(
             SkillID(rawValue: "acme/skills:alpha"),

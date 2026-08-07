@@ -232,6 +232,8 @@ public enum SkillError: Error, Equatable, Sendable {
     case destinationExists(String)
     case backupNotFound(String)
     case backupCorrupted(String)
+    case notRepositoryBacked(SkillID)
+    case updateSourceMissing(String)
 }
 
 extension SkillError: LocalizedError {
@@ -257,6 +259,10 @@ extension SkillError: LocalizedError {
             return "Backup \"\(name)\" was not found."
         case let .backupCorrupted(name):
             return "Backup \"\(name)\" is missing its metadata."
+        case let .notRepositoryBacked(id):
+            return "Skill \"\(id.directory)\" was not installed from a repository, so it cannot be updated."
+        case let .updateSourceMissing(name):
+            return "Skill \"\(name)\" is no longer in its source repository."
         }
     }
 }

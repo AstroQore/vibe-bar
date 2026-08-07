@@ -8,10 +8,10 @@ import Foundation
 /// a state the filesystem never reached. The reverse order would make the
 /// enable bits lie after the first permission error.
 ///
-/// Update checks against GitHub land in the networking layer on top of this
-/// actor: `Skill.id` carries the repository slug and `Skill.repoBranch` the
-/// branch, and `SkillsStore.upsert` is the write path a refreshed record goes
-/// through. Nothing here reaches the network.
+/// Everything that reaches the network does so through `SkillRepoFetching`,
+/// which is injected: `Skill.id` carries the repository slug and
+/// `Skill.repoBranch` the branch, so discovery, install, update checks, and
+/// updates are all expressible against that one seam — and testable without it.
 public actor SkillsService {
     public struct UninstallResult: Sendable {
         public let backupURL: URL
@@ -20,16 +20,32 @@ public actor SkillsService {
         public let removedByApp: [SkillAppTarget: Bool]
     }
 
-    private let homeDirectory: String
-    private let store: SkillsStore
-    private let engine: SkillSyncEngine
-    private let backups: SkillBackupManager
+    // Internal rather than private: the repository-facing half of this actor
+    // lives in `SkillsService+Repositories.swift`.
+    let homeDirectory: String
+    let store: SkillsStore
+    let engine: SkillSyncEngine
+    let backups: SkillBackupManager
+    let fetcher: SkillRepoFetching
+    /// Where the trees behind the current `[DiscoveredSkill]` live. Discovery
+    /// results reference files on disk, so the extraction has to outlive the
+    /// call that produced it; it is replaced on the next discovery pass and can
+    /// be dropped explicitly once the user closes the browser.
+    var discoveryStaging: URL?
 
-    public init(homeDirectory: String = RealHomeDirectory.path) {
+    public init(
+        homeDirectory: String = RealHomeDirectory.path,
+        fetcher: SkillRepoFetching = SkillRepoFetcher()
+    ) {
         self.homeDirectory = homeDirectory
         self.store = SkillsStore(homeDirectory: homeDirectory)
         self.engine = SkillSyncEngine(homeDirectory: homeDirectory)
         self.backups = SkillBackupManager(homeDirectory: homeDirectory)
+        self.fetcher = fetcher
+    }
+
+    deinit {
+        if let discoveryStaging { try? FileManager.default.removeItem(at: discoveryStaging) }
     }
 
     public func installedSkills() async -> [Skill] {
@@ -197,9 +213,14 @@ public actor SkillsService {
 
     // MARK: - Internals
 
-    private var homeURL: URL { URL(fileURLWithPath: homeDirectory, isDirectory: true) }
+    var homeURL: URL { URL(fileURLWithPath: homeDirectory, isDirectory: true) }
 
-    private func copyIntoSSOT(from source: URL, directoryName: String) throws {
+    func ssotDirectory(for directoryName: String) -> URL {
+        SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
+            .appendingPathComponent(directoryName, isDirectory: true)
+    }
+
+    func copyIntoSSOT(from source: URL, directoryName: String) throws {
         let ssot = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
         let destination = ssot.appendingPathComponent(directoryName, isDirectory: true)
         guard SkillAppCatalog.isWriteAllowed(destination, homeDirectory: homeDirectory) else {
