@@ -106,6 +106,13 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("remote_usage.sqlite3")
     }
 
+    /// Per-request local usage ledger written by `UsageEventLedger`. Kept
+    /// apart from `remote_usage.sqlite3` (other machines' facts) and from
+    /// the per-file scan cache (parse results, not query-able history).
+    public static var usageEventsLedgerURL: URL {
+        baseDirectory.appendingPathComponent("usage_events.sqlite3")
+    }
+
     public static func readData(from url: URL) throws -> Data {
         try Data(contentsOf: url)
     }

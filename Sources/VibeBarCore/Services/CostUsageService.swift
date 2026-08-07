@@ -34,9 +34,20 @@ public final class CostUsageService: ObservableObject {
     /// `ProcessRunner`, so this can be generous without risking a freeze.
     private static let perToolScanTimeoutSeconds: Double = 300
 
+    /// Number of days of request-level rows the usage ledger keeps before
+    /// folding a day into its daily rollups. Everything the usage UI shows
+    /// per request lives inside this window; older history stays available
+    /// as totals.
+    private static let ledgerDetailDays = 30
+
     private let homeDirectory: String
     private let mockProvider: () -> Bool
     private let costDataSettingsProvider: () -> CostDataSettings
+    /// Optional per-request event ledger. When present it receives every
+    /// event behind each scan, so a usage UI can query request-level
+    /// history without re-walking the JSONL. Nil keeps the scan pipeline
+    /// byte-identical to the pre-ledger behaviour.
+    private let usageLedger: UsageEventLedger?
     /// Keep authoritative local and selected-remote sources separate. Only the
     /// merged dictionary is published, so remote facts are never written into
     /// the local scan cache/history and cannot be counted again after relaunch.
@@ -53,11 +64,13 @@ public final class CostUsageService: ObservableObject {
     public init(
         homeDirectory: String = RealHomeDirectory.path,
         mockProvider: @escaping () -> Bool = { false },
-        costDataSettingsProvider: @escaping () -> CostDataSettings = { .default }
+        costDataSettingsProvider: @escaping () -> CostDataSettings = { .default },
+        usageLedger: UsageEventLedger? = nil
     ) {
         self.homeDirectory = homeDirectory
         self.mockProvider = mockProvider
         self.costDataSettingsProvider = costDataSettingsProvider
+        self.usageLedger = usageLedger
         // Surface the most recent persisted snapshot per tool immediately so
         // the popover doesn't render an empty Cost panel while the first
         // background scan is still running. The fresh scan replaces this when
@@ -172,6 +185,9 @@ public final class CostUsageService: ObservableObject {
 
         var results: [ToolType: CostSnapshot] = [:]
         let home = homeDirectory
+        // Privacy mode is already handled above (it erases and returns), so
+        // reaching here means the ledger is allowed to record.
+        let sink = usageLedger
         for tool in ToolType.allCases where tool.supportsTokenCost {
             // Scan on a detached utility task so JSONL parsing doesn't block
             // the main actor. CostUsageService itself is `@MainActor`; without
@@ -190,7 +206,8 @@ public final class CostUsageService: ObservableObject {
                     tool: tool,
                     homeDirectory: home,
                     now: now,
-                    retentionDays: retentionDays
+                    retentionDays: retentionDays,
+                    eventSink: sink
                 )
             }
             let scanned: CostSnapshot?
@@ -211,6 +228,15 @@ public final class CostUsageService: ObservableObject {
                 // Persist the post-merge snapshot so a future launch can show
                 // these numbers without waiting for a fresh scan.
                 await CostSnapshotCache.shared.save(merged, retentionDays: retentionDays)
+                // Fold this tool's freshly ingested history down to daily
+                // rollups past the detail window and apply retention. Done
+                // per tool rather than once at the end so a long pass never
+                // leaves the ledger holding an unbounded detail table.
+                try? await usageLedger?.rollupAndPrune(
+                    now: now,
+                    detailDays: Self.ledgerDetailDays,
+                    retentionDays: retentionDays
+                )
             }
         }
         localSnapshots = results
@@ -261,6 +287,11 @@ public final class CostUsageService: ObservableObject {
             return
         }
         await CostHistoryStore.shared.prune(retentionDays: costData.retentionDays)
+        try? await usageLedger?.rollupAndPrune(
+            now: Date(),
+            detailDays: Self.ledgerDetailDays,
+            retentionDays: costData.retentionDays
+        )
         let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
         localSnapshots = cached
         publishMergedSnapshots()
@@ -271,6 +302,7 @@ public final class CostUsageService: ObservableObject {
         await CostHistoryStore.shared.eraseAll()
         await CostSnapshotCache.shared.eraseAll()
         CostUsageScanCache.eraseAll(homeDirectory: homeDirectory)
+        try? await usageLedger?.eraseAll()
         localSnapshots = [:]
         publishMergedSnapshots()
         extrasByTool = [:]
