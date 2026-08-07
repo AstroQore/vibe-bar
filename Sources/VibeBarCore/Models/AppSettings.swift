@@ -110,6 +110,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// bound behind a menu that only shows a handful.
     public var pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]]
 
+    /// Terminal the Sessions page hands a resume command to.
+    ///
+    /// `.terminal` by default because Terminal.app is the one terminal every
+    /// Mac has. The first launch still costs an Automation approval, and a
+    /// refusal is not an error state — the line is copied instead.
+    public var preferredTerminal: PreferredTerminal
+
+    /// Whether the session index stores message excerpts as well as metadata.
+    ///
+    /// On by default: full-text search over what was actually said is the
+    /// reason the index exists, and everything it holds is a copy of the
+    /// user's own session logs sitting under `~/.vibebar/`. Turning it off
+    /// drops the stored bodies on the next pass and leaves title / project /
+    /// id search working.
+    public var sessionBodyIndexingEnabled: Bool
+
     /// How many named arrangements one page may keep. Generous relative to the
     /// handful a menu stays usable with.
     public static let maximumPresetsPerPage = 20
@@ -239,7 +255,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
         pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
         miscCookieAutoImportEnabled: Bool = false,
-        menuBarColorBasis: MenuBarColorBasis = .forecast
+        menuBarColorBasis: MenuBarColorBasis = .forecast,
+        preferredTerminal: PreferredTerminal = .terminal,
+        sessionBodyIndexingEnabled: Bool = true
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -280,6 +298,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
         self.miscCookieAutoImportEnabled = miscCookieAutoImportEnabled
         self.menuBarColorBasis = menuBarColorBasis
+        self.preferredTerminal = preferredTerminal
+        self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
@@ -334,6 +354,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case pageLayoutPresets
         case miscCookieAutoImportEnabled
         case menuBarColorBasis
+        case preferredTerminal
+        case sessionBodyIndexingEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -491,6 +513,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.menuBarColorBasis =
             (try? c.decodeIfPresent(MenuBarColorBasis.self, forKey: .menuBarColorBasis))
             ?? Self.default.menuBarColorBasis
+        // `try?` for the same reason as the two above: a raw value from a
+        // downgraded or hand-edited file costs this one preference, not the
+        // rest of the settings.
+        self.preferredTerminal =
+            (try? c.decodeIfPresent(PreferredTerminal.self, forKey: .preferredTerminal))
+            ?? Self.default.preferredTerminal
+        self.sessionBodyIndexingEnabled =
+            try c.decodeIfPresent(Bool.self, forKey: .sessionBodyIndexingEnabled)
+            ?? Self.default.sessionBodyIndexingEnabled
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -536,6 +567,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
         try c.encode(miscCookieAutoImportEnabled, forKey: .miscCookieAutoImportEnabled)
         try c.encode(menuBarColorBasis, forKey: .menuBarColorBasis)
+        try c.encode(preferredTerminal, forKey: .preferredTerminal)
+        try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {

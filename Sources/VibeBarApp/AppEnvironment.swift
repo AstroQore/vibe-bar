@@ -509,7 +509,11 @@ final class AppEnvironment: ObservableObject {
     /// fresh set of queries.
     var workbenchServices: WorkbenchServices {
         if let workbenchServicesStorage { return workbenchServicesStorage }
-        let services = WorkbenchServices(usageLedger: usageLedger, costService: costService)
+        let services = WorkbenchServices(
+            usageLedger: usageLedger,
+            costService: costService,
+            settingsStore: settingsStore
+        )
         workbenchServicesStorage = services
         return services
     }

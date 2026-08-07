@@ -65,7 +65,10 @@ ignored. The full reasoning and grep recipes live in `AGENTS.md`.
    one-line entitlement edit. The flip side: unsandboxed *is not* a
    license for casual filesystem access — read only the credential /
    cookie / config files you actually need, never write outside
-   `~/.vibebar/`, never log raw secrets.
+   `~/.vibebar/`, never log raw secrets. The single exception is
+   whole-session deletion through `SessionDeleter`, performed only at the
+   user's explicit request and on the containment / symlink /
+   re-parsed-session-id terms `AGENTS.md` § 5 sets out.
 4. **Verification before completion.** Before claiming a change works,
    run all four:
 
