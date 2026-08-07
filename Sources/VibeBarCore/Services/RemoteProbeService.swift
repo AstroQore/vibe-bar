@@ -14,12 +14,18 @@ public final class RemoteProbeService: ObservableObject {
     private var client: RemoteRelayClient?
     private var ledger: RemoteUsageLedger?
     private var refreshLoop: Task<Void, Never>?
-    /// The one sync currently executing, whether the loop, the settings
-    /// pane's Sync now, or AppEnvironment started it. refresh() serializes
-    /// on this so syncs never overlap, and reconfigure() drains it so no
-    /// refresh from the old configuration is still running when the new one
-    /// loads.
-    private var activeRefresh: Task<Void, Never>?
+    /// Identity wrapper for the one sync currently executing. Callers join the
+    /// same run instead of queueing another pass, and identity comparison keeps
+    /// a late completion from clearing a newer run.
+    private final class RefreshRun {
+        let task: Task<Void, Never>
+
+        init(task: Task<Void, Never>) {
+            self.task = task
+        }
+    }
+
+    private var activeRefresh: RefreshRun?
     /// Bumped by every (re)load. An in-flight refresh() captured the previous
     /// configuration; it must stop publishing (and acknowledging) the moment
     /// this no longer matches the generation it started under.
@@ -120,7 +126,11 @@ public final class RemoteProbeService: ObservableObject {
             // AppEnvironment.refreshAll) so the restarted loop's first pass
             // runs immediately instead of skipping and sleeping 60s.
             while let active = self?.activeRefresh {
-                await active.value
+                await active.task.value
+                guard let self else { return }
+                if self.activeRefresh === active {
+                    self.activeRefresh = nil
+                }
             }
             guard let self else { return }
             self.loadConfiguration()
@@ -150,16 +160,21 @@ public final class RemoteProbeService: ObservableObject {
     }
 
     public func refresh() async {
-        // Serialize: wait out any in-flight sync, then run a full pass of our
-        // own. Piled-up callers each get a pass; the cursor-based protocol
-        // makes back-to-back passes cheap no-ops.
-        while let existing = activeRefresh {
-            await existing.value
+        // Coalesce every overlapping caller onto the same pass. The previous
+        // `while let` waited repeatedly on an already-completed task until its
+        // owner cleared `activeRefresh`; when the waiter resumed first on the
+        // MainActor, that became a tight loop which starved the owner and froze
+        // the entire app at 100% CPU.
+        if let existing = activeRefresh {
+            await existing.task.value
+            return
         }
-        let task = Task { await performRefresh() }
-        activeRefresh = task
-        await task.value
-        activeRefresh = nil
+        let run = RefreshRun(task: Task { await performRefresh() })
+        activeRefresh = run
+        await run.task.value
+        if activeRefresh === run {
+            activeRefresh = nil
+        }
     }
 
     /// Learn the workspace's current probe roster from the Relay before any
