@@ -145,6 +145,34 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.displayMode, .used)
     }
 
+    func testSkillsSyncMethodDefaultsToAutoAndRoundTrips() throws {
+        // `.auto` links where it can and copies where it cannot, which is the
+        // only value that keeps every agent CLI reading one copy of a skill —
+        // so a settings file written before the Skills manager existed has to
+        // decode to it, and so does a raw value this build does not know.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(legacy.skillsSyncMethod, .auto)
+        XCTAssertEqual(AppSettings.default.skillsSyncMethod, .auto)
+
+        var settings = AppSettings.default
+        settings.skillsSyncMethod = .copy
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertEqual(decoded.skillsSyncMethod, .copy)
+
+        let unknown = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","skillsSyncMethod":"hardlink"}"#.utf8)
+        )
+        XCTAssertEqual(unknown.skillsSyncMethod, .auto)
+        XCTAssertEqual(unknown.displayMode, .used)
+    }
+
     func testOverviewQuotaHistoryHiddenCurvesDefaultToNoneAndRoundTrip() throws {
         // Stored as *hidden* ids, so a settings file written before the
         // Overview chart existed has to mean "show everything" — not "show

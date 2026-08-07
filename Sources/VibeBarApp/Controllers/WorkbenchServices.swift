@@ -26,4 +26,9 @@ final class WorkbenchServices: ObservableObject {
     )
 
     lazy var sessions = SessionManagerModel(settingsStore: settingsStore)
+
+    /// Lazy for the same reason as the usage page, and more so: building it
+    /// opens `~/.vibebar/skills.json` and, on first activation, walks every
+    /// agent CLI's skills directory.
+    lazy var skills = SkillsManagerModel(settingsStore: settingsStore)
 }
