@@ -10,6 +10,7 @@ struct TranscriptView: View {
     let density: Theme.Density
     @ObservedObject var model: SessionManagerModel
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = ""
     @State private var matches: [Int] = []
     @State private var matchIndex = 0
@@ -33,10 +34,26 @@ struct TranscriptView: View {
 
     private func content(for summary: SessionSummary) -> some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: density.cardSpacing) {
-                    SessionMetadataHeader(density: density, model: model, summary: summary)
+            VStack(spacing: 0) {
+                // Keep the session's identity and recovery controls in view while
+                // reviewing a long log. The scroll view below is intentionally
+                // limited to transcript content; the header is a stable reading
+                // anchor rather than another item in the transcript.
+                SessionMetadataHeader(density: density, model: model, summary: summary)
+                    .padding(.horizontal, density.popoverPaddingH)
+                    .padding(.top, density.popoverPaddingV)
+
+                HStack(spacing: 8) {
                     searchBar(proxy: proxy)
+                    outlineButton(proxy: proxy)
+                }
+                .padding(.horizontal, density.popoverPaddingH)
+                .padding(.vertical, max(8, density.popoverPaddingV / 2))
+
+                Divider().opacity(0.45)
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: density.cardSpacing) {
                     if model.isLoadingTranscript {
                         loading
                     } else if let error = model.transcriptError {
@@ -60,12 +77,13 @@ struct TranscriptView: View {
                             }
                         }
                     }
+                    }
+                    .padding(.horizontal, density.popoverPaddingH)
+                    .padding(.vertical, density.popoverPaddingV)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .padding(.horizontal, density.popoverPaddingH)
-                .padding(.vertical, density.popoverPaddingV)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .overlay(alignment: .topTrailing) { outlineButton(proxy: proxy) }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .onChange(of: model.transcript) { _, _ in focusOnSearchHit(proxy: proxy) }
         }
     }
@@ -156,11 +174,12 @@ struct TranscriptView: View {
             }
         }
         .padding(.horizontal, 11)
-        .frame(minHeight: 27)
+        .frame(minHeight: 30)
         .background(
-            Capsule().fill(Color.primary.opacity(0.055))
-                .overlay(Capsule().stroke(Color.primary.opacity(0.09), lineWidth: 0.6))
+            Capsule().fill(Color.primary.opacity(0.045))
+                .overlay(Capsule().stroke(Color.primary.opacity(0.11), lineWidth: 0.6))
         )
+        .accessibilityLabel("Find in transcript")
         .onChange(of: query) { _, _ in recomputeMatches(proxy: proxy) }
         .onChange(of: model.transcript) { _, _ in recomputeMatches(proxy: proxy) }
     }
@@ -191,8 +210,12 @@ struct TranscriptView: View {
     }
 
     private func scroll(to seq: Int, proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.2)) {
+        if reduceMotion {
             proxy.scrollTo(seq, anchor: .top)
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(seq, anchor: .top)
+            }
         }
         flash(seq)
     }
@@ -229,12 +252,10 @@ struct TranscriptView: View {
         } label: {
             Image(systemName: "list.bullet.indent")
                 .font(.system(size: density.segmentedFontSize, weight: .semibold))
-                .padding(.horizontal, 9)
-                .frame(minHeight: 26)
+                .frame(width: 28, height: 28)
         }
-        .buttonStyle(.glass)
-        .padding(.trailing, density.popoverPaddingH)
-        .padding(.top, density.popoverPaddingV)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
         .help("Jump to a prompt")
         .accessibilityLabel("Show the transcript outline")
         .popover(isPresented: $showsOutline, arrowEdge: .trailing) {
@@ -274,37 +295,89 @@ struct SessionMetadataHeader: View {
     @ObservedObject var model: SessionManagerModel
     let summary: SessionSummary
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsDetails = false
+
     var body: some View {
-        CardShell(density: density, spacing: density.cardSpacing) {
-            HStack(alignment: .top, spacing: 10) {
+        CardShell(density: density, spacing: max(7, density.cardSpacing)) {
+            HStack(alignment: .center, spacing: 10) {
                 ToolBrandBadge(tool: summary.provider.tool, iconSize: 20, containerSize: 26)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.system(size: density.titleFontSize, weight: .semibold))
-                        .lineLimit(2)
-                    HStack(spacing: 6) {
-                        Text(providerLabel)
-                            .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
-                            .padding(.horizontal, 7)
-                            .frame(minHeight: 17)
-                            .background(Capsule().fill(summary.provider.accent.opacity(0.16)))
-                        if summary.hasKnownMessageCount {
-                            Text("\(summary.messageCount) messages")
-                                .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded)
-                                    .monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
+                        .lineLimit(1)
+                    compactMetadata
                 }
                 Spacer(minLength: 0)
+                headerActions
             }
-            Divider().opacity(0.35)
-            facts
-            if summary.provider == .antigravity {
-                notice
+            if showsDetails {
+                Divider().opacity(0.42)
+                facts
+                if summary.provider == .antigravity {
+                    notice
+                }
+                resumeRow
             }
-            resumeRow
         }
+    }
+
+    private var compactMetadata: some View {
+        HStack(spacing: 6) {
+            Text(providerLabel)
+                .font(.system(size: max(10, density.subtitleFontSize - 2), weight: .semibold))
+                .padding(.horizontal, 7)
+                .frame(minHeight: 18)
+                .background(Capsule().fill(summary.provider.accent.opacity(0.16)))
+            if let project = summary.projectDir {
+                Label(SessionManagerModel.projectTitle(project), systemImage: "folder")
+                    .lineLimit(1)
+                    .help(project)
+            }
+            if summary.hasKnownMessageCount {
+                Text("\(summary.messageCount) messages")
+                    .monospacedDigit()
+            }
+        }
+        .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded))
+        .foregroundStyle(.secondary)
+    }
+
+    private var headerActions: some View {
+        HStack(spacing: 6) {
+            if model.resumeShellLine(for: summary) != nil {
+                Button {
+                    model.copyResumeCommand(for: summary)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .frame(width: 16, height: 16)
+                }
+                .help("Copy resume command")
+                .accessibilityLabel("Copy resume command")
+
+                Button {
+                    model.resumeInTerminal(summary)
+                } label: {
+                    Label("Open", systemImage: "terminal")
+                        .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
+                }
+                .help("Run it in \(model.preferredTerminal.displayName)")
+            }
+
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
+                    showsDetails.toggle()
+                }
+            } label: {
+                Label("Details", systemImage: "chevron.down")
+                    .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
+                    .labelStyle(.titleAndIcon)
+            }
+            .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .fixedSize()
     }
 
     private var title: String {
@@ -376,7 +449,7 @@ struct SessionMetadataHeader: View {
 
     private func factLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: max(8, density.resetCountdownFontSize - 2), weight: .semibold))
+            .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
             .foregroundStyle(.tertiary)
             .tracking(0.4)
             .frame(width: 74, alignment: .leading)
@@ -401,12 +474,23 @@ struct SessionMetadataHeader: View {
     private var resumeRow: some View {
         if let line = model.resumeShellLine(for: summary) {
             VStack(alignment: .leading, spacing: 6) {
+                Text("RESUME")
+                    .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .tracking(0.4)
                 Text(line)
                     .font(.system(size: density.subtitleFontSize - 1, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.045))
+                    )
                 HStack(spacing: 8) {
                     Button {
                         model.copyResumeCommand(for: summary)
@@ -414,14 +498,16 @@ struct SessionMetadataHeader: View {
                         Label("Copy", systemImage: "doc.on.doc")
                             .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 28)
                     Button {
                         model.resumeInTerminal(summary)
                     } label: {
                         Label("Open in Terminal", systemImage: "terminal")
                             .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.borderedProminent)
+                    .frame(minHeight: 28)
                     .help("Run it in \(model.preferredTerminal.displayName)")
                     Spacer(minLength: 0)
                 }
@@ -453,6 +539,7 @@ struct TranscriptMessageCard: View {
     let onToggleExpanded: () -> Void
     let onCopy: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     /// Past this a card stops being a message and starts being a document —
@@ -484,27 +571,49 @@ struct TranscriptMessageCard: View {
         .padding(.horizontal, 9)
         .background(
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(isHighlighted ? accent.opacity(0.14) : Color.primary.opacity(0.035))
+                .fill(surfaceFill)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(borderColor, lineWidth: isHovering || isHighlighted ? 0.8 : 0.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous))
         .onHover { isHovering = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isHighlighted)
+        .contextMenu {
+            Button {
+                onCopy()
+            } label: {
+                Label("Copy Message", systemImage: "doc.on.doc")
+            }
+        }
     }
 
     private var header: some View {
         HStack(spacing: 6) {
             Text(roleLabel.uppercased())
-                .font(.system(size: max(8, density.resetCountdownFontSize - 1), weight: .semibold))
+                .font(.system(size: max(10, density.resetCountdownFontSize - 1), weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .tracking(0.4)
             if let timestamp = message.timestamp {
                 Text(Self.time.string(from: timestamp))
-                    .font(.system(size: max(8, density.resetCountdownFontSize - 1), design: .rounded)
+                    .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded)
                         .monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 0)
-            if isHovering {
-                BorderlessIconButton(systemImage: "doc.on.doc", help: "Copy this message", action: onCopy)
+            Button(action: onCopy) {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(Color.primary.opacity(isHovering ? 0.09 : 0)))
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(isHovering ? .secondary : .tertiary)
+            .opacity(isHovering ? 1 : 0.42)
+            .help("Copy this message")
+            .accessibilityLabel("Copy this message")
         }
     }
 
@@ -540,6 +649,16 @@ struct TranscriptMessageCard: View {
         case .system:    Color.secondary.opacity(0.18)
         case .other:     Color.secondary.opacity(0.18)
         }
+    }
+
+    private var surfaceFill: Color {
+        if isHighlighted { return accent.opacity(isHovering ? 0.18 : 0.14) }
+        return Color.primary.opacity(isHovering ? 0.07 : 0.032)
+    }
+
+    private var borderColor: Color {
+        if isHighlighted { return accent.opacity(isHovering ? 0.52 : 0.36) }
+        return Color.primary.opacity(isHovering ? 0.18 : 0.075)
     }
 
     private var roleLabel: String {

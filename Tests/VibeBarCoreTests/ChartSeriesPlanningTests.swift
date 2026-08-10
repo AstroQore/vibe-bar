@@ -106,6 +106,54 @@ final class ChartMarkBudgetTests: XCTestCase {
         XCTAssertEqual(thinned.last, 999)
         XCTAssertEqual(thinned, thinned.sorted())
     }
+
+    func testUsageDownsamplingPreservesExactEndpointsPeaksAndMarkBudget() {
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        var input: [UsageTrendPoint] = []
+        for index in 0..<100 {
+            let tokens: Int64 = index == 37 ? 10_000 : 10
+            let output: Int64 = index == 37 ? 1_000 : 1
+            let cost: Int64 = index == 61 ? 900_000 : 100
+            input.append(
+                UsageTrendPoint(
+                    bucketStart: base.addingTimeInterval(TimeInterval(index * 3_600)),
+                    freshInput: tokens,
+                    output: output,
+                    cacheRead: 0,
+                    cacheCreation: 0,
+                    costMicros: cost
+                )
+            )
+        }
+
+        let projected = UsageTrendSeriesDownsampling.points(input, limit: 15)
+        let tokenPeak = input[37]
+        let costPeak = input[61]
+        let timestamps: [Date] = projected.map { $0.bucketStart }
+
+        XCTAssertLessThanOrEqual(projected.count, 15)
+        XCTAssertEqual(projected.first, input.first)
+        XCTAssertEqual(projected.last, input.last)
+        XCTAssertTrue(projected.contains(tokenPeak))
+        XCTAssertTrue(projected.contains(costPeak))
+        XCTAssertTrue(projected.allSatisfy { input.contains($0) })
+        XCTAssertEqual(timestamps, timestamps.sorted())
+    }
+
+    func testUsageDownsamplingHonorsSmallBudgetsWithDocumentedPriorities() {
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let input = [
+            UsageTrendPoint(bucketStart: base, freshInput: 1, output: 0, cacheRead: 0, cacheCreation: 0, costMicros: 1),
+            UsageTrendPoint(bucketStart: base.addingTimeInterval(3_600), freshInput: 100, output: 0, cacheRead: 0, cacheCreation: 0, costMicros: 2),
+            UsageTrendPoint(bucketStart: base.addingTimeInterval(7_200), freshInput: 2, output: 0, cacheRead: 0, cacheCreation: 0, costMicros: 100),
+            UsageTrendPoint(bucketStart: base.addingTimeInterval(10_800), freshInput: 3, output: 0, cacheRead: 0, cacheCreation: 0, costMicros: 3)
+        ]
+
+        XCTAssertEqual(UsageTrendSeriesDownsampling.points(input, limit: 1), [input[1]])
+        XCTAssertEqual(UsageTrendSeriesDownsampling.points(input, limit: 2), [input[0], input[3]])
+        XCTAssertEqual(UsageTrendSeriesDownsampling.points(input, limit: 3), [input[0], input[1], input[3]])
+        XCTAssertEqual(UsageTrendSeriesDownsampling.points(input, limit: 4), input)
+    }
 }
 
 final class ChartSampleSearchTests: XCTestCase {

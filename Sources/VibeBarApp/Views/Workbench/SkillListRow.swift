@@ -1,16 +1,16 @@
+import AppKit
 import SwiftUI
 import VibeBarCore
 
 extension SkillAppTarget {
     /// The provider this agent CLI shares a brand mark with, when there is
     /// one. Five of the seven targets are also usage providers, so their rows
-    /// wear the same glyph and accent they wear everywhere else in the app;
-    /// Hermes and OpenCode have no provider entry and fall back to a symbol.
+    /// wear the same glyph and accent they wear everywhere else in the app.
     var brandTool: ToolType? { ToolType(rawValue: rawValue) }
 
     var fallbackSystemImage: String {
         switch self {
-        case .hermes: return "bolt.horizontal.circle"
+        case .hermes: return "cross.case"
         case .opencode: return "chevron.left.forwardslash.chevron.right"
         case .claude, .codex, .gemini, .grok, .antigravity: return "puzzlepiece.extension"
         }
@@ -30,12 +30,43 @@ struct SkillAppGlyph: View {
     var body: some View {
         if let tool = app.brandTool {
             ToolBrandIconView(tool: tool, size: size)
+        } else if app == .hermes, let image = hermesImage {
+            Image(nsImage: image)
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .foregroundStyle(.primary)
+                .accessibilityHidden(true)
         } else {
             Image(systemName: app.fallbackSystemImage)
                 .font(.system(size: size * 0.92, weight: .semibold))
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         }
+    }
+
+    /// Official Hermes mark from NousResearch's hermes-agent site:
+    /// https://github.com/NousResearch/hermes-agent/blob/main/website/static/img/favicon.svg
+    private var hermesImage: NSImage? {
+        let filename = "ProviderIcon-hermes.svg"
+        let bundled = Bundle.main.url(
+            forResource: "ProviderIcon-hermes",
+            withExtension: "svg",
+            subdirectory: "ProviderIcons"
+        )
+        let local = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources/ProviderIcons/\(filename)")
+        guard let url = bundled ?? (FileManager.default.fileExists(atPath: local.path) ? local : nil),
+              let image = NSImage(contentsOf: url)
+        else { return nil }
+        image.size = NSSize(width: size, height: size)
+        image.isTemplate = true
+        return image
     }
 }
 
@@ -51,6 +82,8 @@ struct SkillAppToggleRow: View {
     var glyphSize: CGFloat = 13
     var spacing: CGFloat = 4
     var helpSuffix: String?
+
+    @State private var hoveredApp: SkillAppTarget?
 
     var body: some View {
         HStack(spacing: spacing) {
@@ -69,20 +102,22 @@ struct SkillAppToggleRow: View {
             SkillAppGlyph(app: app, size: glyphSize)
                 .frame(width: diameter, height: diameter)
                 .background(
-                    Circle().fill(accent.opacity(on ? 0.18 : 0.05))
+                    Circle().fill(accent.opacity(on ? 0.18 : hoveredApp == app ? 0.10 : 0.05))
                 )
                 .overlay(
-                    Circle().stroke(accent.opacity(on ? 0.6 : 0.16), lineWidth: 0.8)
+                    Circle().stroke(accent.opacity(on ? 0.6 : hoveredApp == app ? 0.42 : 0.20), lineWidth: 0.8)
                 )
         }
         .buttonStyle(.plain)
         // An off app has to stay readable — the user is picking from these —
         // but must not wear the accent, which is the only signal that says
         // "this skill is live here".
-        .opacity(on ? 1 : 0.35)
-        .saturation(on ? 1 : 0.15)
+        .opacity(on ? 1 : 0.62)
+        .saturation(on ? 1 : 0.45)
+        .onHover { hovering in hoveredApp = hovering ? app : nil }
         .help(helpSuffix.map { "\(app.displayName) — \($0)" } ?? app.displayName)
         .accessibilityLabel(app.displayName)
+        .accessibilityValue(on ? "Enabled" : "Disabled")
         .accessibilityAddTraits(on ? [.isSelected] : [])
     }
 }
@@ -99,6 +134,7 @@ struct SkillListRow: View {
     let onUninstall: () -> Void
 
     @State private var confirmingUninstall = false
+    @State private var isHovering = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -112,14 +148,27 @@ struct SkillListRow: View {
             .disabled(isBusy)
             overflowMenu
         }
-        .padding(.vertical, 5)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
         .opacity(isBusy ? 0.55 : 1)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHovering ? Color.accentColor.opacity(0.08) : .clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(
+                    isHovering ? Color(nsColor: .separatorColor).opacity(0.7) : Color.clear,
+                    lineWidth: 0.5
+                )
+        )
         .overlay(alignment: .trailing) {
             if isBusy {
                 ProgressView().controlSize(.small)
             }
         }
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .confirmationDialog(
             "Uninstall \(skill.name)?",
             isPresented: $confirmingUninstall,
@@ -136,7 +185,7 @@ struct SkillListRow: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(skill.name)
-                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    .font(.system(size: max(12, density.bucketTitleFontSize), weight: .semibold))
                     .lineLimit(1)
                 sourceBadge
                 if updateState?.updateAvailable == true {
@@ -145,7 +194,7 @@ struct SkillListRow: View {
             }
             if let description = skill.description, !description.isEmpty {
                 Text(description)
-                    .font(.system(size: density.subtitleFontSize))
+                    .font(.system(size: max(10, density.subtitleFontSize)))
                     .foregroundStyle(.tertiary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -155,7 +204,7 @@ struct SkillListRow: View {
 
     private var sourceBadge: some View {
         Text(skill.id.repositorySlug ?? "local")
-            .font(.system(size: max(8, density.resetCountdownFontSize - 1), design: .rounded))
+            .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .padding(.horizontal, 6)
@@ -166,7 +215,7 @@ struct SkillListRow: View {
 
     private var updateBadge: some View {
         Text("UPDATE")
-            .font(.system(size: max(8, density.resetCountdownFontSize - 2), weight: .semibold))
+            .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
             .tracking(0.4)
             .foregroundStyle(Color.accentColor)
             .padding(.horizontal, 6)
@@ -185,12 +234,12 @@ struct SkillListRow: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+                .frame(width: 28, height: 28)
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(isBusy)

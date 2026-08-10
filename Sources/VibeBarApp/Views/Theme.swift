@@ -294,7 +294,10 @@ enum Theme {
         case .alibabaTokenPlan: return Color(red: 1.00, green: 0.48, blue: 0.18)  // deeper amber
         case .gemini:      return Color(red: 0.34, green: 0.62, blue: 0.96)  // google blue
         case .antigravity: return Color(red: 0.55, green: 0.40, blue: 0.92)  // violet
-        case .grok:        return Color(red: 0.18, green: 0.18, blue: 0.18)  // xAI near-black
+        // xAI's black wordmark is not a usable data colour: it vanishes on
+        // dark cards, while one fixed pale replacement disappears on white.
+        // The semantic slate resolves darker in Aqua and lighter in Dark Aqua.
+        case .grok:        return adaptiveNeutralAccent
         case .copilot:     return Color(red: 0.46, green: 0.46, blue: 0.46)  // graphite
         case .zai:         return Color(red: 0.26, green: 0.74, blue: 0.55)  // emerald
         case .minimax:     return Color(red: 0.97, green: 0.30, blue: 0.45)  // pink
@@ -314,6 +317,17 @@ enum Theme {
         case .openRouter:  return Color(red: 0.98, green: 0.62, blue: 0.16)  // orange
         case .warp:        return Color(red: 0.58, green: 0.55, blue: 0.71)  // warp violet-grey
         }
+    }
+
+    private static var adaptiveNeutralAccent: Color {
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                if appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua {
+                    return NSColor(srgbRed: 0.68, green: 0.75, blue: 0.83, alpha: 1)
+                }
+                return NSColor(srgbRed: 0.30, green: 0.38, blue: 0.47, alpha: 1)
+            }
+        )
     }
 
     static func barColor(percent: Double, mode: DisplayMode) -> Color {

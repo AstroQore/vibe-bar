@@ -53,10 +53,10 @@ struct SkillDiscoverSheet: View {
                     : Set(SkillAppTarget.allCases)
                 overrides.removeAll()
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.bordered)
             .help("Set which agent CLIs every row installs into")
             Button("Done") { dismiss() }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, density.popoverPaddingH)
@@ -86,7 +86,7 @@ struct SkillDiscoverSheet: View {
                     }
                     .frame(minHeight: 22)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .disabled(model.repoList.isEmpty)
             }
 
@@ -123,7 +123,7 @@ struct SkillDiscoverSheet: View {
                     .font(.system(size: density.subtitleFontSize, design: .monospaced))
                     .onSubmit { addRepo() }
                 Button("Add") { addRepo() }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .disabled(!isRepoDraftValid)
             }
             if !repoDraft.isEmpty, !isRepoDraftValid {
@@ -311,7 +311,7 @@ struct SkillDiscoverSheet: View {
             }
             .frame(minHeight: 22)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.bordered)
         .disabled(model.isBusy(busyKey))
     }
 

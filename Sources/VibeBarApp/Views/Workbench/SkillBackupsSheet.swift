@@ -105,7 +105,7 @@ struct SkillBackupsSheet: View {
                 ProgressView().controlSize(.small)
             }
             Button("Restore") { model.restoreBackup(backup) }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .disabled(busy)
                 .help("Copy the snapshot back into ~/.agents/skills")
             Button {
@@ -130,7 +130,7 @@ struct SkillBackupsSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Done") { dismiss() }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, density.popoverPaddingH)

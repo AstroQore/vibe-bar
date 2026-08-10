@@ -33,12 +33,35 @@ public struct UsageQueryFilter: Sendable, Equatable {
 public enum UsageTrendBucket: String, Sendable, Equatable, CaseIterable, Codable {
     case hour
     case day
+    case week
 
     /// A day of history or less is drawn per hour; anything wider is drawn
-    /// per local calendar day. Kept as a static rule rather than a UI
-    /// decision so the ledger, the chart, and the tests all agree.
+    /// per local calendar day. Wider windows collapse to local calendar
+    /// weeks, keeping the automatic chart legible without making a UI-only
+    /// decision that disagrees with the ledger.
     public static func recommended(for range: DateInterval) -> UsageTrendBucket {
-        range.duration <= 24 * 60 * 60 ? .hour : .day
+        if range.duration <= 24 * 60 * 60 { return .hour }
+        if range.duration <= 45 * 24 * 60 * 60 { return .day }
+        return .week
+    }
+}
+
+/// The chart control's intent. `auto` resolves through the same Core policy
+/// as callers that do not specify a bucket, so changing it always changes the
+/// underlying query rather than merely relabelling an already-built series.
+public enum UsageTrendGranularity: String, Sendable, Equatable, CaseIterable, Codable {
+    case automatic
+    case hour
+    case day
+    case week
+
+    public func resolved(for range: DateInterval) -> UsageTrendBucket {
+        switch self {
+        case .automatic: .recommended(for: range)
+        case .hour: .hour
+        case .day: .day
+        case .week: .week
+        }
     }
 }
 
@@ -140,16 +163,37 @@ public struct UsageTrendPoint: Sendable, Equatable, Identifiable {
     }
 }
 
+/// One provider's zero-filled projection of a trend. It deliberately shares
+/// the parent series' buckets, which keeps legend, lines, hover selection and
+/// totals on one semantic source of truth.
+public struct UsageProviderTrendSeries: Sendable, Equatable, Identifiable {
+    public let tool: ToolType
+    public let points: [UsageTrendPoint]
+
+    public var id: ToolType { tool }
+
+    public init(tool: ToolType, points: [UsageTrendPoint]) {
+        self.tool = tool
+        self.points = points
+    }
+}
+
 /// Zero-filled series: every bucket between the filter's `start` and `end`
 /// is present, including the empty ones, so a chart never has to invent
 /// gaps.
 public struct UsageTrendSeries: Sendable, Equatable {
     public let bucket: UsageTrendBucket
     public let points: [UsageTrendPoint]
+    public let providerSeries: [UsageProviderTrendSeries]
 
-    public init(bucket: UsageTrendBucket, points: [UsageTrendPoint]) {
+    public init(
+        bucket: UsageTrendBucket,
+        points: [UsageTrendPoint],
+        providerSeries: [UsageProviderTrendSeries] = []
+    ) {
         self.bucket = bucket
         self.points = points
+        self.providerSeries = providerSeries
     }
 }
 

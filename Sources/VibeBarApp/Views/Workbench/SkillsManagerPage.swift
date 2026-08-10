@@ -79,11 +79,11 @@ struct SkillsManagerPage: View {
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(.secondary)
             TextField("Filter installed skills", text: $model.searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: density.segmentedFontSize))
+                .font(.system(size: max(12, density.segmentedFontSize)))
             if !model.searchText.isEmpty {
                 Button {
                     model.searchText = ""
@@ -96,7 +96,7 @@ struct SkillsManagerPage: View {
             }
         }
         .padding(.horizontal, 10)
-        .frame(height: 26)
+        .frame(minHeight: 30)
         .frame(maxWidth: 320)
         .background(Capsule().fill(.background.tertiary.opacity(0.7)))
         .overlay(Capsule().stroke(.separator.opacity(0.45), lineWidth: 0.5))
@@ -104,58 +104,68 @@ struct SkillsManagerPage: View {
 
     private var actionButtons: some View {
         HStack(spacing: 6) {
-            Button {
-                model.checkForUpdates()
+            Menu {
+                Button {
+                    model.presentImportSheet()
+                } label: {
+                    Label("Import Existing…", systemImage: "square.and.arrow.down.on.square")
+                }
+                Button {
+                    showsZipImporter = true
+                } label: {
+                    Label("Install from ZIP…", systemImage: "doc.zipper")
+                }
             } label: {
                 buttonLabel(
-                    systemImage: "arrow.triangle.2.circlepath",
+                    systemImage: "plus",
+                    title: "Add",
+                    busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
+                        || model.isBusy(SkillsManagerModel.BusyKey.importing)
+                )
+            }
+            .menuStyle(.button)
+            .buttonStyle(.bordered)
+            .menuIndicator(.hidden)
+            .help("Import skills already on this Mac or install a ZIP archive")
+
+            Menu {
+                Button {
+                    model.checkForUpdates()
+                } label: {
+                    Label(
+                        model.updatesAvailableCount > 0
+                            ? "Updates Available (\(model.updatesAvailableCount))"
+                            : "Check for Updates",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                }
+                .disabled(model.isBusy(SkillsManagerModel.BusyKey.updates))
+                Divider()
+                Button {
+                    model.presentBackupsSheet()
+                } label: {
+                    Label("Backups…", systemImage: "clock.arrow.circlepath")
+                }
+            } label: {
+                buttonLabel(
+                    systemImage: "ellipsis.circle",
                     title: model.updatesAvailableCount > 0
-                        ? "Updates (\(model.updatesAvailableCount))"
-                        : "Check Updates",
+                        ? "More · \(model.updatesAvailableCount)"
+                        : "More",
                     busy: model.isBusy(SkillsManagerModel.BusyKey.updates)
                 )
             }
-            .buttonStyle(.glass)
-            .help("Compare every repository-backed skill against its source")
-
-            Button {
-                showsZipImporter = true
-            } label: {
-                buttonLabel(
-                    systemImage: "doc.zipper",
-                    title: "Install from ZIP",
-                    busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
-                )
-            }
-            .buttonStyle(.glass)
-            .help("Install every skill inside a local .zip archive")
-
-            Button {
-                model.presentImportSheet()
-            } label: {
-                buttonLabel(
-                    systemImage: "square.and.arrow.down.on.square",
-                    title: "Import Existing",
-                    busy: model.isBusy(SkillsManagerModel.BusyKey.importing)
-                )
-            }
-            .buttonStyle(.glass)
-            .help("Recognize skills already on this Mac without moving them")
-
-            Button {
-                model.presentBackupsSheet()
-            } label: {
-                buttonLabel(systemImage: "clock.arrow.circlepath", title: "Backups", busy: false)
-            }
-            .buttonStyle(.glass)
-            .help("Restore a skill from a pre-uninstall snapshot")
+            .menuStyle(.button)
+            .buttonStyle(.bordered)
+            .menuIndicator(.hidden)
+            .help("Check repository updates or restore a backup")
 
             Button {
                 model.isDiscoverSheetPresented = true
             } label: {
                 buttonLabel(systemImage: "sparkle.magnifyingglass", title: "Discover", busy: false)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .help("Browse configured repositories and the skills.sh index")
         }
     }
@@ -169,10 +179,10 @@ struct SkillsManagerPage: View {
                     .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
             }
             Text(title)
-                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .lineLimit(1)
         }
-        .frame(minHeight: 22)
+        .frame(minHeight: 28)
     }
 
     /// How many skills each agent CLI currently sees. The single number that
@@ -185,11 +195,11 @@ struct SkillsManagerPage: View {
                 HStack(spacing: 4) {
                     SkillAppGlyph(app: app, size: density.segmentedFontSize)
                     Text("\(count)")
-                        .font(.system(size: density.segmentedFontSize - 1, weight: .semibold,
+                        .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold,
                                       design: .rounded).monospacedDigit())
                 }
                 .padding(.horizontal, 8)
-                .frame(minHeight: 22)
+                .frame(minHeight: 28)
                 .background(Capsule().fill(app.accent.opacity(count == 0 ? 0.05 : 0.14)))
                 .overlay(Capsule().stroke(app.accent.opacity(count == 0 ? 0.16 : 0.45), lineWidth: 0.8))
                 .opacity(count == 0 ? 0.5 : 1)
@@ -199,7 +209,7 @@ struct SkillsManagerPage: View {
             }
             Spacer(minLength: 8)
             Text(countSummary)
-                .font(.system(size: max(9, density.resetCountdownFontSize), design: .rounded)
+                .font(.system(size: max(10, density.resetCountdownFontSize), design: .rounded)
                     .monospacedDigit())
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)

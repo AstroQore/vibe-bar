@@ -51,6 +51,9 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(
             UsageTrendBucket.recommended(for: DateInterval(start: start, duration: 30 * 86_400)), .day
         )
+        XCTAssertEqual(
+            UsageTrendBucket.recommended(for: DateInterval(start: start, duration: 46 * 86_400)), .week
+        )
     }
 
     func testRequestPageCountReportsWholePages() {
@@ -94,6 +97,33 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(series.points.reduce(Int64(0)) { $0 + $1.costMicros }, 1_000_000)
     }
 
+    func testHourlyTrendFallsBackToDailyWhenRangeCrossesActualDetailFloor() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsHourlyFloor")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let today = calendar.startOfDay(for: now)
+        let rolledUpDay = try XCTUnwrap(calendar.date(byAdding: .day, value: -35, to: today))
+        let end = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: rolledUpDay))
+        let event = try XCTUnwrap(calendar.date(byAdding: .hour, value: 10, to: rolledUpDay))
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: event, input: 300, output: 30), costUSD: 0.3
+            )
+        ]))
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 365)
+
+        let filter = UsageQueryFilter(range: DateInterval(start: rolledUpDay, end: end))
+        // This is only 24 buckets, so bucket-count gating alone would still
+        // offer Hourly. The ledger's stored floor must force the day fallback.
+        let series = try await ledger.trend(filter, bucket: .hour)
+        let supportsHourly = try await ledger.supportsHourlyTrend(filter)
+        XCTAssertFalse(supportsHourly)
+        XCTAssertEqual(series.bucket, .day)
+        XCTAssertEqual(series.points.map(\.totalTokens), [330])
+        XCTAssertEqual(series.points.map(\.costMicros), [300_000])
+    }
+
     func testDailyTrendZeroFillsEveryDayInRange() async throws {
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsDaily")
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -118,6 +148,75 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(series.points.first?.bucketStart, start)
         XCTAssertEqual(series.points.first?.totalTokens, 11)
         XCTAssertEqual(series.points.dropFirst().reduce(Int64(0)) { $0 + $1.totalTokens }, 0)
+    }
+
+    func testWeeklyTrendGroupsProviderSeriesOnTheSameBuckets() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsWeeklyProviders")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let start = try XCTUnwrap(calendar.dateInterval(of: .weekOfYear, for: now)).start
+        let end = try XCTUnwrap(calendar.date(byAdding: .weekOfYear, value: 2, to: start))
+        let first = try XCTUnwrap(calendar.date(byAdding: .hour, value: 4, to: start))
+        let second = try XCTUnwrap(calendar.date(byAdding: .day, value: 8, to: start))
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .codex,
+            path: "/Users/example/.codex/sessions/weekly.jsonl",
+            events: [UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: first, input: 100, output: 10), costUSD: 0.10
+            )]
+        ))
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .grok,
+            path: "/Users/example/.grok/sessions/weekly.jsonl",
+            events: [UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: second, input: 200, output: 20), costUSD: 0.20
+            )]
+        ))
+
+        let series = try await ledger.trend(
+            UsageQueryFilter(range: DateInterval(start: start, end: end)), bucket: .week
+        )
+        XCTAssertEqual(series.bucket, .week)
+        XCTAssertEqual(series.points.count, 2)
+        XCTAssertEqual(series.points.map(\.totalTokens), [110, 220])
+        XCTAssertEqual(series.providerSeries.map(\.tool), [.codex, .grok])
+        XCTAssertEqual(series.providerSeries[0].points.map(\.totalTokens), [110, 0])
+        XCTAssertEqual(series.providerSeries[1].points.map(\.totalTokens), [0, 220])
+    }
+
+    func testWeeklyTrendKeepsPartialBoundaryWeeksButExcludesOutOfRangeRows() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsPartialWeeks")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let weekStart = try XCTUnwrap(calendar.dateInterval(of: .weekOfYear, for: now)).start
+        let rangeStart = try XCTUnwrap(calendar.date(byAdding: .day, value: 2, to: weekStart))
+        let rangeEnd = try XCTUnwrap(calendar.date(byAdding: .day, value: 10, to: weekStart))
+        let beforeRange = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: weekStart))
+        let insideFirstPartialWeek = try XCTUnwrap(calendar.date(byAdding: .day, value: 3, to: weekStart))
+        let insideLastPartialWeek = try XCTUnwrap(calendar.date(byAdding: .day, value: 8, to: weekStart))
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: beforeRange, input: 900, output: 90), costUSD: 0.90
+            ),
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: insideFirstPartialWeek, input: 100, output: 10),
+                costUSD: 0.10
+            ),
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: insideLastPartialWeek, input: 200, output: 20),
+                costUSD: 0.20
+            ),
+        ]))
+
+        let series = try await ledger.trend(
+            UsageQueryFilter(range: DateInterval(start: rangeStart, end: rangeEnd)), bucket: .week
+        )
+        let secondWeek = try XCTUnwrap(calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart))
+        XCTAssertEqual(series.points.map(\.bucketStart), [weekStart, secondWeek])
+        XCTAssertEqual(series.points.map(\.totalTokens), [110, 220])
+        XCTAssertEqual(series.points.reduce(Int64(0)) { $0 + $1.costMicros }, 300_000)
     }
 
     // MARK: - Filters

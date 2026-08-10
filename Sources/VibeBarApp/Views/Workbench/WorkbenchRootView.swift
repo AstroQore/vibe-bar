@@ -49,16 +49,21 @@ struct WorkbenchRootView: View {
         let density = Theme.overviewDensity(for: settingsStore.settings.popoverDensity)
         NavigationSplitView {
             List(selection: $selection) {
-                ForEach(WorkbenchPage.allCases) { page in
-                    Label(page.title, systemImage: page.systemImage)
-                        .tag(page)
+                Section("WORKBENCH") {
+                    ForEach(WorkbenchPage.allCases) { page in
+                        Label(page.title, systemImage: page.systemImage)
+                            .tag(page)
+                    }
                 }
             }
+            .listStyle(.sidebar)
+            .navigationTitle("Workbench")
             .navigationSplitViewColumnWidth(min: 188, ideal: 208, max: 268)
         } detail: {
             detail(for: page, density: density)
                 .navigationTitle(page.title)
         }
+        .navigationSplitViewStyle(.balanced)
         .onAppear {
             guard selection == nil else { return }
             selection = initialPage ?? WorkbenchPage(rawValue: storedPage) ?? .usageStats

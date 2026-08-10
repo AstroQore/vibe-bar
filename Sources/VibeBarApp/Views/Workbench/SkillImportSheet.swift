@@ -77,7 +77,7 @@ struct SkillImportSheet: View {
                 model.isImportSheetPresented = false
                 dismiss()
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.bordered)
             Button {
                 model.runImport(
                     apps: Array(adoptedApps).sorted { $0.rawValue < $1.rawValue },
@@ -92,7 +92,7 @@ struct SkillImportSheet: View {
                         + (report.adopted.count + adopting.count == 1 ? "" : "s"))
                 }
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
             .disabled(report.adopted.isEmpty && adopting.isEmpty)
         }
@@ -113,7 +113,7 @@ struct SkillImportSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text("Keep evidence for")
-                            .font(.system(size: max(9, density.resetCountdownFontSize)))
+                            .font(.system(size: max(10, density.resetCountdownFontSize)))
                             .foregroundStyle(.tertiary)
                         SkillAppToggleRow(
                             isOn: { adoptedApps.contains($0) },
@@ -187,7 +187,7 @@ struct SkillImportSheet: View {
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                         .lineLimit(1)
                     Text("found in " + entry.foundIn.map(\.displayName).joined(separator: ", "))
-                        .font(.system(size: max(9, density.resetCountdownFontSize)))
+                        .font(.system(size: max(10, density.resetCountdownFontSize)))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -218,7 +218,7 @@ struct SkillImportSheet: View {
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             Text(report.unrecognized.joined(separator: ", "))
-                .font(.system(size: max(9, density.resetCountdownFontSize), design: .monospaced))
+                .font(.system(size: max(10, density.resetCountdownFontSize), design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -236,10 +236,10 @@ struct SkillImportSheet: View {
                 HStack(spacing: 8) {
                     SkillAppGlyph(app: conflict.app, size: 11)
                     Text(conflict.directoryName)
-                        .font(.system(size: max(9, density.resetCountdownFontSize), design: .monospaced))
+                        .font(.system(size: max(10, density.resetCountdownFontSize), design: .monospaced))
                         .foregroundStyle(.secondary)
                     Text(conflict.app.displayName)
-                        .font(.system(size: max(9, density.resetCountdownFontSize)))
+                        .font(.system(size: max(10, density.resetCountdownFontSize)))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -249,12 +249,12 @@ struct SkillImportSheet: View {
     private func sectionHeader(_ title: String, detail: String) -> some View {
         HStack(spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: max(8, density.segmentedFontSize - 3), weight: .semibold))
+                .font(.system(size: max(10, density.segmentedFontSize - 3), weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .tracking(0.4)
             Spacer(minLength: 8)
             Text(detail)
-                .font(.system(size: max(9, density.resetCountdownFontSize), design: .rounded)
+                .font(.system(size: max(10, density.resetCountdownFontSize), design: .rounded)
                     .monospacedDigit())
                 .foregroundStyle(.tertiary)
         }
