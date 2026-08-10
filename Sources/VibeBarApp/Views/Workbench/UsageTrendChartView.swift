@@ -2,56 +2,6 @@ import Charts
 import SwiftUI
 import VibeBarCore
 
-/// The four token components a request is billed on.
-///
-/// Their hues are deliberately *not* provider accents: a stacked band here
-/// means "cache read", not "Claude", and reusing the brand palette would make
-/// the two readings fight. Four widely separated semantic-ish hues instead,
-/// kept in one table so the legend, the bands, and the tooltip agree.
-enum UsageTokenSeries: String, CaseIterable, Identifiable, Hashable {
-    case freshInput
-    case output
-    case cacheCreation
-    case cacheRead
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .freshInput:    "Input"
-        case .output:        "Output"
-        case .cacheCreation: "Cache write"
-        case .cacheRead:     "Cache read"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .freshInput:    Color(red: 0.33, green: 0.55, blue: 0.95)  // blue
-        case .output:        Color(red: 0.20, green: 0.72, blue: 0.58)  // green
-        case .cacheCreation: Color(red: 0.96, green: 0.66, blue: 0.22)  // amber
-        case .cacheRead:     Color(red: 0.62, green: 0.45, blue: 0.93)  // violet
-        }
-    }
-
-    var gradient: LinearGradient {
-        LinearGradient(
-            colors: [color.opacity(0.72), color.opacity(0.20)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-
-    func value(in point: UsageTrendPoint) -> Int64 {
-        switch self {
-        case .freshInput:    point.freshInput
-        case .output:        point.output
-        case .cacheCreation: point.cacheCreation
-        case .cacheRead:     point.cacheRead
-        }
-    }
-}
-
 private enum UsageChartMetric: String, CaseIterable, Identifiable {
     case tokens
     case cost
@@ -61,30 +11,38 @@ private enum UsageChartMetric: String, CaseIterable, Identifiable {
     var systemImage: String { self == .tokens ? "sum" : "dollarsign" }
 }
 
-/// Tokens or cost over the selected range in one deliberate chart surface.
-/// The metric switch mirrors the established cost-history interaction instead
-/// of stacking two unrelated plots and asking the user to read both at once.
-///
-/// The range is drawn whole: no brush strip, no pan/zoom. `ChartTimeWindow`
-/// and `ChartBrushNavigator` earn their keep on the cost history card, whose
-/// domain is "everything Vibe Bar ever recorded"; here the domain *is* the
-/// filter, and the filter bar is already the navigation.
+/// Tokens or cost over the selected range, grouped by provider. This mirrors
+/// the Overview chart's compact navigation vocabulary while keeping the
+/// Usage filter as the single source for every card and table on the page.
 struct UsageTrendChartView: View {
     let density: Theme.Density
-    let series: UsageTrendSeries
+    @ObservedObject var model: UsageStatsViewModel
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var metric: UsageChartMetric = .tokens
-    @State private var hiddenSeries: Set<UsageTokenSeries> = []
+    @State private var hiddenTools: Set<ToolType> = []
     @State private var hoveredDate: Date?
+    @State private var chartWindow: ChartTimeWindow?
 
     /// Floor for the leading axis-label column on both panes. Without a shared
     /// floor the token pane ("3.40M") and the cost pane ("$12") inset their
     /// plots differently and the two x axes stop lining up.
     private static let axisLabelWidth: CGFloat = 46
     private static let tooltipWidth: CGFloat = 186
+    private static let mainMarkBudget = 1_200
+    private static let navigatorMarkBudget = 480
 
-    private var visibleSeries: [UsageTokenSeries] {
-        UsageTokenSeries.allCases.filter { !hiddenSeries.contains($0) }
+    private struct DomainKey: Equatable {
+        let bucket: UsageTrendBucket
+        let start: Date?
+        let end: Date?
+        let providers: [ToolType]
+    }
+
+    private var series: UsageTrendSeries { model.trend }
+
+    private var visibleProviders: [UsageProviderTrendSeries] {
+        series.providerSeries.filter { !hiddenTools.contains($0.tool) }
     }
 
     private var hasData: Bool {
@@ -98,7 +56,37 @@ struct UsageTrendChartView: View {
             let now = Date()
             return now.addingTimeInterval(-3_600)...now
         }
-        return first...max(last, first.addingTimeInterval(1))
+        return first...max(bucketEnd(after: last), first.addingTimeInterval(1))
+    }
+
+    private var visibleDomain: ClosedRange<Date> {
+        resolvedChartWindow.visibleRange
+    }
+
+    private var domainKey: DomainKey {
+        DomainKey(
+            bucket: series.bucket,
+            start: series.points.first?.bucketStart,
+            end: series.points.last?.bucketStart,
+            providers: series.providerSeries.map(\.tool)
+        )
+    }
+
+    private var resolvedChartWindow: ChartTimeWindow {
+        chartWindow ?? ChartTimeWindow(
+            domainStart: domain.lowerBound,
+            domainEnd: domain.upperBound,
+            minimumSpan: minimumChartSpan,
+            visibleStart: domain.lowerBound,
+            visibleEnd: domain.upperBound
+        )
+    }
+
+    private var chartWindowBinding: Binding<ChartTimeWindow> {
+        Binding(
+            get: { resolvedChartWindow },
+            set: { chartWindow = $0 }
+        )
     }
 
     private var hoveredPoint: UsageTrendPoint? {
@@ -111,8 +99,26 @@ struct UsageTrendChartView: View {
             header
             if hasData {
                 if metric == .tokens { tokenPane } else { costPane }
+                ChartBrushNavigator(
+                    window: chartWindowBinding,
+                    accent: .accentColor,
+                    height: density.chartBrushHeight,
+                    accessibilityDescription: "Usage chart range navigator"
+                ) { geometry in
+                    miniProviderPaths(in: geometry)
+                }
+                chartScopeRow
             } else {
                 emptyState
+            }
+        }
+        .onChange(of: domainKey) { _, newValue in
+            chartWindow = nil
+            hoveredDate = nil
+            let available = Set(newValue.providers)
+            hiddenTools.formIntersection(available)
+            if !available.isEmpty, hiddenTools.count == available.count {
+                hiddenTools.removeAll()
             }
         }
     }
@@ -120,19 +126,36 @@ struct UsageTrendChartView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("USAGE OVER TIME")
-                    .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .tracking(0.4)
-                Text(series.bucket == .hour ? "Hourly buckets" : "Local calendar days")
-                    .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("USAGE OVER TIME")
+                        .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .tracking(0.4)
+                    Text(bucketSubtitle)
+                        .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
+                        .foregroundStyle(.secondary)
+                }
+                metricSelector
+                granularitySelector
+                Spacer(minLength: 8)
+                windowNavigator
             }
-            metricSelector
-            Spacer(minLength: 8)
-            if metric == .tokens { legend }
+            if !series.providerSeries.isEmpty {
+                ScrollView(.horizontal) {
+                    legend
+                }
+                .scrollIndicators(.never)
+            }
+        }
+    }
+
+    private var bucketSubtitle: String {
+        switch series.bucket {
+        case .hour: "Hourly buckets"
+        case .day: "Local calendar days"
+        case .week: "Local calendar weeks"
         }
     }
 
@@ -141,7 +164,7 @@ struct UsageTrendChartView: View {
             ForEach(UsageChartMetric.allCases) { value in
                 let selected = metric == value
                 Button {
-                    withAnimation(.easeOut(duration: 0.16)) { metric = value }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { metric = value }
                 } label: {
                     Label(value.title, systemImage: value.systemImage)
                         .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
@@ -173,18 +196,61 @@ struct UsageTrendChartView: View {
         )
     }
 
+    private var granularitySelector: some View {
+        Menu {
+            Picker("Granularity", selection: $model.trendGranularity) {
+                ForEach(UsageTrendGranularity.allCases, id: \.self) { value in
+                    Text(granularityTitle(value)).tag(value)
+                        .disabled(!model.isTrendGranularityAvailable(value))
+                }
+            }
+        } label: {
+            Label(granularityTitle(model.trendGranularity), systemImage: "chart.bar.xaxis")
+                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
+                .frame(minHeight: 22)
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .accessibilityLabel("Choose chart granularity")
+    }
+
+    private var windowNavigator: some View {
+        ControlGroup {
+            Button { model.navigateWindow(by: -1) } label: {
+                Image(systemName: "chevron.left")
+            }
+            .help("Previous window")
+            Button { model.navigateWindow(by: 1) } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!model.canNavigateForward)
+            .help("Next window")
+            Button { model.resetWindow() } label: {
+                Label("Now", systemImage: "arrow.clockwise")
+                    .labelStyle(.titleAndIcon)
+            }
+            .disabled(!model.canNavigateForward)
+            .help("Return to current window")
+        }
+        .font(.system(size: 10, weight: .semibold))
+        .controlSize(.small)
+    }
+
     private var legend: some View {
         HStack(spacing: 6) {
-            ForEach(UsageTokenSeries.allCases) { kind in
-                let visible = !hiddenSeries.contains(kind)
+            ForEach(series.providerSeries) { provider in
+                let visible = !hiddenTools.contains(provider.tool)
+                let color = Theme.providerAccent(for: provider.tool)
                 Button {
-                    toggle(kind)
+                    toggle(provider.tool)
                 } label: {
                     HStack(spacing: 4) {
                         Capsule()
-                            .fill(kind.color)
+                            .fill(color)
                             .frame(width: 10, height: 4)
-                        Text(kind.title)
+                        Text(provider.tool.menuTitle)
                             .font(.system(size: max(8, density.segmentedFontSize - 2), weight: .semibold))
                     }
                     .padding(.horizontal, 7)
@@ -192,23 +258,23 @@ struct UsageTrendChartView: View {
                 }
                 .buttonStyle(.plain)
                 .background(
-                    Capsule().fill(kind.color.opacity(visible ? 0.14 : 0.04))
+                    Capsule().fill(color.opacity(visible ? 0.14 : 0.04))
                 )
-                .opacity(visible ? 1 : 0.42)
-                .saturation(visible ? 1 : 0.15)
-                .help(visible ? "Hide \(kind.title)" : "Show \(kind.title)")
+                .opacity(visible ? 1 : 0.68)
+                .saturation(visible ? 1 : 0.45)
+                .help(visible ? "Hide \(provider.tool.displayName)" : "Show \(provider.tool.displayName)")
                 .accessibilityAddTraits(visible ? [.isSelected] : [])
             }
         }
     }
 
-    private func toggle(_ kind: UsageTokenSeries) {
-        if hiddenSeries.contains(kind) {
-            hiddenSeries.remove(kind)
-        } else if hiddenSeries.count < UsageTokenSeries.allCases.count - 1 {
-            // Never let the last band go: an empty token pane reads as "no
-            // data" rather than as "you turned everything off".
-            hiddenSeries.insert(kind)
+    private func toggle(_ tool: ToolType) {
+        if hiddenTools.contains(tool) {
+            hiddenTools.remove(tool)
+        } else if hiddenTools.count < series.providerSeries.count - 1 {
+            // Never let the last provider go: an empty chart reads as missing
+            // data rather than as "you turned every series off".
+            hiddenTools.insert(tool)
         }
     }
 
@@ -216,15 +282,31 @@ struct UsageTrendChartView: View {
 
     private var tokenPane: some View {
         Chart {
-            ForEach(visibleSeries) { kind in
-                ForEach(series.points, id: \.bucketStart) { point in
+            ForEach(visibleProviders) { provider in
+                let color = Theme.providerAccent(for: provider.tool)
+                ForEach(renderedPoints(for: provider), id: \.bucketStart) { point in
                     AreaMark(
                         x: .value("Time", point.bucketStart),
-                        y: .value("Tokens", kind.value(in: point)),
-                        series: .value("Series", kind.title),
-                        stacking: .standard
+                        y: .value("Tokens", point.totalTokens),
+                        series: .value("Provider", provider.tool.rawValue)
                     )
-                    .foregroundStyle(kind.gradient)
+                    .foregroundStyle(areaGradient(color))
+                    LineMark(
+                        x: .value("Time", point.bucketStart),
+                        y: .value("Tokens", point.totalTokens),
+                        series: .value("Provider", provider.tool.rawValue)
+                    )
+                    .interpolationMethod(.linear)
+                    .foregroundStyle(color)
+                    .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                }
+                if let hoveredDate, let point = providerPoint(for: provider, at: hoveredDate) {
+                    PointMark(
+                        x: .value("Time", point.bucketStart),
+                        y: .value("Tokens", point.totalTokens)
+                    )
+                    .foregroundStyle(color)
+                    .symbolSize(34)
                 }
             }
             if let hoveredDate {
@@ -234,7 +316,7 @@ struct UsageTrendChartView: View {
             }
         }
         .chartLegend(.hidden)
-        .chartXScale(domain: domain)
+        .chartXScale(domain: visibleDomain)
         .chartPlotStyle { $0.clipped() }
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
@@ -251,6 +333,8 @@ struct UsageTrendChartView: View {
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 5)) { _ in
                 AxisGridLine().foregroundStyle(.secondary.opacity(0.10))
+                AxisValueLabel(format: axisFormat)
+                    .font(.system(size: 9))
             }
         }
         .chartOverlay { proxy in
@@ -262,30 +346,39 @@ struct UsageTrendChartView: View {
             }
         }
         .frame(height: density.overviewCostChartHeight)
+        .accessibilityLabel("Token usage over time")
+        .accessibilityValue(chartAccessibilityValue)
     }
 
     private var costPane: some View {
         Chart {
-            ForEach(series.points, id: \.bucketStart) { point in
-                AreaMark(
-                    x: .value("Time", point.bucketStart),
-                    y: .value("Cost", costUSD(point))
-                )
-                .interpolationMethod(.monotone)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.accentColor.opacity(0.20), Color.accentColor.opacity(0.02)],
-                        startPoint: .top,
-                        endPoint: .bottom
+            ForEach(visibleProviders) { provider in
+                let color = Theme.providerAccent(for: provider.tool)
+                ForEach(renderedPoints(for: provider), id: \.bucketStart) { point in
+                    AreaMark(
+                        x: .value("Time", point.bucketStart),
+                        y: .value("Cost", costUSD(point)),
+                        series: .value("Provider", provider.tool.rawValue)
                     )
-                )
-                LineMark(
-                    x: .value("Time", point.bucketStart),
-                    y: .value("Cost", costUSD(point))
-                )
-                .interpolationMethod(.monotone)
-                .foregroundStyle(Color.accentColor)
-                .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    .interpolationMethod(.linear)
+                    .foregroundStyle(areaGradient(color))
+                    LineMark(
+                        x: .value("Time", point.bucketStart),
+                        y: .value("Cost", costUSD(point)),
+                        series: .value("Provider", provider.tool.rawValue)
+                    )
+                    .interpolationMethod(.linear)
+                    .foregroundStyle(color)
+                    .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                }
+                if let hoveredDate, let point = providerPoint(for: provider, at: hoveredDate) {
+                    PointMark(
+                        x: .value("Time", point.bucketStart),
+                        y: .value("Cost", costUSD(point))
+                    )
+                    .foregroundStyle(color)
+                    .symbolSize(34)
+                }
             }
             if let hoveredDate {
                 RuleMark(x: .value("Time", hoveredDate))
@@ -294,7 +387,7 @@ struct UsageTrendChartView: View {
             }
         }
         .chartLegend(.hidden)
-        .chartXScale(domain: domain)
+        .chartXScale(domain: visibleDomain)
         .chartPlotStyle { $0.clipped() }
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 2)) { value in
@@ -324,6 +417,8 @@ struct UsageTrendChartView: View {
             }
         }
         .frame(height: density.overviewCostChartHeight)
+        .accessibilityLabel("Cost over time")
+        .accessibilityValue(chartAccessibilityValue)
     }
 
     private var emptyState: some View {
@@ -374,6 +469,7 @@ struct UsageTrendChartView: View {
 
     private func nearestBucket(to date: Date) -> Date? {
         series.points
+            .filter { visibleDomain.contains($0.bucketStart) }
             .min { lhs, rhs in
                 abs(lhs.bucketStart.timeIntervalSince(date))
                     < abs(rhs.bucketStart.timeIntervalSince(date))
@@ -387,20 +483,24 @@ struct UsageTrendChartView: View {
                 Text(tooltipDate(point.bucketStart))
                     .font(.system(size: 10, weight: .semibold))
                 Spacer(minLength: 4)
-                Text(UsageFormatting.formatMicroUSD(point.costMicros))
+                Text(UsageFormatting.formatMicroUSD(visibleCostMicros(at: point.bucketStart)))
                     .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
             }
             Divider().opacity(0.3)
-            ForEach(UsageTokenSeries.allCases) { kind in
+            ForEach(visibleProviders) { provider in
+                let providerPoint = providerPoint(for: provider, at: point.bucketStart)
                 HStack(spacing: 6) {
                     Capsule()
-                        .fill(kind.color)
+                        .fill(Theme.providerAccent(for: provider.tool))
                         .frame(width: 8, height: 4)
-                    Text(kind.title)
+                    Text(provider.tool.menuTitle)
                         .font(.system(size: 9))
-                        .foregroundStyle(hiddenSeries.contains(kind) ? .tertiary : .secondary)
+                        .foregroundStyle(.secondary)
                     Spacer(minLength: 4)
-                    Text(UsageFormatting.compactTokens(kind.value(in: point)))
+                    Text(metric == .tokens
+                        ? UsageFormatting.compactTokens(providerPoint?.totalTokens ?? 0)
+                        : UsageFormatting.formatMicroUSD(providerPoint?.costMicros ?? 0)
+                    )
                         .font(.system(size: 9, design: .rounded).monospacedDigit())
                 }
             }
@@ -413,7 +513,7 @@ struct UsageTrendChartView: View {
     }
 
     private func costPill(_ point: UsageTrendPoint) -> some View {
-        Text(UsageFormatting.formatMicroUSD(point.costMicros))
+        Text(UsageFormatting.formatMicroUSD(visibleCostMicros(at: point.bucketStart)))
             .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
             .padding(.horizontal, 9)
             .frame(minHeight: 20)
@@ -454,10 +554,137 @@ struct UsageTrendChartView: View {
         Double(point.costMicros) / 1_000_000
     }
 
+    private func providerPoint(
+        for provider: UsageProviderTrendSeries,
+        at date: Date
+    ) -> UsageTrendPoint? {
+        provider.points.first { $0.bucketStart == date }
+    }
+
+    private func visibleCostMicros(at date: Date) -> Int64 {
+        visibleProviders.reduce(Int64(0)) { total, provider in
+            total + (providerPoint(for: provider, at: date)?.costMicros ?? 0)
+        }
+    }
+
+    private func renderedPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
+        let points = provider.points.filter { visibleDomain.contains($0.bucketStart) }
+        let perProvider = max(2, Self.mainMarkBudget / max(1, visibleProviders.count))
+        return ChartSeriesThinning.strided(points, limit: perProvider)
+    }
+
+    private func navigatorPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
+        let perProvider = max(2, Self.navigatorMarkBudget / max(1, visibleProviders.count))
+        return ChartSeriesThinning.strided(provider.points, limit: perProvider)
+    }
+
+    private func areaGradient(_ color: Color) -> LinearGradient {
+        LinearGradient(
+            colors: [color.opacity(0.26), color.opacity(0.025)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    private var minimumChartSpan: TimeInterval {
+        switch series.bucket {
+        case .hour: 2 * 3_600
+        case .day: 2 * 86_400
+        case .week: 2 * 7 * 86_400
+        }
+    }
+
+    private func bucketEnd(after start: Date) -> Date {
+        let calendar = Calendar.current
+        switch series.bucket {
+        case .hour:
+            return calendar.date(byAdding: .hour, value: 1, to: start)
+                ?? start.addingTimeInterval(3_600)
+        case .day:
+            return calendar.date(byAdding: .day, value: 1, to: start)
+                ?? start.addingTimeInterval(86_400)
+        case .week:
+            return calendar.date(byAdding: .weekOfYear, value: 1, to: start)
+                ?? start.addingTimeInterval(7 * 86_400)
+        }
+    }
+
+    private func miniProviderPaths(in geometry: ChartBrushGeometry) -> some View {
+        let maximum = navigationMaximum
+        return ZStack {
+            ForEach(visibleProviders) { provider in
+                Path { path in
+                    var hasPoint = false
+                    for point in navigatorPoints(for: provider) {
+                        let value = metric == .tokens
+                            ? Double(point.totalTokens)
+                            : Double(point.costMicros)
+                        let position = CGPoint(
+                            x: geometry.x(for: point.bucketStart),
+                            y: geometry.y(forFraction: maximum > 0 ? value / maximum : 0)
+                        )
+                        if hasPoint { path.addLine(to: position) } else { path.move(to: position) }
+                        hasPoint = true
+                    }
+                }
+                .stroke(
+                    Theme.providerAccent(for: provider.tool).opacity(0.78),
+                    style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round)
+                )
+            }
+        }
+    }
+
+    private var navigationMaximum: Double {
+        visibleProviders
+            .flatMap(\.points)
+            .map { metric == .tokens ? Double($0.totalTokens) : Double($0.costMicros) }
+            .max() ?? 0
+    }
+
+    private var chartScopeRow: some View {
+        HStack(spacing: 8) {
+            Text("Drag the navigator handles to focus this chart; filters and tables keep the full window.")
+                .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if !resolvedChartWindow.coversDomain {
+                Button("Fit") {
+                    chartWindow = nil
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 10, weight: .semibold))
+                .help("Show the full selected window")
+            }
+        }
+    }
+
+    private var chartAccessibilityValue: String {
+        let visiblePoints = visibleProviders
+            .flatMap(\.points)
+            .filter { visibleDomain.contains($0.bucketStart) }
+        let totalTokens = visiblePoints.reduce(Int64(0)) { $0 + $1.totalTokens }
+        let totalCost = visiblePoints.reduce(Int64(0)) { $0 + $1.costMicros }
+        return "\(visibleProviders.count) providers, \(UsageFormatting.compactTokens(totalTokens)) tokens, "
+            + "\(UsageFormatting.formatMicroUSD(totalCost))"
+    }
+
+    private func granularityTitle(_ value: UsageTrendGranularity) -> String {
+        switch value {
+        case .automatic: "Auto"
+        case .hour: "Hourly"
+        case .day: "Daily"
+        case .week: "Weekly"
+        }
+    }
+
     private var axisFormat: Date.FormatStyle {
-        series.bucket == .hour
-            ? .dateTime.hour()
-            : .dateTime.month(.abbreviated).day()
+        switch series.bucket {
+        case .hour: .dateTime.hour()
+        case .day: .dateTime.month(.abbreviated).day()
+        case .week: .dateTime.month(.abbreviated).day()
+        }
     }
 
     private func tooltipDate(_ date: Date) -> String {

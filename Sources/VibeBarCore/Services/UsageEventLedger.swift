@@ -633,13 +633,19 @@ public actor UsageEventLedger: CostUsageEventSink {
         let resolved = bucket ?? UsageTrendBucket.recommended(for: filter.range)
         let starts = bucketStarts(for: filter.range, bucket: resolved)
         var totals: [Date: Accumulator] = [:]
+        var providerTotals: [ToolType: [Date: Accumulator]] = [:]
+
+        func add(_ statement: OpaquePointer, tool: ToolType, key: Date, offset: Int32) {
+            totals[key, default: .zero].add(statement, offset: offset)
+            providerTotals[tool, default: [:]][key, default: .zero].add(statement, offset: offset)
+        }
 
         switch resolved {
         case .hour:
             let detail = detailPredicate(filter)
             let statement = try prepare(
                 """
-                SELECT ts, fresh_input, output, cache_read, cache_creation,
+                SELECT ts, tool, fresh_input, output, cache_read, cache_creation,
                        COALESCE(cost_micros, 0)
                   FROM usage_events WHERE \(detail.sql)
                 """
@@ -648,43 +654,52 @@ public actor UsageEventLedger: CostUsageEventSink {
             bindAll(detail.bindings, to: statement)
             while sqlite3_step(statement) == SQLITE_ROW {
                 let date = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 0)))
-                guard let key = calendar.dateInterval(of: .hour, for: date)?.start else { continue }
-                totals[key, default: .zero].add(statement, offset: 1)
+                guard let key = calendar.dateInterval(of: .hour, for: date)?.start,
+                      let rawTool = columnText(statement, 1),
+                      let tool = ToolType(rawValue: rawTool)
+                else { continue }
+                add(statement, tool: tool, key: key, offset: 2)
             }
-        case .day:
+        case .day, .week:
             let detail = detailPredicate(filter)
             let detailStatement = try prepare(
                 """
-                SELECT day, COALESCE(SUM(fresh_input), 0), COALESCE(SUM(output), 0),
+                SELECT day, tool, COALESCE(SUM(fresh_input), 0), COALESCE(SUM(output), 0),
                        COALESCE(SUM(cache_read), 0), COALESCE(SUM(cache_creation), 0),
                        COALESCE(SUM(cost_micros), 0)
-                  FROM usage_events WHERE \(detail.sql) GROUP BY day
+                  FROM usage_events WHERE \(detail.sql) GROUP BY day, tool
                 """
             )
             defer { sqlite3_finalize(detailStatement) }
             bindAll(detail.bindings, to: detailStatement)
             while sqlite3_step(detailStatement) == SQLITE_ROW {
                 guard let raw = columnText(detailStatement, 0),
-                      let key = dayFormatter.date(from: raw)
+                      let day = dayFormatter.date(from: raw),
+                      let key = bucketStart(for: day, bucket: resolved),
+                      let rawTool = columnText(detailStatement, 1),
+                      let tool = ToolType(rawValue: rawTool)
                 else { continue }
-                totals[key, default: .zero].add(detailStatement, offset: 1)
+                add(detailStatement, tool: tool, key: key, offset: 2)
             }
             if let rollup = rollupPredicate(filter) {
                 let statement = try prepare(
                     """
-                    SELECT day, COALESCE(SUM(fresh_input), 0), COALESCE(SUM(output), 0),
+                    SELECT day, tool, COALESCE(SUM(fresh_input), 0), COALESCE(SUM(output), 0),
                            COALESCE(SUM(cache_read), 0), COALESCE(SUM(cache_creation), 0),
                            COALESCE(SUM(cost_micros), 0)
-                      FROM usage_daily_rollups WHERE \(rollup.sql) GROUP BY day
+                      FROM usage_daily_rollups WHERE \(rollup.sql) GROUP BY day, tool
                     """
                 )
                 defer { sqlite3_finalize(statement) }
                 bindAll(rollup.bindings, to: statement)
                 while sqlite3_step(statement) == SQLITE_ROW {
                     guard let raw = columnText(statement, 0),
-                          let key = dayFormatter.date(from: raw)
+                          let day = dayFormatter.date(from: raw),
+                          let key = bucketStart(for: day, bucket: resolved),
+                          let rawTool = columnText(statement, 1),
+                          let tool = ToolType(rawValue: rawTool)
                     else { continue }
-                    totals[key, default: .zero].add(statement, offset: 1)
+                    add(statement, tool: tool, key: key, offset: 2)
                 }
             }
         }
@@ -700,7 +715,25 @@ public actor UsageEventLedger: CostUsageEventSink {
                 costMicros: value.cost
             )
         }
-        return UsageTrendSeries(bucket: resolved, points: points)
+        let providers = providerTotals
+            .map { tool, values in
+                UsageProviderTrendSeries(
+                    tool: tool,
+                    points: starts.map { start in
+                        let value = values[start] ?? .zero
+                        return UsageTrendPoint(
+                            bucketStart: start,
+                            freshInput: value.freshInput,
+                            output: value.output,
+                            cacheRead: value.cacheRead,
+                            cacheCreation: value.cacheCreation,
+                            costMicros: value.cost
+                        )
+                    }
+                )
+            }
+            .sorted { $0.tool.rawValue < $1.tool.rawValue }
+        return UsageTrendSeries(bucket: resolved, points: points, providerSeries: providers)
     }
 
     /// One page of request-level rows, newest first.
@@ -973,13 +1006,19 @@ public actor UsageEventLedger: CostUsageEventSink {
     }
 
     private func bucketStarts(for range: DateInterval, bucket: UsageTrendBucket) -> [Date] {
-        let component: Calendar.Component = bucket == .hour ? .hour : .day
+        let component: Calendar.Component
         var cursor: Date
         switch bucket {
         case .hour:
+            component = .hour
             cursor = calendar.dateInterval(of: .hour, for: range.start)?.start ?? range.start
         case .day:
+            component = .day
             cursor = calendar.startOfDay(for: range.start)
+        case .week:
+            component = .weekOfYear
+            cursor = calendar.dateInterval(of: .weekOfYear, for: range.start)?.start
+                ?? calendar.startOfDay(for: range.start)
         }
         var out: [Date] = []
         while cursor < range.end, out.count < Self.maximumTrendBuckets {
@@ -990,6 +1029,17 @@ public actor UsageEventLedger: CostUsageEventSink {
             cursor = next
         }
         return out
+    }
+
+    private func bucketStart(for date: Date, bucket: UsageTrendBucket) -> Date? {
+        switch bucket {
+        case .hour:
+            calendar.dateInterval(of: .hour, for: date)?.start
+        case .day:
+            calendar.startOfDay(for: date)
+        case .week:
+            calendar.dateInterval(of: .weekOfYear, for: date)?.start
+        }
     }
 
     /// Local-calendar day key. Matches `CostAggregator`'s bucketing —

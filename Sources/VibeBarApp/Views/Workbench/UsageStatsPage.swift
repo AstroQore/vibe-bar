@@ -3,34 +3,41 @@ import VibeBarCore
 
 /// The Workbench's Usage Stats page.
 ///
-/// One scrolling column, coarse to fine: what is being counted (filters),
-/// the four headline numbers, the shape of the range over time, and finally
-/// the rows behind it. Every section is a `CardShell` at the window's density,
-/// so the page reads as the same material as the popover's cards.
+/// The filter bar is a fixed command surface; only the analytical content
+/// scrolls. Keeping the active range/providers in view makes a long table
+/// remain explainable instead of losing its query context above the fold.
 struct UsageStatsPage: View {
     let density: Theme.Density
     @ObservedObject var model: UsageStatsViewModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                UsageFiltersBar(density: density, model: model)
-                if model.isLedgerAvailable {
-                    UsageHeroCards(density: density, summary: model.summary)
-                    UsageCompositionCards(
-                        density: density,
-                        summary: model.summary,
-                        providers: model.providerStats
-                    )
-                    UsageTrendChartView(density: density, series: model.trend)
-                    UsageBreakdownTables(density: density, model: model)
-                } else {
-                    unavailableCard
+        VStack(spacing: 0) {
+            UsageFiltersBar(density: density, model: model)
+                .padding(.horizontal, density.popoverPaddingH)
+                .padding(.top, density.popoverPaddingV)
+                .padding(.bottom, max(8, density.popoverPaddingV / 2))
+
+            Divider().opacity(0.45)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                    if model.isLedgerAvailable {
+                        UsageHeroCards(density: density, summary: model.summary)
+                        UsageCompositionCards(
+                            density: density,
+                            summary: model.summary,
+                            providers: model.providerStats
+                        )
+                        UsageTrendChartView(density: density, model: model)
+                        UsageBreakdownTables(density: density, model: model)
+                    } else {
+                        unavailableCard
+                    }
                 }
+                .padding(.horizontal, density.popoverPaddingH)
+                .padding(.vertical, density.popoverPaddingV)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .padding(.horizontal, density.popoverPaddingH)
-            .padding(.vertical, density.popoverPaddingV)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { model.activate() }

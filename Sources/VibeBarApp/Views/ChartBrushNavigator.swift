@@ -107,6 +107,33 @@ struct ChartBrushNavigator<Mini: View>: View {
         .frame(height: height)
         .accessibilityElement()
         .accessibilityLabel(accessibilityDescription)
+        .accessibilityValue(accessibilityRangeValue)
+        .accessibilityAdjustableAction { direction in
+            let step = max(window.effectiveMinimumSpan, window.visibleSpan * 0.25)
+            switch direction {
+            case .increment:
+                window = window.panned(by: step)
+            case .decrement:
+                window = window.panned(by: -step)
+            @unknown default:
+                break
+            }
+        }
+        .accessibilityAction(named: "Zoom In") {
+            window = window.zoomed(scale: 1.6, around: window.visibleMidpoint)
+        }
+        .accessibilityAction(named: "Zoom Out") {
+            window = window.zoomed(scale: 0.625, around: window.visibleMidpoint)
+        }
+        .accessibilityAction(named: "Show Full Range") {
+            window = window.jumped(toSpan: window.domainSpan)
+        }
+    }
+
+    private var accessibilityRangeValue: String {
+        let start = window.visibleStart.formatted(date: .abbreviated, time: .shortened)
+        let end = window.visibleEnd.formatted(date: .abbreviated, time: .shortened)
+        return "\(start) to \(end)"
     }
 
     // MARK: - Overlay pieces

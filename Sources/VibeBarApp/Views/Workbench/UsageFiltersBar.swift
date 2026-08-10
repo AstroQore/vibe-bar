@@ -41,10 +41,10 @@ struct UsageFiltersBar: View {
             model.setSelectedTools(nil)
         } label: {
             Text("All providers")
-                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(model.selectedTools == nil ? .primary : .secondary)
                 .padding(.horizontal, 10)
-                .frame(minHeight: 24)
+                .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
         .background(chipBackground(tint: .accentColor, selected: model.selectedTools == nil))
@@ -60,18 +60,18 @@ struct UsageFiltersBar: View {
             HStack(spacing: 5) {
                 ToolBrandIconView(tool: tool, size: density.segmentedFontSize + 1)
                 Text(tool.menuTitle)
-                    .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                    .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                     .lineLimit(1)
             }
             .padding(.horizontal, 9)
-            .frame(minHeight: 24)
+            .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
         .background(chipBackground(tint: accent, selected: selected))
         // Unselected chips stay legible but recede — the accent is the signal
         // that a provider is in the query, so an off chip must not wear it.
-        .opacity(selected ? 1 : 0.45)
-        .saturation(selected ? 1 : 0.2)
+        .opacity(selected ? 1 : 0.70)
+        .saturation(selected ? 1 : 0.50)
         .help(tool.displayName)
         .accessibilityLabel(tool.displayName)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -97,13 +97,11 @@ struct UsageFiltersBar: View {
                     model.setSelectedModels(nil)
                 } label: {
                     Label("Clear", systemImage: "xmark")
-                        .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+                        .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 9)
-                        .frame(minHeight: 28)
-                        .background(controlBackground)
+                        .frame(minHeight: 22)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
                 .help("Clear provider and model filters")
             }
             Spacer(minLength: 8)
@@ -134,7 +132,7 @@ struct UsageFiltersBar: View {
             menuLabel(systemImage: "calendar", title: model.rangePreset.title, detail: rangeSummary)
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
         .menuIndicator(.hidden)
         .fixedSize()
         .popover(isPresented: $showsCustomRange, arrowEdge: .bottom) {
@@ -160,7 +158,7 @@ struct UsageFiltersBar: View {
                 selection: $model.customEnd,
                 displayedComponents: [.date, .hourAndMinute]
             )
-            Text("Buckets switch from hourly to daily past a 24-hour span.")
+            Text("Choose hourly, daily, or weekly buckets from the chart toolbar.")
                 .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
         }
@@ -186,7 +184,7 @@ struct UsageFiltersBar: View {
             menuLabel(systemImage: "cpu", title: "Models", detail: modelSummary)
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose which models to include")
@@ -209,7 +207,7 @@ struct UsageFiltersBar: View {
             )
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose how often the page re-queries")
@@ -228,30 +226,19 @@ struct UsageFiltersBar: View {
     private func menuLabel(systemImage: String, title: String, detail: String) -> some View {
         HStack(spacing: 5) {
             Image(systemName: systemImage)
-                .font(.system(size: max(8, density.segmentedFontSize - 2), weight: .semibold))
+                .font(.system(size: max(10, density.segmentedFontSize - 2), weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(title.uppercased())
-                .font(.system(size: max(8, density.segmentedFontSize - 3), weight: .semibold))
+                .font(.system(size: max(10, density.segmentedFontSize - 3), weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .tracking(0.4)
             Text(detail)
-                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold, design: .rounded)
+                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold, design: .rounded)
                     .monospacedDigit())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .frame(minHeight: 28)
-        .background(controlBackground)
-    }
-
-    private var controlBackground: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color.primary.opacity(0.045))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.09), lineWidth: 0.6)
-            )
+        .frame(minHeight: 22)
     }
 
     private func modelBinding(_ name: String) -> Binding<Bool> {

@@ -24,7 +24,7 @@ struct SessionListView: View {
                             }
                         } header: {
                             Text(group.title)
-                                .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                                .font(.system(size: max(10, density.subtitleFontSize - 2), weight: .semibold))
                                 .foregroundStyle(.tertiary)
                                 .tracking(0.4)
                         }
@@ -115,51 +115,69 @@ private struct SessionRow: View {
     let onToggleCheck: () -> Void
     let onSelect: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+
     private var summary: SessionSummary { row.summary }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            if isDeleteMode {
-                checkbox
-            }
-            ToolBrandBadge(tool: summary.provider.tool, iconSize: 15, containerSize: 20)
-                .padding(.top, 1)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: density.subtitleFontSize + 1, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                if let snippet = row.snippet {
-                    Text(SessionSnippet.attributed(snippet))
-                        .font(.system(size: density.subtitleFontSize - 1))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                } else if let subtitle {
-                    Text(subtitle)
-                        .font(.system(size: density.subtitleFontSize - 1))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                footer
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(summary.provider.accent.opacity(isSelected ? 0.16 : 0))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(summary.provider.accent.opacity(isSelected ? 0.45 : 0), lineWidth: 0.8)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button {
             if isDeleteMode { onToggleCheck() } else { onSelect() }
+        } label: {
+            HStack(alignment: .top, spacing: 9) {
+                if isDeleteMode {
+                    checkbox
+                }
+                ToolBrandBadge(tool: summary.provider.tool, iconSize: 15, containerSize: 20)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: density.subtitleFontSize + 1, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let snippet = row.snippet {
+                        Text(SessionSnippet.attributed(snippet))
+                            .font(.system(size: density.subtitleFontSize - 1))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    } else if let subtitle {
+                        Text(subtitle)
+                            .font(.system(size: density.subtitleFontSize - 1))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    footer
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(rowFill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(rowBorder, lineWidth: isSelected || isHovering ? 0.8 : 0.5)
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityHint(isDeleteMode ? "Toggle this session for deletion" : "Show this transcript")
+    }
+
+    private var rowFill: Color {
+        if isSelected { return summary.provider.accent.opacity(isHovering ? 0.20 : 0.16) }
+        return Color.primary.opacity(isHovering ? 0.055 : 0)
+    }
+
+    private var rowBorder: Color {
+        if isSelected { return summary.provider.accent.opacity(isHovering ? 0.56 : 0.45) }
+        return Color.primary.opacity(isHovering ? 0.14 : 0)
     }
 
     private var checkbox: some View {
@@ -168,7 +186,6 @@ private struct SessionRow: View {
             .foregroundStyle(isChecked ? Color.accentColor : Color.secondary)
             .opacity(SessionManagerModel.isDeletable(summary) ? 1 : 0.3)
             .padding(.top, 2)
-            .onTapGesture { onToggleCheck() }
             .help(SessionManagerModel.isDeletable(summary)
                 ? "Include this session in the deletion"
                 : "AntiGravity sessions are managed by the IDE")
@@ -208,7 +225,7 @@ private struct SessionRow: View {
                     .help("\(summary.messageCount) messages")
             }
         }
-        .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
+        .font(.system(size: max(10, density.resetCountdownFontSize - 1)))
         .foregroundStyle(.tertiary)
     }
 

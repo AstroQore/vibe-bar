@@ -122,7 +122,7 @@ struct SessionFiltersBar: View {
                 .foregroundStyle(.secondary)
             TextField("Search titles, projects, and message text", text: $model.searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: density.segmentedFontSize))
+                .font(.system(size: max(12, density.segmentedFontSize)))
             if !model.searchText.isEmpty {
                 BorderlessIconButton(systemImage: "xmark.circle.fill", help: "Clear the search") {
                     model.searchText = ""
@@ -130,10 +130,10 @@ struct SessionFiltersBar: View {
             }
         }
         .padding(.horizontal, 11)
-        .frame(minHeight: 27)
+        .frame(minHeight: 30)
         .background(
-            Capsule().fill(Color.primary.opacity(0.055))
-                .overlay(Capsule().stroke(Color.primary.opacity(0.09), lineWidth: 0.6))
+            Capsule().fill(.background.tertiary.opacity(0.72))
+                .overlay(Capsule().stroke(.separator.opacity(0.45), lineWidth: 0.6))
         )
     }
 
@@ -189,10 +189,10 @@ struct SessionFiltersBar: View {
             model.setProviderFilter(nil)
         } label: {
             Text("All providers")
-                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(model.providerFilter == nil ? .primary : .secondary)
                 .padding(.horizontal, 10)
-                .frame(minHeight: 24)
+                .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
         .background(chipBackground(tint: .accentColor, selected: model.providerFilter == nil))
@@ -208,7 +208,7 @@ struct SessionFiltersBar: View {
             HStack(spacing: 5) {
                 ToolBrandIconView(tool: provider.tool, size: density.segmentedFontSize + 1)
                 Text(provider.displayName)
-                    .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                    .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                     .lineLimit(1)
                 if count > 0 {
                     Text("\(count)")
@@ -218,12 +218,12 @@ struct SessionFiltersBar: View {
                 }
             }
             .padding(.horizontal, 9)
-            .frame(minHeight: 24)
+            .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
         .background(chipBackground(tint: provider.accent, selected: selected))
-        .opacity(selected ? 1 : 0.45)
-        .saturation(selected ? 1 : 0.2)
+        .opacity(selected ? 1 : 0.70)
+        .saturation(selected ? 1 : 0.50)
         .help(provider.displayName)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
@@ -259,7 +259,7 @@ struct SessionFiltersBar: View {
             menuLabel(systemImage: "calendar", title: "When", detail: model.dateRange.title)
         }
         .menuStyle(.button)
-        .buttonStyle(.glass)
+        .buttonStyle(.bordered)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose how far back to list sessions")
@@ -283,7 +283,7 @@ struct SessionFiltersBar: View {
             )
         }
         .menuStyle(.button)
-        .buttonStyle(.glass)
+        .buttonStyle(.bordered)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose how the list is ordered")
@@ -304,7 +304,7 @@ struct SessionFiltersBar: View {
             menuLabel(systemImage: "slider.horizontal.3", title: "Options", detail: model.preferredTerminal.displayName)
         }
         .menuStyle(.button)
-        .buttonStyle(.glass)
+        .buttonStyle(.bordered)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Terminal and index options")
@@ -319,7 +319,7 @@ struct SessionFiltersBar: View {
                 Text(model.checkedIDs.isEmpty ? "Delete" : "Delete \(model.checkedIDs.count)")
                     .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.borderedProminent)
             .disabled(model.checkedIDs.isEmpty)
             .fixedSize()
         }
@@ -330,7 +330,7 @@ struct SessionFiltersBar: View {
                 .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                 .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.bordered)
         .fixedSize()
         .help("Pick sessions to delete")
     }
@@ -359,6 +359,6 @@ struct SessionFiltersBar: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }
-        .frame(minHeight: 22)
+        .frame(minHeight: 28)
     }
 }

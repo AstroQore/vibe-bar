@@ -80,6 +80,7 @@ final class UsageStatsViewModel: ObservableObject {
     @Published var rangePreset: RangePreset = .day7 {
         didSet {
             guard oldValue != rangePreset else { return }
+            windowStart = nil
             reload(cascadeModels: false)
         }
     }
@@ -87,6 +88,7 @@ final class UsageStatsViewModel: ObservableObject {
     @Published var customStart: Date {
         didSet {
             guard oldValue != customStart, rangePreset == .custom else { return }
+            windowStart = nil
             reload(cascadeModels: false)
         }
     }
@@ -94,6 +96,15 @@ final class UsageStatsViewModel: ObservableObject {
     @Published var customEnd: Date {
         didSet {
             guard oldValue != customEnd, rangePreset == .custom else { return }
+            windowStart = nil
+            reload(cascadeModels: false)
+        }
+    }
+
+    /// This changes the ledger query's grouping, not just the chart label.
+    @Published var trendGranularity: UsageTrendGranularity = .automatic {
+        didSet {
+            guard oldValue != trendGranularity else { return }
             reload(cascadeModels: false)
         }
     }
@@ -134,6 +145,27 @@ final class UsageStatsViewModel: ObservableObject {
     }
 
     var range: DateInterval {
+        windowStart.map(anchoredRange(start:)) ?? currentRange
+    }
+
+    var canNavigateForward: Bool { windowStart != nil }
+
+    /// Manual buckets stay available only while they remain a useful
+    /// interactive chart. The renderer also thins marks, but avoiding a huge
+    /// zero-filled provider matrix here keeps a years-long custom range from
+    /// allocating tens of thousands of points before drawing even begins.
+    func isTrendGranularityAvailable(_ granularity: UsageTrendGranularity) -> Bool {
+        guard granularity != .automatic else { return true }
+        let seconds: TimeInterval = switch granularity {
+        case .automatic: 1
+        case .hour: 3_600
+        case .day: 86_400
+        case .week: 7 * 86_400
+        }
+        return Int(ceil(range.duration / seconds)) + 1 <= Self.maximumInteractiveTrendBuckets
+    }
+
+    private var currentRange: DateInterval {
         let now = Date()
         switch rangePreset {
         case .today:
@@ -154,6 +186,58 @@ final class UsageStatsViewModel: ObservableObject {
                 to: today
             ) ?? today
             return DateInterval(start: start, end: now)
+        }
+    }
+
+    func navigateWindow(by direction: Int) {
+        guard direction == -1 || direction == 1 else { return }
+        let present = currentRange
+        let candidate = shiftedStart(range.start, by: direction)
+        if direction > 0, candidate >= present.start {
+            resetWindow()
+        } else {
+            windowStart = candidate
+            reload(cascadeModels: false)
+        }
+    }
+
+    func resetWindow() {
+        guard windowStart != nil else { return }
+        windowStart = nil
+        reload(cascadeModels: false)
+    }
+
+    private func anchoredRange(start: Date) -> DateInterval {
+        switch rangePreset {
+        case .today:
+            let end = Calendar.current.date(byAdding: .day, value: 1, to: start)
+                ?? start.addingTimeInterval(86_400)
+            return DateInterval(start: start, end: end)
+        case .day1:
+            return DateInterval(start: start, duration: 86_400)
+        case .day7, .day14, .day30:
+            let days = rangePreset.calendarDayCount ?? 1
+            let end = Calendar.current.date(byAdding: .day, value: days, to: start)
+                ?? start.addingTimeInterval(TimeInterval(days * 86_400))
+            return DateInterval(start: start, end: end)
+        case .custom:
+            return DateInterval(start: start, duration: max(60, currentRange.duration))
+        }
+    }
+
+    private func shiftedStart(_ start: Date, by direction: Int) -> Date {
+        switch rangePreset {
+        case .today:
+            return Calendar.current.date(byAdding: .day, value: direction, to: start)
+                ?? start.addingTimeInterval(TimeInterval(direction * 86_400))
+        case .day1:
+            return start.addingTimeInterval(TimeInterval(direction * 86_400))
+        case .day7, .day14, .day30:
+            let days = (rangePreset.calendarDayCount ?? 1) * direction
+            return Calendar.current.date(byAdding: .day, value: days, to: start)
+                ?? start.addingTimeInterval(TimeInterval(days * 86_400))
+        case .custom:
+            return start.addingTimeInterval(currentRange.duration * Double(direction))
         }
     }
 
@@ -180,6 +264,8 @@ final class UsageStatsViewModel: ObservableObject {
     private var loadedRequestPages = 0
     private var generation: UInt64 = 0
     private var hasLoadedOnce = false
+    /// A historical window start, or `nil` when the preset follows now.
+    private var windowStart: Date?
     /// The filter page 0 was fetched with. Later pages reuse it verbatim: a
     /// rolling preset's `now` moves between pages, and re-deriving the range
     /// per page would slide the offsets under the rows already on screen.
@@ -191,6 +277,7 @@ final class UsageStatsViewModel: ObservableObject {
     private var observedTools: Set<ToolType> = []
 
     private nonisolated static let requestPageSize = 50
+    private static let maximumInteractiveTrendBuckets = 1_200
     /// A poll re-reads the ledger every tick, but the ledger only moves when a
     /// cost scan writes to it — and a scan walks the whole session tree. One
     /// rescan a minute is the ceiling regardless of how fast the poll runs.
@@ -288,6 +375,10 @@ final class UsageStatsViewModel: ObservableObject {
     }
 
     private func reload(cascadeModels: Bool) {
+        if !isTrendGranularityAvailable(trendGranularity) {
+            trendGranularity = .automatic
+            return
+        }
         generation &+= 1
         let generation = self.generation
         reloadTask?.cancel()
@@ -314,7 +405,10 @@ final class UsageStatsViewModel: ObservableObject {
             }
             self.availableModels = models
             let resolved = self.filter
-            let snapshot = await Self.load(ledger: ledger, filter: resolved)
+            let granularity = self.trendGranularity
+            let snapshot = await Self.load(
+                ledger: ledger, filter: resolved, granularity: granularity
+            )
             guard !Task.isCancelled, generation == self.generation else { return }
             self.activeFilter = resolved
             self.apply(snapshot)
@@ -346,7 +440,9 @@ final class UsageStatsViewModel: ObservableObject {
 
     private func applyEmpty() {
         summary = .empty
-        trend = UsageTrendSeries(bucket: UsageTrendBucket.recommended(for: range), points: [])
+        trend = UsageTrendSeries(
+            bucket: trendGranularity.resolved(for: range), points: []
+        )
         providerStats = []
         modelStats = []
         requestRows = []
@@ -403,11 +499,13 @@ final class UsageStatsViewModel: ObservableObject {
 
     private nonisolated static func load(
         ledger: UsageEventLedger,
-        filter: UsageQueryFilter
+        filter: UsageQueryFilter,
+        granularity: UsageTrendGranularity
     ) async -> LoadedUsage {
         let summary = (try? await ledger.summary(filter)) ?? .empty
-        let trend = (try? await ledger.trend(filter))
-            ?? UsageTrendSeries(bucket: UsageTrendBucket.recommended(for: filter.range), points: [])
+        let bucket = granularity.resolved(for: filter.range)
+        let trend = (try? await ledger.trend(filter, bucket: bucket))
+            ?? UsageTrendSeries(bucket: bucket, points: [])
         let providers = (try? await ledger.providerStats(filter)) ?? []
         let models = (try? await ledger.modelStats(filter)) ?? []
         let requests = (try? await ledger.requestPage(filter, page: 0, pageSize: requestPageSize))

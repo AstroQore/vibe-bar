@@ -11,6 +11,7 @@ struct UsageBreakdownTables: View {
     let density: Theme.Density
     @ObservedObject var model: UsageStatsViewModel
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab: Tab = .periods
 
     enum Tab: String, CaseIterable, Identifiable {
@@ -76,14 +77,14 @@ struct UsageBreakdownTables: View {
                 ForEach(Tab.allCases) { value in
                     let selected = tab == value
                     Button {
-                        withAnimation(.easeOut(duration: 0.16)) { tab = value }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { tab = value }
                     } label: {
                         Label(value.title, systemImage: value.systemImage)
-                            .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+                            .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                             .labelStyle(.titleAndIcon)
                             .foregroundStyle(selected ? Color.primary : Color.secondary)
                             .padding(.horizontal, 10)
-                            .frame(minHeight: 25)
+                            .frame(minHeight: 28)
                     }
                     .buttonStyle(.plain)
                     .background(
@@ -124,7 +125,7 @@ struct UsageBreakdownTables: View {
     private var countSummary: String {
         switch tab {
         case .periods:
-            return "\(populatedPeriods.count) active \(model.trend.bucket == .hour ? "hour" : "day")"
+            return "\(populatedPeriods.count) active \(periodUnit)"
                 + (populatedPeriods.count == 1 ? "" : "s")
         case .requests:
             let loaded = model.requestRows.count
@@ -173,7 +174,7 @@ struct UsageBreakdownTables: View {
 
     private var periodsTable: some View {
         Table(populatedPeriods) {
-            TableColumn(model.trend.bucket == .hour ? "Hour" : "Day") { point in
+            TableColumn(periodColumnTitle) { point in
                 Text(period(point.bucketStart))
                     .font(bodyFont)
             }
@@ -184,32 +185,37 @@ struct UsageBreakdownTables: View {
                     .font(numericFont)
             }
             .width(min: 82, ideal: 104)
+            .alignment(.trailing)
 
             TableColumn("Output") { point in
                 Text(UsageFormatting.compactTokens(point.output))
                     .font(numericFont)
             }
             .width(min: 82, ideal: 104)
+            .alignment(.trailing)
 
             TableColumn("Cache") { point in
                 Text(UsageFormatting.compactTokens(point.cacheRead + point.cacheCreation))
                     .font(numericFont)
             }
             .width(min: 82, ideal: 104)
+            .alignment(.trailing)
 
             TableColumn("Tokens") { point in
                 Text(UsageFormatting.compactTokens(point.totalTokens))
                     .font(numericFont)
             }
             .width(min: 88, ideal: 112)
+            .alignment(.trailing)
 
             TableColumn("Cost") { point in
                 Text(UsageFormatting.formatMicroUSD(point.costMicros))
                     .font(numericFont)
             }
             .width(min: 88, ideal: 112)
+            .alignment(.trailing)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: false))
+        .tableStyle(.inset(alternatesRowBackgrounds: true))
     }
 
     private var requestsTable: some View {
@@ -253,12 +259,14 @@ struct UsageBreakdownTables: View {
                 }
             }
             .width(min: 86, ideal: 104)
+            .alignment(.trailing)
 
             TableColumn("Output") { row in
                 Text(UsageFormatting.compactTokens(row.output))
                     .font(numericFont)
             }
             .width(min: 68, ideal: 82)
+            .alignment(.trailing)
 
             TableColumn("Cost") { row in
                 if let micros = row.costMicros {
@@ -271,6 +279,7 @@ struct UsageBreakdownTables: View {
                 }
             }
             .width(min: 72, ideal: 88)
+            .alignment(.trailing)
 
             TableColumn("Tier") { row in
                 Text(row.serviceTier ?? "—")
@@ -280,7 +289,7 @@ struct UsageBreakdownTables: View {
             }
             .width(min: 62, ideal: 78)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: false))
+        .tableStyle(.inset(alternatesRowBackgrounds: true))
     }
 
     private var providersTable: some View {
@@ -295,20 +304,23 @@ struct UsageBreakdownTables: View {
                     .font(numericFont)
             }
             .width(min: 80, ideal: 100)
+            .alignment(.trailing)
 
             TableColumn("Tokens") { stat in
                 Text(UsageFormatting.compactTokens(stat.totalTokens))
                     .font(numericFont)
             }
             .width(min: 84, ideal: 110)
+            .alignment(.trailing)
 
             TableColumn("Cost") { stat in
                 Text(UsageFormatting.formatMicroUSD(stat.costMicros))
                     .font(numericFont)
             }
             .width(min: 84, ideal: 110)
+            .alignment(.trailing)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: false))
+        .tableStyle(.inset(alternatesRowBackgrounds: true))
     }
 
     private var modelsTable: some View {
@@ -327,18 +339,21 @@ struct UsageBreakdownTables: View {
                     .font(numericFont)
             }
             .width(min: 80, ideal: 98)
+            .alignment(.trailing)
 
             TableColumn("Tokens") { stat in
                 Text(UsageFormatting.compactTokens(stat.totalTokens))
                     .font(numericFont)
             }
             .width(min: 84, ideal: 104)
+            .alignment(.trailing)
 
             TableColumn("Cost") { stat in
                 Text(UsageFormatting.formatMicroUSD(stat.costMicros))
                     .font(numericFont)
             }
             .width(min: 84, ideal: 104)
+            .alignment(.trailing)
 
             TableColumn("Avg/req") { stat in
                 Text(UsageFormatting.formatMicroUSD(stat.avgCostMicrosPerRequest, precision: 4))
@@ -346,8 +361,9 @@ struct UsageBreakdownTables: View {
                     .foregroundStyle(.secondary)
             }
             .width(min: 88, ideal: 108)
+            .alignment(.trailing)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: false))
+        .tableStyle(.inset(alternatesRowBackgrounds: true))
     }
 
     // MARK: - Cells
@@ -392,8 +408,29 @@ struct UsageBreakdownTables: View {
     }
 
     private func period(_ date: Date) -> String {
-        let formatter = model.trend.bucket == .hour ? Self.periodHourFormatter : Self.periodDayFormatter
+        let formatter: DateFormatter
+        switch model.trend.bucket {
+        case .hour: formatter = Self.periodHourFormatter
+        case .day: formatter = Self.periodDayFormatter
+        case .week: formatter = Self.periodWeekFormatter
+        }
         return formatter.string(from: date)
+    }
+
+    private var periodUnit: String {
+        switch model.trend.bucket {
+        case .hour: "hour"
+        case .day: "day"
+        case .week: "week"
+        }
+    }
+
+    private var periodColumnTitle: String {
+        switch model.trend.bucket {
+        case .hour: "Hour"
+        case .day: "Day"
+        case .week: "Week of"
+        }
     }
 
     /// Cached: the requests table formats one of these per visible row, and
@@ -416,6 +453,13 @@ struct UsageBreakdownTables: View {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
         formatter.setLocalizedDateFormatFromTemplate("EEEEMMMd")
+        return formatter
+    }()
+
+    private static let periodWeekFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
     }()
 }
