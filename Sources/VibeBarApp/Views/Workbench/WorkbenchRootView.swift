@@ -234,7 +234,7 @@ private struct WorkbenchSidebar: View {
         .onHover { hovering in
             hoveredPage = hovering ? page : (hoveredPage == page ? nil : hoveredPage)
         }
-        .focusable(false)
+        .focusEffectDisabled()
         .accessibilityAddTraits(selection == page ? [.isSelected] : [])
     }
 

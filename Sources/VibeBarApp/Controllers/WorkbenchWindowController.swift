@@ -27,6 +27,9 @@ final class WorkbenchWindowController: NSObject {
         DockActivationController.shared.acquire(.workbench)
 
         if let window {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
