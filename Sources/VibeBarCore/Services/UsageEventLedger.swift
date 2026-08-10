@@ -64,7 +64,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     private let dayFormatter: DateFormatter
 
     /// Bumping this drops and rebuilds every table on the next open.
-    static let schemaVersion = 1
+    static let schemaVersion = 3
     private static let schemaVersionKey = "schema_version"
     private static let floorKeyPrefix = "detail_floor_day:"
     /// Guard rail on zero-filled trend enumeration: ~135 years of daily
@@ -365,9 +365,12 @@ public actor UsageEventLedger: CostUsageEventSink {
             )
         """
 
-    /// A Claude request is uniquely identified by `(messageId, requestId)`
-    /// across every transcript file that copied it, so that pair is the
-    /// natural key. Every other provider leaves at least one of them nil;
+    /// A Claude request is uniquely identified by
+    /// `(sessionId, messageId, requestId)` across every transcript file that
+    /// copied it. Message/request ids can be reused by different sessions, so
+    /// omitting the session id silently merged unrelated billable requests and
+    /// made Workbench totals disagree with the CostSnapshot built by the same
+    /// scan. Every other provider leaves at least one of them nil;
     /// those fall back to a digest that is stable across re-scans of the
     /// same file (hashed path + position + timestamp + model + tokens) so a
     /// re-ingest updates instead of duplicating.
@@ -382,8 +385,19 @@ public actor UsageEventLedger: CostUsageEventSink {
         cacheRead: Int64,
         cacheCreation: Int64
     ) -> String {
-        if let messageId = event.messageId, let requestId = event.requestId {
-            return "m:\(messageId)\u{0}\(requestId)"
+        if tool == .claude,
+           let sessionId = event.sessionId,
+           let messageId = event.messageId,
+           let requestId = event.requestId {
+            // `Binding.text` uses SQLite's NUL-terminated form. Keeping the
+            // scanner's in-memory `\0` separator here would therefore persist
+            // only `m:<sessionId>` and collapse an entire Claude session into
+            // one request. Hash the length-delimited tuple into a printable,
+            // fixed-width key instead.
+            let tuple = [sessionId, messageId, requestId]
+                .map { "\($0.utf8.count):\($0)" }
+                .joined(separator: "|")
+            return PrivacyPreservingHash.fileComponent(prefix: "cm-v3", rawValue: tuple)
         }
         let seed = [
             tool.rawValue, fileKey, String(index), String(timestamp), event.model,

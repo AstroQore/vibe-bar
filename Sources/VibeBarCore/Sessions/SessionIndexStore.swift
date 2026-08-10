@@ -152,6 +152,10 @@ public actor SessionIndexStore {
         );
         CREATE INDEX IF NOT EXISTS sessions_last_active_idx
             ON sessions(last_active_at DESC);
+        CREATE INDEX IF NOT EXISTS sessions_effective_active_idx
+            ON sessions(COALESCE(last_active_at, created_at) DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS sessions_provider_effective_active_idx
+            ON sessions(provider, COALESCE(last_active_at, created_at) DESC, id DESC);
         CREATE INDEX IF NOT EXISTS sessions_provider_project_idx
             ON sessions(provider, project_dir);
         CREATE TABLE IF NOT EXISTS session_files (
@@ -465,6 +469,80 @@ public actor SessionIndexStore {
             if let summary = self.summary(statement, offset: 0) { out.append(summary) }
         }
         return out
+    }
+
+    /// One filtered, ordered page. This is the product read path; the unbounded
+    /// `allSummaries()` remains for tests and maintenance tools.
+    public func summaryPage(
+        providers: [SessionProvider]? = nil,
+        since: Date? = nil,
+        order: SessionSummaryOrder = .recentFirst,
+        offset: Int = 0,
+        limit: Int = 250
+    ) throws -> SessionSummaryPage {
+        if let providers, providers.isEmpty {
+            return SessionSummaryPage(summaries: [], totalCount: 0, offset: 0, limit: max(1, limit))
+        }
+        let safeOffset = max(0, offset)
+        let safeLimit = min(max(1, limit), 500)
+        var clauses: [String] = []
+        var bindings: [Binding] = []
+        if let providers {
+            clauses.append("s.provider IN (\(Array(repeating: "?", count: providers.count).joined(separator: ", ")))")
+            bindings.append(contentsOf: providers.map { .text($0.rawValue) })
+        }
+        if let since {
+            clauses.append("COALESCE(s.last_active_at, s.created_at) >= ?")
+            bindings.append(.integer(Int64(since.timeIntervalSince1970.rounded(.down))))
+        }
+        let whereSQL = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
+        let orderSQL: String
+        switch order {
+        case .recentFirst:
+            orderSQL = "COALESCE(s.last_active_at, s.created_at) DESC, s.id DESC"
+        case .oldestFirst:
+            orderSQL = "COALESCE(s.last_active_at, s.created_at) ASC, s.id ASC"
+        case .byProject:
+            orderSQL = "s.project_dir IS NULL, s.project_dir COLLATE NOCASE ASC, "
+                + "COALESCE(s.last_active_at, s.created_at) DESC, s.id DESC"
+        }
+
+        let total = Int(try scalarInt(
+            "SELECT COUNT(*) FROM sessions s\(whereSQL)",
+            bindings
+        ) ?? 0)
+        let statement = try prepare(
+            """
+            SELECT \(Self.sessionColumns) FROM sessions s\(whereSQL)
+             ORDER BY \(orderSQL) LIMIT ? OFFSET ?
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bindAll(bindings + [.integer(Int64(safeLimit)), .integer(Int64(safeOffset))], to: statement)
+        var out: [SessionSummary] = []
+        out.reserveCapacity(min(safeLimit, total))
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let summary = self.summary(statement, offset: 0) { out.append(summary) }
+        }
+        return SessionSummaryPage(
+            summaries: out,
+            totalCount: total,
+            offset: safeOffset,
+            limit: safeLimit
+        )
+    }
+
+    public func providerCounts() throws -> [SessionProvider: Int] {
+        let statement = try prepare("SELECT provider, COUNT(*) FROM sessions GROUP BY provider")
+        defer { sqlite3_finalize(statement) }
+        var counts: [SessionProvider: Int] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let raw = columnText(statement, 0), let provider = SessionProvider(rawValue: raw) else {
+                continue
+            }
+            counts[provider] = Int(sqlite3_column_int64(statement, 1))
+        }
+        return counts
     }
 
     public func sessionCount() throws -> Int {

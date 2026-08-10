@@ -41,6 +41,15 @@ struct SessionListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
+            if model.isLoadingSummaries && !model.rows.isEmpty {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 8)
+            }
+        }
     }
 
     private func rowView(_ row: SessionManagerModel.Row) -> some View {
@@ -55,6 +64,9 @@ struct SessionListView: View {
         )
         .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
         .listRowSeparator(.hidden)
+        .onAppear {
+            if row.id == model.rows.last?.id { model.loadMoreSummaries() }
+        }
         .contextMenu {
             Button("Open in Terminal") { model.resumeInTerminal(row.summary) }
                 .disabled(model.resumeCommand(for: row.summary) == nil)

@@ -98,6 +98,28 @@ public struct SessionSummary: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
+public enum SessionSummaryOrder: String, Sendable, Hashable {
+    case recentFirst
+    case oldestFirst
+    case byProject
+}
+
+/// A bounded window from the session index. The Workbench renders one page at
+/// a time instead of publishing every historical session into SwiftUI.
+public struct SessionSummaryPage: Sendable, Equatable {
+    public let summaries: [SessionSummary]
+    public let totalCount: Int
+    public let offset: Int
+    public let limit: Int
+
+    public init(summaries: [SessionSummary], totalCount: Int, offset: Int, limit: Int) {
+        self.summaries = summaries
+        self.totalCount = totalCount
+        self.offset = offset
+        self.limit = limit
+    }
+}
+
 public enum SessionRole: String, Codable, Sendable, CaseIterable, Hashable {
     case user
     case assistant

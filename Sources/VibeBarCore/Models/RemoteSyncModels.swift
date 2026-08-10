@@ -257,6 +257,12 @@ public enum RemoteSyncError: Error, Equatable, Sendable {
     case rollback
     case http(Int)
     case invalidResponse
+    case networkOffline
+    case networkTimeout
+    case hostLookupFailed
+    case connectionFailed
+    case secureConnectionFailed
+    case transportFailed
 
     public var code: String {
         switch self {
@@ -270,8 +276,56 @@ public enum RemoteSyncError: Error, Equatable, Sendable {
         case .supersededEnvelope: return "superseded_envelope"
         case .sequenceGap: return "sequence_gap"
         case .rollback: return "rollback"
-        case .http: return "relay_http_error"
+        case .http(let status): return "relay_http_\(status)"
         case .invalidResponse: return "invalid_response"
+        case .networkOffline: return "network_offline"
+        case .networkTimeout: return "network_timeout"
+        case .hostLookupFailed: return "host_lookup_failed"
+        case .connectionFailed: return "connection_failed"
+        case .secureConnectionFailed: return "secure_connection_failed"
+        case .transportFailed: return "transport_failed"
+        }
+    }
+
+    public var isTransient: Bool {
+        switch self {
+        case .networkOffline, .networkTimeout, .hostLookupFailed,
+             .connectionFailed, .secureConnectionFailed, .transportFailed:
+            return true
+        case .http(let status):
+            return status == 429 || status == 503
+        default:
+            return false
+        }
+    }
+
+    /// Collapse Foundation transport errors into stable, non-sensitive codes.
+    /// URLSession otherwise falls through to the meaningless `sync_failed`
+    /// banner, which hides whether the Relay, DNS, TLS, or the local network is
+    /// the thing that needs attention.
+    public static func normalized(_ error: Error) -> RemoteSyncError {
+        if let known = error as? RemoteSyncError { return known }
+        // Only URLSession failures are transport failures. JSON decoding,
+        // bounded-response rejection, and other protocol-layer errors must
+        // remain non-transient; retrying them hides a bad Relay response as a
+        // network wobble and can repeat work that will never succeed.
+        guard let urlError = error as? URLError else { return .invalidResponse }
+        switch urlError.code {
+        case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff:
+            return .networkOffline
+        case .timedOut:
+            return .networkTimeout
+        case .cannotFindHost, .dnsLookupFailed:
+            return .hostLookupFailed
+        case .cannotConnectToHost, .networkConnectionLost:
+            return .connectionFailed
+        case .secureConnectionFailed, .serverCertificateHasBadDate,
+             .serverCertificateUntrusted, .serverCertificateHasUnknownRoot,
+             .serverCertificateNotYetValid, .clientCertificateRejected,
+             .clientCertificateRequired:
+            return .secureConnectionFailed
+        default:
+            return .transportFailed
         }
     }
 }

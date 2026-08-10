@@ -52,14 +52,18 @@ enum UsageTokenSeries: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// Tokens and cost over the selected range, as two x-synchronized panes in a
-/// single card.
-///
-/// The panes are separate `Chart`s rather than one chart with two y scales —
-/// stacked token bands and a cost curve share no unit, and overlaying them
-/// would force one of the two into a scale nobody can read. They stay aligned
-/// because both pin the same leading axis-label width and the same x domain,
-/// and they share one hovered bucket, so the cursor reads both at once.
+private enum UsageChartMetric: String, CaseIterable, Identifiable {
+    case tokens
+    case cost
+
+    var id: String { rawValue }
+    var title: String { self == .tokens ? "Tokens" : "Cost" }
+    var systemImage: String { self == .tokens ? "sum" : "dollarsign" }
+}
+
+/// Tokens or cost over the selected range in one deliberate chart surface.
+/// The metric switch mirrors the established cost-history interaction instead
+/// of stacking two unrelated plots and asking the user to read both at once.
 ///
 /// The range is drawn whole: no brush strip, no pan/zoom. `ChartTimeWindow`
 /// and `ChartBrushNavigator` earn their keep on the cost history card, whose
@@ -69,6 +73,7 @@ struct UsageTrendChartView: View {
     let density: Theme.Density
     let series: UsageTrendSeries
 
+    @State private var metric: UsageChartMetric = .tokens
     @State private var hiddenSeries: Set<UsageTokenSeries> = []
     @State private var hoveredDate: Date?
 
@@ -105,8 +110,7 @@ struct UsageTrendChartView: View {
         CardShell(density: density, spacing: density.cardSpacing) {
             header
             if hasData {
-                tokenPane
-                costPane
+                if metric == .tokens { tokenPane } else { costPane }
             } else {
                 emptyState
             }
@@ -116,14 +120,57 @@ struct UsageTrendChartView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("TOKENS & COST")
-                .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .tracking(0.4)
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("USAGE OVER TIME")
+                    .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .tracking(0.4)
+                Text(series.bucket == .hour ? "Hourly buckets" : "Local calendar days")
+                    .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
+                    .foregroundStyle(.secondary)
+            }
+            metricSelector
             Spacer(minLength: 8)
-            legend
+            if metric == .tokens { legend }
         }
+    }
+
+    private var metricSelector: some View {
+        HStack(spacing: 2) {
+            ForEach(UsageChartMetric.allCases) { value in
+                let selected = metric == value
+                Button {
+                    withAnimation(.easeOut(duration: 0.16)) { metric = value }
+                } label: {
+                    Label(value.title, systemImage: value.systemImage)
+                        .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(selected ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 9)
+                        .frame(minHeight: 24)
+                }
+                .buttonStyle(.plain)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(selected ? Color.accentColor.opacity(0.38) : Color.clear, lineWidth: 0.7)
+                )
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.primary.opacity(0.045))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+        )
     }
 
     private var legend: some View {
@@ -276,7 +323,7 @@ struct UsageTrendChartView: View {
                 }
             }
         }
-        .frame(height: max(88, density.overviewCostChartHeight * 0.5))
+        .frame(height: density.overviewCostChartHeight)
     }
 
     private var emptyState: some View {

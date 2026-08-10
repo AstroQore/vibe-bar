@@ -12,13 +12,13 @@ final class UsageStatsViewModel: ObservableObject {
     /// Range presets deliberately mix two shapes:
     ///
     /// - `today` is the local calendar day so far — midnight → now.
-    /// - every `N`-day preset is a *rolling* window of exactly `N × 86400`
-    ///   seconds ending now.
+    /// - `24 h` is a rolling window ending now;
+    /// - every multi-day preset is aligned to local calendar days, matching
+    ///   `CostSnapshot.last7Days*` / `last30Days*` everywhere else in Vibe Bar.
     ///
-    /// Making the N-day presets calendar-aligned too would collapse "Today"
-    /// and "24 h" into the same button for most of the day, and a rolling
-    /// 24 h window is also what keeps `UsageTrendBucket.recommended` on
-    /// hourly buckets for the shortest preset.
+    /// Keeping only `24 h` rolling preserves an hourly comparison without
+    /// creating a second, contradictory definition of "7 days" inside the
+    /// same app.
     enum RangePreset: String, CaseIterable, Identifiable {
         case today
         case day1
@@ -51,15 +51,12 @@ final class UsageStatsViewModel: ObservableObject {
             }
         }
 
-        /// Seconds of the rolling window, `nil` for the two presets that are
-        /// not a fixed span.
-        var rollingSpan: TimeInterval? {
+        var calendarDayCount: Int? {
             switch self {
-            case .today, .custom: nil
-            case .day1:  86_400
-            case .day7:  7 * 86_400
-            case .day14: 14 * 86_400
-            case .day30: 30 * 86_400
+            case .day7: 7
+            case .day14: 14
+            case .day30: 30
+            case .today, .day1, .custom: nil
             }
         }
     }
@@ -146,9 +143,17 @@ final class UsageStatsViewModel: ObservableObject {
             let start = min(customStart, customEnd)
             let end = max(customStart, customEnd)
             return DateInterval(start: start, end: max(end, start.addingTimeInterval(60)))
-        case .day1, .day7, .day14, .day30:
-            let span = rangePreset.rollingSpan ?? 86_400
-            return DateInterval(start: now.addingTimeInterval(-span), end: now)
+        case .day1:
+            return DateInterval(start: now.addingTimeInterval(-86_400), end: now)
+        case .day7, .day14, .day30:
+            let days = rangePreset.calendarDayCount ?? 1
+            let today = Calendar.current.startOfDay(for: now)
+            let start = Calendar.current.date(
+                byAdding: .day,
+                value: -(days - 1),
+                to: today
+            ) ?? today
+            return DateInterval(start: start, end: now)
         }
     }
 
