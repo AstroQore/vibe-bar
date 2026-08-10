@@ -14,11 +14,22 @@ struct UsageFiltersBar: View {
     @State private var showsCustomRange = false
 
     var body: some View {
-        CardShell(density: density, spacing: density.cardSpacing) {
-            providerChips
-            Divider().opacity(0.35)
-            controlRow
+        Group {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    providerChips
+                    Spacer(minLength: 8)
+                    controls
+                }
+                VStack(alignment: .leading, spacing: 7) {
+                    providerChips
+                    controls
+                }
+            }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .workbenchToolbarSurface()
     }
 
     // MARK: - Providers
@@ -86,7 +97,7 @@ struct UsageFiltersBar: View {
 
     // MARK: - Controls
 
-    private var controlRow: some View {
+    private var controls: some View {
         HStack(spacing: 8) {
             rangeMenu
             modelMenu
@@ -101,16 +112,11 @@ struct UsageFiltersBar: View {
                         .foregroundStyle(.secondary)
                         .frame(minHeight: 22)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(WorkbenchPillButtonStyle())
                 .help("Clear provider and model filters")
             }
-            Spacer(minLength: 8)
-            statusText
-            SectionRefreshButton(isRefreshing: model.isLoading) {
-                model.refresh()
-            }
-            .help("Re-run every usage query now")
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var rangeMenu: some View {
@@ -132,7 +138,7 @@ struct UsageFiltersBar: View {
             menuLabel(systemImage: "calendar", title: model.rangePreset.title, detail: rangeSummary)
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .popover(isPresented: $showsCustomRange, arrowEdge: .bottom) {
@@ -184,7 +190,7 @@ struct UsageFiltersBar: View {
             menuLabel(systemImage: "cpu", title: "Models", detail: modelSummary)
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose which models to include")
@@ -207,18 +213,10 @@ struct UsageFiltersBar: View {
             )
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose how often the page re-queries")
-    }
-
-    private var statusText: some View {
-        Text(statusSummary)
-            .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded)
-                .monospacedDigit())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
     }
 
     // MARK: - Labels

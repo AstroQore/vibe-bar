@@ -38,6 +38,8 @@ struct SessionManagerPage: View {
             HSplitView {
                 SessionListView(density: density, model: model)
                     .frame(minWidth: 300, idealWidth: 380, maxWidth: 620)
+                    .padding(.leading, density.popoverPaddingH)
+                    .padding(.bottom, density.popoverPaddingV)
                 TranscriptView(density: density, model: model)
                     .frame(minWidth: 420, maxWidth: .infinity)
             }
@@ -98,19 +100,35 @@ struct SessionFiltersBar: View {
     @ObservedObject var model: SessionManagerModel
 
     var body: some View {
-        CardShell(density: density, spacing: density.cardSpacing) {
-            HStack(spacing: 8) {
-                searchField
-                indexStatus
-                SectionRefreshButton(isRefreshing: model.indexProgress != nil) {
-                    model.refreshIndex()
+        Group {
+            // Keep every filter in one stable horizontal strip. A narrow
+            // Workbench window scrolls this strip rather than turning it into
+            // a second tall control panel above the two independently
+            // scrolling columns.
+            ScrollView(.horizontal) {
+                HStack(spacing: 7) {
+                    searchField
+                    indexStatus
+                    SectionRefreshButton(isRefreshing: model.indexProgress != nil) {
+                        model.refreshIndex()
+                    }
+                    .help("Rescan the session logs on disk")
+                    allProvidersChip
+                    ForEach(SessionProvider.allCases, id: \.self) { provider in
+                        providerChip(provider)
+                    }
+                    rangeMenu
+                    sortMenu
+                    optionsMenu
+                    deleteControls
                 }
-                .help("Rescan the session logs on disk")
+                .padding(.vertical, 1)
             }
-            Divider().opacity(0.35)
-            providerChips
-            controlRow
+            .scrollIndicators(.never)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .workbenchToolbarSurface()
     }
 
     // MARK: - Search
@@ -130,11 +148,9 @@ struct SessionFiltersBar: View {
             }
         }
         .padding(.horizontal, 11)
+        .frame(width: 270)
         .frame(minHeight: 30)
-        .background(
-            Capsule().fill(.background.tertiary.opacity(0.72))
-                .overlay(Capsule().stroke(.separator.opacity(0.45), lineWidth: 0.6))
-        )
+        .workbenchFieldSurface(cornerRadius: 15)
     }
 
     @ViewBuilder
@@ -170,19 +186,6 @@ struct SessionFiltersBar: View {
     }
 
     // MARK: - Providers
-
-    private var providerChips: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 6) {
-                allProvidersChip
-                ForEach(SessionProvider.allCases, id: \.self) { provider in
-                    providerChip(provider)
-                }
-            }
-            .padding(.vertical, 1)
-        }
-        .scrollIndicators(.never)
-    }
 
     private var allProvidersChip: some View {
         Button {
@@ -237,16 +240,6 @@ struct SessionFiltersBar: View {
 
     // MARK: - Controls
 
-    private var controlRow: some View {
-        HStack(spacing: 8) {
-            rangeMenu
-            sortMenu
-            optionsMenu
-            Spacer(minLength: 8)
-            deleteControls
-        }
-    }
-
     private var rangeMenu: some View {
         Menu {
             Picker("Date range", selection: $model.dateRange) {
@@ -259,7 +252,7 @@ struct SessionFiltersBar: View {
             menuLabel(systemImage: "calendar", title: "When", detail: model.dateRange.title)
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose how far back to list sessions")
@@ -283,7 +276,7 @@ struct SessionFiltersBar: View {
             )
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose how the list is ordered")
@@ -304,7 +297,7 @@ struct SessionFiltersBar: View {
             menuLabel(systemImage: "slider.horizontal.3", title: "Options", detail: model.preferredTerminal.displayName)
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Terminal and index options")
@@ -319,7 +312,7 @@ struct SessionFiltersBar: View {
                 Text(model.checkedIDs.isEmpty ? "Delete" : "Delete \(model.checkedIDs.count)")
                     .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(WorkbenchPillButtonStyle(prominent: true, tint: .red))
             .disabled(model.checkedIDs.isEmpty)
             .fixedSize()
         }
@@ -330,7 +323,7 @@ struct SessionFiltersBar: View {
                 .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                 .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(WorkbenchPillButtonStyle())
         .fixedSize()
         .help("Pick sessions to delete")
     }

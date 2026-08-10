@@ -32,6 +32,8 @@ struct WorkbenchPlaceholderPage: View {
             "Browsing and searching local Codex and Claude Code sessions is on its way."
         case .skillsManager:
             "Reviewing and organizing installed agent skills is on its way."
+        case .settings:
+            "Configure Vibe Bar and its connected providers."
         }
     }
 }

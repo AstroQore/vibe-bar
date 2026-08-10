@@ -22,20 +22,52 @@ struct CardShell<Content: View>: View {
         VStack(alignment: alignment, spacing: spacing ?? density.cardSpacing) {
             content()
         }
-        .padding(density.cardPadding)
+        .padding(cardPadding)
         .cardSurface(density: density)
+    }
+
+    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
+
+    private var cardPadding: CGFloat {
+        usesWorkbenchPorcelain ? max(16, density.cardPadding) : density.cardPadding
     }
 }
 
 extension View {
     func cardSurface(density: Theme.Density) -> some View {
-        background(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .fill(.background.tertiary.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-        )
+        modifier(CardSurfaceModifier(density: density))
+    }
+}
+
+private struct CardSurfaceModifier: ViewModifier {
+    let density: Theme.Density
+
+    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
+    @Environment(\.colorScheme) private var colorScheme
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if usesWorkbenchPorcelain {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: max(16, density.cardCornerRadius), style: .continuous)
+                        .fill(WorkbenchPorcelain.cardFill(for: colorScheme))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: max(16, density.cardCornerRadius), style: .continuous)
+                        .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
+                )
+                .shadow(color: WorkbenchPorcelain.cardShadow(for: colorScheme), radius: 15, y: 7)
+        } else {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .fill(.background.tertiary.opacity(0.6))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                        .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+                )
+        }
     }
 }

@@ -15,29 +15,36 @@ struct SessionListView: View {
         Group {
             if model.rows.isEmpty {
                 emptyState
-            } else if model.groupByProject {
-                List {
-                    ForEach(model.groupedRows) { group in
-                        Section {
-                            ForEach(group.rows) { row in
+            } else {
+                // This is deliberately a plain scroll surface rather than a
+                // SwiftUI List: sessions are cards in a reading queue, not
+                // settings rows, and the default List chrome competes with
+                // the selected-provider tint.
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        if model.groupByProject {
+                            ForEach(model.groupedRows) { group in
+                                Text(group.title.uppercased())
+                                    .font(.system(size: max(9, density.subtitleFontSize - 3), weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .tracking(0.5)
+                                    .padding(.top, 7)
+                                    .padding(.horizontal, 4)
+                                ForEach(group.rows) { row in
+                                    rowView(row)
+                                }
+                            }
+                        } else {
+                            ForEach(model.rows) { row in
                                 rowView(row)
                             }
-                        } header: {
-                            Text(group.title)
-                                .font(.system(size: max(10, density.subtitleFontSize - 2), weight: .semibold))
-                                .foregroundStyle(.tertiary)
-                                .tracking(0.4)
                         }
                     }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .listStyle(.inset)
-            } else {
-                List {
-                    ForEach(model.rows) { row in
-                        rowView(row)
-                    }
-                }
-                .listStyle(.inset)
+                .scrollIndicators(.automatic)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -62,8 +69,6 @@ struct SessionListView: View {
             onToggleCheck: { model.toggleChecked(row.summary) },
             onSelect: { model.select(row) }
         )
-        .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
-        .listRowSeparator(.hidden)
         .onAppear {
             if row.id == model.rows.last?.id { model.loadMoreSummaries() }
         }
@@ -150,14 +155,14 @@ private struct SessionRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
                     .fill(rowFill)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
                     .stroke(rowBorder, lineWidth: isSelected || isHovering ? 0.8 : 0.5)
             )
             .contentShape(Rectangle())

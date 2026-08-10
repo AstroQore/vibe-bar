@@ -14,9 +14,13 @@ final class WorkbenchWindowController: NSObject {
 
     private var window: NSWindow?
     private weak var environment: AppEnvironment?
+    private let navigation = WorkbenchNavigation()
 
     func show(environment: AppEnvironment, page: WorkbenchPage? = nil) {
         self.environment = environment
+        if let page {
+            navigation.select(page)
+        }
         // Before the window exists: switching activation policy reorders the
         // app's windows, and doing that after `makeKeyAndOrderFront` can drop
         // the new window behind whatever was in front.
@@ -29,7 +33,7 @@ final class WorkbenchWindowController: NSObject {
         }
 
         let hosting = NSHostingController(
-            rootView: WorkbenchRootView(initialPage: page)
+            rootView: WorkbenchRootView(initialPage: page, navigation: navigation)
                 .environmentObject(environment)
                 .environmentObject(environment.accountStore)
                 .environmentObject(environment.settingsStore)
@@ -49,11 +53,12 @@ final class WorkbenchWindowController: NSObject {
         )
         win.title = "Workbench"
         win.titlebarAppearsTransparent = true
-        win.titleVisibility = .visible
+        win.titleVisibility = .hidden
         win.isReleasedWhenClosed = false
         win.contentViewController = hosting
+        win.setContentSize(initialSize)
         win.center()
-        win.minSize = NSSize(width: 980, height: 680)
+        win.minSize = NSSize(width: 1040, height: 680)
         win.setFrameAutosaveName(Self.frameAutosaveName)
         win.delegate = self
         self.window = win
