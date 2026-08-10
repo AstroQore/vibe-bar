@@ -97,6 +97,33 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(series.points.reduce(Int64(0)) { $0 + $1.costMicros }, 1_000_000)
     }
 
+    func testHourlyTrendFallsBackToDailyWhenRangeCrossesActualDetailFloor() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsHourlyFloor")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let today = calendar.startOfDay(for: now)
+        let rolledUpDay = try XCTUnwrap(calendar.date(byAdding: .day, value: -35, to: today))
+        let end = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: rolledUpDay))
+        let event = try XCTUnwrap(calendar.date(byAdding: .hour, value: 10, to: rolledUpDay))
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: event, input: 300, output: 30), costUSD: 0.3
+            )
+        ]))
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 365)
+
+        let filter = UsageQueryFilter(range: DateInterval(start: rolledUpDay, end: end))
+        // This is only 24 buckets, so bucket-count gating alone would still
+        // offer Hourly. The ledger's stored floor must force the day fallback.
+        let series = try await ledger.trend(filter, bucket: .hour)
+        let supportsHourly = try await ledger.supportsHourlyTrend(filter)
+        XCTAssertFalse(supportsHourly)
+        XCTAssertEqual(series.bucket, .day)
+        XCTAssertEqual(series.points.map(\.totalTokens), [330])
+        XCTAssertEqual(series.points.map(\.costMicros), [300_000])
+    }
+
     func testDailyTrendZeroFillsEveryDayInRange() async throws {
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsDaily")
         defer { try? FileManager.default.removeItem(at: directory) }

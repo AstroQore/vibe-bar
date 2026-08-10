@@ -137,6 +137,10 @@ final class UsageStatsViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
     @Published private(set) var lastUpdatedAt: Date?
+    /// True only when the current filter lies wholly above every selected
+    /// provider's ledger detail floor. This drives the Hourly menu state and
+    /// is refreshed alongside the query it describes.
+    @Published private(set) var isHourlyTrendAvailable = true
 
     let isLedgerAvailable: Bool
 
@@ -156,6 +160,7 @@ final class UsageStatsViewModel: ObservableObject {
     /// allocating tens of thousands of points before drawing even begins.
     func isTrendGranularityAvailable(_ granularity: UsageTrendGranularity) -> Bool {
         guard granularity != .automatic else { return true }
+        if granularity == .hour, !isHourlyTrendAvailable { return false }
         let seconds: TimeInterval = switch granularity {
         case .automatic: 1
         case .hour: 3_600
@@ -405,6 +410,16 @@ final class UsageStatsViewModel: ObservableObject {
             }
             self.availableModels = models
             let resolved = self.filter
+            let supportsHourly = (try? await ledger.supportsHourlyTrend(resolved)) ?? false
+            guard !Task.isCancelled, generation == self.generation else { return }
+            self.isHourlyTrendAvailable = supportsHourly
+            if self.trendGranularity == .hour, !supportsHourly {
+                // Keep the Picker's intent and the returned series aligned.
+                // `trend` also falls back defensively in case the floor moves
+                // between this check and the subsequent query.
+                self.trendGranularity = .automatic
+                return
+            }
             let granularity = self.trendGranularity
             let snapshot = await Self.load(
                 ledger: ledger, filter: resolved, granularity: granularity

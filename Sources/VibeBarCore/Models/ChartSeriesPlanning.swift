@@ -31,6 +31,75 @@ public enum ChartSeriesThinning {
     }
 }
 
+/// Bounded chart projection for usage buckets.
+///
+/// Generic striding is appropriate for sampled lines such as quota history,
+/// but it can erase a usage spike entirely. This projection draws only exact
+/// source buckets. Once the budget reaches two marks, endpoints win; the
+/// token and cost peaks follow in that order as the third and fourth marks.
+/// Any remaining time span then contributes its most significant exact point.
+/// Keeping every drawn point unmodified is important because the Workbench
+/// hover reads the original bucket at the same timestamp.
+public enum UsageTrendSeriesDownsampling {
+    public static func points(
+        _ input: [UsageTrendPoint],
+        limit: Int
+    ) -> [UsageTrendPoint] {
+        guard limit > 0, input.count > limit else { return input }
+        guard limit > 1 else {
+            return [input[peakIndex(in: input, by: \.totalTokens)]]
+        }
+
+        var selected: Set<Int> = [0, input.count - 1]
+        let tokenPeak = peakIndex(in: input, by: \.totalTokens)
+        let costPeak = peakIndex(in: input, by: \.costMicros)
+        for index in [tokenPeak, costPeak] where selected.count < limit {
+            selected.insert(index)
+        }
+
+        // Spend the leftover budget across contiguous spans so a busy period
+        // cannot monopolize the whole path. The score is normalized by each
+        // metric's global peak, making a cost spike visible even when its
+        // token count is modest (and vice versa).
+        let extraSlots = limit - selected.count
+        if extraSlots > 0 {
+            let maximumTokens = max(1, input[tokenPeak].totalTokens)
+            let maximumCost = max(1, input[costPeak].costMicros)
+            for slot in 0..<extraSlots {
+                let lower = slot * input.count / extraSlots
+                let upper = (slot + 1) * input.count / extraSlots
+                let candidate = (lower..<upper)
+                    .filter { !selected.contains($0) }
+                    .max { lhs, rhs in
+                        significance(input[lhs], tokens: maximumTokens, cost: maximumCost)
+                            < significance(input[rhs], tokens: maximumTokens, cost: maximumCost)
+                    }
+                if let candidate { selected.insert(candidate) }
+            }
+        }
+        return selected.sorted().map { input[$0] }
+    }
+
+    private static func peakIndex(
+        in points: [UsageTrendPoint],
+        by value: (UsageTrendPoint) -> Int64 = { $0.totalTokens }
+    ) -> Int {
+        points.indices.max { lhs, rhs in
+            value(points[lhs]) == value(points[rhs])
+                ? lhs > rhs
+                : value(points[lhs]) < value(points[rhs])
+        }!
+    }
+
+    private static func significance(
+        _ point: UsageTrendPoint,
+        tokens: Int64,
+        cost: Int64
+    ) -> Double {
+        Double(point.totalTokens) / Double(tokens) + Double(point.costMicros) / Double(cost)
+    }
+}
+
 /// Splitting one curve's mark budget across the segments it is drawn in.
 ///
 /// A quota history curve is not one array but a run of segments — one per

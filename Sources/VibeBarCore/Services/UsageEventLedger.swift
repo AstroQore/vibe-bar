@@ -623,14 +623,17 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Zero-filled series across the filter's range.
     ///
     /// Hourly buckets read request-level rows only — daily rollups have no
-    /// sub-day resolution to give back — which is why the recommended
-    /// bucket is `.hour` only for ranges of a day or less, well inside the
-    /// detail window.
+    /// sub-day resolution to give back. An explicitly requested hourly range
+    /// can nevertheless cross a tool's detail floor after retention has run,
+    /// so resolve it against the floors actually recorded in this ledger. A
+    /// day series is preferable to an apparently valid all-zero hourly chart
+    /// that disagrees with the summary beside it.
     public func trend(
         _ filter: UsageQueryFilter,
         bucket: UsageTrendBucket? = nil
     ) throws -> UsageTrendSeries {
-        let resolved = bucket ?? UsageTrendBucket.recommended(for: filter.range)
+        let requested = bucket ?? UsageTrendBucket.recommended(for: filter.range)
+        let resolved = try resolvedTrendBucket(for: filter, requested: requested)
         let starts = bucketStarts(for: filter.range, bucket: resolved)
         var totals: [Date: Accumulator] = [:]
         var providerTotals: [ToolType: [Date: Accumulator]] = [:]
@@ -734,6 +737,45 @@ public actor UsageEventLedger: CostUsageEventSink {
             }
             .sorted { $0.tool.rawValue < $1.tool.rawValue }
         return UsageTrendSeries(bucket: resolved, points: points, providerSeries: providers)
+    }
+
+    /// The finest trend bucket this ledger can draw honestly for `filter`.
+    ///
+    /// A floor is the last local day folded into `usage_daily_rollups`; detail
+    /// starts on the following midnight. A range touching that folded day has
+    /// no hour-level evidence, even if it has only 24 buckets and even if a
+    /// different selected tool has newer detail. Falling back for the whole
+    /// series keeps the stacked provider chart and its summary on the same
+    /// data contract.
+    private func resolvedTrendBucket(
+        for filter: UsageQueryFilter,
+        requested: UsageTrendBucket
+    ) throws -> UsageTrendBucket {
+        guard requested == .hour else { return requested }
+
+        let tools: [ToolType]
+        if let filteredTools = filter.tools {
+            tools = filteredTools
+        } else {
+            tools = try ingestedTools()
+        }
+        for tool in tools {
+            guard let floor = try detailFloorDay(for: tool),
+                  let floorDay = dayFormatter.date(from: floor),
+                  let firstDetailDay = calendar.date(byAdding: .day, value: 1, to: floorDay)
+            else { continue }
+            if filter.range.start < firstDetailDay {
+                return .day
+            }
+        }
+        return .hour
+    }
+
+    /// Whether every selected provider still has request-level evidence for
+    /// every hour in `filter`. The Workbench uses this to keep the Hourly
+    /// picker synchronized with the defensive fallback in `trend`.
+    public func supportsHourlyTrend(_ filter: UsageQueryFilter) throws -> Bool {
+        try resolvedTrendBucket(for: filter, requested: .hour) == .hour
     }
 
     /// One page of request-level rows, newest first.

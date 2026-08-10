@@ -570,12 +570,12 @@ struct UsageTrendChartView: View {
     private func renderedPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
         let points = provider.points.filter { visibleDomain.contains($0.bucketStart) }
         let perProvider = max(2, Self.mainMarkBudget / max(1, visibleProviders.count))
-        return ChartSeriesThinning.strided(points, limit: perProvider)
+        return UsageTrendSeriesDownsampling.points(points, limit: perProvider)
     }
 
     private func navigatorPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
         let perProvider = max(2, Self.navigatorMarkBudget / max(1, visibleProviders.count))
-        return ChartSeriesThinning.strided(provider.points, limit: perProvider)
+        return UsageTrendSeriesDownsampling.points(provider.points, limit: perProvider)
     }
 
     private func areaGradient(_ color: Color) -> LinearGradient {
