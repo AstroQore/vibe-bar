@@ -185,6 +185,69 @@ final class UsageEventLedgerTests: XCTestCase {
         }
     }
 
+    /// Claude only guarantees message/request ids inside one session. Two
+    /// sessions that reuse those ids are two billable requests and must stay
+    /// separate, matching `CostUsageScanner`'s source aggregation.
+    func testClaudeDedupeKeepsMatchingMessageIDsFromDifferentSessions() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerSessionScopedDedupe")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        for (session, input, path) in [
+            ("session-a", 111, "/Users/example/.claude/projects/demo/a.jsonl"),
+            ("session-b", 222, "/Users/example/.claude/projects/demo/b.jsonl")
+        ] {
+            let event = UsageLedgerFixtures.event(
+                date: now,
+                model: "claude-sonnet-4-5",
+                input: input,
+                output: 10,
+                sessionId: session,
+                messageId: "msg-reused",
+                requestId: "req-reused",
+                isSidechain: false,
+                pathRole: .parent,
+                sourceKey: "path-v1-\(session)"
+            )
+            try await ledger.ingest(UsageLedgerFixtures.batch(
+                tool: .claude,
+                path: path,
+                events: [UsageLedgerFixtures.priced(event)]
+            ))
+        }
+
+        let summary = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now))
+        XCTAssertEqual(summary.requests, 2)
+        XCTAssertEqual(summary.freshInput, 333)
+        XCTAssertEqual(summary.output, 20)
+    }
+
+    /// The persisted dedupe key must include the fields after the session id.
+    /// SQLite text bindings are NUL terminated, so an embedded `\0` separator
+    /// would silently collapse these two requests into one row.
+    func testClaudeDedupeKeepsDifferentMessagesInsideOneSession() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerMessageScopedDedupe")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let events = [
+            UsageLedgerFixtures.event(
+                date: now, input: 100, sessionId: "session-shared",
+                messageId: "message-a", requestId: "request-a"
+            ),
+            UsageLedgerFixtures.event(
+                date: now.addingTimeInterval(1), input: 200, sessionId: "session-shared",
+                messageId: "message-b", requestId: "request-b"
+            )
+        ]
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .claude,
+            events: events.map { UsageLedgerFixtures.priced($0) }
+        ))
+
+        let summary = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now))
+        XCTAssertEqual(summary.requests, 2)
+        XCTAssertEqual(summary.freshInput, 300)
+    }
+
     /// Same message, both copies in a parent path: the smaller source key
     /// wins, matching `CostUsageScanner.claudeEventWins`'s final tiebreak.
     func testDedupeConflictTiebreaksOnSourceKey() async throws {
@@ -193,12 +256,12 @@ final class UsageEventLedgerTests: XCTestCase {
 
         let low = UsageLedgerFixtures.event(
             date: now, model: "claude-sonnet-4-5", input: 111, output: 11,
-            messageId: "msg-2", requestId: "req-2",
+            sessionId: "session-2", messageId: "msg-2", requestId: "req-2",
             isSidechain: false, pathRole: .parent, sourceKey: "path-v1-aaa"
         )
         let high = UsageLedgerFixtures.event(
             date: now, model: "claude-sonnet-4-5", input: 222, output: 22,
-            messageId: "msg-2", requestId: "req-2",
+            sessionId: "session-2", messageId: "msg-2", requestId: "req-2",
             isSidechain: false, pathRole: .parent, sourceKey: "path-v1-zzz"
         )
         try await ledger.ingest(UsageLedgerFixtures.batch(

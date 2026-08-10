@@ -87,7 +87,7 @@ struct RemoteSettingsSection: View {
                 infoRow("Machines synced", "\(service.machines.count)")
                 infoRow("Last sync", lastSyncText)
                 if let code = service.lastErrorCode {
-                    Text("Latest sync error: \(code)")
+                    Text("\(RemoteSyncStatusCopy.title(for: code)) · \(code)")
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }

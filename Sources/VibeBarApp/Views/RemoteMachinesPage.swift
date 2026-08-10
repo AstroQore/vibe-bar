@@ -1,6 +1,43 @@
 import SwiftUI
 import VibeBarCore
 
+enum RemoteSyncStatusCopy {
+    static func title(for code: String) -> String {
+        switch code {
+        case "network_offline": return "This Mac is offline"
+        case "network_timeout": return "Relay connection timed out"
+        case "host_lookup_failed": return "Relay host could not be resolved"
+        case "connection_failed": return "Relay connection was interrupted"
+        case "secure_connection_failed": return "Secure Relay connection failed"
+        case "relay_http_401", "relay_http_403": return "Relay access was rejected"
+        case "relay_http_429", "relay_http_503": return "Relay is temporarily busy"
+        case "sequence_gap": return "Probe history has a sequence gap"
+        case "invalid_signature", "unauthorized_producer": return "A Probe could not be verified"
+        case "invalid_response": return "Relay returned an unexpected response"
+        case "sync_failed", "transport_failed": return "Relay transport failed"
+        default: return "Remote sync needs attention"
+        }
+    }
+
+    static func detail(for code: String) -> String {
+        switch code {
+        case "network_timeout", "connection_failed", "secure_connection_failed",
+             "relay_http_429", "relay_http_503":
+            return "Existing machine data is still available. Vibe Bar will retry automatically."
+        case "network_offline", "host_lookup_failed":
+            return "Check this Mac's network or proxy path; existing machine data is still available."
+        case "relay_http_401", "relay_http_403":
+            return "The workspace credential may have been revoked. Reconnect this Core in Settings."
+        case "sequence_gap":
+            return "A Probe batch is missing from the Relay stream, so later batches were not imported."
+        case "invalid_signature", "unauthorized_producer":
+            return "The current workspace roster does not authorize one of the received batches."
+        default:
+            return "No local usage was deleted. Retry now or inspect Remote Core settings for the error code."
+        }
+    }
+}
+
 struct RemoteMachinesPage: View {
     let density: Theme.Density
 
@@ -19,7 +56,7 @@ struct RemoteMachinesPage: View {
                 stateCard(
                     icon: service.isRefreshing ? "arrow.triangle.2.circlepath" : "server.rack",
                     title: service.isRefreshing ? "Checking the Relay…" : "No remote machine data yet",
-                    detail: service.lastErrorCode.map { "Sync state: \($0)" }
+                    detail: service.lastErrorCode.map { RemoteSyncStatusCopy.detail(for: $0) }
                         ?? "The Relay is connected. A Probe will appear after its first encrypted batch is decrypted and imported."
                 )
             } else {
@@ -245,13 +282,36 @@ struct RemoteMachinesPage: View {
     }
 
     private func syncErrorBanner(_ code: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
+        HStack(alignment: .top, spacing: 9) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            Text("Latest sync: \(code)")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(RemoteSyncStatusCopy.title(for: code))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Text(RemoteSyncStatusCopy.detail(for: code))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(code)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+            }
             Spacer(minLength: 0)
+            Button {
+                Task { await service.refresh() }
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.orange.opacity(0.12))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(service.isRefreshing)
         }
         .font(.system(size: density.subtitleFontSize))
         .padding(density.cardPadding)

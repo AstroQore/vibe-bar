@@ -79,6 +79,26 @@ public actor SessionIndexService {
         try await store.allSummaries()
     }
 
+    public func summaryPage(
+        providers: [SessionProvider]? = nil,
+        since: Date? = nil,
+        order: SessionSummaryOrder = .recentFirst,
+        offset: Int = 0,
+        limit: Int = 250
+    ) async throws -> SessionSummaryPage {
+        try await store.summaryPage(
+            providers: providers,
+            since: since,
+            order: order,
+            offset: offset,
+            limit: limit
+        )
+    }
+
+    public func providerCounts() async throws -> [SessionProvider: Int] {
+        try await store.providerCounts()
+    }
+
     public func search(
         _ text: String,
         providers: [SessionProvider]? = nil,

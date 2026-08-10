@@ -106,6 +106,8 @@ final class SessionManagerModel: ObservableObject {
     @Published private(set) var rows: [Row] = []
     @Published private(set) var groupedRows: [ProjectGroup] = []
     @Published private(set) var providerCounts: [SessionProvider: Int] = [:]
+    @Published private(set) var totalSessionCount = 0
+    @Published private(set) var isLoadingSummaries = false
 
     @Published var searchText = "" {
         didSet {
@@ -116,13 +118,20 @@ final class SessionManagerModel: ObservableObject {
     }
 
     @Published var providerFilter: Set<SessionProvider>? {
-        didSet { refreshRows() }
+        didSet {
+            reloadSummaryPage(reset: true)
+            rerunSearch()
+            refreshRows()
+        }
     }
     @Published var dateRange: DateRange = .all {
-        didSet { refreshRows() }
+        didSet {
+            reloadSummaryPage(reset: true)
+            refreshRows()
+        }
     }
     @Published var sortOrder: SortOrder = .recentFirst {
-        didSet { refreshRows() }
+        didSet { reloadSummaryPage(reset: true) }
     }
     @Published var groupByProject = false {
         didSet { refreshRows() }
@@ -171,6 +180,7 @@ final class SessionManagerModel: ObservableObject {
     private var toastTask: Task<Void, Never>?
     private var transcriptGeneration: UInt64 = 0
     private var searchGeneration: UInt64 = 0
+    private var summaryGeneration: UInt64 = 0
     private var hasActivated = false
     private var lastScanFinishedAt: Date?
 
@@ -182,7 +192,12 @@ final class SessionManagerModel: ObservableObject {
     private static let searchDebounce = Duration.milliseconds(250)
     /// The index reports per file; publishing every one of those would put
     /// thousands of main-actor hops between the user and a scroll.
-    private nonisolated static let progressStride = 25
+    private nonisolated static let progressStride = 250
+    private static let summaryPageSize = 250
+
+    var hasMoreSummaries: Bool {
+        summaries.count < totalSessionCount
+    }
 
     /// `AppSettings.sessionBodyIndexingEnabled`, readable from the index
     /// actor's executor. The setting lives on the main actor and the scan
@@ -243,7 +258,7 @@ final class SessionManagerModel: ObservableObject {
     /// switching between Workbench pages re-runs this too, and a full sweep
     /// of every provider's logs is not what a tab click should cost.
     func activate() {
-        loadSummaries()
+        reloadSummaryPage(reset: true)
         guard refreshTask == nil else { return }
         if let last = lastScanFinishedAt, Date().timeIntervalSince(last) < Self.rescanMinimumInterval {
             return
@@ -280,7 +295,7 @@ final class SessionManagerModel: ObservableObject {
             self.indexProgress = nil
             self.refreshTask = nil
             self.lastScanFinishedAt = Date()
-            self.loadSummaries()
+            self.reloadSummaryPage(reset: true)
             self.rerunSearch()
         }
     }
@@ -297,16 +312,53 @@ final class SessionManagerModel: ObservableObject {
             if !cleared { self.show(toast: "The session index could not be cleared.") }
             self.summaries = []
             self.hits = []
+            self.totalSessionCount = 0
             self.refreshIndex()
         }
     }
 
-    private func loadSummaries() {
+    func loadMoreSummaries() {
+        guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              hasMoreSummaries,
+              !isLoadingSummaries
+        else { return }
+        reloadSummaryPage(reset: false)
+    }
+
+    private func reloadSummaryPage(reset: Bool) {
         guard let service else { return }
+        summaryGeneration &+= 1
+        let generation = summaryGeneration
+        let offset = reset ? 0 : summaries.count
+        let providers = providerFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
+        let since = dateRange.start()
+        let order: SessionSummaryOrder
+        switch sortOrder {
+        case .recentFirst: order = .recentFirst
+        case .oldestFirst: order = .oldestFirst
+        case .byProject: order = .byProject
+        }
+        isLoadingSummaries = true
         Task { [weak self] in
-            let loaded = (try? await service.allSummaries()) ?? []
-            guard let self else { return }
-            self.summaries = loaded
+            let page = try? await service.summaryPage(
+                providers: providers,
+                since: since,
+                order: order,
+                offset: offset,
+                limit: Self.summaryPageSize
+            )
+            let counts = reset ? (try? await service.providerCounts()) : nil
+            guard let self, generation == self.summaryGeneration else { return }
+            self.isLoadingSummaries = false
+            guard let page else { return }
+            if reset {
+                self.summaries = page.summaries
+            } else {
+                let existing = Set(self.summaries.map(\.id))
+                self.summaries.append(contentsOf: page.summaries.filter { !existing.contains($0.id) })
+            }
+            self.totalSessionCount = page.totalCount
+            if let counts { self.providerCounts = counts }
             self.reconcileSelection()
         }
     }
@@ -369,14 +421,8 @@ final class SessionManagerModel: ObservableObject {
                 Row(summary: $0, snippet: nil, matchedSeq: nil)
             }
         }
-        rows = sorted(base.filter(passesFilters))
+        rows = needle.isEmpty ? base : sorted(base.filter(passesFilters))
         groupedRows = groupByProject ? Self.grouped(rows) : []
-
-        var counts: [SessionProvider: Int] = [:]
-        for summary in summaries {
-            counts[summary.provider, default: 0] += 1
-        }
-        providerCounts = counts
     }
 
     private static func grouped(_ rows: [Row]) -> [ProjectGroup] {
@@ -462,7 +508,6 @@ final class SessionManagerModel: ObservableObject {
 
     func setProviderFilter(_ providers: Set<SessionProvider>?) {
         providerFilter = (providers?.isEmpty ?? true) ? nil : providers
-        rerunSearch()
     }
 
     // MARK: - Selection
@@ -655,7 +700,7 @@ final class SessionManagerModel: ObservableObject {
             try? await store.removeSessions(sourcePathIn: removed.map(\.sourcePath))
         }
         checkedIDs.subtract(removed.map(\.id))
-        loadSummaries()
+        reloadSummaryPage(reset: true)
 
         let failures = outcomes.filter { !$0.success }
         if failures.isEmpty {

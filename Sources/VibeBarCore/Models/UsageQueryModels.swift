@@ -109,13 +109,15 @@ public struct UsageSummaryMetrics: Sendable, Equatable {
 
 // MARK: - Trend series
 
-public struct UsageTrendPoint: Sendable, Equatable {
+public struct UsageTrendPoint: Sendable, Equatable, Identifiable {
     public let bucketStart: Date
     public let freshInput: Int64
     public let output: Int64
     public let cacheRead: Int64
     public let cacheCreation: Int64
     public let costMicros: Int64
+
+    public var id: Date { bucketStart }
 
     public init(
         bucketStart: Date,

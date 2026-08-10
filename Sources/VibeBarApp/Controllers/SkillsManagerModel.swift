@@ -106,11 +106,12 @@ final class SkillsManagerModel: ObservableObject {
 
     // MARK: - Lifecycle
 
-    /// Loads the registry, and — on a machine that has skills on disk but
-    /// nothing recorded — opens the import sheet unasked. That is the primary
-    /// onboarding path: `~/.agents/skills` is usually already full, linked
-    /// into the app dirs by another installer, and recording it is a read-only
-    /// scan followed by one confirmation.
+    /// Loads the registry and reconciles an existing canonical layout without
+    /// pretending it needs to be imported again. CC Switch and other installers
+    /// already use `~/.agents/skills` as the shared source; recording those
+    /// directories in Vibe Bar changes no skill payload or app link, so it is a
+    /// safe first-run migration. Only app-local directories that genuinely need
+    /// to be copied into the shared source open the review sheet.
     func activate() {
         guard !hasActivated else { return }
         hasActivated = true
@@ -119,9 +120,31 @@ final class SkillsManagerModel: ObservableObject {
             repoList = await service.discoverRepos()
             guard skills.isEmpty else { return }
             let report = await scanForImport()
-            guard !report.adopted.isEmpty || !report.unmanagedDirectories.isEmpty else { return }
-            importReport = report
-            isImportSheetPresented = true
+            guard !report.isEmpty else { return }
+            do {
+                if !report.adopted.isEmpty {
+                    _ = try await service.importAdopted(report)
+                    await reloadSkills()
+                }
+                if !report.unmanagedDirectories.isEmpty {
+                    importReport = SkillImportReport(
+                        adopted: [],
+                        unmanagedDirectories: report.unmanagedDirectories,
+                        unrecognized: report.unrecognized,
+                        conflicts: report.conflicts
+                    )
+                    isImportSheetPresented = true
+                } else if !report.conflicts.isEmpty {
+                    toast = "Recognized \(report.adopted.count) existing skills. "
+                        + "Left \(report.conflicts.count) conflicting app copies unchanged."
+                }
+            } catch {
+                // Nothing on disk was rewritten by adoption; leave the full
+                // report available so the user can retry explicitly.
+                importReport = report
+                isImportSheetPresented = true
+                toast = error.localizedDescription
+            }
         }
     }
 

@@ -114,6 +114,42 @@ final class SessionIndexStoreTests: XCTestCase {
         XCTAssertEqual(variant, "cli")
     }
 
+    func testSummaryPageFiltersOrdersAndBoundsTheRead() async throws {
+        let store = try makeStore()
+        try await store.upsertSession(summary(
+            provider: .claude, id: "claude-old", projectDir: "/Users/example/alpha",
+            lastActive: Date(timeIntervalSince1970: 1_000), path: "/claude-old"
+        ))
+        try await store.upsertSession(summary(
+            provider: .claude, id: "claude-new", projectDir: "/Users/example/beta",
+            lastActive: Date(timeIntervalSince1970: 3_000), path: "/claude-new"
+        ))
+        try await store.upsertSession(summary(
+            provider: .codex, id: "codex", projectDir: "/Users/example/gamma",
+            lastActive: Date(timeIntervalSince1970: 4_000), path: "/codex"
+        ))
+
+        let first = try await store.summaryPage(
+            providers: [.claude],
+            since: Date(timeIntervalSince1970: 1_500),
+            order: .recentFirst,
+            offset: 0,
+            limit: 1
+        )
+        XCTAssertEqual(first.totalCount, 1)
+        XCTAssertEqual(first.summaries.map(\.sessionID), ["claude-new"])
+        XCTAssertEqual(first.limit, 1)
+
+        let oldest = try await store.summaryPage(order: .oldestFirst, offset: 1, limit: 2)
+        XCTAssertEqual(oldest.totalCount, 3)
+        XCTAssertEqual(oldest.summaries.map(\.sessionID), ["claude-new", "codex"])
+
+        let counts = try await store.providerCounts()
+        XCTAssertEqual(counts[.claude], 2)
+        XCTAssertEqual(counts[.codex], 1)
+        XCTAssertNil(counts[.grok])
+    }
+
     // MARK: - Search
 
     func testTrigramSearchMatchesAnEnglishSubstring() async throws {

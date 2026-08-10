@@ -17,6 +17,11 @@ struct UsageStatsPage: View {
                 UsageFiltersBar(density: density, model: model)
                 if model.isLedgerAvailable {
                     UsageHeroCards(density: density, summary: model.summary)
+                    UsageCompositionCards(
+                        density: density,
+                        summary: model.summary,
+                        providers: model.providerStats
+                    )
                     UsageTrendChartView(density: density, series: model.trend)
                     UsageBreakdownTables(density: density, model: model)
                 } else {

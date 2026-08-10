@@ -16,6 +16,7 @@ struct SkillImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var adoptedApps: Set<SkillAppTarget> = []
     @State private var adopting: [String: Set<SkillAppTarget>] = [:]
+    @State private var showsExistingSkills = false
 
     private var report: SkillImportReport? { model.importReport }
 
@@ -26,7 +27,7 @@ struct SkillImportSheet: View {
             if let report {
                 ScrollView {
                     VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                        adoptedSection(report)
+                        if !report.adopted.isEmpty { adoptedSection(report) }
                         if !report.unmanagedDirectories.isEmpty { unmanagedSection(report) }
                         if !report.unrecognized.isEmpty { unrecognizedSection(report) }
                         if !report.conflicts.isEmpty { conflictsSection(report) }
@@ -54,9 +55,9 @@ struct SkillImportSheet: View {
     private var header: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Import Existing Skills")
+                Text("Review On-Disk Skills")
                     .font(.system(size: density.titleFontSize, weight: .semibold))
-                Text("Nothing here has been changed yet — this is what is on the machine.")
+                Text("Vibe Bar already recognizes shared skills. Only selected app-local folders will move.")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             }
@@ -87,7 +88,7 @@ struct SkillImportSheet: View {
                     if model.isBusy(SkillsManagerModel.BusyKey.importing) {
                         ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 12, height: 12)
                     }
-                    Text("Record \(report.adopted.count + adopting.count) skill"
+                    Text("Apply \(report.adopted.count + adopting.count) change"
                         + (report.adopted.count + adopting.count == 1 ? "" : "s"))
                 }
             }
@@ -100,57 +101,57 @@ struct SkillImportSheet: View {
     }
 
     private func summary(_ report: SkillImportReport) -> String {
-        "\(report.adopted.count) in ~/.agents/skills · \(report.unmanagedDirectories.count) app-side "
-            + "· \(report.conflicts.count) conflict\(report.conflicts.count == 1 ? "" : "s")"
+        "\(report.adopted.count) already shared · \(report.unmanagedDirectories.count) need adoption "
+            + "· \(report.conflicts.count) left unchanged"
     }
 
     // MARK: - Adopted
 
     private func adoptedSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
-            sectionHeader(
-                "Already in ~/.agents/skills",
-                detail: "\(report.adopted.count) skill\(report.adopted.count == 1 ? "" : "s")"
-            )
-            Text("These have a SKILL.md in the shared directory. Recording them writes nothing to "
-                + "disk — it only teaches Vibe Bar which apps already link to them.")
-                .font(.system(size: density.subtitleFontSize))
-                .foregroundStyle(.secondary)
-            if report.adopted.isEmpty {
-                Text("Nothing found.")
-                    .font(.system(size: density.subtitleFontSize))
-                    .foregroundStyle(.tertiary)
-            } else {
-                HStack(spacing: 8) {
-                    Text("Keep evidence for")
-                        .font(.system(size: max(9, density.resetCountdownFontSize)))
-                        .foregroundStyle(.tertiary)
-                    SkillAppToggleRow(
-                        isOn: { adoptedApps.contains($0) },
-                        toggle: { adoptedApps.formSymmetricDifference([$0]) },
-                        diameter: 22,
-                        glyphSize: 11,
-                        spacing: 3,
-                        helpSuffix: "keep the links already on disk"
-                    )
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(report.adopted) { skill in
-                        HStack(spacing: 8) {
-                            Text(skill.name)
-                                .font(.system(size: density.subtitleFontSize))
-                                .lineLimit(1)
-                            Spacer(minLength: 8)
-                            HStack(spacing: 3) {
-                                ForEach(skill.enabledApps, id: \.self) { app in
-                                    SkillAppGlyph(app: app, size: 11)
-                                        .help(app.displayName)
+            DisclosureGroup(isExpanded: $showsExistingSkills) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text("Keep evidence for")
+                            .font(.system(size: max(9, density.resetCountdownFontSize)))
+                            .foregroundStyle(.tertiary)
+                        SkillAppToggleRow(
+                            isOn: { adoptedApps.contains($0) },
+                            toggle: { adoptedApps.formSymmetricDifference([$0]) },
+                            diameter: 22,
+                            glyphSize: 11,
+                            spacing: 3,
+                            helpSuffix: "keep the links already on disk"
+                        )
+                    }
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(report.adopted) { skill in
+                            HStack(spacing: 8) {
+                                Text(skill.name)
+                                    .font(.system(size: density.subtitleFontSize))
+                                    .lineLimit(1)
+                                Spacer(minLength: 8)
+                                HStack(spacing: 3) {
+                                    ForEach(skill.enabledApps, id: \.self) { app in
+                                        SkillAppGlyph(app: app, size: 11)
+                                            .help(app.displayName)
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                .padding(.top, 8)
+            } label: {
+                sectionHeader(
+                    "Already shared",
+                    detail: "\(report.adopted.count) recognized"
+                )
             }
+            Text("These already live in ~/.agents/skills, including layouts created by CC Switch. "
+                + "Vibe Bar records their existing links; it does not import or copy them again.")
+                .font(.system(size: density.subtitleFontSize))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -159,11 +160,11 @@ struct SkillImportSheet: View {
     private func unmanagedSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             sectionHeader(
-                "Only inside an app's own folder",
+                "Needs adoption",
                 detail: "\(report.unmanagedDirectories.count)"
             )
-            Text("Adopting one copies it into ~/.agents/skills and replaces the original folder "
-                + "with a link, so every app you pick reads the same copy.")
+            Text("These do not exist in the shared directory yet. Selecting one copies it into "
+                + "~/.agents/skills, then replaces the chosen app copies with managed links.")
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             ForEach(report.unmanagedDirectories, id: \.directoryName) { entry in
@@ -225,7 +226,7 @@ struct SkillImportSheet: View {
 
     private func conflictsSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
-            sectionHeader("Shadowing a shared skill", detail: "\(report.conflicts.count)")
+            sectionHeader("Conflicting app copies", detail: "\(report.conflicts.count) unchanged")
             Text("A real folder in an app's skills directory has the same name as one in "
                 + "~/.agents/skills. Vibe Bar will not overwrite it — resolve it by hand, or "
                 + "enable the shared skill for that app once the folder is gone.")

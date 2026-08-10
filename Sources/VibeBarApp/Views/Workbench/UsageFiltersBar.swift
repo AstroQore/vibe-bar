@@ -91,6 +91,21 @@ struct UsageFiltersBar: View {
             rangeMenu
             modelMenu
             refreshMenu
+            if model.selectedTools != nil || model.selectedModels != nil {
+                Button {
+                    model.setSelectedTools(nil)
+                    model.setSelectedModels(nil)
+                } label: {
+                    Label("Clear", systemImage: "xmark")
+                        .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 9)
+                        .frame(minHeight: 28)
+                        .background(controlBackground)
+                }
+                .buttonStyle(.plain)
+                .help("Clear provider and model filters")
+            }
             Spacer(minLength: 8)
             statusText
             SectionRefreshButton(isRefreshing: model.isLoading) {
@@ -119,7 +134,7 @@ struct UsageFiltersBar: View {
             menuLabel(systemImage: "calendar", title: model.rangePreset.title, detail: rangeSummary)
         }
         .menuStyle(.button)
-        .buttonStyle(.glass)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .popover(isPresented: $showsCustomRange, arrowEdge: .bottom) {
@@ -171,7 +186,7 @@ struct UsageFiltersBar: View {
             menuLabel(systemImage: "cpu", title: "Models", detail: modelSummary)
         }
         .menuStyle(.button)
-        .buttonStyle(.glass)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose which models to include")
@@ -194,7 +209,7 @@ struct UsageFiltersBar: View {
             )
         }
         .menuStyle(.button)
-        .buttonStyle(.glass)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose how often the page re-queries")
@@ -225,7 +240,18 @@ struct UsageFiltersBar: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }
-        .frame(minHeight: 22)
+        .padding(.horizontal, 10)
+        .frame(minHeight: 28)
+        .background(controlBackground)
+    }
+
+    private var controlBackground: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.primary.opacity(0.045))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.09), lineWidth: 0.6)
+            )
     }
 
     private func modelBinding(_ name: String) -> Binding<Bool> {

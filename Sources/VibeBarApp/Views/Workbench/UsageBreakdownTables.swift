@@ -1,18 +1,20 @@
 import SwiftUI
 import VibeBarCore
 
-/// The bottom half of the Usage Stats page: the same range, read three ways.
+/// The bottom half of the Usage Stats page: the same range, read four ways.
 ///
-/// One card with a segmented switch rather than three stacked tables — the
-/// three views answer the same question at different resolutions, and only
-/// one of them is ever the one being read.
+/// The selector is intentionally drawn in Vibe Bar's own card vocabulary
+/// rather than using AppKit's default segmented control. Periods exposes the
+/// exact buckets behind the chart, so a visual and its table can be reconciled
+/// without switching to another page.
 struct UsageBreakdownTables: View {
     let density: Theme.Density
     @ObservedObject var model: UsageStatsViewModel
 
-    @State private var tab: Tab = .requests
+    @State private var tab: Tab = .periods
 
     enum Tab: String, CaseIterable, Identifiable {
+        case periods
         case requests
         case providers
         case models
@@ -21,9 +23,19 @@ struct UsageBreakdownTables: View {
 
         var title: String {
             switch self {
+            case .periods:   "Periods"
             case .requests:  "Requests"
             case .providers: "Providers"
             case .models:    "Models"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .periods:   "calendar.day.timeline.leading"
+            case .requests:  "list.bullet.rectangle"
+            case .providers: "square.grid.2x2"
+            case .models:    "cpu"
             }
         }
     }
@@ -44,6 +56,10 @@ struct UsageBreakdownTables: View {
         model.modelStats.sorted { $0.costMicros > $1.costMicros }
     }
 
+    private var populatedPeriods: [UsageTrendPoint] {
+        Array(model.trend.points.filter { $0.totalTokens > 0 || $0.costMicros != 0 }.reversed())
+    }
+
     var body: some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             header
@@ -56,14 +72,43 @@ struct UsageBreakdownTables: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Picker("", selection: $tab) {
+            HStack(spacing: 2) {
                 ForEach(Tab.allCases) { value in
-                    Text(value.title).tag(value)
+                    let selected = tab == value
+                    Button {
+                        withAnimation(.easeOut(duration: 0.16)) { tab = value }
+                    } label: {
+                        Label(value.title, systemImage: value.systemImage)
+                            .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(selected ? Color.primary : Color.secondary)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 25)
+                    }
+                    .buttonStyle(.plain)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(
+                                selected ? Color.accentColor.opacity(0.38) : Color.clear,
+                                lineWidth: 0.7
+                            )
+                    )
+                    .accessibilityAddTraits(selected ? [.isSelected] : [])
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            .padding(2)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+            )
             Spacer(minLength: 8)
             Text(countSummary)
                 .font(.system(size: max(9, density.resetCountdownFontSize), design: .rounded)
@@ -78,6 +123,9 @@ struct UsageBreakdownTables: View {
 
     private var countSummary: String {
         switch tab {
+        case .periods:
+            return "\(populatedPeriods.count) active \(model.trend.bucket == .hour ? "hour" : "day")"
+                + (populatedPeriods.count == 1 ? "" : "s")
         case .requests:
             let loaded = model.requestRows.count
             let total = model.requestTotalCount
@@ -96,6 +144,12 @@ struct UsageBreakdownTables: View {
     @ViewBuilder
     private var content: some View {
         switch tab {
+        case .periods:
+            if populatedPeriods.isEmpty {
+                empty("No active periods in this range")
+            } else {
+                periodsTable
+            }
         case .requests:
             if model.requestRows.isEmpty {
                 empty("No request-level rows in this range")
@@ -115,6 +169,47 @@ struct UsageBreakdownTables: View {
                 modelsTable
             }
         }
+    }
+
+    private var periodsTable: some View {
+        Table(populatedPeriods) {
+            TableColumn(model.trend.bucket == .hour ? "Hour" : "Day") { point in
+                Text(period(point.bucketStart))
+                    .font(bodyFont)
+            }
+            .width(min: 130, ideal: 190)
+
+            TableColumn("Input") { point in
+                Text(UsageFormatting.compactTokens(point.freshInput))
+                    .font(numericFont)
+            }
+            .width(min: 82, ideal: 104)
+
+            TableColumn("Output") { point in
+                Text(UsageFormatting.compactTokens(point.output))
+                    .font(numericFont)
+            }
+            .width(min: 82, ideal: 104)
+
+            TableColumn("Cache") { point in
+                Text(UsageFormatting.compactTokens(point.cacheRead + point.cacheCreation))
+                    .font(numericFont)
+            }
+            .width(min: 82, ideal: 104)
+
+            TableColumn("Tokens") { point in
+                Text(UsageFormatting.compactTokens(point.totalTokens))
+                    .font(numericFont)
+            }
+            .width(min: 88, ideal: 112)
+
+            TableColumn("Cost") { point in
+                Text(UsageFormatting.formatMicroUSD(point.costMicros))
+                    .font(numericFont)
+            }
+            .width(min: 88, ideal: 112)
+        }
+        .tableStyle(.inset(alternatesRowBackgrounds: false))
     }
 
     private var requestsTable: some View {
@@ -185,7 +280,7 @@ struct UsageBreakdownTables: View {
             }
             .width(min: 62, ideal: 78)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .tableStyle(.inset(alternatesRowBackgrounds: false))
     }
 
     private var providersTable: some View {
@@ -213,7 +308,7 @@ struct UsageBreakdownTables: View {
             }
             .width(min: 84, ideal: 110)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .tableStyle(.inset(alternatesRowBackgrounds: false))
     }
 
     private var modelsTable: some View {
@@ -252,7 +347,7 @@ struct UsageBreakdownTables: View {
             }
             .width(min: 88, ideal: 108)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .tableStyle(.inset(alternatesRowBackgrounds: false))
     }
 
     // MARK: - Cells
@@ -296,12 +391,31 @@ struct UsageBreakdownTables: View {
         Self.timestampFormatter.string(from: date)
     }
 
+    private func period(_ date: Date) -> String {
+        let formatter = model.trend.bucket == .hour ? Self.periodHourFormatter : Self.periodDayFormatter
+        return formatter.string(from: date)
+    }
+
     /// Cached: the requests table formats one of these per visible row, and
     /// building a `DateFormatter` per cell is the expensive half of scrolling.
     private static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
         formatter.setLocalizedDateFormatFromTemplate("MMMd HH:mm:ss")
+        return formatter
+    }()
+
+    private static let periodHourFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("EEEMMMdHHmm")
+        return formatter
+    }()
+
+    private static let periodDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("EEEEMMMd")
         return formatter
     }()
 }

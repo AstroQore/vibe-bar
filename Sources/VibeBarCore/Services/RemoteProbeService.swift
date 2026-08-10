@@ -224,7 +224,7 @@ public final class RemoteProbeService: ObservableObject {
     private struct RefreshSuperseded: Error {}
 
     /// Perform one Relay request, retrying a bounded number of times when the
-    /// Relay asks us to come back shortly.
+    /// Relay or the network path reports a recoverable failure.
     ///
     /// The Relay sits behind an nginx rate limiter. A burst of requests is
     /// answered 429, and nginx (like most CDNs) also sheds load with 503.
@@ -235,9 +235,10 @@ public final class RemoteProbeService: ObservableObject {
     /// a limiter window; if they are exhausted the error propagates exactly as
     /// before and the cycle records it.
     ///
-    /// Only 429 and 503 are retried. 400 (a cursor replayed against the wrong
-    /// principal), 401, and 403 are real failures that will not fix themselves,
-    /// and retrying them would just delay the error the user needs to see.
+    /// Transport failures (offline, DNS, timeout, connection, TLS) use the same
+    /// bounded schedule. 400 (a cursor replayed against the wrong principal),
+    /// 401, and 403 are real failures that will not fix themselves, and retrying
+    /// them would just delay the error the user needs to see.
     ///
     /// `Retry-After` is **not** honored. `RemoteRelayClient.validate` collapses
     /// every non-200 into `RemoteSyncError.http(statusCode)`; widening that
@@ -251,10 +252,9 @@ public final class RemoteProbeService: ObservableObject {
         for delay in relayRetryDelays {
             do {
                 return try await request()
-            } catch let error as RemoteSyncError {
-                guard case .http(let status) = error, status == 429 || status == 503 else {
-                    throw error
-                }
+            } catch {
+                let failure = RemoteSyncError.normalized(error)
+                guard failure.isTransient else { throw failure }
                 try await Task.sleep(for: delay)
                 guard generation == configurationGeneration else { throw RefreshSuperseded() }
             }
@@ -422,8 +422,10 @@ public final class RemoteProbeService: ObservableObject {
             lastErrorCode = nil
         } catch {
             guard generation == configurationGeneration else { return }
-            let code = (error as? RemoteSyncError)?.code ?? "sync_failed"
+            let failure = RemoteSyncError.normalized(error)
+            let code = failure.code
             lastErrorCode = code
+            SafeLog.net("remote sync failed: \(code)")
             try? await ledger.recordSync(
                 workspaceID: config.workspaceID,
                 coreDeviceID: config.coreDeviceID,

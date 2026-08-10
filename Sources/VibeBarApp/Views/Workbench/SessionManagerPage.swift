@@ -162,6 +162,10 @@ struct SessionFiltersBar: View {
     private var countSummary: String {
         guard model.isIndexAvailable else { return "index unavailable" }
         let shown = model.rows.count
+        if model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           shown < model.totalSessionCount {
+            return "\(shown) of \(model.totalSessionCount) sessions"
+        }
         return shown == 1 ? "1 session" : "\(shown) sessions"
     }
 
