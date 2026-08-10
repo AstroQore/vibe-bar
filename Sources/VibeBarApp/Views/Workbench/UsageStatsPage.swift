@@ -23,12 +23,7 @@ struct UsageStatsPage: View {
                 VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                     if model.isLedgerAvailable {
                         UsageHeroCards(density: density, summary: model.summary)
-                        UsageCompositionCards(
-                            density: density,
-                            summary: model.summary,
-                            providers: model.providerStats
-                        )
-                        UsageTrendChartView(density: density, model: model)
+                        trendAndProviderMix
                         UsageBreakdownTables(density: density, model: model)
                     } else {
                         unavailableCard
@@ -41,6 +36,33 @@ struct UsageStatsPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { model.activate() }
+    }
+
+    /// The chart and provider mix are intentionally peers: the first answers
+    /// "when", the second answers "who". `ViewThatFits` keeps that reading
+    /// order when the Workbench narrows instead of compressing either surface
+    /// into an unreadable card.
+    private var trendAndProviderMix: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: density.interSectionSpacing) {
+                UsageTrendChartView(density: density, model: model)
+                    .frame(minWidth: 480, maxWidth: .infinity)
+                UsageCompositionCards(
+                    density: density,
+                    summary: model.summary,
+                    providers: model.providerStats
+                )
+                .frame(minWidth: 300, maxWidth: .infinity)
+            }
+            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                UsageTrendChartView(density: density, model: model)
+                UsageCompositionCards(
+                    density: density,
+                    summary: model.summary,
+                    providers: model.providerStats
+                )
+            }
+        }
     }
 
     private var unavailableCard: some View {

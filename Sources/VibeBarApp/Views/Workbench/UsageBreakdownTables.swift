@@ -3,18 +3,18 @@ import VibeBarCore
 
 /// The bottom half of the Usage Stats page: the same range, read four ways.
 ///
-/// The selector is intentionally drawn in Vibe Bar's own card vocabulary
-/// rather than using AppKit's default segmented control. Periods exposes the
-/// exact buckets behind the chart, so a visual and its table can be reconciled
-/// without switching to another page.
+/// This deliberately does not use SwiftUI's `Table`. AppKit owns too much of
+/// that control's chrome and column sizing, which makes the Workbench surface
+/// look unlike the rest of Porcelain and clips its trailing numeric columns.
 struct UsageBreakdownTables: View {
     let density: Theme.Density
     @ObservedObject var model: UsageStatsViewModel
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var tab: Tab = .periods
 
-    enum Tab: String, CaseIterable, Identifiable {
+    private enum Tab: String, CaseIterable, Identifiable {
         case periods
         case requests
         case providers
@@ -24,28 +24,11 @@ struct UsageBreakdownTables: View {
 
         var title: String {
             switch self {
-            case .periods:   "Periods"
-            case .requests:  "Requests"
+            case .periods: "Periods"
+            case .requests: "Requests"
             case .providers: "Providers"
-            case .models:    "Models"
+            case .models: "Models"
             }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .periods:   "calendar.day.timeline.leading"
-            case .requests:  "list.bullet.rectangle"
-            case .providers: "square.grid.2x2"
-            case .models:    "cpu"
-            }
-        }
-    }
-
-    private var tableHeight: CGFloat {
-        switch density.profile {
-        case .compact:  340
-        case .regular:  400
-        case .spacious: 460
         }
     }
 
@@ -62,10 +45,9 @@ struct UsageBreakdownTables: View {
     }
 
     var body: some View {
-        CardShell(density: density, spacing: density.cardSpacing) {
+        CardShell(density: density, spacing: 12) {
             header
             content
-                .frame(height: tableHeight)
         }
     }
 
@@ -77,47 +59,56 @@ struct UsageBreakdownTables: View {
                 ForEach(Tab.allCases) { value in
                     let selected = tab == value
                     Button {
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { tab = value }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+                            tab = value
+                        }
                     } label: {
-                        Label(value.title, systemImage: value.systemImage)
-                            .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                            .labelStyle(.titleAndIcon)
+                        Text(value.title)
+                            .font(.system(size: 10.5, weight: .semibold))
                             .foregroundStyle(selected ? Color.primary : Color.secondary)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 28)
+                            .padding(.horizontal, 11)
+                            .frame(minHeight: 27)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(selected
+                                        ? WorkbenchPorcelain.selectedNavigationFill(for: colorScheme)
+                                        : Color.clear)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(
+                                        selected
+                                            ? WorkbenchPorcelain.hairline(for: colorScheme)
+                                            : Color.clear,
+                                        lineWidth: 0.7
+                                    )
+                            )
                     }
                     .buttonStyle(.plain)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(
-                                selected ? Color.accentColor.opacity(0.38) : Color.clear,
-                                lineWidth: 0.7
-                            )
-                    )
+                    .accessibilityLabel(value.title)
                     .accessibilityAddTraits(selected ? [.isSelected] : [])
                 }
             }
             .padding(2)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.primary.opacity(0.045))
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(WorkbenchPorcelain.fieldFill(for: colorScheme))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
             )
+
             Spacer(minLength: 8)
+
             Text(countSummary)
-                .font(.system(size: max(9, density.resetCountdownFontSize), design: .rounded)
-                    .monospacedDigit())
+                .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
             if model.isLoadingMore {
-                ProgressView().controlSize(.small)
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Loading more requests")
             }
         }
     }
@@ -172,222 +163,265 @@ struct UsageBreakdownTables: View {
         }
     }
 
+    /// The Period, Provider and Model grids borrow the card's available
+    /// width. Their trailing values are never hidden behind a scroller at the
+    /// ordinary Workbench width; only their descriptive leading column flexes.
     private var periodsTable: some View {
-        Table(populatedPeriods) {
-            TableColumn(periodColumnTitle) { point in
-                Text(period(point.bucketStart))
-                    .font(bodyFont)
-            }
-            .width(min: 130, ideal: 190)
-
-            TableColumn("Input") { point in
-                Text(UsageFormatting.compactTokens(point.freshInput))
-                    .font(numericFont)
-            }
-            .width(min: 82, ideal: 104)
-            .alignment(.trailing)
-
-            TableColumn("Output") { point in
-                Text(UsageFormatting.compactTokens(point.output))
-                    .font(numericFont)
-            }
-            .width(min: 82, ideal: 104)
-            .alignment(.trailing)
-
-            TableColumn("Cache") { point in
-                Text(UsageFormatting.compactTokens(point.cacheRead + point.cacheCreation))
-                    .font(numericFont)
-            }
-            .width(min: 82, ideal: 104)
-            .alignment(.trailing)
-
-            TableColumn("Tokens") { point in
-                Text(UsageFormatting.compactTokens(point.totalTokens))
-                    .font(numericFont)
-            }
-            .width(min: 88, ideal: 112)
-            .alignment(.trailing)
-
-            TableColumn("Cost") { point in
-                Text(UsageFormatting.formatMicroUSD(point.costMicros))
-                    .font(numericFont)
-            }
-            .width(min: 88, ideal: 112)
-            .alignment(.trailing)
-        }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
-    }
-
-    private var requestsTable: some View {
-        Table(model.requestRows) {
-            TableColumn("Time") { row in
-                Text(timestamp(row.date))
-                    .font(numericFont)
-                    .foregroundStyle(.secondary)
-                    // The Table is the page's only lazy surface, so paging is
-                    // driven from the last realized row rather than from a
-                    // scroll offset the card never sees.
-                    .onAppear { loadMoreIfLast(row) }
-            }
-            .width(min: 112, ideal: 132)
-
-            TableColumn("Provider") { row in
-                providerCell(row.tool)
-            }
-            .width(min: 118, ideal: 148)
-
-            TableColumn("Model") { row in
-                Text(row.model)
-                    .font(bodyFont)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(row.model)
-            }
-            .width(min: 130, ideal: 190)
-
-            TableColumn("Input") { row in
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(UsageFormatting.compactTokens(row.freshInput))
-                        .font(numericFont)
-                    if row.cacheRead > 0 || row.cacheCreation > 0 {
-                        Text("R \(UsageFormatting.compactTokens(row.cacheRead))"
-                            + " · W \(UsageFormatting.compactTokens(row.cacheCreation))")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+        GeometryReader { proxy in
+            let contentWidth = proxy.size.width - UsageTableMetrics.horizontalInset * 2
+            let periodWidth = max(170, contentWidth - 5 * 108)
+            VStack(spacing: 0) {
+                tableHeader {
+                    headerCell(periodColumnTitle, width: periodWidth)
+                    headerCell("Input", width: 108, alignment: .trailing)
+                    headerCell("Output", width: 108, alignment: .trailing)
+                    headerCell("Cache", width: 108, alignment: .trailing)
+                    headerCell("Tokens", width: 108, alignment: .trailing)
+                    headerCell("Cost", width: 108, alignment: .trailing)
+                }
+                LazyVStack(spacing: 0) {
+                    ForEach(populatedPeriods, id: \.bucketStart) { point in
+                        PorcelainUsageRow(accessibilityLabel: periodAccessibilityLabel(point)) {
+                            valueCell(period(point.bucketStart), width: periodWidth, tooltip: period(point.bucketStart))
+                            numericCell(point.freshInput, width: 108)
+                            numericCell(point.output, width: 108)
+                            numericCell(point.cacheRead + point.cacheCreation, width: 108)
+                            numericCell(point.totalTokens, width: 108, emphasis: true)
+                            moneyCell(point.costMicros, width: 108, emphasis: true)
+                        }
                     }
                 }
             }
-            .width(min: 86, ideal: 104)
-            .alignment(.trailing)
+        }
+        .frame(height: tableHeight(for: populatedPeriods.count))
+    }
 
-            TableColumn("Output") { row in
-                Text(UsageFormatting.compactTokens(row.output))
-                    .font(numericFont)
-            }
-            .width(min: 68, ideal: 82)
-            .alignment(.trailing)
-
-            TableColumn("Cost") { row in
-                if let micros = row.costMicros {
-                    Text(UsageFormatting.formatMicroUSD(micros))
-                        .font(numericFont)
-                } else {
-                    Text("unpriced")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+    /// Requests intentionally retain a horizontal scroll surface: a request
+    /// carries seven useful fields and compressing it would erase the model or
+    /// tier. The last realized row remains the paging trigger.
+    private var requestsTable: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            VStack(spacing: 0) {
+                tableHeader {
+                    headerCell("Time", width: 138)
+                    headerCell("Provider", width: 138)
+                    headerCell("Model", width: 220)
+                    headerCell("Input", width: 114, alignment: .trailing)
+                    headerCell("Output", width: 88, alignment: .trailing)
+                    headerCell("Cost", width: 96, alignment: .trailing)
+                    headerCell("Tier", width: 86)
+                }
+                LazyVStack(spacing: 0) {
+                    ForEach(model.requestRows) { row in
+                        PorcelainUsageRow(accessibilityLabel: requestAccessibilityLabel(row)) {
+                            valueCell(timestamp(row.date), width: 138, secondary: true, tooltip: timestamp(row.date))
+                            providerCell(row.tool, width: 138)
+                            valueCell(row.model, width: 220, tooltip: row.model)
+                            inputCell(row, width: 114)
+                            numericCell(row.output, width: 88)
+                            optionalMoneyCell(row.costMicros, width: 96)
+                            valueCell(row.serviceTier ?? "—", width: 86, secondary: true, tooltip: row.serviceTier)
+                        }
+                        .onAppear { loadMoreIfLast(row) }
+                    }
                 }
             }
-            .width(min: 72, ideal: 88)
-            .alignment(.trailing)
-
-            TableColumn("Tier") { row in
-                Text(row.serviceTier ?? "—")
-                    .font(bodyFont)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 62, ideal: 78)
+            .frame(minWidth: 898, alignment: .leading)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .accessibilityLabel("Request usage table")
+        .frame(height: tableHeight(for: model.requestRows.count))
     }
 
     private var providersTable: some View {
-        Table(sortedProviders) {
-            TableColumn("Provider") { stat in
-                providerCell(stat.tool)
+        GeometryReader { proxy in
+            let contentWidth = proxy.size.width - UsageTableMetrics.horizontalInset * 2
+            let providerWidth = max(180, contentWidth - 112 - 132 - 120)
+            VStack(spacing: 0) {
+                tableHeader {
+                    headerCell("Provider", width: providerWidth)
+                    headerCell("Requests", width: 112, alignment: .trailing)
+                    headerCell("Tokens", width: 132, alignment: .trailing)
+                    headerCell("Cost", width: 120, alignment: .trailing)
+                }
+                LazyVStack(spacing: 0) {
+                    ForEach(sortedProviders) { stat in
+                        PorcelainUsageRow(accessibilityLabel: providerAccessibilityLabel(stat)) {
+                            providerCell(stat.tool, width: providerWidth)
+                            countCell(stat.requests, width: 112)
+                            numericCell(stat.totalTokens, width: 132, emphasis: true)
+                            moneyCell(stat.costMicros, width: 120, emphasis: true)
+                        }
+                    }
+                }
             }
-            .width(min: 150, ideal: 220)
-
-            TableColumn("Requests") { stat in
-                Text(stat.requests.formatted(.number.grouping(.automatic)))
-                    .font(numericFont)
-            }
-            .width(min: 80, ideal: 100)
-            .alignment(.trailing)
-
-            TableColumn("Tokens") { stat in
-                Text(UsageFormatting.compactTokens(stat.totalTokens))
-                    .font(numericFont)
-            }
-            .width(min: 84, ideal: 110)
-            .alignment(.trailing)
-
-            TableColumn("Cost") { stat in
-                Text(UsageFormatting.formatMicroUSD(stat.costMicros))
-                    .font(numericFont)
-            }
-            .width(min: 84, ideal: 110)
-            .alignment(.trailing)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .frame(height: tableHeight(for: sortedProviders.count))
     }
 
     private var modelsTable: some View {
-        Table(sortedModels) {
-            TableColumn("Model") { stat in
-                Text(stat.model)
-                    .font(bodyFont)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(stat.model)
+        GeometryReader { proxy in
+            let contentWidth = proxy.size.width - UsageTableMetrics.horizontalInset * 2
+            let modelWidth = max(200, contentWidth - 112 - 132 - 120 - 128)
+            VStack(spacing: 0) {
+                tableHeader {
+                    headerCell("Model", width: modelWidth)
+                    headerCell("Requests", width: 112, alignment: .trailing)
+                    headerCell("Tokens", width: 132, alignment: .trailing)
+                    headerCell("Cost", width: 120, alignment: .trailing)
+                    headerCell("Avg/req", width: 128, alignment: .trailing)
+                }
+                LazyVStack(spacing: 0) {
+                    ForEach(sortedModels) { stat in
+                        PorcelainUsageRow(accessibilityLabel: modelAccessibilityLabel(stat)) {
+                            valueCell(stat.model, width: modelWidth, tooltip: stat.model)
+                            countCell(stat.requests, width: 112)
+                            numericCell(stat.totalTokens, width: 132, emphasis: true)
+                            moneyCell(stat.costMicros, width: 120, emphasis: true)
+                            moneyCell(stat.avgCostMicrosPerRequest, width: 128, secondary: true)
+                        }
+                    }
+                }
             }
-            .width(min: 160, ideal: 260)
-
-            TableColumn("Requests") { stat in
-                Text(stat.requests.formatted(.number.grouping(.automatic)))
-                    .font(numericFont)
-            }
-            .width(min: 80, ideal: 98)
-            .alignment(.trailing)
-
-            TableColumn("Tokens") { stat in
-                Text(UsageFormatting.compactTokens(stat.totalTokens))
-                    .font(numericFont)
-            }
-            .width(min: 84, ideal: 104)
-            .alignment(.trailing)
-
-            TableColumn("Cost") { stat in
-                Text(UsageFormatting.formatMicroUSD(stat.costMicros))
-                    .font(numericFont)
-            }
-            .width(min: 84, ideal: 104)
-            .alignment(.trailing)
-
-            TableColumn("Avg/req") { stat in
-                Text(UsageFormatting.formatMicroUSD(stat.avgCostMicrosPerRequest, precision: 4))
-                    .font(numericFont)
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 88, ideal: 108)
-            .alignment(.trailing)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .frame(height: tableHeight(for: sortedModels.count))
     }
 
     // MARK: - Cells
 
-    private func providerCell(_ tool: ToolType) -> some View {
-        HStack(spacing: 6) {
+    private func tableHeader<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 0) {
+            content()
+        }
+        .frame(minHeight: 27)
+        .padding(.horizontal, UsageTableMetrics.horizontalInset)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(WorkbenchPorcelain.hairline(for: colorScheme))
+                .frame(height: 0.7)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func headerCell(
+        _ text: String,
+        width: CGFloat,
+        alignment: Alignment = .leading
+    ) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .kerning(0.65)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .frame(width: width, alignment: alignment)
+    }
+
+    private func valueCell(
+        _ value: String,
+        width: CGFloat,
+        secondary: Bool = false,
+        tooltip: String? = nil
+    ) -> some View {
+        Text(value)
+            .font(bodyFont)
+            .foregroundStyle(secondary ? Color.secondary : Color.primary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(width: width, alignment: .leading)
+            .help(tooltip ?? value)
+    }
+
+    private func providerCell(_ tool: ToolType, width: CGFloat) -> some View {
+        HStack(spacing: 7) {
             ToolBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
             Text(tool.menuTitle)
                 .font(bodyFont)
                 .lineLimit(1)
         }
+        .frame(width: width, alignment: .leading)
         .help(tool.displayName)
     }
 
+    private func inputCell(_ row: UsageRequestRow, width: CGFloat) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(UsageFormatting.compactTokens(row.freshInput))
+                .font(numericFont)
+            if row.cacheRead > 0 || row.cacheCreation > 0 {
+                Text("R \(UsageFormatting.compactTokens(row.cacheRead)) · W \(UsageFormatting.compactTokens(row.cacheCreation))")
+                    .font(.system(size: 9, weight: .medium, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: width, alignment: .trailing)
+        .help("Fresh input: \(UsageFormatting.formatTokens(row.freshInput))\nCache read: \(UsageFormatting.formatTokens(row.cacheRead))\nCache write: \(UsageFormatting.formatTokens(row.cacheCreation))")
+    }
+
+    private func numericCell(
+        _ value: Int64,
+        width: CGFloat,
+        emphasis: Bool = false
+    ) -> some View {
+        Text(UsageFormatting.compactTokens(value))
+            .font(numericFont)
+            .fontWeight(emphasis ? .semibold : .regular)
+            .frame(width: width, alignment: .trailing)
+            .help(UsageFormatting.formatTokens(value))
+    }
+
+    private func countCell(_ value: Int, width: CGFloat) -> some View {
+        Text(value.formatted(.number.grouping(.automatic)))
+            .font(numericFont)
+            .frame(width: width, alignment: .trailing)
+            .help("\(value.formatted(.number.grouping(.automatic))) requests")
+    }
+
+    private func moneyCell(
+        _ micros: Int64,
+        width: CGFloat,
+        emphasis: Bool = false,
+        secondary: Bool = false
+    ) -> some View {
+        Text(UsageFormatting.formatMicroUSD(micros, precision: secondary ? 4 : 2))
+            .font(numericFont)
+            .fontWeight(emphasis ? .semibold : .regular)
+            .foregroundStyle(secondary ? Color.secondary : Color.primary)
+            .frame(width: width, alignment: .trailing)
+            .help(UsageFormatting.formatMicroUSD(micros, precision: 6))
+    }
+
+    private func optionalMoneyCell(_ micros: Int64?, width: CGFloat) -> some View {
+        Group {
+            if let micros {
+                moneyCell(micros, width: width)
+            } else {
+                Text("unpriced")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: width, alignment: .trailing)
+                    .help("No price was available for this request")
+            }
+        }
+    }
+
     private func empty(_ message: String) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Image(systemName: "tray")
-                .font(.system(size: 20, weight: .light))
+                .font(.system(size: 19, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(message)
-                .font(.system(size: density.subtitleFontSize))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 112)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(WorkbenchPorcelain.fieldFill(for: colorScheme).opacity(0.48))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
+        )
+        .accessibilityElement(children: .combine)
     }
 
     private func loadMoreIfLast(_ row: UsageRequestRow) {
@@ -395,12 +429,19 @@ struct UsageBreakdownTables: View {
         model.loadMoreRequests()
     }
 
+    /// Header plus 34-point rows, instead of a density-dependent empty pane.
+    /// The parent Usage Stats scroller owns vertical scrolling, so this is
+    /// deliberately the real content height rather than a fixed viewport.
+    private func tableHeight(for rowCount: Int) -> CGFloat {
+        CGFloat(max(rowCount, 1)) * 34 + 27
+    }
+
     private var bodyFont: Font {
-        .system(size: max(10, density.subtitleFontSize))
+        .system(size: 11)
     }
 
     private var numericFont: Font {
-        .system(size: max(10, density.subtitleFontSize), design: .rounded).monospacedDigit()
+        .system(size: 11, weight: .regular, design: .rounded).monospacedDigit()
     }
 
     private func timestamp(_ date: Date) -> String {
@@ -433,8 +474,23 @@ struct UsageBreakdownTables: View {
         }
     }
 
-    /// Cached: the requests table formats one of these per visible row, and
-    /// building a `DateFormatter` per cell is the expensive half of scrolling.
+    private func periodAccessibilityLabel(_ point: UsageTrendPoint) -> String {
+        "\(period(point.bucketStart)), \(UsageFormatting.formatTokens(point.totalTokens)), \(UsageFormatting.formatMicroUSD(point.costMicros))"
+    }
+
+    private func requestAccessibilityLabel(_ row: UsageRequestRow) -> String {
+        "\(timestamp(row.date)), \(row.tool.displayName), \(row.model), \(UsageFormatting.formatTokens(row.totalTokens)), \(row.costMicros.map { UsageFormatting.formatMicroUSD($0) } ?? "unpriced")"
+    }
+
+    private func providerAccessibilityLabel(_ stat: UsageProviderStat) -> String {
+        "\(stat.tool.displayName), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
+    }
+
+    private func modelAccessibilityLabel(_ stat: UsageModelStat) -> String {
+        "\(stat.model), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
+    }
+
+    /// Cached: request rows can be formatted while scrolling a long ledger.
     private static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
@@ -462,4 +518,39 @@ struct UsageBreakdownTables: View {
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
     }()
+}
+
+/// A compact row with a restrained hover treatment. Keeping the divider with
+/// its row makes all four tables line up identically without AppKit table
+/// selection chrome or alternating system backgrounds.
+private struct PorcelainUsageRow<Content: View>: View {
+    let accessibilityLabel: String
+    @ViewBuilder let content: () -> Content
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                content()
+            }
+            .frame(minHeight: 33)
+            .padding(.horizontal, UsageTableMetrics.horizontalInset)
+            .background(isHovered ? WorkbenchPorcelain.hoverFill(for: colorScheme) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+
+            Rectangle()
+                .fill(WorkbenchPorcelain.hairline(for: colorScheme).opacity(0.72))
+                .frame(height: 0.5)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
+private enum UsageTableMetrics {
+    static let horizontalInset: CGFloat = 9
 }

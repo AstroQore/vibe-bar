@@ -84,6 +84,9 @@ struct TranscriptView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .cardSurface(density: density)
+            .padding(.trailing, density.popoverPaddingH)
+            .padding(.bottom, density.popoverPaddingV)
             .onChange(of: model.transcript) { _, _ in focusOnSearchHit(proxy: proxy) }
         }
     }
@@ -299,7 +302,7 @@ struct SessionMetadataHeader: View {
     @State private var showsDetails = false
 
     var body: some View {
-        CardShell(density: density, spacing: max(7, density.cardSpacing)) {
+        VStack(alignment: .leading, spacing: max(7, density.cardSpacing)) {
             HStack(alignment: .center, spacing: 10) {
                 ToolBrandBadge(tool: summary.provider.tool, iconSize: 20, containerSize: 26)
                 VStack(alignment: .leading, spacing: 3) {
@@ -320,6 +323,7 @@ struct SessionMetadataHeader: View {
                 resumeRow
             }
         }
+        .padding(.vertical, 2)
     }
 
     private var compactMetadata: some View {

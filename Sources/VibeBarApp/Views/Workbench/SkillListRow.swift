@@ -148,20 +148,26 @@ struct SkillListRow: View {
             .disabled(isBusy)
             overflowMenu
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 11)
         .opacity(isBusy ? 0.55 : 1)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHovering ? Color.accentColor.opacity(0.08) : .clear)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isHovering ? Color.primary.opacity(0.045) : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(
-                    isHovering ? Color(nsColor: .separatorColor).opacity(0.7) : Color.clear,
-                    lineWidth: 0.5
+                    isHovering ? Color.primary.opacity(0.12) : Color.clear,
+                    lineWidth: 0.7
                 )
         )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.06))
+                .frame(height: 0.5)
+                .padding(.horizontal, 2)
+        }
         .overlay(alignment: .trailing) {
             if isBusy {
                 ProgressView().controlSize(.small)
@@ -208,8 +214,15 @@ struct SkillListRow: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(.quaternary.opacity(0.5)))
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+            )
             .help(skill.repoBranch.map { "Branch \($0)" } ?? "Installed locally")
     }
 

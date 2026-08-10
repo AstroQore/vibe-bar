@@ -93,7 +93,10 @@ enum SettingsDestination: Hashable {
 struct SettingsView: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
+    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
+    @Environment(\.colorScheme) private var colorScheme
     var dismiss: () -> Void
+    var showsDismissButton: Bool = true
 
     private let intervalOptions = AppSettings.refreshIntervalOptions
     private let popoverRefreshCooldownOptions: [Int] = [60, 120, 300, 600]
@@ -120,12 +123,14 @@ struct SettingsView: View {
                         Text(selectedDestination.title(settings: settingsStore.settings))
                             .font(.system(size: 20, weight: .semibold))
                         Spacer()
-                        BorderlessIconButton(
-                            systemImage: "xmark.circle.fill",
-                            help: "Close Settings",
-                            size: 15,
-                            action: dismiss
-                        )
+                        if showsDismissButton {
+                            BorderlessIconButton(
+                                systemImage: "xmark.circle.fill",
+                                help: "Close Settings",
+                                size: 15,
+                                action: dismiss
+                            )
+                        }
                     }
                     .padding(.horizontal, 22)
                     .padding(.vertical, 16)
@@ -619,12 +624,26 @@ struct SettingsView: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.045))
+                RoundedRectangle(cornerRadius: usesWorkbenchPorcelain ? 14 : 8, style: .continuous)
+                    .fill(
+                        usesWorkbenchPorcelain
+                            ? WorkbenchPorcelain.cardFill(for: colorScheme)
+                            : Color.primary.opacity(0.045)
+                    )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+                RoundedRectangle(cornerRadius: usesWorkbenchPorcelain ? 14 : 8, style: .continuous)
+                    .stroke(
+                        usesWorkbenchPorcelain
+                            ? WorkbenchPorcelain.hairline(for: colorScheme)
+                            : Color.primary.opacity(0.08),
+                        lineWidth: 0.7
+                    )
+            )
+            .shadow(
+                color: usesWorkbenchPorcelain ? WorkbenchPorcelain.cardShadow(for: colorScheme) : .clear,
+                radius: usesWorkbenchPorcelain ? 10 : 0,
+                y: usesWorkbenchPorcelain ? 4 : 0
             )
         }
     }

@@ -37,7 +37,6 @@ final class AppEnvironment: ObservableObject {
     private let openAIWebLoginController = OpenAIWebLoginController()
     private let claudeWebLoginController = ClaudeWebLoginController()
     private let miscWebLoginRegistry = MiscWebLoginRegistry()
-    private let settingsWindowController = SettingsWindowController()
     private let workbenchWindowController = WorkbenchWindowController()
     private var workbenchServicesStorage: WorkbenchServices?
     private var cancellables: Set<AnyCancellable> = []
@@ -497,7 +496,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func showSettingsWindow() {
-        settingsWindowController.show(environment: self)
+        showWorkbench(page: .settings)
     }
 
     func showWorkbench(page: WorkbenchPage? = nil) {

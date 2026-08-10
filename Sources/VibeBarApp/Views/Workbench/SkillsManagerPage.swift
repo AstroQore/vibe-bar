@@ -65,15 +65,21 @@ struct SkillsManagerPage: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        CardShell(density: density, spacing: density.cardSpacing) {
-            HStack(spacing: 8) {
-                searchField
-                Spacer(minLength: 8)
-                actionButtons
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 7) {
+                    searchField
+                    actionButtons
+                }
+                .padding(.vertical, 1)
             }
+            .scrollIndicators(.never)
             Divider().opacity(0.35)
             appCountRow
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .workbenchToolbarSurface()
     }
 
     private var searchField: some View {
@@ -97,75 +103,66 @@ struct SkillsManagerPage: View {
         }
         .padding(.horizontal, 10)
         .frame(minHeight: 30)
-        .frame(maxWidth: 320)
-        .background(Capsule().fill(.background.tertiary.opacity(0.7)))
-        .overlay(Capsule().stroke(.separator.opacity(0.45), lineWidth: 0.5))
+        .frame(width: 250)
+        .workbenchFieldSurface(cornerRadius: 15)
     }
 
     private var actionButtons: some View {
         HStack(spacing: 6) {
-            Menu {
-                Button {
-                    model.presentImportSheet()
-                } label: {
-                    Label("Import Existing…", systemImage: "square.and.arrow.down.on.square")
-                }
-                Button {
-                    showsZipImporter = true
-                } label: {
-                    Label("Install from ZIP…", systemImage: "doc.zipper")
-                }
+            Button {
+                model.checkForUpdates()
             } label: {
                 buttonLabel(
-                    systemImage: "plus",
-                    title: "Add",
-                    busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
-                        || model.isBusy(SkillsManagerModel.BusyKey.importing)
-                )
-            }
-            .menuStyle(.button)
-            .buttonStyle(.bordered)
-            .menuIndicator(.hidden)
-            .help("Import skills already on this Mac or install a ZIP archive")
-
-            Menu {
-                Button {
-                    model.checkForUpdates()
-                } label: {
-                    Label(
-                        model.updatesAvailableCount > 0
-                            ? "Updates Available (\(model.updatesAvailableCount))"
-                            : "Check for Updates",
-                        systemImage: "arrow.triangle.2.circlepath"
-                    )
-                }
-                .disabled(model.isBusy(SkillsManagerModel.BusyKey.updates))
-                Divider()
-                Button {
-                    model.presentBackupsSheet()
-                } label: {
-                    Label("Backups…", systemImage: "clock.arrow.circlepath")
-                }
-            } label: {
-                buttonLabel(
-                    systemImage: "ellipsis.circle",
+                    systemImage: "arrow.triangle.2.circlepath",
                     title: model.updatesAvailableCount > 0
-                        ? "More · \(model.updatesAvailableCount)"
-                        : "More",
+                        ? "Check Updates · \(model.updatesAvailableCount)"
+                        : "Check Updates",
                     busy: model.isBusy(SkillsManagerModel.BusyKey.updates)
                 )
             }
-            .menuStyle(.button)
-            .buttonStyle(.bordered)
-            .menuIndicator(.hidden)
-            .help("Check repository updates or restore a backup")
+            .buttonStyle(.plain)
+            .porcelainToolbarButton()
+            .disabled(model.isBusy(SkillsManagerModel.BusyKey.updates))
+
+            Button {
+                showsZipImporter = true
+            } label: {
+                buttonLabel(
+                    systemImage: "doc.zipper",
+                    title: "Install from ZIP",
+                    busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
+                )
+            }
+            .buttonStyle(.plain)
+            .porcelainToolbarButton()
+
+            Button {
+                model.presentImportSheet()
+            } label: {
+                buttonLabel(
+                    systemImage: "square.and.arrow.down.on.square",
+                    title: "Import Existing",
+                    busy: model.isBusy(SkillsManagerModel.BusyKey.importing)
+                )
+            }
+            .buttonStyle(.plain)
+            .porcelainToolbarButton()
+
+            Button {
+                model.presentBackupsSheet()
+            } label: {
+                buttonLabel(systemImage: "clock.arrow.circlepath", title: "Backups", busy: false)
+            }
+            .buttonStyle(.plain)
+            .porcelainToolbarButton()
 
             Button {
                 model.isDiscoverSheetPresented = true
             } label: {
                 buttonLabel(systemImage: "sparkle.magnifyingglass", title: "Discover", busy: false)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
+            .porcelainToolbarButton(prominent: true)
             .help("Browse configured repositories and the skills.sh index")
         }
     }
@@ -237,20 +234,24 @@ struct SkillsManagerPage: View {
             }
             .frame(maxWidth: .infinity)
         } else {
-            List(model.filteredSkills) { skill in
-                SkillListRow(
-                    density: density,
-                    skill: skill,
-                    updateState: model.updateState(for: skill),
-                    isBusy: model.isBusy(skill: skill),
-                    onToggle: { model.toggle(skill: skill, app: $0) },
-                    onUpdate: { model.updateSkill(skill) },
-                    onUninstall: { model.uninstall(skill) }
-                )
-                .listRowBackground(Color.clear)
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(model.filteredSkills) { skill in
+                        SkillListRow(
+                            density: density,
+                            skill: skill,
+                            updateState: model.updateState(for: skill),
+                            isBusy: model.isBusy(skill: skill),
+                            onToggle: { model.toggle(skill: skill, app: $0) },
+                            onUpdate: { model.updateSkill(skill) },
+                            onUninstall: { model.uninstall(skill) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
             }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
+            .scrollIndicators(.automatic)
             .cardSurface(density: density)
             .frame(maxHeight: .infinity)
         }
@@ -272,9 +273,9 @@ struct SkillsManagerPage: View {
                 .frame(maxWidth: 440)
             HStack(spacing: 10) {
                 Button("Import Existing") { model.presentImportSheet() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkbenchPillButtonStyle())
                 Button("Discover") { model.isDiscoverSheetPresented = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkbenchPillButtonStyle(prominent: true))
             }
         }
         .frame(maxWidth: .infinity)
@@ -313,5 +314,34 @@ struct SkillsManagerPage: View {
             .padding(.bottom, density.popoverPaddingV)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
+    }
+}
+
+private extension View {
+    /// Small neutral actions use the same rounded hairline as the mockup's
+    /// porcelain controls; Discover opts into the one deliberate accent.
+    func porcelainToolbarButton(prominent: Bool = false) -> some View {
+        modifier(PorcelainToolbarButtonStyle(prominent: prominent))
+    }
+}
+
+private struct PorcelainToolbarButtonStyle: ViewModifier {
+    let prominent: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 11)
+            .frame(minHeight: 27)
+            .foregroundStyle(prominent ? Color.white : Color.primary)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(prominent ? Color.accentColor : Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(prominent ? Color.accentColor.opacity(0.72) : Color.primary.opacity(0.12), lineWidth: 0.7)
+            )
     }
 }

@@ -9,6 +9,8 @@ struct SettingsSidebarView: View {
     static let width: CGFloat = 236
 
     @EnvironmentObject private var settingsStore: SettingsStore
+    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var selection: SettingsDestination
 
     @State private var searchText = ""
@@ -43,10 +45,19 @@ struct SettingsSidebarView: View {
             .frame(height: 31)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.055))
+                    .fill(
+                        usesWorkbenchPorcelain
+                            ? WorkbenchPorcelain.fieldFill(for: colorScheme)
+                            : Color.primary.opacity(0.055)
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+                            .stroke(
+                                usesWorkbenchPorcelain
+                                    ? WorkbenchPorcelain.hairline(for: colorScheme)
+                                    : Color.primary.opacity(0.08),
+                                lineWidth: 0.7
+                            )
                     )
             )
             .padding(.horizontal, 14)
@@ -133,7 +144,11 @@ struct SettingsSidebarView: View {
             }
         }
         .frame(width: Self.width)
-        .background(Color.primary.opacity(0.035))
+        .background(
+            usesWorkbenchPorcelain
+                ? WorkbenchPorcelain.sidebarFill(for: colorScheme)
+                : Color.primary.opacity(0.035)
+        )
     }
 
     private var filteredBasicPages: [SettingsSectionID] {
@@ -258,10 +273,19 @@ struct SettingsSidebarView: View {
             .background {
                 if selected {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.20))
+                        .fill(
+                            usesWorkbenchPorcelain
+                                ? WorkbenchPorcelain.selectedNavigationFill(for: colorScheme)
+                                : Color.accentColor.opacity(0.20)
+                        )
                         .overlay(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(Color.accentColor.opacity(0.32), lineWidth: 0.6)
+                                .stroke(
+                                    usesWorkbenchPorcelain
+                                        ? WorkbenchPorcelain.hairline(for: colorScheme)
+                                        : Color.accentColor.opacity(0.32),
+                                    lineWidth: 0.7
+                                )
                         )
                 }
             }
