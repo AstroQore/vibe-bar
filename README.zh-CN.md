@@ -230,8 +230,10 @@ Vibe Bar 还直接使用
 [SweetCookieKit](https://github.com/steipete/SweetCookieKit) 读取本地浏览器 Cookie，
 并使用 [Sparkle](https://github.com/sparkle-project/Sparkle) 实现带签名的应用更新。
 具体关系与许可证信息见
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。上述项目均与 Vibe Bar
-相互独立；本致谢不表示存在隶属、背书或其他官方关系。
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；适用的完整许可证文本位于
+[Resources/ThirdPartyLicenses](Resources/ThirdPartyLicenses)，并会随打包后的
+App Bundle 一并提供。上述项目均与 Vibe Bar 相互独立；本致谢不表示存在隶属、
+背书或其他官方关系。
 
 ## 许可证
 

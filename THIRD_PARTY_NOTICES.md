@@ -14,11 +14,12 @@ interoperability references.
   Keychain utilities, provider behaviors, and AntiGravity local-probe logic
   with reference to CodexBar. Individual source files retain focused
   `Ported from`, `Modeled after`, or equivalent attribution where applicable.
-- License: [MIT](https://github.com/steipete/CodexBar/blob/main/LICENSE)
+- License: [MIT](Resources/ThirdPartyLicenses/CodexBar.txt)
+  ([upstream](https://github.com/steipete/CodexBar/blob/main/LICENSE))
 - Copyright: Copyright (c) 2026 Peter Steinberger
 
-See the canonical upstream license linked above for the complete permission
-notice and terms covering the adapted CodexBar portions.
+The complete copyright and permission notice covering the adapted CodexBar
+portions is included in this repository at the local license link above.
 
 ## Direct dependencies
 
@@ -26,17 +27,22 @@ notice and terms covering the adapted CodexBar portions.
 
 - Project: [steipete/SweetCookieKit](https://github.com/steipete/SweetCookieKit)
 - Use in Vibe Bar: local Safari, Chromium, and Firefox cookie access.
-- License: [MIT](https://github.com/steipete/SweetCookieKit/blob/0.4.0/LICENSE)
+- License: [MIT](Resources/ThirdPartyLicenses/SweetCookieKit.txt)
+  ([upstream](https://github.com/steipete/SweetCookieKit/blob/0.4.0/LICENSE))
 
 ### Sparkle 2.9.4
 
 - Project: [sparkle-project/Sparkle](https://github.com/sparkle-project/Sparkle)
 - Use in Vibe Bar: signed application update discovery and installation.
 - License:
-  [Sparkle license and external component notices](https://github.com/sparkle-project/Sparkle/blob/2.9.4/LICENSE)
+  [Sparkle license and external component notices](Resources/ThirdPartyLicenses/Sparkle.txt)
+  ([upstream](https://github.com/sparkle-project/Sparkle/blob/2.9.4/LICENSE))
 
-Dependency versions are declared in `Package.swift`. Their upstream license
-files remain authoritative for the complete terms and bundled subcomponents.
+Dependency versions are declared in `Package.swift`. The complete license
+texts and bundled-component notices are stored under
+`Resources/ThirdPartyLicenses/`. `Scripts/build_app.sh` packages that directory
+and this notice in `Vibe Bar.app/Contents/Resources/` so binary distributions
+carry the required notices.
 
 ## Reference projects not bundled by these relationships
 

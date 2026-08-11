@@ -251,8 +251,10 @@ Vibe Bar also directly uses
 [SweetCookieKit](https://github.com/steipete/SweetCookieKit) for local browser
 cookie access and [Sparkle](https://github.com/sparkle-project/Sparkle) for
 signed app updates. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
-the relationship and license details. These projects are independent from
-Vibe Bar; acknowledgement does not imply affiliation or endorsement.
+the relationship and license details; complete applicable license texts live
+under [Resources/ThirdPartyLicenses](Resources/ThirdPartyLicenses) and are
+included in packaged app bundles. These projects are independent from Vibe
+Bar; acknowledgement does not imply affiliation or endorsement.
 
 ## License
 
