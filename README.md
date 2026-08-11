@@ -229,6 +229,33 @@ resources and Sparkle framework, and ad-hoc signs the bundle.
 Vibe Bar is early public-release software. Provider APIs and quota contracts
 move quickly; focused adapters, fixtures, and UI refinements are welcome.
 
+## Acknowledgements
+
+Vibe Bar is an independent project, but it stands on work shared by the wider
+coding-agent community:
+
+- [CodexBar](https://github.com/steipete/CodexBar) is the primary technical
+  reference for the macOS menu-bar quota experience. Several browser-cookie
+  and Keychain utilities, selected provider behaviors, and the AntiGravity
+  local-probe flow were adapted from or reimplemented with reference to it.
+- [CC Switch](https://github.com/farion1231/cc-switch) informed the unified
+  Skills workflow and remains an interoperability reference for existing
+  cross-agent skill layouts.
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) and its ecosystem
+  informed our understanding of multi-provider CLI account and quota
+  workflows. Vibe Bar does not embed, launch, or require CLIProxyAPI.
+- [ccusage](https://github.com/ccusage/ccusage) informed local session-cost
+  parsing and pricing semantics.
+
+Vibe Bar also directly uses
+[SweetCookieKit](https://github.com/steipete/SweetCookieKit) for local browser
+cookie access and [Sparkle](https://github.com/sparkle-project/Sparkle) for
+signed app updates. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
+the relationship and license details; complete applicable license texts live
+under [Resources/ThirdPartyLicenses](Resources/ThirdPartyLicenses) and are
+included in packaged app bundles. These projects are independent from Vibe
+Bar; acknowledgement does not imply affiliation or endorsement.
+
 ## License
 
 Vibe Bar is licensed under the

@@ -57,6 +57,10 @@ cp -R "$CORE_RESOURCE_BUNDLE" \
     "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle"
 ditto "$SPARKLE_FRAMEWORK_SOURCE" "$SPARKLE_FRAMEWORK"
 cp "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
+cp "$ROOT/THIRD_PARTY_NOTICES.md" \
+    "$APP_DIR/Contents/Resources/THIRD_PARTY_NOTICES.md"
+cp -R "$ROOT/Resources/ThirdPartyLicenses" \
+    "$APP_DIR/Contents/Resources/ThirdPartyLicenses"
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
@@ -69,6 +73,16 @@ printf '%s' "$PkgInfo" > "$APP_DIR/Contents/PkgInfo"
 
 if [[ ! -f "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle/pricing.json" ]]; then
     echo "Packaged core resource bundle is incomplete." >&2
+    exit 1
+fi
+for license_name in CodexBar SweetCookieKit Sparkle; do
+    if [[ ! -f "$APP_DIR/Contents/Resources/ThirdPartyLicenses/$license_name.txt" ]]; then
+        echo "Packaged third-party license resources are incomplete." >&2
+        exit 1
+    fi
+done
+if [[ ! -f "$APP_DIR/Contents/Resources/THIRD_PARTY_NOTICES.md" ]]; then
+    echo "Packaged third-party notices are incomplete." >&2
     exit 1
 fi
 

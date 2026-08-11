@@ -211,6 +211,30 @@ ad-hoc 签名。
 Vibe Bar 仍处于早期公开版本。Provider API 和配额协议变化很快，欢迎提交聚焦的
 Adapter、Fixture 与界面优化。
 
+## 致谢
+
+Vibe Bar 是一个独立项目，也得益于 Coding Agent 开源社区分享的工作：
+
+- [CodexBar](https://github.com/steipete/CodexBar) 是 macOS 菜单栏配额体验的
+  主要技术参考。部分浏览器 Cookie 与 Keychain 工具、Provider 行为，以及
+  AntiGravity 本地探测流程，是在参考其实现后移植、简化或重新实现的。
+- [CC Switch](https://github.com/farion1231/cc-switch) 为统一 Skills 工作流
+  提供了参考，也是 Vibe Bar 识别现有跨 Agent Skill 布局时的互操作对象。
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 及其生态帮助我们
+  理解多 Provider CLI 账号与配额工作流。Vibe Bar 不内置、不启动，也不依赖
+  CLIProxyAPI 运行。
+- [ccusage](https://github.com/ccusage/ccusage) 为本地 Session 成本解析与定价语义
+  提供了参考。
+
+Vibe Bar 还直接使用
+[SweetCookieKit](https://github.com/steipete/SweetCookieKit) 读取本地浏览器 Cookie，
+并使用 [Sparkle](https://github.com/sparkle-project/Sparkle) 实现带签名的应用更新。
+具体关系与许可证信息见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；适用的完整许可证文本位于
+[Resources/ThirdPartyLicenses](Resources/ThirdPartyLicenses)，并会随打包后的
+App Bundle 一并提供。上述项目均与 Vibe Bar 相互独立；本致谢不表示存在隶属、
+背书或其他官方关系。
+
 ## 许可证
 
 Vibe Bar 采用 [GNU Affero General Public License v3.0 only](LICENSE)。
