@@ -3,7 +3,7 @@ import Foundation
 /// Thin facade over `PricingResolver.active`. The price tables
 /// themselves live in `Resources/pricing.json` (bundled), an
 /// optional cache at `~/.vibebar/pricing_cache.json` (refreshed by
-/// `PricingRefresher`), and `PricingHardcoded.fallback` (used when
+/// `MultiSourcePricingRefresher`), and `PricingHardcoded.fallback` (used when
 /// neither file is loadable — e.g. tests, or a corrupt cache).
 ///
 /// Function signatures and return semantics are preserved verbatim
@@ -35,6 +35,19 @@ public enum CostUsagePricing {
         guard isFast else { return 1.0 }
         let multiplier = fastMultiplier ?? 1.0
         return multiplier > 0 ? multiplier : 1.0
+    }
+
+    private static func tieredCost(
+        tokens: Int,
+        base: Double,
+        above: Double?,
+        threshold: Int?
+    ) -> Double {
+        let tokens = max(0, tokens)
+        guard let threshold, let above else { return Double(tokens) * base }
+        let below = min(tokens, threshold)
+        let over = max(tokens - threshold, 0)
+        return Double(below) * base + Double(over) * above
     }
 
     // MARK: - Codex
@@ -70,9 +83,22 @@ public enum CostUsagePricing {
         let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
         let nonCached = max(0, inputTokens - cached)
         let cachedRate = pricing.cacheRead ?? pricing.input
-        let base = Double(nonCached) * pricing.input
-            + Double(cached) * cachedRate
-            + Double(max(0, outputTokens)) * pricing.output
+        let base = tieredCost(
+            tokens: nonCached,
+            base: pricing.input,
+            above: pricing.inputAboveThreshold,
+            threshold: pricing.thresholdTokens
+        ) + tieredCost(
+            tokens: cached,
+            base: cachedRate,
+            above: pricing.cacheReadAboveThreshold ?? pricing.inputAboveThreshold,
+            threshold: pricing.thresholdTokens
+        ) + tieredCost(
+            tokens: outputTokens,
+            base: pricing.output,
+            above: pricing.outputAboveThreshold,
+            threshold: pricing.thresholdTokens
+        )
         return base * fastFactor(isFast, pricing.fastMultiplier)
     }
 
@@ -246,9 +272,22 @@ public enum CostUsagePricing {
         let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
         let nonCached = max(0, inputTokens - cached)
         let cachedRate = pricing.cacheRead ?? pricing.input
-        return Double(nonCached) * pricing.input
-            + Double(cached) * cachedRate
-            + Double(max(0, outputTokens)) * pricing.output
+        return tieredCost(
+            tokens: nonCached,
+            base: pricing.input,
+            above: pricing.inputAboveThreshold,
+            threshold: pricing.thresholdTokens
+        ) + tieredCost(
+            tokens: cached,
+            base: cachedRate,
+            above: pricing.cacheReadAboveThreshold ?? pricing.inputAboveThreshold,
+            threshold: pricing.thresholdTokens
+        ) + tieredCost(
+            tokens: outputTokens,
+            base: pricing.output,
+            above: pricing.outputAboveThreshold,
+            threshold: pricing.thresholdTokens
+        )
     }
 
     // MARK: - AntiGravity

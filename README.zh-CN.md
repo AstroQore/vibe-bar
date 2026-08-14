@@ -148,6 +148,9 @@ Vibe Bar 没有遥测管线或托管明文分析后端。本地与远端 Probe �
 ├── quotas/
 ├── cost_snapshots/
 ├── scan_cache/
+├── pricing_sources/
+├── pricing_cache.json
+├── pricing_refresh_status.json
 ├── service_status.json
 ├── remote_core.json
 ├── remote_usage.sqlite3
@@ -225,6 +228,12 @@ Vibe Bar 是一个独立项目，也得益于 Coding Agent 开源社区分享的
   CLIProxyAPI 运行。
 - [ccusage](https://github.com/ccusage/ccusage) 为本地 Session 成本解析与定价语义
   提供了参考。
+- [LiteLLM](https://github.com/BerriAI/litellm)、
+  [models.dev](https://github.com/anomalyco/models.dev) 与
+  [Portkey Models](https://github.com/Portkey-AI/models) 持续维护 Vibe Bar
+  用于成本归集的公开模型价格目录；
+  [AstroQore VibeBar Model Pricing](https://github.com/AstroQore/vibebar-model-pricing)
+  维护少量 Vibe Bar 专用补充条目。
 
 Vibe Bar 还直接使用
 [SweetCookieKit](https://github.com/steipete/SweetCookieKit) 读取本地浏览器 Cookie，

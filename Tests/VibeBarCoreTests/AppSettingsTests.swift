@@ -749,6 +749,33 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(decoded.costData.privacyModeEnabled)
     }
 
+    func testPricingSettingsRoundTripAndLegacyDefaults() throws {
+        var settings = AppSettings.default
+        settings.pricingRefreshIntervalSeconds = 12 * 60 * 60
+        settings.modelPricingOverrides = [ModelPricingOverride(
+            provider: .grok,
+            model: "grok-custom",
+            inputPerMillion: 3,
+            outputPerMillion: 15,
+            cacheReadPerMillion: 0.5
+        )]
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.pricingRefreshIntervalSeconds, 12 * 60 * 60)
+        XCTAssertEqual(decoded.modelPricingOverrides, settings.modelPricingOverrides)
+
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(
+            legacy.pricingRefreshIntervalSeconds,
+            AppSettings.default.pricingRefreshIntervalSeconds
+        )
+        XCTAssertTrue(legacy.modelPricingOverrides.isEmpty)
+    }
+
     func testOverviewMenuItemAndCompactLayoutDefaults() {
         XCTAssertEqual(MenuBarItemKind.compact.label, "Overview")
         XCTAssertEqual(MenuBarLayout.compact.label, "Compact")

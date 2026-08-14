@@ -116,6 +116,12 @@ public enum LiteLLMPricingTransformer {
                     input: input,
                     output: output,
                     cacheRead: entry.cacheReadInputTokenCost,
+                    cacheCreation: entry.cacheCreationInputTokenCost,
+                    thresholdTokens: threshold,
+                    inputAboveThreshold: entry.inputCostPerTokenAbove200k,
+                    outputAboveThreshold: entry.outputCostPerTokenAbove200k,
+                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
+                    cacheCreationAboveThreshold: entry.cacheCreationInputTokenCostAbove200k,
                     fastMultiplier: fast,
                     displayLabel: codex[key]?.displayLabel)
             case .claude:
@@ -145,6 +151,10 @@ public enum LiteLLMPricingTransformer {
                     input: input,
                     output: output,
                     cacheRead: entry.cacheReadInputTokenCost,
+                    thresholdTokens: threshold,
+                    inputAboveThreshold: entry.inputCostPerTokenAbove200k,
+                    outputAboveThreshold: entry.outputCostPerTokenAbove200k,
+                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
                     displayLabel: grok[key]?.displayLabel)
             }
             loaded += 1

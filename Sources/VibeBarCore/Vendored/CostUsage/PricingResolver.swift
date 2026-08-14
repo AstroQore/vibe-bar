@@ -3,7 +3,7 @@ import Foundation
 /// Resolves the active pricing data set with a strict precedence:
 ///
 ///  1. **Cache** at `~/.vibebar/pricing_cache.json` — populated by
-///     `PricingRefresher` when a fresh remote fetch succeeds.
+///     `MultiSourcePricingRefresher` when remote catalogs are merged.
 ///  2. **Bundled** `pricing.json` shipped in `Bundle.module` (the
 ///     copy that lives alongside the source).
 ///  3. **Hardcoded** in-code fallback (`PricingHardcoded.fallback`) —
