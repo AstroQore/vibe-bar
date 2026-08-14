@@ -15,11 +15,10 @@ import Foundation
 public struct PricingDataSet: Codable, Sendable, Equatable {
     public static let currentSchemaVersion = 1
     /// Hard cap on a cached / bundled `PricingDataSet` so a corrupt
-    /// file can't blow up the loader. The LiteLLM-overlaid cache the
-    /// refresher writes is ~40 KB; 256 KB leaves room for upstream
-    /// growth. The raw LiteLLM download is capped separately by
-    /// `PricingRefresher.maxFetchBytes`.
-    public static let maxBytes = 256 * 1024
+    /// file can't blow up the loader. The multi-source cache is filtered to
+    /// the provider families Vibe Bar scans; 2 MB leaves headroom for catalog
+    /// growth. Raw downloads are capped separately by each refresher.
+    public static let maxBytes = 2 * 1024 * 1024
 
     public let schemaVersion: Int
     public let updatedAt: String
@@ -74,16 +73,40 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let input: Double
         public let output: Double
         public let cacheRead: Double?
+        public let cacheCreation: Double?
+        public let thresholdTokens: Int?
+        public let inputAboveThreshold: Double?
+        public let outputAboveThreshold: Double?
+        public let cacheReadAboveThreshold: Double?
+        public let cacheCreationAboveThreshold: Double?
         /// Multiplier applied to the whole cost when the request ran on
         /// the "fast"/"priority" Codex service tier (resolved once per
         /// scan from `~/.codex/config.toml`). `nil` means no premium (×1).
         public let fastMultiplier: Double?
         public let displayLabel: String?
 
-        public init(input: Double, output: Double, cacheRead: Double?, fastMultiplier: Double? = nil, displayLabel: String? = nil) {
+        public init(
+            input: Double,
+            output: Double,
+            cacheRead: Double?,
+            cacheCreation: Double? = nil,
+            thresholdTokens: Int? = nil,
+            inputAboveThreshold: Double? = nil,
+            outputAboveThreshold: Double? = nil,
+            cacheReadAboveThreshold: Double? = nil,
+            cacheCreationAboveThreshold: Double? = nil,
+            fastMultiplier: Double? = nil,
+            displayLabel: String? = nil
+        ) {
             self.input = input
             self.output = output
             self.cacheRead = cacheRead
+            self.cacheCreation = cacheCreation
+            self.thresholdTokens = thresholdTokens
+            self.inputAboveThreshold = inputAboveThreshold
+            self.outputAboveThreshold = outputAboveThreshold
+            self.cacheReadAboveThreshold = cacheReadAboveThreshold
+            self.cacheCreationAboveThreshold = cacheCreationAboveThreshold
             self.fastMultiplier = fastMultiplier
             self.displayLabel = displayLabel
         }
@@ -160,12 +183,29 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let input: Double
         public let output: Double
         public let cacheRead: Double?
+        public let thresholdTokens: Int?
+        public let inputAboveThreshold: Double?
+        public let outputAboveThreshold: Double?
+        public let cacheReadAboveThreshold: Double?
         public let displayLabel: String?
 
-        public init(input: Double, output: Double, cacheRead: Double?, displayLabel: String? = nil) {
+        public init(
+            input: Double,
+            output: Double,
+            cacheRead: Double?,
+            thresholdTokens: Int? = nil,
+            inputAboveThreshold: Double? = nil,
+            outputAboveThreshold: Double? = nil,
+            cacheReadAboveThreshold: Double? = nil,
+            displayLabel: String? = nil
+        ) {
             self.input = input
             self.output = output
             self.cacheRead = cacheRead
+            self.thresholdTokens = thresholdTokens
+            self.inputAboveThreshold = inputAboveThreshold
+            self.outputAboveThreshold = outputAboveThreshold
+            self.cacheReadAboveThreshold = cacheReadAboveThreshold
             self.displayLabel = displayLabel
         }
     }
@@ -188,5 +228,30 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
             self.cacheCreation = cacheCreation
             self.displayLabel = displayLabel
         }
+    }
+}
+
+extension PricingDataSet {
+    public static func empty(updatedAt: String, calculationVersion: Int) -> PricingDataSet {
+        PricingDataSet(
+            schemaVersion: currentSchemaVersion,
+            updatedAt: updatedAt,
+            calculationVersion: calculationVersion,
+            providers: Providers(
+                codex: .init(displayName: "OpenAI", models: [:]),
+                claude: .init(displayName: "Anthropic", models: [:]),
+                gemini: .init(displayName: "Google", models: [:]),
+                grok: .init(displayName: "xAI", models: [:]),
+                antigravity: .init(displayName: "AntiGravity", models: [:])
+            )
+        )
+    }
+
+    public var modelCount: Int {
+        providers.codex.models.count
+            + providers.claude.models.count
+            + providers.gemini.models.count
+            + providers.grok.models.count
+            + providers.antigravity.models.count
     }
 }

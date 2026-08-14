@@ -12,6 +12,7 @@ enum SettingsSectionID: String {
     case miscProviders
     case system
     case costData
+    case pricing
     case privacy
     case remote
 
@@ -29,6 +30,7 @@ enum SettingsSectionID: String {
         case .miscProviders: "Misc Providers"
         case .system: "System"
         case .costData: "Cost Data"
+        case .pricing: "Model Pricing"
         case .privacy: "Privacy"
         case .remote: "Remote Probes"
         }
@@ -46,6 +48,7 @@ enum SettingsSectionID: String {
         case .miscProviders: "square.grid.2x2"
         case .system: "desktopcomputer"
         case .costData: "chart.bar.xaxis"
+        case .pricing: "dollarsign.circle"
         case .privacy: "hand.raised.fill"
         case .remote: "antenna.radiowaves.left.and.right"
         }
@@ -586,6 +589,11 @@ struct SettingsView: View {
                             .foregroundStyle(.tertiary)
                     }
                     .id(SettingsSectionID.costData.id)
+                    }
+
+                    if selectedSection == .pricing {
+                    PricingSettingsSection()
+                        .id(SettingsSectionID.pricing.id)
                     }
 
                     if selectedSection == .remote {

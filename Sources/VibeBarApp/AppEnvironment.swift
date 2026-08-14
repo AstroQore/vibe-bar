@@ -33,6 +33,8 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var geminiBrowserCookieImportStatus: String?
     @Published private(set) var grokBrowserCookieImportStatus: String?
     @Published private(set) var routeHealth: [PrimaryProviderRoute: PrimaryProviderRouteHealth]
+    @Published private(set) var pricingRefreshStatus = MultiSourcePricingRefresher.loadStatus()
+    @Published private(set) var isRefreshingPricing = false
 
     private let openAIWebLoginController = OpenAIWebLoginController()
     private let claudeWebLoginController = ClaudeWebLoginController()
@@ -238,6 +240,35 @@ final class AppEnvironment: ObservableObject {
             }
             .store(in: &cancellables)
 
+        settings.$settings
+            .dropFirst()
+            .map(\.pricingRefreshIntervalSeconds)
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.schedulePricingRefreshLoop()
+            }
+            .store(in: &cancellables)
+
+        settings.$settings
+            .dropFirst()
+            .map(\.modelPricingOverrides)
+            .removeDuplicates()
+            .debounce(for: .milliseconds(250), scheduler: RunLoop.main)
+            .sink { [weak self] overrides in
+                guard let self else { return }
+                let result = MultiSourcePricingRefresher.rebuildFromCaches(
+                    overrides: overrides
+                )
+                self.pricingRefreshStatus = result.status
+                if result.changed {
+                    _ = PricingResolver.reloadIfChanged()
+                    Task { @MainActor [weak self] in
+                        await self?.costService.refreshAll()
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
         // Remote facts become visible to cost surfaces only after the user
         // selects their machine IDs. Rebuild after either a successful Relay
         // import or a selection change; generation fencing prevents a slower
@@ -265,29 +296,10 @@ final class AppEnvironment: ObservableObject {
             await costService.refreshAll()
         }
 
-        // Best-effort pricing refresh loop: polls LiteLLM's pricing map on
-        // GitHub raw and rewrites ~/.vibebar/pricing_cache.json when it
-        // changes. The 24-hour freshness window inside PricingRefresher
-        // reduces most wake-ups to a stat() call, so the loop can re-check
-        // every few hours and a menu-bar app that stays up for weeks still
-        // follows new model rates. After a fetch lands a new table, nudge a
-        // re-scan — refreshAll() adopts the table at the start of its next
-        // pass, so a brand-new model stops pricing at $0 without an app
-        // relaunch. Failures stay silent: the previous cache (or the
-        // bundled fallback) keeps the session usable.
-        pricingRefreshTask = Task.detached(priority: .utility) {
-            while !Task.isCancelled {
-                let outcome = await PricingRefresher.refresh()
-                if outcome == .fetched {
-                    await costService.refreshAll()
-                }
-                do {
-                    try await Task.sleep(for: .seconds(6 * 60 * 60))
-                } catch {
-                    break
-                }
-            }
-        }
+        // Refresh every source immediately and then at the interval selected
+        // in Settings. Each source has its own last-known-good cache, so one
+        // broken upstream does not erase the other catalogs.
+        schedulePricingRefreshLoop()
         recheckPrimaryRouteHealth()
         importPersistentClaudeCookiesAndRefreshIfNeeded()
         importClaudeBrowserCookiesAndRefreshIfNeeded()
@@ -313,6 +325,46 @@ final class AppEnvironment: ObservableObject {
 
     deinit {
         pricingRefreshTask?.cancel()
+    }
+
+    func refreshPricingNow() {
+        Task { @MainActor [weak self] in
+            await self?.refreshPricing()
+        }
+    }
+
+    private func schedulePricingRefreshLoop() {
+        pricingRefreshTask?.cancel()
+        pricingRefreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await self.refreshPricing()
+                let seconds = max(
+                    self.settingsStore.settings.pricingRefreshIntervalSeconds,
+                    15 * 60
+                )
+                do {
+                    try await Task.sleep(for: .seconds(seconds))
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+
+    private func refreshPricing() async {
+        guard !isRefreshingPricing else { return }
+        isRefreshingPricing = true
+        defer { isRefreshingPricing = false }
+
+        let result = await MultiSourcePricingRefresher.refreshAll(
+            overrides: settingsStore.settings.modelPricingOverrides
+        )
+        pricingRefreshStatus = result.status
+        if result.changed {
+            _ = PricingResolver.reloadIfChanged()
+            await costService.refreshAll()
+        }
     }
 
     private func scheduleRemoteCostAggregation(machineIDs: Set<String>) {

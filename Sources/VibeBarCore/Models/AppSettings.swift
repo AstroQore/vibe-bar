@@ -47,6 +47,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var miscProviderInstances: [MiscProviderInstance]
     public var costData: CostDataSettings
 
+    /// How often the background multi-source pricing catalog checks upstream.
+    public var pricingRefreshIntervalSeconds: Int
+
+    /// User-authored rate cards. These are deliberately part of AppSettings so
+    /// every visible Settings control round-trips through the normal store.
+    public var modelPricingOverrides: [ModelPricingOverride]
+
     /// Stable `workspace:producer` identifiers for remote machines whose
     /// decrypted usage should join this Core's local cost snapshots.
     ///
@@ -169,8 +176,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscProviderOrder: Self.defaultMiscProviderOrder,
         miscProviderInstances: Self.defaultMiscProviderInstances,
         costData: .default,
+        pricingRefreshIntervalSeconds: 6 * 60 * 60,
+        modelPricingOverrides: [],
         remoteCostIncludedMachineIDs: []
     )
+
+    public static let pricingRefreshIntervalOptions: [Int] = [
+        60 * 60,
+        6 * 60 * 60,
+        12 * 60 * 60,
+        24 * 60 * 60,
+    ]
 
     /// Quota refresh cadences the Settings picker offers, fastest first.
     ///
@@ -265,6 +281,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miscProviderOrder: [ToolType] = AppSettings.defaultMiscProviderOrder,
         miscProviderInstances: [MiscProviderInstance]? = nil,
         costData: CostDataSettings = .default,
+        pricingRefreshIntervalSeconds: Int = 6 * 60 * 60,
+        modelPricingOverrides: [ModelPricingOverride] = [],
         remoteCostIncludedMachineIDs: Set<String> = [],
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
@@ -306,6 +324,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.visibleMiscProviders = Self.legacyVisibleMiscProviders(from: self.miscProviderInstances)
         self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
         self.costData = costData
+        self.pricingRefreshIntervalSeconds = max(15 * 60, pricingRefreshIntervalSeconds)
+        self.modelPricingOverrides = modelPricingOverrides
         self.remoteCostIncludedMachineIDs = Set(
             remoteCostIncludedMachineIDs.map { $0.lowercased() }
         )
@@ -365,6 +385,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case miscProviderOrder
         case miscProviderInstances
         case costData
+        case pricingRefreshIntervalSeconds
+        case modelPricingOverrides
         case remoteCostIncludedMachineIDs
         case overviewQuotaHistoryHiddenCurveIds
         case pageLayouts
@@ -500,6 +522,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miscProviderOrder = Self.legacyMiscProviderOrder(from: self.miscProviderInstances)
 
         self.costData = try c.decodeIfPresent(CostDataSettings.self, forKey: .costData) ?? .default
+        self.pricingRefreshIntervalSeconds = max(
+            15 * 60,
+            try c.decodeIfPresent(Int.self, forKey: .pricingRefreshIntervalSeconds)
+                ?? Self.default.pricingRefreshIntervalSeconds
+        )
+        self.modelPricingOverrides =
+            (try? c.decodeIfPresent([ModelPricingOverride].self, forKey: .modelPricingOverrides)) ?? []
         self.remoteCostIncludedMachineIDs = Set(
             (try c.decodeIfPresent(Set<String>.self, forKey: .remoteCostIncludedMachineIDs) ?? [])
                 .map { $0.lowercased() }
@@ -582,6 +611,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(miscProviderOrder.map(\.rawValue), forKey: .miscProviderOrder)
         try c.encode(miscProviderInstances, forKey: .miscProviderInstances)
         try c.encode(costData, forKey: .costData)
+        try c.encode(pricingRefreshIntervalSeconds, forKey: .pricingRefreshIntervalSeconds)
+        try c.encode(modelPricingOverrides, forKey: .modelPricingOverrides)
         try c.encode(
             Set(remoteCostIncludedMachineIDs.map { $0.lowercased() }),
             forKey: .remoteCostIncludedMachineIDs

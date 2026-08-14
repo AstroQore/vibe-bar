@@ -159,6 +159,9 @@ and audit metadata only. Derived state stays under:
 ├── quotas/
 ├── cost_snapshots/
 ├── scan_cache/
+├── pricing_sources/
+├── pricing_cache.json
+├── pricing_refresh_status.json
 ├── service_status.json
 ├── remote_core.json
 ├── remote_usage.sqlite3
@@ -246,6 +249,12 @@ coding-agent community:
   workflows. Vibe Bar does not embed, launch, or require CLIProxyAPI.
 - [ccusage](https://github.com/ccusage/ccusage) informed local session-cost
   parsing and pricing semantics.
+- [LiteLLM](https://github.com/BerriAI/litellm),
+  [models.dev](https://github.com/anomalyco/models.dev), and
+  [Portkey Models](https://github.com/Portkey-AI/models) maintain the public
+  model-pricing catalogs Vibe Bar refreshes and merges for cost attribution.
+  [AstroQore VibeBar Model Pricing](https://github.com/AstroQore/vibebar-model-pricing)
+  carries the small Vibe Bar-specific supplement layer.
 
 Vibe Bar also directly uses
 [SweetCookieKit](https://github.com/steipete/SweetCookieKit) for local browser
