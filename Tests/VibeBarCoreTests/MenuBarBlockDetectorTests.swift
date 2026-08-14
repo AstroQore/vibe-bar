@@ -79,6 +79,14 @@ final class MenuBarBlockDetectorTests: XCTestCase {
         XCTAssertEqual(detector.verdict(for: partial), .inconclusive)
     }
 
+    /// A display whose own bar is 22pt makes a correctly placed item look
+    /// exactly like a stub. Comparing against the tallest bar would convict it;
+    /// the shortest bar makes us abstain, which is the right call.
+    func testMixedSetupWithAStubHeightBarIsInconclusive() {
+        let mixed = probe(windowHeight: 22, menuBarHeights: [39, 22])
+        XCTAssertEqual(detector.verdict(for: mixed), .inconclusive)
+    }
+
     // MARK: - Evaluator
 
     func testEvaluatorRequiresConsecutiveConfirmations() {

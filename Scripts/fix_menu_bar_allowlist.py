@@ -89,11 +89,10 @@ def main():
     args = parser.parse_args()
     target = args.bundle_id
 
-    if not os.path.exists(PLIST):
-        print(f"not found: {PLIST}")
-        print("Nothing to repair — this macOS version may not use an allow-list.")
-        return 1
-
+    # Opened directly rather than probed with os.path.exists first: the group
+    # container is TCC-protected, so without Full Disk Access — the normal
+    # first run — exists() reports False and we would print "not found" instead
+    # of the one instruction that actually helps.
     try:
         with open(PLIST, "rb") as handle:
             root = plistlib.load(handle)
@@ -102,6 +101,10 @@ def main():
         print("Grant Full Disk Access to this terminal, then run this again:")
         print("  System Settings > Privacy & Security > Full Disk Access")
         return 2
+    except FileNotFoundError:
+        print(f"not found: {PLIST}")
+        print("Nothing to repair — this macOS version may not use an allow-list.")
+        return 1
 
     raw = root.get("trackedApplications")
     if raw is None:
@@ -111,7 +114,12 @@ def main():
     tracked = plistlib.loads(raw) if embedded else raw
 
     changes = []
-    for index, entry in enumerate(tracked):
+    for index, raw_entry in enumerate(tracked):
+        # Entries may themselves be embedded binary plists. Decode before
+        # inspecting, and re-encode on write so the file keeps the shape
+        # Control Center expects.
+        entry = decode(raw_entry)
+        was_encoded = isinstance(raw_entry, bytes) and isinstance(entry, dict)
         if not isinstance(entry, dict) or "menuItemLocations" not in entry:
             continue
         owner = bundle_id(entry) or bundle_id(entry.get("location") or {})
@@ -123,6 +131,10 @@ def main():
             changes.append((index, owner, entry.get("isAllowed")))
             if args.apply:
                 entry["menuItemLocations"] = kept
+                tracked[index] = (
+                    plistlib.dumps(entry, fmt=plistlib.FMT_BINARY)
+                    if was_encoded else entry
+                )
 
     if not changes:
         print(f"No orphaned references to {target} — allow-list is clean.")

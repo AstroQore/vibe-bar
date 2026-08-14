@@ -70,6 +70,14 @@ final class MenuBarBlockWatchdog {
 
     /// Exposed for a manual re-check; `start` drives the periodic case.
     func probeOnce() {
+        // Re-read the flag on every probe rather than only when the timer was
+        // created: the user can suppress from the alert itself, and the
+        // evaluator re-arms after any recovery, so a still-running timer would
+        // otherwise nag again on the next relapse.
+        guard !Self.isSuppressed else {
+            stop()
+            return
+        }
         guard let statusItem, let probe = Self.sample(statusItem) else { return }
         guard evaluator.record(probe) else { return }
         SafeLog.warn(

@@ -106,15 +106,21 @@ public struct MenuBarBlockDetector: Sendable {
         }
         // No bar anywhere means a full-screen app or an auto-hiding bar is in
         // play, and an invisible status item says nothing about a block.
-        guard let tallestBar = probe.menuBarHeights.filter({ $0 > 0 }).max(),
-              tallestBar >= Self.minimumTrustworthyBarHeight else {
+        //
+        // Compared against the *shortest* bar on purpose. A display whose bar
+        // is itself 22pt would make a correctly placed item indistinguishable
+        // from a stub, and taking the tallest bar would convict it — so the
+        // shortest bar both picks the safe comparison and lets the guard below
+        // bail out entirely on such a setup.
+        guard let shortestBar = probe.menuBarHeights.filter({ $0 > 0 }).min(),
+              shortestBar >= Self.minimumTrustworthyBarHeight else {
             return .inconclusive
         }
         // A window that was placed into a bar is as tall as that bar, even
         // while something covers it. One still sitting at the legacy default,
         // on a Mac whose bars are all taller, was never placed at all.
         let isStub = probe.windowHeight <= probe.statusBarThickness
-            && probe.windowHeight + Self.stubHeightTolerance < tallestBar
+            && probe.windowHeight + Self.stubHeightTolerance < shortestBar
         return isStub ? .blocked : .inconclusive
     }
 }
