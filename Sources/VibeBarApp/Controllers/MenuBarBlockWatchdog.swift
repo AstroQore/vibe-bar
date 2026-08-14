@@ -26,20 +26,22 @@ final class MenuBarBlockWatchdog {
     /// Center rewrites those mappings when a hidden app re-registers its items
     /// — so this keeps running rather than checking once at launch.
     private static let probeInterval: TimeInterval = 120
-    private static let suppressionDefaultsKey = "menuBarBlockAlertSuppressed"
 
     private weak var statusItem: NSStatusItem?
+    private let settingsStore: SettingsStore
     private var evaluator = MenuBarBlockEvaluator()
     private var timer: Timer?
-    private let onBlockConfirmed: () -> Void
+    /// Set after init so the handler can capture the watchdog itself — ticking
+    /// "Don't check again" on the alert has to call back into `suppress()`.
+    var onBlockConfirmed: (() -> Void)?
 
-    init(statusItem: NSStatusItem, onBlockConfirmed: @escaping () -> Void) {
+    init(statusItem: NSStatusItem, settingsStore: SettingsStore) {
         self.statusItem = statusItem
-        self.onBlockConfirmed = onBlockConfirmed
+        self.settingsStore = settingsStore
     }
 
     func start() {
-        guard !UserDefaults.standard.bool(forKey: Self.suppressionDefaultsKey) else { return }
+        guard !isSuppressed else { return }
         stop()
         let timer = Timer(
             timeInterval: Self.probeInterval,
@@ -59,9 +61,15 @@ final class MenuBarBlockWatchdog {
         timer = nil
     }
 
-    static var isSuppressed: Bool {
-        get { UserDefaults.standard.bool(forKey: suppressionDefaultsKey) }
-        set { UserDefaults.standard.set(newValue, forKey: suppressionDefaultsKey) }
+    /// Persisted in `AppSettings` (so under `~/.vibebar/`), not `UserDefaults`.
+    var isSuppressed: Bool {
+        settingsStore.settings.menuBarBlockAlertSuppressed
+    }
+
+    func suppress() {
+        guard !settingsStore.settings.menuBarBlockAlertSuppressed else { return }
+        settingsStore.settings.menuBarBlockAlertSuppressed = true
+        stop()
     }
 
     @objc private func probeFromTimer() {
@@ -74,7 +82,7 @@ final class MenuBarBlockWatchdog {
         // created: the user can suppress from the alert itself, and the
         // evaluator re-arms after any recovery, so a still-running timer would
         // otherwise nag again on the next relapse.
-        guard !Self.isSuppressed else {
+        guard !isSuppressed else {
             stop()
             return
         }
@@ -85,7 +93,7 @@ final class MenuBarBlockWatchdog {
                 + "(height \(Int(probe.windowHeight)) vs bar \(Int(probe.menuBarHeights.min() ?? 0)), "
                 + "occlusion hidden)"
         )
-        onBlockConfirmed()
+        onBlockConfirmed?()
     }
 
     private static func sample(_ item: NSStatusItem) -> MenuBarItemProbe? {

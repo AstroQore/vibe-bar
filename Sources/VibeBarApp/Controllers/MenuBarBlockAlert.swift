@@ -13,7 +13,10 @@ enum MenuBarBlockAlert {
         string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension"
     )
 
-    static func present() {
+    /// - Parameter onSuppress: invoked when the user ticks "Don't check again".
+    ///   The flag itself belongs to `AppSettings`, so persisting it stays with
+    ///   the caller that owns the store.
+    static func present(onSuppress: () -> Void) {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "macOS is hiding Vibe Bar's menu bar icon"
@@ -29,9 +32,18 @@ enum MenuBarBlockAlert {
             only the stale reference — no app's show/hide setting changes. Run \
             it in Terminal, which needs Full Disk Access.
             """
-        alert.addButton(withTitle: "Copy Repair Command")
+        // The copy button is only offered when the script is actually locatable,
+        // so it can never be a button that does nothing when clicked.
+        let script = scriptURL()
+        var actions: [Action] = []
+        if script != nil {
+            alert.addButton(withTitle: "Copy Repair Command")
+            actions.append(.copy)
+        }
         alert.addButton(withTitle: "Open Menu Bar Settings")
+        actions.append(.openSettings)
         alert.addButton(withTitle: "Dismiss")
+        actions.append(.dismiss)
         alert.showsSuppressionButton = true
         alert.suppressionButton?.title = "Don't check again"
 
@@ -42,37 +54,62 @@ enum MenuBarBlockAlert {
         let response = alert.runModal()
 
         if alert.suppressionButton?.state == .on {
-            MenuBarBlockWatchdog.isSuppressed = true
+            onSuppress()
         }
 
-        switch response {
-        case .alertFirstButtonReturn:
-            copyRepairCommand()
-        case .alertSecondButtonReturn:
+        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard actions.indices.contains(index) else { return }
+        switch actions[index] {
+        case .copy:
+            if let script {
+                copyRepairCommand(script)
+            }
+        case .openSettings:
             if let settingsURL {
                 NSWorkspace.shared.open(settingsURL)
             }
-        default:
+        case .dismiss:
             break
         }
+    }
+
+    private enum Action {
+        case copy
+        case openSettings
+        case dismiss
     }
 
     /// The command is built against this bundle's own copy of the script, so it
     /// stays correct whether Vibe Bar runs from /Applications, a build
     /// directory, or a worktree.
-    private static func copyRepairCommand() {
-        let command: String
-        if let script = Bundle.main.url(
+    private static func copyRepairCommand(_ script: URL) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString("python3 \"\(script.path)\" --apply", forType: .string)
+    }
+
+    /// Always an absolute path: the command is pasted into a fresh Terminal,
+    /// which starts in the user's home directory, so anything relative to the
+    /// checkout would simply not resolve.
+    private static func scriptURL() -> URL? {
+        if let bundled = Bundle.main.url(
             forResource: "fix_menu_bar_allowlist",
             withExtension: "py"
         ) {
-            command = "python3 \"\(script.path)\" --apply"
-        } else {
-            // Source builds have no bundled resources; point at the checkout.
-            command = "python3 Scripts/fix_menu_bar_allowlist.py --apply"
+            return bundled
         }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(command, forType: .string)
+        // Source builds (`swift run`, or the raw binary under .build) have no
+        // bundled resources. Walk up from the executable to the checkout root.
+        var directory = Bundle.main.bundleURL.resolvingSymlinksInPath()
+        for _ in 0..<6 {
+            let candidate = directory
+                .appendingPathComponent("Scripts", isDirectory: true)
+                .appendingPathComponent("fix_menu_bar_allowlist.py")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+            directory.deleteLastPathComponent()
+        }
+        return nil
     }
 }

@@ -65,8 +65,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         DispatchQueue.main.async { [weak self] in
             _ = self?.popover(for: .compact)
         }
-        let watchdog = MenuBarBlockWatchdog(statusItem: compactStatusItem) {
-            MenuBarBlockAlert.present()
+        let watchdog = MenuBarBlockWatchdog(
+            statusItem: compactStatusItem,
+            settingsStore: environment.settingsStore
+        )
+        watchdog.onBlockConfirmed = { [weak watchdog] in
+            MenuBarBlockAlert.present { watchdog?.suppress() }
         }
         watchdog.start()
         blockWatchdog = watchdog

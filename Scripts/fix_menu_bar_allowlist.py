@@ -38,6 +38,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 DEFAULT_BUNDLE_ID = "com.astroqore.VibeBar"
@@ -155,8 +156,24 @@ def main():
 
     if embedded:
         root["trackedApplications"] = plistlib.dumps(tracked, fmt=plistlib.FMT_BINARY)
-    with open(PLIST, "wb") as handle:
-        plistlib.dump(root, handle, fmt=plistlib.FMT_BINARY)
+
+    # Serialize to a temporary file in the same directory, then rename over the
+    # original. Writing the live preferences file in place would truncate it
+    # first, so an interrupted or failed write would leave Control Center with
+    # an empty or half-written allow-list.
+    directory = os.path.dirname(PLIST)
+    handle_fd, temp_path = tempfile.mkstemp(dir=directory, prefix=".vibebar-allowlist-")
+    try:
+        with os.fdopen(handle_fd, "wb") as handle:
+            plistlib.dump(root, handle, fmt=plistlib.FMT_BINARY)
+            handle.flush()
+            os.fsync(handle.fileno())
+        shutil.copymode(PLIST, temp_path)
+        os.replace(temp_path, PLIST)
+    except BaseException:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        raise
     print(f"Updated: {PLIST}")
 
     if not args.no_restart:

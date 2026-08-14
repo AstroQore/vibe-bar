@@ -8,6 +8,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool
     public var updateChannel: UpdateChannel
     public var menuBarTextEnabled: Bool
+    /// Set by "Don't check again" on the alert that reports macOS blocking our
+    /// status item. Lives here rather than in `UserDefaults` so it is covered
+    /// by the `~/.vibebar/` persistence rule and a reset of that directory.
+    public var menuBarBlockAlertSuppressed: Bool
     public var mockEnabled: Bool
     public var codexUsageMode: CodexUsageMode
     public var claudeUsageMode: ClaudeUsageMode
@@ -160,6 +164,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         launchAtLogin: false,
         updateChannel: .main,
         menuBarTextEnabled: true,
+        menuBarBlockAlertSuppressed: false,
         mockEnabled: false,
         codexUsageMode: .auto,
         claudeUsageMode: .auto,
@@ -265,6 +270,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         launchAtLogin: Bool,
         updateChannel: UpdateChannel = .main,
         menuBarTextEnabled: Bool,
+        menuBarBlockAlertSuppressed: Bool = false,
         mockEnabled: Bool,
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
@@ -300,6 +306,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.launchAtLogin = launchAtLogin
         self.updateChannel = updateChannel
         self.menuBarTextEnabled = menuBarTextEnabled
+        self.menuBarBlockAlertSuppressed = menuBarBlockAlertSuppressed
         self.mockEnabled = false
         self.codexUsageMode = codexUsageMode
         self.claudeUsageMode = claudeUsageMode
@@ -368,6 +375,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case launchAtLogin
         case updateChannel
         case menuBarTextEnabled
+        case menuBarBlockAlertSuppressed
         case mockEnabled
         case codexUsageMode
         case claudeUsageMode
@@ -413,6 +421,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             (try? c.decodeIfPresent(UpdateChannel.self, forKey: .updateChannel))
             ?? Self.default.updateChannel
         self.menuBarTextEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarTextEnabled) ?? Self.default.menuBarTextEnabled
+        self.menuBarBlockAlertSuppressed = try c.decodeIfPresent(Bool.self, forKey: .menuBarBlockAlertSuppressed)
+            ?? Self.default.menuBarBlockAlertSuppressed
         self.mockEnabled = false
         self.codexUsageMode = try c.decodeIfPresent(CodexUsageMode.self, forKey: .codexUsageMode) ?? Self.default.codexUsageMode
         self.claudeUsageMode = try c.decodeIfPresent(ClaudeUsageMode.self, forKey: .claudeUsageMode) ?? Self.default.claudeUsageMode
@@ -586,6 +596,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(updateChannel, forKey: .updateChannel)
         try c.encode(menuBarTextEnabled, forKey: .menuBarTextEnabled)
+        try c.encode(menuBarBlockAlertSuppressed, forKey: .menuBarBlockAlertSuppressed)
         try c.encode(mockEnabled, forKey: .mockEnabled)
         try c.encode(codexUsageMode, forKey: .codexUsageMode)
         try c.encode(claudeUsageMode, forKey: .claudeUsageMode)
