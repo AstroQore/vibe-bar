@@ -185,8 +185,9 @@ public final class CostUsageService: ObservableObject {
 
         // The Workbench reads persisted request costs from UsageEventLedger,
         // while the outer ranking is rebuilt directly from each fresh scan.
-        // Reset the derived ledger whenever the effective catalog (including
-        // local overrides) changes so both surfaces use the same rates.
+        // Reprice previously unpriced ledger rows whenever the effective
+        // catalog (including local overrides) changes so both surfaces can
+        // adopt newly covered models without losing rotated history.
         _ = try? await usageLedger?.prepareForPricingRevision(PricingResolver.activeRevision)
 
         var results: [ToolType: CostSnapshot] = [:]

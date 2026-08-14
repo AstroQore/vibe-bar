@@ -141,57 +141,69 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(afterChangedFingerprint, 3)
     }
 
-    func testPricingRevisionRebuildsUnpricedDetailAndRollups() async throws {
+    func testPricingRevisionRepricesWithoutDeletingDetailOrRollups() async throws {
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerRepricing")
         defer { try? FileManager.default.removeItem(at: directory) }
+        defer { PricingResolver.testOverride = nil }
+
+        let base = PricingHardcoded.fallback
+        var grokModels = base.providers.grok.models
+        grokModels["grok-4.6"] = .init(input: 2e-6, output: 6e-6, cacheRead: nil)
+        PricingResolver.testOverride = PricingDataSet(
+            schemaVersion: base.schemaVersion,
+            updatedAt: "test-repricing",
+            calculationVersion: base.calculationVersion,
+            providers: .init(
+                codex: base.providers.codex,
+                claude: base.providers.claude,
+                gemini: base.providers.gemini,
+                grok: .init(displayName: "xAI", models: grokModels),
+                antigravity: base.providers.antigravity
+            )
+        )
 
         let preparedOldRevision = try await ledger.prepareForPricingRevision("pricing-old")
         XCTAssertTrue(preparedOldRevision)
         let oldEvent = UsageLedgerFixtures.event(
-            date: now.addingTimeInterval(-60 * 86_400),
-            model: "grok-4.6",
-            input: 1_000_000,
-            output: 100_000
+            date: now.addingTimeInterval(-60 * 86_400), model: "grok-4.6",
+            input: 1_000_000, output: 100_000
+        )
+        let recentEvent = UsageLedgerFixtures.event(
+            date: now.addingTimeInterval(-5 * 86_400), model: "grok-4.6",
+            input: 1_000_000, output: 100_000
         )
         let oldBatch = UsageLedgerFixtures.batch(
             tool: .grok,
             path: "/Users/example/.grok/sessions/session-a.jsonl",
-            events: [UsageLedgerFixtures.priced(oldEvent, costUSD: nil)]
+            events: [oldEvent, recentEvent].map {
+                UsageLedgerFixtures.priced($0, costUSD: nil)
+            }
         )
         try await ledger.ingest(oldBatch)
         try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 90)
 
         let filter = UsageLedgerFixtures.wideFilter(around: now)
         let before = try await ledger.summary(filter)
-        XCTAssertEqual(before.requests, 1)
-        XCTAssertEqual(before.unpricedRequests, 1)
+        XCTAssertEqual(before.requests, 2)
+        XCTAssertEqual(before.unpricedRequests, 2)
         XCTAssertNil(before.costMicros)
         let repeatedOldRevision = try await ledger.prepareForPricingRevision("pricing-old")
         XCTAssertFalse(repeatedOldRevision)
         let unchanged = try await ledger.summary(filter)
-        XCTAssertEqual(unchanged.requests, 1)
+        XCTAssertEqual(unchanged.requests, 2)
 
         let preparedNewRevision = try await ledger.prepareForPricingRevision("pricing-new")
         XCTAssertTrue(preparedNewRevision)
-        let emptied = try await ledger.summary(filter)
-        XCTAssertEqual(emptied.requests, 0)
+        let repriced = try await ledger.summary(filter)
+        XCTAssertEqual(repriced.requests, 2)
+        XCTAssertEqual(repriced.unpricedRequests, 0)
+        XCTAssertEqual(repriced.costMicros, 5_200_000)
         let detailFloor = try await ledger.detailFloorDay(for: .grok)
-        XCTAssertNil(detailFloor)
-
-        let repriced = UsageEventFileBatch(
-            tool: oldBatch.tool,
-            filePath: oldBatch.filePath,
-            mtime: oldBatch.mtime,
-            size: oldBatch.size,
-            events: [UsageLedgerFixtures.priced(oldEvent, costUSD: 2.60)]
-        )
-        try await ledger.ingest(repriced)
-        let after = try await ledger.summary(filter)
-        XCTAssertEqual(after.requests, 1)
-        XCTAssertEqual(after.unpricedRequests, 0)
-        XCTAssertEqual(after.costMicros, 2_600_000)
+        XCTAssertNotNil(detailFloor)
+        let detailPage = try await ledger.requestPage(filter, page: 0, pageSize: 10)
+        XCTAssertEqual(detailPage.totalCount, 1)
         let modelStats = try await ledger.modelStats(filter)
-        XCTAssertEqual(modelStats.first?.costMicros, 2_600_000)
+        XCTAssertEqual(modelStats.first?.costMicros, 5_200_000)
     }
 
     /// `(messageId, requestId)` is the same billable request no matter how

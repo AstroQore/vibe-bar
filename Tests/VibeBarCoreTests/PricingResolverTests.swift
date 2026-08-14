@@ -232,7 +232,12 @@ final class PricingResolverTests: XCTestCase {
         XCTAssertEqual(first, PricingResolver.activeRevision)
 
         PricingResolver.testOverride = hotReloadDataSet(
-            updatedAt: "2099-01-01", sentinelOutput: 0.0001
+            updatedAt: "2099-01-02", sentinelOutput: 0.00005
+        )
+        XCTAssertEqual(first, PricingResolver.activeRevision)
+
+        PricingResolver.testOverride = hotReloadDataSet(
+            updatedAt: "2099-01-02", sentinelOutput: 0.0001
         )
         XCTAssertNotEqual(first, PricingResolver.activeRevision)
     }
