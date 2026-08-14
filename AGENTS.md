@@ -680,6 +680,28 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   and relaunch. If the symptom persists, see **§ 6. Home Directory**
   for the grep recipe to confirm every call site uses
   `RealHomeDirectory`.
+- **The app runs but no menu-bar item ever appears** — on macOS 26 this
+  is usually not our bug. Control Center keeps a per-bundle-id menu-bar
+  allow-list in `trackedApplications` inside
+  `~/Library/Group Containers/group.com.apple.controlcenter/Library/Preferences/group.com.apple.controlcenter.plist`.
+  When an app the user hid from the menu bar keeps a stale reference to
+  `com.astroqore.VibeBar` in its `menuItemLocations`, Control Center
+  applies *that* app's `isAllowed = false` to us. Run
+  `python3 Scripts/fix_menu_bar_allowlist.py` (dry run; `--apply` to
+  fix) — it needs Full Disk Access for the terminal. The state survives
+  reboots, our own toggle in System Settings > Menu Bar still reads as
+  on, and flipping that toggle does nothing, so none of the obvious
+  checks disprove it.
+
+  Confirm before chasing our code: build a throwaway `.app` with a
+  different `CFBundleIdentifier` and the same status-item code. If the
+  copy appears and `com.astroqore.VibeBar` does not, the block is
+  external. `MenuBarBlockWatchdog` detects this at runtime and tells the
+  user; `window.screen` is **not** the signal to key on (a blocked
+  window still reports a screen) — the signature is a window left at
+  `NSStatusBar.thickness` (22) while every screen's bar is taller,
+  with occlusion missing `.visible`. It relapses whenever Control
+  Center rebuilds those mappings.
 
 ## 11. Implementation Rules That Have Bitten
 
