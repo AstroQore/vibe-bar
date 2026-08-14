@@ -175,9 +175,10 @@ final class UsageEventLedgerTests: XCTestCase {
         let oldBatch = UsageLedgerFixtures.batch(
             tool: .grok,
             path: "/Users/example/.grok/sessions/session-a.jsonl",
-            events: [oldEvent, recentEvent].map {
-                UsageLedgerFixtures.priced($0, costUSD: nil)
-            }
+            events: [
+                UsageLedgerFixtures.priced(oldEvent, costUSD: nil),
+                UsageLedgerFixtures.priced(recentEvent, costUSD: 9.0)
+            ]
         )
         try await ledger.ingest(oldBatch)
         try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 90)
@@ -185,8 +186,8 @@ final class UsageEventLedgerTests: XCTestCase {
         let filter = UsageLedgerFixtures.wideFilter(around: now)
         let before = try await ledger.summary(filter)
         XCTAssertEqual(before.requests, 2)
-        XCTAssertEqual(before.unpricedRequests, 2)
-        XCTAssertNil(before.costMicros)
+        XCTAssertEqual(before.unpricedRequests, 1)
+        XCTAssertEqual(before.costMicros, 9_000_000)
         let repeatedOldRevision = try await ledger.prepareForPricingRevision("pricing-old")
         XCTAssertFalse(repeatedOldRevision)
         let unchanged = try await ledger.summary(filter)
@@ -204,6 +205,59 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(detailPage.totalCount, 1)
         let modelStats = try await ledger.modelStats(filter)
         XCTAssertEqual(modelStats.first?.costMicros, 5_200_000)
+    }
+
+    func testPricingRevisionLeavesAmbiguousTieredAndFastRollupsUnpriced() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerAmbiguousRepricing")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        defer { PricingResolver.testOverride = nil }
+
+        let base = PricingHardcoded.fallback
+        var codexModels = base.providers.codex.models
+        codexModels["tiered-test"] = .init(
+            input: 1e-6, output: 2e-6, cacheRead: nil,
+            thresholdTokens: 200_000,
+            inputAboveThreshold: 2e-6,
+            outputAboveThreshold: 4e-6
+        )
+        codexModels["fast-test"] = .init(
+            input: 1e-6, output: 2e-6, cacheRead: nil,
+            fastMultiplier: 2.0
+        )
+        PricingResolver.testOverride = PricingDataSet(
+            schemaVersion: base.schemaVersion,
+            updatedAt: "test-ambiguous-repricing",
+            calculationVersion: base.calculationVersion,
+            providers: .init(
+                codex: .init(displayName: "OpenAI", models: codexModels),
+                claude: base.providers.claude,
+                gemini: base.providers.gemini,
+                grok: base.providers.grok,
+                antigravity: base.providers.antigravity
+            )
+        )
+
+        for (index, model) in ["tiered-test", "fast-test"].enumerated() {
+            let event = UsageLedgerFixtures.event(
+                date: now.addingTimeInterval(-60 * 86_400),
+                model: model,
+                input: 150_000,
+                output: 10_000,
+                serviceTier: index == 1 ? "fast" : nil
+            )
+            try await ledger.ingest(UsageLedgerFixtures.batch(
+                path: "/Users/example/.codex/sessions/ambiguous-\(index).jsonl",
+                events: [UsageLedgerFixtures.priced(event, costUSD: nil)]
+            ))
+        }
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 90)
+
+        let prepared = try await ledger.prepareForPricingRevision("pricing-new")
+        XCTAssertTrue(prepared)
+        let summary = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now))
+        XCTAssertEqual(summary.requests, 2)
+        XCTAssertEqual(summary.unpricedRequests, 2)
+        XCTAssertNil(summary.costMicros)
     }
 
     /// `(messageId, requestId)` is the same billable request no matter how

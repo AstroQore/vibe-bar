@@ -524,14 +524,15 @@ public actor UsageEventLedger: CostUsageEventSink {
         }
     }
 
-    /// Fill previously unpriced rows from the active pricing table.
+    /// Refresh persisted costs from the active pricing table.
     ///
     /// File mtime/size fingerprints are intentionally blind to price changes.
     /// Repricing in place preserves history whose source file has since been
-    /// rotated or removed. Detail rows retain per-request precision; a fully
-    /// unpriced daily rollup can also be recovered from its provider-neutral
-    /// model/token totals. Already-priced rollups stay untouched because their
-    /// per-request tier/threshold boundaries are no longer available.
+    /// rotated or removed. Every detail row retains enough request context to
+    /// be recalculated. A fully unpriced daily rollup is recovered only when
+    /// the active model has linear, tier-independent pricing; ambiguous and
+    /// already-priced rollups stay untouched because their request boundaries
+    /// are no longer available.
     @discardableResult
     public func prepareForPricingRevision(_ revision: String) throws -> Bool {
         let stored = try scalarText(
@@ -540,18 +541,25 @@ public actor UsageEventLedger: CostUsageEventSink {
         )
         guard stored != revision else { return false }
 
-        let details = try unpricedDetailRows()
+        let details = try detailRows()
         let rollups = try fullyUnpricedRollupRows()
         try execute("BEGIN IMMEDIATE")
         do {
             for row in details {
-                guard let micros = costMicros(for: row) else { continue }
+                let costBinding: Binding = if let micros = costMicros(for: row) {
+                    .integer(micros)
+                } else {
+                    .null
+                }
                 try run(
-                    "UPDATE usage_events SET cost_micros = ? WHERE id = ? AND cost_micros IS NULL",
-                    [.integer(micros), .integer(row.id)]
+                    "UPDATE usage_events SET cost_micros = ? WHERE id = ?",
+                    [costBinding, .integer(row.id)]
                 )
             }
             for row in rollups {
+                guard CostUsagePricing.canRepriceAggregate(tool: row.tool, model: row.model) else {
+                    continue
+                }
                 guard let micros = costMicros(for: row) else { continue }
                 try run(
                     """
@@ -592,12 +600,12 @@ public actor UsageEventLedger: CostUsageEventSink {
         let serviceTier: String?
     }
 
-    private func unpricedDetailRows() throws -> [RepricingRow] {
+    private func detailRows() throws -> [RepricingRow] {
         let statement = try prepare(
             """
             SELECT id, day, tool, model, fresh_input, output,
                    cache_read, cache_creation, service_tier
-              FROM usage_events WHERE cost_micros IS NULL
+              FROM usage_events
             """
         )
         defer { sqlite3_finalize(statement) }
