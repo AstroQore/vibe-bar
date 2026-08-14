@@ -222,6 +222,26 @@ final class PricingResolverTests: XCTestCase {
         XCTAssertEqual(PricingResolver.active.updatedAt, "2099-01-01")
     }
 
+    func testActiveRevisionChangesWithPricingContent() throws {
+        defer { PricingResolver.testOverride = nil }
+
+        PricingResolver.testOverride = hotReloadDataSet(
+            updatedAt: "2099-01-01", sentinelOutput: 0.00005
+        )
+        let first = PricingResolver.activeRevision
+        XCTAssertEqual(first, PricingResolver.activeRevision)
+
+        PricingResolver.testOverride = hotReloadDataSet(
+            updatedAt: "2099-01-02", sentinelOutput: 0.00005
+        )
+        XCTAssertEqual(first, PricingResolver.activeRevision)
+
+        PricingResolver.testOverride = hotReloadDataSet(
+            updatedAt: "2099-01-02", sentinelOutput: 0.0001
+        )
+        XCTAssertNotEqual(first, PricingResolver.activeRevision)
+    }
+
     func testReloadIfChangedIsNoOpUnderTestOverride() throws {
         let home = try makeTempHome()
         PricingResolver.forgetCachedStateForTests()

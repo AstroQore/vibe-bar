@@ -141,6 +141,125 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(afterChangedFingerprint, 3)
     }
 
+    func testPricingRevisionRepricesWithoutDeletingDetailOrRollups() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerRepricing")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        defer { PricingResolver.testOverride = nil }
+
+        let base = PricingHardcoded.fallback
+        var grokModels = base.providers.grok.models
+        grokModels["grok-4.6"] = .init(input: 2e-6, output: 6e-6, cacheRead: nil)
+        PricingResolver.testOverride = PricingDataSet(
+            schemaVersion: base.schemaVersion,
+            updatedAt: "test-repricing",
+            calculationVersion: base.calculationVersion,
+            providers: .init(
+                codex: base.providers.codex,
+                claude: base.providers.claude,
+                gemini: base.providers.gemini,
+                grok: .init(displayName: "xAI", models: grokModels),
+                antigravity: base.providers.antigravity
+            )
+        )
+
+        let preparedOldRevision = try await ledger.prepareForPricingRevision("pricing-old")
+        XCTAssertTrue(preparedOldRevision)
+        let oldEvent = UsageLedgerFixtures.event(
+            date: now.addingTimeInterval(-60 * 86_400), model: "grok-4.6",
+            input: 1_000_000, output: 100_000
+        )
+        let recentEvent = UsageLedgerFixtures.event(
+            date: now.addingTimeInterval(-5 * 86_400), model: "grok-4.6",
+            input: 1_000_000, output: 100_000
+        )
+        let oldBatch = UsageLedgerFixtures.batch(
+            tool: .grok,
+            path: "/Users/example/.grok/sessions/session-a.jsonl",
+            events: [
+                UsageLedgerFixtures.priced(oldEvent, costUSD: nil),
+                UsageLedgerFixtures.priced(recentEvent, costUSD: 9.0)
+            ]
+        )
+        try await ledger.ingest(oldBatch)
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 90)
+
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+        let before = try await ledger.summary(filter)
+        XCTAssertEqual(before.requests, 2)
+        XCTAssertEqual(before.unpricedRequests, 1)
+        XCTAssertEqual(before.costMicros, 9_000_000)
+        let repeatedOldRevision = try await ledger.prepareForPricingRevision("pricing-old")
+        XCTAssertFalse(repeatedOldRevision)
+        let unchanged = try await ledger.summary(filter)
+        XCTAssertEqual(unchanged.requests, 2)
+
+        let preparedNewRevision = try await ledger.prepareForPricingRevision("pricing-new")
+        XCTAssertTrue(preparedNewRevision)
+        let repriced = try await ledger.summary(filter)
+        XCTAssertEqual(repriced.requests, 2)
+        XCTAssertEqual(repriced.unpricedRequests, 0)
+        XCTAssertEqual(repriced.costMicros, 5_200_000)
+        let detailFloor = try await ledger.detailFloorDay(for: .grok)
+        XCTAssertNotNil(detailFloor)
+        let detailPage = try await ledger.requestPage(filter, page: 0, pageSize: 10)
+        XCTAssertEqual(detailPage.totalCount, 1)
+        let modelStats = try await ledger.modelStats(filter)
+        XCTAssertEqual(modelStats.first?.costMicros, 5_200_000)
+    }
+
+    func testPricingRevisionLeavesAmbiguousTieredAndFastRollupsUnpriced() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerAmbiguousRepricing")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        defer { PricingResolver.testOverride = nil }
+
+        let base = PricingHardcoded.fallback
+        var codexModels = base.providers.codex.models
+        codexModels["tiered-test"] = .init(
+            input: 1e-6, output: 2e-6, cacheRead: nil,
+            thresholdTokens: 200_000,
+            inputAboveThreshold: 2e-6,
+            outputAboveThreshold: 4e-6
+        )
+        codexModels["fast-test"] = .init(
+            input: 1e-6, output: 2e-6, cacheRead: nil,
+            fastMultiplier: 2.0
+        )
+        PricingResolver.testOverride = PricingDataSet(
+            schemaVersion: base.schemaVersion,
+            updatedAt: "test-ambiguous-repricing",
+            calculationVersion: base.calculationVersion,
+            providers: .init(
+                codex: .init(displayName: "OpenAI", models: codexModels),
+                claude: base.providers.claude,
+                gemini: base.providers.gemini,
+                grok: base.providers.grok,
+                antigravity: base.providers.antigravity
+            )
+        )
+
+        for (index, model) in ["tiered-test", "fast-test"].enumerated() {
+            let event = UsageLedgerFixtures.event(
+                date: now.addingTimeInterval(-60 * 86_400),
+                model: model,
+                input: 150_000,
+                output: 10_000,
+                serviceTier: index == 1 ? "fast" : nil
+            )
+            try await ledger.ingest(UsageLedgerFixtures.batch(
+                path: "/Users/example/.codex/sessions/ambiguous-\(index).jsonl",
+                events: [UsageLedgerFixtures.priced(event, costUSD: nil)]
+            ))
+        }
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 90)
+
+        let prepared = try await ledger.prepareForPricingRevision("pricing-new")
+        XCTAssertTrue(prepared)
+        let summary = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now))
+        XCTAssertEqual(summary.requests, 2)
+        XCTAssertEqual(summary.unpricedRequests, 2)
+        XCTAssertNil(summary.costMicros)
+    }
+
     /// `(messageId, requestId)` is the same billable request no matter how
     /// many transcripts copied it. The parent, non-sidechain copy must win
     /// regardless of which file the scan reached first.
