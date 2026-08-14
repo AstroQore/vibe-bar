@@ -41,6 +41,48 @@ public enum PricingResolver {
         return resolved
     }
 
+    /// Stable content identity for the complete active pricing table.
+    ///
+    /// The usage ledger persists costs, not just tokens. A session file can
+    /// therefore be byte-identical while its correct cost changes after a
+    /// catalog refresh or local override. The ledger records this revision
+    /// and retries previously unpriced rows when it changes.
+    static var activeRevision: String {
+        let dataSet = active
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let encoded = try? encoder.encode(dataSet),
+              let object = try? JSONSerialization.jsonObject(with: encoded),
+              let data = try? JSONSerialization.data(
+                  withJSONObject: costRevisionObject(object),
+                  options: [.sortedKeys]
+              )
+        else {
+            return "pricing-v1-\(dataSet.schemaVersion)-\(dataSet.calculationVersion)"
+        }
+        return PrivacyPreservingHash.fileComponent(
+            prefix: "pricing-v1",
+            rawValue: String(decoding: data, as: UTF8.self)
+        )
+    }
+
+    /// Strip catalog presentation/freshness metadata that cannot change a
+    /// request's cost. A daily `updatedAt` refresh or a display-label edit
+    /// must not make the ledger revisit its historical unpriced rows.
+    private static func costRevisionObject(_ value: Any) -> Any {
+        if let dictionary = value as? [String: Any] {
+            let ignored = Set(["updatedAt", "displayName", "displayLabel"])
+            return dictionary.reduce(into: [String: Any]()) { result, entry in
+                guard !ignored.contains(entry.key) else { return }
+                result[entry.key] = costRevisionObject(entry.value)
+            }
+        }
+        if let array = value as? [Any] {
+            return array.map(costRevisionObject)
+        }
+        return value
+    }
+
     /// Test-friendly entry point. Production code path goes through
     /// `active` which uses the real home directory.
     public static func resolve(homeDirectory: String) -> PricingDataSet {

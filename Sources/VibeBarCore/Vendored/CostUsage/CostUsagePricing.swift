@@ -37,6 +37,44 @@ public enum CostUsagePricing {
         return multiplier > 0 ? multiplier : 1.0
     }
 
+    /// Whether summed daily token columns contain enough information to
+    /// reproduce request-level pricing exactly. Threshold and premium-tier
+    /// models require request boundaries that legacy rollups no longer keep.
+    static func canRepriceAggregate(tool: ToolType, model: String) -> Bool {
+        let dataSet = PricingResolver.active
+        switch tool {
+        case .codex:
+            guard let pricing = dataSet.providers.codex.models[normalizeCodexModel(model)] else {
+                return false
+            }
+            return pricing.thresholdTokens == nil
+                && (pricing.fastMultiplier ?? 1.0) == 1.0
+        case .claude:
+            guard let pricing = dataSet.providers.claude.models[normalizeClaudeModel(model)] else {
+                return false
+            }
+            return pricing.thresholdTokens == nil
+                && (pricing.fastMultiplier ?? 1.0) == 1.0
+        case .gemini:
+            guard let pricing = dataSet.providers.gemini.models[normalizeGeminiModel(model)] else {
+                return false
+            }
+            return pricing.thresholdTokens == nil
+        case .grok:
+            guard let pricing = dataSet.providers.grok.models[normalizeGrokModel(model)] else {
+                return false
+            }
+            return pricing.thresholdTokens == nil
+        case .antigravity:
+            return dataSet.providers.antigravity.models[normalizeAntigravityModel(model)] != nil
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
+             .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
+             .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
+             .kilo, .kiro, .ollama, .openRouter, .warp:
+            return false
+        }
+    }
+
     private static func tieredCost(
         tokens: Int,
         base: Double,

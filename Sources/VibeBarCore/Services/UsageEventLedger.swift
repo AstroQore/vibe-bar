@@ -66,6 +66,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Bumping this drops and rebuilds every table on the next open.
     static let schemaVersion = 3
     private static let schemaVersionKey = "schema_version"
+    private static let pricingRevisionKey = "pricing_revision"
     private static let floorKeyPrefix = "detail_floor_day:"
     /// Guard rail on zero-filled trend enumeration: ~135 years of daily
     /// buckets. A filter wider than this is a caller bug, not a chart.
@@ -521,6 +522,205 @@ public actor UsageEventLedger: CostUsageEventSink {
             try? execute("ROLLBACK")
             throw error
         }
+    }
+
+    /// Refresh persisted costs from the active pricing table.
+    ///
+    /// File mtime/size fingerprints are intentionally blind to price changes.
+    /// Repricing in place preserves history whose source file has since been
+    /// rotated or removed. Every detail row retains enough request context to
+    /// be recalculated. A fully unpriced daily rollup is recovered only when
+    /// the active model has linear, tier-independent pricing; ambiguous and
+    /// already-priced rollups stay untouched because their request boundaries
+    /// are no longer available.
+    @discardableResult
+    public func prepareForPricingRevision(_ revision: String) throws -> Bool {
+        let stored = try scalarText(
+            "SELECT value FROM ledger_meta WHERE key = ?",
+            [.text(Self.pricingRevisionKey)]
+        )
+        guard stored != revision else { return false }
+
+        let details = try detailRows()
+        let rollups = try fullyUnpricedRollupRows()
+        try execute("BEGIN IMMEDIATE")
+        do {
+            for row in details {
+                let costBinding: Binding = if let micros = costMicros(for: row) {
+                    .integer(micros)
+                } else {
+                    .null
+                }
+                try run(
+                    "UPDATE usage_events SET cost_micros = ? WHERE id = ?",
+                    [costBinding, .integer(row.id)]
+                )
+            }
+            for row in rollups {
+                guard CostUsagePricing.canRepriceAggregate(tool: row.tool, model: row.model) else {
+                    continue
+                }
+                guard let micros = costMicros(for: row) else { continue }
+                try run(
+                    """
+                    UPDATE usage_daily_rollups
+                       SET cost_micros = ?, unpriced = 0
+                     WHERE day = ? AND tool = ? AND model = ? AND unpriced = requests
+                    """,
+                    [
+                        .integer(micros), .text(row.day),
+                        .text(row.tool.rawValue), .text(row.model)
+                    ]
+                )
+            }
+            try run(
+                """
+                INSERT INTO ledger_meta(key, value) VALUES(?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                [.text(Self.pricingRevisionKey), .text(revision)]
+            )
+            try execute("COMMIT")
+            return true
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
+    private struct RepricingRow {
+        let id: Int64
+        let day: String
+        let tool: ToolType
+        let model: String
+        let freshInput: Int64
+        let output: Int64
+        let cacheRead: Int64
+        let cacheCreation: Int64
+        let serviceTier: String?
+    }
+
+    private func detailRows() throws -> [RepricingRow] {
+        let statement = try prepare(
+            """
+            SELECT id, day, tool, model, fresh_input, output,
+                   cache_read, cache_creation, service_tier
+              FROM usage_events
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        var rows: [RepricingRow] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let day = columnText(statement, 1),
+                  let rawTool = columnText(statement, 2),
+                  let tool = ToolType(rawValue: rawTool),
+                  let model = columnText(statement, 3)
+            else { continue }
+            rows.append(RepricingRow(
+                id: sqlite3_column_int64(statement, 0),
+                day: day,
+                tool: tool,
+                model: model,
+                freshInput: sqlite3_column_int64(statement, 4),
+                output: sqlite3_column_int64(statement, 5),
+                cacheRead: sqlite3_column_int64(statement, 6),
+                cacheCreation: sqlite3_column_int64(statement, 7),
+                serviceTier: columnText(statement, 8)
+            ))
+        }
+        return rows
+    }
+
+    private func fullyUnpricedRollupRows() throws -> [RepricingRow] {
+        let statement = try prepare(
+            """
+            SELECT day, tool, model, fresh_input, output, cache_read, cache_creation
+              FROM usage_daily_rollups WHERE unpriced > 0 AND unpriced = requests
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        var rows: [RepricingRow] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let day = columnText(statement, 0),
+                  let rawTool = columnText(statement, 1),
+                  let tool = ToolType(rawValue: rawTool),
+                  let model = columnText(statement, 2)
+            else { continue }
+            rows.append(RepricingRow(
+                id: 0,
+                day: day,
+                tool: tool,
+                model: model,
+                freshInput: sqlite3_column_int64(statement, 3),
+                output: sqlite3_column_int64(statement, 4),
+                cacheRead: sqlite3_column_int64(statement, 5),
+                cacheCreation: sqlite3_column_int64(statement, 6),
+                serviceTier: nil
+            ))
+        }
+        return rows
+    }
+
+    private func costMicros(for row: RepricingRow) -> Int64? {
+        guard row.freshInput >= 0, row.output >= 0,
+              row.cacheRead >= 0, row.cacheCreation >= 0,
+              let freshInput = Int(exactly: row.freshInput),
+              let output = Int(exactly: row.output),
+              let cacheRead = Int(exactly: row.cacheRead),
+              let cacheCreation = Int(exactly: row.cacheCreation)
+        else { return nil }
+        let inputSum = freshInput.addingReportingOverflow(cacheRead)
+        guard !inputSum.overflow else { return nil }
+        let inputWithCache = inputSum.partialValue
+
+        let isFast = row.serviceTier == "fast" || row.serviceTier == "priority"
+        let cost: Double? = switch row.tool {
+        case .codex:
+            CostUsagePricing.codexCostUSD(
+                model: row.model,
+                inputTokens: inputWithCache,
+                cachedInputTokens: cacheRead,
+                outputTokens: output,
+                isFast: isFast
+            )
+        case .claude:
+            CostUsagePricing.claudeCostUSD(
+                model: row.model,
+                inputTokens: freshInput,
+                cacheReadInputTokens: cacheRead,
+                cacheCreationInputTokens: cacheCreation,
+                outputTokens: output,
+                isFast: isFast
+            )
+        case .gemini:
+            CostUsagePricing.geminiCostUSD(
+                model: row.model,
+                inputTokens: inputWithCache,
+                cacheReadInputTokens: cacheRead,
+                outputTokens: output
+            )
+        case .grok:
+            CostUsagePricing.grokCostUSD(
+                model: row.model,
+                inputTokens: inputWithCache,
+                cachedInputTokens: cacheRead,
+                outputTokens: output
+            )
+        case .antigravity:
+            CostUsagePricing.antigravityCostUSD(
+                model: row.model,
+                inputTokens: freshInput,
+                cacheReadInputTokens: cacheRead,
+                cacheCreationInputTokens: cacheCreation,
+                outputTokens: output
+            )
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
+             .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
+             .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
+             .kilo, .kiro, .ollama, .openRouter, .warp:
+            nil
+        }
+        return cost.flatMap(PricedUsageEvent.micros(fromUSD:))
     }
 
     /// Oldest day that still has request-level rows for `tool`, or nil when

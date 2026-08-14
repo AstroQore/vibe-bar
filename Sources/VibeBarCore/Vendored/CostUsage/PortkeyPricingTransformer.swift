@@ -64,7 +64,7 @@ public enum PortkeyPricingTransformer {
                 guard let rates = rates(entry) else { continue }
                 let id = rawID.lowercased()
                 switch family {
-                case .codex where id.hasPrefix("gpt-"):
+                case .codex where isCodexModel(id):
                     codex[id] = .init(
                         input: rates.input,
                         output: rates.output,
@@ -125,5 +125,14 @@ public enum PortkeyPricingTransformer {
             cacheRead: payg.cacheReadInputToken.map { $0.price / 100 },
             cacheWrite: payg.cacheWriteInputToken.map { $0.price / 100 }
         )
+    }
+
+    /// Portkey's OpenAI catalog mostly uses the public `gpt-*` names, but
+    /// Codex also emits this first-party internal usage category directly in
+    /// session logs. Keep the allow-list narrow so embeddings, image, audio,
+    /// and moderation SKUs from the same provider file do not leak into the
+    /// Codex model picker.
+    private static func isCodexModel(_ id: String) -> Bool {
+        id.hasPrefix("gpt-") || id == "codex-auto-review"
     }
 }
