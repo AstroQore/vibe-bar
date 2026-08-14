@@ -41,6 +41,25 @@ public enum PricingResolver {
         return resolved
     }
 
+    /// Stable content identity for the complete active pricing table.
+    ///
+    /// The usage ledger persists costs, not just tokens. A session file can
+    /// therefore be byte-identical while its correct cost changes after a
+    /// catalog refresh or local override. The ledger records this revision
+    /// and rebuilds its derived rows when it changes.
+    static var activeRevision: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(active) else {
+            let dataSet = active
+            return "pricing-v1-\(dataSet.schemaVersion)-\(dataSet.calculationVersion)-\(dataSet.updatedAt)"
+        }
+        return PrivacyPreservingHash.fileComponent(
+            prefix: "pricing-v1",
+            rawValue: String(decoding: data, as: UTF8.self)
+        )
+    }
+
     /// Test-friendly entry point. Production code path goes through
     /// `active` which uses the real home directory.
     public static func resolve(homeDirectory: String) -> PricingDataSet {

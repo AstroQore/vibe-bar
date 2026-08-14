@@ -141,6 +141,59 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(afterChangedFingerprint, 3)
     }
 
+    func testPricingRevisionRebuildsUnpricedDetailAndRollups() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerRepricing")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let preparedOldRevision = try await ledger.prepareForPricingRevision("pricing-old")
+        XCTAssertTrue(preparedOldRevision)
+        let oldEvent = UsageLedgerFixtures.event(
+            date: now.addingTimeInterval(-60 * 86_400),
+            model: "grok-4.6",
+            input: 1_000_000,
+            output: 100_000
+        )
+        let oldBatch = UsageLedgerFixtures.batch(
+            tool: .grok,
+            path: "/Users/example/.grok/sessions/session-a.jsonl",
+            events: [UsageLedgerFixtures.priced(oldEvent, costUSD: nil)]
+        )
+        try await ledger.ingest(oldBatch)
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 90)
+
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+        let before = try await ledger.summary(filter)
+        XCTAssertEqual(before.requests, 1)
+        XCTAssertEqual(before.unpricedRequests, 1)
+        XCTAssertNil(before.costMicros)
+        let repeatedOldRevision = try await ledger.prepareForPricingRevision("pricing-old")
+        XCTAssertFalse(repeatedOldRevision)
+        let unchanged = try await ledger.summary(filter)
+        XCTAssertEqual(unchanged.requests, 1)
+
+        let preparedNewRevision = try await ledger.prepareForPricingRevision("pricing-new")
+        XCTAssertTrue(preparedNewRevision)
+        let emptied = try await ledger.summary(filter)
+        XCTAssertEqual(emptied.requests, 0)
+        let detailFloor = try await ledger.detailFloorDay(for: .grok)
+        XCTAssertNil(detailFloor)
+
+        let repriced = UsageEventFileBatch(
+            tool: oldBatch.tool,
+            filePath: oldBatch.filePath,
+            mtime: oldBatch.mtime,
+            size: oldBatch.size,
+            events: [UsageLedgerFixtures.priced(oldEvent, costUSD: 2.60)]
+        )
+        try await ledger.ingest(repriced)
+        let after = try await ledger.summary(filter)
+        XCTAssertEqual(after.requests, 1)
+        XCTAssertEqual(after.unpricedRequests, 0)
+        XCTAssertEqual(after.costMicros, 2_600_000)
+        let modelStats = try await ledger.modelStats(filter)
+        XCTAssertEqual(modelStats.first?.costMicros, 2_600_000)
+    }
+
     /// `(messageId, requestId)` is the same billable request no matter how
     /// many transcripts copied it. The parent, non-sidechain copy must win
     /// regardless of which file the scan reached first.

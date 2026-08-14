@@ -181,7 +181,13 @@ public final class CostUsageService: ObservableObject {
         // last pass. Swapping here — at the pass boundary, before any scan
         // starts — keeps every scan below on one consistent table while
         // letting new model rates land without an app relaunch.
-        PricingResolver.reloadIfChanged()
+        PricingResolver.reloadIfChanged(homeDirectory: homeDirectory)
+
+        // The Workbench reads persisted request costs from UsageEventLedger,
+        // while the outer ranking is rebuilt directly from each fresh scan.
+        // Reset the derived ledger whenever the effective catalog (including
+        // local overrides) changes so both surfaces use the same rates.
+        _ = try? await usageLedger?.prepareForPricingRevision(PricingResolver.activeRevision)
 
         var results: [ToolType: CostSnapshot] = [:]
         let home = homeDirectory

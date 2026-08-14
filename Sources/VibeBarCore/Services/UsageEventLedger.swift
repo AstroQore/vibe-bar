@@ -66,6 +66,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Bumping this drops and rebuilds every table on the next open.
     static let schemaVersion = 3
     private static let schemaVersionKey = "schema_version"
+    private static let pricingRevisionKey = "pricing_revision"
     private static let floorKeyPrefix = "detail_floor_day:"
     /// Guard rail on zero-filled trend enumeration: ~135 years of daily
     /// buckets. A filter wider than this is a caller bug, not a chart.
@@ -517,6 +518,46 @@ public actor UsageEventLedger: CostUsageEventSink {
             try execute("DELETE FROM ingested_files")
             try run("DELETE FROM ledger_meta WHERE key <> ?", [.text(Self.schemaVersionKey)])
             try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
+    /// Make the persisted costs match the active pricing table.
+    ///
+    /// File mtime/size fingerprints are intentionally blind to price changes,
+    /// and older request rows may already have been folded into daily
+    /// rollups. Rebuilding the derived ledger is the only exact update for
+    /// both shapes. The scanner's parsed-event cache remains authoritative,
+    /// so the following pass repopulates this database without reparsing the
+    /// original JSONL files.
+    @discardableResult
+    public func prepareForPricingRevision(_ revision: String) throws -> Bool {
+        let stored = try scalarText(
+            "SELECT value FROM ledger_meta WHERE key = ?",
+            [.text(Self.pricingRevisionKey)]
+        )
+        guard stored != revision else { return false }
+
+        try execute("BEGIN IMMEDIATE")
+        do {
+            try execute("DELETE FROM usage_events")
+            try execute("DELETE FROM usage_daily_rollups")
+            try execute("DELETE FROM ingested_files")
+            try run(
+                "DELETE FROM ledger_meta WHERE key <> ?",
+                [.text(Self.schemaVersionKey)]
+            )
+            try run(
+                """
+                INSERT INTO ledger_meta(key, value) VALUES(?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                [.text(Self.pricingRevisionKey), .text(revision)]
+            )
+            try execute("COMMIT")
+            return true
         } catch {
             try? execute("ROLLBACK")
             throw error

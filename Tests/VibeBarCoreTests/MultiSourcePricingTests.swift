@@ -39,6 +39,12 @@ final class MultiSourcePricingTests: XCTestCase {
         )
         XCTAssertEqual(composer.input, 3e-6, accuracy: 1e-12)
         XCTAssertEqual(composer.output, 15e-6, accuracy: 1e-12)
+
+        let autoReview = try XCTUnwrap(
+            merged.providers.codex.models["codex-auto-review"]
+        )
+        XCTAssertEqual(autoReview.input, 2.5e-6, accuracy: 1e-12)
+        XCTAssertEqual(autoReview.output, 15e-6, accuracy: 1e-12)
     }
 
     func testModelsDevCarriesLongContextAndFastPricing() throws {
@@ -79,6 +85,14 @@ final class MultiSourcePricingTests: XCTestCase {
     func testPortkeyConvertsCentsPerTokenToDollarsPerToken() throws {
         let data = Data(#"""
         {
+          "codex-auto-review": {
+            "pricing_config": {
+              "pay_as_you_go": {
+                "request_token": {"price": 0.00025},
+                "response_token": {"price": 0.0015}
+              }
+            }
+          },
           "grok-4.6": {
             "pricing_config": {
               "pay_as_you_go": {
@@ -92,8 +106,12 @@ final class MultiSourcePricingTests: XCTestCase {
         """#.utf8)
 
         let set = try XCTUnwrap(PortkeyPricingTransformer.transform(
-            [.grok: data], updatedAt: "2026-08-14", calculationVersion: 1
+            [.codex: data, .grok: data], updatedAt: "2026-08-14", calculationVersion: 1
         ))
+        let autoReview = try XCTUnwrap(set.providers.codex.models["codex-auto-review"])
+        XCTAssertEqual(autoReview.input, 2.5e-6, accuracy: 1e-12)
+        XCTAssertEqual(autoReview.output, 15e-6, accuracy: 1e-12)
+
         let model = try XCTUnwrap(set.providers.grok.models["grok-4.6"])
         XCTAssertEqual(model.input, 2e-6, accuracy: 1e-12)
         XCTAssertEqual(model.output, 6e-6, accuracy: 1e-12)
