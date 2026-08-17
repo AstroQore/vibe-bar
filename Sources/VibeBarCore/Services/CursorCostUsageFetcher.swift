@@ -164,7 +164,11 @@ struct CursorCostUsageFetcher: Sendable {
                 tool: .grok,
                 filePath: "cursor-dashboard://\(sourceID)",
                 mtime: latestEventDate ?? now,
-                size: Int64(includedEvents),
+                // Synthetic source: use a content-derived fingerprint rather
+                // than `(event count, latest timestamp)`. Cursor can correct
+                // an existing row in place; the Workbench must then re-ingest
+                // the same event identity with its revised tokens/cents.
+                size: Self.batchFingerprint(pricedEvents),
                 events: pricedEvents
             ))
         }
@@ -174,6 +178,29 @@ struct CursorCostUsageFetcher: Sendable {
     private static func sourceIdentifier(for resolution: MiscCookieResolver.Resolution) -> String {
         let raw = resolution.slotID?.uuidString ?? resolution.sourceLabel
         return PrivacyPreservingHash.fileComponent(prefix: "cursor-source-v1", rawValue: raw)
+    }
+
+    private static func batchFingerprint(_ events: [PricedUsageEvent]) -> Int64 {
+        let content = events.map { priced in
+            let event = priced.event
+            return [
+                event.sourceKey ?? "",
+                String(event.date.timeIntervalSince1970),
+                event.model,
+                String(event.input),
+                String(event.output),
+                String(event.cache),
+                event.cacheCreation.map(String.init) ?? "",
+                priced.costMicros.map(String.init) ?? "nil"
+            ].joined(separator: "|")
+        }.joined(separator: "\n")
+        let digest = PrivacyPreservingHash.fileComponent(
+            prefix: "cursor-batch-v1",
+            rawValue: content
+        )
+        let tail = String(digest.suffix(16))
+        let value = Int64(bitPattern: UInt64(tail, radix: 16) ?? 0)
+        return value == UsageEventFileBatch.staleFallbackSize ? -2 : value
     }
 
     private func fetchAllEvents(
@@ -343,11 +370,6 @@ private struct CursorUsageEvent: Decodable, Hashable {
         [
             timestamp?.stableValue ?? "",
             resolvedModel,
-            tokenUsage?.inputTokensRaw?.stableValue ?? "",
-            tokenUsage?.outputTokensRaw?.stableValue ?? "",
-            tokenUsage?.cacheWriteTokensRaw?.stableValue ?? "",
-            tokenUsage?.cacheReadTokensRaw?.stableValue ?? "",
-            tokenUsage?.totalCentsRaw?.stableValue ?? "",
             kind ?? "",
             isHeadless.map(String.init) ?? "",
             clientType ?? ""

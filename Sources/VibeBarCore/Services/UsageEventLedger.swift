@@ -65,6 +65,9 @@ public enum UsageLedgerError: Error, Sendable {
 /// double counting anywhere.
 public actor UsageEventLedger: CostUsageEventSink {
     private var database: OpaquePointer?
+    /// In-process change token for cheap view-model cache invalidation. It
+    /// advances only after a batch mutation or erase commits successfully.
+    private var contentRevisionValue: UInt64 = 0
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private let calendar: Calendar
     private let dayFormatter: DateFormatter
@@ -234,6 +237,10 @@ public actor UsageEventLedger: CostUsageEventSink {
         try? ingest(batch)
     }
 
+    public func contentRevision() -> UInt64 {
+        contentRevisionValue
+    }
+
     /// Throwing form of `consume`, for tests and for callers that want to
     /// see ingest failures.
     public func ingest(_ batch: UsageEventFileBatch) throws {
@@ -312,6 +319,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 ]
             )
             try execute("COMMIT")
+            contentRevisionValue &+= 1
         } catch {
             try? execute("ROLLBACK")
             throw error
@@ -356,7 +364,12 @@ public actor UsageEventLedger: CostUsageEventSink {
                path_role = excluded.path_role,
                source_key = excluded.source_key
            WHERE
-               (CASE WHEN COALESCE(excluded.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
+               (
+                   excluded.tool = 'grok'
+                   AND excluded.source_key LIKE 'cursor-event-v1-%'
+                   AND excluded.source_key = usage_events.source_key
+               )
+            OR (CASE WHEN COALESCE(excluded.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
              < (CASE WHEN COALESCE(usage_events.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
             OR (
                (CASE WHEN COALESCE(excluded.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
@@ -533,6 +546,7 @@ public actor UsageEventLedger: CostUsageEventSink {
             try execute("DELETE FROM ingested_files")
             try run("DELETE FROM ledger_meta WHERE key <> ?", [.text(Self.schemaVersionKey)])
             try execute("COMMIT")
+            contentRevisionValue &+= 1
         } catch {
             try? execute("ROLLBACK")
             throw error

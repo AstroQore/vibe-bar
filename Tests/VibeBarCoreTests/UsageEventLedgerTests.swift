@@ -140,7 +140,10 @@ final class UsageEventLedgerTests: XCTestCase {
             UsageLedgerFixtures.priced(UsageLedgerFixtures.event(date: now)),
             UsageLedgerFixtures.priced(UsageLedgerFixtures.event(date: now.addingTimeInterval(-60)))
         ])
+        let initialRevision = await ledger.contentRevision()
         try await ledger.ingest(first)
+        let firstRevision = await ledger.contentRevision()
+        XCTAssertEqual(firstRevision, initialRevision + 1)
         let afterFirstIngest = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now)).requests
         XCTAssertEqual(afterFirstIngest, 2)
 
@@ -150,6 +153,8 @@ final class UsageEventLedgerTests: XCTestCase {
             ]
         )
         try await ledger.ingest(sameFingerprint)
+        let sameRevision = await ledger.contentRevision()
+        XCTAssertEqual(sameRevision, firstRevision)
         let afterSameFingerprint = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now)).requests
         XCTAssertEqual(afterSameFingerprint, 2)
 
@@ -163,6 +168,8 @@ final class UsageEventLedgerTests: XCTestCase {
             events: sameFingerprint.events
         )
         try await ledger.ingest(changed)
+        let changedRevision = await ledger.contentRevision()
+        XCTAssertEqual(changedRevision, firstRevision + 1)
         let afterChangedFingerprint = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now)).requests
         XCTAssertEqual(afterChangedFingerprint, 3)
     }

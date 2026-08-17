@@ -272,6 +272,7 @@ final class UsageStatsViewModel: ObservableObject {
     private var tickTask: Task<Void, Never>?
     private var lastCostRefreshAt: Date?
     private var loadedRequestPages = 0
+    private var lastAvailableModelsRevision: UInt64?
     private var generation: UInt64 = 0
     private var hasLoadedOnce = false
     /// A historical window start, or `nil` when the preset follows now.
@@ -406,13 +407,23 @@ final class UsageStatsViewModel: ObservableObject {
         isLoading = true
         reloadTask = Task { [weak self] in
             guard let self else { return }
-            // Model availability depends on the provider filter, not the time
-            // range. Re-query it only when that filter cascades; changing 7 d
-            // to 30 d should go straight to the range queries instead of
-            // scanning the ledger's full model index first.
+            // Model availability depends on the provider filter and ledger
+            // contents, not the time range. The ledger revision lets 7 d →
+            // 30 d reuse the same options while an automatic usage refresh
+            // still exposes a newly observed model immediately.
+            let ledgerRevision = await ledger.contentRevision()
             let models: [String]
-            if cascadeModels || self.availableModels.isEmpty {
-                models = (try? await ledger.availableModels(tools: tools)) ?? []
+            var refreshedModelsRevision: UInt64?
+            if cascadeModels
+                || self.availableModels.isEmpty
+                || self.lastAvailableModelsRevision != ledgerRevision
+            {
+                if let refreshed = try? await ledger.availableModels(tools: tools) {
+                    models = refreshed
+                    refreshedModelsRevision = ledgerRevision
+                } else {
+                    models = self.availableModels
+                }
             } else {
                 models = self.availableModels
             }
@@ -424,6 +435,9 @@ final class UsageStatsViewModel: ObservableObject {
                 self.pruneSelectedModels(to: models)
             }
             self.availableModels = models
+            if let refreshedModelsRevision {
+                self.lastAvailableModelsRevision = refreshedModelsRevision
+            }
             let resolved = self.filter
             let supportsHourly = (try? await ledger.supportsHourlyTrend(resolved)) ?? false
             guard !Task.isCancelled, generation == self.generation else { return }

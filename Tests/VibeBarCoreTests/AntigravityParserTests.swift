@@ -283,6 +283,27 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertEqual(snap.modelLabels["MODEL_PLACEHOLDER_M132"], "Gemini Flash")
     }
 
+    func testUserStatusDoesNotInventFallbackWithoutRemainingFraction() throws {
+        let json = """
+        {
+          "code": 0,
+          "userStatus": {
+            "cascadeModelConfigData": {
+              "clientModelConfigs": [
+                {
+                  "label": "Claude Sonnet 4.6 (Thinking)",
+                  "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M35"},
+                  "quotaInfo": {"resetTime": "1800018000"}
+                }
+              ]
+            }
+          }
+        }
+        """
+        let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
+        XCTAssertTrue(snap.buckets.isEmpty)
+    }
+
     func testMissingUserStatusThrowsParseFailure() {
         let json = """
         { "code": 0 }

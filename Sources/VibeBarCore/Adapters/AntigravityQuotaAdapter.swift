@@ -250,6 +250,8 @@ enum AntigravityResponseParser {
             // conservative group-level candidate as a fallback. Summary rows
             // remain authoritative and win during `mergingIdentity`.
             guard let quota = config.quotaInfo,
+                  let remainingFraction = quota.remainingFraction,
+                  remainingFraction.isFinite,
                   let group = quotaGroupKind(
                       groupName: config.label,
                       bucketId: config.modelOrAlias?.model
@@ -258,7 +260,7 @@ enum AntigravityResponseParser {
             let slot = QuotaSummarySlot(group: group, cadence: .fiveHour)
             let candidate = quotaBucket(
                 slot: slot,
-                remainingFraction: quota.remainingFraction ?? 0,
+                remainingFraction: remainingFraction,
                 resetAt: quota.resetTime.flatMap(parseDate)
             )
             if let current = fallbackFiveHourBuckets[group],

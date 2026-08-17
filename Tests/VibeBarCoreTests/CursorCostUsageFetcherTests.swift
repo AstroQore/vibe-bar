@@ -14,6 +14,8 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_786_968_000)
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("cursor-dashboard")
         defer { try? FileManager.default.removeItem(at: directory) }
+        var firstEventInputTokens = 100
+        var firstEventCostCents = 100
 
         CursorCostStubURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/dashboard/get-filtered-usage-events")
@@ -33,11 +35,11 @@ final class CursorCostUsageFetcherTests: XCTestCase {
                       "model": "cursor-grok-4.6-high-fast",
                       "clientType": "cli",
                       "tokenUsage": {
-                        "inputTokens": 100,
+                        "inputTokens": \(firstEventInputTokens),
                         "outputTokens": 50,
                         "cacheWriteTokens": 5,
                         "cacheReadTokens": 10,
-                        "totalCents": 100
+                        "totalCents": \(firstEventCostCents)
                       }
                     },
                     {
@@ -134,6 +136,33 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         )
         let secondLedgerSummary = try await ledger.summary(filter)
         XCTAssertEqual(secondLedgerSummary, ledgerSummary)
+
+        // Cursor may correct a row in place while keeping both the total event
+        // count and latest timestamp unchanged. The content fingerprint must
+        // force a re-ingest, while the stable event identity updates instead
+        // of duplicating the request.
+        firstEventInputTokens = 120
+        firstEventCostCents = 125
+        let correctedSnapshot = try await CursorCostUsageFetcher(
+            session: session,
+            baseURL: URL(string: "https://cursor.test")!,
+            pageSize: 2,
+            maxPages: 3
+        ).fetchSnapshot(
+            cookieHeader: "WorkosCursorSessionToken=fixture",
+            since: nil,
+            until: now,
+            now: now,
+            eventSink: ledger,
+            sourceID: "fixture-account"
+        )
+        let correctedLedgerSummary = try await ledger.summary(filter)
+        XCTAssertEqual(correctedSnapshot.allTimeRequests, 2)
+        XCTAssertEqual(correctedSnapshot.allTimeTokens, 200)
+        XCTAssertEqual(correctedSnapshot.allTimeCostUSD, 1.75, accuracy: 0.000_001)
+        XCTAssertEqual(correctedLedgerSummary.requests, 2)
+        XCTAssertEqual(correctedLedgerSummary.realTotalTokens, 200)
+        XCTAssertEqual(correctedLedgerSummary.costMicros, 1_750_000)
     }
 
     func testRejectedCursorAppSessionFallsBackWithoutDoubleCounting() async throws {
