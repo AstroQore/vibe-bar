@@ -143,6 +143,10 @@ final class UsageStatsViewModel: ObservableObject {
     /// `nil` rather than kept as "match nothing" — a filter bar with no chip
     /// lit should read as unfiltered, not as an empty page.
     @Published private(set) var selectedTools: Set<ToolType>?
+    /// `nil` means "every harness". Orthogonal to `selectedTools`: the chips
+    /// pick companies on the quota axis, this picks the CLI / app the usage
+    /// actually came from.
+    @Published private(set) var selectedHarnesses: Set<Harness>?
     @Published private(set) var selectedModels: Set<String>?
     @Published private(set) var activeBreakdown: Breakdown = .periods
 
@@ -159,9 +163,7 @@ final class UsageStatsViewModel: ObservableObject {
     var companyProviderStats: [UsageProviderStat] {
         UsageProviderStat.mergedByCompany(results.providerStats)
     }
-    var companySubProviderSummaries: [ToolType: String] {
-        UsageProviderStat.subProviderSummariesByCompany(results.providerStats)
-    }
+    var harnessStats: [UsageHarnessStat] { results.harnessStats }
     var modelStats: [UsageModelStat] { results.modelStats }
     var requestRows: [UsageRequestRow] { results.requestRows }
     var requestTotalCount: Int { results.requestTotalCount }
@@ -169,6 +171,9 @@ final class UsageStatsViewModel: ObservableObject {
     /// SubProviders offered as filter chips: the cost-aware set, widened by
     /// any tool the ledger actually has rows for.
     @Published private(set) var knownTools: [ToolType] = ToolType.usageStatsProviders
+    /// Harnesses offered in the harness filter: every harness of a known
+    /// tool, widened by any the ledger has actually reported.
+    @Published private(set) var knownHarnesses: [Harness] = Harness.allCases
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
     @Published private(set) var lastUpdatedAt: Date?
@@ -193,6 +198,13 @@ final class UsageStatsViewModel: ObservableObject {
         guard let selectedTools else { return true }
         let members = representative.coreProviderMembers.filter { knownTools.contains($0) }
         return !members.isEmpty && members.allSatisfy(selectedTools.contains)
+    }
+
+    /// Harnesses the harness menu offers, narrowed to the companies whose
+    /// chips are lit. A harness filter that could only ever return nothing —
+    /// because its company is filtered out — should not be offered at all.
+    var harnessOptions: [Harness] {
+        knownHarnesses.filter { isCompanySelected($0.company) }
     }
 
     var range: DateInterval {
@@ -305,6 +317,7 @@ final class UsageStatsViewModel: ObservableObject {
         UsageQueryFilter(
             range: range,
             tools: selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } },
+            harnesses: selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } },
             models: selectedModels.map { $0.sorted() }
         )
     }
@@ -339,6 +352,9 @@ final class UsageStatsViewModel: ObservableObject {
     /// otherwise narrowing to one provider would retire every other chip and
     /// strand the user with no way back except "All providers".
     private var observedTools: Set<ToolType> = []
+    /// Same growth-only rule as `observedTools`: narrowing to one harness
+    /// must not retire every other option and strand the user.
+    private var observedHarnesses: Set<Harness> = []
 
     private nonisolated static let requestPageSize = 50
     private static let maximumInteractiveTrendBuckets = 1_200
@@ -384,15 +400,16 @@ final class UsageStatsViewModel: ObservableObject {
         guard normalized != selectedTools else { return }
         selectedTools = normalized
         if rangePreset == .all { allTimeStart = nil }
+        // A company chip going dark can strand a harness selection whose
+        // company is no longer in the query; drop those so the harness menu
+        // and the results describe the same thing.
+        if let selectedHarnesses {
+            let kept = selectedHarnesses.filter { harness in
+                normalized?.contains(harness.quotaTool) ?? true
+            }
+            self.selectedHarnesses = kept.isEmpty ? nil : kept
+        }
         reload(cascadeModels: true)
-    }
-
-    func toggleTool(_ tool: ToolType) {
-        var next = selectedTools ?? Set(knownTools)
-        if next.contains(tool) { next.remove(tool) } else { next.insert(tool) }
-        // Re-selecting everything is the same statement as "no provider
-        // filter", and saying it that way keeps the query unrestricted.
-        setSelectedTools(next.count == knownTools.count ? nil : next)
     }
 
     func toggleCompany(_ representative: ToolType) {
@@ -405,6 +422,23 @@ final class UsageStatsViewModel: ObservableObject {
             next.formUnion(members)
         }
         setSelectedTools(next.count == knownTools.count ? nil : next)
+    }
+
+    func setSelectedHarnesses(_ harnesses: Set<Harness>?) {
+        let normalized = (harnesses?.isEmpty ?? true) ? nil : harnesses
+        guard normalized != selectedHarnesses else { return }
+        selectedHarnesses = normalized
+        if rangePreset == .all { allTimeStart = nil }
+        reload(cascadeModels: true)
+    }
+
+    func toggleHarness(_ harness: Harness) {
+        let options = harnessOptions
+        var next = selectedHarnesses ?? Set(options)
+        if next.contains(harness) { next.remove(harness) } else { next.insert(harness) }
+        // Selecting every offered harness is the same statement as "no
+        // harness filter", and saying it that way keeps the query unrestricted.
+        setSelectedHarnesses(next.count == options.count ? nil : next)
     }
 
     func setSelectedModels(_ models: Set<String>?) {
@@ -483,11 +517,14 @@ final class UsageStatsViewModel: ObservableObject {
             return
         }
         let toolsForBounds = selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } }
+        let harnessesForBounds = selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } }
         isLoading = true
         reloadTask = Task { [weak self] in
             guard let self else { return }
             if self.rangePreset == .all {
-                let earliest = try? await ledger.earliestUsageDate(tools: toolsForBounds)
+                let earliest = try? await ledger.earliestUsageDate(
+                    tools: toolsForBounds, harnesses: harnessesForBounds
+                )
                 guard !Task.isCancelled, generation == self.generation else { return }
                 self.allTimeStart = earliest.map { Calendar.current.startOfDay(for: $0) }
                     ?? Date().addingTimeInterval(-60)
@@ -497,6 +534,7 @@ final class UsageStatsViewModel: ObservableObject {
                 }
             }
             let tools = self.filter.tools
+            let harnesses = self.filter.harnesses
             // Model availability depends on the provider filter and ledger
             // contents, not the time range. The ledger revision lets 7 d →
             // 30 d reuse the same options while an automatic usage refresh
@@ -508,7 +546,9 @@ final class UsageStatsViewModel: ObservableObject {
                 || self.availableModels.isEmpty
                 || self.lastAvailableModelsRevision != ledgerRevision
             {
-                if let refreshed = try? await ledger.availableModels(tools: tools) {
+                if let refreshed = try? await ledger.availableModels(
+                    tools: tools, harnesses: harnesses
+                ) {
                     models = refreshed
                     refreshedModelsRevision = ledgerRevision
                 } else {
@@ -563,6 +603,7 @@ final class UsageStatsViewModel: ObservableObject {
             summary: snapshot.summary,
             trend: snapshot.trend,
             providerStats: snapshot.providers,
+            harnessStats: snapshot.harnesses,
             modelStats: snapshot.models,
             requestRows: snapshot.requests.rows,
             requestTotalCount: snapshot.requests.totalCount
@@ -572,6 +613,11 @@ final class UsageStatsViewModel: ObservableObject {
         observedTools.formUnion(selectedTools ?? [])
         knownTools = ToolType.allCases.filter {
             ToolType.usageStatsProviders.contains($0) || observedTools.contains($0)
+        }
+        observedHarnesses.formUnion(snapshot.harnesses.map(\.harness))
+        observedHarnesses.formUnion(selectedHarnesses ?? [])
+        knownHarnesses = Harness.allCases.filter {
+            knownTools.contains($0.quotaTool) || observedHarnesses.contains($0)
         }
         lastUpdatedAt = Date()
         isLoading = false
@@ -584,6 +630,7 @@ final class UsageStatsViewModel: ObservableObject {
                 bucket: trendGranularity.resolved(for: range), points: []
             ),
             providerStats: [],
+            harnessStats: [],
             modelStats: [],
             requestRows: [],
             requestTotalCount: 0
@@ -636,6 +683,7 @@ final class UsageStatsViewModel: ObservableObject {
         let summary: UsageSummaryMetrics
         let trend: UsageTrendSeries
         let providers: [UsageProviderStat]
+        let harnesses: [UsageHarnessStat]
         let models: [UsageModelStat]
         let requests: UsageRequestPage
     }
@@ -644,6 +692,7 @@ final class UsageStatsViewModel: ObservableObject {
         var summary: UsageSummaryMetrics
         var trend: UsageTrendSeries
         var providerStats: [UsageProviderStat]
+        var harnessStats: [UsageHarnessStat]
         var modelStats: [UsageModelStat]
         var requestRows: [UsageRequestRow]
         var requestTotalCount: Int
@@ -652,6 +701,7 @@ final class UsageStatsViewModel: ObservableObject {
             summary: .empty,
             trend: UsageTrendSeries(bucket: .day, points: []),
             providerStats: [],
+            harnessStats: [],
             modelStats: [],
             requestRows: [],
             requestTotalCount: 0
@@ -669,6 +719,7 @@ final class UsageStatsViewModel: ObservableObject {
         let trend = (try? await ledger.trend(filter, bucket: bucket))
             ?? UsageTrendSeries(bucket: bucket, points: [])
         let providers = (try? await ledger.providerStats(filter)) ?? []
+        let harnesses = (try? await ledger.harnessStats(filter)) ?? []
         let models = breakdown == .models
             ? ((try? await ledger.modelStats(filter)) ?? [])
             : []
@@ -680,6 +731,7 @@ final class UsageStatsViewModel: ObservableObject {
             summary: summary,
             trend: trend,
             providers: providers,
+            harnesses: harnesses,
             models: models,
             requests: requests
         )
