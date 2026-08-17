@@ -970,15 +970,21 @@ public actor UsageEventLedger: CostUsageEventSink {
                     continue
                 }
                 guard let micros = costMicros(for: row) else { continue }
+                // `harness` is part of the rollup's primary key, so it has to
+                // be part of the predicate too: two harnesses can hold fully
+                // unpriced rows for the same day/tool/model, and matching on
+                // the narrower key would stamp the first row's cost onto both.
                 try run(
                     """
                     UPDATE usage_daily_rollups
                        SET cost_micros = ?, unpriced = 0
-                     WHERE day = ? AND tool = ? AND model = ? AND unpriced = requests
+                     WHERE day = ? AND tool = ? AND harness = ? AND model = ?
+                       AND unpriced = requests
                     """,
                     [
                         .integer(micros), .text(row.day),
-                        .text(row.tool.rawValue), .text(row.model)
+                        .text(row.tool.rawValue), .text(row.harness ?? ""),
+                        .text(row.model)
                     ]
                 )
             }
@@ -1001,6 +1007,10 @@ public actor UsageEventLedger: CostUsageEventSink {
         let id: Int64
         let day: String
         let tool: ToolType
+        /// Raw stored harness. `nil` on detail rows, which are updated by
+        /// `id`; rollup rows always carry one because it is part of their
+        /// primary key (`''` is the pre-dimension sentinel).
+        let harness: String?
         let model: String
         let freshInput: Int64
         let output: Int64
@@ -1030,6 +1040,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 id: sqlite3_column_int64(statement, 0),
                 day: day,
                 tool: tool,
+                harness: nil,
                 model: model,
                 freshInput: sqlite3_column_int64(statement, 4),
                 output: sqlite3_column_int64(statement, 5),
@@ -1045,7 +1056,8 @@ public actor UsageEventLedger: CostUsageEventSink {
     private func fullyUnpricedRollupRows() throws -> [RepricingRow] {
         let statement = try prepare(
             """
-            SELECT day, tool, model, fresh_input, output, cache_read, cache_creation
+            SELECT day, tool, harness, model, fresh_input, output,
+                   cache_read, cache_creation
               FROM usage_daily_rollups WHERE unpriced > 0 AND unpriced = requests
             """
         )
@@ -1055,17 +1067,18 @@ public actor UsageEventLedger: CostUsageEventSink {
             guard let day = columnText(statement, 0),
                   let rawTool = columnText(statement, 1),
                   let tool = ToolType(rawValue: rawTool),
-                  let model = columnText(statement, 2)
+                  let model = columnText(statement, 3)
             else { continue }
             rows.append(RepricingRow(
                 id: 0,
                 day: day,
                 tool: tool,
+                harness: columnText(statement, 2) ?? "",
                 model: model,
-                freshInput: sqlite3_column_int64(statement, 3),
-                output: sqlite3_column_int64(statement, 4),
-                cacheRead: sqlite3_column_int64(statement, 5),
-                cacheCreation: sqlite3_column_int64(statement, 6),
+                freshInput: sqlite3_column_int64(statement, 4),
+                output: sqlite3_column_int64(statement, 5),
+                cacheRead: sqlite3_column_int64(statement, 6),
+                cacheCreation: sqlite3_column_int64(statement, 7),
                 serviceTier: nil,
                 sourceKey: nil
             ))
@@ -1365,12 +1378,10 @@ public actor UsageEventLedger: CostUsageEventSink {
     ) throws -> UsageTrendBucket {
         guard requested == .hour else { return requested }
 
-        let tools: [ToolType]
-        if let filteredTools = filter.tools {
-            tools = filteredTools
-        } else {
-            tools = try ingestedTools()
-        }
+        let selected = Self.floorCheckTools(
+            tools: filter.tools, harnesses: filter.harnesses
+        )
+        let tools = try selected ?? ingestedTools()
         for tool in tools {
             guard let floor = try detailFloorDay(for: tool),
                   let floorDay = dayFormatter.date(from: floor),
@@ -1381,6 +1392,31 @@ public actor UsageEventLedger: CostUsageEventSink {
             }
         }
         return .hour
+    }
+
+    /// Tools whose detail floor may veto an hourly chart for a filter, or
+    /// `nil` when the answer is "every tool this ledger has ingested".
+    ///
+    /// A harness selection narrows the quota-side tool just as surely as a
+    /// company chip does — filtering to Claude Code cannot surface a single
+    /// Codex row. Ignoring `harnesses` here let an unrelated provider's old
+    /// rollups drag a harness-only chart down from hourly to daily. When both
+    /// axes are set the filter matches their intersection, so the floor check
+    /// does too; an empty intersection matches nothing and vetoes nothing.
+    static func floorCheckTools(
+        tools: [ToolType]?,
+        harnesses: [Harness]?
+    ) -> [ToolType]? {
+        let fromTools = tools.map(Set.init)
+        let fromHarnesses = harnesses.map { Set($0.map(\.quotaTool)) }
+        let selected: Set<ToolType>? = switch (fromTools, fromHarnesses) {
+        case let (explicit?, derived?): explicit.intersection(derived)
+        case let (explicit?, nil): explicit
+        case let (nil, derived?): derived
+        case (nil, nil): nil
+        }
+        // Rebuild in declaration order so the check is deterministic.
+        return selected.map { set in ToolType.allCases.filter(set.contains) }
     }
 
     /// Whether every selected provider still has request-level evidence for
@@ -1419,7 +1455,7 @@ public actor UsageEventLedger: CostUsageEventSink {
         let statement = try prepare(
             """
             SELECT id, tool, ts, model, fresh_input, output, cache_read, cache_creation,
-                   cost_micros, service_tier, session_id, source_key
+                   cost_micros, service_tier, session_id, source_key, harness
               FROM usage_events WHERE \(detail.sql)
              ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?
             """
@@ -1432,15 +1468,22 @@ public actor UsageEventLedger: CostUsageEventSink {
 
         var rows: [UsageRequestRow] = []
         while sqlite3_step(statement) == SQLITE_ROW {
+            // A row written before the harness dimension existed has a NULL
+            // harness; the tool's default is the same value the migration
+            // would have backfilled. Only the misc providers have no harness
+            // at all, and they never reach this ledger.
             guard let rawTool = columnText(statement, 1),
                   let tool = ToolType(rawValue: rawTool),
-                  let model = columnText(statement, 3)
+                  let model = columnText(statement, 3),
+                  let harness = columnText(statement, 12).flatMap(Harness.init(rawValue:))
+                    ?? Harness.defaultHarness(for: tool)
             else { continue }
             rows.append(
                 UsageRequestRow(
                     id: sqlite3_column_int64(statement, 0),
                     date: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 2))),
                     tool: tool,
+                    harness: harness,
                     model: model,
                     freshInput: sqlite3_column_int64(statement, 4),
                     output: sqlite3_column_int64(statement, 5),
