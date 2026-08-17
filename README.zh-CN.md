@@ -130,7 +130,7 @@ OpenCode Go、Ollama Cloud、智谱 GLM、小米 MiMo、Kimi、MiniMax、阿里�
 | ChatGPT / Codex | Codex 订阅窗口、Spark、OpenAI 状态 | `~/.codex/sessions/**/*.jsonl` |
 | Claude Code | 5 Hours、Weekly、Fable、Anthropic 状态 | `~/.claude/projects/**/*.jsonl` |
 | Gemini + AntiGravity | Gemini Web 配额与本地 AntiGravity Language Server 配额 | 本地 Gemini/AntiGravity 用量记录 |
-| Grok + Cursor Agent | Grok Build 配额、Cursor Models、Other Models、Grok Bot 周配额、xAI 状态 | 本地 Grok Build 记录 + Cursor 账户用量事件；Grok Bot 仅显示配额 |
+| Grok + Cursor | Grok Build 配额、Cursor Models、Other Models、Grok Bot 周配额、xAI 状态 | 本地 Grok Build 记录 + Cursor 账户用量事件；Grok Bot 仅显示配额 |
 | Misc Providers | 各服务商自己的 Coding/Token Plan 接口 | 除非 Adapter 能取得本地用量，否则仅显示额度 |
 
 服务商的私有接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功

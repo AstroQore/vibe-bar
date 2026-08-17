@@ -139,7 +139,7 @@ visibility and ordering from one two-column settings window.
 | ChatGPT / Codex | Codex subscription windows, Spark, OpenAI status | `~/.codex/sessions/**/*.jsonl` |
 | Claude Code | 5 Hours, Weekly, Fable, Anthropic status | `~/.claude/projects/**/*.jsonl` |
 | Gemini + AntiGravity | Gemini Web quotas and local AntiGravity language-server quotas | Local Gemini/AntiGravity usage records |
-| Grok + Cursor Agent | Grok Build quota, Cursor Models, Other Models, Grok Bot weekly quota, xAI status | Local Grok Build records + Cursor account usage events; Grok Bot is quota-only |
+| Grok + Cursor | Grok Build quota, Cursor Models, Other Models, Grok Bot weekly quota, xAI status | Local Grok Build records + Cursor account usage events; Grok Bot is quota-only |
 | Misc providers | Provider-specific coding/token plan endpoints | Quota-only unless an adapter exposes local usage |
 
 Provider contracts can change without notice. Vibe Bar keeps refresh errors

@@ -246,8 +246,8 @@ public enum MenuBarFieldCatalog {
     ]
 
     public static let cursorFields: [MenuBarFieldOption] = [
-        option(.cursor, "models", "Cursor Agent · Cursor Models", "Cursor Models"),
-        option(.cursor, "other_models", "Cursor Agent · Other Models", "Other Models"),
+        option(.cursor, "models", "Cursor Models · Weekly", "Cursor Models"),
+        option(.cursor, "other_models", "Other Models · Weekly", "Other Models"),
         option(.cursor, "grok_bot_weekly", "Grok Bot · Weekly", "Grok Bot")
     ]
 

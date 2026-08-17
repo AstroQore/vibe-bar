@@ -60,7 +60,7 @@ enum CursorSessionResolver {
             id: stableAccountID,
             tool: .cursor,
             email: identity?.email,
-            alias: "Cursor Agent",
+            alias: "Cursor",
             source: source,
             allowsWebFallback: hasCookieFallback,
             allowsCLIFallback: appSession != nil,

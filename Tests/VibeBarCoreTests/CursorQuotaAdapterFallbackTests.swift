@@ -60,7 +60,7 @@ final class CursorQuotaAdapterFallbackTests: XCTestCase {
         let account = AccountIdentity(
             id: CursorSessionResolver.stableAccountID,
             tool: .cursor,
-            alias: "Cursor Agent",
+            alias: "Cursor",
             source: .cliDetected
         )
         let quota = try await CursorQuotaAdapter(

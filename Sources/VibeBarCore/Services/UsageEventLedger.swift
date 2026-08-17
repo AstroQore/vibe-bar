@@ -11,9 +11,10 @@ public enum UsageLedgerError: Error, Sendable {
 /// Durable per-request ledger for locally scanned CLI usage.
 ///
 /// `CostUsageScanner` already parses every Codex / Claude / Gemini / Grok /
-/// AntiGravity session log into per-request events and prices each one, but
-/// it only keeps the *aggregate* (`CostSnapshot`). This actor persists the
-/// events themselves so a usage UI can answer per-request questions —
+/// AntiGravity session log into per-request events, while the Cursor dashboard
+/// fetcher supplies the same normalized event shape for account-wide usage.
+/// The cost surface only keeps the *aggregate* (`CostSnapshot`); this actor
+/// persists the events themselves so a usage UI can answer per-request questions —
 /// "which model ran at 14:05?", "what did the last 200 requests cost?" —
 /// without re-walking gigabytes of JSONL.
 ///
@@ -54,9 +55,14 @@ public enum UsageLedgerError: Error, Sendable {
 ///   increment in `cache` and leaves `cacheCreation` nil (the protobuf has
 ///   no cache-creation field); the `.pb` RPC fallback has no cache data at
 ///   all and stores `0`.
+/// - **Cursor** — dashboard rows report fresh input, cache writes, cache reads,
+///   output, and authoritative metered cents independently. The fetcher keeps
+///   those token columns non-overlapping and records them under `.grok`, so the
+///   Workbench final total matches the Grok Build + Cursor product card.
 ///
-/// So `cache_creation` is non-zero for Claude only, and the three columns
-/// sum to the real token count without double counting anywhere.
+/// So `cache_creation` is non-zero for Claude and Cursor when their sources
+/// report writes, and the three columns sum to the real token count without
+/// double counting anywhere.
 public actor UsageEventLedger: CostUsageEventSink {
     private var database: OpaquePointer?
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -161,6 +167,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 dedupe_key TEXT NOT NULL UNIQUE
             );
             CREATE INDEX IF NOT EXISTS usage_events_tool_ts_idx ON usage_events(tool, ts);
+            CREATE INDEX IF NOT EXISTS usage_events_ts_id_idx ON usage_events(ts DESC, id DESC);
             CREATE INDEX IF NOT EXISTS usage_events_day_idx ON usage_events(day);
             CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
             CREATE TABLE IF NOT EXISTS usage_daily_rollups (
@@ -400,6 +407,14 @@ public actor UsageEventLedger: CostUsageEventSink {
                 .joined(separator: "|")
             return PrivacyPreservingHash.fileComponent(prefix: "cm-v3", rawValue: tuple)
         }
+        if tool == .grok,
+           let sourceKey = event.sourceKey,
+           sourceKey.hasPrefix("cursor-event-v1") {
+            return PrivacyPreservingHash.fileComponent(
+                prefix: "cursor-ledger-v1",
+                rawValue: sourceKey
+            )
+        }
         let seed = [
             tool.rawValue, fileKey, String(index), String(timestamp), event.model,
             String(freshInput), String(output), String(cacheRead), String(cacheCreation)
@@ -546,6 +561,12 @@ public actor UsageEventLedger: CostUsageEventSink {
         try execute("BEGIN IMMEDIATE")
         do {
             for row in details {
+                // Cursor dashboard cents are authoritative provider facts,
+                // not estimates from our price table. They are stored under
+                // the Grok product key for final-total consistency, so source
+                // provenance—not `tool`—must keep repricing from overwriting
+                // them with Grok Build rates.
+                if row.sourceKey?.hasPrefix("cursor-event-v1") == true { continue }
                 let costBinding: Binding = if let micros = costMicros(for: row) {
                     .integer(micros)
                 } else {
@@ -598,13 +619,14 @@ public actor UsageEventLedger: CostUsageEventSink {
         let cacheRead: Int64
         let cacheCreation: Int64
         let serviceTier: String?
+        let sourceKey: String?
     }
 
     private func detailRows() throws -> [RepricingRow] {
         let statement = try prepare(
             """
             SELECT id, day, tool, model, fresh_input, output,
-                   cache_read, cache_creation, service_tier
+                   cache_read, cache_creation, service_tier, source_key
               FROM usage_events
             """
         )
@@ -625,7 +647,8 @@ public actor UsageEventLedger: CostUsageEventSink {
                 output: sqlite3_column_int64(statement, 5),
                 cacheRead: sqlite3_column_int64(statement, 6),
                 cacheCreation: sqlite3_column_int64(statement, 7),
-                serviceTier: columnText(statement, 8)
+                serviceTier: columnText(statement, 8),
+                sourceKey: columnText(statement, 9)
             ))
         }
         return rows
@@ -655,7 +678,8 @@ public actor UsageEventLedger: CostUsageEventSink {
                 output: sqlite3_column_int64(statement, 4),
                 cacheRead: sqlite3_column_int64(statement, 5),
                 cacheCreation: sqlite3_column_int64(statement, 6),
-                serviceTier: nil
+                serviceTier: nil,
+                sourceKey: nil
             ))
         }
         return rows

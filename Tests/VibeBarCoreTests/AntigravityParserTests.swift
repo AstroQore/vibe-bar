@@ -183,6 +183,7 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertEqual(snapshot.email, "user@example.com")
         XCTAssertEqual(snapshot.planName, "Ultra Lite")
         XCTAssertEqual(snapshot.modelLabels["MODEL_PLACEHOLDER_M132"], "Gemini Flash")
+        XCTAssertEqual(snapshot.buckets.first?.remainingPercent ?? -1, 91, accuracy: 0.001)
     }
 
     func testFetchLocalSnapshotKeepsFourBucketsWhenIdentityFails() async throws {
@@ -197,7 +198,62 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertNil(snapshot.planName)
     }
 
-    func testUserStatusProvidesIdentityAndLabelsButNoLegacyQuotaRows() throws {
+    func testFetchLocalSnapshotRestoresMissingFiveHourLaneFromUserStatus() async throws {
+        let summary = """
+        {
+          "groups": [
+            {
+              "displayName": "Gemini Models",
+              "buckets": [
+                {"bucketId": "gemini-5h", "remainingFraction": 0.98},
+                {"bucketId": "gemini-weekly", "remainingFraction": 0.94}
+              ]
+            },
+            {
+              "displayName": "Claude and GPT Models",
+              "buckets": [
+                {"bucketId": "3p-weekly", "remainingFraction": 0.0}
+              ]
+            }
+          ]
+        }
+        """
+        let identity = """
+        {
+          "code": 0,
+          "userStatus": {
+            "cascadeModelConfigData": {
+              "clientModelConfigs": [
+                {
+                  "label": "Claude Sonnet 4.6 (Thinking)",
+                  "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M35"},
+                  "quotaInfo": {
+                    "remainingFraction": 0.75,
+                    "resetTime": "1800018000"
+                  }
+                }
+              ]
+            }
+          }
+        }
+        """
+        let snapshot = try await AntigravityQuotaAdapter.fetchLocalSnapshot { path, _ in
+            Data((path.contains("RetrieveUserQuotaSummary") ? summary : identity).utf8)
+        }
+
+        XCTAssertEqual(snapshot.buckets.map(\.id), [
+            "gemini_five_hour",
+            "gemini_weekly",
+            "claude_gpt_five_hour",
+            "claude_gpt_weekly"
+        ])
+        let fallback = try XCTUnwrap(snapshot.buckets.first { $0.id == "claude_gpt_five_hour" })
+        XCTAssertEqual(fallback.remainingPercent, 75, accuracy: 0.001)
+        XCTAssertEqual(fallback.resetAt, Date(timeIntervalSince1970: 1_800_018_000))
+        XCTAssertEqual(snapshot.buckets.last?.usedPercent, 100)
+    }
+
+    func testUserStatusProvidesIdentityLabelsAndFiveHourFallback() throws {
         let json = """
         {
           "code": 0,
@@ -209,7 +265,10 @@ final class AntigravityParserTests: XCTestCase {
                 {
                   "label": "Gemini Flash",
                   "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M132"},
-                  "quotaInfo": {"remainingFraction": 0.42}
+                  "quotaInfo": {
+                    "remainingFraction": 0.42,
+                    "resetTime": "1800018000"
+                  }
                 }
               ]
             }
@@ -219,7 +278,8 @@ final class AntigravityParserTests: XCTestCase {
         let snap = try AntigravityResponseParser.parseUserStatus(data: Data(json.utf8))
         XCTAssertEqual(snap.email, "user@example.com")
         XCTAssertEqual(snap.planName, "Pro")
-        XCTAssertTrue(snap.buckets.isEmpty, "GetUserStatus must no longer restore per-model quota rows.")
+        XCTAssertEqual(snap.buckets.map(\.id), ["gemini_five_hour"])
+        XCTAssertEqual(snap.buckets.first?.remainingPercent ?? -1, 42, accuracy: 0.001)
         XCTAssertEqual(snap.modelLabels["MODEL_PLACEHOLDER_M132"], "Gemini Flash")
     }
 
@@ -285,7 +345,11 @@ final class AntigravityParserTests: XCTestCase {
         "userTier": {"id": "g1-ultra-lite-tier", "name": "Ultra Lite"},
         "cascadeModelConfigData": {
           "clientModelConfigs": [
-            {"label": "Gemini Flash", "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M132"}}
+            {
+              "label": "Gemini Flash",
+              "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M132"},
+              "quotaInfo": {"remainingFraction": 0.01, "resetTime": "1800018000"}
+            }
           ]
         }
       }

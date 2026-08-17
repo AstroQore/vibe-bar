@@ -12,6 +12,8 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         configuration.protocolClasses = [CursorCostStubURLProtocol.self]
         let session = URLSession(configuration: configuration)
         let now = Date(timeIntervalSince1970: 1_786_968_000)
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("cursor-dashboard")
+        defer { try? FileManager.default.removeItem(at: directory) }
 
         CursorCostStubURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/dashboard/get-filtered-usage-events")
@@ -83,7 +85,9 @@ final class CursorCostUsageFetcherTests: XCTestCase {
             cookieHeader: "WorkosCursorSessionToken=fixture",
             since: nil,
             until: now,
-            now: now
+            now: now,
+            eventSink: ledger,
+            sourceID: "fixture-account"
         )
 
         XCTAssertEqual(snapshot.tool, .cursor)
@@ -94,6 +98,42 @@ final class CursorCostUsageFetcherTests: XCTestCase {
             "cursor-grok-4.6-high-fast", "composer-2.5"
         ])
         XCTAssertFalse(snapshot.modelBreakdowns.contains { $0.modelName == "cloud-model" })
+
+        let filter = UsageQueryFilter(range: DateInterval(
+            start: now.addingTimeInterval(-300),
+            end: now.addingTimeInterval(1)
+        ))
+        let ledgerSummary = try await ledger.summary(filter)
+        XCTAssertEqual(ledgerSummary.requests, snapshot.allTimeRequests)
+        XCTAssertEqual(ledgerSummary.realTotalTokens, Int64(snapshot.allTimeTokens))
+        XCTAssertEqual(ledgerSummary.costMicros, 1_500_000)
+        XCTAssertEqual(ledgerSummary.freshInput, 110)
+        XCTAssertEqual(ledgerSummary.output, 55)
+        XCTAssertEqual(ledgerSummary.cacheCreation, 5)
+        XCTAssertEqual(ledgerSummary.cacheRead, 10)
+        let ledgerTools = try await ledger.providerStats(filter).map(\.tool)
+        XCTAssertEqual(ledgerTools, [.grok])
+        _ = try await ledger.prepareForPricingRevision("cursor-authoritative-v1")
+        let repricedSummary = try await ledger.summary(filter)
+        XCTAssertEqual(repricedSummary.costMicros, ledgerSummary.costMicros)
+
+        // Re-fetching an unchanged dashboard must update neither side's
+        // final totals nor duplicate request rows in the Workbench ledger.
+        _ = try await CursorCostUsageFetcher(
+            session: session,
+            baseURL: URL(string: "https://cursor.test")!,
+            pageSize: 2,
+            maxPages: 3
+        ).fetchSnapshot(
+            cookieHeader: "WorkosCursorSessionToken=fixture",
+            since: nil,
+            until: now,
+            now: now,
+            eventSink: ledger,
+            sourceID: "fixture-account"
+        )
+        let secondLedgerSummary = try await ledger.summary(filter)
+        XCTAssertEqual(secondLedgerSummary, ledgerSummary)
     }
 
     func testRejectedCursorAppSessionFallsBackWithoutDoubleCounting() async throws {

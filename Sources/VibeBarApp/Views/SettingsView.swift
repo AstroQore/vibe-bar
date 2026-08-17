@@ -473,7 +473,7 @@ struct SettingsView: View {
                         coreProviderPlanBadgeRows(for: [.grok, .cursor])
                         Divider()
                             .padding(.vertical, 2)
-                        Text("Grok combines Grok Build with Cursor Agent. Grok Build reads `~/.grok/auth.json` or grok.com cookies; Cursor Agent reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota only — its cloud runs do not add token/cost rows.")
+                        Text("Grok combines Grok Build with Cursor. Grok Build reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota only — its cloud runs do not add token/cost rows.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -521,7 +521,7 @@ struct SettingsView: View {
                         Divider()
                             .padding(.vertical, 2)
 
-                        sourceSummary(label: "Cursor Agent source", value: "Cursor.app → Web")
+                        sourceSummary(label: "Cursor source", value: "Cursor.app → Web")
                         if environment.account(for: .cursor)?.source == .cliDetected {
                             Label("Cursor.app signed-in session detected", systemImage: "checkmark.circle")
                                 .font(.caption2)

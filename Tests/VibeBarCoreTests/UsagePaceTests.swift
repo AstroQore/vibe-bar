@@ -88,8 +88,18 @@ final class UsagePaceTests: XCTestCase {
         XCTAssertNil(UsagePace.compute(bucket: b, now: now))
     }
 
-    func testReturnsNilWhenAlreadyPastReset() {
-        let b = bucket(used: 30, secondsUntilReset: -60, windowSeconds: fiveHourSeconds)
+    func testKeepsPaceDuringBoundaryRefreshGrace() {
+        let b = bucket(used: 30, secondsUntilReset: -120, windowSeconds: fiveHourSeconds)
+        XCTAssertNil(UsagePace.compute(bucket: b, now: now))
+        XCTAssertNotNil(UsagePace.compute(
+            bucket: b,
+            now: now,
+            allowsPostResetGrace: true
+        ))
+    }
+
+    func testReturnsNilWhenPastBoundaryRefreshGrace() {
+        let b = bucket(used: 30, secondsUntilReset: -181, windowSeconds: fiveHourSeconds)
         XCTAssertNil(UsagePace.compute(bucket: b, now: now))
     }
 

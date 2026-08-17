@@ -1,4 +1,5 @@
 import XCTest
+import SQLite3
 @testable import VibeBarCore
 
 /// Shared fixtures for the `UsageEventLedger` test files. Everything is
@@ -101,6 +102,31 @@ final class UsageEventLedgerTests: XCTestCase {
                 atPath: directory.appendingPathComponent("usage_events.sqlite3").path
             )
         )
+    }
+
+    func testInitCreatesTimeOrderedRequestIndex() throws {
+        let (_, directory) = try UsageLedgerFixtures.makeLedger("LedgerTimeIndex")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("usage_events.sqlite3")
+        var database: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil),
+            SQLITE_OK
+        )
+        defer { if let database { sqlite3_close_v2(database) } }
+        var statement: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(
+                database,
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'usage_events_ts_id_idx'",
+                -1,
+                &statement,
+                nil
+            ),
+            SQLITE_OK
+        )
+        defer { if let statement { sqlite3_finalize(statement) } }
+        XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
     }
 
     /// A second batch carrying the same `(mtime, size)` fingerprint is

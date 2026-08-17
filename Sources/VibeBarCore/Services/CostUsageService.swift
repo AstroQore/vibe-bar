@@ -206,7 +206,8 @@ public final class CostUsageService: ObservableObject {
                     await CursorCostUsageFetcher.fetch(
                         homeDirectory: home,
                         now: now,
-                        retentionDays: retentionDays
+                        retentionDays: retentionDays,
+                        eventSink: sink
                     )
                 }
                 guard !costDataSettingsProvider().privacyModeEnabled else {
@@ -216,6 +217,14 @@ public final class CostUsageService: ObservableObject {
                 switch outcome {
                 case .completed(.success(let snapshot)):
                     directRemoteResults[.cursor] = snapshot
+                    // Cursor dashboard events now feed the same request ledger
+                    // as local scanners, so Workbench and the outer Grok cost
+                    // surface share one set of token/cost facts.
+                    try? await usageLedger?.rollupAndPrune(
+                        now: now,
+                        detailDays: Self.ledgerDetailDays,
+                        retentionDays: retentionDays
+                    )
                 case .completed(.unavailable):
                     directRemoteResults.removeValue(forKey: .cursor)
                 case .completed(.failed), .timedOut:

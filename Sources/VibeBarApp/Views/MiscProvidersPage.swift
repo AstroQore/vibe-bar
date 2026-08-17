@@ -362,7 +362,7 @@ private struct MiscQuotaBody: View {
         // dedicated cards get works here too; buckets without window data
         // just fall back to the plain bar.
         let now = Date()
-        let pace = UsagePace.compute(bucket: bucket, now: now)
+        let pace = UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
         let expectedDisplayed = pace.map { p -> Double in
             switch mode {
             case .used:      return p.expectedUsedPercent

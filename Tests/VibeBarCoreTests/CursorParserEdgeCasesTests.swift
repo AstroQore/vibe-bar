@@ -32,7 +32,8 @@ final class CursorParserEdgeCasesTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(snap.planName, "Pro")
-        XCTAssertEqual(snap.buckets.map(\.title), ["Cursor Models", "Other Models"])
+        XCTAssertEqual(snap.buckets.map(\.title), ["Weekly", "Weekly"])
+        XCTAssertEqual(snap.buckets.map(\.groupTitle), ["Cursor Models", "Other Models"])
         let cursorModels = try XCTUnwrap(snap.buckets.first { $0.id == "models" })
         XCTAssertEqual(cursorModels.usedPercent, 0.20, accuracy: 0.001)
         let otherModels = try XCTUnwrap(snap.buckets.first { $0.id == "other_models" })
@@ -166,7 +167,7 @@ final class CursorParserEdgeCasesTests: XCTestCase {
             now: now
         )
         let weekly = try XCTUnwrap(snap.buckets.first { $0.id == "grok_bot_weekly" })
-        XCTAssertEqual(weekly.title, "Weekly usage")
+        XCTAssertEqual(weekly.title, "Weekly")
         XCTAssertEqual(weekly.groupTitle, "Grok Bot")
         XCTAssertEqual(weekly.usedPercent, 5.361195, accuracy: 0.000_001)
         XCTAssertEqual(weekly.rawWindowSeconds, 604_800)

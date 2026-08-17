@@ -26,7 +26,7 @@ import Foundation
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`, `.cursor`) —
 ///   dedicated product surfaces. Gemini+AntiGravity share Google AI;
-///   Grok Build+Cursor Agent share Grok. These can still opt into token-cost
+///   Grok Build + Cursor share Grok. These can still opt into token-cost
 ///   scanning and status polling as provider data becomes known.
 /// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.mimo`, `.iflytek`,
@@ -128,6 +128,21 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         allCases.filter { $0.supportsTokenCost }
     }
 
+    /// Provider keys exposed by the Workbench usage ledger. Cursor dashboard
+    /// events are a source inside the Grok product total, matching the Grok
+    /// cost card instead of creating a second, contradictory provider total.
+    public static var usageStatsProviders: [ToolType] {
+        var seen: Set<ToolType> = []
+        return costAwareProviders.compactMap { tool in
+            let representative = tool.usageStatsRepresentative
+            return seen.insert(representative).inserted ? representative : nil
+        }
+    }
+
+    public var usageStatsRepresentative: ToolType {
+        self == .cursor ? .grok : self
+    }
+
     public static var statusPageProviders: [ToolType] {
         allCases.filter { $0.supportsStatusPage }
     }
@@ -169,7 +184,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         [.gemini, .antigravity]
     }
 
-    /// Grok Build plus Cursor Agent, presented as one Grok product family.
+    /// Grok Build plus Cursor, presented as one Grok product family.
     public static var grokFamily: [ToolType] {
         [.grok, .cursor]
     }
@@ -374,7 +389,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// L1 vendor name — used by ServiceStatusCard and any surface
     /// that should pick one consistent level across all tools. The
     /// dedicated tools roll up to their vendors. `.antigravity` shares
-    /// Google's status feed with `.gemini`; Cursor Agent is linked under Grok
+    /// Google's status feed with `.gemini`; Cursor is linked under Grok
     /// for quota/cost but retains Cursor as its billing vendor.
     public var statusProviderName: String {
         switch self {

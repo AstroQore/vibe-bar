@@ -865,7 +865,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             bucket: bucket,
             activityHeatmap: snapshot?.heatmap,
             dailyActivity: snapshot?.dailyHistory ?? [],
-            now: Date()
+            now: Date(),
+            allowsPostResetGrace: true
         )?.verdict
     }
 

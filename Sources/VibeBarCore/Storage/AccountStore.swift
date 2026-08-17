@@ -56,7 +56,7 @@ public final class AccountStore: ObservableObject {
         if let grok = autoDetectGrok() {
             detected.append(grok)
         }
-        // Cursor Agent is a linked Grok-family surface. Keep its stable account
+        // Cursor is a linked Grok-family surface. Keep its stable account
         // present even while signed out so the xAI Settings cookie controls can
         // establish a session without first creating a legacy Misc instance.
         detected.append(CursorSessionResolver.accountIdentity())
