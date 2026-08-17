@@ -191,6 +191,54 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         )
         XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
     }
+
+    func testFullRefreshQueuesAccountsMissingFromActiveStaleWalk() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let stale = AccountIdentity(id: "stale-a", tool: .antigravity, source: .localProbe)
+        let other = AccountIdentity(id: "full-b", tool: .claude, source: .oauthCLI)
+        func quota(_ account: AccountIdentity, reset: Date?) -> AccountQuota {
+            AccountQuota(
+                accountId: account.id,
+                tool: account.tool,
+                buckets: [QuotaBucket(
+                    id: "weekly",
+                    title: "Weekly",
+                    shortLabel: "Weekly",
+                    usedPercent: 1,
+                    resetAt: reset
+                )],
+                queriedAt: now
+            )
+        }
+        let service = QuotaService(
+            adapters: [
+                .antigravity: SequenceAdapter(tool: .antigravity, results: [
+                    .success(quota(stale, reset: now.addingTimeInterval(-1))),
+                    .success(quota(stale, reset: now.addingTimeInterval(600)))
+                ]),
+                .claude: SequenceAdapter(tool: .claude, results: [
+                    .success(quota(other, reset: now.addingTimeInterval(600)))
+                ])
+            ],
+            mockProvider: { false }
+        )
+        _ = await service.refresh(stale)
+        var accounts = [stale]
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { accounts },
+            intervalProvider: { 600 }
+        )
+
+        XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+        accounts = [stale, other]
+        scheduler.triggerRefresh()
+        for _ in 0..<40 {
+            if service.cachedQuota(for: other.id) != nil { break }
+            await Task.yield()
+        }
+        XCTAssertNotNil(service.cachedQuota(for: other.id))
+    }
 }
 
 private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {

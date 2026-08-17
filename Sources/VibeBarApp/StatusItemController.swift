@@ -407,24 +407,37 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func statusSummaryLine(for tool: ToolType) -> String {
-        let members: [ToolType] = tool == .grok ? [.grok, .cursor] : [tool]
+        let members: [ToolType] = switch tool {
+        case .gemini: [.gemini, .antigravity]
+        case .grok: [.grok, .cursor]
+        default: [tool]
+        }
         if members.contains(where: environment.serviceStatus.inFlight.contains) {
             return "\(tool.statusProviderName) · Checking"
         }
-        if members.contains(where: { environment.serviceStatus.errorByTool[$0] != nil }) {
-            return "\(tool.statusProviderName) · Down"
-        }
-        let snapshot = tool == .grok
-            ? ServiceStatusSnapshot.mergedSpaceXAI(
+        let snapshot: ServiceStatusSnapshot? = switch tool {
+        case .gemini:
+            ServiceStatusSnapshot.preferredGoogleAI(
+                gemini: environment.serviceStatus.snapshotByTool[.gemini],
+                antigravity: environment.serviceStatus.snapshotByTool[.antigravity]
+            )
+        case .grok:
+            ServiceStatusSnapshot.mergedSpaceXAI(
                 grok: environment.serviceStatus.snapshotByTool[.grok],
                 cursor: environment.serviceStatus.snapshotByTool[.cursor]
             )
-            : environment.serviceStatus.snapshotByTool[tool]
+        default:
+            environment.serviceStatus.snapshotByTool[tool]
+        }
+        if snapshot == nil,
+           members.contains(where: { environment.serviceStatus.errorByTool[$0] != nil }) {
+            return "\(tool.statusProviderName) · Down"
+        }
         guard let snapshot else {
             return "\(tool.statusProviderName) · Checking"
         }
         let label: String
-        switch snapshot.indicator {
+        switch snapshot.effectiveIndicator {
         case .none:        label = "Up"
         case .maintenance: label = "Maintenance"
         case .minor,

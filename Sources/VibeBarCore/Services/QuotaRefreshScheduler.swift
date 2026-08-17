@@ -23,6 +23,9 @@ public final class QuotaRefreshScheduler {
     private var lastBoundaryRefreshByAccount: [String: Date] = [:]
     private var lastPopoverOpenRefreshAt: Date?
     private var refreshTask: Task<Void, Never>?
+    private var activeAccountIds: Set<String> = []
+    private var pendingAccounts: [String: AccountIdentity] = [:]
+    private var refreshCompletions: [@MainActor () -> Void] = []
     private var pathMonitor: NWPathMonitor?
     private var lastNetworkStatus: NWPath.Status = .satisfied
     private var observers: [NSObjectProtocol] = []
@@ -61,6 +64,9 @@ public final class QuotaRefreshScheduler {
         boundaryAccountIds = []
         refreshTask?.cancel()
         refreshTask = nil
+        activeAccountIds = []
+        pendingAccounts = [:]
+        refreshCompletions = []
         pathMonitor?.cancel()
         pathMonitor = nil
         #if canImport(AppKit)
@@ -110,10 +116,10 @@ public final class QuotaRefreshScheduler {
     /// full cost scan.
     @discardableResult
     public func triggerRefreshForStaleCacheIfNeeded(now: Date = Date()) -> Bool {
-        guard refreshTask == nil else { return false }
         let maxAge = TimeInterval(max(60, intervalProvider()))
         let accounts = accountsProvider().filter { account in
-            !service.inFlightAccountIds.contains(account.id)
+            !activeAccountIds.contains(account.id)
+                && !service.inFlightAccountIds.contains(account.id)
                 && service.needsRefresh(accountId: account.id, now: now, maxAge: maxAge)
         }
         guard !accounts.isEmpty else { return false }
@@ -207,14 +213,32 @@ public final class QuotaRefreshScheduler {
         _ accounts: [AccountIdentity],
         completion: @escaping @MainActor () -> Void = {}
     ) -> Bool {
-        guard refreshTask == nil, !accounts.isEmpty else { return false }
+        guard !accounts.isEmpty else { return false }
+        refreshCompletions.append(completion)
+        if refreshTask != nil {
+            for account in accounts where !activeAccountIds.contains(account.id) {
+                pendingAccounts[account.id] = account
+            }
+            return true
+        }
+        activeAccountIds = Set(accounts.map(\.id))
         refreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
             for account in accounts where !Task.isCancelled {
                 _ = await self.service.refresh(account)
             }
             self.refreshTask = nil
-            completion()
+            self.activeAccountIds = []
+            if !self.pendingAccounts.isEmpty {
+                let next = Array(self.pendingAccounts.values)
+                    .sorted { $0.id < $1.id }
+                self.pendingAccounts = [:]
+                _ = self.startAccountRefresh(next)
+            } else {
+                let callbacks = self.refreshCompletions
+                self.refreshCompletions = []
+                for callback in callbacks { callback() }
+            }
         }
         return true
     }

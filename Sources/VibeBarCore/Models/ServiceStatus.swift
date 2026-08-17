@@ -302,4 +302,20 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
             groupName: "Cursor"
         )
     }
+
+    /// Gemini Web and AntiGravity poll the same Google AI feed. Prefer the
+    /// worse effective state (including open incidents), then the newer cache.
+    public static func preferredGoogleAI(
+        gemini: ServiceStatusSnapshot?,
+        antigravity: ServiceStatusSnapshot?
+    ) -> ServiceStatusSnapshot? {
+        guard let gemini else { return antigravity }
+        guard let antigravity else { return gemini }
+        if gemini.effectiveIndicator.severity != antigravity.effectiveIndicator.severity {
+            return gemini.effectiveIndicator.severity > antigravity.effectiveIndicator.severity
+                ? gemini
+                : antigravity
+        }
+        return gemini.updatedAt >= antigravity.updatedAt ? gemini : antigravity
+    }
 }

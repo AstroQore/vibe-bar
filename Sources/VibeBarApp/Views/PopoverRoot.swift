@@ -1348,8 +1348,10 @@ private struct OverviewStatusSummaryCard: View {
 
     private func statusSnapshot(for tool: ToolType) -> ServiceStatusSnapshot? {
         if tool == .gemini {
-            return serviceStatus.snapshotByTool[.gemini]
-                ?? serviceStatus.snapshotByTool[.antigravity]
+            return ServiceStatusSnapshot.preferredGoogleAI(
+                gemini: serviceStatus.snapshotByTool[.gemini],
+                antigravity: serviceStatus.snapshotByTool[.antigravity]
+            )
         }
         if tool == .grok {
             return ServiceStatusSnapshot.mergedSpaceXAI(
