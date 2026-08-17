@@ -185,10 +185,6 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
-    public var companySubProviderSummary: String {
-        coreProviderMembers.map(\.productName).joined(separator: " + ")
-    }
-
     public static var miscPageProviders: [ToolType] {
         allCases.filter { $0.isMiscPageProvider }
     }

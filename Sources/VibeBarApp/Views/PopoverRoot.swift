@@ -1144,12 +1144,6 @@ private struct OverviewCostSummaryCard: View {
         if tokens >= 1_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
         return "\(tokens)"
     }
-
-    private func formatModelName(_ modelName: String?) -> String {
-        guard let modelName, !modelName.isEmpty else { return "-" }
-        if modelName.count <= 18 { return modelName }
-        return "\(modelName.prefix(17))..."
-    }
 }
 
 /// The Overview's live provider-status grid — the right half of the old header

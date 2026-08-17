@@ -1,12 +1,14 @@
 import SwiftUI
 import VibeBarCore
 
-/// Everything that narrows the Usage Stats page: company/provider chips, a model
-/// picker, the date range, and how often the page re-queries.
+/// Everything that narrows the Usage Stats page: company chips, a harness
+/// picker, a model picker, the date range, and how often the page re-queries.
 ///
-/// Providers are chips rather than another menu because they are the filter
-/// users reach for most, and because a chip can carry the brand accent —
-/// which is how this app says "provider" everywhere else.
+/// The two narrowing axes stay separate on purpose. Companies are chips
+/// because they are the filter users reach for most and because a chip can
+/// carry the brand accent — which is how this app says "provider" everywhere
+/// else. Harnesses are a menu below them: they are the usage axis (which CLI
+/// or app produced the sessions), not another level of the quota hierarchy.
 struct UsageFiltersBar: View {
     let density: Theme.Density
     @ObservedObject var model: UsageStatsViewModel
@@ -83,7 +85,7 @@ struct UsageFiltersBar: View {
         // that a provider is in the query, so an off chip must not wear it.
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help("\(tool.vendorName) · \(tool.companySubProviderSummary)")
+        .help(companyHelp(tool))
         .accessibilityLabel(tool.vendorName)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
@@ -100,12 +102,15 @@ struct UsageFiltersBar: View {
     private var controls: some View {
         HStack(spacing: 8) {
             rangeMenu
-            subProviderMenu
+            harnessMenu
             modelMenu
             refreshMenu
-            if model.selectedTools != nil || model.selectedModels != nil {
+            if model.selectedTools != nil
+                || model.selectedHarnesses != nil
+                || model.selectedModels != nil {
                 Button {
                     model.setSelectedTools(nil)
+                    model.setSelectedHarnesses(nil)
                     model.setSelectedModels(nil)
                 } label: {
                     Label("Clear", systemImage: "xmark")
@@ -114,7 +119,7 @@ struct UsageFiltersBar: View {
                         .frame(minHeight: 22)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle())
-                .help("Clear provider and model filters")
+                .help("Clear company, harness, and model filters")
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -197,27 +202,34 @@ struct UsageFiltersBar: View {
         .accessibilityLabel("Choose which models to include")
     }
 
-    private var subProviderMenu: some View {
+    /// Harnesses, not SubProviders: usage and cost surfaces speak the local
+    /// tool that produced the sessions. The list follows the lit company
+    /// chips so the menu never offers a combination that returns nothing.
+    private var harnessMenu: some View {
         Menu {
-            Button("All SubProviders") { model.setSelectedTools(nil) }
-            Divider()
-            ForEach(model.knownTools, id: \.self) { tool in
-                Toggle(isOn: subProviderBinding(tool)) {
-                    Text("\(tool.vendorName) · \(tool.productName)")
+            Button("All harnesses") { model.setSelectedHarnesses(nil) }
+            if model.harnessOptions.isEmpty {
+                Text("No harnesses in range")
+            } else {
+                Divider()
+                ForEach(model.harnessOptions, id: \.self) { harness in
+                    Toggle(isOn: harnessBinding(harness)) {
+                        Text("\(harness.companyName) · \(harness.displayName)")
+                    }
                 }
             }
         } label: {
             menuLabel(
-                systemImage: "square.stack.3d.up",
-                title: "SubProviders",
-                detail: subProviderSummary
+                systemImage: "terminal",
+                title: "Harness",
+                detail: harnessSummary
             )
         }
         .menuStyle(.button)
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Choose individual SubProviders")
+        .accessibilityLabel("Choose which harnesses to include")
     }
 
     private var refreshMenu: some View {
@@ -270,11 +282,20 @@ struct UsageFiltersBar: View {
         )
     }
 
-    private func subProviderBinding(_ tool: ToolType) -> Binding<Bool> {
+    private func harnessBinding(_ harness: Harness) -> Binding<Bool> {
         Binding(
-            get: { model.selectedTools?.contains(tool) ?? true },
-            set: { _ in model.toggleTool(tool) }
+            get: { model.selectedHarnesses?.contains(harness) ?? true },
+            set: { _ in model.toggleHarness(harness) }
         )
+    }
+
+    /// Company chip tooltip: the harnesses that company actually contributes
+    /// to usage, which is the level this page groups by.
+    private func companyHelp(_ tool: ToolType) -> String {
+        let harnesses = Harness.harnesses(forCompany: tool)
+            .map(\.displayName)
+            .joined(separator: " + ")
+        return harnesses.isEmpty ? tool.vendorName : "\(tool.vendorName) · \(harnesses)"
     }
 
     private var rangeSummary: String {
@@ -310,9 +331,9 @@ struct UsageFiltersBar: View {
         return "\(selected.count) selected"
     }
 
-    private var subProviderSummary: String {
-        guard let selected = model.selectedTools else { return "All" }
-        if selected.count == 1, let only = selected.first { return only.productName }
+    private var harnessSummary: String {
+        guard let selected = model.selectedHarnesses else { return "All" }
+        if selected.count == 1, let only = selected.first { return only.displayName }
         return "\(selected.count) selected"
     }
 

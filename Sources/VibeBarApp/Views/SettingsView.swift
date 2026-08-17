@@ -216,7 +216,7 @@ struct SettingsView: View {
                         // mis-tick. Group by L2 product so each row sits
                         // under the brand it belongs to.
                         VStack(alignment: .leading, spacing: 12) {
-                            ForEach(MiniWindowFieldProviderSection.all, id: \.tool) { section in
+                            ForEach(MiniWindowFieldProviderSection.all) { section in
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack(spacing: 6) {
                                         ToolBrandIconView(tool: section.tool, size: 13)
@@ -915,7 +915,7 @@ struct SettingsView: View {
     private func menuItemFieldList(for kind: MenuBarItemKind) -> some View {
         if kind == .compact {
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(MiniWindowFieldProviderSection.all, id: \.tool) { section in
+                ForEach(MiniWindowFieldProviderSection.all) { section in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 6) {
                             ToolBrandIconView(tool: section.tool, size: 13)
@@ -1247,10 +1247,12 @@ private struct UpdateSettingsRow: View {
 /// + L2 product name above its rows so a flat 20-row checklist
 /// stops asking the user to remember which "5 Hours" belongs to
 /// Codex and which to Claude.
-private struct MiniWindowFieldProviderSection {
+private struct MiniWindowFieldProviderSection: Identifiable {
     let tool: ToolType
     let title: String
     let fields: [MenuBarFieldOption]
+
+    var id: String { title }
 
     static let all: [MiniWindowFieldProviderSection] = [
         .init(tool: .codex,       title: ToolType.codex.productName,       fields: MenuBarFieldCatalog.codexFields),
@@ -1258,6 +1260,15 @@ private struct MiniWindowFieldProviderSection {
         .init(tool: .gemini,      title: ToolType.gemini.productName, fields: MenuBarFieldCatalog.geminiFields),
         .init(tool: .antigravity, title: ToolType.antigravity.toolName,    fields: MenuBarFieldCatalog.antigravityFields),
         .init(tool: .grok,        title: ToolType.grok.toolName,           fields: MenuBarFieldCatalog.grokFields),
-        .init(tool: .cursor,      title: ToolType.cursor.toolName,         fields: MenuBarFieldCatalog.cursorFields)
+        .init(tool: .cursor,      title: ToolType.cursor.toolName,         fields: MenuBarFieldCatalog.cursorFields),
+        // Grok Bot shares Cursor's adapter and brand icon but is a separate
+        // L2 SubProvider, so it gets its own header rather than an unexplained
+        // third row under Cursor. Sectioning is keyed by title, not by tool,
+        // because two sections legitimately share `.cursor`.
+        .init(
+            tool: .cursor,
+            title: ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly"),
+            fields: MenuBarFieldCatalog.grokBotFields
+        )
     ]
 }

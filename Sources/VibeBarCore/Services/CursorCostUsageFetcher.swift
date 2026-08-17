@@ -192,7 +192,8 @@ struct CursorCostUsageFetcher: Sendable {
                         output: usage.outputTokens,
                         cache: usage.cacheWriteTokens + usage.cacheReadTokens,
                         cacheCreation: usage.cacheWriteTokens,
-                        sourceKey: sourceKey
+                        sourceKey: sourceKey,
+                        harness: .cursor
                     ),
                     costUSD: costUSD
                 ))
