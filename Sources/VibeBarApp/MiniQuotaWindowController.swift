@@ -230,6 +230,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             return "claude.fable"
         case "weekly_oauth_apps":
             return "claude.oauth"
+        case "models" where tool == .cursor:
+            return "cursor.models"
+        case "other_models" where tool == .cursor:
+            return "cursor.other-models"
         case "grok_bot_weekly" where tool == .cursor:
             return "cursor.grok-bot"
         default:
@@ -296,7 +300,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         // Sizing now mirrors the L2-grouped layout in
         // `MiniWindowProviderLayout`: consecutive tools sharing the
         // same L2 productName (Gemini Web + AntiGravity → "Gemini",
-        // Grok Build + Cursor Agent → "Grok")
+        // Grok Build + Cursor → "Grok")
         // share one provider column with an internal divider between
         // L3 sub-tools. Group dividers come from the actual primary +
         // branch-group count derived from selected bucket ids; the

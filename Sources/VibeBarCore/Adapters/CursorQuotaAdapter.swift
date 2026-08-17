@@ -17,7 +17,7 @@ import Foundation
 /// Output:
 /// - **Cursor Models** — Cursor's first-party pool (Cursor Grok + Composer).
 /// - **Other Models** — named third-party models.
-/// - **Grok Bot / Weekly usage** — Cursor's cloud-only Bot allowance.
+/// - **Grok Bot / Weekly** — Cursor's cloud-only Bot allowance.
 ///
 /// Edge-case tests (`CursorParserEdgeCasesTests`) pin the four
 /// shapes the plan called out: Pro fractional percent (no `× 100`),
@@ -292,21 +292,23 @@ enum CursorResponseParser {
         if let auto = autoPct {
             buckets.append(QuotaBucket(
                 id: "models",
-                title: "Cursor Models",
+                title: "Weekly",
                 shortLabel: "Cursor",
                 usedPercent: auto,
                 resetAt: billingCycleEnd,
-                rawWindowSeconds: billingWindow
+                rawWindowSeconds: billingWindow,
+                groupTitle: "Cursor Models"
             ))
         }
         if let api = apiPct {
             buckets.append(QuotaBucket(
                 id: "other_models",
-                title: "Other Models",
+                title: "Weekly",
                 shortLabel: "Other",
                 usedPercent: api,
                 resetAt: billingCycleEnd,
-                rawWindowSeconds: billingWindow
+                rawWindowSeconds: billingWindow,
+                groupTitle: "Other Models"
             ))
         }
 
@@ -315,11 +317,12 @@ enum CursorResponseParser {
         if buckets.isEmpty {
             buckets.append(QuotaBucket(
                 id: "models",
-                title: "Cursor Models",
+                title: "Weekly",
                 shortLabel: "Cursor",
                 usedPercent: totalPct,
                 resetAt: billingCycleEnd,
-                rawWindowSeconds: billingWindow
+                rawWindowSeconds: billingWindow,
+                groupTitle: "Cursor Models"
             ))
         }
 
@@ -330,7 +333,7 @@ enum CursorResponseParser {
             let resetAt = parseBillingCycleEnd(bot.nextResetTimestampUtc)
             buckets.append(QuotaBucket(
                 id: "grok_bot_weekly",
-                title: "Weekly usage",
+                title: "Weekly",
                 shortLabel: "Grok Bot",
                 usedPercent: clampPercent(percent),
                 resetAt: resetAt,

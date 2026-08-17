@@ -157,8 +157,14 @@ enum AntigravityResponseParser {
 
         func mergingIdentity(_ identity: Snapshot?) -> Snapshot {
             guard let identity else { return self }
+            var mergedBuckets = buckets
+            let existingIds = Set(mergedBuckets.map(\.id))
+            mergedBuckets.append(contentsOf: identity.buckets.filter { !existingIds.contains($0.id) })
+            let orderedBuckets = QuotaSummarySlot.displayOrder.compactMap { slot in
+                mergedBuckets.first { $0.id == slot.id }
+            }
             return Snapshot(
-                buckets: buckets,
+                buckets: orderedBuckets,
                 planName: identity.planName ?? planName,
                 email: identity.email ?? email,
                 modelLabels: identity.modelLabels.isEmpty ? modelLabels : identity.modelLabels
@@ -232,15 +238,49 @@ enum AntigravityResponseParser {
         }
 
         var modelLabels: [String: String] = [:]
+        var fallbackFiveHourBuckets: [QuotaSummaryGroupKind: QuotaBucket] = [:]
         for config in userStatus.cascadeModelConfigData?.clientModelConfigs ?? [] {
             if let rawModel = config.modelOrAlias?.model {
                 let trimmed = rawModel.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty { modelLabels[trimmed] = config.label }
             }
+            // RetrieveUserQuotaSummary can omit a group's 5-hour lane when
+            // its weekly pool is exhausted. GetUserStatus still exposes the
+            // same live 5-hour state on each model config, so retain one
+            // conservative group-level candidate as a fallback. Summary rows
+            // remain authoritative and win during `mergingIdentity`.
+            guard let quota = config.quotaInfo,
+                  let remainingFraction = quota.remainingFraction,
+                  remainingFraction.isFinite,
+                  let group = quotaGroupKind(
+                      groupName: config.label,
+                      bucketId: config.modelOrAlias?.model
+                  )
+            else { continue }
+            let slot = QuotaSummarySlot(group: group, cadence: .fiveHour)
+            let candidate = quotaBucket(
+                slot: slot,
+                remainingFraction: remainingFraction,
+                resetAt: quota.resetTime.flatMap(parseDate)
+            )
+            if let current = fallbackFiveHourBuckets[group],
+               current.usedPercent >= candidate.usedPercent {
+                continue
+            }
+            fallbackFiveHourBuckets[group] = candidate
         }
 
         let plan = userStatus.userTier?.preferredName ?? userStatus.planStatus?.planInfo?.preferredName
-        return Snapshot(buckets: [], planName: plan, email: userStatus.email, modelLabels: modelLabels)
+        let fallbackBuckets = QuotaSummarySlot.displayOrder.compactMap { slot -> QuotaBucket? in
+            guard slot.cadence == .fiveHour else { return nil }
+            return fallbackFiveHourBuckets[slot.group]
+        }
+        return Snapshot(
+            buckets: fallbackBuckets,
+            planName: plan,
+            email: userStatus.email,
+            modelLabels: modelLabels
+        )
     }
 
     static func parseDate(_ raw: String) -> Date? {
@@ -469,10 +509,16 @@ private struct AntigravityModelConfigData: Decodable {
 private struct AntigravityModelConfig: Decodable {
     let label: String
     let modelOrAlias: AntigravityModelAlias?
+    let quotaInfo: AntigravityQuotaInfo?
 }
 
 private struct AntigravityModelAlias: Decodable {
     let model: String
+}
+
+private struct AntigravityQuotaInfo: Decodable {
+    let remainingFraction: Double?
+    let resetTime: String?
 }
 
 /// AntiGravity's `code` field can be either a number or a string —

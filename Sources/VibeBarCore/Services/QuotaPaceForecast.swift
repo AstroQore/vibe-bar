@@ -129,27 +129,39 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         activityHeatmap: UsageHeatmap? = nil,
         dailyActivity: [DailyCostPoint] = [],
         now: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        allowsPostResetGrace: Bool = false
     ) -> QuotaPaceForecast? {
         guard let resetAt = bucket.resetAt,
               let rawWindowSeconds = bucket.rawWindowSeconds,
               rawWindowSeconds > 0
         else { return nil }
 
+        guard let evaluationDate = QuotaWindowEvaluation.date(
+            resetAt: resetAt,
+            now: now,
+            allowsPostResetGrace: allowsPostResetGrace
+        ) else {
+            return nil
+        }
+
         let duration = TimeInterval(rawWindowSeconds)
-        let remainingTime = resetAt.timeIntervalSince(now)
-        guard remainingTime > 0, remainingTime <= duration * 1.1 else { return nil }
+        let remainingTime = resetAt.timeIntervalSince(evaluationDate)
+        guard remainingTime <= duration * 1.1 else { return nil }
 
         let windowStart = resetAt.addingTimeInterval(-duration)
         let actual = clamp(bucket.usedPercent, 0, 100)
         let profile = ActivityProfile(heatmap: activityHeatmap, calendar: calendar)
         let totalActivity = max(0.001, profile.weight(from: windowStart, to: resetAt))
-        let elapsedActivity = clamp(profile.weight(from: windowStart, to: now), 0, totalActivity)
+        let elapsedActivity = clamp(profile.weight(from: windowStart, to: evaluationDate), 0, totalActivity)
         let futureActivity = max(0, totalActivity - elapsedActivity)
         let behavioralProgress = clamp(elapsedActivity / totalActivity, 0, 1)
 
         let currentPoints = observations
-            .filter { $0.sampledAt >= windowStart.addingTimeInterval(-300) && $0.sampledAt <= now.addingTimeInterval(60) }
+            .filter {
+                $0.sampledAt >= windowStart.addingTimeInterval(-300)
+                    && $0.sampledAt <= evaluationDate.addingTimeInterval(60)
+            }
             .sorted { $0.sampledAt < $1.sampledAt }
 
         let recent = recentSlope(points: currentPoints, profile: profile)
@@ -160,7 +172,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             currentProgress: behavioralProgress,
             profile: profile
         )
-        let trendResult = activityTrend(dailyActivity, now: now, calendar: calendar)
+        let trendResult = activityTrend(dailyActivity, now: evaluationDate, calendar: calendar)
         let trend = trendResult.multiplier
 
         let recentProjection = recent.rate.flatMap { recentRate in
@@ -201,7 +213,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let observationCoverage: Double = {
             guard let first = currentPoints.first, let last = currentPoints.last else { return 0 }
             let span = max(0, last.sampledAt.timeIntervalSince(first.sampledAt))
-            let elapsed = max(1, now.timeIntervalSince(windowStart))
+            let elapsed = max(1, evaluationDate.timeIntervalSince(windowStart))
             let countScore = min(1, Double(currentPoints.count) / 10)
             let spanScore = min(1, span / elapsed)
             return countScore * 0.65 + spanScore * 0.35
@@ -210,7 +222,11 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let freshness: Double = {
             guard let last = currentPoints.last else { return 0 }
             let naturalSlot: TimeInterval = rawWindowSeconds <= 6 * 3_600 ? 5 * 60 : 3_600
-            return clamp(1 - now.timeIntervalSince(last.sampledAt) / max(60, naturalSlot * 3), 0, 1)
+            return clamp(
+                1 - evaluationDate.timeIntervalSince(last.sampledAt) / max(60, naturalSlot * 3),
+                0,
+                1
+            )
         }()
         let activityCoverage = (activityHeatmap?.totalTokens ?? 0) > 0 ? 1.0 : 0.0
         let confidenceScore = clamp(
@@ -258,15 +274,19 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let targetUsed = 100 - targetRemaining
         let planned = clamp(targetUsed * behavioralProgress, 0, targetUsed)
         let runOutAt: Date? = {
-            guard upper >= 100, actual < 100 else { return actual >= 100 ? now : nil }
+            guard upper >= 100, actual < 100 else { return actual >= 100 ? evaluationDate : nil }
             if let recentRate = recent.rate, recentRate > 0 {
                 let neededWeight = (100 - actual) / recentRate
-                return profile.date(after: now, accumulating: neededWeight, noLaterThan: resetAt)
+                return profile.date(after: evaluationDate, accumulating: neededWeight, noLaterThan: resetAt)
             }
             let additional = projected - actual
             guard additional > 0 else { return nil }
             let fraction = clamp((100 - actual) / additional, 0, 1)
-            return profile.date(after: now, accumulating: futureActivity * fraction, noLaterThan: resetAt)
+            return profile.date(
+                after: evaluationDate,
+                accumulating: futureActivity * fraction,
+                noLaterThan: resetAt
+            )
         }()
 
         return QuotaPaceForecast(

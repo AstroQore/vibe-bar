@@ -18,7 +18,7 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(ToolType.cursor.coreProviderRepresentative, .grok)
     }
 
-    func testPartialPrimaryProvidersIncludeCursorAgent() {
+    func testPartialPrimaryProvidersIncludeCursor() {
         XCTAssertEqual(ToolType.partialPrimaryProviders, [.gemini, .antigravity, .grok, .cursor])
     }
 
@@ -59,7 +59,7 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertFalse(ToolType.cursor.supportsStatusPage)
         XCTAssertFalse(ToolType.cursor.isMiscPageProvider)
         XCTAssertEqual(ToolType.cursor.productName, ToolType.grok.productName)
-        XCTAssertEqual(ToolType.cursor.toolName, "Cursor Agent")
+        XCTAssertEqual(ToolType.cursor.toolName, "Cursor")
     }
 
     func testGoogleAIPairSupportsStatusPage() {
@@ -89,6 +89,14 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(
             ToolType.costAwareProviders,
             [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
+        )
+    }
+
+    func testUsageStatsFoldsCursorIntoGrok() {
+        XCTAssertEqual(ToolType.cursor.usageStatsRepresentative, .grok)
+        XCTAssertEqual(
+            ToolType.usageStatsProviders,
+            [.codex, .claude, .gemini, .antigravity, .grok]
         )
     }
 

@@ -116,7 +116,7 @@ struct PopoverRoot: View {
         case .openAI: return ToolType.codex.subtitle
         case .claude: return ToolType.claude.subtitle
         case .googleAI: return "Gemini Web + AntiGravity · quota & status"
-        case .grok: return "xAI · Grok Build, Cursor Agent, cost & status"
+        case .grok: return "xAI · Grok Build, Cursor, cost & status"
         case .misc: return "Usage-only · sign in or paste a key"
         case .machines: return "End-to-end encrypted remote usage"
         }
@@ -591,7 +591,7 @@ private struct OverviewWaterfall: View {
                     density: density,
                     snapshotOverride: context.grokSnapshot,
                     titleOverride: "Grok Cost",
-                    emptyMessageOverride: "No Grok Build or Cursor Agent usage found yet.",
+                    emptyMessageOverride: "No Grok Build or Cursor usage found yet.",
                     toolNameOverride: "Grok",
                     heatmapTitleOverride: "When you use Grok"
                 )
@@ -795,7 +795,7 @@ private struct GeminiCombinedCard: View {
 }
 
 /// Overview card for the Grok product family. Grok Build remains the primary
-/// xAI surface; Cursor Agent contributes its Cursor Models / Other Models pools
+/// xAI surface; Cursor contributes its Cursor Models / Other Models pools
 /// plus the cloud-only Grok Bot weekly quota as a linked L3 tool.
 private struct GrokCombinedCard: View {
     let density: Theme.Density
@@ -832,7 +832,7 @@ private struct GrokCombinedCard: View {
                 }
                 BorderlessIconButton(
                     systemImage: "arrow.clockwise",
-                    help: "Refresh Grok Build + Cursor Agent"
+                    help: "Refresh Grok Build + Cursor"
                 ) {
                     environment.refresh(.grok)
                     environment.refresh(.cursor)
@@ -1725,7 +1725,7 @@ private struct ProviderPageModule: View {
             if context.pageTool == .gemini {
                 GeminiCostEmptyCard(density: density)
             } else if context.pageTool == .grok {
-                Text("No Grok Build or Cursor Agent usage found yet.")
+                Text("No Grok Build or Cursor usage found yet.")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 24)
@@ -2136,7 +2136,7 @@ private struct ProviderBucketRow: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let percent = bucket.displayPercent(mode, tool: tool)
-        let pace = UsagePace.compute(bucket: bucket, now: now)
+        let pace = UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
         let forecast = paceForecast(now: now)
         let timePaceDisplayed = pace.map { expectedDisplay(for: $0, mode: mode) }
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
@@ -2209,7 +2209,8 @@ private struct ProviderBucketRow: View {
             bucket: bucket,
             activityHeatmap: snapshot?.heatmap,
             dailyActivity: snapshot?.dailyHistory ?? [],
-            now: now
+            now: now,
+            allowsPostResetGrace: true
         )
     }
 

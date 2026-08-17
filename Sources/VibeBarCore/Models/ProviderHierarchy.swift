@@ -10,7 +10,7 @@ import Foundation
 ///   AntiGravity IDE share the Gemini product because that's how
 ///   Google brands them.
 /// - `tool` (L3) — the specific surface Vibe Bar tracks
-///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok Build, Cursor Agent).
+///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok Build, Cursor).
 ///
 /// `ToolType` derives its `vendorName` / `productName` / `toolName`
 /// from a single entry per case in `ProviderHierarchyCatalog`, so
@@ -38,14 +38,14 @@ public enum ProviderHierarchyCatalog {
     //
     //   L1 vendor   : OpenAI    | Anthropic   | Google    | Google      | xAI        | Cursor
     //   L2 product  : ChatGPT   | Claude      | Gemini    | Gemini      | Grok       | Grok
-    //   L3 tool     : Codex     | Claude Code | Gemini Web| AntiGravity | Grok Build | Cursor Agent
+    //   L3 tool     : Codex     | Claude Code | Gemini Web| AntiGravity | Grok Build | Cursor
 
     public static let codex       = ProviderHierarchy(vendor: "OpenAI",    product: "ChatGPT", tool: "Codex")
     public static let claude      = ProviderHierarchy(vendor: "Anthropic", product: "Claude",  tool: "Claude Code")
     public static let gemini      = ProviderHierarchy(vendor: "Google",    product: "Gemini",  tool: "Gemini Web")
     public static let antigravity = ProviderHierarchy(vendor: "Google",    product: "Gemini",  tool: "AntiGravity")
     public static let grok        = ProviderHierarchy(vendor: "xAI",       product: "Grok",    tool: "Grok Build")
-    public static let cursor      = ProviderHierarchy(vendor: "Cursor",    product: "Grok",    tool: "Cursor Agent")
+    public static let cursor      = ProviderHierarchy(vendor: "Cursor",    product: "Grok",    tool: "Cursor")
 
     // MARK: - Misc providers
     //

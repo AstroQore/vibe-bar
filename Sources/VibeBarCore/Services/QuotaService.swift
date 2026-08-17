@@ -198,7 +198,8 @@ public final class QuotaService: ObservableObject {
         bucket: QuotaBucket,
         activityHeatmap: UsageHeatmap? = nil,
         dailyActivity: [DailyCostPoint] = [],
-        now: Date = Date()
+        now: Date = Date(),
+        allowsPostResetGrace: Bool = false
     ) -> QuotaPaceForecast? {
         let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
         return QuotaPaceForecast.compute(
@@ -207,7 +208,8 @@ public final class QuotaService: ObservableObject {
             cycles: historyByAccountBucket[key] ?? [],
             activityHeatmap: activityHeatmap,
             dailyActivity: dailyActivity,
-            now: now
+            now: now,
+            allowsPostResetGrace: allowsPostResetGrace
         )
     }
 

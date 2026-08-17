@@ -6,7 +6,7 @@ enum CursorCostFetchOutcome: Sendable {
     case failed
 }
 
-/// Fetches Cursor Agent token/cost events from Cursor's account dashboard.
+/// Fetches Cursor token/cost events from Cursor's account dashboard.
 ///
 /// Cursor's local agent transcripts do not carry token counters. The dashboard
 /// event rows do, including authoritative `tokenUsage.totalCents`; Grok Bot's
@@ -35,7 +35,8 @@ struct CursorCostUsageFetcher: Sendable {
         now: Date = Date(),
         retentionDays: Int,
         session: URLSession = .shared,
-        resolutionPlan override: CursorSessionResolutionPlan? = nil
+        resolutionPlan override: CursorSessionResolutionPlan? = nil,
+        eventSink: (any CostUsageEventSink)? = nil
     ) async -> CursorCostFetchOutcome {
         let plan = override ?? CursorSessionResolver.plan(
             homeDirectory: homeDirectory,
@@ -57,7 +58,9 @@ struct CursorCostUsageFetcher: Sendable {
                     cookieHeader: preferred.header,
                     since: since,
                     until: now,
-                    now: now
+                    now: now,
+                    eventSink: eventSink,
+                    sourceID: sourceIdentifier(for: preferred)
                 )
                 return .success(snapshot)
             } catch let error as QuotaError {
@@ -78,7 +81,9 @@ struct CursorCostUsageFetcher: Sendable {
                     cookieHeader: resolution.header,
                     since: since,
                     until: now,
-                    now: now
+                    now: now,
+                    eventSink: eventSink,
+                    sourceID: sourceIdentifier(for: resolution)
                 )
                 snapshots.append(snapshot)
             } catch {
@@ -97,7 +102,9 @@ struct CursorCostUsageFetcher: Sendable {
         cookieHeader: String,
         since: Date?,
         until: Date?,
-        now: Date
+        now: Date,
+        eventSink: (any CostUsageEventSink)? = nil,
+        sourceID: String = "default"
     ) async throws -> CostSnapshot {
         let events = try await fetchAllEvents(
             cookieHeader: cookieHeader,
@@ -106,6 +113,10 @@ struct CursorCostUsageFetcher: Sendable {
         )
         var accumulator = CostUsageScanner.CostAggregator(tool: .cursor, now: now)
         var includedEvents = 0
+        var pricedEvents: [PricedUsageEvent] = []
+        pricedEvents.reserveCapacity(eventSink == nil ? 0 : events.count)
+        var eventOccurrences: [String: Int] = [:]
+        var latestEventDate: Date?
         for event in events {
             guard let date = event.date,
                   event.clientType?.lowercased() != "grok-bot",
@@ -113,17 +124,83 @@ struct CursorCostUsageFetcher: Sendable {
                   usage.totalTokens > 0
             else { continue }
             let model = event.model.flatMap { $0.isEmpty ? nil : $0 } ?? "cursor-unknown"
+            let costUSD = max(0, (usage.totalCents ?? 0) / 100)
             accumulator.add(
                 at: date,
                 model: model,
                 input: usage.inputTokens + usage.cacheWriteTokens,
                 output: usage.outputTokens,
                 cache: usage.cacheReadTokens,
-                costUSD: max(0, (usage.totalCents ?? 0) / 100)
+                costUSD: costUSD
             )
+            if eventSink != nil {
+                let seed = event.stableIdentitySeed(model: model)
+                let occurrence = (eventOccurrences[seed] ?? 0) + 1
+                eventOccurrences[seed] = occurrence
+                let sourceKey = PrivacyPreservingHash.fileComponent(
+                    prefix: "cursor-event-v1",
+                    rawValue: "\(sourceID)|\(seed)|\(occurrence)"
+                )
+                pricedEvents.append(PricedUsageEvent(
+                    event: CostUsageScanCache.ParsedEvent(
+                        date: date,
+                        model: model,
+                        input: usage.inputTokens,
+                        output: usage.outputTokens,
+                        cache: usage.cacheWriteTokens + usage.cacheReadTokens,
+                        cacheCreation: usage.cacheWriteTokens,
+                        sourceKey: sourceKey
+                    ),
+                    costUSD: costUSD
+                ))
+            }
+            if latestEventDate.map({ date > $0 }) ?? true { latestEventDate = date }
             includedEvents += 1
         }
+        if let eventSink {
+            await eventSink.consume(UsageEventFileBatch(
+                // Workbench uses the same product-level contract as the Grok
+                // cost card: Grok Build + Cursor is one final Grok total.
+                tool: .grok,
+                filePath: "cursor-dashboard://\(sourceID)",
+                mtime: latestEventDate ?? now,
+                // Synthetic source: use a content-derived fingerprint rather
+                // than `(event count, latest timestamp)`. Cursor can correct
+                // an existing row in place; the Workbench must then re-ingest
+                // the same event identity with its revised tokens/cents.
+                size: Self.batchFingerprint(pricedEvents),
+                events: pricedEvents
+            ))
+        }
         return accumulator.snapshot(jsonlFilesFound: includedEvents)
+    }
+
+    private static func sourceIdentifier(for resolution: MiscCookieResolver.Resolution) -> String {
+        let raw = resolution.slotID?.uuidString ?? resolution.sourceLabel
+        return PrivacyPreservingHash.fileComponent(prefix: "cursor-source-v1", rawValue: raw)
+    }
+
+    private static func batchFingerprint(_ events: [PricedUsageEvent]) -> Int64 {
+        let content = events.map { priced in
+            let event = priced.event
+            return [
+                event.sourceKey ?? "",
+                String(event.date.timeIntervalSince1970),
+                event.model,
+                String(event.input),
+                String(event.output),
+                String(event.cache),
+                event.cacheCreation.map(String.init) ?? "",
+                priced.costMicros.map(String.init) ?? "nil"
+            ].joined(separator: "|")
+        }.joined(separator: "\n")
+        let digest = PrivacyPreservingHash.fileComponent(
+            prefix: "cursor-batch-v1",
+            rawValue: content
+        )
+        let tail = String(digest.suffix(16))
+        let value = Int64(bitPattern: UInt64(tail, radix: 16) ?? 0)
+        return value == UsageEventFileBatch.staleFallbackSize ? -2 : value
     }
 
     private func fetchAllEvents(
@@ -288,6 +365,16 @@ private struct CursorUsageEvent: Decodable, Hashable {
         else { return nil }
         return Date(timeIntervalSince1970: milliseconds / 1_000)
     }
+
+    func stableIdentitySeed(model resolvedModel: String) -> String {
+        [
+            timestamp?.stableValue ?? "",
+            resolvedModel,
+            kind ?? "",
+            isHeadless.map(String.init) ?? "",
+            clientType ?? ""
+        ].joined(separator: "|")
+    }
 }
 
 private struct CursorEventTokenUsage: Decodable, Hashable {
@@ -359,6 +446,13 @@ private enum CursorFlexibleNumber: Decodable, Hashable {
         case .decimal(let value):
             guard value >= 0 else { return 0 }
             return Int(exactly: value) ?? 0
+        }
+    }
+
+    var stableValue: String {
+        switch self {
+        case .integer(let value): return String(value)
+        case .decimal(let value): return String(value)
         }
     }
 }

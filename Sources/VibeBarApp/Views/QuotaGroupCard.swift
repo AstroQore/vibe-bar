@@ -34,6 +34,9 @@ struct QuotaGroupModule: Identifiable {
     let accountId: String?
     /// The group's heading, `nil` for the unnamed run.
     let title: String?
+    /// Optional brand mark beside a group heading. Grok Bot has no separate
+    /// bundled asset, so its section deliberately reuses the Grok glyph.
+    let groupTitleIconTool: ToolType?
     /// Account-scoped identity of the group's history chart. Unchanged from the
     /// pre-split card so an existing chart keeps its state.
     let chartKey: String
@@ -136,6 +139,7 @@ enum QuotaGroupModuleBuilder {
                     tool: head.tool,
                     accountId: head.accountId,
                     title: title,
+                    groupTitleIconTool: head.tool == .cursor && title == "Grok Bot" ? .grok : nil,
                     chartKey: chartKeys[index],
                     rows: raw[index...end].map {
                         QuotaGroupModule.Row(
@@ -174,6 +178,7 @@ enum QuotaGroupModuleBuilder {
             tool: pageTool,
             accountId: accountId,
             title: title,
+            groupTitleIconTool: nil,
             chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: title),
             rows: [],
             linkedSectionTitle: nil,
@@ -275,11 +280,17 @@ struct QuotaGroupCard: View {
                 }
             }
             if let title = module.title {
-                Text(title)
-                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.4)
+                HStack(spacing: 5) {
+                    if let iconTool = module.groupTitleIconTool {
+                        ToolBrandIconView(tool: iconTool, size: 11)
+                            .opacity(0.78)
+                    }
+                    Text(title)
+                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.4)
+                }
             }
         }
     }
@@ -362,7 +373,7 @@ struct QuotaGroupCard: View {
     @ViewBuilder
     private func row(for item: QuotaGroupModule.Row) -> some View {
         let bucket = item.bucket
-        let pace = UsagePace.compute(bucket: bucket, now: now)
+        let pace = UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
         let forecast = paceForecast(for: item)
         let used = bucket.displayPercent(.used, tool: item.tool)
         let timeExpected = pace.map { displayedPercent(fromUsed: $0.expectedUsedPercent) }
@@ -505,7 +516,8 @@ struct QuotaGroupCard: View {
             bucket: item.bucket,
             activityHeatmap: snapshot?.heatmap,
             dailyActivity: snapshot?.dailyHistory ?? [],
-            now: now
+            now: now,
+            allowsPostResetGrace: true
         )
     }
 

@@ -470,7 +470,7 @@ enum PageModuleCatalog {
         )
     }
 
-    /// Combined Grok Build local sessions + Cursor Agent dashboard events.
+    /// Combined Grok Build local sessions + Cursor dashboard events.
     @MainActor
     static func grokCostSnapshot(environment: AppEnvironment) -> CostSnapshot {
         environment.costService.combinedSnapshot(

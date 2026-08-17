@@ -124,16 +124,21 @@ final class UsageStatsViewModel: ObservableObject {
 
     // MARK: - Results
 
-    @Published private(set) var summary: UsageSummaryMetrics = .empty
-    @Published private(set) var trend = UsageTrendSeries(bucket: .day, points: [])
-    @Published private(set) var providerStats: [UsageProviderStat] = []
-    @Published private(set) var modelStats: [UsageModelStat] = []
-    @Published private(set) var requestRows: [UsageRequestRow] = []
-    @Published private(set) var requestTotalCount = 0
+    /// One publication for the query's mutually consistent result set. The
+    /// old six independent `@Published` writes made SwiftUI rebuild the whole
+    /// Workbench analytics tree six times after a 30-day query, even though
+    /// every value came from the same ledger snapshot.
+    @Published private var results = UsageResults.empty
+    var summary: UsageSummaryMetrics { results.summary }
+    var trend: UsageTrendSeries { results.trend }
+    var providerStats: [UsageProviderStat] { results.providerStats }
+    var modelStats: [UsageModelStat] { results.modelStats }
+    var requestRows: [UsageRequestRow] { results.requestRows }
+    var requestTotalCount: Int { results.requestTotalCount }
     @Published private(set) var availableModels: [String] = []
     /// Providers offered as filter chips: the cost-aware set, widened by any
     /// provider the ledger actually has rows for.
-    @Published private(set) var knownTools: [ToolType] = ToolType.costAwareProviders
+    @Published private(set) var knownTools: [ToolType] = ToolType.usageStatsProviders
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
     @Published private(set) var lastUpdatedAt: Date?
@@ -267,6 +272,7 @@ final class UsageStatsViewModel: ObservableObject {
     private var tickTask: Task<Void, Never>?
     private var lastCostRefreshAt: Date?
     private var loadedRequestPages = 0
+    private var lastAvailableModelsRevision: UInt64?
     private var generation: UInt64 = 0
     private var hasLoadedOnce = false
     /// A historical window start, or `nil` when the preset follows now.
@@ -400,8 +406,28 @@ final class UsageStatsViewModel: ObservableObject {
         let tools = filter.tools
         isLoading = true
         reloadTask = Task { [weak self] in
-            let models = (try? await ledger.availableModels(tools: tools)) ?? []
-            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            guard let self else { return }
+            // Model availability depends on the provider filter and ledger
+            // contents, not the time range. The ledger revision lets 7 d →
+            // 30 d reuse the same options while an automatic usage refresh
+            // still exposes a newly observed model immediately.
+            let ledgerRevision = await ledger.contentRevision()
+            let models: [String]
+            var refreshedModelsRevision: UInt64?
+            if cascadeModels
+                || self.availableModels.isEmpty
+                || self.lastAvailableModelsRevision != ledgerRevision
+            {
+                if let refreshed = try? await ledger.availableModels(tools: tools) {
+                    models = refreshed
+                    refreshedModelsRevision = ledgerRevision
+                } else {
+                    models = self.availableModels
+                }
+            } else {
+                models = self.availableModels
+            }
+            guard !Task.isCancelled, generation == self.generation else { return }
             // Models first: a narrowed provider set can strand a model that no
             // longer exists in the picker, and querying with it would report
             // an empty page the user has no control to clear.
@@ -409,6 +435,9 @@ final class UsageStatsViewModel: ObservableObject {
                 self.pruneSelectedModels(to: models)
             }
             self.availableModels = models
+            if let refreshedModelsRevision {
+                self.lastAvailableModelsRevision = refreshedModelsRevision
+            }
             let resolved = self.filter
             let supportsHourly = (try? await ledger.supportsHourlyTrend(resolved)) ?? false
             guard !Task.isCancelled, generation == self.generation else { return }
@@ -437,31 +466,35 @@ final class UsageStatsViewModel: ObservableObject {
     }
 
     private func apply(_ snapshot: LoadedUsage) {
-        summary = snapshot.summary
-        trend = snapshot.trend
-        providerStats = snapshot.providers
-        modelStats = snapshot.models
-        requestRows = snapshot.requests.rows
-        requestTotalCount = snapshot.requests.totalCount
+        results = UsageResults(
+            summary: snapshot.summary,
+            trend: snapshot.trend,
+            providerStats: snapshot.providers,
+            modelStats: snapshot.models,
+            requestRows: snapshot.requests.rows,
+            requestTotalCount: snapshot.requests.totalCount
+        )
         loadedRequestPages = 1
         observedTools.formUnion(snapshot.providers.map(\.tool))
         observedTools.formUnion(selectedTools ?? [])
         knownTools = ToolType.allCases.filter {
-            $0.supportsTokenCost || observedTools.contains($0)
+            ToolType.usageStatsProviders.contains($0) || observedTools.contains($0)
         }
         lastUpdatedAt = Date()
         isLoading = false
     }
 
     private func applyEmpty() {
-        summary = .empty
-        trend = UsageTrendSeries(
-            bucket: trendGranularity.resolved(for: range), points: []
+        results = UsageResults(
+            summary: .empty,
+            trend: UsageTrendSeries(
+                bucket: trendGranularity.resolved(for: range), points: []
+            ),
+            providerStats: [],
+            modelStats: [],
+            requestRows: [],
+            requestTotalCount: 0
         )
-        providerStats = []
-        modelStats = []
-        requestRows = []
-        requestTotalCount = 0
         availableModels = []
         isLoading = false
     }
@@ -469,8 +502,10 @@ final class UsageStatsViewModel: ObservableObject {
     private func append(_ page: UsageRequestPage) {
         guard page.page == loadedRequestPages else { return }
         let known = Set(requestRows.map(\.id))
-        requestRows.append(contentsOf: page.rows.filter { !known.contains($0.id) })
-        requestTotalCount = page.totalCount
+        var updated = results
+        updated.requestRows.append(contentsOf: page.rows.filter { !known.contains($0.id) })
+        updated.requestTotalCount = page.totalCount
+        results = updated
         loadedRequestPages = page.page + 1
     }
 
@@ -510,6 +545,24 @@ final class UsageStatsViewModel: ObservableObject {
         let providers: [UsageProviderStat]
         let models: [UsageModelStat]
         let requests: UsageRequestPage
+    }
+
+    private struct UsageResults {
+        var summary: UsageSummaryMetrics
+        var trend: UsageTrendSeries
+        var providerStats: [UsageProviderStat]
+        var modelStats: [UsageModelStat]
+        var requestRows: [UsageRequestRow]
+        var requestTotalCount: Int
+
+        static let empty = UsageResults(
+            summary: .empty,
+            trend: UsageTrendSeries(bucket: .day, points: []),
+            providerStats: [],
+            modelStats: [],
+            requestRows: [],
+            requestTotalCount: 0
+        )
     }
 
     private nonisolated static func load(

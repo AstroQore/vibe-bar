@@ -279,6 +279,8 @@ private struct MiniBranchCell: Identifiable {
         case "weekly_opus": return "Weekly"
         case "weekly_fable": return "Weekly"
         case "weekly_oauth_apps": return "Weekly"
+        case let id where tool == .cursor && ["models", "other_models", "grok_bot_weekly"].contains(id):
+            return "Weekly"
         case let id where tool == .antigravity && id.contains("gpt-oss"):
             return "GPT"
         case let id where tool == .antigravity && id.contains("sonnet"):
@@ -315,6 +317,12 @@ private struct MiniBranchCell: Identifiable {
             return "claude.fable"
         case "weekly_oauth_apps":
             return "claude.oauth"
+        case "models" where tool == .cursor:
+            return "cursor.models"
+        case "other_models" where tool == .cursor:
+            return "cursor.other-models"
+        case "grok_bot_weekly" where tool == .cursor:
+            return "cursor.grok-bot"
         case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "antigravity.gemini-models"
         case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
@@ -359,6 +367,12 @@ private struct MiniBranchCell: Identifiable {
             return "Fable"
         case "weekly_oauth_apps":
             return "OAuth"
+        case "models" where tool == .cursor:
+            return "Cursor Models"
+        case "other_models" where tool == .cursor:
+            return "Other Models"
+        case "grok_bot_weekly" where tool == .cursor:
+            return "Grok Bot"
         case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "Gemini"
         case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
@@ -438,7 +452,8 @@ private func miniQuotaForecast(
         bucket: bucket,
         activityHeatmap: snapshot?.heatmap,
         dailyActivity: snapshot?.dailyHistory ?? [],
-        now: now
+        now: now,
+        allowsPostResetGrace: true
     )
 }
 
@@ -551,7 +566,7 @@ private func miniPrimaryGroupTitle(
 /// Renders one L2 product super-column in the regular (ring) layout.
 /// Single-tool groups (ChatGPT / Claude) get a compact L2 header + bucket
 /// rings. Multi-tool groups (Gemini = Gemini Web + AntiGravity; Grok = Grok
-/// Build + Cursor Agent) get the L2 header on top, each L3 tool as a
+/// Build + Cursor) get the L2 header on top, each L3 tool as a
 /// sub-section beneath with its own small toolName sub-label,
 /// separated by a thin divider.
 private struct MiniL2GroupColumn: View {
@@ -743,7 +758,7 @@ private struct MiniBranchRingCell: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let pace = UsagePace.compute(bucket: cell.bucket, now: now)
+        let pace = UsagePace.compute(bucket: cell.bucket, now: now, allowsPostResetGrace: true)
         let forecast = miniQuotaForecast(
             tool: cell.tool,
             bucket: cell.bucket,
@@ -865,7 +880,9 @@ private struct MiniRingCell: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let pace = cell.bucket.flatMap { UsagePace.compute(bucket: $0, now: now) }
+        let pace = cell.bucket.flatMap {
+            UsagePace.compute(bucket: $0, now: now, allowsPostResetGrace: true)
+        }
         let forecast = cell.bucket.flatMap {
             miniQuotaForecast(
                 tool: cell.tool,
@@ -1212,7 +1229,9 @@ private struct MiniCompactBarCell: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let pace = data.bucket.flatMap { UsagePace.compute(bucket: $0, now: now) }
+        let pace = data.bucket.flatMap {
+            UsagePace.compute(bucket: $0, now: now, allowsPostResetGrace: true)
+        }
         let forecast = data.bucket.flatMap {
             miniQuotaForecast(
                 tool: data.tool,

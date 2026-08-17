@@ -49,6 +49,21 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         }
     }
 
+    func testCursorFieldsUseGroupedWeeklyLabels() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.models")).title,
+            "Cursor Models · Weekly"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.other_models")).title,
+            "Other Models · Weekly"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.grok_bot_weekly")).title,
+            "Grok Bot · Weekly"
+        )
+    }
+
     func testGeminiCLIModelIdsMigrateToWebBuckets() {
         // Old Gemini CLI fields no longer have catalog entries; all of
         // them must migrate to the Web parser's `gemini.five_hour`
