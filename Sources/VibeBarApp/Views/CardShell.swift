@@ -59,10 +59,14 @@ struct SettingsSectionCard<Content: View>: View {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
+            // The surface is painted inside `CardShell`, so the width has to
+            // be claimed by the content: a frame on the outside would only
+            // stretch a transparent wrapper and let a narrow section (System,
+            // Privacy) collapse around its controls.
             CardShell(density: density, spacing: 10) {
                 content()
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
