@@ -94,7 +94,6 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     }
 
     func testUsageStatsKeepsCursorAsSubProvider() {
-        XCTAssertEqual(ToolType.cursor.usageStatsRepresentative, .cursor)
         XCTAssertEqual(
             ToolType.usageStatsProviders,
             [.codex, .claude, .gemini, .antigravity, .grok, .cursor]

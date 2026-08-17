@@ -308,14 +308,6 @@ struct UsageFiltersBar: View {
     private static let hourFormatter = localizedFormatter("MMMd HH:mm")
     private static let dayFormatter = localizedFormatter("MMMd")
 
-    private static let updatedFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.dateStyle = .none
-        formatter.timeStyle = .medium
-        return formatter
-    }()
-
     private static func localizedFormatter(_ template: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
@@ -335,11 +327,5 @@ struct UsageFiltersBar: View {
         guard let selected = model.selectedHarnesses else { return "All" }
         if selected.count == 1, let only = selected.first { return only.displayName }
         return "\(selected.count) selected"
-    }
-
-    private var statusSummary: String {
-        guard model.isLedgerAvailable else { return "ledger unavailable" }
-        guard let updated = model.lastUpdatedAt else { return "loading…" }
-        return "updated \(Self.updatedFormatter.string(from: updated))"
     }
 }

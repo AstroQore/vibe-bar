@@ -33,12 +33,16 @@ private struct SessionCompanyFilter: Identifiable {
 
     var id: ToolType { representative }
 
-    static let all: [SessionCompanyFilter] = [
-        SessionCompanyFilter(representative: .codex, providers: [.codex]),
-        SessionCompanyFilter(representative: .claude, providers: [.claude]),
-        SessionCompanyFilter(representative: .gemini, providers: [.gemini, .antigravity]),
-        SessionCompanyFilter(representative: .grok, providers: [.grok])
-    ]
+    /// Derived, not restated: a company's chip covers whichever of its
+    /// `coreProviderMembers` this page can actually index, and a company with
+    /// none of them never gets a chip.
+    static let all: [SessionCompanyFilter] = ToolType.coreProviderRepresentatives
+        .compactMap { representative in
+            let members = Set(representative.coreProviderMembers)
+            let providers = Set(SessionProvider.allCases.filter { members.contains($0.tool) })
+            guard !providers.isEmpty else { return nil }
+            return SessionCompanyFilter(representative: representative, providers: providers)
+        }
 }
 
 /// The Workbench's Sessions page.
