@@ -81,41 +81,42 @@ final class AntigravityCLIQuotaFetcherTests: XCTestCase {
         func bucket(_ id: String, used: Double) -> QuotaBucket {
             QuotaBucket(id: id, title: id, shortLabel: id, usedPercent: used)
         }
-        let desktop = AccountQuota(
-            accountId: "antigravity",
-            tool: .antigravity,
+        let desktop = AntigravityResponseParser.Snapshot(
             buckets: [
                 bucket("gemini_five_hour", used: 10),
                 bucket("gemini_weekly", used: 20),
                 bucket("claude_gpt_weekly", used: 30)
             ],
-            plan: "Desktop",
-            queriedAt: Date(timeIntervalSince1970: 10)
+            planName: "Desktop",
+            email: nil,
+            modelLabels: ["MODEL_PLACEHOLDER_M1": "Desktop label"]
         )
-        let agy = AccountQuota(
-            accountId: "antigravity",
-            tool: .antigravity,
+        let agy = AntigravityResponseParser.Snapshot(
             buckets: [
                 bucket("gemini_weekly", used: 99),
                 bucket("claude_gpt_five_hour", used: 40)
             ],
-            plan: "CLI",
-            queriedAt: Date(timeIntervalSince1970: 20)
+            planName: "CLI",
+            email: "user@example.com",
+            modelLabels: ["MODEL_PLACEHOLDER_M2": "CLI label"]
         )
 
-        let merged = AntigravityQuotaAdapter.mergingPartialQuota(
-            primary: desktop,
-            fallback: agy
-        )
+        let merged = desktop.merging(agy)
         XCTAssertEqual(merged.buckets.map(\.id), [
             "gemini_five_hour",
             "gemini_weekly",
             "claude_gpt_five_hour",
             "claude_gpt_weekly"
         ])
-        XCTAssertEqual(merged.bucket(id: "gemini_weekly")?.usedPercent, 20)
-        XCTAssertEqual(merged.bucket(id: "claude_gpt_five_hour")?.usedPercent, 40)
-        XCTAssertEqual(merged.plan, "Desktop")
-        XCTAssertEqual(merged.queriedAt, Date(timeIntervalSince1970: 20))
+        XCTAssertEqual(merged.buckets.first { $0.id == "gemini_weekly" }?.usedPercent, 20)
+        XCTAssertEqual(merged.buckets.first { $0.id == "claude_gpt_five_hour" }?.usedPercent, 40)
+        XCTAssertEqual(merged.planName, "Desktop")
+        // The desktop summary carries no email, so the CLI's fills the gap.
+        XCTAssertEqual(merged.email, "user@example.com")
+        // Model labels are additive — neither source's catalog is discarded.
+        XCTAssertEqual(merged.modelLabels, [
+            "MODEL_PLACEHOLDER_M1": "Desktop label",
+            "MODEL_PLACEHOLDER_M2": "CLI label"
+        ])
     }
 }
