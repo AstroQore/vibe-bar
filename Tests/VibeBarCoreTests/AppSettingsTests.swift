@@ -79,6 +79,26 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(decoded.miscCookieAutoImportEnabled)
     }
 
+    func testMenuBarBlockAlertSuppressionDefaultsToOffAndRoundTrips() throws {
+        // A settings file written before the self-check existed must leave the
+        // check armed — silence about a blocked menu bar item is the failure
+        // mode this whole feature exists to end.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertFalse(legacy.menuBarBlockAlertSuppressed)
+        XCTAssertFalse(AppSettings.default.menuBarBlockAlertSuppressed)
+
+        var settings = AppSettings.default
+        settings.menuBarBlockAlertSuppressed = true
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertTrue(decoded.menuBarBlockAlertSuppressed)
+    }
+
     func testMenuBarColorBasisDefaultsToForecastAndRoundTrips() throws {
         // Deliberately the opposite of the usual "absent key keeps the old
         // behavior" rule: forecast coloring is the intended menu-bar reading,

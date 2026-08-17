@@ -67,6 +67,10 @@ fi
 if [[ -d "$ROOT/Resources/ProviderIcons" ]]; then
     cp -R "$ROOT/Resources/ProviderIcons" "$APP_DIR/Contents/Resources/ProviderIcons"
 fi
+# Ships with the app so the menu-bar self-check can hand the user a command
+# that works on an installed copy, with no clone of this repo around.
+cp "$ROOT/Scripts/fix_menu_bar_allowlist.py" \
+    "$APP_DIR/Contents/Resources/fix_menu_bar_allowlist.py"
 
 PkgInfo="APPL????"
 printf '%s' "$PkgInfo" > "$APP_DIR/Contents/PkgInfo"

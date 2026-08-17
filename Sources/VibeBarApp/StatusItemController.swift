@@ -43,6 +43,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var lastPopoverResizeAt: [MenuBarItemKind: Date] = [:]
     private var pendingPopoverHeights: [MenuBarItemKind: CGFloat] = [:]
     private var popoverResizeTasks: [MenuBarItemKind: Task<Void, Never>] = [:]
+    /// Notices when macOS silently refuses to place our status item. See
+    /// `MenuBarBlockWatchdog` — the failure is invisible from inside the app
+    /// otherwise, and looks exactly like "the app didn't launch".
+    private var blockWatchdog: MenuBarBlockWatchdog?
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -61,6 +65,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         DispatchQueue.main.async { [weak self] in
             _ = self?.popover(for: .compact)
         }
+        let watchdog = MenuBarBlockWatchdog(
+            statusItem: compactStatusItem,
+            settingsStore: environment.settingsStore
+        )
+        watchdog.onBlockConfirmed = { [weak watchdog] in
+            MenuBarBlockAlert.present { watchdog?.suppress() }
+        }
+        watchdog.start()
+        blockWatchdog = watchdog
     }
 
     private func currentPopoverWidth(for kind: MenuBarItemKind) -> CGFloat {
@@ -489,6 +502,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     func applicationWillTerminate() {
         miniWindowController.applicationWillTerminate()
+        blockWatchdog?.stop()
     }
 
     // MARK: - Menu bar text
