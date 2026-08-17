@@ -131,6 +131,7 @@ struct SessionFiltersBar: View {
                     ForEach(SessionCompanyFilter.all) { group in
                         providerChip(group)
                     }
+                    sessionSourceMenu
                     rangeMenu
                     sortMenu
                     optionsMenu
@@ -256,6 +257,29 @@ struct SessionFiltersBar: View {
 
     // MARK: - Controls
 
+    private var sessionSourceMenu: some View {
+        Menu {
+            Button("All session sources") { model.setProviderFilter(nil) }
+            Divider()
+            ForEach(SessionProvider.allCases, id: \.self) { provider in
+                Toggle(isOn: sessionSourceBinding(provider)) {
+                    Text(provider.displayName)
+                }
+            }
+        } label: {
+            menuLabel(
+                systemImage: "square.stack.3d.up",
+                title: "Sources",
+                detail: sessionSourceSummary
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Choose individual session sources")
+    }
+
     private var rangeMenu: some View {
         Menu {
             Picker("Date range", selection: $model.dateRange) {
@@ -352,6 +376,19 @@ struct SessionFiltersBar: View {
 
     private var bodyIndexingBinding: Binding<Bool> {
         Binding(get: { model.isBodyIndexingEnabled }, set: { model.setBodyIndexing($0) })
+    }
+
+    private func sessionSourceBinding(_ provider: SessionProvider) -> Binding<Bool> {
+        Binding(
+            get: { model.providerFilter?.contains(provider) ?? true },
+            set: { _ in model.toggleProvider(provider) }
+        )
+    }
+
+    private var sessionSourceSummary: String {
+        guard let selected = model.providerFilter else { return "All" }
+        if selected.count == 1, let only = selected.first { return only.displayName }
+        return "\(selected.count) selected"
     }
 
     private func menuLabel(systemImage: String, title: String, detail: String) -> some View {

@@ -264,13 +264,6 @@ struct QuotaGroupCard: View {
                         }
                     }
                 }
-                if let warning = providerFreshnessWarning {
-                    Label(warning.label, systemImage: "clock.badge.exclamationmark")
-                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .help(warning.help)
-                }
             }
             if let linkedSectionTitle = module.linkedSectionTitle {
                 // The pre-split card separated a linked SubProvider's rows with a
@@ -290,6 +283,13 @@ struct QuotaGroupCard: View {
                         )
                     }
                 }
+            }
+            if let warning = providerFreshnessWarning {
+                Label(warning.label, systemImage: "clock.badge.exclamationmark")
+                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(warning.help)
             }
             if module.showsGroupTitle, let title = module.title {
                 HStack(spacing: 5) {
@@ -311,7 +311,7 @@ struct QuotaGroupCard: View {
     }
 
     private var providerFreshnessWarning: (label: String, help: String)? {
-        guard module.showsProviderHeader,
+        guard module.showsProviderHeader || module.linkedSectionTitle != nil,
               let accountId = module.accountId,
               let updatedAt = quotaService.lastUpdatedByAccount[accountId]
         else { return nil }
