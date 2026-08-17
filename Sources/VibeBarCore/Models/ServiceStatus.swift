@@ -223,23 +223,49 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         }
     }
 
+    /// A sub-provider whose components are published on another provider's
+    /// status page but which this app treats as its own row. SpaceXAI's
+    /// "Grok Bot" ships on Cursor's status page, so without a breakout it
+    /// would read as a Cursor feature instead of a sibling of Grok / Cursor.
+    public struct SubProviderBreakout: Sendable, Hashable {
+        public let id: String
+        public let name: String
+        /// Component names (as published by the host status page) to peel off.
+        public let componentNames: Set<String>
+
+        public init(id: String, name: String, componentNames: Set<String>) {
+            self.id = id
+            self.name = name
+            self.componentNames = componentNames
+        }
+    }
+
     /// Adds a linked provider as one component group while preserving this
     /// snapshot's L1 company identity. Used by the SpaceXAI card to include
     /// Cursor Status without implying a second top-level company row.
+    /// Any `breakouts` claim their named components into their own trailing
+    /// groups, which render with the same styling as the primary group.
     public func mergingSubProvider(
         _ child: ServiceStatusSnapshot,
         groupID: String,
-        groupName: String
+        groupName: String,
+        breakouts: [SubProviderBreakout] = []
     ) -> ServiceStatusSnapshot {
-        let childComponents = child.components.map { component in
-            ServiceComponentSummary(
-                id: "\(groupID):\(component.id)",
+        let childComponents = child.components.map { component -> ServiceComponentSummary in
+            let owner = breakouts.first { $0.componentNames.contains(component.name) }?.id ?? groupID
+            return ServiceComponentSummary(
+                id: "\(owner):\(component.id)",
                 name: component.name,
                 status: component.status,
-                groupId: groupID,
+                groupId: owner,
                 uptimePercent: component.uptimePercent,
                 recentDays: component.recentDays
             )
+        }
+        let claimed = Set(childComponents.compactMap(\.groupId))
+        var childGroups = [ServiceComponentGroup(id: groupID, name: groupName)]
+        for breakout in breakouts where claimed.contains(breakout.id) {
+            childGroups.append(ServiceComponentGroup(id: breakout.id, name: breakout.name))
         }
         let childIsWorse = child.effectiveIndicator.severity > effectiveIndicator.severity
         let incidents = (recentIncidents + child.recentIncidents)
@@ -249,7 +275,7 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
             indicator: childIsWorse ? child.effectiveIndicator : effectiveIndicator,
             description: childIsWorse ? "\(groupName) · \(child.effectiveDescription)" : effectiveDescription,
             updatedAt: max(updatedAt, child.updatedAt),
-            groups: groups + [ServiceComponentGroup(id: groupID, name: groupName)],
+            groups: groups + childGroups,
             components: components + childComponents,
             recentIncidents: Array(incidents.prefix(4)),
             incidentDays: incidentDays,
@@ -296,10 +322,20 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
                 incidentAdjustedUptimePercent: base.incidentAdjustedUptimePercent
             )
         }
+        // Ordering is Grok, Cursor, Grok Bot: the two sub-providers with their
+        // own status page first, then the one that only happens to be
+        // published on Cursor's.
         return base.mergingSubProvider(
             cursor,
             groupID: "subprovider:cursor",
-            groupName: "Cursor"
+            groupName: "Cursor",
+            breakouts: [
+                SubProviderBreakout(
+                    id: "subprovider:grok-bot",
+                    name: "Grok Bot",
+                    componentNames: ["Grok Bot"]
+                )
+            ]
         )
     }
 
