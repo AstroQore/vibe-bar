@@ -18,7 +18,8 @@ public actor ServiceStatusClient {
     ) async throws -> ServiceStatusSnapshot {
         switch tool {
         case .codex:  return try await fetchOpenAI(dayCount: dayCount, now: now)
-        case .claude: return try await fetchClaude(dayCount: dayCount, now: now)
+        case .claude:
+            return try await fetchClassicStatuspage(tool: .claude, dayCount: dayCount, now: now)
         case .gemini, .antigravity:
             // Both Gemini and Antigravity live under the same Google
             // Apps Status product (id `npdyhgECDJ6tB66MxXyo` =
@@ -27,7 +28,7 @@ public actor ServiceStatusClient {
         case .grok:
             return try await fetchXAIStatus(dayCount: dayCount, now: now)
         case .cursor:
-            return try await fetchStatuspage(tool: .cursor)
+            return try await fetchClassicStatuspage(tool: .cursor, dayCount: dayCount, now: now)
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
@@ -46,48 +47,6 @@ public actor ServiceStatusClient {
                 recentIncidents: []
             )
         }
-    }
-
-    // MARK: - Generic Statuspage v2 (Cursor)
-
-    private func fetchStatuspage(tool: ToolType) async throws -> ServiceStatusSnapshot {
-        let summary = try await fetchJSON(SummaryDTO.self, from: tool.statusSummaryAPI)
-        let incidentsDTO = try await fetchJSON(IncidentsDTO.self, from: tool.statusIncidentsAPI)
-        let groups = summary.components.compactMap { component -> ServiceComponentGroup? in
-            guard component.group == true else { return nil }
-            return ServiceComponentGroup(id: component.id, name: component.name)
-        }
-        let components = summary.components.compactMap { component -> ServiceComponentSummary? in
-            guard component.group != true else { return nil }
-            return ServiceComponentSummary(
-                id: component.id,
-                name: component.name,
-                status: component.status,
-                groupId: component.group_id
-            )
-        }
-        let incidents = incidentsDTO.incidents
-            .sorted { $0.created_at > $1.created_at }
-            .prefix(4)
-            .map {
-                IncidentSummary(
-                    id: $0.id,
-                    name: $0.name,
-                    impact: $0.impact,
-                    createdAt: $0.created_at,
-                    resolvedAt: $0.resolved_at,
-                    url: $0.shortlink
-                )
-            }
-        return ServiceStatusSnapshot(
-            tool: tool,
-            indicator: summary.status.indicator,
-            description: summary.status.description,
-            updatedAt: summary.page.updated_at,
-            groups: groups,
-            components: components,
-            recentIncidents: Array(incidents)
-        )
     }
 
     // MARK: - xAI Status (HTML status.x.ai)
@@ -591,29 +550,53 @@ public actor ServiceStatusClient {
         }
     }
 
-    // MARK: - Claude (classic Statuspage with embedded uptimeData)
+    // MARK: - Classic Statuspage (summary/incidents + embedded uptimeData)
 
-    private func fetchClaude(dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
-        let html = try await fetchHTML(url: ToolType.claude.statusPageURL)
-        let summary = try await fetchJSON(SummaryDTO.self, from: ToolType.claude.statusSummaryAPI)
-        let incidentsDTO = try await fetchJSON(IncidentsDTO.self, from: ToolType.claude.statusIncidentsAPI)
+    /// Classic Statuspage-hosted providers (status.claude.com,
+    /// status.cursor.com) all publish the same three shapes: `summary.json`
+    /// for current component health and page indicator, `incidents.json` for
+    /// the incident feed, and a `window.uptimeData` blob inlined in the
+    /// status page HTML. Only that HTML blob carries the 90-day per-component
+    /// outage history — the v2 JSON APIs never expose it — so a provider that
+    /// skips the scrape renders empty gray strips with no uptime percentage.
+    /// Fetch all three and key the history off the same component ids the
+    /// summary uses.
+    private func fetchClassicStatuspage(
+        tool: ToolType,
+        dayCount: Int,
+        now: Date
+    ) async throws -> ServiceStatusSnapshot {
+        let summary = try await fetchJSON(SummaryDTO.self, from: tool.statusSummaryAPI)
+        let incidentsDTO = try await fetchJSON(IncidentsDTO.self, from: tool.statusIncidentsAPI)
+        // The history blob is a scrape of a page we don't control, so treat it
+        // as best-effort: a redesign or a blocked HTML request must still
+        // leave the current status and the incident feed usable.
+        let html = try? await fetchHTML(url: tool.statusPageURL)
+        let uptimeMap = html.map { Self.parseStatuspageUptimeData(html: $0) } ?? [:]
 
-        let uptimeMap = Self.parseClaudeUptimeData(html: html)
-        let groups: [ServiceComponentGroup] = []  // claude.com is flat, no groups
+        // Grouped pages (a `group: true` row owns the `group_id` children);
+        // claude.com and cursor.com are both flat today, so this yields [].
+        let groups = summary.components.compactMap { raw -> ServiceComponentGroup? in
+            guard raw.group == true else { return nil }
+            return ServiceComponentGroup(id: raw.id, name: raw.name)
+        }
 
         var components: [ServiceComponentSummary] = []
-        for raw in summary.components where raw.group_id == nil && raw.group != true {
-            let rawDays = uptimeMap[raw.id]?.days ?? []
-            let perDay = buildClaudeDays(from: rawDays, dayCount: dayCount, now: now)
-            let uptime = computeClaudeUptime(rawDays, dayCount: dayCount)
+        for raw in summary.components where raw.group != true {
+            // A missing history entry means the scrape didn't cover this
+            // component. Leave uptime nil instead of synthesizing a 90-day
+            // all-green wall that the official page would contradict.
+            let rawDays = uptimeMap[raw.id]?.days
             components.append(
                 ServiceComponentSummary(
                     id: raw.id,
                     name: raw.name,
                     status: raw.status,
-                    groupId: nil,
-                    uptimePercent: uptime,
-                    recentDays: perDay
+                    groupId: raw.group_id,
+                    uptimePercent: rawDays.map { computeStatuspageUptime($0, dayCount: dayCount) },
+                    recentDays: rawDays.map {
+                        buildStatuspageDays(from: $0, dayCount: dayCount, now: now)
+                    } ?? []
                 )
             )
         }
@@ -633,7 +616,7 @@ public actor ServiceStatusClient {
             }
 
         return ServiceStatusSnapshot(
-            tool: .claude,
+            tool: tool,
             indicator: summary.status.indicator,
             description: summary.status.description,
             updatedAt: summary.page.updated_at,
@@ -772,8 +755,8 @@ public actor ServiceStatusClient {
         return result
     }
 
-    private func buildClaudeDays(
-        from days: [ClaudeDay],
+    private func buildStatuspageDays(
+        from days: [StatuspageDay],
         dayCount: Int,
         now: Date
     ) -> [DayUptime] {
@@ -782,7 +765,7 @@ public actor ServiceStatusClient {
         for day in days {
             guard let parsed = ServiceStatusClient.parseDate(day.date) else { continue }
             let key = calendar.startOfDay(for: parsed)
-            byDate[key] = ServiceStatusClient.claudeOutageImpact(day.outages)
+            byDate[key] = ServiceStatusClient.statuspageOutageImpact(day.outages)
         }
         var result: [DayUptime] = []
         for offset in stride(from: dayCount - 1, through: 0, by: -1) {
@@ -793,7 +776,7 @@ public actor ServiceStatusClient {
         return result
     }
 
-    private nonisolated static func claudeOutageImpact(_ outages: [String: Int]) -> IncidentImpact? {
+    private nonisolated static func statuspageOutageImpact(_ outages: [String: Int]) -> IncidentImpact? {
         if outages.isEmpty { return nil }
         // Statuspage codes: m = minor (degraded), p = partial outage, M/c = major/critical, n = none
         if outages["c"] != nil || outages["M"] != nil { return .critical }
@@ -819,7 +802,7 @@ public actor ServiceStatusClient {
         return Double(clean) / Double(days.count) * 100
     }
 
-    private func computeClaudeUptime(_ days: [ClaudeDay], dayCount: Int) -> Double {
+    private func computeStatuspageUptime(_ days: [StatuspageDay], dayCount: Int) -> Double {
         // Statuspage uptime: 100 - (total_outage_seconds / total_window_seconds) * 100
         // Outage values in `days[].outages` dict are in seconds.
         let windowSeconds = Double(dayCount) * 86400.0
@@ -847,7 +830,7 @@ public actor ServiceStatusClient {
         return nil
     }
 
-    // MARK: - Claude HTML scraping
+    // MARK: - Classic Statuspage HTML scraping
 
     /// status.claude.com used to inline `var uptimeData = {…}`; it now ships
     /// `window.uptimeData = {…}` with `var uptimeData = window.uptimeData;`
@@ -855,14 +838,18 @@ public actor ServiceStatusClient {
     /// empty — every component rendered 100% all-green while the official
     /// page showed a month of degraded days. Try both anchors and accept the
     /// first occurrence that decodes to a non-empty map.
-    nonisolated static func parseClaudeUptimeData(html: String) -> [String: ClaudeUptimeEntry] {
+    ///
+    /// status.cursor.com ships the byte-identical shape, keyed by the same
+    /// component ids its `summary.json` uses, so both providers share this
+    /// parser.
+    nonisolated static func parseStatuspageUptimeData(html: String) -> [String: StatuspageUptimeEntry] {
         for anchor in ["window.uptimeData = ", "var uptimeData = "] {
             var search = html.startIndex..<html.endIndex
             while let range = html.range(of: anchor, range: search) {
                 let after = html[range.upperBound...]
                 if let json = ServiceStatusClient.extractJSONObject(in: after),
                    let data = json.data(using: .utf8),
-                   let decoded = try? JSONDecoder().decode([String: ClaudeUptimeEntry].self, from: data),
+                   let decoded = try? JSONDecoder().decode([String: StatuspageUptimeEntry].self, from: data),
                    !decoded.isEmpty {
                     return decoded
                 }
@@ -1122,19 +1109,19 @@ private struct IncidentsDTO: Decodable {
     let incidents: [Incident]
 }
 
-// MARK: - Claude scraped uptime DTOs
+// MARK: - Classic Statuspage scraped uptime DTOs
 
-struct ClaudeUptimeEntry: Decodable {
-    let component: ClaudeComponentMeta
-    let days: [ClaudeDay]
+struct StatuspageUptimeEntry: Decodable {
+    let component: StatuspageComponentMeta
+    let days: [StatuspageDay]
 }
 
-struct ClaudeComponentMeta: Decodable {
+struct StatuspageComponentMeta: Decodable {
     let code: String
     let name: String
 }
 
-struct ClaudeDay: Decodable {
+struct StatuspageDay: Decodable {
     let date: String
     let outages: [String: Int]
 }
