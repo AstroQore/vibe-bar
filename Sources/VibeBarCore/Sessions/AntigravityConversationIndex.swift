@@ -1,119 +1,11 @@
 import Foundation
 import SQLite3
 
-/// Read helpers for AntiGravity's conversation databases.
+/// AntiGravity-schema queries over a conversation database.
 ///
-/// These files are written by processes that may be running right now,
-/// so they routinely carry a live `-wal` / `-shm` pair. That rules out
-/// `immutable=1` — the flag tells SQLite there is no journal to replay,
-/// which on a live database means reading a stale or torn snapshot.
-///
-/// The strategy is therefore: open the real file read-only with a short
-/// busy timeout and, only if that fails to produce a complete read,
-/// snapshot the file (plus its journal siblings) into a private temp
-/// directory and read the copy. The copy is deleted before returning.
+/// The generic "read another app's live SQLite file" plumbing lives in
+/// `LiveSQLiteReader`; only the two AntiGravity tables are described here.
 enum AntigravityLiveSQLite {
-    enum ReadError: Error {
-        case statement
-    }
-
-    /// Maximum rows any single query here will materialize. A conversation
-    /// with more steps than this is pathological; truncating keeps a
-    /// session list from allocating without bound.
-    static let maxRows = 5_000
-    /// Individual step payloads are a few KB; anything past this is not a
-    /// transcript and is skipped rather than copied into memory.
-    static let maxBlobBytes = 4 * 1024 * 1024
-
-    /// Run `body` against a read-only handle on `url`, falling back to a
-    /// snapshot copy. Returns `nil` when neither route produced a result;
-    /// `body` must build its output from scratch so a retry is clean.
-    static func read<T>(at url: URL, _ body: (OpaquePointer) throws -> T) -> T? {
-        if let handle = open(path: url.path) {
-            defer { sqlite3_close_v2(handle) }
-            if let value = try? body(handle) { return value }
-        }
-        guard let snapshot = snapshot(of: url) else { return nil }
-        defer { try? FileManager.default.removeItem(at: snapshot.deletingLastPathComponent()) }
-
-        // The copy is ours, so a read-write open is allowed to replay the
-        // copied WAL. `immutable=1` is the last resort, for a copy whose
-        // journal siblings were not readable either.
-        if let handle = open(path: snapshot.path, readOnly: false) {
-            defer { sqlite3_close_v2(handle) }
-            if let value = try? body(handle) { return value }
-        }
-        guard let handle = open(path: "file:\(snapshot.path)?immutable=1", uri: true) else {
-            return nil
-        }
-        defer { sqlite3_close_v2(handle) }
-        return try? body(handle)
-    }
-
-    private static func open(path: String, readOnly: Bool = true, uri: Bool = false) -> OpaquePointer? {
-        var handle: OpaquePointer?
-        var flags = (readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE) | SQLITE_OPEN_NOMUTEX
-        if uri { flags |= SQLITE_OPEN_URI }
-        guard sqlite3_open_v2(path, &handle, flags, nil) == SQLITE_OK, let handle else {
-            if handle != nil { sqlite3_close_v2(handle) }
-            return nil
-        }
-        sqlite3_busy_timeout(handle, 250)
-        return handle
-    }
-
-    /// Copy `url` and its `-wal` / `-shm` siblings into a fresh temp
-    /// directory. The directory (not just the file) is unique so a
-    /// concurrent refresh can never collide, and the caller removes it.
-    private static func snapshot(of url: URL) -> URL? {
-        let fm = FileManager.default
-        let directory = fm.temporaryDirectory
-            .appendingPathComponent("VibeBarAntigravitySnapshot-\(UUID().uuidString)", isDirectory: true)
-        guard (try? fm.createDirectory(at: directory, withIntermediateDirectories: true)) != nil else {
-            return nil
-        }
-        let target = directory.appendingPathComponent(url.lastPathComponent)
-        guard (try? fm.copyItem(at: url, to: target)) != nil else {
-            try? fm.removeItem(at: directory)
-            return nil
-        }
-        for suffix in ["-wal", "-shm"] {
-            let sibling = url.deletingLastPathComponent()
-                .appendingPathComponent(url.lastPathComponent + suffix)
-            guard fm.fileExists(atPath: sibling.path) else { continue }
-            try? fm.copyItem(
-                at: sibling,
-                to: directory.appendingPathComponent(target.lastPathComponent + suffix)
-            )
-        }
-        return target
-    }
-
-    // MARK: - Queries
-
-    static func prepare(_ database: OpaquePointer, _ sql: String) throws -> OpaquePointer {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement
-        else {
-            if statement != nil { sqlite3_finalize(statement) }
-            throw ReadError.statement
-        }
-        return statement
-    }
-
-    static func blob(_ statement: OpaquePointer, _ column: Int32) -> Data? {
-        guard let raw = sqlite3_column_blob(statement, column) else { return nil }
-        let length = Int(sqlite3_column_bytes(statement, column))
-        guard length > 0, length <= maxBlobBytes else { return nil }
-        return Data(bytes: raw, count: length)
-    }
-
-    static func text(_ statement: OpaquePointer, _ column: Int32) -> String? {
-        guard let raw = sqlite3_column_text(statement, column) else { return nil }
-        return String(cString: raw)
-    }
-
     /// One `steps` row, reduced to the three columns a transcript needs.
     struct Step {
         let idx: Int
@@ -122,24 +14,24 @@ enum AntigravityLiveSQLite {
     }
 
     static func steps(at url: URL) -> [Step]? {
-        read(at: url) { database in
-            let statement = try prepare(
+        LiveSQLiteReader.read(at: url) { database in
+            let statement = try LiveSQLiteReader.prepare(
                 database,
                 "SELECT idx, step_type, step_payload FROM steps ORDER BY idx"
             )
             defer { sqlite3_finalize(statement) }
             var out: [Step] = []
             var result = sqlite3_step(statement)
-            while result == SQLITE_ROW, out.count < maxRows {
+            while result == SQLITE_ROW, out.count < LiveSQLiteReader.maxRows {
                 out.append(Step(
                     idx: Int(sqlite3_column_int64(statement, 0)),
                     type: Int(sqlite3_column_int64(statement, 1)),
-                    payload: blob(statement, 2)
+                    payload: LiveSQLiteReader.blob(statement, 2)
                 ))
                 result = sqlite3_step(statement)
             }
-            guard result == SQLITE_DONE || out.count >= maxRows else {
-                throw ReadError.statement
+            guard result == SQLITE_DONE || out.count >= LiveSQLiteReader.maxRows else {
+                throw LiveSQLiteReader.ReadError.statement
             }
             return out
         }
@@ -151,20 +43,23 @@ enum AntigravityLiveSQLite {
     /// (correct for the cost scanner's IDE-only sweep, wrong for a live CLI
     /// database), so only its blob decoder is reused here.
     static func turns(at url: URL) -> [(idx: Int, turn: AntigravitySessionReader.Turn)]? {
-        read(at: url) { database in
-            let statement = try prepare(database, "SELECT idx, data FROM gen_metadata ORDER BY idx")
+        LiveSQLiteReader.read(at: url) { database in
+            let statement = try LiveSQLiteReader.prepare(
+                database,
+                "SELECT idx, data FROM gen_metadata ORDER BY idx"
+            )
             defer { sqlite3_finalize(statement) }
             var out: [(idx: Int, turn: AntigravitySessionReader.Turn)] = []
             var result = sqlite3_step(statement)
-            while result == SQLITE_ROW, out.count < maxRows {
-                if let data = blob(statement, 1),
+            while result == SQLITE_ROW, out.count < LiveSQLiteReader.maxRows {
+                if let data = LiveSQLiteReader.blob(statement, 1),
                    let turn = AntigravitySessionReader.decodeTurn(blob: data) {
                     out.append((Int(sqlite3_column_int64(statement, 0)), turn))
                 }
                 result = sqlite3_step(statement)
             }
-            guard result == SQLITE_DONE || out.count >= maxRows else {
-                throw ReadError.statement
+            guard result == SQLITE_DONE || out.count >= LiveSQLiteReader.maxRows else {
+                throw LiveSQLiteReader.ReadError.statement
             }
             return out
         }
@@ -288,8 +183,8 @@ public final class AntigravityConversationIndex: @unchecked Sendable {
 
     static func summaryRecords(at url: URL) -> [String: Record] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
-        let rows: [String: Record]? = AntigravityLiveSQLite.read(at: url) { database in
-            let statement = try AntigravityLiveSQLite.prepare(
+        let rows: [String: Record]? = LiveSQLiteReader.read(at: url) { database in
+            let statement = try LiveSQLiteReader.prepare(
                 database,
                 """
                 SELECT conversation_id, title, preview, workspace_uris, last_modified_time
@@ -299,25 +194,25 @@ public final class AntigravityConversationIndex: @unchecked Sendable {
             defer { sqlite3_finalize(statement) }
             var out: [String: Record] = [:]
             var result = sqlite3_step(statement)
-            while result == SQLITE_ROW, out.count < AntigravityLiveSQLite.maxRows {
+            while result == SQLITE_ROW, out.count < LiveSQLiteReader.maxRows {
                 defer { result = sqlite3_step(statement) }
-                guard let id = SessionParsing.string(AntigravityLiveSQLite.text(statement, 0))
+                guard let id = SessionParsing.string(LiveSQLiteReader.text(statement, 0))
                 else { continue }
                 // `title` is empty on every build seen so far; `preview`
                 // is where the generated label actually lands, often as a
                 // markdown heading.
                 let title = strippingHeadingMarkers(SessionParsing.firstString(
-                    AntigravityLiveSQLite.text(statement, 1),
-                    AntigravityLiveSQLite.text(statement, 2)
+                    LiveSQLiteReader.text(statement, 1),
+                    LiveSQLiteReader.text(statement, 2)
                 ))
                 out[id.lowercased()] = Record(
                     title: title,
-                    projectDir: firstWorkspace(AntigravityLiveSQLite.text(statement, 3)),
-                    lastModified: timestamp(AntigravityLiveSQLite.text(statement, 4))
+                    projectDir: firstWorkspace(LiveSQLiteReader.text(statement, 3)),
+                    lastModified: timestamp(LiveSQLiteReader.text(statement, 4))
                 )
             }
-            guard result == SQLITE_DONE || out.count >= AntigravityLiveSQLite.maxRows else {
-                throw AntigravityLiveSQLite.ReadError.statement
+            guard result == SQLITE_DONE || out.count >= LiveSQLiteReader.maxRows else {
+                throw LiveSQLiteReader.ReadError.statement
             }
             return out
         }
