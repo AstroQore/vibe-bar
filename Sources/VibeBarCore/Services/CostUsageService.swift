@@ -216,7 +216,15 @@ public final class CostUsageService: ObservableObject {
                 }
                 switch outcome {
                 case .completed(.success(let snapshot)):
-                    directRemoteResults[.cursor] = snapshot
+                    let merged = await CostHistoryStore.shared.mergeAndAugment(
+                        snapshot,
+                        retentionDays: retentionDays
+                    )
+                    directRemoteResults[.cursor] = merged
+                    await CostSnapshotCache.shared.save(
+                        merged,
+                        retentionDays: retentionDays
+                    )
                     // Cursor dashboard events now feed the same request ledger
                     // as local scanners, so Workbench and the outer Grok cost
                     // surface share one set of token/cost facts.

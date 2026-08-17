@@ -83,6 +83,12 @@ final class CursorServiceStatusTests: XCTestCase {
         XCTAssertEqual(cursorOnly.tool, .grok)
         XCTAssertEqual(cursorOnly.indicator, .minor)
         XCTAssertEqual(cursorOnly.groups.map(\.name), ["Cursor"])
+
+        let googleFallback = ServiceStatusSnapshot.preferredGoogleAI(
+            gemini: nil,
+            antigravity: snapshot
+        )
+        XCTAssertEqual(googleFallback, snapshot)
     }
 }
 

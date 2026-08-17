@@ -301,7 +301,8 @@ public actor UsageEventLedger: CostUsageEventSink {
 
         }
 
-        if !rows.isEmpty || legacyCursorEvidence {
+        let rolledCursorEvidence = hasLegacyCursorRollupEvidence(database)
+        if !rows.isEmpty || legacyCursorEvidence || rolledCursorEvidence {
             let floorSQL = """
                 INSERT INTO ledger_meta(key, value)
                      SELECT '\(floorKeyPrefix)cursor', value
@@ -330,6 +331,32 @@ public actor UsageEventLedger: CostUsageEventSink {
               sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
         else { return rollback() }
         return true
+    }
+
+    /// Legacy Cursor events were rolled up under `.grok`, but their dashboard
+    /// model families remain distinguishable from Grok CLI's own rows.
+    private static func hasLegacyCursorRollupEvidence(_ database: OpaquePointer) -> Bool {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            """
+            SELECT 1 FROM usage_daily_rollups
+             WHERE tool = 'grok'
+               AND (
+                    model LIKE 'cursor-%'
+                 OR model LIKE 'composer-%'
+                 OR model LIKE 'claude-%'
+                 OR model LIKE 'gemini-%'
+                 OR model LIKE 'gpt-%'
+               )
+             LIMIT 1
+            """,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK, let statement else { return false }
+        defer { sqlite3_finalize(statement) }
+        return sqlite3_step(statement) == SQLITE_ROW
     }
 
     private static func storedSchemaVersion(_ database: OpaquePointer) -> Int? {

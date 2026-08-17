@@ -76,10 +76,14 @@ private struct ServiceStatusRow: View {
 
     var body: some View {
         let snapshot = displaySnapshot
-        let inFlight = serviceStatus.inFlight.contains(tool)
-            || (tool == .grok && serviceStatus.inFlight.contains(.cursor))
-        let error = serviceStatus.errorByTool[tool]
-            ?? (tool == .grok ? serviceStatus.errorByTool[.cursor] : nil)
+        let members: [ToolType] = switch tool {
+        case .gemini: [.gemini, .antigravity]
+        case .grok: [.grok, .cursor]
+        default: [tool]
+        }
+        let inFlight = members.contains(where: serviceStatus.inFlight.contains)
+        let memberError = members.compactMap { serviceStatus.errorByTool[$0] }.first
+        let error = snapshot == nil ? memberError : nil
 
         VStack(alignment: .leading, spacing: density.statusComponentSpacing + 2) {
             HStack(alignment: .center, spacing: 8) {
@@ -136,11 +140,20 @@ private struct ServiceStatusRow: View {
     }
 
     private var displaySnapshot: ServiceStatusSnapshot? {
-        guard tool == .grok else { return serviceStatus.snapshotByTool[tool] }
-        return ServiceStatusSnapshot.mergedSpaceXAI(
-            grok: serviceStatus.snapshotByTool[.grok],
-            cursor: serviceStatus.snapshotByTool[.cursor]
-        )
+        switch tool {
+        case .gemini:
+            return ServiceStatusSnapshot.preferredGoogleAI(
+                gemini: serviceStatus.snapshotByTool[.gemini],
+                antigravity: serviceStatus.snapshotByTool[.antigravity]
+            )
+        case .grok:
+            return ServiceStatusSnapshot.mergedSpaceXAI(
+                grok: serviceStatus.snapshotByTool[.grok],
+                cursor: serviceStatus.snapshotByTool[.cursor]
+            )
+        default:
+            return serviceStatus.snapshotByTool[tool]
+        }
     }
 
     @ViewBuilder
