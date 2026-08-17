@@ -209,6 +209,10 @@ public final class CostUsageService: ObservableObject {
                         retentionDays: retentionDays
                     )
                 }
+                guard !costDataSettingsProvider().privacyModeEnabled else {
+                    await eraseLocalCostData()
+                    return
+                }
                 switch outcome {
                 case .completed(.success(let snapshot)):
                     directRemoteResults[.cursor] = snapshot

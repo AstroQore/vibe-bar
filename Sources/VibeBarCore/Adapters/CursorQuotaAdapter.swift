@@ -28,6 +28,7 @@ public struct CursorQuotaAdapter: QuotaAdapter {
 
     private let session: URLSession
     private let now: @Sendable () -> Date
+    private let resolutionPlanProvider: (@Sendable (AccountIdentity, Date) -> CursorSessionResolutionPlan)?
 
     public static let cookieSpec = MiscCookieResolver.Spec(
         tool: .cursor,
@@ -51,17 +52,38 @@ public struct CursorQuotaAdapter: QuotaAdapter {
     ) {
         self.session = session
         self.now = now
+        self.resolutionPlanProvider = nil
+    }
+
+    init(
+        session: URLSession,
+        now: @escaping @Sendable () -> Date,
+        resolutionPlanProvider: @escaping @Sendable (AccountIdentity, Date) -> CursorSessionResolutionPlan
+    ) {
+        self.session = session
+        self.now = now
+        self.resolutionPlanProvider = resolutionPlanProvider
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let resolutions = CursorSessionResolver.resolutions(account: account, now: now())
-        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
-
         let queriedAt = now()
+        let plan = resolutionPlanProvider?(account, queriedAt)
+            ?? CursorSessionResolver.plan(account: account, now: queriedAt)
+        guard !plan.isEmpty else { throw QuotaError.noCredential }
+
+        if let preferred = plan.preferred {
+            do {
+                return try await fetchOneSlot(preferred, account: account, queriedAt: queriedAt)
+            } catch let error as QuotaError {
+                guard error.isCredentialState, !plan.fallbacks.isEmpty else { throw error }
+            }
+        }
+
+        guard !plan.fallbacks.isEmpty else { throw QuotaError.noCredential }
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
             spec: CursorQuotaAdapter.cookieSpec,
             account: account,
-            resolutions: resolutions
+            resolutions: plan.fallbacks
         ) { resolution in
             try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
         }

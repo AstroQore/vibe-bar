@@ -69,7 +69,7 @@ public enum MiscCookieResolver {
         }
     }
 
-    public struct Resolution {
+    public struct Resolution: Sendable {
         public let slotID: UUID?
         public let header: String
         public let sourceLabel: String

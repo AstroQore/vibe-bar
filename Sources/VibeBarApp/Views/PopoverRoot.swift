@@ -126,8 +126,8 @@ struct PopoverRoot: View {
         // Header timestamps and refresh state aggregate the providers
         // visible in the current popover. The Misc subpage owns its
         // usage-only integrations; the Google AI subpage aggregates the
-        // linked partial-primary tools; the Grok page resolves Cursor through
-        // its own product-family helper instead of adding a separate tab.
+        // linked partial-primary tools; the Grok page aggregates its family
+        // without adding a separate Cursor tab.
         if overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
         }
@@ -135,7 +135,7 @@ struct PopoverRoot: View {
             return ToolType.googleAIPair
         }
         if overviewPage == .grok {
-            return [.grok]
+            return ToolType.grokFamily
         }
         if overviewPage == .machines {
             return []
@@ -146,7 +146,7 @@ struct PopoverRoot: View {
         case .openAI: return [.codex]
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
-        case .grok: return [.grok]
+        case .grok: return ToolType.grokFamily
         case .misc: return settingsStore.settings.visibleMiscProviderList
         case .machines: return []
         }

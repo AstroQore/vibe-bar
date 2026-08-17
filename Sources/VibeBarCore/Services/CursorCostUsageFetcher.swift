@@ -35,13 +35,13 @@ struct CursorCostUsageFetcher: Sendable {
         now: Date = Date(),
         retentionDays: Int,
         session: URLSession = .shared,
-        resolutions override: [MiscCookieResolver.Resolution]? = nil
+        resolutionPlan override: CursorSessionResolutionPlan? = nil
     ) async -> CursorCostFetchOutcome {
-        let resolutions = override ?? CursorSessionResolver.resolutions(
+        let plan = override ?? CursorSessionResolver.plan(
             homeDirectory: homeDirectory,
             now: now
         )
-        guard !resolutions.isEmpty else { return .unavailable }
+        guard !plan.isEmpty else { return .unavailable }
 
         let normalizedRetention = CostDataSettings.normalizedRetentionDays(retentionDays)
         let calendar = Calendar.current
@@ -50,8 +50,29 @@ struct CursorCostUsageFetcher: Sendable {
             ? calendar.date(byAdding: .day, value: -(normalizedRetention - 1), to: today)
             : nil
         let fetcher = CursorCostUsageFetcher(session: session)
+
+        if let preferred = plan.preferred {
+            do {
+                let snapshot = try await fetcher.fetchSnapshot(
+                    cookieHeader: preferred.header,
+                    since: since,
+                    until: now,
+                    now: now
+                )
+                return .success(snapshot)
+            } catch let error as QuotaError {
+                guard error.isCredentialState, !plan.fallbacks.isEmpty else {
+                    SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
+                    return .failed
+                }
+            } catch {
+                SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
+                return .failed
+            }
+        }
+
         var snapshots: [CostSnapshot] = []
-        for resolution in resolutions {
+        for resolution in plan.fallbacks {
             do {
                 let snapshot = try await fetcher.fetchSnapshot(
                     cookieHeader: resolution.header,

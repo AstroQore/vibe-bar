@@ -96,6 +96,62 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         XCTAssertFalse(snapshot.modelBreakdowns.contains { $0.modelName == "cloud-model" })
     }
 
+    func testRejectedCursorAppSessionFallsBackWithoutDoubleCounting() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CursorCostStubURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let preferred = MiscCookieResolver.Resolution(
+            slotID: nil,
+            header: "WorkosCursorSessionToken=revoked-app",
+            sourceLabel: "Cursor.app"
+        )
+        let fallback = MiscCookieResolver.Resolution(
+            slotID: UUID(),
+            header: "WorkosCursorSessionToken=working-browser",
+            sourceLabel: "Browser"
+        )
+        let plan = CursorSessionResolutionPlan(preferred: preferred, fallbacks: [fallback])
+
+        CursorCostStubURLProtocol.handler = { request in
+            if request.value(forHTTPHeaderField: "Cookie") == preferred.header {
+                return (401, Data())
+            }
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), fallback.header)
+            return Self.response("""
+            {
+              "totalUsageEventsCount": 1,
+              "usageEventsDisplay": [
+                {
+                  "timestamp": "1786967900000",
+                  "model": "composer-2.5",
+                  "tokenUsage": {
+                    "inputTokens": 100,
+                    "outputTokens": 50,
+                    "cacheWriteTokens": 0,
+                    "cacheReadTokens": 0,
+                    "totalCents": 25
+                  }
+                }
+              ]
+            }
+            """)
+        }
+
+        let outcome = await CursorCostUsageFetcher.fetch(
+            homeDirectory: "/Users/example",
+            now: Date(timeIntervalSince1970: 1_786_968_000),
+            retentionDays: 30,
+            session: session,
+            resolutionPlan: plan
+        )
+        guard case .success(let snapshot) = outcome else {
+            return XCTFail("Expected browser fallback snapshot")
+        }
+        XCTAssertEqual(snapshot.allTimeRequests, 1)
+        XCTAssertEqual(snapshot.allTimeTokens, 150)
+        XCTAssertEqual(snapshot.allTimeCostUSD, 0.25, accuracy: 0.000_001)
+    }
+
     private static func body(of request: URLRequest) throws -> Data {
         if let body = request.httpBody { return body }
         guard let stream = request.httpBodyStream else { return Data() }
