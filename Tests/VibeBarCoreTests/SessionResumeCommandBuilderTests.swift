@@ -33,6 +33,33 @@ final class SessionResumeCommandBuilderTests: XCTestCase {
         }
     }
 
+    /// Neither Cowork nor Cursor publishes a "reopen this conversation"
+    /// command; inventing one would hand the user a line that quietly starts
+    /// a *new* session in the wrong app.
+    func testCoworkAndCursorHaveNoResumeCommandOnAnyVariant() {
+        for provider in [SessionProvider.claudeCowork, .cursor] {
+            for variant in [nil, "cli", "default"] {
+                assertThrows(.resumeUnavailable) {
+                    try SessionResumeCommandBuilder.command(
+                        provider: provider, sessionID: uuid, variant: variant
+                    )
+                }
+            }
+        }
+    }
+
+    /// Every provider either builds a command or refuses for a stated
+    /// reason — a new case must not fall through to a wrong CLI.
+    func testEveryProviderIsAccountedFor() {
+        let resumable: Set<SessionProvider> = [.claude, .codex, .grok, .gemini, .antigravity]
+        for provider in SessionProvider.allCases {
+            let command = try? SessionResumeCommandBuilder.command(
+                provider: provider, sessionID: uuid, variant: "cli"
+            )
+            XCTAssertEqual(command != nil, resumable.contains(provider), "\(provider)")
+        }
+    }
+
     /// The adapter's variant strings and the builder's one resumable
     /// variant have to stay the same three values.
     func testAntigravityVariantsMatchTheAdapter() {

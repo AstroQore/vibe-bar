@@ -1487,10 +1487,10 @@ public enum CostUsageScanner {
     //  <space>/<x>/local_<uuid>/.claude/projects/<encoded-cwd>/<uuid>.jsonl`.
     // The transcripts are byte-for-byte the same assistant/usage JSONL that
     // Claude Code writes, so the parser is shared; only the harness stamp
-    // differs. This is a **read-only cost/usage source**: Cowork is
-    // deliberately absent from the Sessions manager, its adapters, and
-    // `SessionDeleter`, because those own a delete path and nothing may
-    // remove files from inside Claude.app's own container.
+    // differs. Cowork is **read-only everywhere**: `ClaudeCoworkSessionAdapter`
+    // lists and reads the same files for the Sessions manager, and refuses to
+    // plan a delete, because nothing may remove files from inside Claude.app's
+    // own container (AGENTS.md § 5).
 
     /// Claude.app's own directory name for a Cowork workspace tree. Used both
     /// to find the root and to recognise a file that came from it.
@@ -1520,7 +1520,7 @@ public enum CostUsageScanner {
     /// is what keeps the walk to transcripts rather than to whatever else the
     /// app stores in that workspace. Symlinks are refused for the same reason
     /// `collectJSONL` refuses them: they could resolve anywhere.
-    private static func collectClaudeCoworkJSONL(under root: URL) -> [URL] {
+    static func collectClaudeCoworkJSONL(under root: URL) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let enumerator = FileManager.default.enumerator(
             at: root,

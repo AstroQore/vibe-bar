@@ -36,11 +36,20 @@ final class CodexSessionAdapterTests: XCTestCase {
         return url
     }
 
-    private func metaLine(id: String? = nil) -> String {
-        """
+    private func metaLine(id: String? = nil, originator: String? = "codex_cli_rs") -> String {
+        let originatorField = originator.map { "\"originator\":\"\($0)\"," } ?? ""
+        return """
         {"timestamp":"2026-02-03T05:58:51.452Z","type":"session_meta","payload":\
         {"id":"\(id ?? sessionID)","timestamp":"2026-02-03T05:58:51.452Z","cwd":"/Users/example/proj",\
-        "originator":"codex_cli_rs","cli_version":"0.0.0","source":"cli","model_provider":"openai"}}
+        \(originatorField)"cli_version":"0.0.0","source":"cli","model_provider":"openai"}}
+        """
+    }
+
+    private func turnContextLine(model: String) -> String {
+        """
+        {"timestamp":"2026-02-03T05:58:52.000Z","type":"turn_context","payload":\
+        {"turn_id":"01a01124-c7c7-7b91-9774-94c735dae055","cwd":"/Users/example/proj",\
+        "model":"\(model)","effort":"xhigh","summary":"auto"}}
         """
     }
 
@@ -93,6 +102,76 @@ final class CodexSessionAdapterTests: XCTestCase {
         XCTAssertEqual(summary.lastActiveAt,
                        ISO8601DateFormatter.vibeBarTest.date(from: "2026-02-03T05:59:09.000Z"))
         XCTAssertEqual(summary.messageCount, rolloutLines.count)
+    }
+
+    // MARK: - Harness
+
+    /// Every Codex surface writes into the same rollout tree, and exactly one
+    /// `originator` is not Codex. Anything unrecognised — including a header
+    /// with no originator at all — stays on Codex rather than being invented
+    /// as ChatGPT Work usage.
+    func testTheOriginatorDecidesCodexVersusChatGPTWork() throws {
+        let cases: [(originator: String?, expected: Harness)] = [
+            ("codex_work_desktop", .chatgptWork),
+            ("Codex Desktop", .codex),
+            ("codex-tui", .codex),
+            ("codex_cli_rs", .codex),
+            ("codex_exec", .codex),
+            ("codex_vscode", .codex),
+            ("something_new", .codex),
+            (nil, .codex)
+        ]
+        for (originator, expected) in cases {
+            let url = try writeRollout(lines: [
+                metaLine(originator: originator),
+                userMessageLine("Hello")
+            ])
+            XCTAssertEqual(
+                try adapter.extractMetadata(fileURL: url).harness,
+                expected,
+                "originator \(originator ?? "<absent>")"
+            )
+        }
+    }
+
+    /// The session list and the cost ledger must agree about which rollout is
+    /// ChatGPT Work, so both go through the one mapping.
+    func testTheHarnessMappingIsTheCostScannersOwn() {
+        for originator in ["codex_work_desktop", "Codex Desktop", nil] {
+            XCTAssertEqual(
+                CostUsageScanner.codexHarness(originator: originator),
+                originator == CostUsageScanner.chatgptWorkOriginator ? .chatgptWork : .codex
+            )
+        }
+    }
+
+    // MARK: - Model
+
+    func testTheModelComesFromTheTurnContext() throws {
+        let url = try writeRollout(lines: [
+            metaLine(),
+            turnContextLine(model: "gpt-daybreak-blue-latest"),
+            userMessageLine("Hello")
+        ])
+        XCTAssertEqual(try adapter.extractMetadata(fileURL: url).model, "gpt-daybreak-blue-latest")
+    }
+
+    /// Older rollouts stamped the model inside the token-count event instead.
+    func testTheModelFallsBackToTheTokenCountInfo() throws {
+        let url = try writeRollout(lines: [
+            metaLine(),
+            userMessageLine("Hello"),
+            """
+            {"timestamp":"2026-02-03T05:59:09.000Z","type":"event_msg","payload":{"type":"token_count",\
+            "info":{"model":"gpt-5-codex","total_token_usage":{"input_tokens":10,"output_tokens":2}}}}
+            """
+        ])
+        XCTAssertEqual(try adapter.extractMetadata(fileURL: url).model, "gpt-5-codex")
+    }
+
+    func testARolloutThatNamesNoModelKeepsItNil() throws {
+        let url = try writeRollout(lines: [metaLine(), userMessageLine("Hello")])
+        XCTAssertNil(try adapter.extractMetadata(fileURL: url).model)
     }
 
     func testFilenameAndHeaderIdMismatchIsRejected() throws {

@@ -15,7 +15,7 @@ import Foundation
 /// sources are side stores that are routinely stale (see
 /// `AntigravityConversationIndex`). The one thing the adapter refuses to
 /// do is delete: AntiGravity holds live WAL handles on these files, so
-/// `deletionPlan` fails closed with `.unsupportedProvider`.
+/// `deletionPlan` fails closed with `.providerIsReadOnly` (AGENTS.md § 5).
 public struct AntigravitySessionAdapter: SessionProviderAdapter {
     public let provider: SessionProvider = .antigravity
 
@@ -103,6 +103,7 @@ public struct AntigravitySessionAdapter: SessionProviderAdapter {
             return summary(
                 sessionID: sessionID,
                 variant: variant,
+                model: nil,
                 title: hydrated?.title,
                 summaryText: nil,
                 projectDir: hydrated?.projectDir,
@@ -120,6 +121,7 @@ public struct AntigravitySessionAdapter: SessionProviderAdapter {
         return summary(
             sessionID: sessionID,
             variant: variant,
+            model: Self.model(turns: turns),
             title: hydrated?.title ?? firstText,
             summaryText: firstText,
             projectDir: hydrated?.projectDir,
@@ -130,9 +132,22 @@ public struct AntigravitySessionAdapter: SessionProviderAdapter {
         )
     }
 
+    /// The most recent turn's model. `gen_metadata` is already decoded for
+    /// the dates and the message count, so no extra read happens here; the
+    /// router alias is the documented fallback when the model enum itself
+    /// has no learned label (see `AntigravitySessionReader.Turn`).
+    static func model(turns: [(idx: Int, turn: AntigravitySessionReader.Turn)]?) -> String? {
+        guard let turns else { return nil }
+        for entry in turns.reversed() {
+            if let model = entry.turn.model ?? entry.turn.routedModel { return model }
+        }
+        return nil
+    }
+
     private func summary(
         sessionID: String,
         variant: String,
+        model: String?,
         title: String?,
         summaryText: String?,
         projectDir: String?,
@@ -145,6 +160,8 @@ public struct AntigravitySessionAdapter: SessionProviderAdapter {
             provider: .antigravity,
             sessionID: sessionID,
             providerVariant: variant,
+            harness: .antigravity,
+            model: model,
             title: SessionParsing.display(title, limit: SessionParsing.titleLimit)
                 ?? Self.fallbackTitle(sessionID: sessionID),
             summary: SessionParsing.display(summaryText, limit: SessionParsing.summaryLimit),
@@ -267,7 +284,7 @@ public struct AntigravitySessionAdapter: SessionProviderAdapter {
     /// on the conversation databases, and removing one out from under a
     /// running IDE is how a store gets corrupted rather than emptied.
     public func deletionPlan(for summary: SessionSummary, homeDirectory: String) throws -> SessionDeletionPlan {
-        throw SessionDeleteError.unsupportedProvider
+        throw SessionDeleteError.providerIsReadOnly(.antigravity)
     }
 }
 

@@ -594,7 +594,7 @@ final class AntigravitySessionAdapterTests: XCTestCase {
             let url = try writeConversation(surface: surface)
             let summary = try adapter.extractMetadata(fileURL: url)
             XCTAssertThrowsError(try adapter.deletionPlan(for: summary, homeDirectory: home.path)) { error in
-                XCTAssertEqual(error as? SessionDeleteError, .unsupportedProvider)
+                XCTAssertEqual(error as? SessionDeleteError, .providerIsReadOnly(.antigravity))
             }
         }
     }
@@ -606,7 +606,7 @@ final class AntigravitySessionAdapterTests: XCTestCase {
             [summary], registry: SessionProviderRegistry.standard(homeDirectory: home.path)
         )
         XCTAssertEqual(outcomes.first?.success, false)
-        XCTAssertEqual(outcomes.first?.failureReason, .unsupportedProvider)
+        XCTAssertEqual(outcomes.first?.failureReason, .providerIsReadOnly(.antigravity))
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
 

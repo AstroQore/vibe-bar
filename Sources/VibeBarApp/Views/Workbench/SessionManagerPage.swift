@@ -7,11 +7,12 @@ extension SessionProvider {
     /// name all come from the one table rather than a second one here.
     var tool: ToolType {
         switch self {
-        case .claude:      .claude
-        case .codex:       .codex
-        case .grok:        .grok
-        case .gemini:      .gemini
-        case .antigravity: .antigravity
+        case .claude, .claudeCowork: .claude
+        case .codex:                 .codex
+        case .grok:                  .grok
+        case .cursor:                .cursor
+        case .gemini:                .gemini
+        case .antigravity:           .antigravity
         }
     }
 

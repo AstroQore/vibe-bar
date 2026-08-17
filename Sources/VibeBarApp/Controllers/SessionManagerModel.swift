@@ -648,11 +648,13 @@ final class SessionManagerModel: ObservableObject {
 
     // MARK: - Deletion
 
-    /// AntiGravity holds live SQLite handles on its conversation databases,
-    /// so its adapter refuses to plan a delete. Filtering those rows out here
-    /// keeps the confirmation sheet from promising something that will fail.
+    /// AntiGravity, Cursor, and Claude Cowork all keep their stores under
+    /// another running app, so their adapters refuse to plan a delete.
+    /// Filtering those rows out here keeps the confirmation sheet from
+    /// promising something that will fail — the fact itself lives in Core so
+    /// the gate and the adapters cannot drift apart.
     static func isDeletable(_ summary: SessionSummary) -> Bool {
-        summary.provider != .antigravity
+        summary.provider.supportsDeletion
     }
 
     var checkedSummaries: [SessionSummary] {
@@ -671,7 +673,10 @@ final class SessionManagerModel: ObservableObject {
     func requestDelete(_ summaries: [SessionSummary]) {
         let deletable = summaries.filter(Self.isDeletable)
         guard !deletable.isEmpty else {
-            show(toast: "AntiGravity sessions are managed by the IDE.")
+            // One refusal reason per provider, so the toast says which app
+            // owns the store rather than a generic "not supported".
+            let refused = summaries.first?.provider ?? .antigravity
+            show(toast: SessionDeleteError.providerIsReadOnly(refused).message)
             return
         }
         pendingDeletion = deletable

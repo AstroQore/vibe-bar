@@ -22,9 +22,11 @@ import Foundation
 /// | Gemini CLI     | Google AI  | `~/.gemini/tmp/*/chats/session-*.jsonl` (+ telemetry log)    |
 /// | AntiGravity    | Google AI  | `~/.gemini/antigravity{,-cli,-ide}/conversations`            |
 /// | Grok Build     | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                          |
-/// | Cursor         | SpaceXAI   | Cursor dashboard remote events (no local counters)           |
+/// | Cursor         | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard remote events for cost (no local token counters) |
 ///
 /// Renaming a harness is one edit here, not a hunt across the UI.
+/// `AGENTS.md` § 7.1 carries the coverage matrix — which of model, cost,
+/// sessions, and delete each harness actually supports.
 public enum HarnessCatalog {
     public static let codex = "Codex"
     public static let chatgptWork = "ChatGPT Work"

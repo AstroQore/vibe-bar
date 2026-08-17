@@ -193,7 +193,7 @@ private struct SessionRow: View {
             .padding(.top, 2)
             .help(SessionManagerModel.isDeletable(summary)
                 ? "Include this session in the deletion"
-                : "AntiGravity sessions are managed by the IDE")
+                : SessionDeleteError.providerIsReadOnly(summary.provider).message)
             .accessibilityLabel("Select this session")
     }
 

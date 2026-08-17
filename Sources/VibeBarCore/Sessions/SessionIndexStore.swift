@@ -53,7 +53,11 @@ public actor SessionIndexStore {
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     /// Bumping this drops and rebuilds every table on the next open.
-    static let schemaVersion = 1
+    ///
+    /// v2 added `sessions.harness` and `sessions.model`. There is no ALTER
+    /// path on purpose: every row is reconstructible from the CLIs' own
+    /// logs, and a rebuild is what fills the new columns anyway.
+    static let schemaVersion = 2
 
     public init(url: URL = VibeBarLocalStore.sessionIndexURL) throws {
         if url == VibeBarLocalStore.sessionIndexURL {
@@ -140,6 +144,8 @@ public actor SessionIndexStore {
             provider TEXT NOT NULL,
             session_id TEXT NOT NULL,
             provider_variant TEXT,
+            harness TEXT,
+            model TEXT,
             title TEXT,
             summary TEXT,
             project_dir TEXT,
@@ -158,6 +164,8 @@ public actor SessionIndexStore {
             ON sessions(provider, COALESCE(last_active_at, created_at) DESC, id DESC);
         CREATE INDEX IF NOT EXISTS sessions_provider_project_idx
             ON sessions(provider, project_dir);
+        CREATE INDEX IF NOT EXISTS sessions_harness_effective_active_idx
+            ON sessions(harness, COALESCE(last_active_at, created_at) DESC, id DESC);
         CREATE TABLE IF NOT EXISTS session_files (
             path_hash TEXT PRIMARY KEY,
             path TEXT NOT NULL,
@@ -195,16 +203,23 @@ public actor SessionIndexStore {
     // MARK: - Writes
 
     /// Insert or refresh one session, returning its row id.
+    ///
+    /// The harness column is never left null: a summary that arrived without
+    /// one is stored under `provider.defaultHarness`, so the harness filter
+    /// below is total and no row can hide from every chip.
     @discardableResult
     public func upsertSession(_ summary: SessionSummary) throws -> Int64 {
         try run(
             """
             INSERT INTO sessions(
-                   provider, session_id, provider_variant, title, summary, project_dir,
+                   provider, session_id, provider_variant, harness, model,
+                   title, summary, project_dir,
                    created_at, last_active_at, source_path, size_bytes, message_count
-               ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(provider, session_id, source_path) DO UPDATE SET
                    provider_variant = excluded.provider_variant,
+                   harness = excluded.harness,
+                   model = excluded.model,
                    title = excluded.title,
                    summary = excluded.summary,
                    project_dir = excluded.project_dir,
@@ -217,6 +232,8 @@ public actor SessionIndexStore {
                 .text(summary.provider.rawValue),
                 .text(summary.sessionID),
                 summary.providerVariant.map(Binding.text) ?? .null,
+                .text(summary.effectiveHarness.rawValue),
+                summary.model.map(Binding.text) ?? .null,
                 summary.title.map(Binding.text) ?? .null,
                 summary.summary.map(Binding.text) ?? .null,
                 summary.projectDir.map(Binding.text) ?? .null,
@@ -450,10 +467,16 @@ public actor SessionIndexStore {
 
     // MARK: - Reads
 
+    /// Fixed order, and new columns go on the end: the search queries select
+    /// `s.id` and the match columns straight after this list, and address
+    /// them by index.
     private static let sessionColumns = """
         s.provider, s.session_id, s.provider_variant, s.title, s.summary, s.project_dir,
-        s.created_at, s.last_active_at, s.source_path, s.size_bytes, s.message_count
+        s.created_at, s.last_active_at, s.source_path, s.size_bytes, s.message_count,
+        s.harness, s.model
         """
+    /// Column index of `s.id` in a `SELECT sessionColumns, s.id, …`.
+    private static let rowIDColumn: Int32 = 13
 
     /// Every indexed session, most recently active first.
     public func allSummaries() throws -> [SessionSummary] {
@@ -475,12 +498,16 @@ public actor SessionIndexStore {
     /// `allSummaries()` remains for tests and maintenance tools.
     public func summaryPage(
         providers: [SessionProvider]? = nil,
+        harnesses: [Harness]? = nil,
         since: Date? = nil,
         order: SessionSummaryOrder = .recentFirst,
         offset: Int = 0,
         limit: Int = 250
     ) throws -> SessionSummaryPage {
         if let providers, providers.isEmpty {
+            return SessionSummaryPage(summaries: [], totalCount: 0, offset: 0, limit: max(1, limit))
+        }
+        if let harnesses, harnesses.isEmpty {
             return SessionSummaryPage(summaries: [], totalCount: 0, offset: 0, limit: max(1, limit))
         }
         let safeOffset = max(0, offset)
@@ -490,6 +517,10 @@ public actor SessionIndexStore {
         if let providers {
             clauses.append("s.provider IN (\(Array(repeating: "?", count: providers.count).joined(separator: ", ")))")
             bindings.append(contentsOf: providers.map { .text($0.rawValue) })
+        }
+        if let harnesses {
+            clauses.append("s.harness IN (\(Array(repeating: "?", count: harnesses.count).joined(separator: ", ")))")
+            bindings.append(contentsOf: harnesses.map { .text($0.rawValue) })
         }
         if let since {
             clauses.append("COALESCE(s.last_active_at, s.created_at) >= ?")
@@ -545,6 +576,25 @@ public actor SessionIndexStore {
         return counts
     }
 
+    /// Row count per harness — what the Sessions page's company chips and
+    /// source menu label themselves with. Rows written before the harness
+    /// column existed cannot occur (the schema bump rebuilds), so a row that
+    /// somehow has no harness is skipped rather than invented.
+    public func harnessCounts() throws -> [Harness: Int] {
+        let statement = try prepare(
+            "SELECT harness, COUNT(*) FROM sessions WHERE harness IS NOT NULL GROUP BY harness"
+        )
+        defer { sqlite3_finalize(statement) }
+        var counts: [Harness: Int] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let raw = columnText(statement, 0), let harness = Harness(rawValue: raw) else {
+                continue
+            }
+            counts[harness] = Int(sqlite3_column_int64(statement, 1))
+        }
+        return counts
+    }
+
     public func sessionCount() throws -> Int {
         Int(try scalarInt("SELECT COUNT(*) FROM sessions", []) ?? 0)
     }
@@ -558,21 +608,24 @@ public actor SessionIndexStore {
     public func search(
         text: String,
         providers: [SessionProvider]? = nil,
+        harnesses: [Harness]? = nil,
         limit: Int = 50
     ) throws -> [SessionSearchHit] {
         let needle = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return [] }
         if let providers, providers.isEmpty { return [] }
+        if let harnesses, harnesses.isEmpty { return [] }
         let cap = min(max(1, limit), 500)
+        let scope = Scope(providers: providers, harnesses: harnesses)
 
         var hits: [SessionSearchHit] = []
         var seen: Set<Int64> = []
-        for row in try bodyMatches(needle, providers: providers, limit: cap) {
+        for row in try bodyMatches(needle, scope: scope, limit: cap) {
             guard seen.insert(row.rowID).inserted else { continue }
             hits.append(row.hit)
             if hits.count >= cap { return hits }
         }
-        for row in try metadataMatches(needle, providers: providers, limit: cap) {
+        for row in try metadataMatches(needle, scope: scope, limit: cap) {
             guard seen.insert(row.rowID).inserted else { continue }
             hits.append(row.hit)
             if hits.count >= cap { return hits }
@@ -587,12 +640,20 @@ public actor SessionIndexStore {
     static let minimumTrigramLength = 3
     private static let likeScanLimit = 200
 
+    /// What a search is narrowed to. Both dimensions are optional and are
+    /// ANDed, which is what lets a company chip (harnesses) and an explicit
+    /// provider list live in the same query.
+    private struct Scope {
+        let providers: [SessionProvider]?
+        let harnesses: [Harness]?
+    }
+
     private func bodyMatches(
         _ needle: String,
-        providers: [SessionProvider]?,
+        scope: Scope,
         limit: Int
     ) throws -> [(rowID: Int64, hit: SessionSearchHit)] {
-        let filter = providerFilter(providers, column: "s.provider")
+        let filter = scopeFilter(scope)
         let sql: String
         var bindings: [Binding]
         if needle.count >= Self.minimumTrigramLength {
@@ -627,11 +688,11 @@ public actor SessionIndexStore {
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let summary = summary(statement, offset: 0) else { continue }
             out.append((
-                sqlite3_column_int64(statement, 11),
+                sqlite3_column_int64(statement, Self.rowIDColumn),
                 SessionSearchHit(
                     summary: summary,
-                    snippet: columnText(statement, 13),
-                    matchedSeq: Int(sqlite3_column_int64(statement, 12))
+                    snippet: columnText(statement, Self.rowIDColumn + 2),
+                    matchedSeq: Int(sqlite3_column_int64(statement, Self.rowIDColumn + 1))
                 )
             ))
         }
@@ -640,10 +701,10 @@ public actor SessionIndexStore {
 
     private func metadataMatches(
         _ needle: String,
-        providers: [SessionProvider]?,
+        scope: Scope,
         limit: Int
     ) throws -> [(rowID: Int64, hit: SessionSearchHit)] {
-        let filter = providerFilter(providers, column: "s.provider")
+        let filter = scopeFilter(scope)
         let statement = try prepare(
             """
             SELECT \(Self.sessionColumns), s.id FROM sessions s
@@ -667,20 +728,27 @@ public actor SessionIndexStore {
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let summary = summary(statement, offset: 0) else { continue }
             out.append((
-                sqlite3_column_int64(statement, 11),
+                sqlite3_column_int64(statement, Self.rowIDColumn),
                 SessionSearchHit(summary: summary, snippet: nil, matchedSeq: nil)
             ))
         }
         return out
     }
 
-    private func providerFilter(
-        _ providers: [SessionProvider]?,
-        column: String
-    ) -> (sql: String, bindings: [Binding]) {
-        guard let providers, !providers.isEmpty else { return ("", []) }
-        let marks = Array(repeating: "?", count: providers.count).joined(separator: ", ")
-        return (" AND \(column) IN (\(marks))", providers.map { .text($0.rawValue) })
+    private func scopeFilter(_ scope: Scope) -> (sql: String, bindings: [Binding]) {
+        var sql = ""
+        var bindings: [Binding] = []
+        if let providers = scope.providers, !providers.isEmpty {
+            let marks = Array(repeating: "?", count: providers.count).joined(separator: ", ")
+            sql += " AND s.provider IN (\(marks))"
+            bindings.append(contentsOf: providers.map { .text($0.rawValue) })
+        }
+        if let harnesses = scope.harnesses, !harnesses.isEmpty {
+            let marks = Array(repeating: "?", count: harnesses.count).joined(separator: ", ")
+            sql += " AND s.harness IN (\(marks))"
+            bindings.append(contentsOf: harnesses.map { .text($0.rawValue) })
+        }
+        return (sql, bindings)
     }
 
     /// FTS5 `MATCH` takes a query language, not a literal: bare `AND`,
@@ -712,6 +780,8 @@ public actor SessionIndexStore {
             provider: provider,
             sessionID: sessionID,
             providerVariant: columnText(statement, offset + 2),
+            harness: columnText(statement, offset + 11).flatMap(Harness.init(rawValue:)),
+            model: columnText(statement, offset + 12),
             title: columnText(statement, offset + 3),
             summary: columnText(statement, offset + 4),
             projectDir: columnText(statement, offset + 5),
