@@ -408,6 +408,13 @@ enum PageModuleCatalog {
                 additional = (environment.quotaService.cachedQuota(for: antigravity.id)?.buckets ?? [])
                     .map { FillTimelineSeries(tool: .antigravity, accountId: antigravity.id, bucket: $0) }
             }
+        } else if tool == .grok {
+            accountId = environment.account(for: .grok)?.id
+            buckets = environment.quota(for: .grok)?.buckets ?? []
+            if let cursor = environment.account(for: .cursor) {
+                additional = (environment.quotaService.cachedQuota(for: cursor.id)?.buckets ?? [])
+                    .map { FillTimelineSeries(tool: .cursor, accountId: cursor.id, bucket: $0) }
+            }
         } else {
             accountId = environment.account(for: tool)?.id
             buckets = environment.quota(for: tool)?.buckets ?? []
@@ -424,7 +431,11 @@ enum PageModuleCatalog {
 
     /// Tools whose refresh button the provider-header quota card pumps.
     static func quotaRefreshTools(for tool: ToolType) -> [ToolType] {
-        tool == .gemini ? ToolType.googleAIPair : [tool]
+        switch tool {
+        case .gemini: ToolType.googleAIPair
+        case .grok: ToolType.grokFamily
+        default: [tool]
+        }
     }
 
     /// Cost snapshot behind a provider page. Gemini's page shows the combined
@@ -434,8 +445,14 @@ enum PageModuleCatalog {
         tool: ToolType,
         environment: AppEnvironment
     ) -> CostSnapshot? {
-        guard tool == .gemini else { return environment.costService.snapshot(for: tool) }
-        return googleAICostSnapshot(environment: environment)
+        switch tool {
+        case .gemini:
+            return googleAICostSnapshot(environment: environment)
+        case .grok:
+            return grokCostSnapshot(environment: environment)
+        default:
+            return environment.costService.snapshot(for: tool)
+        }
     }
 
     /// Combined Gemini + AntiGravity cost, surfaced as the single "Gemini"
@@ -450,6 +467,15 @@ enum PageModuleCatalog {
         environment.costService.combinedSnapshot(
             of: ToolType.googleAIPair,
             labelledAs: .antigravity
+        )
+    }
+
+    /// Combined Grok Build local sessions + Cursor Agent dashboard events.
+    @MainActor
+    static func grokCostSnapshot(environment: AppEnvironment) -> CostSnapshot {
+        environment.costService.combinedSnapshot(
+            of: ToolType.grokFamily,
+            labelledAs: .grok
         )
     }
 
@@ -477,14 +503,16 @@ enum PageModuleCatalog {
         environment: AppEnvironment,
         settings: AppSettings
     ) -> CostRollup {
-        environment.costService.rollup(
-            individualTools: overviewCostProviders(settings: settings),
-            // The Gemini group is labelled `.antigravity` for the same reason
-            // `googleAICostSnapshot` is: AntiGravity is the live Google usage
-            // source, and both call sites must land on the same cached snapshot.
-            groups: settings.isCoreProviderVisible(.gemini)
-                ? [CostSnapshotGroup(label: .antigravity, tools: ToolType.googleAIPair)]
-                : [],
+        var groups: [CostSnapshotGroup] = []
+        if settings.isCoreProviderVisible(.gemini) {
+            groups.append(CostSnapshotGroup(label: .antigravity, tools: ToolType.googleAIPair))
+        }
+        if settings.isCoreProviderVisible(.grok) {
+            groups.append(CostSnapshotGroup(label: .grok, tools: ToolType.grokFamily))
+        }
+        return environment.costService.rollup(
+            individualTools: overviewCostProviders(settings: settings).filter { $0 != .grok },
+            groups: groups,
             labelledAs: .codex
         )
     }
@@ -500,6 +528,9 @@ enum PageModuleCatalog {
         var tools = overviewCostProviders(settings: settings)
         if settings.isCoreProviderVisible(.gemini) {
             tools.append(contentsOf: ToolType.googleAIPair)
+        }
+        if settings.isCoreProviderVisible(.grok) {
+            tools.append(.cursor)
         }
         return environment.costService.hasJSONLFiles(in: tools)
     }

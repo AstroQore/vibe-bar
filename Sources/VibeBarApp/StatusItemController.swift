@@ -531,7 +531,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                     ]
                 ))
             }
-            let percent = bucket.displayPercent(settings.displayMode)
+            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
             let label = label(for: field, bucket: bucket, itemSettings: itemSettings)
             attributed.append(menuPiece(
                 label: label,
@@ -572,7 +572,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { return nil }
-            let percent = bucket.displayPercent(settings.displayMode)
+            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
             return menuTextPiece(
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
@@ -643,7 +643,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { return nil }
-            let percent = bucket.displayPercent(settings.displayMode)
+            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
             return menuTextPiece(
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
@@ -846,7 +846,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             for: MenuBarPercentColor.resolve(
                 basis: basis,
                 verdict: verdict,
-                percent: bucket.displayPercent(settings.displayMode),
+                percent: bucket.displayPercent(settings.displayMode, tool: field.tool),
                 displayMode: settings.displayMode
             )
         )

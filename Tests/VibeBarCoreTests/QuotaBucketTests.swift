@@ -2,6 +2,20 @@ import XCTest
 @testable import VibeBarCore
 
 final class QuotaBucketTests: XCTestCase {
+    func testCursorPositiveSubPercentDisplaysAsOneWithoutChangingStoredValue() {
+        let bucket = QuotaBucket(
+            id: "models",
+            title: "Cursor Models",
+            shortLabel: "Cursor",
+            usedPercent: 0.016
+        )
+
+        XCTAssertEqual(bucket.usedPercent, 0.016, accuracy: 0.000_001)
+        XCTAssertEqual(bucket.displayPercent(.used, tool: .cursor), 1)
+        XCTAssertEqual(bucket.displayPercent(.remaining, tool: .cursor), 99)
+        XCTAssertEqual(bucket.displayPercent(.used, tool: .grok), 0.016, accuracy: 0.000_001)
+    }
+
     /// `min/max` over Doubles passes NaN through in one ordering and
     /// silently turns it into the bound in the other. Without an
     /// explicit isFinite gate, a non-finite percent from a buggy

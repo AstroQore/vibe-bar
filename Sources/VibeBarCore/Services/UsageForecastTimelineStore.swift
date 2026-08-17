@@ -43,7 +43,7 @@ public actor UsageForecastTimelineStore {
     /// point is roughly twice the payload, so the real file stays far under a
     /// megabyte; a file past this size is corrupt, not legitimate history.
     private static let maxFileBytes = 24 * 1024 * 1024
-    private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok]
+    private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
 
     public init(fileURL: URL = UsageForecastTimelineStore.defaultFileURL()) {
         self.fileURL = fileURL

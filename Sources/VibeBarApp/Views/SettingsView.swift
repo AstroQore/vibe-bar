@@ -470,10 +470,10 @@ struct SettingsView: View {
                             representative: .grok,
                             healthProviders: [.grok]
                         )
-                        coreProviderPlanBadgeRows(for: [.grok])
+                        coreProviderPlanBadgeRows(for: [.grok, .cursor])
                         Divider()
                             .padding(.vertical, 2)
-                        Text("Vibe Bar can read Grok usage from `~/.grok/auth.json` (preferred — written by `grok login`) or from a signed-in grok.com browser session. Either source is enough.")
+                        Text("Grok combines Grok Build with Cursor Agent. Grok Build reads `~/.grok/auth.json` or grok.com cookies; Cursor Agent reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota only — its cloud runs do not add token/cost rows.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -517,6 +517,26 @@ struct SettingsView: View {
                             Text("Could not delete saved Grok cookies.")
                                 .font(.caption2).foregroundStyle(.orange)
                         }
+
+                        Divider()
+                            .padding(.vertical, 2)
+
+                        sourceSummary(label: "Cursor Agent source", value: "Cursor.app → Web")
+                        if environment.account(for: .cursor)?.source == .cliDetected {
+                            Label("Cursor.app signed-in session detected", systemImage: "checkmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("No usable Cursor.app session — import cursor.com cookies below.",
+                                  systemImage: "exclamationmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        CookieSourceControls(
+                            tool: .cursor,
+                            instanceID: ToolType.cursor.rawValue,
+                            manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
+                        )
 
                         Divider()
                             .padding(.vertical, 2)
@@ -1244,6 +1264,7 @@ private struct MiniWindowFieldProviderSection {
         .init(tool: .claude,      title: ToolType.claude.productName,      fields: MenuBarFieldCatalog.claudeFields),
         .init(tool: .gemini,      title: ToolType.gemini.productName + " Web", fields: MenuBarFieldCatalog.geminiFields),
         .init(tool: .antigravity, title: ToolType.antigravity.toolName,    fields: MenuBarFieldCatalog.antigravityFields),
-        .init(tool: .grok,        title: ToolType.grok.productName,        fields: MenuBarFieldCatalog.grokFields)
+        .init(tool: .grok,        title: ToolType.grok.toolName,           fields: MenuBarFieldCatalog.grokFields),
+        .init(tool: .cursor,      title: ToolType.cursor.toolName,         fields: MenuBarFieldCatalog.cursorFields)
     ]
 }

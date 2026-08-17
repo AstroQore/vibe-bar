@@ -116,7 +116,7 @@ struct PopoverRoot: View {
         case .openAI: return ToolType.codex.subtitle
         case .claude: return ToolType.claude.subtitle
         case .googleAI: return "Gemini Web + AntiGravity · quota & status"
-        case .grok: return "xAI · monthly credits, cost & status"
+        case .grok: return "xAI · Grok Build, Cursor Agent, cost & status"
         case .misc: return "Usage-only · sign in or paste a key"
         case .machines: return "End-to-end encrypted remote usage"
         }
@@ -126,7 +126,8 @@ struct PopoverRoot: View {
         // Header timestamps and refresh state aggregate the providers
         // visible in the current popover. The Misc subpage owns its
         // usage-only integrations; the Google AI subpage aggregates the
-        // partial-primary pair; the Grok subpage shows just `.grok`.
+        // linked partial-primary tools; the Grok page aggregates its family
+        // without adding a separate Cursor tab.
         if overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
         }
@@ -134,7 +135,7 @@ struct PopoverRoot: View {
             return ToolType.googleAIPair
         }
         if overviewPage == .grok {
-            return [.grok]
+            return ToolType.grokFamily
         }
         if overviewPage == .machines {
             return []
@@ -145,7 +146,7 @@ struct PopoverRoot: View {
         case .openAI: return [.codex]
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
-        case .grok: return [.grok]
+        case .grok: return ToolType.grokFamily
         case .misc: return settingsStore.settings.visibleMiscProviderList
         case .machines: return []
         }
@@ -439,10 +440,15 @@ private struct OverviewWaterfall: View {
             heatmap: rollup.heatmap,
             models: rollup.modelBreakdowns,
             combinedSnapshot: rollup.combinedSnapshot,
-            // Present exactly when the Gemini card is: the rollup only carries
-            // the group when the provider is visible, and the module that reads
-            // this exists under the same condition.
-            googleAISnapshot: rollup.groupSnapshots.first ?? .empty(tool: .antigravity)
+            // Product-family snapshots are requested only when their matching
+            // Overview modules are visible; the aggregation cache makes these
+            // reads share the rollup's already-computed inputs.
+            googleAISnapshot: settings.isCoreProviderVisible(.gemini)
+                ? PageModuleCatalog.googleAICostSnapshot(environment: environment)
+                : .empty(tool: .antigravity),
+            grokSnapshot: settings.isCoreProviderVisible(.grok)
+                ? PageModuleCatalog.grokCostSnapshot(environment: environment)
+                : .empty(tool: .grok)
         )
 
         // `auto` is the only mode the balancer runs in. `compact` and `manual`
@@ -543,6 +549,8 @@ private struct OverviewWaterfall: View {
             if tool == .gemini {
                 // Gemini Web and AntiGravity roll up to one Google AI product.
                 GeminiCombinedCard(density: density)
+            } else if tool == .grok {
+                GrokCombinedCard(density: density)
             } else {
                 ProviderQuotaCard(tool: tool, density: density, compact: false)
             }
@@ -576,6 +584,16 @@ private struct OverviewWaterfall: View {
                     emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
                     toolNameOverride: "Gemini",
                     heatmapTitleOverride: "When you use Gemini"
+                )
+            } else if tool == .grok {
+                OverviewCostCard(
+                    tool: .grok,
+                    density: density,
+                    snapshotOverride: context.grokSnapshot,
+                    titleOverride: "Grok Cost",
+                    emptyMessageOverride: "No Grok Build or Cursor Agent usage found yet.",
+                    toolNameOverride: "Grok",
+                    heatmapTitleOverride: "When you use Grok"
                 )
             } else {
                 OverviewCostCard(tool: tool, density: density)
@@ -616,6 +634,7 @@ private struct OverviewModuleContext {
     let models: [CostSnapshot.ModelBreakdown]
     let combinedSnapshot: CostSnapshot
     let googleAISnapshot: CostSnapshot
+    let grokSnapshot: CostSnapshot
 }
 
 private struct GrokPage: View {
@@ -772,6 +791,108 @@ private struct GeminiCombinedCard: View {
         )
         let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+}
+
+/// Overview card for the Grok product family. Grok Build remains the primary
+/// xAI surface; Cursor Agent contributes its Cursor Models / Other Models pools
+/// plus the cloud-only Grok Bot weekly quota as a linked L3 tool.
+private struct GrokCombinedCard: View {
+    let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var quotaService: QuotaService
+
+    var body: some View {
+        let grokAccount = environment.account(for: .grok)
+        let cursorAccount = environment.account(for: .cursor)
+        let showsCursor = (cursorAccount.map { $0.source != .notConfigured } ?? false)
+            || cursorAccount.flatMap { quotaService.cachedQuota(for: $0.id) } != nil
+        let anyInFlight = [grokAccount, cursorAccount].compactMap { $0 }.contains {
+            quotaService.inFlightAccountIds.contains($0.id)
+        }
+        let grokBadge = planBadge(for: .grok, account: grokAccount)
+        let cursorBadge = planBadge(for: .cursor, account: cursorAccount)
+
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
+            HStack(alignment: .center, spacing: 8) {
+                ProviderSectionTitle(
+                    tool: .grok,
+                    title: ToolType.grok.productName,
+                    subtitle: ToolType.grok.statusProviderName,
+                    titleFontSize: density.titleFontSize,
+                    subtitleFontSize: density.subtitleFontSize,
+                    iconSize: 16,
+                    badgeSize: 24
+                )
+                Spacer(minLength: 4)
+                if let grokBadge {
+                    PlanBadgeView(text: grokBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                }
+                BorderlessIconButton(
+                    systemImage: "arrow.clockwise",
+                    help: "Refresh Grok Build + Cursor Agent"
+                ) {
+                    environment.refresh(.grok)
+                    environment.refresh(.cursor)
+                }
+                .disabled(anyInFlight)
+                if anyInFlight {
+                    ProgressView().controlSize(.small)
+                        .frame(width: 16, height: 16)
+                }
+            }
+
+            ProviderQuotaCard(
+                tool: .grok,
+                density: density,
+                compact: false,
+                embedded: true
+            )
+
+            if showsCursor {
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: .cursor, size: 13)
+                        .opacity(0.85)
+                    Text(ToolType.cursor.toolName)
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let cursorBadge {
+                        PlanBadgeView(text: cursorBadge, fontSize: max(8, density.subtitleFontSize - 2))
+                    }
+                }
+                .padding(.top, 4)
+
+                ProviderQuotaCard(
+                    tool: .cursor,
+                    density: density,
+                    compact: false,
+                    embedded: true
+                )
+            }
+        }
+        .padding(density.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    private func planBadge(for tool: ToolType, account: AccountIdentity?) -> String? {
+        let quotaPlan = account.flatMap { quotaService.cachedQuota(for: $0.id)?.plan }
+        let label = settingsStore.settings.planBadgeLabel(
+            for: tool,
+            quotaPlan: quotaPlan,
+            accountPlan: account?.plan
+        )
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 
@@ -1603,6 +1724,12 @@ private struct ProviderPageModule: View {
         case .costEmpty:
             if context.pageTool == .gemini {
                 GeminiCostEmptyCard(density: density)
+            } else if context.pageTool == .grok {
+                Text("No Grok Build or Cursor Agent usage found yet.")
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: .infinity)
             } else {
                 Text("No \(context.pageTool.menuTitle) CLI sessions found yet.")
                     .font(.system(size: density.subtitleFontSize))
@@ -1910,7 +2037,9 @@ struct ProviderQuotaCard: View {
         switch tool {
         case .codex:  return "Run codex login, then refresh."
         case .claude: return "Run claude login, then refresh."
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .grok: return "Run grok login or import grok.com cookies, then refresh."
+        case .cursor: return "Sign in to Cursor.app or import cursor.com cookies, then refresh."
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from
             // a primary-provider detail view, but cover misc cases
@@ -2006,7 +2135,7 @@ private struct ProviderBucketRow: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let percent = bucket.displayPercent(mode)
+        let percent = bucket.displayPercent(mode, tool: tool)
         let pace = UsagePace.compute(bucket: bucket, now: now)
         let forecast = paceForecast(now: now)
         let timePaceDisplayed = pace.map { expectedDisplay(for: $0, mode: mode) }

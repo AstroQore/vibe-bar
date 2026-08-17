@@ -549,9 +549,9 @@ private func miniPrimaryGroupTitle(
 }
 
 /// Renders one L2 product super-column in the regular (ring) layout.
-/// Single-tool groups (ChatGPT / Claude / Grok) get a compact L2
-/// header + bucket rings. Multi-tool groups (Gemini = Gemini Web +
-/// AntiGravity) get the L2 header on top, each L3 tool as a
+/// Single-tool groups (ChatGPT / Claude) get a compact L2 header + bucket
+/// rings. Multi-tool groups (Gemini = Gemini Web + AntiGravity; Grok = Grok
+/// Build + Cursor Agent) get the L2 header on top, each L3 tool as a
 /// sub-section beneath with its own small toolName sub-label,
 /// separated by a thin divider.
 private struct MiniL2GroupColumn: View {
@@ -751,7 +751,7 @@ private struct MiniBranchRingCell: View {
             quotaService: quotaService,
             now: now
         )
-        let percent = cell.bucket.displayPercent(settingsStore.displayMode)
+        let percent = cell.bucket.displayPercent(settingsStore.displayMode, tool: cell.tool)
         let color = Theme.barColor(percent: percent, mode: settingsStore.displayMode)
         VStack(spacing: 3) {
             let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
@@ -950,7 +950,7 @@ private struct MiniRingCell: View {
     @ViewBuilder
     private func ringGauge(pace: UsagePace?, forecast: QuotaPaceForecast?, now: Date) -> some View {
         if let bucket = cell.bucket {
-            let percent = bucket.displayPercent(settingsStore.displayMode)
+            let percent = bucket.displayPercent(settingsStore.displayMode, tool: cell.tool)
             let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
                 switch settingsStore.displayMode {
                 case .used:      return p.expectedUsedPercent
@@ -1222,14 +1222,19 @@ private struct MiniCompactBarCell: View {
                 now: now
             )
         }
-        let percent = data.bucket?.displayPercent(settingsStore.displayMode) ?? 0
+        let percent = data.bucket?.displayPercent(settingsStore.displayMode, tool: data.tool) ?? 0
         let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
             switch settingsStore.displayMode {
             case .used:      return p.expectedUsedPercent
             case .remaining: return 100 - p.expectedUsedPercent
             }
         }
-        let color = data.bucket.map { Theme.barColor(percent: $0.displayPercent(settingsStore.displayMode), mode: settingsStore.displayMode) }
+        let color = data.bucket.map {
+            Theme.barColor(
+                percent: $0.displayPercent(settingsStore.displayMode, tool: data.tool),
+                mode: settingsStore.displayMode
+            )
+        }
             ?? .secondary.opacity(0.45)
 
         VStack(spacing: 1.5) {

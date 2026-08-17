@@ -1,9 +1,8 @@
 import XCTest
 @testable import VibeBarCore
 
-/// Locks the one-way migration from "Gemini / Antigravity were misc
-/// providers" to "they're partial-primary, have top-level
-/// `*UsageMode` fields, and are excluded from `miscProviderInstances`."
+/// Locks the one-way migration from linked tools being Misc providers to the
+/// dedicated Google AI / Grok product families.
 ///
 /// The migration runs on every `init(from:)` because both the decode
 /// path and the normalisation helpers now filter by `isMiscPageProvider`.
@@ -44,8 +43,8 @@ final class AppSettingsGoogleAIMigrationTests: XCTestCase {
         XCTAssertEqual(settings.geminiUsageMode, .webOnly)
     }
 
-    func testLegacyGeminiMiscInstanceIsDroppedOnDecode() throws {
-        // Older settings files include `.gemini` / `.antigravity` in
+    func testLegacyLinkedToolMiscInstancesAreDroppedOnDecode() throws {
+        // Older settings files include `.gemini` / `.antigravity` / `.cursor` in
         // `miscProviderInstances`. After the partial-primary upgrade
         // those entries are stale and must not survive a decode.
         let json = """
@@ -68,8 +67,8 @@ final class AppSettingsGoogleAIMigrationTests: XCTestCase {
                        "legacy .gemini misc instance must be filtered out")
         XCTAssertFalse(settings.miscProviderInstances.contains { $0.tool == .antigravity },
                        "legacy .antigravity misc instance must be filtered out")
-        XCTAssertTrue(settings.miscProviderInstances.contains { $0.tool == .cursor },
-                      "unrelated misc instances must survive the migration")
+        XCTAssertFalse(settings.miscProviderInstances.contains { $0.tool == .cursor },
+                       "Cursor now belongs to the Grok product family")
     }
 
     func testLegacyGeminiMiscEntryInMiscProvidersDictIsDroppedOnDecode() throws {
@@ -93,7 +92,7 @@ final class AppSettingsGoogleAIMigrationTests: XCTestCase {
 
         XCTAssertNil(settings.miscProviders[.gemini])
         XCTAssertNil(settings.miscProviders[.antigravity])
-        XCTAssertNotNil(settings.miscProviders[.cursor])
+        XCTAssertNil(settings.miscProviders[.cursor])
     }
 
     func testMigrationIsIdempotent() throws {
@@ -117,5 +116,6 @@ final class AppSettingsGoogleAIMigrationTests: XCTestCase {
 
         XCTAssertFalse(secondPass.miscProviderInstances.contains { $0.tool == .gemini })
         XCTAssertFalse(secondPass.miscProviderInstances.contains { $0.tool == .antigravity })
+        XCTAssertFalse(secondPass.miscProviderInstances.contains { $0.tool == .cursor })
     }
 }

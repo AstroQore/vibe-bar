@@ -86,7 +86,7 @@ final class ProviderPlanDisplayTests: XCTestCase {
     /// We keep the assertions for the primary tools only because
     /// they're the ones the user mentally maps to the hierarchy.
     func testPrimaryToolHierarchyLevelsAreDistinct() {
-        let tools: [ToolType] = [.codex, .claude, .gemini, .antigravity, .grok]
+        let tools: [ToolType] = [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         for tool in tools {
             // L1 vendor and L2 product must not be empty.
             XCTAssertFalse(tool.vendorName.isEmpty, "vendorName for \(tool)")
@@ -103,6 +103,8 @@ final class ProviderPlanDisplayTests: XCTestCase {
         // under the Google vendor — the dual page relies on this.
         XCTAssertEqual(ToolType.gemini.vendorName, ToolType.antigravity.vendorName)
         XCTAssertEqual(ToolType.gemini.productName, ToolType.antigravity.productName)
+        XCTAssertEqual(ToolType.grok.productName, ToolType.cursor.productName)
+        XCTAssertNotEqual(ToolType.grok.vendorName, ToolType.cursor.vendorName)
     }
 
     private func makeJWT(payload: [String: Any]) throws -> String {
