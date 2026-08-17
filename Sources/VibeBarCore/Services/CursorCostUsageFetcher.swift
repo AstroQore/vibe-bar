@@ -13,7 +13,7 @@ enum CursorCostFetchOutcome: Sendable {
 /// cloud-only weekly allowance is a separate endpoint and is intentionally not
 /// synthesized into these events.
 struct CursorCostUsageFetcher: Sendable {
-    private struct PreparedSnapshot: Sendable {
+    struct PreparedSnapshot: Sendable {
         let snapshot: CostSnapshot
         let eventBatch: UsageEventFileBatch?
     }
@@ -58,55 +58,51 @@ struct CursorCostUsageFetcher: Sendable {
         let fetcher = CursorCostUsageFetcher(session: session)
         let includeEventBatch = eventSink != nil
 
+        // Cursor.app's session and the cookie slots may be entirely different
+        // Cursor accounts, and `CostHistoryStore.replaceAndAugment` treats a
+        // success as an authoritative replacement of everything retained. So
+        // every planned slot goes through the same accumulator and the same
+        // all-or-nothing gate: publishing the preferred slot alone would erase
+        // the cookie slot's account from history.
+        var preparedSnapshots: [PreparedSnapshot] = []
+        var allSlotsSucceeded = true
+
         if let preferred = plan.preferred {
             do {
-                let prepared = try await fetcher.prepareSnapshot(
+                preparedSnapshots.append(try await fetcher.prepareSnapshot(
                     cookieHeader: preferred.header,
                     since: since,
                     until: now,
                     now: now,
                     sourceID: sourceIdentifier(for: preferred),
                     includeEventBatch: includeEventBatch
-                )
-                if let eventSink, let batch = prepared.eventBatch {
-                    await eventSink.consume(batch)
-                }
-                return .success(prepared.snapshot)
-            } catch let error as QuotaError {
-                guard error.isCredentialState, !plan.fallbacks.isEmpty else {
-                    SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
-                    return .failed
-                }
+                ))
+            } catch let error as QuotaError where error.isCredentialState && !plan.fallbacks.isEmpty {
+                // A revoked Cursor.app session is not a partial result — the
+                // cookie slots are the whole answer on this machine.
+                SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
             } catch {
                 SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
                 return .failed
             }
         }
 
-        var preparedSnapshots: [PreparedSnapshot] = []
-        var allFallbacksSucceeded = true
         for resolution in plan.fallbacks {
             do {
-                let prepared = try await fetcher.prepareSnapshot(
+                preparedSnapshots.append(try await fetcher.prepareSnapshot(
                     cookieHeader: resolution.header,
                     since: since,
                     until: now,
                     now: now,
                     sourceID: sourceIdentifier(for: resolution),
                     includeEventBatch: includeEventBatch
-                )
-                preparedSnapshots.append(prepared)
+                ))
             } catch {
-                allFallbacksSucceeded = false
+                allSlotsSucceeded = false
                 SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
             }
         }
-        guard allFallbacksSucceeded, !preparedSnapshots.isEmpty else {
-            // Cookie slots may represent independent Cursor accounts. Never
-            // publish or ingest a partial set: CostUsageService treats success
-            // as a complete authoritative replacement of retained history.
-            return .failed
-        }
+        guard allSlotsSucceeded, !preparedSnapshots.isEmpty else { return .failed }
         if let eventSink {
             for prepared in preparedSnapshots {
                 if let batch = prepared.eventBatch { await eventSink.consume(batch) }
@@ -119,29 +115,7 @@ struct CursorCostUsageFetcher: Sendable {
         ))
     }
 
-    func fetchSnapshot(
-        cookieHeader: String,
-        since: Date?,
-        until: Date?,
-        now: Date,
-        eventSink: (any CostUsageEventSink)? = nil,
-        sourceID: String = "default"
-    ) async throws -> CostSnapshot {
-        let prepared = try await prepareSnapshot(
-            cookieHeader: cookieHeader,
-            since: since,
-            until: until,
-            now: now,
-            sourceID: sourceID,
-            includeEventBatch: eventSink != nil
-        )
-        if let eventSink, let batch = prepared.eventBatch {
-            await eventSink.consume(batch)
-        }
-        return prepared.snapshot
-    }
-
-    private func prepareSnapshot(
+    func prepareSnapshot(
         cookieHeader: String,
         since: Date?,
         until: Date?,

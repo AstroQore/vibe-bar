@@ -95,7 +95,7 @@ public final class CostUsageService: ObservableObject {
                 local: self.localSnapshots,
                 directRemote: self.directRemoteSnapshots
             )
-            if hydrated.local != self.localSnapshots || hydrated.directRemote != self.directRemoteSnapshots {
+            if hydrated.addedAny {
                 self.localSnapshots = hydrated.local
                 self.directRemoteSnapshots = hydrated.directRemote
                 self.publishMergedSnapshots()
@@ -385,29 +385,27 @@ public final class CostUsageService: ObservableObject {
             return
         }
         var merged = localSnapshots
-        for (tool, remote) in directRemoteSnapshots {
-            if let local = merged[tool] {
-                merged[tool] = CostSnapshotAggregator.combinedSnapshot(
+        // Both remote lanes fold in the same way; the direct-remote lane goes
+        // first, and a tool present in both is combined once per lane.
+        for (tool, remote) in Array(directRemoteSnapshots) + Array(remoteSnapshots) {
+            merged[tool] = merged[tool].map {
+                CostSnapshotAggregator.combinedSnapshot(
                     tool: tool,
-                    snapshots: [local, remote],
+                    snapshots: [$0, remote],
                     now: now
                 )
-            } else {
-                merged[tool] = remote
-            }
-        }
-        for (tool, remote) in remoteSnapshots {
-            if let local = merged[tool] {
-                merged[tool] = CostSnapshotAggregator.combinedSnapshot(
-                    tool: tool,
-                    snapshots: [local, remote],
-                    now: now
-                )
-            } else {
-                merged[tool] = remote
-            }
+            } ?? remote
         }
         snapshots = merged
+    }
+
+    struct PersistedPartition {
+        var local: [ToolType: CostSnapshot]
+        var directRemote: [ToolType: CostSnapshot]
+        /// At least one cached snapshot filled a lane slot that was empty.
+        /// Cheaper for the caller than comparing two dictionaries of
+        /// snapshots to find out whether anything moved.
+        var addedAny = false
     }
 
     /// Persisted Cursor data came from an account-wide dashboard rather than
@@ -418,18 +416,15 @@ public final class CostUsageService: ObservableObject {
         _ cached: [ToolType: CostSnapshot],
         local: [ToolType: CostSnapshot] = [:],
         directRemote: [ToolType: CostSnapshot] = [:]
-    ) -> (local: [ToolType: CostSnapshot], directRemote: [ToolType: CostSnapshot]) {
-        var hydratedLocal = local
-        var hydratedDirectRemote = directRemote
+    ) -> PersistedPartition {
+        var partition = PersistedPartition(local: local, directRemote: directRemote)
         for (tool, snapshot) in cached {
-            if tool == .cursor {
-                if hydratedDirectRemote[tool] == nil {
-                    hydratedDirectRemote[tool] = snapshot
-                }
-            } else if hydratedLocal[tool] == nil {
-                hydratedLocal[tool] = snapshot
-            }
+            let lane: WritableKeyPath<PersistedPartition, [ToolType: CostSnapshot]> =
+                tool == .cursor ? \.directRemote : \.local
+            guard partition[keyPath: lane][tool] == nil else { continue }
+            partition[keyPath: lane][tool] = snapshot
+            partition.addedAny = true
         }
-        return (hydratedLocal, hydratedDirectRemote)
+        return partition
     }
 }
