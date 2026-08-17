@@ -309,6 +309,22 @@ public struct UsageProviderStat: Sendable, Equatable, Identifiable {
                 : $0.totalTokens > $1.totalTokens
         }
     }
+
+    /// L2 contributors for each L1 total, ordered by the canonical company
+    /// membership rather than by token volume. Filtered-out tools never appear.
+    public static func subProviderSummariesByCompany(
+        _ rows: [UsageProviderStat]
+    ) -> [ToolType: String] {
+        var contributors: [ToolType: Set<ToolType>] = [:]
+        for row in rows where row.totalTokens > 0 {
+            let representative = row.tool.coreProviderRepresentative ?? row.tool
+            contributors[representative, default: []].insert(row.tool)
+        }
+        return contributors.reduce(into: [:]) { result, entry in
+            let ordered = entry.key.coreProviderMembers.filter { entry.value.contains($0) }
+            result[entry.key] = ordered.map(\.productName).joined(separator: " + ")
+        }
+    }
 }
 
 public struct UsageModelStat: Sendable, Equatable, Identifiable {

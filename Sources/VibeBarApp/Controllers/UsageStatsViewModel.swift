@@ -159,6 +159,9 @@ final class UsageStatsViewModel: ObservableObject {
     var companyProviderStats: [UsageProviderStat] {
         UsageProviderStat.mergedByCompany(results.providerStats)
     }
+    var companySubProviderSummaries: [ToolType: String] {
+        UsageProviderStat.subProviderSummariesByCompany(results.providerStats)
+    }
     var modelStats: [UsageModelStat] { results.modelStats }
     var requestRows: [UsageRequestRow] { results.requestRows }
     var requestTotalCount: Int { results.requestTotalCount }
@@ -488,6 +491,10 @@ final class UsageStatsViewModel: ObservableObject {
                 guard !Task.isCancelled, generation == self.generation else { return }
                 self.allTimeStart = earliest.map { Calendar.current.startOfDay(for: $0) }
                     ?? Date().addingTimeInterval(-60)
+                if !self.isTrendGranularityAvailable(self.trendGranularity) {
+                    self.trendGranularity = .automatic
+                    return
+                }
             }
             let tools = self.filter.tools
             // Model availability depends on the provider filter and ledger

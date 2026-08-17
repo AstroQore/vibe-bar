@@ -63,18 +63,28 @@ final class UsageQueryMetricsTests: XCTestCase {
     }
 
     func testProviderStatsMergeAtCompanyLevel() {
-        let merged = UsageProviderStat.mergedByCompany([
+        let rows = [
             UsageProviderStat(tool: .gemini, requests: 2, totalTokens: 100, costMicros: 10),
             UsageProviderStat(tool: .antigravity, requests: 3, totalTokens: 200, costMicros: 20),
             UsageProviderStat(tool: .grok, requests: 4, totalTokens: 400, costMicros: 40),
             UsageProviderStat(tool: .cursor, requests: 5, totalTokens: 500, costMicros: 50),
             UsageProviderStat(tool: .codex, requests: 1, totalTokens: 50, costMicros: 5)
-        ])
+        ]
+        let merged = UsageProviderStat.mergedByCompany(rows)
         XCTAssertEqual(merged.map(\.tool), [.grok, .gemini, .codex])
         XCTAssertEqual(merged[0].requests, 9)
         XCTAssertEqual(merged[0].totalTokens, 900)
         XCTAssertEqual(merged[1].requests, 5)
         XCTAssertEqual(merged[1].totalTokens, 300)
+        let summaries = UsageProviderStat.subProviderSummariesByCompany(rows)
+        XCTAssertEqual(summaries[.grok], "Grok + Cursor")
+        XCTAssertEqual(summaries[.gemini], "Gemini Web + AntiGravity")
+        XCTAssertEqual(
+            UsageProviderStat.subProviderSummariesByCompany([
+                UsageProviderStat(tool: .cursor, requests: 1, totalTokens: 10, costMicros: 1)
+            ])[.grok],
+            "Cursor"
+        )
     }
 
     func testEarliestUsageDateUsesActualRowsAndToolFilter() async throws {

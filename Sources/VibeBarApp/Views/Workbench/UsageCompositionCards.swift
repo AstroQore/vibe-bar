@@ -7,6 +7,7 @@ struct UsageCompositionCards: View {
     let density: Theme.Density
     let summary: UsageSummaryMetrics
     let providers: [UsageProviderStat]
+    let subProviderSummaries: [ToolType: String]
 
     private var providerRows: [UsageProviderStat] {
         providers
@@ -65,8 +66,8 @@ struct UsageCompositionCards: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.tool.vendorName)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))
-                    if row.tool.coreProviderMembers.count > 1 {
-                        Text(row.tool.companySubProviderSummary)
+                    if let summary = subProviderSummaries[row.tool], !summary.isEmpty {
+                        Text(summary)
                             .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                             .foregroundStyle(.secondary)
                     }
