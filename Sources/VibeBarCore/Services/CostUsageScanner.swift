@@ -91,7 +91,8 @@ public enum CostUsageScanner {
                 continue
             }
 
-            let raw = parseCodexFile(file: file)
+            let (raw, originator) = parseCodexFile(file: file)
+            let harness = codexHarness(originator: originator)
             // Delta from one snapshot to the next is what was used in that interval.
             var previous: CodexEvent.Totals? = nil
             var parsed: [CostUsageScanCache.ParsedEvent] = []
@@ -123,7 +124,8 @@ public enum CostUsageScanner {
                     model: event.model,
                     input: max(0, delta.input - delta.cached),
                     output: delta.output,
-                    cache: delta.cached
+                    cache: delta.cached,
+                    harness: harness
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
                 parsed.append(parsedEvent)
@@ -154,16 +156,38 @@ public enum CostUsageScanner {
         let totals: Totals
     }
 
-    private static func parseCodexFile(file: URL) -> [CodexEvent] {
+    /// The ChatGPT desktop app writes its agentic sessions into the same
+    /// `~/.codex/sessions` tree as the CLI and stamps them
+    /// `session_meta.payload.originator = "Codex Desktop"`. Every other
+    /// originator we have seen (`codex_cli_rs`, `codex-tui`, `codex_exec`) is
+    /// the CLI, so anything unrecognised — including a missing header — stays
+    /// on the CLI harness rather than being invented as desktop usage.
+    static let codexDesktopOriginator = "Codex Desktop"
+
+    static func codexHarness(originator: String?) -> Harness {
+        originator == codexDesktopOriginator ? .chatgptWork : .codex
+    }
+
+    /// Returns the file's token events plus its `session_meta` originator.
+    /// Both come out of the *same* single pass — the header is the first
+    /// line, so reading it costs nothing and keeps the scan O(n).
+    private static func parseCodexFile(file: URL) -> ([CodexEvent], String?) {
         var events: [CodexEvent] = []
+        var originator: String?
         var currentModel = "gpt-5"
         var runningTotals = CodexEvent.Totals(input: 0, cached: 0, output: 0)
         let didRead = forEachJSONLLine(in: file) { lineData in
             guard !lineData.isEmpty else { return }
             guard lineData.contains(asciiSequence: "token_count") ||
-                    lineData.contains(asciiSequence: "model") else { return }
+                    lineData.contains(asciiSequence: "model") ||
+                    lineData.contains(asciiSequence: "originator") else { return }
             guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
 
+            if originator == nil,
+               obj["type"] as? String == "session_meta",
+               let payload = obj["payload"] as? [String: Any] {
+                originator = normalizedNonEmpty(payload["originator"] as? String)
+            }
             if let payload = obj["payload"] as? [String: Any] {
                 if let m = payload["model"] as? String { currentModel = m }
                 if let info = payload["info"] as? [String: Any],
@@ -199,7 +223,7 @@ public enum CostUsageScanner {
             let timestamp = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
             events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals))
         }
-        return didRead ? events : []
+        return didRead ? (events, originator) : ([], originator)
     }
 
     // MARK: - Claude
@@ -212,7 +236,10 @@ public enum CostUsageScanner {
     ) async -> CostSnapshot {
         let projectsRoot = URL(fileURLWithPath: homeDirectory).appendingPathComponent(".claude/projects")
         let altRoot = URL(fileURLWithPath: homeDirectory).appendingPathComponent(".config/claude/projects")
-        let files = collectJSONL(under: projectsRoot) + collectJSONL(under: altRoot)
+        let coworkRoot = claudeCoworkRoot(homeDirectory: homeDirectory)
+        let files = collectJSONL(under: projectsRoot)
+            + collectJSONL(under: altRoot)
+            + collectClaudeCoworkJSONL(under: coworkRoot)
         var aggregator = CostAggregator(tool: .claude, now: now)
         var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .claude, retentionDays: retentionDays)
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
@@ -232,6 +259,7 @@ public enum CostUsageScanner {
 
             let sourceKey = CostUsageScanCache.entryKey(for: file.path)
             let pathRole = claudePathRole(file: file)
+            let harness = claudeHarness(file: file)
             var keyedRows: [String: CostUsageScanCache.ParsedEvent] = [:]
             var unkeyedRows: [CostUsageScanCache.ParsedEvent] = []
             let didRead = forEachJSONLLine(in: file) { lineData in
@@ -276,7 +304,8 @@ public enum CostUsageScanner {
                     isSidechain: anyBool(obj["isSidechain"]),
                     pathRole: pathRole,
                     sourceKey: sourceKey,
-                    serviceTier: serviceTier
+                    serviceTier: serviceTier,
+                    harness: harness
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
                 if let messageId, let requestId {
@@ -439,7 +468,8 @@ public enum CostUsageScanner {
                 output: output,
                 cache: cached,
                 sessionId: sessionId,
-                messageId: promptId
+                messageId: promptId,
+                harness: .geminiCLI
             )
             guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
             let optionalCost = CostUsagePricing.geminiCostUSD(
@@ -503,7 +533,8 @@ public enum CostUsageScanner {
                 output: outputBilled,
                 cache: cached,
                 sessionId: sessionIdFromHeader,
-                messageId: raw["id"] as? String
+                messageId: raw["id"] as? String,
+                harness: .geminiCLI
             )
             guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
             let optionalCost = CostUsagePricing.geminiCostUSD(
@@ -698,7 +729,8 @@ public enum CostUsageScanner {
                     input: inputTokens,
                     output: outputTokens,
                     cache: 0,
-                    sessionId: snapshot.sessionId
+                    sessionId: snapshot.sessionId,
+                    harness: .grokBuild
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
                 parsed.append(parsedEvent)
@@ -1199,7 +1231,8 @@ public enum CostUsageScanner {
                 cache: cacheReadThisTurn,
                 cacheCreation: nil,
                 sessionId: sessionId,
-                messageId: turn.requestId
+                messageId: turn.requestId,
+                harness: .antigravity
             )
             guard isRetained(event.date, cutoff: cutoff) else { continue }
             parsed.append(event)
@@ -1230,7 +1263,8 @@ public enum CostUsageScanner {
                 cache: 0,
                 cacheCreation: nil,
                 sessionId: sessionId,
-                messageId: turn.responseId
+                messageId: turn.responseId,
+                harness: .antigravity
             )
             guard isRetained(event.date, cutoff: cutoff) else { continue }
             parsed.append(event)
@@ -1270,7 +1304,8 @@ public enum CostUsageScanner {
                 cache: event.cache,
                 cacheCreation: event.cacheCreation,
                 sessionId: event.sessionId,
-                messageId: event.messageId
+                messageId: event.messageId,
+                harness: event.harness ?? .antigravity
             )
             let optionalCost = costUSDIfPriceable(tool: .antigravity, event: resolved)
             if collecting {
@@ -1438,6 +1473,64 @@ public enum CostUsageScanner {
 
     private static func claudePathRole(file: URL) -> CostUsageScanCache.PathRole {
         file.path.contains("/subagents/") ? .subagent : .parent
+    }
+
+    // MARK: - Claude Cowork
+    //
+    // Cowork keeps one throwaway workspace per local agent run under
+    // `~/Library/Application Support/Claude/local-agent-mode-sessions/
+    //  <space>/<x>/local_<uuid>/.claude/projects/<encoded-cwd>/<uuid>.jsonl`.
+    // The transcripts are byte-for-byte the same assistant/usage JSONL that
+    // Claude Code writes, so the parser is shared; only the harness stamp
+    // differs. This is a **read-only cost/usage source**: Cowork is
+    // deliberately absent from the Sessions manager, its adapters, and
+    // `SessionDeleter`, because those own a delete path and nothing may
+    // remove files from inside Claude.app's own container.
+
+    /// Claude.app's own directory name for a Cowork workspace tree. Used both
+    /// to find the root and to recognise a file that came from it.
+    static let claudeCoworkDirectoryName = "local-agent-mode-sessions"
+
+    static func claudeCoworkRoot(homeDirectory: String) -> URL {
+        URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent("Library/Application Support/Claude")
+            .appendingPathComponent(claudeCoworkDirectoryName)
+    }
+
+    /// Recognised by path *component* rather than by a prefix match against
+    /// the root: `FileManager.enumerator` hands back symlink-resolved paths
+    /// (`/private/var/...` for a `/var/...` root), so a prefix test silently
+    /// mislabels every Cowork transcript. Claude Code's own project
+    /// directories are percent-ish encoded with dashes, so a project whose cwd
+    /// merely mentions this name cannot collide with a real path component.
+    static func claudeHarness(file: URL) -> Harness {
+        file.pathComponents.contains(claudeCoworkDirectoryName) ? .claudeCowork : .claudeCode
+    }
+
+    /// Transcript files under the Cowork root.
+    ///
+    /// Unlike the Claude Code roots, the enumeration starts *above* a hidden
+    /// `.claude` directory, so `.skipsHiddenFiles` would find nothing. Hidden
+    /// entries are therefore walked, and the `/.claude/projects/` requirement
+    /// is what keeps the walk to transcripts rather than to whatever else the
+    /// app stores in that workspace. Symlinks are refused for the same reason
+    /// `collectJSONL` refuses them: they could resolve anywhere.
+    private static func collectClaudeCoworkJSONL(under root: URL) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: []
+        ) else { return [] }
+        var out: [URL] = []
+        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+            guard url.path.contains("/.claude/projects/") else { continue }
+            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+            if values?.isSymbolicLink == true { continue }
+            if values?.isRegularFile == false { continue }
+            out.append(url)
+        }
+        return out
     }
 
     private static func deduplicateClaudeEvents(

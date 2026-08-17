@@ -1,0 +1,124 @@
+import Foundation
+
+/// Canonical display names for every local harness Vibe Bar scans.
+///
+/// Vibe Bar identifies a provider along **two orthogonal axes**, and a
+/// surface must never mix them inside one list:
+///
+/// - **Quota axis** — L1 company → L2 SubProvider → L3 quota / model group.
+///   Lives in `ProviderHierarchyCatalog` + `ToolType.quotaSubProviderName`.
+/// - **Usage / cost axis** — the *harness*: the CLI or app that actually
+///   produced the sessions we scanned. That is neither the company nor the
+///   quota SubProvider. Two harnesses can draw on one SubProvider's quota
+///   (Claude Code and Claude Cowork both spend Claude's), and one company can
+///   own several harnesses that bill against different quotas.
+///
+/// | Harness        | L1 company | Local evidence                                              |
+/// | -------------- | ---------- | ----------------------------------------------------------- |
+/// | Codex          | OpenAI     | `~/.codex/sessions` rollouts, `originator` ≠ "Codex Desktop" |
+/// | ChatGPT Work   | OpenAI     | same tree, `originator` == "Codex Desktop"                   |
+/// | Claude Code    | Anthropic  | `~/.claude/projects`, `~/.config/claude/projects`            |
+/// | Claude Cowork  | Anthropic  | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/.claude/projects` |
+/// | Gemini CLI     | Google AI  | `~/.gemini/tmp/*/chats/session-*.jsonl` (+ telemetry log)    |
+/// | AntiGravity    | Google AI  | `~/.gemini/antigravity{,-cli,-ide}/conversations`            |
+/// | Grok Build     | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                          |
+/// | Cursor         | SpaceXAI   | Cursor dashboard remote events (no local counters)           |
+///
+/// Renaming a harness is one edit here, not a hunt across the UI.
+public enum HarnessCatalog {
+    public static let codex = "Codex"
+    public static let chatgptWork = "ChatGPT Work"
+    public static let claudeCode = "Claude Code"
+    public static let claudeCowork = "Claude Cowork"
+    /// Deliberately *not* "Gemini Web": Gemini Web is a quota SubProvider
+    /// with no local usage at all, and this deprecated CLI still owns real
+    /// historical token counts under `~/.gemini/tmp`.
+    public static let geminiCLI = "Gemini CLI"
+    public static let antigravity = "AntiGravity"
+    public static let grokBuild = "Grok Build"
+    public static let cursor = "Cursor"
+}
+
+/// The local harness a usage event came from — the unit every usage and cost
+/// surface groups by. See `HarnessCatalog` for the full table and for why
+/// this is a different axis from the quota hierarchy.
+///
+/// Declaration order is the display order: harnesses grouped by their L1
+/// company, in the same company order the quota surfaces use.
+public enum Harness: String, CaseIterable, Codable, Sendable, Hashable {
+    case codex
+    case chatgptWork
+    case claudeCode
+    case claudeCowork
+    case geminiCLI
+    case antigravity
+    case grokBuild
+    case cursor
+
+    public var displayName: String {
+        switch self {
+        case .codex:        HarnessCatalog.codex
+        case .chatgptWork:  HarnessCatalog.chatgptWork
+        case .claudeCode:   HarnessCatalog.claudeCode
+        case .claudeCowork: HarnessCatalog.claudeCowork
+        case .geminiCLI:    HarnessCatalog.geminiCLI
+        case .antigravity:  HarnessCatalog.antigravity
+        case .grokBuild:    HarnessCatalog.grokBuild
+        case .cursor:       HarnessCatalog.cursor
+        }
+    }
+
+    /// The `ToolType` whose quota this harness consumes. Usage rows are still
+    /// stored under this tool, so the harness dimension refines the existing
+    /// per-tool ledger rather than replacing it.
+    public var quotaTool: ToolType {
+        switch self {
+        case .codex, .chatgptWork:      .codex
+        case .claudeCode, .claudeCowork: .claude
+        case .geminiCLI:                .gemini
+        case .antigravity:              .antigravity
+        case .grokBuild:                .grok
+        case .cursor:                   .cursor
+        }
+    }
+
+    /// L1 company representative — the same one the quota chips filter by, so
+    /// a harness row and a company chip always agree on the brand.
+    public var company: ToolType {
+        quotaTool.coreProviderRepresentative ?? quotaTool
+    }
+
+    /// L1 company name, e.g. "OpenAI" / "Google AI".
+    public var companyName: String {
+        company.vendorName
+    }
+
+    /// The harness a tool's events belong to when nothing more specific was
+    /// stamped — used to backfill ledger rows written before the harness
+    /// dimension existed, and as a defensive fallback at ingest.
+    ///
+    /// Codex maps to `.codex` rather than `.chatgptWork` because the plain CLI
+    /// is the overwhelming majority; a Codex Desktop rollout is recognised
+    /// from its `originator` at scan time and overrides this.
+    public static func defaultHarness(for tool: ToolType) -> Harness? {
+        switch tool {
+        case .codex:       .codex
+        case .claude:      .claudeCode
+        case .gemini:      .geminiCLI
+        case .antigravity: .antigravity
+        case .grok:        .grokBuild
+        case .cursor:      .cursor
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
+             .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine,
+             .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro,
+             .ollama, .openRouter, .warp:
+            nil
+        }
+    }
+
+    /// Every harness owned by one L1 company, in declaration order.
+    public static func harnesses(forCompany company: ToolType) -> [Harness] {
+        let representative = company.coreProviderRepresentative ?? company
+        return allCases.filter { $0.company == representative }
+    }
+}

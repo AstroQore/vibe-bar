@@ -38,7 +38,7 @@ struct UsageStatsPage: View {
         .task { model.activate() }
     }
 
-    /// The chart and provider mix are intentionally peers: the first answers
+    /// The chart and harness mix are intentionally peers: the first answers
     /// "when", the second answers "who". `ViewThatFits` keeps that reading
     /// order when the Workbench narrows instead of compressing either surface
     /// into an unreadable card.
@@ -50,8 +50,7 @@ struct UsageStatsPage: View {
                 UsageCompositionCards(
                     density: density,
                     summary: model.summary,
-                    providers: model.companyProviderStats,
-                    subProviderSummaries: model.companySubProviderSummaries
+                    harnesses: model.harnessStats
                 )
                 .frame(minWidth: 300, maxWidth: .infinity)
             }
@@ -60,8 +59,7 @@ struct UsageStatsPage: View {
                 UsageCompositionCards(
                     density: density,
                     summary: model.summary,
-                    providers: model.companyProviderStats,
-                    subProviderSummaries: model.companySubProviderSummaries
+                    harnesses: model.harnessStats
                 )
             }
         }
