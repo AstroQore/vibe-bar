@@ -211,7 +211,11 @@ public struct UsageTrendSeries: Sendable, Equatable {
 public struct UsageRequestRow: Sendable, Equatable, Identifiable {
     public let id: Int64
     public let date: Date
+    /// Quota-axis tool the request is billed against.
     public let tool: ToolType
+    /// Usage-axis producer: the CLI or app the request came from. Request
+    /// surfaces name this one, because a request log is usage, not quota.
+    public let harness: Harness
     public let model: String
     public let freshInput: Int64
     public let output: Int64
@@ -226,6 +230,7 @@ public struct UsageRequestRow: Sendable, Equatable, Identifiable {
         id: Int64,
         date: Date,
         tool: ToolType,
+        harness: Harness,
         model: String,
         freshInput: Int64,
         output: Int64,
@@ -239,6 +244,7 @@ public struct UsageRequestRow: Sendable, Equatable, Identifiable {
         self.id = id
         self.date = date
         self.tool = tool
+        self.harness = harness
         self.model = model
         self.freshInput = freshInput
         self.output = output

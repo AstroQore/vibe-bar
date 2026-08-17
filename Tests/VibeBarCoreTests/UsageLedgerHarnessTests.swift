@@ -285,6 +285,191 @@ final class UsageLedgerHarnessTests: XCTestCase {
         XCTAssertEqual(requests, 1, "corrected, not duplicated")
     }
 
+    func testRequestRowsCarryTheProducingHarness() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("HarnessRequestRows")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            path: "/Users/example/.codex/sessions/desktop.jsonl",
+            events: [
+                UsageLedgerFixtures.priced(
+                    UsageLedgerFixtures.event(
+                        date: now, input: 4_000, output: 400, harness: .chatgptWork
+                    )
+                )
+            ]
+        ))
+        // Nothing stamped: the row still has to resolve through the tool's
+        // default, the same value the migration would have backfilled.
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .claude,
+            path: "/Users/example/.claude/projects/demo/session.jsonl",
+            events: [
+                UsageLedgerFixtures.priced(
+                    UsageLedgerFixtures.event(
+                        date: now.addingTimeInterval(-60),
+                        model: "claude-sonnet-4-5", input: 1_000, output: 100
+                    )
+                )
+            ]
+        ))
+
+        let page = try await ledger.requestPage(
+            UsageLedgerFixtures.wideFilter(around: now), page: 0, pageSize: 10
+        )
+        XCTAssertEqual(page.rows.map(\.harness), [.chatgptWork, .claudeCode])
+        // The quota-side tool is unchanged: the two axes coexist on one row.
+        XCTAssertEqual(page.rows.map(\.tool), [.codex, .claude])
+    }
+
+    /// Two fully unpriced rollups can share a day, tool and model and differ
+    /// only by harness. Repricing has to match the whole primary key, or the
+    /// first row's cost is written onto both and both are marked priced.
+    func testRepricingPricesEachHarnessRollupSeparately() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("HarnessRepricing")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        defer { PricingResolver.testOverride = nil }
+
+        let base = PricingHardcoded.fallback
+        var codexModels = base.providers.codex.models
+        codexModels["linear-test"] = .init(input: 2e-6, output: 6e-6, cacheRead: nil)
+        PricingResolver.testOverride = PricingDataSet(
+            schemaVersion: base.schemaVersion,
+            updatedAt: "test-harness-repricing",
+            calculationVersion: base.calculationVersion,
+            providers: .init(
+                codex: .init(displayName: "OpenAI", models: codexModels),
+                claude: base.providers.claude,
+                gemini: base.providers.gemini,
+                grok: base.providers.grok,
+                antigravity: base.providers.antigravity
+            )
+        )
+
+        let old = now.addingTimeInterval(-60 * 86_400)
+        let seeds: [(path: String, harness: Harness, input: Int, output: Int)] = [
+            ("/Users/example/.codex/sessions/cli.jsonl", .codex, 1_000_000, 100_000),
+            ("/Users/example/.codex/sessions/desktop.jsonl", .chatgptWork, 2_000_000, 200_000)
+        ]
+        for seed in seeds {
+            try await ledger.ingest(UsageLedgerFixtures.batch(
+                path: seed.path,
+                events: [
+                    UsageLedgerFixtures.priced(
+                        UsageLedgerFixtures.event(
+                            date: old, model: "linear-test",
+                            input: seed.input, output: seed.output, harness: seed.harness
+                        ),
+                        costUSD: nil
+                    )
+                ]
+            ))
+        }
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 90)
+
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+        let before = try await ledger.summary(filter)
+        XCTAssertEqual(before.requests, 2)
+        XCTAssertEqual(before.unpricedRequests, 2)
+
+        let prepared = try await ledger.prepareForPricingRevision("pricing-harness")
+        XCTAssertTrue(prepared)
+
+        let stats = try await ledger.harnessStats(filter)
+        XCTAssertEqual(stats.map(\.harness), [.chatgptWork, .codex])
+        XCTAssertEqual(stats[0].costMicros, 5_200_000)
+        XCTAssertEqual(stats[1].costMicros, 2_600_000)
+        let after = try await ledger.summary(filter)
+        XCTAssertEqual(after.unpricedRequests, 0)
+        XCTAssertEqual(after.costMicros, 7_800_000)
+    }
+
+    // MARK: - Hourly floor
+
+    func testFloorCheckToolsDerivesToolsFromTheHarnessFilter() {
+        XCTAssertNil(UsageEventLedger.floorCheckTools(tools: nil, harnesses: nil))
+        XCTAssertEqual(
+            UsageEventLedger.floorCheckTools(tools: nil, harnesses: [.claudeCode, .claudeCowork]),
+            [.claude]
+        )
+        XCTAssertEqual(
+            UsageEventLedger.floorCheckTools(tools: nil, harnesses: [.codex, .grokBuild]),
+            [.codex, .grok]
+        )
+        XCTAssertEqual(
+            UsageEventLedger.floorCheckTools(tools: [.codex, .claude], harnesses: [.claudeCode]),
+            [.claude]
+        )
+        XCTAssertEqual(
+            UsageEventLedger.floorCheckTools(tools: [.grok], harnesses: nil),
+            [.grok]
+        )
+        // Disjoint axes match no row at all, so no floor can veto anything.
+        XCTAssertEqual(
+            UsageEventLedger.floorCheckTools(tools: [.codex], harnesses: [.claudeCode]),
+            []
+        )
+    }
+
+    /// A harness-only selection must be checked against *its* tool's floor.
+    /// Codex has folded history here and Claude Code does not, so the Hourly
+    /// picker has to stay available once the filter excludes Codex.
+    func testHarnessFilterKeepsHourlyDespiteAnotherToolsDetailFloor() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("HarnessHourlyFloor")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            path: "/Users/example/.codex/sessions/cli.jsonl",
+            events: [
+                UsageLedgerFixtures.priced(
+                    UsageLedgerFixtures.event(date: now.addingTimeInterval(-5 * 86_400))
+                )
+            ]
+        ))
+        // Only Codex is ingested at this point, so only Codex gains a floor.
+        try await ledger.rollupAndPrune(now: now, detailDays: 1, retentionDays: 0)
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .claude,
+            path: "/Users/example/.claude/projects/demo/session.jsonl",
+            events: [
+                UsageLedgerFixtures.priced(
+                    UsageLedgerFixtures.event(
+                        date: now.addingTimeInterval(-2 * 3_600), model: "claude-sonnet-4-5"
+                    )
+                )
+            ]
+        ))
+        let codexFloor = try await ledger.detailFloorDay(for: .codex)
+        XCTAssertNotNil(codexFloor)
+        let claudeFloor = try await ledger.detailFloorDay(for: .claude)
+        XCTAssertNil(claudeFloor)
+
+        var filter = UsageQueryFilter(
+            range: DateInterval(
+                start: now.addingTimeInterval(-3 * 86_400),
+                end: now.addingTimeInterval(3_600)
+            )
+        )
+        let unfiltered = try await ledger.supportsHourlyTrend(filter)
+        XCTAssertFalse(unfiltered)
+
+        filter.harnesses = [.claudeCode]
+        let claudeCodeOnly = try await ledger.supportsHourlyTrend(filter)
+        XCTAssertTrue(claudeCodeOnly)
+        let bucket = try await ledger.trend(filter, bucket: .hour).bucket
+        XCTAssertEqual(bucket, .hour)
+
+        // Disagreeing axes match nothing, so no floor is left to veto.
+        filter.tools = [.codex]
+        let disjoint = try await ledger.supportsHourlyTrend(filter)
+        XCTAssertTrue(disjoint)
+
+        // Codex alone is still vetoed by its own floor.
+        filter.harnesses = nil
+        let codexOnly = try await ledger.supportsHourlyTrend(filter)
+        XCTAssertFalse(codexOnly)
+    }
+
     func testRollupKeepsHarnessesApartBelowTheDetailFloor() async throws {
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("HarnessRollup")
         defer { try? FileManager.default.removeItem(at: directory) }
