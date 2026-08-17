@@ -185,7 +185,7 @@ struct UsageBreakdownTables: View {
             VStack(spacing: 0) {
                 tableHeader {
                     headerCell("Time", width: 138)
-                    headerCell("SubProvider", width: 138)
+                    headerCell("Harness", width: 138)
                     headerCell("Model", width: 220)
                     headerCell("Input", width: 114, alignment: .trailing)
                     headerCell("Output", width: 88, alignment: .trailing)
@@ -196,7 +196,7 @@ struct UsageBreakdownTables: View {
                     ForEach(model.requestRows) { row in
                         PorcelainUsageRow(accessibilityLabel: requestAccessibilityLabel(row)) {
                             valueCell(timestamp(row.date), width: 138, secondary: true, tooltip: timestamp(row.date))
-                            subProviderCell(row.tool, width: 138)
+                            harnessCell(row.harness, width: 138)
                             valueCell(
                                 UsageModelNaming.canonicalDisplayName(row.model),
                                 width: 220,
@@ -319,15 +319,18 @@ struct UsageBreakdownTables: View {
             .help(tooltip ?? value)
     }
 
-    private func subProviderCell(_ tool: ToolType, width: CGFloat) -> some View {
+    /// A request row is usage, so it names the harness that produced it, not
+    /// the quota SubProvider it bills against (AGENTS.md § 7.1). The badge
+    /// still follows the L1 company, matching the Harness Mix card.
+    private func harnessCell(_ harness: Harness, width: CGFloat) -> some View {
         HStack(spacing: 7) {
-            ToolBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
-            Text(tool.productName)
+            ToolBrandBadge(tool: harness.company, iconSize: 13, containerSize: 16)
+            Text(harness.displayName)
                 .font(bodyFont)
                 .lineLimit(1)
         }
         .frame(width: width, alignment: .leading)
-        .help("\(tool.vendorName) · \(tool.productName)")
+        .help("\(harness.companyName) · \(harness.displayName)")
     }
 
     private func companyCell(_ tool: ToolType, width: CGFloat) -> some View {
@@ -479,7 +482,7 @@ struct UsageBreakdownTables: View {
     }
 
     private func requestAccessibilityLabel(_ row: UsageRequestRow) -> String {
-        "\(timestamp(row.date)), \(row.tool.productName), \(UsageModelNaming.canonicalDisplayName(row.model)), \(UsageFormatting.formatTokens(row.totalTokens)), \(row.costMicros.map { UsageFormatting.formatMicroUSD($0) } ?? "unpriced")"
+        "\(timestamp(row.date)), \(row.harness.displayName), \(UsageModelNaming.canonicalDisplayName(row.model)), \(UsageFormatting.formatTokens(row.totalTokens)), \(row.costMicros.map { UsageFormatting.formatMicroUSD($0) } ?? "unpriced")"
     }
 
     private func providerAccessibilityLabel(_ stat: UsageProviderStat) -> String {
