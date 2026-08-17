@@ -76,15 +76,23 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(merged[0].totalTokens, 900)
         XCTAssertEqual(merged[1].requests, 5)
         XCTAssertEqual(merged[1].totalTokens, 300)
-        let summaries = UsageProviderStat.subProviderSummariesByCompany(rows)
-        XCTAssertEqual(summaries[.grok], "Grok + Cursor")
-        XCTAssertEqual(summaries[.gemini], "Gemini Web + AntiGravity")
-        XCTAssertEqual(
-            UsageProviderStat.subProviderSummariesByCompany([
-                UsageProviderStat(tool: .cursor, requests: 1, totalTokens: 10, costMicros: 1)
-            ])[.grok],
-            "Cursor"
-        )
+    }
+
+    func testHarnessStatsMergeDuplicateGroups() {
+        // A migrated ledger can hold a backfilled group and a freshly stamped
+        // one for the same harness; the merge is what puts them back together.
+        let rows = [
+            UsageHarnessStat(harness: .codex, requests: 2, totalTokens: 100, costMicros: 10),
+            UsageHarnessStat(harness: .codex, requests: 3, totalTokens: 150, costMicros: 15),
+            UsageHarnessStat(harness: .chatgptWork, requests: 4, totalTokens: 400, costMicros: 40),
+            UsageHarnessStat(harness: .claudeCowork, requests: 1, totalTokens: 400, costMicros: 4)
+        ]
+        let merged = UsageHarnessStat.mergedByHarness(rows)
+        XCTAssertEqual(merged.map(\.harness), [.chatgptWork, .claudeCowork, .codex])
+        XCTAssertEqual(merged[0].requests, 4)
+        XCTAssertEqual(merged[2].requests, 5)
+        XCTAssertEqual(merged[2].totalTokens, 250)
+        XCTAssertEqual(merged[2].costMicros, 25)
     }
 
     func testEarliestUsageDateUsesActualRowsAndToolFilter() async throws {

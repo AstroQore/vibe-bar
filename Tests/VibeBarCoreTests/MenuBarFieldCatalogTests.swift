@@ -64,6 +64,37 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         )
     }
 
+    /// Grok Bot rides Cursor's adapter but is its own L2 SubProvider, so it
+    /// gets its own catalog slice — and therefore its own section header —
+    /// without changing a single field id.
+    func testGrokBotIsItsOwnCatalogSliceWithUnchangedFieldIds() {
+        XCTAssertEqual(
+            MenuBarFieldCatalog.cursorFields.map(\.id),
+            ["cursor.models", "cursor.other_models"]
+        )
+        XCTAssertEqual(MenuBarFieldCatalog.grokBotFields.map(\.id), ["cursor.grok_bot_weekly"])
+        XCTAssertEqual(MenuBarFieldCatalog.grokBotFields.map(\.tool), [.cursor])
+        XCTAssertEqual(
+            ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly"),
+            "Grok Bot"
+        )
+
+        // Regrouping, not migration: every id still resolves, the set is
+        // unchanged, and nothing needs a `fieldIdMigrations` entry.
+        let all = MenuBarFieldCatalog.allFields.map(\.id)
+        XCTAssertEqual(Set(all).count, all.count, "field ids must stay unique")
+        XCTAssertTrue(all.contains("cursor.grok_bot_weekly"))
+        XCTAssertEqual(
+            MenuBarFieldCatalog.migratedFieldIds(["cursor.grok_bot_weekly"]),
+            ["cursor.grok_bot_weekly"]
+        )
+        let sliced = MenuBarFieldCatalog.codexFields + MenuBarFieldCatalog.claudeFields
+            + MenuBarFieldCatalog.geminiFields + MenuBarFieldCatalog.antigravityFields
+            + MenuBarFieldCatalog.grokFields + MenuBarFieldCatalog.cursorFields
+            + MenuBarFieldCatalog.grokBotFields
+        XCTAssertEqual(sliced.map(\.id), all)
+    }
+
     func testGeminiCLIModelIdsMigrateToWebBuckets() {
         // Old Gemini CLI fields no longer have catalog entries; all of
         // them must migrate to the Web parser's `gemini.five_hour`

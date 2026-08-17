@@ -1,20 +1,23 @@
 import SwiftUI
 import VibeBarCore
 
-/// Provider share for the selected ledger range. Token composition deliberately
-/// lives in the hero card so this remains one focused companion to the trend.
+/// Share of the selected range by **harness** — the CLI or app the usage came
+/// from, not the company that bills it and not the quota SubProvider. Codex
+/// and ChatGPT Work are one company and two harnesses; Claude Code and Claude
+/// Cowork spend the same quota from two different places. Token composition
+/// deliberately lives in the hero card so this remains one focused companion
+/// to the trend.
 struct UsageCompositionCards: View {
     let density: Theme.Density
     let summary: UsageSummaryMetrics
-    let providers: [UsageProviderStat]
-    let subProviderSummaries: [ToolType: String]
+    let harnesses: [UsageHarnessStat]
 
-    private var providerRows: [UsageProviderStat] {
-        providers
+    private var harnessRows: [UsageHarnessStat] {
+        harnesses
             .filter { $0.totalTokens > 0 }
             .sorted { lhs, rhs in
                 if lhs.totalTokens != rhs.totalTokens { return lhs.totalTokens > rhs.totalTokens }
-                return lhs.tool.rawValue < rhs.tool.rawValue
+                return lhs.harness.displayName < rhs.harness.displayName
             }
             .prefix(6)
             .map { $0 }
@@ -23,7 +26,7 @@ struct UsageCompositionCards: View {
     var body: some View {
         CardShell(density: density, spacing: 11) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("PROVIDER MIX")
+                Text("HARNESS MIX")
                     .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .tracking(0.7)
@@ -33,19 +36,19 @@ struct UsageCompositionCards: View {
                     .foregroundStyle(.tertiary)
             }
 
-            if providerRows.isEmpty {
-                Text("No provider traffic in this range")
+            if harnessRows.isEmpty {
+                Text("No harness traffic in this range")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 110, alignment: .center)
             } else {
-                ForEach(providerRows) { row in
-                    providerRow(row)
+                ForEach(harnessRows) { row in
+                    harnessRow(row)
                 }
                 Spacer(minLength: 0)
                 Divider().opacity(0.45)
                 HStack {
-                    Text("\(providerRows.count) compan\(providerRows.count == 1 ? "y" : "ies") active in range")
+                    Text("\(harnessRows.count) harness\(harnessRows.count == 1 ? "" : "es") active in range")
                     Spacer(minLength: 8)
                     Text("\(summary.requests.formatted(.number.grouping(.automatic))) requests")
                 }
@@ -56,21 +59,22 @@ struct UsageCompositionCards: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func providerRow(_ row: UsageProviderStat) -> some View {
+    private func harnessRow(_ row: UsageHarnessStat) -> some View {
         let total = max(1, summary.realTotalTokens)
         let fraction = min(1, max(0, Double(row.totalTokens) / Double(total)))
-        let tint = Theme.providerAccent(for: row.tool)
+        // Badge and tint follow the L1 company, so two harnesses of one brand
+        // still read as that brand while staying separate rows.
+        let company = row.harness.company
+        let tint = Theme.providerAccent(for: company)
         return VStack(spacing: 5) {
             HStack(spacing: 7) {
-                ToolBrandBadge(tool: row.tool, iconSize: 12, containerSize: 19)
+                ToolBrandBadge(tool: company, iconSize: 12, containerSize: 19)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(row.tool.vendorName)
+                    Text(row.harness.displayName)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))
-                    if let summary = subProviderSummaries[row.tool], !summary.isEmpty {
-                        Text(summary)
-                            .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(row.harness.companyName)
+                        .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
+                        .foregroundStyle(.secondary)
                 }
                 .lineLimit(1)
                 Spacer(minLength: 6)

@@ -79,6 +79,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     private static let schemaVersionKey = "schema_version"
     private static let cursorToolMigrationKey = "cursor_tool_v1"
     private static let cursorRollupMigrationKey = "cursor_rollup_tool_v1"
+    static let harnessMigrationKey = "harness_v1"
     private static let pricingRevisionKey = "pricing_revision"
     private static let floorKeyPrefix = "detail_floor_day:"
     /// Guard rail on zero-filled trend enumeration: ~135 years of daily
@@ -167,6 +168,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 ts INTEGER NOT NULL,
                 day TEXT NOT NULL,
                 model TEXT NOT NULL,
+                harness TEXT,
                 fresh_input INTEGER NOT NULL DEFAULT 0,
                 output INTEGER NOT NULL DEFAULT 0,
                 cache_read INTEGER NOT NULL DEFAULT 0,
@@ -188,6 +190,7 @@ public actor UsageEventLedger: CostUsageEventSink {
             CREATE TABLE IF NOT EXISTS usage_daily_rollups (
                 day TEXT NOT NULL,
                 tool TEXT NOT NULL,
+                harness TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL,
                 requests INTEGER NOT NULL DEFAULT 0,
                 fresh_input INTEGER NOT NULL DEFAULT 0,
@@ -196,7 +199,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 cache_creation INTEGER NOT NULL DEFAULT 0,
                 cost_micros INTEGER NOT NULL DEFAULT 0,
                 unpriced INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY(day, tool, model)
+                PRIMARY KEY(day, tool, harness, model)
             );
             CREATE TABLE IF NOT EXISTS ingested_files (
                 tool TEXT NOT NULL,
@@ -207,6 +210,11 @@ public actor UsageEventLedger: CostUsageEventSink {
             );
             """
         guard sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK else {
+            throw UsageLedgerError.open
+        }
+        // Harness first: the Cursor migration below writes `usage_daily_rollups`
+        // through its primary key, and that key only gains `harness` here.
+        guard Self.migrateHarnessColumns(database) else {
             throw UsageLedgerError.open
         }
         guard Self.migrateCursorToolRows(
@@ -229,6 +237,139 @@ public actor UsageEventLedger: CostUsageEventSink {
         sqlite3_bind_text(statement, 1, schemaVersionKey, -1, destructor)
         sqlite3_bind_text(statement, 2, String(schemaVersion), -1, destructor)
         guard sqlite3_step(statement) == SQLITE_DONE else { throw UsageLedgerError.open }
+    }
+
+    /// SQL `CASE` that maps a `tool` column to its default harness, generated
+    /// from `Harness.defaultHarness(for:)` so the mapping lives in exactly one
+    /// place. Tools with no harness (the misc providers, which never reach
+    /// this ledger) fall through to `''` — the rollup key's non-null sentinel.
+    private static func defaultHarnessCaseSQL(column: String = "tool") -> String {
+        let branches = ToolType.allCases.compactMap { tool -> String? in
+            guard let harness = Harness.defaultHarness(for: tool) else { return nil }
+            return "WHEN '\(tool.rawValue)' THEN '\(harness.rawValue)'"
+        }
+        return "CASE \(column) \(branches.joined(separator: " ")) ELSE '' END"
+    }
+
+    private static func hasColumn(_ database: OpaquePointer, table: String, column: String) -> Bool? {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database, "PRAGMA table_info(\(table))", -1, &statement, nil
+        ) == SQLITE_OK, let statement else { return nil }
+        defer { sqlite3_finalize(statement) }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let raw = sqlite3_column_text(statement, 1) else { continue }
+            if String(cString: raw) == column { return true }
+        }
+        return false
+    }
+
+    /// Add the `harness` dimension to an existing ledger without discarding a
+    /// single retained row.
+    ///
+    /// `usage_events` only needs a nullable column plus a backfill.
+    /// `usage_daily_rollups` needs its primary key widened to
+    /// `(day, tool, harness, model)`, which SQLite cannot do with
+    /// `ALTER TABLE`, so that one is rebuilt and copied across.
+    ///
+    /// Historical rows are backfilled with each tool's default harness. That
+    /// is honest but not omniscient: ChatGPT Desktop rollouts already folded
+    /// into `usage_daily_rollups` stay attributed to "Codex" forever, because
+    /// their per-request evidence is gone. Detail rows *are* corrected — the
+    /// migration drops Codex's ingest fingerprints so the next scan re-reads
+    /// every rollout's `originator` and re-stamps them.
+    @discardableResult
+    static func migrateHarnessColumns(_ database: OpaquePointer) -> Bool {
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        var marker: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database, "SELECT 1 FROM ledger_meta WHERE key = ?", -1, &marker, nil
+        ) == SQLITE_OK, let marker else { return false }
+        sqlite3_bind_text(marker, 1, harnessMigrationKey, -1, transient)
+        let alreadyMigrated = sqlite3_step(marker) == SQLITE_ROW
+        sqlite3_finalize(marker)
+        if alreadyMigrated { return true }
+
+        guard let eventsHasHarness = hasColumn(database, table: "usage_events", column: "harness"),
+              let rollupsHasHarness = hasColumn(
+                database, table: "usage_daily_rollups", column: "harness"
+              )
+        else { return false }
+
+        guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+            return false
+        }
+        func rollback() -> Bool {
+            sqlite3_exec(database, "ROLLBACK", nil, nil, nil)
+            return false
+        }
+
+        if !eventsHasHarness {
+            let sql = """
+                ALTER TABLE usage_events ADD COLUMN harness TEXT;
+                UPDATE usage_events
+                   SET harness = \(defaultHarnessCaseSQL())
+                 WHERE harness IS NULL;
+                UPDATE usage_events SET harness = NULL WHERE harness = '';
+                """
+            guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { return rollback() }
+        }
+
+        if !rollupsHasHarness {
+            let sql = """
+                CREATE TABLE usage_daily_rollups_harness_v1 (
+                    day TEXT NOT NULL,
+                    tool TEXT NOT NULL,
+                    harness TEXT NOT NULL DEFAULT '',
+                    model TEXT NOT NULL,
+                    requests INTEGER NOT NULL DEFAULT 0,
+                    fresh_input INTEGER NOT NULL DEFAULT 0,
+                    output INTEGER NOT NULL DEFAULT 0,
+                    cache_read INTEGER NOT NULL DEFAULT 0,
+                    cache_creation INTEGER NOT NULL DEFAULT 0,
+                    cost_micros INTEGER NOT NULL DEFAULT 0,
+                    unpriced INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(day, tool, harness, model)
+                );
+                INSERT INTO usage_daily_rollups_harness_v1(
+                       day, tool, harness, model, requests, fresh_input, output,
+                       cache_read, cache_creation, cost_micros, unpriced
+                   )
+                   SELECT day, tool, \(defaultHarnessCaseSQL()), model, requests,
+                          fresh_input, output, cache_read, cache_creation,
+                          cost_micros, unpriced
+                     FROM usage_daily_rollups;
+                DROP TABLE usage_daily_rollups;
+                ALTER TABLE usage_daily_rollups_harness_v1 RENAME TO usage_daily_rollups;
+                """
+            guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { return rollback() }
+        }
+
+        // Codex is the only tool whose harness cannot be inferred from the
+        // tool alone, so its files have to be walked again. Dropping the
+        // ingest fingerprints is what lets the next scan re-emit them; the
+        // rows themselves survive and are updated in place on `dedupe_key`.
+        if !eventsHasHarness {
+            guard sqlite3_exec(
+                database,
+                "DELETE FROM ingested_files WHERE tool = '\(ToolType.codex.rawValue)'",
+                nil, nil, nil
+            ) == SQLITE_OK else { return rollback() }
+        }
+
+        var insertMarker: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "INSERT INTO ledger_meta(key, value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            -1, &insertMarker, nil
+        ) == SQLITE_OK, let insertMarker else { return rollback() }
+        sqlite3_bind_text(insertMarker, 1, harnessMigrationKey, -1, transient)
+        let markerResult = sqlite3_step(insertMarker)
+        sqlite3_finalize(insertMarker)
+        guard markerResult == SQLITE_DONE,
+              sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
+        else { return rollback() }
+        return true
     }
 
     /// v3 originally stored Cursor dashboard detail under `.grok`. Preserve
@@ -289,7 +430,11 @@ public actor UsageEventLedger: CostUsageEventSink {
             var update: OpaquePointer?
             guard sqlite3_prepare_v2(
                 database,
-                "UPDATE usage_events SET tool = 'cursor', dedupe_key = ? WHERE id = ?",
+                """
+                UPDATE usage_events
+                   SET tool = 'cursor', harness = '\(Harness.cursor.rawValue)', dedupe_key = ?
+                 WHERE id = ?
+                """,
                 -1,
                 &update,
                 nil
@@ -405,14 +550,14 @@ public actor UsageEventLedger: CostUsageEventSink {
             """
         let sql = """
             INSERT INTO usage_daily_rollups(
-                   day, tool, model, requests, fresh_input, output,
+                   day, tool, harness, model, requests, fresh_input, output,
                    cache_read, cache_creation, cost_micros, unpriced
                )
-               SELECT day, 'cursor', model, requests, fresh_input, output,
-                      cache_read, cache_creation, cost_micros, unpriced
+               SELECT day, 'cursor', '\(Harness.cursor.rawValue)', model, requests,
+                      fresh_input, output, cache_read, cache_creation, cost_micros, unpriced
                  FROM usage_daily_rollups
                 WHERE \(predicate)
-               ON CONFLICT(day, tool, model) DO UPDATE SET
+               ON CONFLICT(day, tool, harness, model) DO UPDATE SET
                    requests = usage_daily_rollups.requests + excluded.requests,
                    fresh_input = usage_daily_rollups.fresh_input + excluded.fresh_input,
                    output = usage_daily_rollups.output + excluded.output,
@@ -490,11 +635,16 @@ public actor UsageEventLedger: CostUsageEventSink {
                     cacheRead: cacheRead,
                     cacheCreation: cacheCreation
                 )
+                // A scanner that could not name the harness still gets the
+                // tool's default, so the column is uniform from the first
+                // ingest and queries never have to special-case NULL.
+                let harness = event.harness ?? Harness.defaultHarness(for: batch.tool)
                 let bindings: [Binding] = [
                     .text(batch.tool.rawValue),
                     .integer(timestamp),
                     .text(day),
                     .text(event.model),
+                    harness.map { Binding.text($0.rawValue) } ?? .null,
                     .integer(freshInput),
                     .integer(output),
                     .integer(cacheRead),
@@ -552,17 +702,27 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// ledger and the aggregator agree on which copy survives. Expressed as
     /// a `DO UPDATE ... WHERE`: when the incoming row loses, SQLite leaves
     /// the stored row untouched and the insert is silently dropped.
+    ///
+    /// One extra clause exists for the harness backfill. Rows keyed by the
+    /// file digest (`f:` prefix — Codex / Gemini / Grok / AntiGravity, where
+    /// the same request never appears in two files) accept an update whenever
+    /// the incoming harness differs, so a re-scan that finally reads a Codex
+    /// rollout's `originator` can move it from "Codex" to "ChatGPT Work". The
+    /// Claude tuple key is deliberately excluded: there, two rows sharing a
+    /// key really are duplicate copies of one request, and the preference
+    /// order below must stay the only thing that decides between them.
     private static let insertEventSQL = """
         INSERT INTO usage_events(
-               tool, ts, day, model, fresh_input, output, cache_read, cache_creation,
+               tool, ts, day, model, harness, fresh_input, output, cache_read, cache_creation,
                cost_micros, session_id, message_id, request_id, service_tier,
                is_sidechain, path_role, source_key, dedupe_key
-           ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(dedupe_key) DO UPDATE SET
                tool = excluded.tool,
                ts = excluded.ts,
                day = excluded.day,
                model = excluded.model,
+               harness = excluded.harness,
                fresh_input = excluded.fresh_input,
                output = excluded.output,
                cache_read = excluded.cache_read,
@@ -580,6 +740,10 @@ public actor UsageEventLedger: CostUsageEventSink {
                    excluded.tool = 'cursor'
                    AND excluded.source_key LIKE 'cursor-event-v1-%'
                    AND excluded.source_key = usage_events.source_key
+               )
+            OR (
+                   excluded.dedupe_key LIKE 'f:%'
+                   AND excluded.harness IS NOT usage_events.harness
                )
             OR (CASE WHEN COALESCE(excluded.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
              < (CASE WHEN COALESCE(usage_events.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
@@ -728,17 +892,17 @@ public actor UsageEventLedger: CostUsageEventSink {
 
     private static let rollupSQL = """
         INSERT INTO usage_daily_rollups(
-               day, tool, model, requests, fresh_input, output,
+               day, tool, harness, model, requests, fresh_input, output,
                cache_read, cache_creation, cost_micros, unpriced
            )
-           SELECT day, tool, model, COUNT(*),
+           SELECT day, tool, COALESCE(harness, \(defaultHarnessCaseSQL())), model, COUNT(*),
                   COALESCE(SUM(fresh_input), 0), COALESCE(SUM(output), 0),
                   COALESCE(SUM(cache_read), 0), COALESCE(SUM(cache_creation), 0),
                   COALESCE(SUM(cost_micros), 0),
                   SUM(CASE WHEN cost_micros IS NULL THEN 1 ELSE 0 END)
              FROM usage_events WHERE day < ?
-            GROUP BY day, tool, model
-           ON CONFLICT(day, tool, model) DO UPDATE SET
+            GROUP BY day, tool, COALESCE(harness, \(defaultHarnessCaseSQL())), model
+           ON CONFLICT(day, tool, harness, model) DO UPDATE SET
                requests = usage_daily_rollups.requests + excluded.requests,
                fresh_input = usage_daily_rollups.fresh_input + excluded.fresh_input,
                output = usage_daily_rollups.output + excluded.output,
@@ -1316,6 +1480,33 @@ public actor UsageEventLedger: CostUsageEventSink {
             }
     }
 
+    /// Per-harness totals, detail ∪ rollups.
+    ///
+    /// Grouped by `(tool, harness)` so a row whose harness predates the
+    /// dimension still resolves through `Harness.defaultHarness(for:)`. The
+    /// caller folds the groups together with
+    /// `UsageHarnessStat.mergedByHarness`, which is where the display order
+    /// is decided.
+    public func harnessStats(_ filter: UsageQueryFilter) throws -> [UsageHarnessStat] {
+        var rows: [UsageHarnessStat] = []
+        try forEachGroup(filter, columns: ["tool", "harness"]) { keys, requests, tokens, cost in
+            guard keys.count == 2,
+                  let rawTool = keys[0],
+                  let tool = ToolType(rawValue: rawTool)
+            else { return }
+            let resolved = keys[1].flatMap(Harness.init(rawValue:))
+                ?? Harness.defaultHarness(for: tool)
+            guard let resolved else { return }
+            rows.append(
+                UsageHarnessStat(
+                    harness: resolved, requests: requests,
+                    totalTokens: tokens, costMicros: cost
+                )
+            )
+        }
+        return UsageHarnessStat.mergedByHarness(rows)
+    }
+
     /// Per-model totals, detail ∪ rollups, heaviest first.
     public func modelStats(_ filter: UsageQueryFilter) throws -> [UsageModelStat] {
         var totals: [String: (requests: Int, tokens: Int64, cost: Int64)] = [:]
@@ -1347,13 +1538,21 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Every model name the ledger knows about, detail ∪ rollups, sorted.
     /// Intended to populate a filter picker, so it deliberately ignores the
     /// date range.
-    public func availableModels(tools: [ToolType]? = nil) throws -> [String] {
+    public func availableModels(
+        tools: [ToolType]? = nil,
+        harnesses: [Harness]? = nil
+    ) throws -> [String] {
         if let tools, tools.isEmpty { return [] }
+        if let harnesses, harnesses.isEmpty { return [] }
         var clauses = ["TRIM(model) <> ''"]
         var bindings: [Binding] = []
         if let tools {
             clauses.append("tool IN (\(placeholders(tools.count)))")
-            bindings = tools.map { .text($0.rawValue) }
+            bindings.append(contentsOf: tools.map { .text($0.rawValue) })
+        }
+        if let harnesses {
+            clauses.append("harness IN (\(placeholders(harnesses.count)))")
+            bindings.append(contentsOf: harnesses.map { .text($0.rawValue) })
         }
         let clause = " WHERE " + clauses.joined(separator: " AND ")
         let statement = try prepare(
@@ -1376,14 +1575,23 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Earliest retained fact for an optional SubProvider filter. The All
     /// preset uses this real boundary instead of manufacturing decades of
     /// empty trend buckets from a distant sentinel date.
-    public func earliestUsageDate(tools: [ToolType]? = nil) throws -> Date? {
+    public func earliestUsageDate(
+        tools: [ToolType]? = nil,
+        harnesses: [Harness]? = nil
+    ) throws -> Date? {
         if let tools, tools.isEmpty { return nil }
-        var clause = ""
+        if let harnesses, harnesses.isEmpty { return nil }
+        var clauses: [String] = []
         var bindings: [Binding] = []
         if let tools {
-            clause = " WHERE tool IN (\(placeholders(tools.count)))"
-            bindings = tools.map { .text($0.rawValue) }
+            clauses.append("tool IN (\(placeholders(tools.count)))")
+            bindings.append(contentsOf: tools.map { .text($0.rawValue) })
         }
+        if let harnesses {
+            clauses.append("harness IN (\(placeholders(harnesses.count)))")
+            bindings.append(contentsOf: harnesses.map { .text($0.rawValue) })
+        }
+        let clause = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
 
         let detail = try prepare("SELECT MIN(ts) FROM usage_events\(clause)")
         defer { sqlite3_finalize(detail) }
@@ -1418,45 +1626,59 @@ public actor UsageEventLedger: CostUsageEventSink {
         column: String,
         _ body: (String, Int, Int64, Int64) -> Void
     ) throws {
+        try forEachGroup(filter, columns: [column]) { keys, requests, tokens, cost in
+            guard let key = keys.first ?? nil else { return }
+            body(key, requests, tokens, cost)
+        }
+    }
+
+    /// Grouped totals over detail ∪ rollups. `columns` is the GROUP BY, and
+    /// each key arrives as `String?` because `harness` is nullable on detail
+    /// rows written before that dimension existed.
+    private func forEachGroup(
+        _ filter: UsageQueryFilter,
+        columns: [String],
+        _ body: ([String?], Int, Int64, Int64) -> Void
+    ) throws {
+        let keyList = columns.joined(separator: ", ")
+        let offset = Int32(columns.count)
+        func emit(_ statement: OpaquePointer) {
+            let keys = (0..<offset).map { columnText(statement, $0) }
+            body(
+                keys,
+                Int(sqlite3_column_int64(statement, offset)),
+                sqlite3_column_int64(statement, offset + 1),
+                sqlite3_column_int64(statement, offset + 2)
+            )
+        }
+
         let detail = detailPredicate(filter)
         let detailStatement = try prepare(
             """
-            SELECT \(column), COUNT(*),
+            SELECT \(keyList), COUNT(*),
                    COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
                    COALESCE(SUM(cost_micros), 0)
-              FROM usage_events WHERE \(detail.sql) GROUP BY \(column)
+              FROM usage_events WHERE \(detail.sql) GROUP BY \(keyList)
             """
         )
         defer { sqlite3_finalize(detailStatement) }
         bindAll(detail.bindings, to: detailStatement)
         while sqlite3_step(detailStatement) == SQLITE_ROW {
-            guard let key = columnText(detailStatement, 0) else { continue }
-            body(
-                key,
-                Int(sqlite3_column_int64(detailStatement, 1)),
-                sqlite3_column_int64(detailStatement, 2),
-                sqlite3_column_int64(detailStatement, 3)
-            )
+            emit(detailStatement)
         }
         guard let rollup = rollupPredicate(filter) else { return }
         let statement = try prepare(
             """
-            SELECT \(column), COALESCE(SUM(requests), 0),
+            SELECT \(keyList), COALESCE(SUM(requests), 0),
                    COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
                    COALESCE(SUM(cost_micros), 0)
-              FROM usage_daily_rollups WHERE \(rollup.sql) GROUP BY \(column)
+              FROM usage_daily_rollups WHERE \(rollup.sql) GROUP BY \(keyList)
             """
         )
         defer { sqlite3_finalize(statement) }
         bindAll(rollup.bindings, to: statement)
         while sqlite3_step(statement) == SQLITE_ROW {
-            guard let key = columnText(statement, 0) else { continue }
-            body(
-                key,
-                Int(sqlite3_column_int64(statement, 1)),
-                sqlite3_column_int64(statement, 2),
-                sqlite3_column_int64(statement, 3)
-            )
+            emit(statement)
         }
     }
 
@@ -1486,7 +1708,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     }
 
     private func detailPredicate(_ filter: UsageQueryFilter) -> Predicate {
-        if filter.tools?.isEmpty == true || filter.models?.isEmpty == true {
+        if filter.tools?.isEmpty == true
+            || filter.harnesses?.isEmpty == true
+            || filter.models?.isEmpty == true {
             return Predicate(sql: "0", bindings: [])
         }
         var clauses = ["ts >= ?", "ts < ?"]
@@ -1497,6 +1721,10 @@ public actor UsageEventLedger: CostUsageEventSink {
         if let tools = filter.tools {
             clauses.append("tool IN (\(placeholders(tools.count)))")
             bindings.append(contentsOf: tools.map { .text($0.rawValue) })
+        }
+        if let harnesses = filter.harnesses {
+            clauses.append("harness IN (\(placeholders(harnesses.count)))")
+            bindings.append(contentsOf: harnesses.map { .text($0.rawValue) })
         }
         if let models = filter.models {
             clauses.append("model IN (\(placeholders(models.count)))")
@@ -1510,7 +1738,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// does not see that day's rollup — which is correct, because a partial
     /// day cannot be reconstructed from a daily total.
     private func rollupPredicate(_ filter: UsageQueryFilter) -> Predicate? {
-        if filter.tools?.isEmpty == true || filter.models?.isEmpty == true { return nil }
+        if filter.tools?.isEmpty == true
+            || filter.harnesses?.isEmpty == true
+            || filter.models?.isEmpty == true { return nil }
         let startOfStart = calendar.startOfDay(for: filter.range.start)
         let firstFull = startOfStart == filter.range.start
             ? startOfStart
@@ -1525,6 +1755,10 @@ public actor UsageEventLedger: CostUsageEventSink {
         if let tools = filter.tools {
             clauses.append("tool IN (\(placeholders(tools.count)))")
             bindings.append(contentsOf: tools.map { .text($0.rawValue) })
+        }
+        if let harnesses = filter.harnesses {
+            clauses.append("harness IN (\(placeholders(harnesses.count)))")
+            bindings.append(contentsOf: harnesses.map { .text($0.rawValue) })
         }
         if let models = filter.models {
             clauses.append("model IN (\(placeholders(models.count)))")

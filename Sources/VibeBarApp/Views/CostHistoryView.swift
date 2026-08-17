@@ -703,10 +703,11 @@ struct CostHistoryView: View {
 
     private func inspectedModelRow(_ model: CostSnapshot.ModelBreakdown) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(model.modelName)
+            Text(UsageModelNaming.canonicalDisplayName(model.modelName))
                 .font(.system(size: 9, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .help(model.modelName)
             Spacer(minLength: 4)
             Text(formatCost(model.costUSD))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
@@ -719,10 +720,11 @@ struct CostHistoryView: View {
 
     private func modelRow(_ model: CostSnapshot.ModelBreakdown) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(model.modelName)
+            Text(UsageModelNaming.canonicalDisplayName(model.modelName))
                 .font(.system(size: 9, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .help(model.modelName)
             Spacer(minLength: 8)
             Text(formatCost(model.costUSD))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
@@ -1211,8 +1213,13 @@ struct CostHistoryView: View {
             guard let start = bucketStart(day.date), wanted.contains(start) else { continue }
             var bucketModels = models[start] ?? [:]
             for model in snapshot.topModels(for: day.date, limit: .max) {
-                let current = bucketModels[model.modelName] ?? (0, 0)
-                bucketModels[model.modelName] = (
+                // Canonical key: the snapshot can carry two raw ids that
+                // display as the same model (a learned AntiGravity label and
+                // its router alias), and two identical-looking rows in one
+                // tooltip is a bug, not a breakdown.
+                let key = UsageModelNaming.canonicalDisplayName(model.modelName)
+                let current = bucketModels[key] ?? (0, 0)
+                bucketModels[key] = (
                     current.cost + model.costUSD,
                     current.tokens + model.totalTokens
                 )
