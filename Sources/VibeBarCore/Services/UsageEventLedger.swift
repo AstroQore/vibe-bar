@@ -110,8 +110,13 @@ public actor UsageEventLedger: CostUsageEventSink {
             throw UsageLedgerError.open
         }
         sqlite3_busy_timeout(handle, 5_000)
+        let legacyCursorEvidence = url == VibeBarLocalStore.usageEventsLedgerURL
+            && FileManager.default.fileExists(
+                atPath: VibeBarLocalStore.costSnapshotDirectory
+                    .appendingPathComponent("cursor.json").path
+            )
         do {
-            try Self.initialize(handle)
+            try Self.initialize(handle, legacyCursorEvidence: legacyCursorEvidence)
             database = handle
         } catch {
             sqlite3_close_v2(handle)
@@ -125,7 +130,10 @@ public actor UsageEventLedger: CostUsageEventSink {
 
     // MARK: - Schema
 
-    private static func initialize(_ database: OpaquePointer) throws {
+    private static func initialize(
+        _ database: OpaquePointer,
+        legacyCursorEvidence: Bool
+    ) throws {
         let preamble = """
             PRAGMA journal_mode=WAL;
             PRAGMA synchronous=NORMAL;
@@ -200,7 +208,10 @@ public actor UsageEventLedger: CostUsageEventSink {
         guard sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK else {
             throw UsageLedgerError.open
         }
-        guard Self.migrateCursorToolRows(database) else {
+        guard Self.migrateCursorToolRows(
+            database,
+            legacyCursorEvidence: legacyCursorEvidence
+        ) else {
             throw UsageLedgerError.open
         }
         var statement: OpaquePointer?
@@ -225,7 +236,10 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// forward. The copied floor prevents the first `.cursor` batch from
     /// backfilling days already folded into inseparable legacy Grok rollups;
     /// the rewritten dedupe key makes newer rows update rather than duplicate.
-    static func migrateCursorToolRows(_ database: OpaquePointer) -> Bool {
+    static func migrateCursorToolRows(
+        _ database: OpaquePointer,
+        legacyCursorEvidence: Bool = false
+    ) -> Bool {
         var marker: OpaquePointer?
         guard sqlite3_prepare_v2(
             database,
@@ -285,6 +299,9 @@ public actor UsageEventLedger: CostUsageEventSink {
                 guard sqlite3_step(update) == SQLITE_DONE else { return rollback() }
             }
 
+        }
+
+        if !rows.isEmpty || legacyCursorEvidence {
             let floorSQL = """
                 INSERT INTO ledger_meta(key, value)
                      SELECT '\(floorKeyPrefix)cursor', value

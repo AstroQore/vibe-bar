@@ -178,6 +178,7 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         )
 
         XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+        XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
         for _ in 0..<20 {
             if service.cachedQuota(for: account.id)?.buckets.first?.resetAt == refreshed.resetAt {
                 break
