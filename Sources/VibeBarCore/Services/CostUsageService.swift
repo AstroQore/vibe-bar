@@ -237,6 +237,10 @@ public final class CostUsageService: ObservableObject {
                     )
                 case .completed(.unavailable):
                     directRemoteResults.removeValue(forKey: .cursor)
+                    // Match the in-memory decision on the next launch: once
+                    // every Cursor session is gone, an old hydrated dashboard
+                    // snapshot must not reappear from cursor.json.
+                    await CostSnapshotCache.shared.remove(tool: .cursor)
                 case .completed(.failed), .timedOut:
                     // A transient dashboard failure keeps the last in-memory
                     // success, just as a timed-out local scan keeps its prior

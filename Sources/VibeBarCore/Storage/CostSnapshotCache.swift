@@ -108,4 +108,8 @@ public actor CostSnapshotCache {
             try? FileManager.default.removeItem(at: fileURL(for: tool))
         }
     }
+
+    public func remove(tool: ToolType) {
+        try? FileManager.default.removeItem(at: fileURL(for: tool))
+    }
 }
