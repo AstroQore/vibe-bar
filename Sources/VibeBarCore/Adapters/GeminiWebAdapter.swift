@@ -56,8 +56,12 @@ struct GeminiWebQuotaFetcher: Sendable {
             )
         } catch {
             // A learned recipe can become stale. Retry the last broadly known
-            // contract once before asking WebKit to calibrate a new one.
-            guard learned != .fallback else { throw error }
+            // contract once before asking WebKit to calibrate a new one — but
+            // only when it is genuinely a different request. A learned recipe
+            // that re-derived the fallback's own rpcID and argument differs
+            // from `.fallback` on `learnedAt` alone, and replaying it buys a
+            // second identical round trip and the same failure.
+            guard !learned.matchesContract(of: .fallback) else { throw error }
             return try await fetch(
                 recipe: .fallback,
                 cookieHeader: trimmed,

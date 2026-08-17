@@ -20,6 +20,17 @@ public struct GeminiWebUsageRecipe: Codable, Equatable, Sendable {
         self.learnedAt = learnedAt
     }
 
+    /// Whether two recipes replay the same request.
+    ///
+    /// `learnedAt` is provenance, not part of the wire contract, but the
+    /// synthesized `==` counts it — so a calibration that merely re-learned
+    /// the fallback rpcID compared as *different* from `.fallback`, and the
+    /// "retry the known contract" path replayed a byte-identical request for
+    /// a second round trip and a second failure. Compare the contract.
+    public func matchesContract(of other: GeminiWebUsageRecipe) -> Bool {
+        rpcID == other.rpcID && argument == other.argument
+    }
+
     public var isValid: Bool {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
         return !rpcID.isEmpty
