@@ -12,7 +12,6 @@ struct UsageBreakdownTables: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @State private var tab: UsageStatsViewModel.Breakdown = .periods
 
     private var sortedProviders: [UsageProviderStat] {
         model.companyProviderStats.sorted { $0.costMicros > $1.costMicros }
@@ -39,12 +38,11 @@ struct UsageBreakdownTables: View {
         HStack(spacing: 10) {
             HStack(spacing: 2) {
                 ForEach(UsageStatsViewModel.Breakdown.allCases) { value in
-                    let selected = tab == value
+                    let selected = model.activeBreakdown == value
                     Button {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
-                            tab = value
+                            model.setActiveBreakdown(value)
                         }
-                        model.setActiveBreakdown(value)
                     } label: {
                         Text(value.title)
                             .font(.system(size: 10.5, weight: .semibold))
@@ -97,7 +95,7 @@ struct UsageBreakdownTables: View {
     }
 
     private var countSummary: String {
-        switch tab {
+        switch model.activeBreakdown {
         case .periods:
             return "\(populatedPeriods.count) active \(periodUnit)"
                 + (populatedPeriods.count == 1 ? "" : "s")
@@ -118,7 +116,7 @@ struct UsageBreakdownTables: View {
 
     @ViewBuilder
     private var content: some View {
-        switch tab {
+        switch model.activeBreakdown {
         case .periods:
             if populatedPeriods.isEmpty {
                 empty("No active periods in this range")
