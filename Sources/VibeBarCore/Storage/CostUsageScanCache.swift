@@ -189,7 +189,13 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// their cached RPC result on this one bump and re-fetch the next time
     /// the language server is reachable; ledger rows already ingested from
     /// them are untouched.
-    public static let currentSchemaVersion = 5
+    /// v6 re-parses again after the Codex originator rule was corrected
+    /// (`Codex Desktop` is Codex; only `codex_work_desktop` is ChatGPT
+    /// Work). Cached v5 events carry the wrong stamp, and the reusable-cache
+    /// path replays them without re-reading `originator`, so the ledger's
+    /// `harness_v2` fixup would be undone on the next scan unless the cache
+    /// is invalidated with it.
+    public static let currentSchemaVersion = 6
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)
