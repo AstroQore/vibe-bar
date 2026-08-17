@@ -168,9 +168,22 @@ public actor SessionIndexService {
     /// Nanosecond mtime + size. Second-resolution timestamps are too
     /// coarse: a session file appended to twice inside the same second is
     /// exactly the case an incremental index has to notice.
+    ///
+    /// A live SQLite store in WAL mode commits into `<file>-wal` and leaves
+    /// the main file untouched until a checkpoint, so the journal sibling is
+    /// folded in (latest mtime, summed size) or an active Cursor / AntiGravity
+    /// conversation would look unchanged for as long as it is being written.
     static func fingerprint(_ url: URL) -> (mtimeNanos: Int64, size: Int64)? {
+        guard var result = statFingerprint(url.path) else { return nil }
+        if let wal = statFingerprint(url.path + "-wal") {
+            result = (max(result.mtimeNanos, wal.mtimeNanos), result.size + wal.size)
+        }
+        return result
+    }
+
+    private static func statFingerprint(_ path: String) -> (mtimeNanos: Int64, size: Int64)? {
         var info = stat()
-        guard stat(url.path, &info) == 0 else { return nil }
+        guard stat(path, &info) == 0 else { return nil }
         let seconds = Int64(info.st_mtimespec.tv_sec)
         let nanos = Int64(info.st_mtimespec.tv_nsec)
         return (seconds * 1_000_000_000 + nanos, Int64(info.st_size))
