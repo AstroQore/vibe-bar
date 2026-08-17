@@ -40,7 +40,7 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
             do {
                 switch source {
                 case .localProbe:
-                    return try await fetchWithLocalProbe(for: account)
+                    return try await fetchWithLocalSources(for: account)
                 case .webCookie:
                     // Spike-gated: returns `.noCredential` until the
                     // Antigravity Cloud endpoint is reverse-engineered
@@ -68,29 +68,129 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         let client = AntigravityLanguageServerClient(timeout: timeout)
         let endpoints = try await client.connectedEndpoints()
         var lastError: Error?
+        var bestSnapshot: AntigravityResponseParser.Snapshot?
         for endpoint in endpoints {
             do {
                 let snapshot = try await Self.fetchLocalSnapshot { path, body in
                     try await client.postLocal(endpoint: endpoint, path: path, body: body)
                 }
-                // Keep the id → label map fresh so the cost scanner can
-                // resolve placeholder model ids to real names and rates.
-                AntigravityModelLabelStore.merge(snapshot.modelLabels)
-                return AccountQuota(
-                    accountId: account.id,
-                    tool: .antigravity,
-                    buckets: snapshot.buckets,
-                    plan: snapshot.planName,
-                    email: snapshot.email,
-                    queriedAt: now(),
-                    error: nil
-                )
+                if Self.hasCompleteSharedQuota(snapshot.buckets) {
+                    return accountQuota(snapshot: snapshot, account: account)
+                }
+                if bestSnapshot.map({ snapshot.buckets.count > $0.buckets.count }) ?? true {
+                    bestSnapshot = snapshot
+                }
             } catch {
                 lastError = error
                 continue
             }
         }
+        if let bestSnapshot {
+            return accountQuota(snapshot: bestSnapshot, account: account)
+        }
         throw mapError(lastError)
+    }
+
+    /// Prefer the desktop language server when it has all four shared lanes;
+    /// otherwise ask the installed `agy` CLI for its richer local summary.
+    /// A partial desktop result remains the fallback if `agy` is unavailable.
+    private func fetchWithLocalSources(for account: AccountIdentity) async throws -> AccountQuota {
+        var localQuota: AccountQuota?
+        var localError: Error?
+        do {
+            let quota = try await fetchWithLocalProbe(for: account)
+            if Self.hasCompleteSharedQuota(quota.buckets) { return quota }
+            localQuota = quota
+        } catch {
+            localError = error
+        }
+
+        do {
+            let snapshot = try await AntigravityCLIQuotaFetcher.fetch()
+            let cliQuota = accountQuota(snapshot: snapshot, account: account)
+            return localQuota.map {
+                Self.mergingPartialQuota(primary: $0, fallback: cliQuota)
+            } ?? cliQuota
+        } catch let cliError {
+            if let localQuota { return localQuota }
+            throw Self.preferredLocalSourceError(
+                desktopError: localError.map { mapError($0) },
+                cliError: mapError(cliError)
+            )
+        }
+    }
+
+    /// A missing desktop process is expected and must not hide an actionable
+    /// error from the installed CLI. A specific desktop failure still wins
+    /// because it came from the preferred source.
+    static func preferredLocalSourceError(
+        desktopError: QuotaError?,
+        cliError: QuotaError
+    ) -> QuotaError {
+        guard let desktopError, desktopError != .noCredential else {
+            return cliError
+        }
+        return desktopError
+    }
+
+    /// Keep every desktop lane and append only lanes recovered by `agy`.
+    /// Known shared buckets are normalized back to their canonical order.
+    static func mergingPartialQuota(primary: AccountQuota, fallback: AccountQuota) -> AccountQuota {
+        var buckets = primary.buckets
+        var seen = Set(buckets.map(\.id))
+        for bucket in fallback.buckets where seen.insert(bucket.id).inserted {
+            buckets.append(bucket)
+        }
+        let canonical = [
+            "gemini_five_hour",
+            "gemini_weekly",
+            "claude_gpt_five_hour",
+            "claude_gpt_weekly"
+        ]
+        var byID: [String: QuotaBucket] = [:]
+        for bucket in buckets where byID[bucket.id] == nil {
+            byID[bucket.id] = bucket
+        }
+        let canonicalBuckets = canonical.compactMap { byID[$0] }
+        let extras = buckets.filter { !canonical.contains($0.id) }
+        return AccountQuota(
+            accountId: primary.accountId,
+            tool: primary.tool,
+            buckets: canonicalBuckets + extras,
+            plan: primary.plan ?? fallback.plan,
+            email: primary.email ?? fallback.email,
+            queriedAt: max(primary.queriedAt, fallback.queriedAt),
+            error: nil,
+            providerExtras: primary.providerExtras ?? fallback.providerExtras,
+            resetCredits: primary.resetCredits ?? fallback.resetCredits
+        )
+    }
+
+    private func accountQuota(
+        snapshot: AntigravityResponseParser.Snapshot,
+        account: AccountIdentity
+    ) -> AccountQuota {
+        // Keep the id → label map fresh so the cost scanner can resolve
+        // placeholder model ids to real names and rates.
+        AntigravityModelLabelStore.merge(snapshot.modelLabels)
+        return AccountQuota(
+            accountId: account.id,
+            tool: .antigravity,
+            buckets: snapshot.buckets,
+            plan: snapshot.planName,
+            email: snapshot.email,
+            queriedAt: now(),
+            error: nil
+        )
+    }
+
+    static func hasCompleteSharedQuota(_ buckets: [QuotaBucket]) -> Bool {
+        Set(buckets.map(\.id)).isSuperset(of: [
+            "gemini_five_hour",
+            "gemini_weekly",
+            "claude_gpt_five_hour",
+            "claude_gpt_weekly"
+        ])
     }
 
     /// Fetch the grouped quota payload first, then attach identity on a
@@ -157,8 +257,14 @@ enum AntigravityResponseParser {
 
         func mergingIdentity(_ identity: Snapshot?) -> Snapshot {
             guard let identity else { return self }
+            var mergedBuckets = buckets
+            let existingIds = Set(mergedBuckets.map(\.id))
+            mergedBuckets.append(contentsOf: identity.buckets.filter { !existingIds.contains($0.id) })
+            let orderedBuckets = QuotaSummarySlot.displayOrder.compactMap { slot in
+                mergedBuckets.first { $0.id == slot.id }
+            }
             return Snapshot(
-                buckets: buckets,
+                buckets: orderedBuckets,
                 planName: identity.planName ?? planName,
                 email: identity.email ?? email,
                 modelLabels: identity.modelLabels.isEmpty ? modelLabels : identity.modelLabels
@@ -232,15 +338,49 @@ enum AntigravityResponseParser {
         }
 
         var modelLabels: [String: String] = [:]
+        var fallbackFiveHourBuckets: [QuotaSummaryGroupKind: QuotaBucket] = [:]
         for config in userStatus.cascadeModelConfigData?.clientModelConfigs ?? [] {
             if let rawModel = config.modelOrAlias?.model {
                 let trimmed = rawModel.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty { modelLabels[trimmed] = config.label }
             }
+            // RetrieveUserQuotaSummary can omit a group's 5-hour lane when
+            // its weekly pool is exhausted. GetUserStatus still exposes the
+            // same live 5-hour state on each model config, so retain one
+            // conservative group-level candidate as a fallback. Summary rows
+            // remain authoritative and win during `mergingIdentity`.
+            guard let quota = config.quotaInfo,
+                  let remainingFraction = quota.remainingFraction,
+                  remainingFraction.isFinite,
+                  let group = quotaGroupKind(
+                      groupName: config.label,
+                      bucketId: config.modelOrAlias?.model
+                  )
+            else { continue }
+            let slot = QuotaSummarySlot(group: group, cadence: .fiveHour)
+            let candidate = quotaBucket(
+                slot: slot,
+                remainingFraction: remainingFraction,
+                resetAt: quota.resetTime.flatMap(parseDate)
+            )
+            if let current = fallbackFiveHourBuckets[group],
+               current.usedPercent >= candidate.usedPercent {
+                continue
+            }
+            fallbackFiveHourBuckets[group] = candidate
         }
 
         let plan = userStatus.userTier?.preferredName ?? userStatus.planStatus?.planInfo?.preferredName
-        return Snapshot(buckets: [], planName: plan, email: userStatus.email, modelLabels: modelLabels)
+        let fallbackBuckets = QuotaSummarySlot.displayOrder.compactMap { slot -> QuotaBucket? in
+            guard slot.cadence == .fiveHour else { return nil }
+            return fallbackFiveHourBuckets[slot.group]
+        }
+        return Snapshot(
+            buckets: fallbackBuckets,
+            planName: plan,
+            email: userStatus.email,
+            modelLabels: modelLabels
+        )
     }
 
     static func parseDate(_ raw: String) -> Date? {
@@ -469,10 +609,16 @@ private struct AntigravityModelConfigData: Decodable {
 private struct AntigravityModelConfig: Decodable {
     let label: String
     let modelOrAlias: AntigravityModelAlias?
+    let quotaInfo: AntigravityQuotaInfo?
 }
 
 private struct AntigravityModelAlias: Decodable {
     let model: String
+}
+
+private struct AntigravityQuotaInfo: Decodable {
+    let remainingFraction: Double?
+    let resetTime: String?
 }
 
 /// AntiGravity's `code` field can be either a number or a string —

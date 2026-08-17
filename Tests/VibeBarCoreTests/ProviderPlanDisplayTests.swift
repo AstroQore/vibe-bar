@@ -86,7 +86,7 @@ final class ProviderPlanDisplayTests: XCTestCase {
     /// We keep the assertions for the primary tools only because
     /// they're the ones the user mentally maps to the hierarchy.
     func testPrimaryToolHierarchyLevelsAreDistinct() {
-        let tools: [ToolType] = [.codex, .claude, .gemini, .antigravity, .grok]
+        let tools: [ToolType] = [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         for tool in tools {
             // L1 vendor and L2 product must not be empty.
             XCTAssertFalse(tool.vendorName.isEmpty, "vendorName for \(tool)")
@@ -99,10 +99,29 @@ final class ProviderPlanDisplayTests: XCTestCase {
             XCTAssertEqual(tool.menuTitle, tool.productName,
                            "menuTitle should equal productName for primary tool \(tool)")
         }
-        // Both Gemini Web and AntiGravity roll up to the Gemini product
-        // under the Google vendor — the dual page relies on this.
+        // Related tools share their L1 owner but remain distinct L2
+        // SubProviders inside the combined owner card.
         XCTAssertEqual(ToolType.gemini.vendorName, ToolType.antigravity.vendorName)
-        XCTAssertEqual(ToolType.gemini.productName, ToolType.antigravity.productName)
+        XCTAssertNotEqual(ToolType.gemini.productName, ToolType.antigravity.productName)
+        XCTAssertNotEqual(ToolType.grok.productName, ToolType.cursor.productName)
+        XCTAssertEqual(ToolType.grok.vendorName, ToolType.cursor.vendorName)
+        XCTAssertEqual(ToolType.codex.vendorName, "OpenAI")
+        XCTAssertEqual(ToolType.claude.vendorName, "Anthropic")
+        XCTAssertEqual(ToolType.gemini.vendorName, "Google AI")
+        XCTAssertEqual(ToolType.grok.vendorName, "SpaceXAI")
+    }
+
+    func testQuotaSubProviderNamesUseOneCanonicalLevel() {
+        XCTAssertEqual(ToolType.codex.quotaSubProviderName(), "ChatGPT Agentic")
+        XCTAssertEqual(ToolType.claude.quotaSubProviderName(), "Claude")
+        XCTAssertEqual(ToolType.gemini.quotaSubProviderName(), "Gemini Web")
+        XCTAssertEqual(ToolType.antigravity.quotaSubProviderName(), "AntiGravity")
+        XCTAssertEqual(ToolType.grok.quotaSubProviderName(), "Grok")
+        XCTAssertEqual(ToolType.cursor.quotaSubProviderName(), "Cursor")
+        XCTAssertEqual(
+            ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly"),
+            "Grok Bot"
+        )
     }
 
     private func makeJWT(payload: [String: Any]) throws -> String {

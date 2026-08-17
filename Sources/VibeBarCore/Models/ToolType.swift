@@ -24,12 +24,12 @@ import Foundation
 /// Tools split into three tiers:
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
-/// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`) — dedicated
-///   popover sub-page (Google AI dual page for Gemini+Antigravity, single
-///   provider page for Grok) + SettingsView panel. These can still opt into
-///   token-cost scanning and status polling as provider data becomes known.
+/// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`, `.cursor`) —
+///   dedicated product surfaces. Gemini+AntiGravity share Google AI;
+///   Grok CLI + Cursor share SpaceXAI. These can still opt into token-cost
+///   scanning and status polling as provider data becomes known.
 /// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.copilot`, `.zai`,
-///   `.minimax`, `.kimi`, `.cursor`, `.mimo`, `.iflytek`,
+///   `.minimax`, `.kimi`, `.mimo`, `.iflytek`,
 ///   `.tencentHunyuan`, `.tencentTokenPlan`, `.volcengine`,
 ///   `.volcengineAgentPlan`, `.baiduQianfan`,
 ///   `.openCodeGo`, `.kilo`, `.kiro`, `.ollama`, `.openRouter`, `.warp`) —
@@ -39,7 +39,7 @@ import Foundation
 /// scanner and the status-page poller; `supportsDedicatedCard` is the
 /// predicate the dedicated-card UI uses; `isMiscPageProvider` is the
 /// filter the Misc tab and `defaultMiscProviderInstances` use. Note
-/// `isMisc` still reports true for the partial-primary pair so legacy
+/// `isMisc` still reports true for linked partial-primary tools so legacy
 /// `tool.isMisc` callers keep their original semantics — new misc-only
 /// code paths should switch to `isMiscPageProvider`.
 public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
@@ -85,11 +85,11 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// True for providers that get a dedicated popover card, a SettingsView
     /// panel, and multi-source credential fallback. Primary providers are a
     /// proper subset of this set; partial-primary providers (Gemini,
-    /// Antigravity, Grok) live here without dedicated menu-bar item kinds.
+    /// Antigravity, Grok, Cursor) live here without dedicated menu-bar item kinds.
     public var supportsDedicatedCard: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok: return true
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -103,7 +103,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// True for providers that show up on the Misc settings tab and in
     /// `defaultMiscProviderInstances`. Equivalent to "no dedicated card" —
     /// narrower than `isMisc`, which still reports true for the
-    /// partial-primary pair so legacy `tool.isMisc` callers keep working.
+    /// partial-primary tools so legacy `tool.isMisc` callers keep working.
     public var isMiscPageProvider: Bool {
         !supportsDedicatedCard
     }
@@ -128,6 +128,21 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         allCases.filter { $0.supportsTokenCost }
     }
 
+    /// Provider keys exposed by the Workbench usage ledger. Cursor dashboard
+    /// events are a source inside the SpaceXAI provider total, matching the combined
+    /// cost card instead of creating a second, contradictory provider total.
+    public static var usageStatsProviders: [ToolType] {
+        var seen: Set<ToolType> = []
+        return costAwareProviders.compactMap { tool in
+            let representative = tool.usageStatsRepresentative
+            return seen.insert(representative).inserted ? representative : nil
+        }
+    }
+
+    public var usageStatsRepresentative: ToolType {
+        self
+    }
+
     public static var statusPageProviders: [ToolType] {
         allCases.filter { $0.supportsStatusPage }
     }
@@ -149,12 +164,29 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
             return self
         case .antigravity:
             return .gemini
+        case .cursor:
+            return .grok
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
-             .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
+             .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
              .kilo, .kiro, .ollama, .openRouter, .warp:
             return nil
         }
+    }
+
+    /// L2 members represented by one L1 company filter / aggregate row.
+    public var coreProviderMembers: [ToolType] {
+        switch coreProviderRepresentative ?? self {
+        case .codex: [.codex]
+        case .claude: [.claude]
+        case .gemini: [.gemini, .antigravity]
+        case .grok: [.grok, .cursor]
+        default: [self]
+        }
+    }
+
+    public var companySubProviderSummary: String {
+        coreProviderMembers.map(\.productName).joined(separator: " + ")
     }
 
     public static var miscPageProviders: [ToolType] {
@@ -165,6 +197,11 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Overview popover's "Google AI" page.
     public static var googleAIPair: [ToolType] {
         [.gemini, .antigravity]
+    }
+
+    /// Grok plus Cursor, presented as one SpaceXAI provider family.
+    public static var grokFamily: [ToolType] {
+        [.grok, .cursor]
     }
 
     /// True for providers we can build a per-token cost panel for.
@@ -185,10 +222,13 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     ///   field. Grok exposes only a session-level total (no per-call
     ///   input / output split), so the USD figure is a blended
     ///   approximation against the published `grok-build` rate.
+    /// - `.cursor` reads account usage events from Cursor's dashboard API.
+    ///   Local Cursor transcripts do not expose stable token/cost counters;
+    ///   each dashboard event carries token counts and `totalCents`.
     public var supportsTokenCost: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok: return true
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -197,12 +237,13 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// `.antigravity` share the Google Apps Status dashboard feed
     /// (`https://www.google.com/appsstatus/dashboard/incidents.json`,
     /// filtered to product id `npdyhgECDJ6tB66MxXyo` = "Gemini").
-    /// Grok reads the xAI service-status HTML at `https://status.x.ai/`.
+    /// Grok reads the SpaceXAI service-status HTML at `https://status.x.ai/`;
+    /// Cursor reads its Statuspage v2 JSON feed.
     /// Codex / Claude use their own Atlassian / incident.io feeds.
     public var supportsStatusPage: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok: return true
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -212,10 +253,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     // Every UI surface that needs to identify a provider picks one of
     // three explicit levels from `hierarchy` and stays at that level:
     //
-    //   L1 vendor  → who bills you (OpenAI / Anthropic / Google / xAI)
-    //   L2 product → what users call the AI (ChatGPT / Claude / Gemini / Grok)
-    //   L3 tool    → the specific surface Vibe Bar tracks (Codex,
-    //                Claude Code, Gemini Web, AntiGravity, Grok Build)
+    //   L1 vendor      → enterprise / brand owner
+    //   L2 SubProvider → service group inside that owner
+    //   L3 tool        → the specific surface Vibe Bar tracks (Codex,
+    //                Claude Code, Gemini Web, AntiGravity, Grok CLI)
     //
     // The catalog in `ProviderHierarchyCatalog` is the single source of
     // truth — renaming a provider is one edit there, not a hunt across
@@ -224,7 +265,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     // Misc-provider tools (Alibaba / Tencent / Volcengine / etc.) get
     // best-effort hierarchy entries too so callers don't have to
     // special-case them, but the consistency contract only applies to
-    // the five primary tools (`[.codex, .claude] +
+    // the dedicated/linked tools (`[.codex, .claude] +
     // ToolType.partialPrimaryProviders`).
 
     /// The single hierarchy entry every L1/L2/L3 accessor reads from.
@@ -261,11 +302,19 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Level 1 — the vendor that issues the plan / bills the account.
     public var vendorName: String { hierarchy.vendor }
 
-    /// Level 2 — the product brand a user identifies with.
+    /// Level 2 — the SubProvider inside an enterprise / brand owner.
     public var productName: String { hierarchy.product }
 
     /// Level 3 — the specific surface Vibe Bar tracks usage for.
     public var toolName: String { hierarchy.tool }
+
+    /// L2 SubProvider name used inside an L1 enterprise/brand card. Quota and
+    /// model group names sit one level below this. Grok Bot shares Cursor's
+    /// adapter but is intentionally promoted to its own SubProvider.
+    public func quotaSubProviderName(bucketID: String? = nil) -> String {
+        if self == .cursor, bucketID == "grok_bot_weekly" { return "Grok Bot" }
+        return productName
+    }
 
     /// Long-form name used by Spotlight-y surfaces (system menu items,
     /// account-list aliases). Primary tools use the L3 tool name from
@@ -274,7 +323,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// "Alibaba Bailian Coding Plan" vs "Alibaba Bailian Token Plan".
     public var displayName: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.tool
         case .alibaba:          return "Alibaba Bailian Coding Plan"
         case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
@@ -282,7 +331,6 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .zai:              return "Zhipu GLM Coding Plan"
         case .minimax:          return "MiniMax Token Plan"
         case .kimi:             return "Kimi Coding Plan"
-        case .cursor:           return "Cursor"
         case .mimo:             return "Xiaomi MiMo Token Plan"
         case .iflytek:          return "iFlytek Spark Coding Plan"
         case .tencentHunyuan:   return "Tencent Hunyuan Coding Plan"
@@ -300,7 +348,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     /// Card subtitle rendered under the L2 product title. For the
-    /// primary five tools this is the L3 tool name from `hierarchy`
+    /// dedicated/linked tools this is the L3 tool name from `hierarchy`
     /// so the Overview popover reads "Gemini · Gemini Web" / "Gemini ·
     /// AntiGravity" instead of the old ad-hoc "Usage" / "Local LSP"
     /// labels. Misc tools keep their plan-flavour descriptor since
@@ -308,7 +356,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Plan vs Token Plan).
     public var subtitle: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.tool
         case .alibaba:          return "Coding Plan"
         case .alibabaTokenPlan: return "Token Plan"
@@ -316,7 +364,6 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .zai:              return "Coding Plan"
         case .minimax:          return "Token Plan"
         case .kimi:             return "Coding Plan"
-        case .cursor:           return "Cursor"
         case .mimo:             return "Token Plan"
         case .iflytek:          return "Coding Plan"
         case .tencentHunyuan:   return "Coding Plan"
@@ -333,23 +380,22 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
-    /// L2 product family — what users call the AI brand. Used by
+    /// L2 SubProvider — the service group inside an enterprise/brand. Used by
     /// menu-bar tile titles, popover sub-page headers, and anywhere
     /// the surface should pick one consistent level across all tools.
-    /// Primary tools take their L2 product directly from `hierarchy`;
+    /// Primary tools take their L2 SubProvider directly from `hierarchy`;
     /// misc tools keep curated forms that prefix the vendor for
     /// disambiguation (e.g. "Tencent Hunyuan" rather than bare
     /// "Hunyuan", which would clash with other Tencent surfaces).
     public var menuTitle: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.product
         case .alibaba, .alibabaTokenPlan: return "Bailian"
         case .copilot:          return "Copilot"
         case .zai:              return "Zhipu GLM"
         case .minimax:          return "MiniMax"
         case .kimi:             return "Kimi"
-        case .cursor:           return "Cursor"
         case .mimo:             return "Xiaomi MiMo"
         case .iflytek:          return "iFlytek Spark"
         case .tencentHunyuan, .tencentTokenPlan: return "Tencent Hunyuan"
@@ -366,19 +412,18 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
 
     /// L1 vendor name — used by ServiceStatusCard and any surface
     /// that should pick one consistent level across all tools. The
-    /// five primary tools all roll up to four vendors (OpenAI,
-    /// Anthropic, Google, xAI); `.antigravity` shares Google's
-    /// status feed with `.gemini` for the same reason.
+    /// dedicated tools roll up to their vendors. `.antigravity` shares
+    /// Google's status feed with `.gemini`; Cursor is grouped under SpaceXAI
+    /// for quota/cost and contributes a nested Cursor Status group.
     public var statusProviderName: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.vendor
         case .alibaba, .alibabaTokenPlan: return "Alibaba"
         case .copilot:          return "GitHub"
         case .zai:              return "Z.ai"
         case .minimax:          return "MiniMax"
         case .kimi:             return "Moonshot"
-        case .cursor:           return "Cursor"
         case .mimo:             return "Xiaomi"
         case .iflytek:          return "iFlytek"
         case .tencentHunyuan, .tencentTokenPlan: return "Tencent Cloud"

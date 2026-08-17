@@ -1,9 +1,10 @@
 import Foundation
 import Combine
 
-/// Owns per-tool CostSnapshot + ProviderExtras. Merges fresh JSONL scans with
-/// the persisted CostHistoryStore using max() per retained (tool, day), so
-/// recent data survives CLI log rotation without keeping an unlimited profile.
+/// Owns per-tool CostSnapshot + ProviderExtras. Fresh JSONL scans max-merge
+/// with persisted history so log rotation cannot erase usage; authoritative
+/// Cursor dashboard snapshots replace their retained history so corrections
+/// stay consistent with the request ledger.
 @MainActor
 public final class CostUsageService: ObservableObject {
     @Published public private(set) var snapshots: [ToolType: CostSnapshot] = [:] {
@@ -52,6 +53,11 @@ public final class CostUsageService: ObservableObject {
     /// merged dictionary is published, so remote facts are never written into
     /// the local scan cache/history and cannot be counted again after relaunch.
     private var localSnapshots: [ToolType: CostSnapshot] = [:]
+    /// Account-wide provider APIs that are authoritative but not local files.
+    /// Cursor's last-known dashboard snapshot is persisted for launch
+    /// hydration, but remains in this lane so it can never be combined with
+    /// itself as if it were a newly scanned local session.
+    private var directRemoteSnapshots: [ToolType: CostSnapshot] = [:]
     private var remoteSnapshots: [ToolType: CostSnapshot] = [:]
     /// Every value the UI derives from `snapshots` — rebased per-tool
     /// snapshots, combined platform snapshots, the Overview rollups — is a pure
@@ -84,14 +90,14 @@ public final class CostUsageService: ObservableObject {
             let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
             // One assignment, not one per tool: every write to a `@Published`
             // dictionary is its own publish, and the popover re-renders on each.
-            var hydrated = self.localSnapshots
-            var addedAny = false
-            for (tool, snap) in cached where hydrated[tool] == nil {
-                hydrated[tool] = snap
-                addedAny = true
-            }
-            if addedAny {
-                self.localSnapshots = hydrated
+            let hydrated = Self.partitionPersistedSnapshots(
+                cached,
+                local: self.localSnapshots,
+                directRemote: self.directRemoteSnapshots
+            )
+            if hydrated.local != self.localSnapshots || hydrated.directRemote != self.directRemoteSnapshots {
+                self.localSnapshots = hydrated.local
+                self.directRemoteSnapshots = hydrated.directRemote
                 self.publishMergedSnapshots()
             }
             if !cached.isEmpty {
@@ -191,11 +197,58 @@ public final class CostUsageService: ObservableObject {
         _ = try? await usageLedger?.prepareForPricingRevision(PricingResolver.activeRevision)
 
         var results: [ToolType: CostSnapshot] = [:]
+        var directRemoteResults = directRemoteSnapshots
         let home = homeDirectory
         // Privacy mode is already handled above (it erases and returns), so
         // reaching here means the ledger is allowed to record.
         let sink = usageLedger
         for tool in ToolType.allCases where tool.supportsTokenCost {
+            if tool == .cursor {
+                let outcome = await AsyncTimeout.run(seconds: Self.perToolScanTimeoutSeconds) {
+                    await CursorCostUsageFetcher.fetch(
+                        homeDirectory: home,
+                        now: now,
+                        retentionDays: retentionDays,
+                        eventSink: sink
+                    )
+                }
+                guard !costDataSettingsProvider().privacyModeEnabled else {
+                    await eraseLocalCostData()
+                    return
+                }
+                switch outcome {
+                case .completed(.success(let snapshot)):
+                    let merged = await CostHistoryStore.shared.replaceAndAugment(
+                        snapshot,
+                        retentionDays: retentionDays
+                    )
+                    directRemoteResults[.cursor] = merged
+                    await CostSnapshotCache.shared.save(
+                        merged,
+                        retentionDays: retentionDays
+                    )
+                    // Cursor dashboard events now feed the same request ledger
+                    // as local scanners, so Workbench and the outer Grok cost
+                    // surface share one set of token/cost facts.
+                    try? await usageLedger?.rollupAndPrune(
+                        now: now,
+                        detailDays: Self.ledgerDetailDays,
+                        retentionDays: retentionDays
+                    )
+                case .completed(.unavailable):
+                    directRemoteResults.removeValue(forKey: .cursor)
+                    // Match the in-memory decision on the next launch: once
+                    // every Cursor session is gone, an old hydrated dashboard
+                    // snapshot must not reappear from cursor.json.
+                    await CostSnapshotCache.shared.remove(tool: .cursor)
+                case .completed(.failed), .timedOut:
+                    // A transient dashboard failure keeps the last in-memory
+                    // success, just as a timed-out local scan keeps its prior
+                    // snapshot. Logging happens inside the fetcher.
+                    break
+                }
+                continue
+            }
             // Scan on a detached utility task so JSONL parsing doesn't block
             // the main actor. CostUsageService itself is `@MainActor`; without
             // this hop, `nonisolated async` callees still run inline on the
@@ -247,6 +300,7 @@ public final class CostUsageService: ObservableObject {
             }
         }
         localSnapshots = results
+        directRemoteSnapshots = directRemoteResults
         publishMergedSnapshots()
         // Extras (credits / overage) display was removed from the UI — see the
         // user-feedback round that turned them off because the loaders weren't
@@ -300,7 +354,9 @@ public final class CostUsageService: ObservableObject {
             retentionDays: costData.retentionDays
         )
         let cached = await CostSnapshotCache.shared.loadAll(retentionDays: costData.retentionDays, now: Date())
-        localSnapshots = cached
+        let hydrated = Self.partitionPersistedSnapshots(cached)
+        localSnapshots = hydrated.local
+        directRemoteSnapshots = hydrated.directRemote
         publishMergedSnapshots()
         lastRefreshedAt = cached.values.map(\.updatedAt).max()
     }
@@ -311,6 +367,7 @@ public final class CostUsageService: ObservableObject {
         CostUsageScanCache.eraseAll(homeDirectory: homeDirectory)
         try? await usageLedger?.eraseAll()
         localSnapshots = [:]
+        directRemoteSnapshots = [:]
         publishMergedSnapshots()
         extrasByTool = [:]
         lastRefreshedAt = nil
@@ -328,8 +385,19 @@ public final class CostUsageService: ObservableObject {
             return
         }
         var merged = localSnapshots
+        for (tool, remote) in directRemoteSnapshots {
+            if let local = merged[tool] {
+                merged[tool] = CostSnapshotAggregator.combinedSnapshot(
+                    tool: tool,
+                    snapshots: [local, remote],
+                    now: now
+                )
+            } else {
+                merged[tool] = remote
+            }
+        }
         for (tool, remote) in remoteSnapshots {
-            if let local = localSnapshots[tool] {
+            if let local = merged[tool] {
                 merged[tool] = CostSnapshotAggregator.combinedSnapshot(
                     tool: tool,
                     snapshots: [local, remote],
@@ -340,5 +408,28 @@ public final class CostUsageService: ObservableObject {
             }
         }
         snapshots = merged
+    }
+
+    /// Persisted Cursor data came from an account-wide dashboard rather than
+    /// a local session scan. Keep it in the direct-remote lane when hydrating
+    /// so a failed first refresh after launch retains the last-known snapshot
+    /// and a later successful refresh replaces it instead of adding it twice.
+    static func partitionPersistedSnapshots(
+        _ cached: [ToolType: CostSnapshot],
+        local: [ToolType: CostSnapshot] = [:],
+        directRemote: [ToolType: CostSnapshot] = [:]
+    ) -> (local: [ToolType: CostSnapshot], directRemote: [ToolType: CostSnapshot]) {
+        var hydratedLocal = local
+        var hydratedDirectRemote = directRemote
+        for (tool, snapshot) in cached {
+            if tool == .cursor {
+                if hydratedDirectRemote[tool] == nil {
+                    hydratedDirectRemote[tool] = snapshot
+                }
+            } else if hydratedLocal[tool] == nil {
+                hydratedLocal[tool] = snapshot
+            }
+        }
+        return (hydratedLocal, hydratedDirectRemote)
     }
 }

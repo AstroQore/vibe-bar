@@ -19,7 +19,7 @@ public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
         case .claude: return "Claude Code"
         case .codex: return "Codex"
         case .grok: return "Grok"
-        case .gemini: return "Gemini"
+        case .gemini: return "Gemini CLI"
         case .antigravity: return "AntiGravity"
         }
     }

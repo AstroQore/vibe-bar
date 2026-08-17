@@ -107,6 +107,170 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         XCTAssertEqual(service.lastErrorByAccount[account.id], .needsLogin)
         XCTAssertEqual(fallback.buckets.count, 1)
     }
+
+    func testExpiredResetMakesFreshCacheRefreshable() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let account = AccountIdentity(id: "expired-reset", tool: .antigravity, source: .localProbe)
+        let service = QuotaService(
+            adapters: [.antigravity: SequenceAdapter(tool: .antigravity, results: [
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .antigravity,
+                    buckets: [QuotaBucket(
+                        id: "gemini_five_hour",
+                        title: "5 Hours",
+                        shortLabel: "5 Hours",
+                        usedPercent: 2,
+                        resetAt: now.addingTimeInterval(-1),
+                        rawWindowSeconds: 18_000
+                    )],
+                    queriedAt: now
+                ))
+            ])],
+            mockProvider: { false }
+        )
+
+        _ = await service.refresh(account)
+        XCTAssertTrue(service.needsRefresh(accountId: account.id, now: now, maxAge: 600))
+    }
+
+    func testPopoverStaleCachePathActuallyRefreshesExpiredReset() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let account = AccountIdentity(id: "expired-page", tool: .antigravity, source: .localProbe)
+        let expired = QuotaBucket(
+            id: "gemini_five_hour",
+            title: "5 Hours",
+            shortLabel: "5 Hours",
+            usedPercent: 2,
+            resetAt: now.addingTimeInterval(-1),
+            rawWindowSeconds: 18_000
+        )
+        let refreshed = QuotaBucket(
+            id: "gemini_five_hour",
+            title: "5 Hours",
+            shortLabel: "5 Hours",
+            usedPercent: 0,
+            resetAt: now.addingTimeInterval(18_000),
+            rawWindowSeconds: 18_000
+        )
+        let service = QuotaService(
+            adapters: [.antigravity: SequenceAdapter(tool: .antigravity, results: [
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .antigravity,
+                    buckets: [expired],
+                    queriedAt: now
+                )),
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .antigravity,
+                    buckets: [refreshed],
+                    queriedAt: now
+                ))
+            ])],
+            mockProvider: { false }
+        )
+        _ = await service.refresh(account)
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { [account] },
+            intervalProvider: { 600 }
+        )
+
+        XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+        XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+        for _ in 0..<20 {
+            if service.cachedQuota(for: account.id)?.buckets.first?.resetAt == refreshed.resetAt {
+                break
+            }
+            await Task.yield()
+        }
+        XCTAssertEqual(
+            service.cachedQuota(for: account.id)?.buckets.first?.resetAt,
+            refreshed.resetAt
+        )
+        XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+    }
+
+    func testFullRefreshQueuesAccountsMissingFromActiveStaleWalk() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let stale = AccountIdentity(id: "stale-a", tool: .antigravity, source: .localProbe)
+        let other = AccountIdentity(id: "full-b", tool: .claude, source: .oauthCLI)
+        func quota(_ account: AccountIdentity, reset: Date?) -> AccountQuota {
+            AccountQuota(
+                accountId: account.id,
+                tool: account.tool,
+                buckets: [QuotaBucket(
+                    id: "weekly",
+                    title: "Weekly",
+                    shortLabel: "Weekly",
+                    usedPercent: 1,
+                    resetAt: reset
+                )],
+                queriedAt: now
+            )
+        }
+        let service = QuotaService(
+            adapters: [
+                .antigravity: SequenceAdapter(tool: .antigravity, results: [
+                    .success(quota(stale, reset: now.addingTimeInterval(-1))),
+                    .success(quota(stale, reset: now.addingTimeInterval(600)))
+                ]),
+                .claude: SequenceAdapter(tool: .claude, results: [
+                    .success(quota(other, reset: now.addingTimeInterval(600)))
+                ])
+            ],
+            mockProvider: { false }
+        )
+        _ = await service.refresh(stale)
+        var accounts = [stale]
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { accounts },
+            intervalProvider: { 600 }
+        )
+
+        XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+        accounts = [stale, other]
+        scheduler.triggerRefresh()
+        for _ in 0..<40 {
+            if service.cachedQuota(for: other.id) != nil { break }
+            await Task.yield()
+        }
+        XCTAssertNotNil(service.cachedQuota(for: other.id))
+    }
+
+    func testBoundaryRefreshRequeuesAccountCompletedEarlierInActiveWalk() async {
+        let first = AccountIdentity(id: "finished-a", tool: .claude, source: .oauthCLI)
+        let blocking = AccountIdentity(id: "blocking-b", tool: .gemini, source: .webCookie)
+        let counter = CountingQuotaAdapter(tool: .claude)
+        let gate = QuotaRefreshGate()
+        let service = QuotaService(
+            adapters: [
+                .claude: counter,
+                .gemini: GatedQuotaAdapter(tool: .gemini, gate: gate)
+            ],
+            mockProvider: { false }
+        )
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { [first, blocking] },
+            intervalProvider: { 600 }
+        )
+
+        scheduler.triggerRefresh()
+        await gate.waitUntilStarted()
+        XCTAssertEqual(counter.fetchCount, 1)
+
+        scheduler.triggerBoundaryRefresh(accountIds: [first.id])
+        await gate.release()
+        for _ in 0..<40 {
+            if counter.fetchCount == 2 { break }
+            await Task.yield()
+        }
+
+        XCTAssertEqual(counter.fetchCount, 2)
+    }
 }
 
 private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {
@@ -126,5 +290,63 @@ private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {
         case .failure(let error):
             throw error
         }
+    }
+}
+
+private final class CountingQuotaAdapter: QuotaAdapter, @unchecked Sendable {
+    let tool: ToolType
+    private let lock = NSLock()
+    private var count = 0
+
+    init(tool: ToolType) {
+        self.tool = tool
+    }
+
+    var fetchCount: Int {
+        lock.withLock { count }
+    }
+
+    func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        lock.withLock { count += 1 }
+        return AccountQuota(accountId: account.id, tool: tool, buckets: [], queriedAt: Date())
+    }
+}
+
+private actor QuotaRefreshGate {
+    private var started = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func block() async {
+        started = true
+        let waiters = startWaiters
+        startWaiters = []
+        for waiter in waiters { waiter.resume() }
+        await withCheckedContinuation { releaseContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+private final class GatedQuotaAdapter: QuotaAdapter, @unchecked Sendable {
+    let tool: ToolType
+    private let gate: QuotaRefreshGate
+
+    init(tool: ToolType, gate: QuotaRefreshGate) {
+        self.tool = tool
+        self.gate = gate
+    }
+
+    func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        await gate.block()
+        return AccountQuota(accountId: account.id, tool: tool, buckets: [], queriedAt: Date())
     }
 }

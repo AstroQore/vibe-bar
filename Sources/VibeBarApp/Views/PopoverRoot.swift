@@ -60,6 +60,9 @@ struct PopoverRoot: View {
         .frame(width: width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
+        .onChange(of: overviewPage) { _, _ in
+            environment.scheduler.triggerRefreshForStaleCacheIfNeeded()
+        }
     }
 
     /// The tabbed popover is one shared shell. The title band, content cards,
@@ -101,10 +104,10 @@ struct PopoverRoot: View {
     private var headerTitle: String {
         switch overviewPage {
         case .overview: return "Overview"
-        case .openAI: return "ChatGPT"
-        case .claude: return "Claude"
-        case .googleAI: return "Gemini"
-        case .grok: return "Grok"
+        case .openAI: return "OpenAI"
+        case .claude: return "Anthropic"
+        case .googleAI: return "Google AI"
+        case .grok: return "SpaceXAI"
         case .misc: return "Misc Providers"
         case .machines: return "Machines"
         }
@@ -113,10 +116,7 @@ struct PopoverRoot: View {
     private var headerSubtitle: String? {
         switch overviewPage {
         case .overview: return "All providers · quota & cost"
-        case .openAI: return ToolType.codex.subtitle
-        case .claude: return ToolType.claude.subtitle
-        case .googleAI: return "Gemini Web + AntiGravity · quota & status"
-        case .grok: return "xAI · monthly credits, cost & status"
+        case .openAI, .claude, .googleAI, .grok: return nil
         case .misc: return "Usage-only · sign in or paste a key"
         case .machines: return "End-to-end encrypted remote usage"
         }
@@ -126,7 +126,8 @@ struct PopoverRoot: View {
         // Header timestamps and refresh state aggregate the providers
         // visible in the current popover. The Misc subpage owns its
         // usage-only integrations; the Google AI subpage aggregates the
-        // partial-primary pair; the Grok subpage shows just `.grok`.
+        // linked partial-primary tools; the Grok page aggregates its family
+        // without adding a separate Cursor tab.
         if overviewPage == .misc {
             return settingsStore.settings.visibleMiscProviderList
         }
@@ -134,7 +135,7 @@ struct PopoverRoot: View {
             return ToolType.googleAIPair
         }
         if overviewPage == .grok {
-            return [.grok]
+            return ToolType.grokFamily
         }
         if overviewPage == .machines {
             return []
@@ -145,7 +146,7 @@ struct PopoverRoot: View {
         case .openAI: return [.codex]
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
-        case .grok: return [.grok]
+        case .grok: return ToolType.grokFamily
         case .misc: return settingsStore.settings.visibleMiscProviderList
         case .machines: return []
         }
@@ -248,19 +249,15 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         }
     }
 
-    /// L2 product-family labels. The tab strip used to mix L1 vendor
-    /// names (OpenAI, Google AI) with L2 product names (Claude, Grok);
-    /// pinning every tab to L2 means the tab strip reads "ChatGPT ·
-    /// Claude · Gemini · Grok" — what the user calls the AI, not how
-    /// they're billed. Gemini's tab covers both Gemini Web and the
-    /// AntiGravity IDE since both roll up to the Gemini product.
+    /// L1 enterprise/brand labels. SubProviders are named inside each card,
+    /// so the tab strip and card header use one consistent level.
     var label: String {
         switch self {
         case .overview: return "Overview"
-        case .openAI:   return "ChatGPT"
-        case .claude:   return "Claude"
-        case .googleAI: return "Gemini"
-        case .grok:     return "Grok"
+        case .openAI:   return "OpenAI"
+        case .claude:   return "Anthropic"
+        case .googleAI: return "Google AI"
+        case .grok:     return "SpaceXAI"
         case .misc:     return "Misc"
         case .machines: return "Machines"
         }
@@ -439,10 +436,15 @@ private struct OverviewWaterfall: View {
             heatmap: rollup.heatmap,
             models: rollup.modelBreakdowns,
             combinedSnapshot: rollup.combinedSnapshot,
-            // Present exactly when the Gemini card is: the rollup only carries
-            // the group when the provider is visible, and the module that reads
-            // this exists under the same condition.
-            googleAISnapshot: rollup.groupSnapshots.first ?? .empty(tool: .antigravity)
+            // Product-family snapshots are requested only when their matching
+            // Overview modules are visible; the aggregation cache makes these
+            // reads share the rollup's already-computed inputs.
+            googleAISnapshot: settings.isCoreProviderVisible(.gemini)
+                ? PageModuleCatalog.googleAICostSnapshot(environment: environment)
+                : .empty(tool: .antigravity),
+            grokSnapshot: settings.isCoreProviderVisible(.grok)
+                ? PageModuleCatalog.grokCostSnapshot(environment: environment)
+                : .empty(tool: .grok)
         )
 
         // `auto` is the only mode the balancer runs in. `compact` and `manual`
@@ -541,8 +543,10 @@ private struct OverviewWaterfall: View {
             )
         case let .overviewQuota(tool):
             if tool == .gemini {
-                // Gemini Web and AntiGravity roll up to one Google AI product.
+                // Gemini Web and AntiGravity share one Google AI company card.
                 GeminiCombinedCard(density: density)
+            } else if tool == .grok {
+                GrokCombinedCard(density: density)
             } else {
                 ProviderQuotaCard(tool: tool, density: density, compact: false)
             }
@@ -563,7 +567,7 @@ private struct OverviewWaterfall: View {
         case let .overviewCost(tool):
             if tool == .gemini {
                 // Google AI (Gemini + AntiGravity) cost, surfaced as the
-                // single "Gemini" platform aligned with the other three.
+                // single Google AI platform aligned with the other three.
                 // AntiGravity is now the only live Google/Gemini usage
                 // source (Gemini CLI no longer writes local telemetry);
                 // its `.pb`-only cascades are filled via the
@@ -572,10 +576,20 @@ private struct OverviewWaterfall: View {
                     tool: .antigravity,
                     density: density,
                     snapshotOverride: context.googleAISnapshot,
-                    titleOverride: "Gemini Cost",
-                    emptyMessageOverride: "No Gemini / AntiGravity usage yet — open AntiGravity once so Vibe Bar can sync it.",
-                    toolNameOverride: "Gemini",
-                    heatmapTitleOverride: "When you use Gemini"
+                    titleOverride: "Google AI Cost",
+                    emptyMessageOverride: "No Gemini Web / AntiGravity usage yet — refresh after signing in to AntiGravity or agy.",
+                    toolNameOverride: "Google AI",
+                    heatmapTitleOverride: "When you use Google AI"
+                )
+            } else if tool == .grok {
+                OverviewCostCard(
+                    tool: .grok,
+                    density: density,
+                    snapshotOverride: context.grokSnapshot,
+                    titleOverride: "SpaceXAI Cost",
+                    emptyMessageOverride: "No Grok or Cursor usage found yet.",
+                    toolNameOverride: "SpaceXAI",
+                    heatmapTitleOverride: "When you use SpaceXAI"
                 )
             } else {
                 OverviewCostCard(tool: tool, density: density)
@@ -616,6 +630,7 @@ private struct OverviewModuleContext {
     let models: [CostSnapshot.ModelBreakdown]
     let combinedSnapshot: CostSnapshot
     let googleAISnapshot: CostSnapshot
+    let grokSnapshot: CostSnapshot
 }
 
 private struct GrokPage: View {
@@ -626,10 +641,10 @@ private struct GrokPage: View {
     }
 }
 
-/// Overview popover card that merges Gemini Web + AntiGravity into a
-/// single L2 "Gemini" surface, with each tool as an L3 sub-section.
+/// Overview popover card that merges Gemini Web + AntiGravity into one
+/// Google AI company card, with each one rendered as an L2 SubProvider.
 /// Replaces the previous side-by-side ProviderQuotaCard pair so the
-/// two surfaces under the Gemini product no longer look like
+/// the two SubProviders no longer look like
 /// unrelated tools to the user.
 ///
 /// The card itself owns the outer card chrome; the inner
@@ -665,20 +680,14 @@ private struct GeminiCombinedCard: View {
             HStack(alignment: .center, spacing: 8) {
                 ProviderSectionTitle(
                     tool: .gemini,
-                    title: ToolType.gemini.productName,
-                    subtitle: ToolType.gemini.statusProviderName,
+                    title: ToolType.gemini.vendorName,
+                    subtitle: nil,
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16,
                     badgeSize: 24
                 )
                 Spacer(minLength: 4)
-                if let label = geminiPlanBadge {
-                    PlanBadgeView(
-                        text: label,
-                        fontSize: max(9, density.subtitleFontSize - 1)
-                    )
-                }
                 BorderlessIconButton(
                     systemImage: "arrow.clockwise",
                     help: "Refresh Gemini Web + AntiGravity"
@@ -694,13 +703,21 @@ private struct GeminiCombinedCard: View {
                 }
             }
 
-            // Gemini Web buckets ride directly under the main L2
-            // header — no second sub-header needed because the card
-            // title already reads "Gemini · Google" and the Web
-            // surface is the primary one. AntiGravity gets its own
-            // L3 sub-header below (logo + name + plan badge) so the
-            // IDE-side model buckets are visibly separated from the
-            // Web quota even though both live in the same card.
+            HStack(alignment: .center, spacing: 6) {
+                ToolBrandIconView(tool: .gemini, size: 13)
+                    .opacity(0.85)
+                Text("Gemini Web")
+                    .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if let label = geminiPlanBadge {
+                    PlanBadgeView(text: label, fontSize: max(9, density.subtitleFontSize - 1))
+                }
+            }
+
+            // Gemini Web buckets follow its SubProvider row. AntiGravity gets
+            // an equivalent row below so the two L2 services and their L3
+            // quota/model groups remain visually distinct.
             ForEach(geminiAccounts, id: \.id) { account in
                 ProviderQuotaCard(
                     tool: .gemini,
@@ -729,7 +746,7 @@ private struct GeminiCombinedCard: View {
                 if let label = antigravityPlanBadge {
                     PlanBadgeView(
                         text: label,
-                        fontSize: max(8, density.subtitleFontSize - 2)
+                        fontSize: max(9, density.subtitleFontSize - 1)
                     )
                 }
             }
@@ -753,7 +770,7 @@ private struct GeminiCombinedCard: View {
         )
     }
 
-    /// Resolve the plan-badge text for a Gemini-family sub-tool. Looks
+    /// Resolve the plan-badge text for a Google AI SubProvider. Looks
     /// at the cached quota first (Gemini Web returns "Pro" / "Ultra" /
     /// "Free") and falls back to the account-level plan string. nil
     /// when nothing meaningful is set so the caller suppresses the
@@ -775,8 +792,148 @@ private struct GeminiCombinedCard: View {
     }
 }
 
-/// The dedicated Gemini sub-page (still routed through `OverviewPage.googleAI`
-/// for backwards-compat with the menu-bar settings, but labelled "Gemini" at
+/// Overview card for the SpaceXAI provider family. Grok, Cursor, and the
+/// cloud-only Grok Bot quota are separate SubProviders in the same card.
+private struct GrokCombinedCard: View {
+    let density: Theme.Density
+
+    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var quotaService: QuotaService
+
+    var body: some View {
+        let grokAccount = environment.account(for: .grok)
+        let cursorAccount = environment.account(for: .cursor)
+        let cursorQuota = cursorAccount.flatMap { quotaService.cachedQuota(for: $0.id) }
+            ?? environment.quota(for: .cursor)
+        let showsCursor = (cursorAccount.map { $0.source != .notConfigured } ?? false)
+            || cursorQuota != nil
+        let showsGrokBot = cursorQuota?.buckets.contains { $0.id == "grok_bot_weekly" } == true
+        let anyInFlight = [grokAccount, cursorAccount].compactMap { $0 }.contains {
+            quotaService.inFlightAccountIds.contains($0.id)
+        }
+        let grokBadge = planBadge(for: .grok, account: grokAccount)
+        let cursorBadge = planBadge(for: .cursor, account: cursorAccount)
+
+        VStack(alignment: .leading, spacing: density.cardSpacing) {
+            HStack(alignment: .center, spacing: 8) {
+                ProviderSectionTitle(
+                    tool: .grok,
+                    title: ToolType.grok.vendorName,
+                    subtitle: nil,
+                    titleFontSize: density.titleFontSize,
+                    subtitleFontSize: density.subtitleFontSize,
+                    iconSize: 16,
+                    badgeSize: 24
+                )
+                Spacer(minLength: 4)
+                BorderlessIconButton(
+                    systemImage: "arrow.clockwise",
+                    help: "Refresh Grok + Cursor"
+                ) {
+                    environment.refresh(.grok)
+                    environment.refresh(.cursor)
+                }
+                .disabled(anyInFlight)
+                if anyInFlight {
+                    ProgressView().controlSize(.small)
+                        .frame(width: 16, height: 16)
+                }
+            }
+
+
+            HStack(alignment: .center, spacing: 6) {
+                ToolBrandIconView(tool: .grok, size: 13)
+                    .opacity(0.85)
+                Text("Grok")
+                    .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if let grokBadge {
+                    PlanBadgeView(text: grokBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                }
+            }
+
+            ProviderQuotaCard(
+                tool: .grok,
+                density: density,
+                compact: false,
+                embedded: true
+            )
+
+            if showsCursor {
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: .cursor, size: 13)
+                        .opacity(0.85)
+                    Text(ToolType.cursor.toolName)
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let cursorBadge {
+                        PlanBadgeView(text: cursorBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
+                }
+                .padding(.top, 4)
+
+                ProviderQuotaCard(
+                    tool: .cursor,
+                    density: density,
+                    compact: false,
+                    embedded: true,
+                    includedBucketIDs: ["models", "other_models"]
+                )
+
+                if showsGrokBot {
+                    HStack(alignment: .center, spacing: 6) {
+                        ToolBrandIconView(tool: .grok, size: 13)
+                            .opacity(0.85)
+                        Text("Grok Bot")
+                            .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        if let cursorBadge {
+                            PlanBadgeView(text: cursorBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                        }
+                    }
+                    .padding(.top, 4)
+
+                    ProviderQuotaCard(
+                        tool: .cursor,
+                        density: density,
+                        compact: false,
+                        embedded: true,
+                        includedBucketIDs: ["grok_bot_weekly"],
+                        suppressGroupTitles: true,
+                        showsFreshnessWarning: false
+                    )
+                }
+            }
+        }
+        .padding(density.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(.background.tertiary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(.separator.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    private func planBadge(for tool: ToolType, account: AccountIdentity?) -> String? {
+        let quotaPlan = account.flatMap { quotaService.cachedQuota(for: $0.id)?.plan }
+        let label = settingsStore.settings.planBadgeLabel(
+            for: tool,
+            quotaPlan: quotaPlan,
+            accountPlan: account?.plan
+        )
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+}
+
+/// The dedicated Google AI sub-page (still routed through `OverviewPage.googleAI`
+/// for backwards compatibility with persisted menu-bar settings, but labelled "Google AI" at
 /// every user-facing surface). Provider pages share one asymmetric layout:
 /// live quota, forecast and service status remain together in the narrow left
 /// column; cost and analytics use the wider right column.
@@ -784,8 +941,7 @@ private struct GeminiTabPage: View {
     let density: Theme.Density
 
     var body: some View {
-        // Gemini's page is a provider page whose cost surface is the combined
-        // Gemini + AntiGravity total, relabelled as the one "Gemini" platform.
+        // The Google AI page combines Gemini Web + AntiGravity cost.
         ProviderDetailView(tool: .gemini, density: density)
     }
 }
@@ -815,7 +971,7 @@ private struct GeminiCostEmptyCard: View {
                 Text("No Gemini or AntiGravity usage found yet.")
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
-                Text("AntiGravity is the live Google/Gemini source. Open AntiGravity at least once while Vibe Bar is running so it can sync cascade usage from the language server; cached results then persist after you quit it.")
+                Text("Vibe Bar reads live AntiGravity quota from the desktop app when available, then falls back to the installed agy CLI. Cached values are marked stale when neither local source can refresh them.")
                     .font(.system(size: max(10, density.subtitleFontSize - 1)))
                     .foregroundStyle(.tertiary)
                     .lineLimit(nil)
@@ -1164,7 +1320,7 @@ private struct OverviewStatusSummaryCard: View {
         if statusError(for: tool) != nil {
             return .down
         }
-        guard let indicator = statusSnapshot(for: tool)?.indicator else {
+        guard let indicator = statusSnapshot(for: tool)?.effectiveIndicator else {
             return .checking
         }
         switch indicator {
@@ -1192,8 +1348,16 @@ private struct OverviewStatusSummaryCard: View {
 
     private func statusSnapshot(for tool: ToolType) -> ServiceStatusSnapshot? {
         if tool == .gemini {
-            return serviceStatus.snapshotByTool[.gemini]
-                ?? serviceStatus.snapshotByTool[.antigravity]
+            return ServiceStatusSnapshot.preferredGoogleAI(
+                gemini: serviceStatus.snapshotByTool[.gemini],
+                antigravity: serviceStatus.snapshotByTool[.antigravity]
+            )
+        }
+        if tool == .grok {
+            return ServiceStatusSnapshot.mergedSpaceXAI(
+                grok: serviceStatus.snapshotByTool[.grok],
+                cursor: serviceStatus.snapshotByTool[.cursor]
+            )
         }
         return serviceStatus.snapshotByTool[tool]
     }
@@ -1203,6 +1367,10 @@ private struct OverviewStatusSummaryCard: View {
             return serviceStatus.inFlight.contains(.gemini)
                 || serviceStatus.inFlight.contains(.antigravity)
         }
+        if tool == .grok {
+            return serviceStatus.inFlight.contains(.grok)
+                || serviceStatus.inFlight.contains(.cursor)
+        }
         return serviceStatus.inFlight.contains(tool)
     }
 
@@ -1211,6 +1379,11 @@ private struct OverviewStatusSummaryCard: View {
             if statusSnapshot(for: tool) != nil { return nil }
             return serviceStatus.errorByTool[.gemini]
                 ?? serviceStatus.errorByTool[.antigravity]
+        }
+        if tool == .grok {
+            if statusSnapshot(for: tool) != nil { return nil }
+            return serviceStatus.errorByTool[.grok]
+                ?? serviceStatus.errorByTool[.cursor]
         }
         return serviceStatus.errorByTool[tool]
     }
@@ -1285,8 +1458,8 @@ private struct OverviewCostCard: View {
 
     var body: some View {
         let snapshot = snapshotOverride ?? environment.costService.snapshot(for: tool)
-        let title = titleOverride ?? "\(tool.menuTitle) Cost"
-        let toolName = toolNameOverride ?? tool.menuTitle
+        let title = titleOverride ?? "\(tool.vendorName) Cost"
+        let toolName = toolNameOverride ?? tool.vendorName
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
@@ -1366,7 +1539,7 @@ private struct OverviewCostCard: View {
         case .claude: return "No Claude CLI sessions found yet."
         case .gemini: return "No Gemini CLI or chat-history usage found yet."
         case .antigravity: return "No Antigravity conversation token metadata found yet."
-        case .grok: return "No Grok Build session usage found yet."
+        case .grok: return "No Grok session usage found yet."
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
@@ -1397,7 +1570,7 @@ private struct CostDetailPopoverContent: View {
                 HStack(alignment: .center) {
                     ProviderSectionTitle(
                         tool: tool,
-                        title: titleOverride ?? "\(tool.menuTitle) Cost — Full Charts",
+                        title: titleOverride ?? "\(tool.vendorName) Cost — Full Charts",
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 15,
@@ -1519,11 +1692,11 @@ private struct ProviderPageContext {
 
     /// Tool the cost cards are labelled and keyed by. Gemini's page shows the
     /// combined Gemini + AntiGravity total, which is carried on an AntiGravity
-    /// snapshot but presented as the single "Gemini" platform.
+    /// snapshot but presented under the page's L1 company/brand.
     var costTool: ToolType { pageTool == .gemini ? .antigravity : pageTool }
-    var costTitle: String? { pageTool == .gemini ? "Gemini Cost" : nil }
-    var costToolName: String { pageTool == .gemini ? "Gemini" : pageTool.menuTitle }
-    var activityHeatmapTitle: String? { pageTool == .gemini ? "When you use Gemini" : nil }
+    var costTitle: String? { "\(pageTool.vendorName) Cost" }
+    var costToolName: String { pageTool.vendorName }
+    var activityHeatmapTitle: String? { pageTool == .gemini ? "When you use Google AI" : nil }
 
     func group(id: String) -> QuotaGroupModule? {
         groups.first { $0.id == id }
@@ -1568,7 +1741,7 @@ private struct ProviderPageModule: View {
                     snapshot: snapshot,
                     density: density,
                     titleOverride: context.costTitle,
-                    toolNameOverride: context.pageTool == .gemini ? "Gemini" : nil
+                    toolNameOverride: context.pageTool.vendorName
                 )
             }
         case .costHistory:
@@ -1603,6 +1776,12 @@ private struct ProviderPageModule: View {
         case .costEmpty:
             if context.pageTool == .gemini {
                 GeminiCostEmptyCard(density: density)
+            } else if context.pageTool == .grok {
+                Text("No Grok or Cursor usage found yet.")
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: .infinity)
             } else {
                 Text("No \(context.pageTool.menuTitle) CLI sessions found yet.")
                     .font(.system(size: density.subtitleFontSize))
@@ -1671,7 +1850,7 @@ private struct CostHeaderCard: View {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: titleOverride ?? "\(tool.menuTitle) Cost",
+                    title: titleOverride ?? "\(tool.vendorName) Cost",
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
@@ -1747,47 +1926,18 @@ struct ProviderQuotaCard: View {
     /// so every bucket appears (Sonnet, Designs, Daily Routines, …).
     var compact: Bool = false
     /// When true, drop the outer rounded-rectangle chrome so the card can
-    /// be nested inside a larger container (the unified Gemini card uses
-    /// this to host Gemini Web + AntiGravity as L3 sub-sections inside a
-    /// single L2 Gemini surface).
+    /// be nested inside a larger L1 company card. The combined Google AI and
+    /// SpaceXAI cards use this for their L2 SubProvider sections.
     var embedded: Bool = false
+    var includedBucketIDs: Set<String>?
+    var suppressGroupTitles: Bool = false
+    var showsFreshnessWarning: Bool = true
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        let account: AccountIdentity? = {
-            if let accountId {
-                return environment.accountStore.accounts.first { $0.id == accountId }
-            }
-            return environment.account(for: tool)
-        }()
-        let quota: AccountQuota? = {
-            if let account, let cached = quotaService.cachedQuota(for: account.id) {
-                return cached
-            }
-            return accountId == nil ? environment.quota(for: tool) : nil
-        }()
-        let liveError = displayableError(
-            account.flatMap { quotaService.lastErrorByAccount[$0.id] },
-            with: quota
-        )
-        let isProviderRefreshing = account.map { quotaService.inFlightAccountIds.contains($0.id) } == true
-        let planBadge = settingsStore.settings.planBadgeLabel(
-            for: tool,
-            quotaPlan: quota?.plan,
-            accountPlan: account?.plan
-        )
-        let cardTitle = (accountId != nil ? account?.alias : nil) ?? tool.menuTitle
-        let cardSubtitle: String = {
-            guard accountId != nil else { return tool.subtitle }
-            switch account?.source {
-            case .webCookie: return "gemini.google.com · current + weekly"
-            default: return tool.subtitle
-            }
-        }()
-
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             // The embedded variant lives inside a parent container
             // (e.g. GeminiCombinedCard) that already owns the L2
@@ -1799,20 +1949,14 @@ struct ProviderQuotaCard: View {
                 HStack(alignment: .center, spacing: 8) {
                     ProviderSectionTitle(
                         tool: tool,
-                        title: cardTitle,
-                        subtitle: cardSubtitle,
+                        title: tool.vendorName,
+                        subtitle: nil,
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 16,
                         badgeSize: 24
                     )
                     Spacer(minLength: 4)
-                    if planBadge?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                        PlanBadgeView(
-                            text: planBadge,
-                            fontSize: max(9, density.subtitleFontSize - 1)
-                        )
-                    }
                     BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                         environment.refresh(tool)
                     }
@@ -1822,17 +1966,39 @@ struct ProviderQuotaCard: View {
                             .frame(width: 16, height: 16)
                     }
                 }
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: tool, size: 13)
+                        .opacity(0.85)
+                    Text(subProviderTitle)
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if resolvedPlanBadge?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                        PlanBadgeView(
+                            text: resolvedPlanBadge,
+                            fontSize: max(9, density.subtitleFontSize - 1)
+                        )
+                    }
+                }
             }
 
-            if let quota, !quota.buckets.isEmpty {
-                bucketContent(quota.buckets, accountId: account?.id)
-                if tool == .codex, let credits = quota.resetCredits, credits.availableCount > 0 {
+            if let freshnessWarning = currentFreshnessWarning {
+                Label(freshnessWarning.label, systemImage: "clock.badge.exclamationmark")
+                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(freshnessWarning.help)
+            }
+
+            if !visibleBuckets.isEmpty {
+                bucketContent(visibleBuckets, accountId: resolvedAccount?.id)
+                if tool == .codex, let credits = resolvedQuota?.resetCredits, credits.availableCount > 0 {
                     ResetCreditsRow(credits: credits, density: density)
                 }
-                if let liveError {
+                if let liveError = resolvedLiveError {
                     messageRow(text: "Update failed: \(liveError.userFacingMessage)", color: .orange)
                 }
-            } else if let liveError {
+            } else if let liveError = resolvedLiveError {
                 messageRow(text: liveError.userFacingMessage, color: .orange)
             } else {
                 messageRow(text: emptyMessage, color: .secondary)
@@ -1854,6 +2020,79 @@ struct ProviderQuotaCard: View {
                     RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                         .stroke(.separator.opacity(0.4), lineWidth: 0.5)
                 )
+        )
+    }
+
+    private var resolvedAccount: AccountIdentity? {
+        if let accountId {
+            return environment.accountStore.accounts.first { $0.id == accountId }
+        }
+        return environment.account(for: tool)
+    }
+
+    private var resolvedQuota: AccountQuota? {
+        if let account = resolvedAccount, let cached = quotaService.cachedQuota(for: account.id) {
+            return cached
+        }
+        return accountId == nil ? environment.quota(for: tool) : nil
+    }
+
+    private var resolvedLiveError: QuotaError? {
+        displayableError(
+            resolvedAccount.flatMap { quotaService.lastErrorByAccount[$0.id] },
+            with: resolvedQuota
+        )
+    }
+
+    private var isProviderRefreshing: Bool {
+        resolvedAccount.map { quotaService.inFlightAccountIds.contains($0.id) } == true
+    }
+
+    private var currentFreshnessWarning: (label: String, help: String)? {
+        guard showsFreshnessWarning else { return nil }
+        return resolvedAccount.flatMap { freshnessWarning(for: $0, now: Date()) }
+    }
+
+    private var resolvedPlanBadge: String? {
+        settingsStore.settings.planBadgeLabel(
+            for: tool,
+            quotaPlan: resolvedQuota?.plan,
+            accountPlan: resolvedAccount?.plan
+        )
+    }
+
+    private var visibleBuckets: [QuotaBucket] {
+        displayBuckets(from: resolvedQuota)
+    }
+
+    private var subProviderTitle: String {
+        tool.quotaSubProviderName()
+    }
+
+    private func displayBuckets(from quota: AccountQuota?) -> [QuotaBucket] {
+        guard let quota else { return [] }
+        return quota.buckets.compactMap { bucket in
+            guard includedBucketIDs?.contains(bucket.id) ?? true else { return nil }
+            guard suppressGroupTitles else { return bucket }
+            var copy = bucket
+            copy.groupTitle = nil
+            return copy
+        }
+    }
+
+    private func freshnessWarning(
+        for account: AccountIdentity,
+        now: Date
+    ) -> (label: String, help: String)? {
+        guard let updatedAt = quotaService.lastUpdatedByAccount[account.id] else { return nil }
+        let age = now.timeIntervalSince(updatedAt)
+        let staleAfter = TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2))
+        let error = quotaService.lastErrorByAccount[account.id]
+        guard age >= staleAfter || error != nil else { return nil }
+        let updated = ResetCountdownFormatter.updatedAgo(from: updatedAt, now: now)
+        return (
+            label: age >= staleAfter ? "Stale · \(updated)" : "Refresh failed · \(updated)",
+            help: error?.userFacingMessage ?? "Live quota has not refreshed within the expected interval."
         )
     }
 
@@ -1910,7 +2149,9 @@ struct ProviderQuotaCard: View {
         switch tool {
         case .codex:  return "Run codex login, then refresh."
         case .claude: return "Run claude login, then refresh."
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .grok: return "Run grok login or import grok.com cookies, then refresh."
+        case .cursor: return "Sign in to Cursor.app or import cursor.com cookies, then refresh."
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from
             // a primary-provider detail view, but cover misc cases
@@ -2006,8 +2247,8 @@ private struct ProviderBucketRow: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let percent = bucket.displayPercent(mode)
-        let pace = UsagePace.compute(bucket: bucket, now: now)
+        let percent = bucket.displayPercent(mode, tool: tool)
+        let pace = UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
         let forecast = paceForecast(now: now)
         let timePaceDisplayed = pace.map { expectedDisplay(for: $0, mode: mode) }
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
@@ -2080,7 +2321,8 @@ private struct ProviderBucketRow: View {
             bucket: bucket,
             activityHeatmap: snapshot?.heatmap,
             dailyActivity: snapshot?.dailyHistory ?? [],
-            now: now
+            now: now,
+            allowsPostResetGrace: true
         )
     }
 

@@ -153,42 +153,42 @@ private struct MiniL2Member {
     let content: MiniToolContent
 }
 
-/// Tools sharing the same L2 product (e.g. Gemini Web + AntiGravity)
-/// collapse into one super-column with a single L2 header and one
-/// L3 sub-label per tool. The mini window renders one super-column
-/// per `MiniL2Group`, not one per `ToolType`.
-private struct MiniL2Group: Identifiable {
-    let productName: String
+/// Tools sharing the same L1 enterprise/brand (e.g. Gemini Web + AntiGravity)
+/// collapse into one super-column with a single company header and one
+/// SubProvider label per tool. The mini window renders one super-column
+/// per `MiniCompanyGroup`, not one per `ToolType`.
+private struct MiniCompanyGroup: Identifiable {
+    let companyName: String
     let accentTool: ToolType
     let members: [MiniL2Member]
 
-    var id: String { productName }
+    var id: String { companyName }
     var isMultiTool: Bool { members.count > 1 }
 }
 
 /// Walks `visibleTools` in their `dedicatedCardProviders` order and
-/// folds consecutive tools sharing the same `productName` into one
-/// `MiniL2Group`. Tools with empty content are skipped.
+/// folds consecutive tools sharing the same `vendorName` into one
+/// `MiniCompanyGroup`. Tools with empty content are skipped.
 private func miniProductGroups(
     visibleTools: [ToolType],
     contentByTool: [ToolType: MiniToolContent]
-) -> [MiniL2Group] {
-    var groups: [MiniL2Group] = []
+) -> [MiniCompanyGroup] {
+    var groups: [MiniCompanyGroup] = []
     for tool in visibleTools {
         guard let content = contentByTool[tool], !content.isEmpty else { continue }
-        let product = tool.productName
+        let company = tool.vendorName
         let member = MiniL2Member(tool: tool, content: content)
-        if let last = groups.last, last.productName == product {
-            let merged = MiniL2Group(
-                productName: last.productName,
+        if let last = groups.last, last.companyName == company {
+            let merged = MiniCompanyGroup(
+                companyName: last.companyName,
                 accentTool: last.accentTool,
                 members: last.members + [member]
             )
             groups[groups.count - 1] = merged
         } else {
             groups.append(
-                MiniL2Group(
-                    productName: product,
+                MiniCompanyGroup(
+                    companyName: company,
                     accentTool: tool,
                     members: [member]
                 )
@@ -213,7 +213,7 @@ private struct MiniWindowProviderLayout: View {
                 }
                 switch displayMode {
                 case .regular:
-                    MiniL2GroupColumn(group: group)
+                    MiniCompanyGroupColumn(group: group)
                 case .compact:
                     MiniCompactL2GroupColumn(group: group)
                 }
@@ -279,6 +279,10 @@ private struct MiniBranchCell: Identifiable {
         case "weekly_opus": return "Weekly"
         case "weekly_fable": return "Weekly"
         case "weekly_oauth_apps": return "Weekly"
+        case let id where tool == .cursor && ["models", "other_models"].contains(id):
+            return "Monthly"
+        case "grok_bot_weekly" where tool == .cursor:
+            return "Weekly"
         case let id where tool == .antigravity && id.contains("gpt-oss"):
             return "GPT"
         case let id where tool == .antigravity && id.contains("sonnet"):
@@ -315,6 +319,12 @@ private struct MiniBranchCell: Identifiable {
             return "claude.fable"
         case "weekly_oauth_apps":
             return "claude.oauth"
+        case "models" where tool == .cursor:
+            return "cursor.models"
+        case "other_models" where tool == .cursor:
+            return "cursor.other-models"
+        case "grok_bot_weekly" where tool == .cursor:
+            return "cursor.grok-bot"
         case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "antigravity.gemini-models"
         case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
@@ -359,6 +369,12 @@ private struct MiniBranchCell: Identifiable {
             return "Fable"
         case "weekly_oauth_apps":
             return "OAuth"
+        case "models" where tool == .cursor:
+            return "Cursor Models"
+        case "other_models" where tool == .cursor:
+            return "Other Models"
+        case "grok_bot_weekly" where tool == .cursor:
+            return "Grok Bot"
         case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "Gemini"
         case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
@@ -438,7 +454,8 @@ private func miniQuotaForecast(
         bucket: bucket,
         activityHeatmap: snapshot?.heatmap,
         dailyActivity: snapshot?.dailyHistory ?? [],
-        now: now
+        now: now,
+        allowsPostResetGrace: true
     )
 }
 
@@ -549,13 +566,13 @@ private func miniPrimaryGroupTitle(
 }
 
 /// Renders one L2 product super-column in the regular (ring) layout.
-/// Single-tool groups (ChatGPT / Claude / Grok) get a compact L2
-/// header + bucket rings. Multi-tool groups (Gemini = Gemini Web +
-/// AntiGravity) get the L2 header on top, each L3 tool as a
+/// Single-tool groups (ChatGPT / Claude) get a compact L2 header + bucket
+/// rings. Multi-tool groups (Gemini = Gemini Web + AntiGravity; Grok = Grok
+/// Build + Cursor) get the L2 header on top, each L3 tool as a
 /// sub-section beneath with its own small toolName sub-label,
 /// separated by a thin divider.
-private struct MiniL2GroupColumn: View {
-    let group: MiniL2Group
+private struct MiniCompanyGroupColumn: View {
+    let group: MiniCompanyGroup
 
     @EnvironmentObject var settingsStore: SettingsStore
 
@@ -565,7 +582,7 @@ private struct MiniL2GroupColumn: View {
                 Circle()
                     .fill(providerAccent(for: group.accentTool))
                     .frame(width: 5, height: 5)
-                Text(group.productName.uppercased())
+                Text(group.companyName.uppercased())
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.86))
                     .tracking(0.2)
@@ -743,7 +760,7 @@ private struct MiniBranchRingCell: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let pace = UsagePace.compute(bucket: cell.bucket, now: now)
+        let pace = UsagePace.compute(bucket: cell.bucket, now: now, allowsPostResetGrace: true)
         let forecast = miniQuotaForecast(
             tool: cell.tool,
             bucket: cell.bucket,
@@ -751,7 +768,7 @@ private struct MiniBranchRingCell: View {
             quotaService: quotaService,
             now: now
         )
-        let percent = cell.bucket.displayPercent(settingsStore.displayMode)
+        let percent = cell.bucket.displayPercent(settingsStore.displayMode, tool: cell.tool)
         let color = Theme.barColor(percent: percent, mode: settingsStore.displayMode)
         VStack(spacing: 3) {
             let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
@@ -865,7 +882,9 @@ private struct MiniRingCell: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let pace = cell.bucket.flatMap { UsagePace.compute(bucket: $0, now: now) }
+        let pace = cell.bucket.flatMap {
+            UsagePace.compute(bucket: $0, now: now, allowsPostResetGrace: true)
+        }
         let forecast = cell.bucket.flatMap {
             miniQuotaForecast(
                 tool: cell.tool,
@@ -950,7 +969,7 @@ private struct MiniRingCell: View {
     @ViewBuilder
     private func ringGauge(pace: UsagePace?, forecast: QuotaPaceForecast?, now: Date) -> some View {
         if let bucket = cell.bucket {
-            let percent = bucket.displayPercent(settingsStore.displayMode)
+            let percent = bucket.displayPercent(settingsStore.displayMode, tool: cell.tool)
             let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
                 switch settingsStore.displayMode {
                 case .used:      return p.expectedUsedPercent
@@ -999,11 +1018,11 @@ private enum MiniCompactMetrics {
     static let resetHeight: CGFloat = 8
 }
 
-/// Compact-mode counterpart of `MiniL2GroupColumn`. Same L2 header
-/// + (optional L3 sub-label) + bar cells, sized for the shorter
+/// Compact-mode counterpart of `MiniCompanyGroupColumn`. Same L1 header
+/// + SubProvider labels + bar cells, sized for the shorter
 /// compact panel.
 private struct MiniCompactL2GroupColumn: View {
-    let group: MiniL2Group
+    let group: MiniCompanyGroup
 
     @EnvironmentObject var settingsStore: SettingsStore
 
@@ -1013,7 +1032,7 @@ private struct MiniCompactL2GroupColumn: View {
                 Circle()
                     .fill(providerAccent(for: group.accentTool))
                     .frame(width: 5, height: 5)
-                Text(group.productName.uppercased())
+                Text(group.companyName.uppercased())
                     .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.86))
                     .tracking(0.2)
@@ -1212,7 +1231,9 @@ private struct MiniCompactBarCell: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let pace = data.bucket.flatMap { UsagePace.compute(bucket: $0, now: now) }
+        let pace = data.bucket.flatMap {
+            UsagePace.compute(bucket: $0, now: now, allowsPostResetGrace: true)
+        }
         let forecast = data.bucket.flatMap {
             miniQuotaForecast(
                 tool: data.tool,
@@ -1222,14 +1243,19 @@ private struct MiniCompactBarCell: View {
                 now: now
             )
         }
-        let percent = data.bucket?.displayPercent(settingsStore.displayMode) ?? 0
+        let percent = data.bucket?.displayPercent(settingsStore.displayMode, tool: data.tool) ?? 0
         let expected: Double? = forecast.map { miniForecastPlan($0, mode: settingsStore.displayMode) } ?? pace.map { p in
             switch settingsStore.displayMode {
             case .used:      return p.expectedUsedPercent
             case .remaining: return 100 - p.expectedUsedPercent
             }
         }
-        let color = data.bucket.map { Theme.barColor(percent: $0.displayPercent(settingsStore.displayMode), mode: settingsStore.displayMode) }
+        let color = data.bucket.map {
+            Theme.barColor(
+                percent: $0.displayPercent(settingsStore.displayMode, tool: data.tool),
+                mode: settingsStore.displayMode
+            )
+        }
             ?? .secondary.opacity(0.45)
 
         VStack(spacing: 1.5) {

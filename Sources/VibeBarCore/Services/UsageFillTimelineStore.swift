@@ -35,7 +35,7 @@ public actor UsageFillTimelineStore {
     private static let storageSchemaVersion = 2
     private static let saveThrottleInterval: TimeInterval = 30
     private static let maxFileBytes = 24 * 1024 * 1024
-    private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok]
+    private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
 
     public init(fileURL: URL = UsageFillTimelineStore.defaultFileURL()) {
         self.fileURL = fileURL

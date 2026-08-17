@@ -11,6 +11,7 @@ final class CursorParserEdgeCasesTests: XCTestCase {
         let json = """
         {
           "membershipType": "pro",
+          "billingCycleStart": "2026-05-01T00:00:00Z",
           "billingCycleEnd": "2026-06-01T00:00:00Z",
           "individualUsage": {
             "plan": {
@@ -32,14 +33,13 @@ final class CursorParserEdgeCasesTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(snap.planName, "Pro")
-        // Total bucket
-        let total = try XCTUnwrap(snap.buckets.first { $0.id == "cursor.total" })
-        XCTAssertEqual(total.usedPercent, 0.36, accuracy: 0.001)
-        // Auto / API
-        let auto = try XCTUnwrap(snap.buckets.first { $0.id == "cursor.auto" })
-        XCTAssertEqual(auto.usedPercent, 0.20, accuracy: 0.001)
-        let api = try XCTUnwrap(snap.buckets.first { $0.id == "cursor.api" })
-        XCTAssertEqual(api.usedPercent, 0.52, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets.map(\.title), ["Monthly", "Monthly"])
+        XCTAssertEqual(snap.buckets.map(\.groupTitle), ["Cursor Models", "Other Models"])
+        let cursorModels = try XCTUnwrap(snap.buckets.first { $0.id == "models" })
+        XCTAssertEqual(cursorModels.usedPercent, 0.20, accuracy: 0.001)
+        XCTAssertEqual(cursorModels.rawWindowSeconds, 2_678_400)
+        let otherModels = try XCTUnwrap(snap.buckets.first { $0.id == "other_models" })
+        XCTAssertEqual(otherModels.usedPercent, 0.52, accuracy: 0.001)
     }
 
     /// Enterprise / team-member personal cap reported under
@@ -61,8 +61,8 @@ final class CursorParserEdgeCasesTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(snap.planName, "Enterprise")
-        // Total derives from overall.used / overall.limit * 100.
-        XCTAssertEqual(snap.buckets.first(where: { $0.id == "cursor.total" })?.usedPercent ?? -1,
+        // Legacy aggregate derives from overall.used / overall.limit * 100.
+        XCTAssertEqual(snap.buckets.first(where: { $0.id == "models" })?.usedPercent ?? -1,
                        75.0, accuracy: 0.01)
     }
 
@@ -84,7 +84,7 @@ final class CursorParserEdgeCasesTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(snap.planName, "Business")
-        XCTAssertEqual(snap.buckets.first(where: { $0.id == "cursor.total" })?.usedPercent ?? -1,
+        XCTAssertEqual(snap.buckets.first(where: { $0.id == "models" })?.usedPercent ?? -1,
                        8.0, accuracy: 0.01)
     }
 
@@ -115,15 +115,13 @@ final class CursorParserEdgeCasesTests: XCTestCase {
         )
         XCTAssertEqual(snap.planName, "Legacy")
         // 350 / 500 * 100 = 70%
-        XCTAssertEqual(snap.buckets.first(where: { $0.id == "cursor.total" })?.usedPercent ?? -1,
+        XCTAssertEqual(snap.buckets.first(where: { $0.id == "models" })?.usedPercent ?? -1,
                        70.0, accuracy: 0.01)
     }
 
-    /// On-demand budget surfaces as a dedicated bucket with the
-    /// dollar amounts in groupTitle — the misc card lifts that as a
-    /// separate row. Crucially, this does *not* go through the global
-    /// cost pipeline (covered by `tool.supportsTokenCost == false`).
-    func testOnDemandBucketCarriesDollarString() throws {
+    /// On-demand spend is billing state, not a subscription quota lane. Cursor
+    /// cost now comes from token-level dashboard events instead.
+    func testOnDemandDoesNotBecomeQuotaBucket() throws {
         let json = """
         {
           "membershipType": "pro",
@@ -140,33 +138,41 @@ final class CursorParserEdgeCasesTests: XCTestCase {
             requestUsage: nil,
             now: now
         )
-        let onDemand = try XCTUnwrap(snap.buckets.first { $0.id == "cursor.onDemand" })
-        XCTAssertEqual(onDemand.groupTitle, "On-demand: $7.30 / $20.00")
-        XCTAssertEqual(onDemand.usedPercent, 36.5, accuracy: 0.01)
+        XCTAssertFalse(snap.buckets.contains { $0.id == "on_demand" })
+        XCTAssertEqual(snap.buckets.map(\.id), ["models"])
     }
 
-    /// Unlimited on-demand: limit is 0 / nil. Bucket still renders,
-    /// label says "unlimited", percent is zero.
-    func testOnDemandUnlimitedRendersUnlimited() throws {
+    func testGrokBotWeeklyBucketUsesDedicatedResetWindow() throws {
         let json = """
         {
-          "membershipType": "business",
-          "individualUsage": {
-            "plan": {"used": 0, "limit": 0, "totalPercentUsed": 0.0},
-            "onDemand": {"used": 1234}
-          }
+          "membershipType": "ultra",
+          "billingCycleStart": "2026-08-12T05:36:22.000Z",
+          "billingCycleEnd": "2026-09-12T05:36:22.000Z",
+          "individualUsage": {"plan": {"autoPercentUsed": 1, "apiPercentUsed": 2}}
         }
         """
         let summary = try CursorResponseParser.decodeUsageSummary(data: Data(json.utf8))
+        let bot = try XCTUnwrap(CursorResponseParser.decodeGrokBotUsage(data: Data("""
+        {
+          "currentPeriodStart": "2026-08-12T05:39:26.906Z",
+          "nextResetTimestampUtc": "2026-08-19T05:39:26.906Z",
+          "usagePercent": 5.361195,
+          "hasAvailableUsage": true,
+          "hasNonZeroIncludedLimit": true
+        }
+        """.utf8)))
         let snap = CursorResponseParser.parseSummary(
             summary: summary,
             userInfo: nil,
             requestUsage: nil,
+            grokBotUsage: bot,
             now: now
         )
-        let onDemand = try XCTUnwrap(snap.buckets.first { $0.id == "cursor.onDemand" })
-        XCTAssertEqual(onDemand.groupTitle, "On-demand: $12.34 / unlimited")
-        XCTAssertEqual(onDemand.usedPercent, 0.0, accuracy: 0.01)
+        let weekly = try XCTUnwrap(snap.buckets.first { $0.id == "grok_bot_weekly" })
+        XCTAssertEqual(weekly.title, "Weekly")
+        XCTAssertEqual(weekly.groupTitle, "Grok Bot")
+        XCTAssertEqual(weekly.usedPercent, 5.361195, accuracy: 0.000_001)
+        XCTAssertEqual(weekly.rawWindowSeconds, 604_800)
     }
 
     /// Plan name unknown / missing returns nil so the misc card

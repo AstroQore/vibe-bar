@@ -42,7 +42,7 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
         case .claudeOAuth: return "OAuth"
         case .claudeCLI: return "CLI"
         case .geminiBrowserCookies: return "Chrome/Safari cookies"
-        case .antigravityLocalProbe: return "Local language server"
+        case .antigravityLocalProbe: return "Local Antigravity / agy"
         case .grokAuthJSON: return "~/.grok/auth.json"
         case .grokBrowserCookies: return "Chrome/Safari cookies"
         }
@@ -184,19 +184,20 @@ public enum PrimaryProviderRouteHealthChecker {
         return antigravityLocalProbeHealth(
             route: route,
             languageServerRunning: antigravityLanguageServerIsRunning(now: now),
+            cliAvailable: AntigravityCLIQuotaFetcher.resolveBinary() != nil,
             hasLocalData: FileManager.default.fileExists(atPath: dataRoot.path),
             now: now
         )
     }
 
     /// Separates the AntiGravity availability semantics from process and file
-    /// probing so the important cached-data fallback remains testable. A
-    /// stopped language server is not a broken connection when Vibe Bar still
-    /// has usable local AntiGravity data; it only means live synchronization is
-    /// paused until AntiGravity runs again.
+    /// probing so app, CLI, and stale-cache states remain testable. Cached
+    /// quota may still render for continuity, but it is not reported healthy
+    /// when neither the app language server nor `agy` can refresh it.
     static func antigravityLocalProbeHealth(
         route: PrimaryProviderRoute = .antigravityLocalProbe,
         languageServerRunning: Bool,
+        cliAvailable: Bool = false,
         hasLocalData: Bool,
         now: Date
     ) -> PrimaryProviderRouteHealth {
@@ -208,11 +209,19 @@ public enum PrimaryProviderRouteHealthChecker {
                 checkedAt: now
             )
         }
-        if hasLocalData {
+        if cliAvailable {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .ok,
-                detail: "Local data available; LSP offline",
+                detail: "agy CLI available",
+                checkedAt: now
+            )
+        }
+        if hasLocalData {
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: .failed,
+                detail: "Cached data only; live quota unavailable",
                 checkedAt: now
             )
         }

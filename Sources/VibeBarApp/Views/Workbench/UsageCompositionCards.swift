@@ -7,6 +7,7 @@ struct UsageCompositionCards: View {
     let density: Theme.Density
     let summary: UsageSummaryMetrics
     let providers: [UsageProviderStat]
+    let subProviderSummaries: [ToolType: String]
 
     private var providerRows: [UsageProviderStat] {
         providers
@@ -44,7 +45,7 @@ struct UsageCompositionCards: View {
                 Spacer(minLength: 0)
                 Divider().opacity(0.45)
                 HStack {
-                    Text("\(providerRows.count) provider\(providerRows.count == 1 ? "" : "s") active in range")
+                    Text("\(providerRows.count) compan\(providerRows.count == 1 ? "y" : "ies") active in range")
                     Spacer(minLength: 8)
                     Text("\(summary.requests.formatted(.number.grouping(.automatic))) requests")
                 }
@@ -62,9 +63,16 @@ struct UsageCompositionCards: View {
         return VStack(spacing: 5) {
             HStack(spacing: 7) {
                 ToolBrandBadge(tool: row.tool, iconSize: 12, containerSize: 19)
-                Text(row.tool.displayName)
-                    .font(.system(size: density.subtitleFontSize, weight: .semibold))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(row.tool.vendorName)
+                        .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                    if let summary = subProviderSummaries[row.tool], !summary.isEmpty {
+                        Text(summary)
+                            .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
                 Spacer(minLength: 6)
                 Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                     .foregroundStyle(.secondary)

@@ -262,6 +262,7 @@ struct UsageTrendChartView: View {
             Button { model.navigateWindow(by: -1) } label: {
                 Image(systemName: "chevron.left")
             }
+            .disabled(!model.canNavigateBackward)
             .help("Previous window")
             Button { model.navigateWindow(by: 1) } label: {
                 Image(systemName: "chevron.right")

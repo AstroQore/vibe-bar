@@ -62,6 +62,82 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: 5).pageCount, 0)
     }
 
+    func testProviderStatsMergeAtCompanyLevel() {
+        let rows = [
+            UsageProviderStat(tool: .gemini, requests: 2, totalTokens: 100, costMicros: 10),
+            UsageProviderStat(tool: .antigravity, requests: 3, totalTokens: 200, costMicros: 20),
+            UsageProviderStat(tool: .grok, requests: 4, totalTokens: 400, costMicros: 40),
+            UsageProviderStat(tool: .cursor, requests: 5, totalTokens: 500, costMicros: 50),
+            UsageProviderStat(tool: .codex, requests: 1, totalTokens: 50, costMicros: 5)
+        ]
+        let merged = UsageProviderStat.mergedByCompany(rows)
+        XCTAssertEqual(merged.map(\.tool), [.grok, .gemini, .codex])
+        XCTAssertEqual(merged[0].requests, 9)
+        XCTAssertEqual(merged[0].totalTokens, 900)
+        XCTAssertEqual(merged[1].requests, 5)
+        XCTAssertEqual(merged[1].totalTokens, 300)
+        let summaries = UsageProviderStat.subProviderSummariesByCompany(rows)
+        XCTAssertEqual(summaries[.grok], "Grok + Cursor")
+        XCTAssertEqual(summaries[.gemini], "Gemini Web + AntiGravity")
+        XCTAssertEqual(
+            UsageProviderStat.subProviderSummariesByCompany([
+                UsageProviderStat(tool: .cursor, requests: 1, totalTokens: 10, costMicros: 1)
+            ])[.grok],
+            "Cursor"
+        )
+    }
+
+    func testEarliestUsageDateUsesActualRowsAndToolFilter() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsEarliest")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let old = now.addingTimeInterval(-20 * 86_400)
+        let recent = now.addingTimeInterval(-2 * 86_400)
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .claude,
+            path: "/Users/example/.claude/projects/old.jsonl",
+            events: [UsageLedgerFixtures.priced(UsageLedgerFixtures.event(date: old))]
+        ))
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .codex,
+            path: "/Users/example/.codex/sessions/recent.jsonl",
+            events: [UsageLedgerFixtures.priced(UsageLedgerFixtures.event(date: recent))]
+        ))
+
+        let allStart = try await ledger.earliestUsageDate()
+        let codexStart = try await ledger.earliestUsageDate(tools: [.codex])
+        let emptyStart = try await ledger.earliestUsageDate(tools: [])
+        XCTAssertEqual(allStart, old)
+        XCTAssertEqual(codexStart, recent)
+        XCTAssertNil(emptyStart)
+    }
+
+    func testBlankLegacyModelRemainsInTotalsButNotModelFiltersOrRows() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsBlankModel")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: now, model: "", input: 300, output: 30),
+                costUSD: 0.3
+            ),
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(
+                    date: now.addingTimeInterval(-60),
+                    model: "gpt-5.5",
+                    input: 700,
+                    output: 70
+                ),
+                costUSD: 0.7
+            )
+        ]))
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+        let summary = try await ledger.summary(filter)
+        let available = try await ledger.availableModels()
+        let models = try await ledger.modelStats(filter)
+        XCTAssertEqual(summary.requests, 2)
+        XCTAssertEqual(available, ["gpt-5.5"])
+        XCTAssertEqual(models.map(\.model), ["gpt-5.5"])
+    }
+
     // MARK: - Zero-filled trend
 
     func testHourlyTrendZeroFillsEveryBucketInRange() async throws {

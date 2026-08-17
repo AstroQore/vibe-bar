@@ -222,4 +222,100 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
             return components.filter { $0.groupId == nil }
         }
     }
+
+    /// Adds a linked provider as one component group while preserving this
+    /// snapshot's L1 company identity. Used by the SpaceXAI card to include
+    /// Cursor Status without implying a second top-level company row.
+    public func mergingSubProvider(
+        _ child: ServiceStatusSnapshot,
+        groupID: String,
+        groupName: String
+    ) -> ServiceStatusSnapshot {
+        let childComponents = child.components.map { component in
+            ServiceComponentSummary(
+                id: "\(groupID):\(component.id)",
+                name: component.name,
+                status: component.status,
+                groupId: groupID,
+                uptimePercent: component.uptimePercent,
+                recentDays: component.recentDays
+            )
+        }
+        let childIsWorse = child.effectiveIndicator.severity > effectiveIndicator.severity
+        let incidents = (recentIncidents + child.recentIncidents)
+            .sorted { $0.createdAt > $1.createdAt }
+        return ServiceStatusSnapshot(
+            tool: tool,
+            indicator: childIsWorse ? child.effectiveIndicator : effectiveIndicator,
+            description: childIsWorse ? "\(groupName) · \(child.effectiveDescription)" : effectiveDescription,
+            updatedAt: max(updatedAt, child.updatedAt),
+            groups: groups + [ServiceComponentGroup(id: groupID, name: groupName)],
+            components: components + childComponents,
+            recentIncidents: Array(incidents.prefix(4)),
+            incidentDays: incidentDays,
+            incidentAdjustedUptimePercent: incidentAdjustedUptimePercent
+        )
+    }
+
+    /// One canonical SpaceXAI status projection shared by the Workbench card
+    /// and the menu-bar context menu.
+    public static func mergedSpaceXAI(
+        grok: ServiceStatusSnapshot?,
+        cursor: ServiceStatusSnapshot?
+    ) -> ServiceStatusSnapshot? {
+        guard let cursor else { return grok }
+        var base = grok ?? ServiceStatusSnapshot(
+            tool: .grok,
+            indicator: .none,
+            description: "Cursor status available",
+            updatedAt: cursor.updatedAt,
+            groups: [],
+            components: [],
+            recentIncidents: []
+        )
+        if grok != nil {
+            let groupID = "subprovider:grok"
+            base = ServiceStatusSnapshot(
+                tool: base.tool,
+                indicator: base.indicator,
+                description: base.description,
+                updatedAt: base.updatedAt,
+                groups: [ServiceComponentGroup(id: groupID, name: "Grok")],
+                components: base.components.map { component in
+                    ServiceComponentSummary(
+                        id: component.id,
+                        name: component.name,
+                        status: component.status,
+                        groupId: groupID,
+                        uptimePercent: component.uptimePercent,
+                        recentDays: component.recentDays
+                    )
+                },
+                recentIncidents: base.recentIncidents,
+                incidentDays: base.incidentDays,
+                incidentAdjustedUptimePercent: base.incidentAdjustedUptimePercent
+            )
+        }
+        return base.mergingSubProvider(
+            cursor,
+            groupID: "subprovider:cursor",
+            groupName: "Cursor"
+        )
+    }
+
+    /// Gemini Web and AntiGravity poll the same Google AI feed. Prefer the
+    /// worse effective state (including open incidents), then the newer cache.
+    public static func preferredGoogleAI(
+        gemini: ServiceStatusSnapshot?,
+        antigravity: ServiceStatusSnapshot?
+    ) -> ServiceStatusSnapshot? {
+        guard let gemini else { return antigravity }
+        guard let antigravity else { return gemini }
+        if gemini.effectiveIndicator.severity != antigravity.effectiveIndicator.severity {
+            return gemini.effectiveIndicator.severity > antigravity.effectiveIndicator.severity
+                ? gemini
+                : antigravity
+        }
+        return gemini.updatedAt >= antigravity.updatedAt ? gemini : antigravity
+    }
 }

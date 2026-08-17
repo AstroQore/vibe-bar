@@ -2,29 +2,22 @@ import Foundation
 
 /// Cursor (cursor.com) usage adapter.
 ///
-/// Cursor is web-only — there's no API key path. Auth flows through
-/// `MiscCookieResolver` against `cursor.com` / `cursor.sh`; the
-/// resolver hands us a browser-imported cookie header containing
-/// the session token (one of `WorkosCursorSessionToken`,
-/// `__Secure-next-auth.session-token`, `wos-session`, etc.).
+/// Automatic auth prefers Cursor.app's read-only local session, then falls
+/// back to the existing browser/manual cookie slots. Both paths resolve to a
+/// first-party cursor.com cookie; Vibe Bar never refreshes Cursor's token.
 ///
-/// Three endpoints in priority order:
+/// Four endpoints:
 ///
 /// 1. `GET /api/usage-summary` — Pro / Business / Enterprise / Free.
 /// 2. `GET /api/auth/me` — identity (email, plan).
-/// 3. `GET /api/usage?user=<id>` — fallback for legacy "request
+/// 3. `POST /api/dashboard/get-sand-usage-status` — Grok Bot weekly quota.
+/// 4. `GET /api/usage?user=<id>` — fallback for legacy "request
 ///    plan" accounts whose summary is partial.
 ///
 /// Output:
-/// - **Total** (primary) — combined percent across the precedence
-///   chain spelled out in `parseSummary`.
-/// - **Auto** (secondary) — `autoPercentUsed` if present.
-/// - **API** (tertiary) — `apiPercentUsed` if present.
-/// - **On-demand** (extra row) — `$used / $limit` rendered through
-///   `groupTitle` so the misc card surfaces it without polluting
-///   `~/.vibebar/cost_history.json`. `supportsTokenCost == false`
-///   for `.cursor`, so the global cost pipeline ignores it
-///   regardless.
+/// - **Cursor Models / Monthly** — Cursor's first-party pool (Cursor Grok + Composer).
+/// - **Other Models / Monthly** — named third-party models.
+/// - **Grok Bot / Weekly** — Cursor's cloud-only Bot allowance.
 ///
 /// Edge-case tests (`CursorParserEdgeCasesTests`) pin the four
 /// shapes the plan called out: Pro fractional percent (no `× 100`),
@@ -35,6 +28,7 @@ public struct CursorQuotaAdapter: QuotaAdapter {
 
     private let session: URLSession
     private let now: @Sendable () -> Date
+    private let resolutionPlanProvider: (@Sendable (AccountIdentity, Date) -> CursorSessionResolutionPlan)?
 
     public static let cookieSpec = MiscCookieResolver.Spec(
         tool: .cursor,
@@ -58,17 +52,38 @@ public struct CursorQuotaAdapter: QuotaAdapter {
     ) {
         self.session = session
         self.now = now
+        self.resolutionPlanProvider = nil
+    }
+
+    init(
+        session: URLSession,
+        now: @escaping @Sendable () -> Date,
+        resolutionPlanProvider: @escaping @Sendable (AccountIdentity, Date) -> CursorSessionResolutionPlan
+    ) {
+        self.session = session
+        self.now = now
+        self.resolutionPlanProvider = resolutionPlanProvider
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let resolutions = MiscCookieResolver.resolveAll(for: CursorQuotaAdapter.cookieSpec, account: account)
-        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
-
         let queriedAt = now()
+        let plan = resolutionPlanProvider?(account, queriedAt)
+            ?? CursorSessionResolver.plan(account: account, now: queriedAt)
+        guard !plan.isEmpty else { throw QuotaError.noCredential }
+
+        if let preferred = plan.preferred {
+            do {
+                return try await fetchOneSlot(preferred, account: account, queriedAt: queriedAt)
+            } catch let error as QuotaError {
+                guard error.isCredentialState, !plan.fallbacks.isEmpty else { throw error }
+            }
+        }
+
+        guard !plan.fallbacks.isEmpty else { throw QuotaError.noCredential }
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
             spec: CursorQuotaAdapter.cookieSpec,
             account: account,
-            resolutions: resolutions
+            resolutions: plan.fallbacks
         ) { resolution in
             try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
         }
@@ -88,8 +103,11 @@ public struct CursorQuotaAdapter: QuotaAdapter {
         let summaryData = try await get(path: "/api/usage-summary", cookieHeader: resolution.header)
         let summary = try CursorResponseParser.decodeUsageSummary(data: summaryData)
 
-        let userInfoData = try? await get(path: "/api/auth/me", cookieHeader: resolution.header)
+        async let userInfoFetch = try? get(path: "/api/auth/me", cookieHeader: resolution.header)
+        async let grokBotFetch = try? post(path: "/api/dashboard/get-sand-usage-status", cookieHeader: resolution.header)
+        let userInfoData = await userInfoFetch
         let userInfo = userInfoData.flatMap(CursorResponseParser.decodeUserInfo)
+        let grokBotUsage = (await grokBotFetch).flatMap(CursorResponseParser.decodeGrokBotUsage)
 
         // Legacy request-plan fallback fires when usage-summary is
         // missing the plan block entirely. Codexbar gates the
@@ -104,6 +122,7 @@ public struct CursorQuotaAdapter: QuotaAdapter {
             summary: summary,
             userInfo: userInfo,
             requestUsage: requestUsage,
+            grokBotUsage: grokBotUsage,
             now: queriedAt
         )
 
@@ -149,6 +168,36 @@ public struct CursorQuotaAdapter: QuotaAdapter {
         return data
     }
 
+    private func post(path: String, cookieHeader: String) async throws -> Data {
+        var request = URLRequest(url: CursorQuotaAdapter.baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.httpBody = Data("{}".utf8)
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("https://cursor.com", forHTTPHeaderField: "Origin")
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+            forHTTPHeaderField: "User-Agent"
+        )
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw QuotaError.network("Cursor network error: \(error.localizedDescription)")
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw QuotaError.network("Cursor: invalid response object")
+        }
+        guard http.statusCode == 200 else {
+            if http.statusCode == 401 || http.statusCode == 403 { throw QuotaError.needsLogin }
+            if http.statusCode == 429 { throw QuotaError.rateLimited }
+            throw QuotaError.network("Cursor \(path) returned HTTP \(http.statusCode).")
+        }
+        return data
+    }
+
     private func fetchRequestUsage(userId: String, cookieHeader: String) async throws -> CursorRequestUsage {
         var components = URLComponents(url: CursorQuotaAdapter.baseURL.appendingPathComponent("/api/usage"),
                                        resolvingAgainstBaseURL: false)!
@@ -181,6 +230,10 @@ enum CursorResponseParser {
         try? JSONDecoder().decode(CursorUserInfo.self, from: data)
     }
 
+    static func decodeGrokBotUsage(data: Data) -> CursorGrokBotUsage? {
+        try? JSONDecoder().decode(CursorGrokBotUsage.self, from: data)
+    }
+
     /// Parse the assembled response into bucket form. Pulled out to
     /// its own function so unit tests can drive every edge case
     /// without faking HTTP.
@@ -188,6 +241,7 @@ enum CursorResponseParser {
         summary: CursorUsageSummary,
         userInfo: CursorUserInfo?,
         requestUsage: CursorRequestUsage?,
+        grokBotUsage: CursorGrokBotUsage? = nil,
         now: Date
     ) -> Snapshot {
         let plan = summary.individualUsage?.plan
@@ -228,67 +282,64 @@ enum CursorResponseParser {
             return 0
         }()
 
-        var buckets: [QuotaBucket] = [
-            QuotaBucket(
-                id: "cursor.total",
-                title: "Total",
-                shortLabel: "Total",
-                usedPercent: totalPct,
-                resetAt: parseBillingCycleEnd(summary.billingCycleEnd),
-                rawWindowSeconds: nil
-            )
-        ]
+        let billingCycleStart = parseBillingCycleEnd(summary.billingCycleStart)
+        let billingCycleEnd = parseBillingCycleEnd(summary.billingCycleEnd)
+        let billingWindow = windowSeconds(start: billingCycleStart, end: billingCycleEnd)
+        var buckets: [QuotaBucket] = []
 
+        // Cursor renamed the old Auto/API lanes in August 2026. Preserve the
+        // wire fields for compatibility, but use the product's current labels.
         if let auto = autoPct {
             buckets.append(QuotaBucket(
-                id: "cursor.auto",
-                title: "Auto",
-                shortLabel: "Auto",
+                id: "models",
+                title: "Monthly",
+                shortLabel: "Cursor",
                 usedPercent: auto,
-                resetAt: parseBillingCycleEnd(summary.billingCycleEnd),
-                rawWindowSeconds: nil
+                resetAt: billingCycleEnd,
+                rawWindowSeconds: billingWindow,
+                groupTitle: "Cursor Models"
             ))
         }
         if let api = apiPct {
             buckets.append(QuotaBucket(
-                id: "cursor.api",
-                title: "API",
-                shortLabel: "API",
+                id: "other_models",
+                title: "Monthly",
+                shortLabel: "Other",
                 usedPercent: api,
-                resetAt: parseBillingCycleEnd(summary.billingCycleEnd),
-                rawWindowSeconds: nil
+                resetAt: billingCycleEnd,
+                rawWindowSeconds: billingWindow,
+                groupTitle: "Other Models"
             ))
         }
 
-        // On-demand budget. Surface as a regular bucket with the
-        // dollar amounts in `groupTitle` so the misc card can lift
-        // them as a discrete extra row. We deliberately don't fold
-        // on-demand spend into the global cost pipeline — the
-        // `tool.supportsTokenCost == false` short-circuit keeps it
-        // out of `cost_history.json`.
-        if let onDemand = summary.individualUsage?.onDemand,
-           let used = onDemand.used {
-            let usedDollars = Double(used) / 100.0
-            let label: String
-            let percent: Double
-            if let limit = onDemand.limit, limit > 0 {
-                let limitDollars = Double(limit) / 100.0
-                label = String(format: "On-demand: $%.2f / $%.2f", usedDollars, limitDollars)
-                percent = clampPercent(Double(used) / Double(limit) * 100)
-            } else {
-                label = String(format: "On-demand: $%.2f / unlimited", usedDollars)
-                percent = 0
-            }
-            var bucket = QuotaBucket(
-                id: "cursor.onDemand",
-                title: "On-demand",
-                shortLabel: "OD",
-                usedPercent: percent,
-                resetAt: nil,
-                rawWindowSeconds: nil
-            )
-            bucket.groupTitle = label
-            buckets.append(bucket)
+        // Older plan shapes expose one aggregate/request quota rather than the
+        // two modern pools. Keep that usage visible under Cursor Models.
+        if buckets.isEmpty {
+            buckets.append(QuotaBucket(
+                id: "models",
+                title: "Monthly",
+                shortLabel: "Cursor",
+                usedPercent: totalPct,
+                resetAt: billingCycleEnd,
+                rawWindowSeconds: billingWindow,
+                groupTitle: "Cursor Models"
+            ))
+        }
+
+        if let bot = grokBotUsage,
+           let percent = bot.usagePercent,
+           bot.hasNonZeroIncludedLimit != false {
+            let periodStart = parseBillingCycleEnd(bot.currentPeriodStart)
+            let resetAt = parseBillingCycleEnd(bot.nextResetTimestampUtc)
+            buckets.append(QuotaBucket(
+                id: "grok_bot_weekly",
+                title: "Weekly",
+                shortLabel: "Grok Bot",
+                usedPercent: clampPercent(percent),
+                resetAt: resetAt,
+                rawWindowSeconds: windowSeconds(start: periodStart, end: resetAt),
+                groupTitle: "Grok Bot"
+            ))
         }
 
         let planName = displayPlanName(
@@ -315,6 +366,11 @@ enum CursorResponseParser {
         let plain = ISO8601DateFormatter()
         plain.formatOptions = [.withInternetDateTime]
         return plain.date(from: raw)
+    }
+
+    private static func windowSeconds(start: Date?, end: Date?) -> Int? {
+        guard let start, let end, end > start else { return nil }
+        return Int(end.timeIntervalSince(start).rounded())
     }
 
     private static func displayPlanName(
@@ -344,6 +400,7 @@ public struct CursorUsageSummary: Decodable, Sendable {
     public let individualUsage: CursorIndividualUsage?
     public let teamUsage: CursorTeamUsage?
     public let membershipType: String?
+    public let billingCycleStart: String?
     public let billingCycleEnd: String?
 }
 
@@ -375,6 +432,15 @@ public struct CursorUserInfo: Decodable, Sendable {
     public let email: String?
     public let id: String?
     public let sub: String?
+}
+
+public struct CursorGrokBotUsage: Decodable, Sendable, Equatable {
+    public let currentPeriodStart: String?
+    public let nextResetTimestampUtc: String?
+    public let usagePercent: Double?
+    public let includedLimitZero: Bool?
+    public let hasAvailableUsage: Bool?
+    public let hasNonZeroIncludedLimit: Bool?
 }
 
 public struct CursorRequestUsage: Decodable, Sendable {

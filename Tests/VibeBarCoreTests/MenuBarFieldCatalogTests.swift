@@ -14,7 +14,10 @@ final class MenuBarFieldCatalogTests: XCTestCase {
             "antigravity.gemini_weekly",
             "antigravity.claude_gpt_five_hour",
             "antigravity.claude_gpt_weekly",
-            "grok.weekly"
+            "grok.weekly",
+            "cursor.models",
+            "cursor.other_models",
+            "cursor.grok_bot_weekly"
         ]
 
         for id in expected {
@@ -31,6 +34,9 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         XCTAssertTrue(selected.contains("antigravity.claude_gpt_five_hour"))
         XCTAssertTrue(selected.contains("antigravity.claude_gpt_weekly"))
         XCTAssertTrue(selected.contains("grok.weekly"))
+        XCTAssertTrue(selected.contains("cursor.models"))
+        XCTAssertTrue(selected.contains("cursor.other_models"))
+        XCTAssertTrue(selected.contains("cursor.grok_bot_weekly"))
     }
 
     func testDefaultLabelsUseFullQuotaWindowNames() {
@@ -41,6 +47,21 @@ final class MenuBarFieldCatalogTests: XCTestCase {
             XCTAssertFalse(words.contains("5h"), "\(field.id) must spell out 5 Hours")
             XCTAssertFalse(words.contains("wk"), "\(field.id) must spell out Weekly")
         }
+    }
+
+    func testCursorFieldsUseMonthlyModelsAndWeeklyBotLabels() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.models")).title,
+            "Cursor Models · Monthly"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.other_models")).title,
+            "Other Models · Monthly"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.grok_bot_weekly")).title,
+            "Grok Bot · Weekly"
+        )
     }
 
     func testGeminiCLIModelIdsMigrateToWebBuckets() {

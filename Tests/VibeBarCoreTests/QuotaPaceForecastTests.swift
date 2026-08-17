@@ -46,6 +46,35 @@ final class QuotaPaceForecastTests: XCTestCase {
         XCTAssertEqual(forecast.diagnostics.recentSampleCount, 0)
     }
 
+    func testForecastSurvivesTheBoundaryRefreshGrace() throws {
+        let reset = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertNil(QuotaPaceForecast.compute(
+            bucket: bucket(used: 30, resetAt: reset),
+            observations: [],
+            cycles: [],
+            now: reset.addingTimeInterval(120)
+        ))
+        let forecast = QuotaPaceForecast.compute(
+            bucket: bucket(used: 30, resetAt: reset),
+            observations: [],
+            cycles: [],
+            now: reset.addingTimeInterval(120),
+            allowsPostResetGrace: true
+        )
+        XCTAssertNotNil(forecast)
+    }
+
+    func testForecastStopsAfterTheBoundaryRefreshGrace() {
+        let reset = Date(timeIntervalSince1970: 1_800_000_000)
+        let forecast = QuotaPaceForecast.compute(
+            bucket: bucket(used: 30, resetAt: reset),
+            observations: [],
+            cycles: [],
+            now: reset.addingTimeInterval(181)
+        )
+        XCTAssertNil(forecast)
+    }
+
     func testRecentAccelerationPredictsRunOutBeforeReset() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let reset = now.addingTimeInterval(2 * 86_400)

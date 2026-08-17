@@ -368,7 +368,7 @@ extension ToolType {
 
     var providerIconDrawScale: CGFloat {
         switch self {
-        // All five primary tools render at the same overshoot scale.
+        // All dedicated and linked tools render at the same overshoot scale.
         // The previous 1.0 for codex/claude let the SVG paths reach
         // the canvas edge — the anti-aliased boundary that produced
         // read as a "细线" (thin line / halo) around the glyph, while

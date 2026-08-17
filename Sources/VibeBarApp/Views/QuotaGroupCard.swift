@@ -14,7 +14,7 @@ struct QuotaGroupModule: Identifiable {
     struct Row: Identifiable {
         let id: String
         /// The tool this bucket actually came from — differs from the module's
-        /// page tool only for linked products (AntiGravity on the Gemini page).
+        /// page tool only for linked SubProviders (AntiGravity on Google AI).
         let tool: ToolType
         let accountId: String?
         let bucket: QuotaBucket
@@ -34,13 +34,17 @@ struct QuotaGroupModule: Identifiable {
     let accountId: String?
     /// The group's heading, `nil` for the unnamed run.
     let title: String?
+    /// Whether the quota/model group heading is distinct from its SubProvider
+    /// heading. Grok Bot is itself a SubProvider, not a model group.
+    let showsGroupTitle: Bool
     /// Account-scoped identity of the group's history chart. Unchanged from the
     /// pre-split card so an existing chart keeps its state.
     let chartKey: String
     let rows: [Row]
-    /// Set on the first card of a linked product's run. That card names the
-    /// product (icon + title) the way the in-card divider used to.
+    /// Set on the first card of a SubProvider run (ChatGPT Agentic, Claude,
+    /// Gemini Web, AntiGravity, Grok, Cursor, or Grok Bot).
     let linkedSectionTitle: String?
+    let linkedSectionIconTool: ToolType?
     /// Set on the first card of the page. It inherits the provider header —
     /// brand icon, product name, plan badge, refresh button — that the single
     /// pre-split card carried at the top.
@@ -53,7 +57,7 @@ struct QuotaGroupModule: Identifiable {
 
 /// Resolves a provider page's quota buckets into the per-group card modules the
 /// page renders, preserving the pre-split card's ordering exactly: primary
-/// buckets first in provider order, then any linked product's, split wherever
+/// buckets first in provider order, then any linked SubProvider's, split wherever
 /// `QuotaBucketGrouping.key` changes.
 enum QuotaGroupModuleBuilder {
     private struct RawBucket {
@@ -67,8 +71,8 @@ enum QuotaGroupModuleBuilder {
     ///   - pageTool: the provider page being rendered.
     ///   - buckets: the page tool's own live quotas.
     ///   - primaryAccountId: account behind `buckets`, `nil` when signed out.
-    ///   - additionalQuotaSeries: linked products stacked under the page tool
-    ///     (AntiGravity on the Gemini page).
+    ///   - additionalQuotaSeries: linked SubProviders stacked under the page
+    ///     tool (AntiGravity on Google AI).
     static func modules(
         pageTool: ToolType,
         buckets: [QuotaBucket],
@@ -109,15 +113,14 @@ enum QuotaGroupModuleBuilder {
             let head = raw[index]
             let title = titles[index]
 
-            // A linked product's name is printed once, on the first card of its
-            // run. A section boundary always implies a group boundary, because
-            // changing tool changes the chart key too.
+            // A SubProvider name is printed once on the first card in its run.
+            // Grok Bot is a distinct SubProvider even though its quota comes
+            // from the Cursor dashboard adapter.
             var linkedSectionTitle: String?
-            if head.tool != pageTool {
-                let sectionKey = "\(head.tool.rawValue):\(head.tool.toolName)"
-                if seenSectionKeys.insert(sectionKey).inserted {
-                    linkedSectionTitle = head.tool.toolName
-                }
+            let resolvedSubProviderTitle = head.tool.quotaSubProviderName(bucketID: head.bucket.id)
+            let sectionKey = "\(head.tool.rawValue):\(resolvedSubProviderTitle)"
+            if seenSectionKeys.insert(sectionKey).inserted {
+                linkedSectionTitle = resolvedSubProviderTitle
             }
 
             // Two runs can in principle carry the same heading (a heading that
@@ -136,6 +139,7 @@ enum QuotaGroupModuleBuilder {
                     tool: head.tool,
                     accountId: head.accountId,
                     title: title,
+                    showsGroupTitle: !(head.tool == .cursor && head.bucket.id == "grok_bot_weekly"),
                     chartKey: chartKeys[index],
                     rows: raw[index...end].map {
                         QuotaGroupModule.Row(
@@ -146,6 +150,9 @@ enum QuotaGroupModuleBuilder {
                         )
                     },
                     linkedSectionTitle: linkedSectionTitle,
+                    linkedSectionIconTool: head.tool == .cursor && head.bucket.id == "grok_bot_weekly"
+                        ? .grok
+                        : head.tool,
                     showsProviderHeader: modules.isEmpty
                 )
             )
@@ -174,12 +181,15 @@ enum QuotaGroupModuleBuilder {
             tool: pageTool,
             accountId: accountId,
             title: title,
+            showsGroupTitle: true,
             chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: title),
             rows: [],
-            linkedSectionTitle: nil,
+            linkedSectionTitle: pageTool.quotaSubProviderName(),
+            linkedSectionIconTool: pageTool,
             showsProviderHeader: true
         )
     }
+
 }
 
 /// One quota group as a self-contained card module.
@@ -240,20 +250,14 @@ struct QuotaGroupCard: View {
                 HStack(alignment: .center, spacing: 8) {
                     ProviderSectionTitle(
                         tool: module.pageTool,
-                        title: module.pageTool.menuTitle,
-                        subtitle: providerSubtitle,
+                        title: module.pageTool.vendorName,
+                        subtitle: nil,
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 16,
                         badgeSize: 24
                     )
                     Spacer(minLength: 4)
-                    if let providerPlanBadge {
-                        PlanBadgeView(
-                            text: providerPlanBadge,
-                            fontSize: max(9, density.subtitleFontSize - 1)
-                        )
-                    }
                     SectionRefreshButton(isRefreshing: isRefreshing) {
                         for refreshTool in refreshTools {
                             environment.refresh(refreshTool)
@@ -262,24 +266,39 @@ struct QuotaGroupCard: View {
                 }
             }
             if let linkedSectionTitle = module.linkedSectionTitle {
-                // The pre-split card separated a linked product's rows with a
+                // The pre-split card separated a linked SubProvider's rows with a
                 // divider; the card boundary does that now, so only the name
                 // and brand icon survive.
                 HStack(alignment: .center, spacing: 6) {
-                    ToolBrandIconView(tool: module.tool, size: 13)
+                    ToolBrandIconView(tool: module.linkedSectionIconTool ?? module.tool, size: 13)
                         .opacity(0.85)
                     Text(linkedSectionTitle)
                         .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 4)
+                    if let subProviderPlanBadge {
+                        PlanBadgeView(
+                            text: subProviderPlanBadge,
+                            fontSize: max(9, density.subtitleFontSize - 1)
+                        )
+                    }
                 }
             }
-            if let title = module.title {
-                Text(title)
-                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.4)
+            if let warning = providerFreshnessWarning {
+                Label(warning.label, systemImage: "clock.badge.exclamationmark")
+                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(warning.help)
+            }
+            if module.showsGroupTitle, let title = module.title {
+                HStack(spacing: 5) {
+                    Text(title)
+                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.4)
+                }
             }
         }
     }
@@ -291,16 +310,29 @@ struct QuotaGroupCard: View {
         }
     }
 
-    private var providerSubtitle: String {
-        module.pageTool == .gemini ? module.pageTool.statusProviderName : module.pageTool.subtitle
+    private var providerFreshnessWarning: (label: String, help: String)? {
+        guard module.showsProviderHeader || module.linkedSectionTitle != nil,
+              let accountId = module.accountId,
+              let updatedAt = quotaService.lastUpdatedByAccount[accountId]
+        else { return nil }
+        let age = now.timeIntervalSince(updatedAt)
+        let staleAfter = TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2))
+        let error = quotaService.lastErrorByAccount[accountId]
+        guard age >= staleAfter || error != nil else { return nil }
+        let updated = ResetCountdownFormatter.updatedAgo(from: updatedAt, now: now)
+        let label = age >= staleAfter ? "Stale · \(updated)" : "Refresh failed · \(updated)"
+        return (
+            label: label,
+            help: error?.userFacingMessage ?? "Live quota has not refreshed within the expected interval."
+        )
     }
 
-    private var providerPlanBadge: String? {
-        let account = environment.account(for: module.pageTool)
+    private var subProviderPlanBadge: String? {
+        let account = environment.account(for: module.tool)
         let quotaPlan = account.flatMap { quotaService.cachedQuota(for: $0.id)?.plan }
-            ?? environment.quota(for: module.pageTool)?.plan
+            ?? environment.quota(for: module.tool)?.plan
         let label = settingsStore.settings.planBadgeLabel(
-            for: module.pageTool,
+            for: module.tool,
             quotaPlan: quotaPlan,
             accountPlan: account?.plan
         )?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -362,9 +394,9 @@ struct QuotaGroupCard: View {
     @ViewBuilder
     private func row(for item: QuotaGroupModule.Row) -> some View {
         let bucket = item.bucket
-        let pace = UsagePace.compute(bucket: bucket, now: now)
+        let pace = UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
         let forecast = paceForecast(for: item)
-        let used = bucket.usedPercent
+        let used = bucket.displayPercent(.used, tool: item.tool)
         let timeExpected = pace.map { displayedPercent(fromUsed: $0.expectedUsedPercent) }
         let forecastProjection = forecast.map {
             QuotaForecastBarProjection(
@@ -402,7 +434,7 @@ struct QuotaGroupCard: View {
                 forecastColor: forecast.map { QuotaForecastPalette.color(for: $0.verdict) }
             )
             Text(SubscriptionWindowProgress.summary(
-                usedPercent: bucket.usedPercent,
+                usedPercent: used,
                 resetAt: bucket.resetAt,
                 rawWindowSeconds: bucket.rawWindowSeconds,
                 displayMode: mode,
@@ -505,7 +537,8 @@ struct QuotaGroupCard: View {
             bucket: item.bucket,
             activityHeatmap: snapshot?.heatmap,
             dailyActivity: snapshot?.dailyHistory ?? [],
-            now: now
+            now: now,
+            allowsPostResetGrace: true
         )
     }
 

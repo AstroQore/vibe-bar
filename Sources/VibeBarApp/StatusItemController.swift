@@ -195,10 +195,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             other.performClose(nil)
         }
         let settings = environment.settingsStore.settings
-        environment.scheduler.triggerRefreshForPopoverOpenIfNeeded(
+        let scheduledFullRefresh = environment.scheduler.triggerRefreshForPopoverOpenIfNeeded(
             enabled: settings.refreshOnPopoverOpen,
             cooldownSeconds: settings.popoverOpenRefreshCooldownSeconds
         )
+        if !scheduledFullRefresh {
+            environment.scheduler.triggerRefreshForStaleCacheIfNeeded()
+        }
         // Set before `show`: the refresh above publishes into the popover's own
         // render pass, and anything that would rather not compete with it (the
         // hidden Claude budget WebView) checks this flag.
@@ -357,7 +360,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(disabledMenuItem("Service Status"))
-        for tool in ToolType.statusPageProviders {
+        for tool in ToolType.combinedStatusPageProviders {
             menu.addItem(disabledMenuItem(statusSummaryLine(for: tool)))
         }
         menu.addItem(.separator())
@@ -417,17 +420,37 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func statusSummaryLine(for tool: ToolType) -> String {
-        if environment.serviceStatus.inFlight.contains(tool) {
+        let members: [ToolType] = switch tool {
+        case .gemini: [.gemini, .antigravity]
+        case .grok: [.grok, .cursor]
+        default: [tool]
+        }
+        if members.contains(where: environment.serviceStatus.inFlight.contains) {
             return "\(tool.statusProviderName) · Checking"
         }
-        if environment.serviceStatus.errorByTool[tool] != nil {
+        let snapshot: ServiceStatusSnapshot? = switch tool {
+        case .gemini:
+            ServiceStatusSnapshot.preferredGoogleAI(
+                gemini: environment.serviceStatus.snapshotByTool[.gemini],
+                antigravity: environment.serviceStatus.snapshotByTool[.antigravity]
+            )
+        case .grok:
+            ServiceStatusSnapshot.mergedSpaceXAI(
+                grok: environment.serviceStatus.snapshotByTool[.grok],
+                cursor: environment.serviceStatus.snapshotByTool[.cursor]
+            )
+        default:
+            environment.serviceStatus.snapshotByTool[tool]
+        }
+        if snapshot == nil,
+           members.contains(where: { environment.serviceStatus.errorByTool[$0] != nil }) {
             return "\(tool.statusProviderName) · Down"
         }
-        guard let snapshot = environment.serviceStatus.snapshotByTool[tool] else {
+        guard let snapshot else {
             return "\(tool.statusProviderName) · Checking"
         }
         let label: String
-        switch snapshot.indicator {
+        switch snapshot.effectiveIndicator {
         case .none:        label = "Up"
         case .maintenance: label = "Maintenance"
         case .minor,
@@ -545,7 +568,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                     ]
                 ))
             }
-            let percent = bucket.displayPercent(settings.displayMode)
+            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
             let label = label(for: field, bucket: bucket, itemSettings: itemSettings)
             attributed.append(menuPiece(
                 label: label,
@@ -586,7 +609,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { return nil }
-            let percent = bucket.displayPercent(settings.displayMode)
+            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
             return menuTextPiece(
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
@@ -657,7 +680,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { return nil }
-            let percent = bucket.displayPercent(settings.displayMode)
+            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
             return menuTextPiece(
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
@@ -860,7 +883,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             for: MenuBarPercentColor.resolve(
                 basis: basis,
                 verdict: verdict,
-                percent: bucket.displayPercent(settings.displayMode),
+                percent: bucket.displayPercent(settings.displayMode, tool: field.tool),
                 displayMode: settings.displayMode
             )
         )
@@ -879,7 +902,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             bucket: bucket,
             activityHeatmap: snapshot?.heatmap,
             dailyActivity: snapshot?.dailyHistory ?? [],
-            now: Date()
+            now: Date(),
+            allowsPostResetGrace: true
         )?.verdict
     }
 

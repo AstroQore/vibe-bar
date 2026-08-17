@@ -173,6 +173,11 @@ public final class QuotaService: ObservableObject {
         maxAge: TimeInterval
     ) -> Bool {
         guard let cached = lastSuccessByAccount[accountId] else { return true }
+        if cached.buckets.contains(where: { bucket in
+            bucket.resetAt.map { $0 <= now } ?? false
+        }) {
+            return true
+        }
         return now.timeIntervalSince(cached.queriedAt) >= max(0, maxAge)
     }
 
@@ -198,7 +203,8 @@ public final class QuotaService: ObservableObject {
         bucket: QuotaBucket,
         activityHeatmap: UsageHeatmap? = nil,
         dailyActivity: [DailyCostPoint] = [],
-        now: Date = Date()
+        now: Date = Date(),
+        allowsPostResetGrace: Bool = false
     ) -> QuotaPaceForecast? {
         let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
         return QuotaPaceForecast.compute(
@@ -207,7 +213,8 @@ public final class QuotaService: ObservableObject {
             cycles: historyByAccountBucket[key] ?? [],
             activityHeatmap: activityHeatmap,
             dailyActivity: dailyActivity,
-            now: now
+            now: now,
+            allowsPostResetGrace: allowsPostResetGrace
         )
     }
 

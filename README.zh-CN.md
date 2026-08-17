@@ -47,7 +47,7 @@ Vibe Bar 把 ChatGPT/Codex、Claude Code、Gemini Web、AntiGravity、Grok
   Token 以及模型排行。
 - **使用历史** —— 按日/周/月查看成本，按重置周期查看利用率，再配合年度热力图
   和一周 168 小时使用分布。
-- **服务状态** —— OpenAI、Anthropic、Google、xAI 的事故信息、组件状态与
+- **服务状态** —— OpenAI、Anthropic、Google AI、SpaceXAI、Cursor 的事故信息、组件状态与
   Uptime 和额度放在同一个界面。
 - **两种迷你浮窗** —— 真正不同的信息密度，可固定在第二块屏幕或全屏工作区上方。
 - **端到端加密远端机器** —— 只出站的 Linux Probe 可按选择并入成本/Token，
@@ -84,12 +84,12 @@ Vibe Bar 把 ChatGPT/Codex、Claude Code、Gemini Web、AntiGravity、Grok
 
 <table>
   <tr>
-    <td width="50%"><img src="Resources/README/openai-detail.png" alt="ChatGPT 与 Codex 详情页"><br><sub><strong>ChatGPT / Codex</strong> —— Weekly、Spark、成本、模型排行、重置历史和 OpenAI 状态。</sub></td>
+    <td width="50%"><img src="Resources/README/openai-detail.png" alt="OpenAI 详情页"><br><sub><strong>OpenAI</strong> —— ChatGPT Agentic 额度、成本、模型排行、重置历史与服务状态。</sub></td>
     <td width="50%"><img src="Resources/README/claude-detail.png" alt="Claude Code 详情页"><br><sub><strong>Claude Code</strong> —— 5 Hours、Weekly、Fable、成本分析、重置历史和 Anthropic 状态。</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="Resources/README/gemini-detail.png" alt="Gemini 与 AntiGravity 详情页"><br><sub><strong>Gemini + AntiGravity</strong> —— Gemini Chat 与模型族额度，并列展示本地用量分析。</sub></td>
-    <td width="50%"><img src="Resources/README/grok-detail.png" alt="Grok 详情页"><br><sub><strong>Grok</strong> —— Weekly 额度、模型成本、重置历史、xAI 状态与使用习惯。</sub></td>
+    <td width="50%"><img src="Resources/README/gemini-detail.png" alt="Google AI 详情页"><br><sub><strong>Google AI</strong> —— Gemini Web 与 AntiGravity 额度，并列展示本地用量分析。</sub></td>
+    <td width="50%"><img src="Resources/README/grok-detail.png" alt="Grok 详情页"><br><sub><strong>SpaceXAI</strong> —— Grok 额度、模型成本、Cursor 状态、重置历史与使用习惯。</sub></td>
   </tr>
 </table>
 
@@ -125,12 +125,12 @@ OpenCode Go、Ollama Cloud、智谱 GLM、小米 MiMo、Kimi、MiniMax、阿里�
 
 ## Vibe Bar 会读取什么
 
-| 页面 | 配额与状态 | 本地成本与活动 |
+| 页面 | 配额与状态 | 成本与活动来源 |
 | --- | --- | --- |
 | ChatGPT / Codex | Codex 订阅窗口、Spark、OpenAI 状态 | `~/.codex/sessions/**/*.jsonl` |
 | Claude Code | 5 Hours、Weekly、Fable、Anthropic 状态 | `~/.claude/projects/**/*.jsonl` |
 | Gemini + AntiGravity | Gemini Web 配额与本地 AntiGravity Language Server 配额 | 本地 Gemini/AntiGravity 用量记录 |
-| Grok | Grok 订阅额度与 xAI 状态 | 本地 Grok Build 用量记录 |
+| Grok + Cursor | Grok 配额、Cursor Models、Other Models、Grok Bot 周配额、SpaceXAI + Cursor 状态 | 本地 Grok 记录 + Cursor 账户用量事件；Grok Bot 仅显示配额 |
 | Misc Providers | 各服务商自己的 Coding/Token Plan 接口 | 除非 Adapter 能取得本地用量，否则仅显示额度 |
 
 服务商的私有接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功

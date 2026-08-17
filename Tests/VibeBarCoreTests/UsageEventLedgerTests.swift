@@ -1,4 +1,5 @@
 import XCTest
+import SQLite3
 @testable import VibeBarCore
 
 /// Shared fixtures for the `UsageEventLedger` test files. Everything is
@@ -103,6 +104,308 @@ final class UsageEventLedgerTests: XCTestCase {
         )
     }
 
+    func testInitCreatesTimeOrderedRequestIndex() throws {
+        let (_, directory) = try UsageLedgerFixtures.makeLedger("LedgerTimeIndex")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("usage_events.sqlite3")
+        var database: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil),
+            SQLITE_OK
+        )
+        defer { if let database { sqlite3_close_v2(database) } }
+        var statement: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(
+                database,
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'usage_events_ts_id_idx'",
+                -1,
+                &statement,
+                nil
+            ),
+            SQLITE_OK
+        )
+        defer { if let statement { sqlite3_finalize(statement) } }
+        XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
+    }
+
+    func testCursorToolMigrationUpdatesOnlyIdentifiableDetailRowsInPlace() throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        let db = try XCTUnwrap(database)
+        defer { sqlite3_close_v2(db) }
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE usage_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                source_key TEXT,
+                dedupe_key TEXT NOT NULL UNIQUE
+            );
+            INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
+            INSERT INTO usage_events(tool, source_key, dedupe_key)
+                VALUES('grok', 'cursor-event-v1-fixture', 'f:legacy-cursor');
+            INSERT INTO usage_events(tool, source_key, dedupe_key)
+                VALUES('grok', 'grok-session-fixture', 'f:grok');
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT tool FROM usage_events ORDER BY source_key",
+            -1,
+            &statement,
+            nil
+        ), SQLITE_OK)
+        let query = try XCTUnwrap(statement)
+        defer { sqlite3_finalize(query) }
+        var tools: [String] = []
+        while sqlite3_step(query) == SQLITE_ROW {
+            tools.append(String(cString: sqlite3_column_text(query, 0)))
+        }
+        XCTAssertEqual(tools, ["cursor", "grok"])
+
+        var dedupeStatement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT dedupe_key FROM usage_events WHERE tool = 'cursor'",
+            -1,
+            &dedupeStatement,
+            nil
+        ), SQLITE_OK)
+        let dedupeQuery = try XCTUnwrap(dedupeStatement)
+        defer { sqlite3_finalize(dedupeQuery) }
+        XCTAssertEqual(sqlite3_step(dedupeQuery), SQLITE_ROW)
+        XCTAssertEqual(
+            String(cString: sqlite3_column_text(dedupeQuery, 0)),
+            PrivacyPreservingHash.fileComponent(
+                prefix: "cursor-ledger-v1",
+                rawValue: "cursor-event-v1-fixture"
+            )
+        )
+
+        var floorStatement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT value FROM ledger_meta WHERE key = 'detail_floor_day:cursor'",
+            -1,
+            &floorStatement,
+            nil
+        ), SQLITE_OK)
+        let floorQuery = try XCTUnwrap(floorStatement)
+        defer { sqlite3_finalize(floorQuery) }
+        XCTAssertEqual(sqlite3_step(floorQuery), SQLITE_ROW)
+        XCTAssertEqual(String(cString: sqlite3_column_text(floorQuery, 0)), "2026-07-17")
+    }
+
+    func testCursorToolMigrationDoesNotInventFloorWithoutCursorEvidence() throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        let db = try XCTUnwrap(database)
+        defer { sqlite3_close_v2(db) }
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE usage_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                source_key TEXT,
+                dedupe_key TEXT NOT NULL UNIQUE
+            );
+            INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
+            INSERT INTO usage_events(tool, source_key, dedupe_key)
+                VALUES('grok', 'grok-session-fixture', 'f:grok');
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT value FROM ledger_meta WHERE key = 'detail_floor_day:cursor'",
+            -1,
+            &statement,
+            nil
+        ), SQLITE_OK)
+        let query = try XCTUnwrap(statement)
+        defer { sqlite3_finalize(query) }
+        XCTAssertEqual(sqlite3_step(query), SQLITE_DONE)
+    }
+
+    func testCursorToolMigrationUsesSnapshotEvidenceForFullyRolledHistory() throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        let db = try XCTUnwrap(database)
+        defer { sqlite3_close_v2(db) }
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE usage_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                source_key TEXT,
+                dedupe_key TEXT NOT NULL UNIQUE
+            );
+            INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(
+            db,
+            legacyCursorEvidence: true
+        ))
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT value FROM ledger_meta WHERE key = 'detail_floor_day:cursor'",
+            -1,
+            &statement,
+            nil
+        ), SQLITE_OK)
+        let query = try XCTUnwrap(statement)
+        defer { sqlite3_finalize(query) }
+        XCTAssertEqual(sqlite3_step(query), SQLITE_ROW)
+        XCTAssertEqual(String(cString: sqlite3_column_text(query, 0)), "2026-07-17")
+    }
+
+    func testCursorToolMigrationRecognizesFullyRolledCursorModelFamilies() throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        let db = try XCTUnwrap(database)
+        defer { sqlite3_close_v2(db) }
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE usage_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                source_key TEXT,
+                dedupe_key TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE usage_daily_rollups(
+                day TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                model TEXT NOT NULL,
+                requests INTEGER NOT NULL DEFAULT 0,
+                fresh_input INTEGER NOT NULL DEFAULT 0,
+                output INTEGER NOT NULL DEFAULT 0,
+                cache_read INTEGER NOT NULL DEFAULT 0,
+                cache_creation INTEGER NOT NULL DEFAULT 0,
+                cost_micros INTEGER NOT NULL DEFAULT 0,
+                unpriced INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(day, tool, model)
+            );
+            INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
+            INSERT INTO usage_daily_rollups
+                VALUES('2026-07-01', 'grok', 'cursor-grok-4.6-high-fast', 3, 30, 6, 4, 2, 90, 1);
+            INSERT INTO usage_daily_rollups
+                VALUES('2026-07-01', 'cursor', 'cursor-grok-4.6-high-fast', 2, 20, 4, 3, 1, 60, 0);
+            INSERT INTO usage_daily_rollups
+                VALUES('2026-07-01', 'grok', 'grok-4', 7, 70, 14, 8, 3, 210, 0);
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT value FROM ledger_meta WHERE key = 'detail_floor_day:cursor'",
+            -1,
+            &statement,
+            nil
+        ), SQLITE_OK)
+        let query = try XCTUnwrap(statement)
+        defer { sqlite3_finalize(query) }
+        XCTAssertEqual(sqlite3_step(query), SQLITE_ROW)
+        XCTAssertEqual(String(cString: sqlite3_column_text(query, 0)), "2026-07-17")
+
+        var rollupStatement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT tool, model, requests, cost_micros, unpriced FROM usage_daily_rollups ORDER BY tool, model",
+            -1,
+            &rollupStatement,
+            nil
+        ), SQLITE_OK)
+        let rollupQuery = try XCTUnwrap(rollupStatement)
+        defer { sqlite3_finalize(rollupQuery) }
+        var rollups: [(String, String, Int, Int, Int)] = []
+        while sqlite3_step(rollupQuery) == SQLITE_ROW {
+            rollups.append((
+                String(cString: sqlite3_column_text(rollupQuery, 0)),
+                String(cString: sqlite3_column_text(rollupQuery, 1)),
+                Int(sqlite3_column_int(rollupQuery, 2)),
+                Int(sqlite3_column_int(rollupQuery, 3)),
+                Int(sqlite3_column_int(rollupQuery, 4))
+            ))
+        }
+        XCTAssertEqual(rollups.count, 2)
+        XCTAssertEqual(rollups[0].0, "cursor")
+        XCTAssertEqual(rollups[0].1, "cursor-grok-4.6-high-fast")
+        XCTAssertEqual(rollups[0].2, 5)
+        XCTAssertEqual(rollups[0].3, 150)
+        XCTAssertEqual(rollups[0].4, 1)
+        XCTAssertEqual(rollups[1].0, "grok")
+        XCTAssertEqual(rollups[1].1, "grok-4")
+        XCTAssertEqual(rollups[1].2, 7)
+    }
+
+    func testCursorRollupMigrationRunsAfterEarlierDetailMigrationMarker() throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        let db = try XCTUnwrap(database)
+        defer { sqlite3_close_v2(db) }
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE usage_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                source_key TEXT,
+                dedupe_key TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE usage_daily_rollups(
+                day TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                model TEXT NOT NULL,
+                requests INTEGER NOT NULL DEFAULT 0,
+                fresh_input INTEGER NOT NULL DEFAULT 0,
+                output INTEGER NOT NULL DEFAULT 0,
+                cache_read INTEGER NOT NULL DEFAULT 0,
+                cache_creation INTEGER NOT NULL DEFAULT 0,
+                cost_micros INTEGER NOT NULL DEFAULT 0,
+                unpriced INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(day, tool, model)
+            );
+            INSERT INTO ledger_meta VALUES('cursor_tool_v1', '1');
+            INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
+            INSERT INTO usage_daily_rollups
+                VALUES('2026-07-01', 'grok', 'gemini-3.5-flash-high', 4, 40, 8, 5, 2, 120, 0);
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
+
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT tool FROM usage_daily_rollups WHERE model = 'gemini-3.5-flash-high'",
+            -1,
+            &statement,
+            nil
+        ), SQLITE_OK)
+        let query = try XCTUnwrap(statement)
+        defer { sqlite3_finalize(query) }
+        XCTAssertEqual(sqlite3_step(query), SQLITE_ROW)
+        XCTAssertEqual(String(cString: sqlite3_column_text(query, 0)), "cursor")
+
+        var markerStatement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT value FROM ledger_meta WHERE key = 'cursor_rollup_tool_v1'",
+            -1,
+            &markerStatement,
+            nil
+        ), SQLITE_OK)
+        let markerQuery = try XCTUnwrap(markerStatement)
+        defer { sqlite3_finalize(markerQuery) }
+        XCTAssertEqual(sqlite3_step(markerQuery), SQLITE_ROW)
+        XCTAssertEqual(String(cString: sqlite3_column_text(markerQuery, 0)), "1")
+    }
+
     /// A second batch carrying the same `(mtime, size)` fingerprint is
     /// skipped wholesale — proven by handing it *more* events than the
     /// first and watching the extra one never land.
@@ -114,7 +417,10 @@ final class UsageEventLedgerTests: XCTestCase {
             UsageLedgerFixtures.priced(UsageLedgerFixtures.event(date: now)),
             UsageLedgerFixtures.priced(UsageLedgerFixtures.event(date: now.addingTimeInterval(-60)))
         ])
+        let initialRevision = await ledger.contentRevision()
         try await ledger.ingest(first)
+        let firstRevision = await ledger.contentRevision()
+        XCTAssertEqual(firstRevision, initialRevision + 1)
         let afterFirstIngest = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now)).requests
         XCTAssertEqual(afterFirstIngest, 2)
 
@@ -124,6 +430,8 @@ final class UsageEventLedgerTests: XCTestCase {
             ]
         )
         try await ledger.ingest(sameFingerprint)
+        let sameRevision = await ledger.contentRevision()
+        XCTAssertEqual(sameRevision, firstRevision)
         let afterSameFingerprint = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now)).requests
         XCTAssertEqual(afterSameFingerprint, 2)
 
@@ -137,6 +445,8 @@ final class UsageEventLedgerTests: XCTestCase {
             events: sameFingerprint.events
         )
         try await ledger.ingest(changed)
+        let changedRevision = await ledger.contentRevision()
+        XCTAssertEqual(changedRevision, firstRevision + 1)
         let afterChangedFingerprint = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now)).requests
         XCTAssertEqual(afterChangedFingerprint, 3)
     }

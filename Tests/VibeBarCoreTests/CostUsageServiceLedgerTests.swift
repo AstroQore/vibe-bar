@@ -164,6 +164,25 @@ final class CostUsageServiceLedgerTests: XCTestCase {
         XCTAssertNil(afterEraseCost)
     }
 
+    @MainActor
+    func testPersistedCursorSnapshotHydratesAsDirectRemoteLastKnownData() {
+        let cursor = CostSnapshot.empty(tool: .cursor)
+        let codex = CostSnapshot.empty(tool: .codex)
+        let existingCursor = CostSnapshot.empty(
+            tool: .cursor,
+            now: Date(timeIntervalSince1970: 1)
+        )
+
+        let hydrated = CostUsageService.partitionPersistedSnapshots(
+            [.cursor: cursor, .codex: codex],
+            directRemote: [.cursor: existingCursor]
+        )
+
+        XCTAssertEqual(hydrated.local, [.codex: codex])
+        XCTAssertEqual(hydrated.directRemote, [.cursor: existingCursor])
+        XCTAssertNil(hydrated.local[.cursor], "Cursor must not be combined as a local scan")
+    }
+
     private func codexTokenCountLine(
         timestamp: Date,
         model: String,

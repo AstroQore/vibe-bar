@@ -245,8 +245,14 @@ public enum MenuBarFieldCatalog {
         option(.grok, "weekly", "Weekly Credits", "Weekly")
     ]
 
+    public static let cursorFields: [MenuBarFieldOption] = [
+        option(.cursor, "models", "Cursor Models · Monthly", "Cursor Models"),
+        option(.cursor, "other_models", "Other Models · Monthly", "Other Models"),
+        option(.cursor, "grok_bot_weekly", "Grok Bot · Weekly", "Grok Bot")
+    ]
+
     public static let allFields: [MenuBarFieldOption] =
-        codexFields + claudeFields + geminiFields + antigravityFields + grokFields
+        codexFields + claudeFields + geminiFields + antigravityFields + grokFields + cursorFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
         allFields

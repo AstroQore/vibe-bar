@@ -240,8 +240,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Default `MiscProviderSettings` for every misc-page provider. Source
     /// selection is intentionally automatic and not exposed in the UI;
     /// region / enterprise host remain as provider-specific knobs.
-    /// Partial-primary providers (`.gemini`, `.antigravity`) are excluded —
-    /// they have dedicated `*UsageMode` top-level fields instead.
+    /// Linked partial-primary tools (`.gemini`, `.antigravity`, `.cursor`) are
+    /// excluded — they live on the Google AI / SpaceXAI company surfaces instead.
     public static var defaultMiscProviders: [ToolType: MiscProviderSettings] {
         var out: [ToolType: MiscProviderSettings] = [:]
         for tool in ToolType.miscPageProviders {
@@ -483,10 +483,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // dropped. `MiscProviderSettings`' own decoder rejects fields
         // whose names look like secrets — together they keep
         // settings.json minimal and credential-free. Partial-primary
-        // providers (`.gemini`, `.antigravity`) are also dropped here:
-        // their settings have been lifted into top-level
-        // `geminiUsageMode` / `antigravityUsageMode` fields and any
-        // legacy entries in `settings.json` are stale.
+        // linked providers (`.gemini`, `.antigravity`, `.cursor`) are also dropped here:
+        // Gemini/Antigravity use top-level UsageMode fields; Cursor uses its
+        // local-app/session resolver. Legacy Misc entries are stale either way.
         let decodedLegacyProviders: [ToolType: MiscProviderSettings]
         if let raw = try c.decodeIfPresent([String: MiscProviderSettings].self, forKey: .miscProviders) {
             var map: [ToolType: MiscProviderSettings] = [:]
@@ -796,10 +795,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
         if let instances, !instances.isEmpty {
             for raw in instances {
-                // Partial-primary providers (`.gemini`, `.antigravity`)
-                // are silently dropped: any legacy instances from older
-                // `settings.json` files belong to top-level
-                // `*UsageMode` fields now.
+                // Linked partial-primary providers (`.gemini`, `.antigravity`, `.cursor`)
+                // are silently dropped: their linked provider surfaces own
+                // source selection now.
                 guard raw.tool.isMiscPageProvider else { continue }
                 let trimmedID = raw.id.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmedID.isEmpty, seenIDs.insert(trimmedID).inserted else { continue }
@@ -1261,19 +1259,19 @@ public enum AntigravityUsageMode: String, Codable, CaseIterable, Identifiable, S
     public var label: String {
         switch self {
         case .auto: return "Auto"
-        case .localThenWeb: return "Local LSP, then Web"
-        case .webThenLocal: return "Web, then Local LSP"
-        case .localOnly: return "Local LSP only"
+        case .localThenWeb: return "Local sources, then Web"
+        case .webThenLocal: return "Web, then Local sources"
+        case .localOnly: return "Local sources only"
         case .webOnly: return "Web only"
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: return "Probe the running Antigravity language server first; fall back to imported cookies when the web source is available."
-        case .localThenWeb: return "Probe the running Antigravity language server first; fall back to imported cookies."
-        case .webThenLocal: return "Use imported cookies first; fall back to the running Antigravity language server."
-        case .localOnly: return "Only probe the running Antigravity language server."
+        case .auto: return "Use the Antigravity app first, then the installed agy CLI; fall back to imported cookies when the web source is available."
+        case .localThenWeb: return "Use the Antigravity app or agy CLI first; fall back to imported cookies."
+        case .webThenLocal: return "Use imported cookies first; fall back to the Antigravity app or agy CLI."
+        case .localOnly: return "Only use the Antigravity app or installed agy CLI."
         case .webOnly: return "Only use imported cookies. Falls back to the local probe until the Antigravity Cloud endpoint ships."
         }
     }
