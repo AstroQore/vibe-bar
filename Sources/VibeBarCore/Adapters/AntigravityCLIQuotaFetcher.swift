@@ -14,7 +14,6 @@ enum AntigravityCLIQuotaFetcher {
     private static let pollIntervalNanoseconds: UInt64 = 350_000_000
 
     static func fetch() async throws -> AntigravityResponseParser.Snapshot {
-        let deadline = Date().addingTimeInterval(readinessTimeout)
         var lastError: Error?
 
         for pid in await runningAgyPIDs() {
@@ -31,16 +30,14 @@ enum AntigravityCLIQuotaFetcher {
         let process = try AntigravityCLIQuotaProcess.launch(binary: binary)
         defer { process.stop() }
 
-        do {
-            return try await fetch(
-                pid: process.pid,
-                deadline: deadline,
-                isRunning: { process.isRunning },
-                drainOutput: { process.drainOutput() }
-            )
-        } catch {
-            throw error
-        }
+        // Start the readiness window only once the launched process exists, so
+        // probing stale user-owned `agy` processes above never eats into it.
+        return try await fetch(
+            pid: process.pid,
+            deadline: Date().addingTimeInterval(readinessTimeout),
+            isRunning: { process.isRunning },
+            drainOutput: { process.drainOutput() }
+        )
     }
 
     static func parseAgyPIDs(_ output: String) -> [Int] {
