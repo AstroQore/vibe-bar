@@ -269,13 +269,8 @@ private struct WorkbenchSidebarRowStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .stroke(
                         isSelected ? WorkbenchPorcelain.hairline(for: colorScheme) : Color.clear,
-                        lineWidth: 0.7
+                        lineWidth: Theme.Card.hairlineWidth
                     )
-            )
-            .shadow(
-                color: isSelected ? WorkbenchPorcelain.navigationShadow(for: colorScheme) : .clear,
-                radius: 4,
-                y: 2
             )
             .opacity(configuration.isPressed ? 0.72 : 1)
     }
@@ -352,8 +347,12 @@ private struct WorkbenchHeaderIconButton: View {
                             : WorkbenchPorcelain.toolbarFill(for: colorScheme)
                     )
                 )
-                .overlay(Circle().stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7))
-                .shadow(color: WorkbenchPorcelain.navigationShadow(for: colorScheme), radius: 2, y: 1)
+                .overlay(
+                    Circle().stroke(
+                        WorkbenchPorcelain.hairline(for: colorScheme),
+                        lineWidth: Theme.Card.hairlineWidth
+                    )
+                )
         }
         .buttonStyle(.plain)
         .focusEffectDisabled()

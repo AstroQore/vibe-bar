@@ -665,13 +665,8 @@ struct SettingsView: View {
                         usesWorkbenchPorcelain
                             ? WorkbenchPorcelain.hairline(for: colorScheme)
                             : Color.primary.opacity(0.08),
-                        lineWidth: 0.7
+                        lineWidth: Theme.Card.hairlineWidth
                     )
-            )
-            .shadow(
-                color: usesWorkbenchPorcelain ? WorkbenchPorcelain.cardShadow(for: colorScheme) : .clear,
-                radius: usesWorkbenchPorcelain ? 10 : 0,
-                y: usesWorkbenchPorcelain ? 4 : 0
             )
         }
     }

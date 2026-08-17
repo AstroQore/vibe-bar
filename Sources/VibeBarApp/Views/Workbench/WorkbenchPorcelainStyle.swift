@@ -1,34 +1,19 @@
 import SwiftUI
 
-/// Visual tokens for the Porcelain Workbench direction.
+/// Chrome tokens for the Workbench window.
 ///
-/// These stay scoped to the standalone Workbench so the compact menu-bar
-/// popover keeps its denser, material-led appearance.  All colours are
-/// semantic across Aqua and Dark Aqua; provider colours continue to come
-/// from `Theme.providerAccent(for:)` so charts and rows cannot drift apart.
+/// These describe the window *around* the content — its ground, its sidebar,
+/// its toolbars, fields and selection states. Cards inside it are not here:
+/// they come from `Theme.Card` through `CardShell`, identical to the popover's,
+/// because the Workbench is a bigger version of the same design language and
+/// not a second one. Everything is flat — fill plus hairline, never a drop
+/// shadow. See `docs/DESIGN.md`.
+///
+/// All colours are semantic across Aqua and Dark Aqua; provider colours
+/// continue to come from `Theme.providerAccent(for:)` so charts and rows
+/// cannot drift apart.
 enum WorkbenchPorcelain {
     static let accent = Color(red: 78 / 255, green: 95 / 255, blue: 224 / 255)
-
-    static func desktopBackground(for scheme: ColorScheme) -> LinearGradient {
-        if scheme == .dark {
-            return LinearGradient(
-                colors: [
-                    Color(red: 21 / 255, green: 22 / 255, blue: 27 / 255),
-                    Color(red: 11 / 255, green: 12 / 255, blue: 16 / 255),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-        return LinearGradient(
-            colors: [
-                Color(red: 234 / 255, green: 237 / 255, blue: 243 / 255),
-                Color(red: 214 / 255, green: 218 / 255, blue: 228 / 255),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
 
     static func windowFill(for scheme: ColorScheme) -> Color {
         scheme == .dark
@@ -42,6 +27,15 @@ enum WorkbenchPorcelain {
 
     static func cardFill(for scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.white.opacity(0.052) : Color.white.opacity(0.82)
+    }
+
+    /// Opaque ground for content that floats over other content — a chart
+    /// tooltip, a toast. Flat surfaces cast no shadow, so the only honest way
+    /// for one to sit above another is to be opaque.
+    static func overlayFill(for scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 36 / 255, green: 37 / 255, blue: 44 / 255)
+            : Color(red: 252 / 255, green: 252 / 255, blue: 254 / 255)
     }
 
     static func toolbarFill(for scheme: ColorScheme) -> Color {
@@ -63,14 +57,6 @@ enum WorkbenchPorcelain {
     static func hoverFill(for scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.white.opacity(0.065) : Color.black.opacity(0.045)
     }
-
-    static func cardShadow(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.black.opacity(0.34) : Color(red: 30 / 255, green: 40 / 255, blue: 70 / 255).opacity(0.09)
-    }
-
-    static func navigationShadow(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.black.opacity(0.30) : Color(red: 30 / 255, green: 40 / 255, blue: 70 / 255).opacity(0.13)
-    }
 }
 
 private struct WorkbenchPorcelainEnabledKey: EnvironmentKey {
@@ -85,7 +71,8 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Opt a subtree into the Workbench-only Porcelain card vocabulary.
+    /// Opt a subtree into the Workbench's window metrics — same card recipe,
+    /// floored padding and corner radius. See `CardShell`.
     func workbenchPorcelain() -> some View {
         environment(\.workbenchPorcelainEnabled, true)
     }
@@ -97,6 +84,13 @@ extension View {
     func workbenchFieldSurface(cornerRadius: CGFloat = 10) -> some View {
         modifier(WorkbenchFieldSurfaceModifier(cornerRadius: cornerRadius))
     }
+
+    /// Surface for content that floats over other content — a chart tooltip,
+    /// a toast, a progress pill. Opaque rather than shadowed or glassy, which
+    /// is the flat language's answer to "this is on top".
+    func workbenchOverlaySurface<S: Shape>(in shape: S) -> some View {
+        modifier(WorkbenchOverlaySurfaceModifier(shape: shape))
+    }
 }
 
 private struct WorkbenchToolbarSurfaceModifier: ViewModifier {
@@ -104,16 +98,15 @@ private struct WorkbenchToolbarSurfaceModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(WorkbenchPorcelain.toolbarFill(for: colorScheme))
-            )
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return content
+            .background(shape.fill(WorkbenchPorcelain.toolbarFill(for: colorScheme)))
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
+                shape.stroke(
+                    WorkbenchPorcelain.hairline(for: colorScheme),
+                    lineWidth: Theme.Card.hairlineWidth
+                )
             )
-            .shadow(color: WorkbenchPorcelain.cardShadow(for: colorScheme), radius: 9, y: 4)
     }
 }
 
@@ -122,20 +115,37 @@ private struct WorkbenchFieldSurfaceModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(WorkbenchPorcelain.fieldFill(for: colorScheme))
-            )
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return content
+            .background(shape.fill(WorkbenchPorcelain.fieldFill(for: colorScheme)))
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
+                shape.stroke(
+                    WorkbenchPorcelain.hairline(for: colorScheme),
+                    lineWidth: Theme.Card.hairlineWidth
+                )
             )
     }
 }
 
-/// Neutral porcelain pill used by Workbench menus and secondary actions.
-/// The prominent form is reserved for the page's single primary action.
+private struct WorkbenchOverlaySurfaceModifier<S: Shape>: ViewModifier {
+    let shape: S
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(shape.fill(WorkbenchPorcelain.overlayFill(for: colorScheme)))
+            .overlay(
+                shape.stroke(
+                    WorkbenchPorcelain.hairline(for: colorScheme),
+                    lineWidth: Theme.Card.hairlineWidth
+                )
+            )
+    }
+}
+
+/// Neutral pill used by Workbench menus and secondary actions. The prominent
+/// form is reserved for the page's single primary action, and says so with
+/// the accent fill rather than with elevation.
 struct WorkbenchPillButtonStyle: ButtonStyle {
     var prominent = false
     var tint = WorkbenchPorcelain.accent
@@ -155,13 +165,8 @@ struct WorkbenchPillButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
                     .stroke(
                         prominent ? tint.opacity(0.72) : WorkbenchPorcelain.hairline(for: colorScheme),
-                        lineWidth: 0.7
+                        lineWidth: Theme.Card.hairlineWidth
                     )
-            )
-            .shadow(
-                color: prominent ? tint.opacity(0.24) : WorkbenchPorcelain.navigationShadow(for: colorScheme),
-                radius: prominent ? 6 : 2,
-                y: prominent ? 3 : 1
             )
             .opacity(configuration.isPressed ? 0.74 : 1)
     }
