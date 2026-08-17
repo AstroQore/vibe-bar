@@ -139,9 +139,10 @@ final class UsageStatsViewModel: ObservableObject {
         }
     }
 
-    /// `nil` means "every SubProvider". An empty selection is normalized back to
+    /// `nil` means "every tool". An empty selection is normalized back to
     /// `nil` rather than kept as "match nothing" — a filter bar with no chip
-    /// lit should read as unfiltered, not as an empty page.
+    /// lit should read as unfiltered, not as an empty page. Only whole
+    /// companies are ever selected here; the chips are the only writer.
     @Published private(set) var selectedTools: Set<ToolType>?
     /// `nil` means "every harness". Orthogonal to `selectedTools`: the chips
     /// pick companies on the quota axis, this picks the CLI / app the usage
@@ -168,8 +169,8 @@ final class UsageStatsViewModel: ObservableObject {
     var requestRows: [UsageRequestRow] { results.requestRows }
     var requestTotalCount: Int { results.requestTotalCount }
     @Published private(set) var availableModels: [String] = []
-    /// SubProviders offered as filter chips: the cost-aware set, widened by
-    /// any tool the ledger actually has rows for.
+    /// Tools behind the company chips: the cost-aware set, widened by any
+    /// tool the ledger actually has rows for.
     @Published private(set) var knownTools: [ToolType] = ToolType.usageStatsProviders
     /// Harnesses offered in the harness filter: every harness of a known
     /// tool, widened by any the ledger has actually reported.
