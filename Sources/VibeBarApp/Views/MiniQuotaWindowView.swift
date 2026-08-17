@@ -279,7 +279,9 @@ private struct MiniBranchCell: Identifiable {
         case "weekly_opus": return "Weekly"
         case "weekly_fable": return "Weekly"
         case "weekly_oauth_apps": return "Weekly"
-        case let id where tool == .cursor && ["models", "other_models", "grok_bot_weekly"].contains(id):
+        case let id where tool == .cursor && ["models", "other_models"].contains(id):
+            return "Monthly"
+        case "grok_bot_weekly" where tool == .cursor:
             return "Weekly"
         case let id where tool == .antigravity && id.contains("gpt-oss"):
             return "GPT"
