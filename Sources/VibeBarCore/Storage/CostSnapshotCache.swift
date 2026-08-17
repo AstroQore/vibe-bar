@@ -8,8 +8,9 @@ import Foundation
 /// The full snapshot — heatmap, model breakdowns, daily history, totals, and
 /// the `CostChartWindowPolicy.hourlyRetentionDays`-long hourly window — fits in
 /// well under 1 MB even for heavy users, so we just write the whole blob each
-/// time. CostHistoryStore still owns the canonical max-merged per-day series;
-/// this cache is a snapshot of derived view data.
+/// time. CostHistoryStore still owns the canonical per-day series (max-merged
+/// for local logs, authoritative replacement for Cursor); this cache is a
+/// snapshot of derived view data.
 ///
 /// No schema version of its own: every field the scanner added since is
 /// optional on decode, so an older file loads with the new fields empty and the

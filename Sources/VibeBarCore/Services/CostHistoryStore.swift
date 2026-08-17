@@ -1,16 +1,19 @@
 import Foundation
 
-/// Persists daily cost samples with **max-merge** semantics so old data isn't
-/// lost when Codex/Claude rotate their JSONL session logs.
+/// Persists daily cost samples with source-aware update semantics.
 ///
-/// Rule: for each (tool, day), the stored value is `max(saved, freshly-scanned)`
-/// — both for cost USD and total tokens. This means:
+/// Local session scans use `max(saved, freshly-scanned)` for each (tool, day)
+/// so old data isn't lost when Codex/Claude rotate their JSONL logs. This means:
 ///   - If Codex log rotation drops a session that occurred 28 days ago, the
 ///     saved value stays.
 ///   - If a fresh scan finds a higher cost (because the user added new sessions
 ///     that day), we replace with the higher number.
 ///   - If a scan returns a lower number (rotation removed entries), we keep
 ///     the saved one.
+///
+/// Authoritative account-wide sources such as Cursor use replacement semantics
+/// through `replaceAndAugment`, so provider corrections can lower or remove a
+/// previously reported day.
 ///
 /// File: `~/.vibebar/cost_history.json` (mode 0600). Retention is controlled
 /// by `AppSettings.costData.retentionDays`.
@@ -151,6 +154,57 @@ public actor CostHistoryStore {
         retentionDays: Int = CostDataSettings.defaultRetentionDays
     ) -> CostSnapshot {
         mergeSeries(snapshot.dailyHistory, tool: snapshot.tool, retentionDays: retentionDays)
+        return augmentedSnapshot(snapshot, retentionDays: retentionDays)
+    }
+
+    /// Replace the complete retained series for an authoritative source, then
+    /// rebuild its window totals from that corrected history. A successful
+    /// Cursor dashboard response covers the requested retention interval in
+    /// full, so omitted days are authoritative zeroes rather than rotated logs.
+    public func replaceAndAugment(
+        _ snapshot: CostSnapshot,
+        retentionDays: Int = CostDataSettings.defaultRetentionDays
+    ) -> CostSnapshot {
+        replaceSeries(
+            snapshot.dailyHistory,
+            tool: snapshot.tool,
+            now: snapshot.updatedAt,
+            retentionDays: retentionDays
+        )
+        return augmentedSnapshot(snapshot, retentionDays: retentionDays)
+    }
+
+    private func replaceSeries(
+        _ series: [DailyCostPoint],
+        tool: ToolType,
+        now: Date,
+        retentionDays: Int
+    ) {
+        var storage = load()
+        let toolKey = tool.rawValue
+        let cutoffKey = retentionCutoffKey(now: now, retentionDays: retentionDays)
+        var replacements: [String: Entry] = [:]
+        for point in series {
+            let key = dateFormatter.string(from: point.date)
+            if let cutoffKey, key < cutoffKey { continue }
+            guard point.costUSD > 0 || point.totalTokens > 0 else { continue }
+            replacements[key] = Entry(
+                tool: toolKey,
+                date: key,
+                costUSD: point.costUSD,
+                totalTokens: point.totalTokens
+            )
+        }
+        storage.entries.removeAll { $0.tool == toolKey }
+        storage.entries.append(contentsOf: replacements.values)
+        prune(&storage, retentionDays: retentionDays)
+        save(storage)
+    }
+
+    private func augmentedSnapshot(
+        _ snapshot: CostSnapshot,
+        retentionDays: Int
+    ) -> CostSnapshot {
         let storage = load()
         let toolKey = snapshot.tool.rawValue
         let today = calendar.startOfDay(for: snapshot.updatedAt)

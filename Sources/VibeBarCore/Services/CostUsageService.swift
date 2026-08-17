@@ -1,9 +1,10 @@
 import Foundation
 import Combine
 
-/// Owns per-tool CostSnapshot + ProviderExtras. Merges fresh JSONL scans with
-/// the persisted CostHistoryStore using max() per retained (tool, day), so
-/// recent data survives CLI log rotation without keeping an unlimited profile.
+/// Owns per-tool CostSnapshot + ProviderExtras. Fresh JSONL scans max-merge
+/// with persisted history so log rotation cannot erase usage; authoritative
+/// Cursor dashboard snapshots replace their retained history so corrections
+/// stay consistent with the request ledger.
 @MainActor
 public final class CostUsageService: ObservableObject {
     @Published public private(set) var snapshots: [ToolType: CostSnapshot] = [:] {
@@ -217,7 +218,7 @@ public final class CostUsageService: ObservableObject {
                 }
                 switch outcome {
                 case .completed(.success(let snapshot)):
-                    let merged = await CostHistoryStore.shared.mergeAndAugment(
+                    let merged = await CostHistoryStore.shared.replaceAndAugment(
                         snapshot,
                         retentionDays: retentionDays
                     )
