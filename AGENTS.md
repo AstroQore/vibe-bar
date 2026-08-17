@@ -509,8 +509,8 @@ the display names).
 
 | Harness       | L1 company | Local evidence                                      |
 | ------------- | ---------- | --------------------------------------------------- |
-| Codex         | OpenAI     | `~/.codex/sessions`, `originator` ≠ "Codex Desktop"  |
-| ChatGPT Work  | OpenAI     | same tree, `originator` == "Codex Desktop"           |
+| Codex         | OpenAI     | `~/.codex/sessions`, every other `originator` (`Codex Desktop`, `codex-tui`, `codex_cli_rs`, `codex_exec`, `codex_vscode`) |
+| ChatGPT Work  | OpenAI     | same tree, `originator` == "codex_work_desktop"      |
 | Claude Code   | Anthropic  | `~/.claude/projects`, `~/.config/claude/projects`    |
 | Claude Cowork | Anthropic  | `…/Application Support/Claude/local-agent-mode-sessions/**/.claude/projects` |
 | Gemini CLI    | Google AI  | `~/.gemini/tmp/*/chats/session-*.jsonl`, telemetry log |

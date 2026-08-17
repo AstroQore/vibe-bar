@@ -167,6 +167,73 @@ final class UsageLedgerHarnessTests: XCTestCase {
         )
     }
 
+    /// The v2 fixup: rows stamped ChatGPT Work by the old `Codex Desktop` rule
+    /// go back to Codex, folding into the Codex rollup that already owns the
+    /// same day and model instead of sitting beside it.
+    func testCodexHarnessFixupFoldsChatGPTWorkRowsBackIntoCodex() throws {
+        let db = try makeLegacyDatabase()
+        defer { sqlite3_close_v2(db) }
+        XCTAssertTrue(UsageEventLedger.migrateHarnessColumns(db))
+        XCTAssertEqual(sqlite3_exec(db, """
+            UPDATE usage_events SET harness = 'chatgptWork' WHERE tool = 'codex';
+            INSERT INTO usage_daily_rollups(
+                    day, tool, harness, model, requests, fresh_input, output,
+                    cache_read, cache_creation, cost_micros, unpriced)
+                VALUES('2026-06-01', 'codex', 'chatgptWork', 'gpt-5', 9, 90, 9, 5, 1, 900, 3);
+            INSERT INTO usage_daily_rollups(
+                    day, tool, harness, model, requests, cost_micros)
+                VALUES('2026-06-02', 'codex', 'chatgptWork', 'gpt-5', 1, 100);
+            INSERT INTO ingested_files VALUES('codex', 'file-c', 3.0, 30);
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateCodexDesktopHarnessRows(db))
+
+        XCTAssertEqual(
+            try rows(db, "SELECT tool, harness FROM usage_events ORDER BY ts"),
+            [["codex", "codex"], ["claude", "claudeCode"], ["cursor", "cursor"]]
+        )
+        // The colliding day is summed; the day Codex did not already own is
+        // simply relabelled. Nothing is left under chatgptWork.
+        XCTAssertEqual(
+            try rows(db, """
+                SELECT day, harness, requests, fresh_input, cost_micros, unpriced
+                  FROM usage_daily_rollups WHERE tool = 'codex' ORDER BY day
+                """),
+            [
+                ["2026-06-01", "codex", "13", "90", "1300", "3"],
+                ["2026-06-02", "codex", "1", "0", "100", "0"]
+            ]
+        )
+        XCTAssertEqual(
+            try rows(db, "SELECT value FROM ledger_meta WHERE key = 'harness_v2'"),
+            [["1"]]
+        )
+        // Codex's fingerprints are gone so the next scan re-stamps every
+        // rollout; no other tool is asked to re-read anything.
+        XCTAssertEqual(
+            try rows(db, "SELECT tool, file_key FROM ingested_files ORDER BY file_key"),
+            [["claude", "file-b"]]
+        )
+
+        // A second open must not re-run: the fingerprints a completed re-scan
+        // wrote have to survive, and the folded rollups must not double.
+        XCTAssertEqual(sqlite3_exec(
+            db, "INSERT INTO ingested_files VALUES('codex', 'file-d', 4.0, 40)", nil, nil, nil
+        ), SQLITE_OK)
+        XCTAssertTrue(UsageEventLedger.migrateCodexDesktopHarnessRows(db))
+        XCTAssertEqual(
+            try rows(db, "SELECT tool, file_key FROM ingested_files ORDER BY file_key"),
+            [["claude", "file-b"], ["codex", "file-d"]]
+        )
+        XCTAssertEqual(
+            try rows(db, """
+                SELECT requests FROM usage_daily_rollups
+                 WHERE tool = 'codex' AND day = '2026-06-01'
+                """),
+            [["13"]]
+        )
+    }
+
     func testFreshLedgerIsBornMigrated() async throws {
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("HarnessFresh")
         defer { try? FileManager.default.removeItem(at: directory) }

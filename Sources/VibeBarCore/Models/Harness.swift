@@ -15,8 +15,8 @@ import Foundation
 ///
 /// | Harness        | L1 company | Local evidence                                              |
 /// | -------------- | ---------- | ----------------------------------------------------------- |
-/// | Codex          | OpenAI     | `~/.codex/sessions` rollouts, `originator` ≠ "Codex Desktop" |
-/// | ChatGPT Work   | OpenAI     | same tree, `originator` == "Codex Desktop"                   |
+/// | Codex          | OpenAI     | `~/.codex/sessions` rollouts, every other `originator` (`Codex Desktop`, `codex-tui`, `codex_cli_rs`, `codex_exec`, `codex_vscode`) |
+/// | ChatGPT Work   | OpenAI     | same tree, `originator` == "codex_work_desktop"              |
 /// | Claude Code    | Anthropic  | `~/.claude/projects`, `~/.config/claude/projects`            |
 /// | Claude Cowork  | Anthropic  | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/.claude/projects` |
 /// | Gemini CLI     | Google AI  | `~/.gemini/tmp/*/chats/session-*.jsonl` (+ telemetry log)    |
@@ -97,9 +97,10 @@ public enum Harness: String, CaseIterable, Codable, Sendable, Hashable {
     /// stamped — used to backfill ledger rows written before the harness
     /// dimension existed, and as a defensive fallback at ingest.
     ///
-    /// Codex maps to `.codex` rather than `.chatgptWork` because the plain CLI
-    /// is the overwhelming majority; a Codex Desktop rollout is recognised
-    /// from its `originator` at scan time and overrides this.
+    /// Codex maps to `.codex` rather than `.chatgptWork` because ordinary Codex
+    /// — CLI, exec, the VS Code extension and the desktop app's Codex tab — is
+    /// the overwhelming majority; a ChatGPT Work rollout is recognised from its
+    /// `originator` at scan time and overrides this.
     public static func defaultHarness(for tool: ToolType) -> Harness? {
         switch tool {
         case .codex:       .codex

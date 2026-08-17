@@ -82,6 +82,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// as a second "already ran" signal.
     private static let legacyCursorRollupMigrationKey = "cursor_rollup_tool_v1"
     static let harnessMigrationKey = "harness_v1"
+    /// Undoes the first harness rule, which read `originator == "Codex Desktop"`
+    /// as ChatGPT Work. See `migrateCodexDesktopHarnessRows`.
+    static let codexHarnessFixupKey = "harness_v2"
     private static let pricingRevisionKey = "pricing_revision"
     private static let floorKeyPrefix = "detail_floor_day:"
     /// Guard rail on zero-filled trend enumeration: ~135 years of daily
@@ -209,6 +212,9 @@ public actor UsageEventLedger: CostUsageEventSink {
         // Harness first: the Cursor migration below writes `usage_daily_rollups`
         // through its primary key, and that key only gains `harness` here.
         guard Self.migrateHarnessColumns(database) else {
+            throw UsageLedgerError.open
+        }
+        guard Self.migrateCodexDesktopHarnessRows(database) else {
             throw UsageLedgerError.open
         }
         guard Self.migrateCursorToolRows(database) else {
@@ -355,6 +361,77 @@ public actor UsageEventLedger: CostUsageEventSink {
             -1, &insertMarker, nil
         ) == SQLITE_OK, let insertMarker else { return rollback() }
         sqlite3_bind_text(insertMarker, 1, harnessMigrationKey, -1, transient)
+        let markerResult = sqlite3_step(insertMarker)
+        sqlite3_finalize(insertMarker)
+        guard markerResult == SQLITE_DONE,
+              sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
+        else { return rollback() }
+        return true
+    }
+
+    /// The first harness rule read `originator == "Codex Desktop"` as ChatGPT
+    /// Work. It is not: that is the Codex tab of the desktop app, and only
+    /// `codex_work_desktop` is ChatGPT Work. Fold the mis-stamped rows back
+    /// into Codex — detail rows in place, rollups summed into whatever Codex
+    /// row already holds the same day and model — then drop Codex's ingest
+    /// fingerprints so the next scan re-stamps every rollout under the
+    /// corrected rule.
+    @discardableResult
+    static func migrateCodexDesktopHarnessRows(_ database: OpaquePointer) -> Bool {
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        var marker: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database, "SELECT 1 FROM ledger_meta WHERE key = ?", -1, &marker, nil
+        ) == SQLITE_OK, let marker else { return false }
+        sqlite3_bind_text(marker, 1, codexHarnessFixupKey, -1, transient)
+        let alreadyMigrated = sqlite3_step(marker) == SQLITE_ROW
+        sqlite3_finalize(marker)
+        if alreadyMigrated { return true }
+
+        guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+            return false
+        }
+        func rollback() -> Bool {
+            sqlite3_exec(database, "ROLLBACK", nil, nil, nil)
+            return false
+        }
+
+        let codexTool = ToolType.codex.rawValue
+        let codex = Harness.codex.rawValue
+        let chatgptWork = Harness.chatgptWork.rawValue
+        let sql = """
+            UPDATE usage_events
+               SET harness = '\(codex)'
+             WHERE tool = '\(codexTool)' AND harness = '\(chatgptWork)';
+            INSERT INTO usage_daily_rollups(
+                   day, tool, harness, model, requests, fresh_input, output,
+                   cache_read, cache_creation, cost_micros, unpriced
+               )
+               SELECT day, tool, '\(codex)', model, requests, fresh_input, output,
+                      cache_read, cache_creation, cost_micros, unpriced
+                 FROM usage_daily_rollups
+                WHERE tool = '\(codexTool)' AND harness = '\(chatgptWork)'
+               ON CONFLICT(day, tool, harness, model) DO UPDATE SET
+                   requests = usage_daily_rollups.requests + excluded.requests,
+                   fresh_input = usage_daily_rollups.fresh_input + excluded.fresh_input,
+                   output = usage_daily_rollups.output + excluded.output,
+                   cache_read = usage_daily_rollups.cache_read + excluded.cache_read,
+                   cache_creation = usage_daily_rollups.cache_creation + excluded.cache_creation,
+                   cost_micros = usage_daily_rollups.cost_micros + excluded.cost_micros,
+                   unpriced = usage_daily_rollups.unpriced + excluded.unpriced;
+            DELETE FROM usage_daily_rollups
+             WHERE tool = '\(codexTool)' AND harness = '\(chatgptWork)';
+            DELETE FROM ingested_files WHERE tool = '\(codexTool)';
+            """
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { return rollback() }
+
+        var insertMarker: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "INSERT INTO ledger_meta(key, value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            -1, &insertMarker, nil
+        ) == SQLITE_OK, let insertMarker else { return rollback() }
+        sqlite3_bind_text(insertMarker, 1, codexHarnessFixupKey, -1, transient)
         let markerResult = sqlite3_step(insertMarker)
         sqlite3_finalize(insertMarker)
         guard markerResult == SQLITE_DONE,
@@ -577,8 +654,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// One extra clause exists for the harness backfill. Rows keyed by the
     /// file digest (`f:` prefix — Codex / Gemini / Grok / AntiGravity, where
     /// the same request never appears in two files) accept an update whenever
-    /// the incoming harness differs, so a re-scan that finally reads a Codex
-    /// rollout's `originator` can move it from "Codex" to "ChatGPT Work". The
+    /// the incoming harness differs, so a re-scan that re-reads a Codex
+    /// rollout's `originator` can move it either way between "Codex" and
+    /// "ChatGPT Work" — both directions have been needed in practice. The
     /// Claude tuple key is deliberately excluded: there, two rows sharing a
     /// key really are duplicate copies of one request, and the preference
     /// order below must stay the only thing that decides between them.

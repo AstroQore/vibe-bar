@@ -15,25 +15,35 @@ final class HarnessScanStampingTests: XCTestCase {
 
     // MARK: - Codex vs ChatGPT Work
 
-    func testCodexDesktopOriginatorStampsChatGPTWork() async throws {
-        let events = try await scanCodexRollout(originator: "Codex Desktop")
+    /// ChatGPT Work mode in the desktop app is the *only* originator that is
+    /// not Codex.
+    func testWorkDesktopOriginatorStampsChatGPTWork() async throws {
+        let events = try await scanCodexRollout(originator: "codex_work_desktop")
         XCTAssertFalse(events.isEmpty)
         XCTAssertTrue(events.allSatisfy { $0.event.harness == .chatgptWork })
+        XCTAssertEqual(
+            CostUsageScanner.codexHarness(originator: CostUsageScanner.chatgptWorkOriginator),
+            .chatgptWork
+        )
     }
 
-    func testCodexCLIOriginatorsStampCodex() async throws {
-        for originator in ["codex_cli_rs", "codex-tui", "codex_exec"] {
+    /// Including `Codex Desktop` — the desktop app's Codex tab, which spends
+    /// Codex quota like every other Codex surface.
+    func testEveryOtherCodexOriginatorStampsCodex() async throws {
+        for originator in [
+            "Codex Desktop", "codex-tui", "codex_cli_rs", "codex_exec", "codex_vscode"
+        ] {
             let events = try await scanCodexRollout(originator: originator)
             XCTAssertFalse(events.isEmpty, originator)
             XCTAssertTrue(
                 events.allSatisfy { $0.event.harness == .codex },
-                "\(originator) is the CLI, not the desktop app"
+                "\(originator) is Codex, not ChatGPT Work"
             )
         }
     }
 
-    /// A rollout with no readable header must not be invented as desktop
-    /// usage — the CLI is the overwhelming majority.
+    /// A rollout with no readable header must not be invented as ChatGPT Work
+    /// usage — Codex is the overwhelming majority.
     func testMissingOriginatorFallsBackToCodex() async throws {
         let events = try await scanCodexRollout(originator: nil)
         XCTAssertFalse(events.isEmpty)

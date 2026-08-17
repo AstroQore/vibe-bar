@@ -156,16 +156,21 @@ public enum CostUsageScanner {
         let totals: Totals
     }
 
-    /// The ChatGPT desktop app writes its agentic sessions into the same
-    /// `~/.codex/sessions` tree as the CLI and stamps them
-    /// `session_meta.payload.originator = "Codex Desktop"`. Every other
-    /// originator we have seen (`codex_cli_rs`, `codex-tui`, `codex_exec`) is
-    /// the CLI, so anything unrecognised — including a missing header — stays
-    /// on the CLI harness rather than being invented as desktop usage.
-    static let codexDesktopOriginator = "Codex Desktop"
+    /// Every Codex surface writes into the same `~/.codex/sessions` tree, and
+    /// `session_meta.payload.originator` is the only stable thing that tells
+    /// them apart — the instructions, tools, turn context, model and sandbox
+    /// are identical across all of them.
+    ///
+    /// Exactly one originator is *not* Codex: `codex_work_desktop`, written by
+    /// ChatGPT **Work** mode in the desktop app. Everything else we have seen —
+    /// `Codex Desktop` (the desktop app's Codex tab), `codex-tui`,
+    /// `codex_cli_rs`, `codex_exec`, `codex_vscode` — is ordinary Codex, so
+    /// anything unrecognised, including a missing header, stays on the Codex
+    /// harness rather than being invented as ChatGPT Work usage.
+    static let chatgptWorkOriginator = "codex_work_desktop"
 
     static func codexHarness(originator: String?) -> Harness {
-        originator == codexDesktopOriginator ? .chatgptWork : .codex
+        originator == chatgptWorkOriginator ? .chatgptWork : .codex
     }
 
     /// Returns the file's token events plus its `session_meta` originator.
