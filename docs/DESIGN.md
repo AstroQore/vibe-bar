@@ -118,5 +118,6 @@ That is the whole recipe. Then:
 - `grep -rn "\.shadow(" Sources/VibeBarApp/Views/` returns only
   data-viz marks (`PaceMarkerCapsule`) and drag affordances
   (`LayoutEditorView`), never a card.
-- No new `cornerRadius:` literal outside `Theme` and the three token
-  files above.
+- No *new* card draws its own `RoundedRectangle` background and stroke.
+  Small chrome (a 6pt status chip, a 7pt selection row) may still carry
+  its own radius; a card may not.
