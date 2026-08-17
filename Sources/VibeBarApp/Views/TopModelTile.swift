@@ -31,10 +31,11 @@ struct TopModelTile: View {
                         .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .bold))
                         .foregroundStyle(.secondary)
                 }
-                Text(model.modelName)
+                Text(UsageModelNaming.canonicalDisplayName(model.modelName))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .help(model.modelName)
                 HStack(spacing: 6) {
                     Text(formatCost(model.costUSD))
                         .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded).monospacedDigit())
