@@ -22,14 +22,27 @@ public final class QuotaRefreshScheduler {
     private var boundaryAccountIds: Set<String> = []
     private var lastBoundaryRefreshByAccount: [String: Date] = [:]
     private var lastPopoverOpenRefreshAt: Date?
+    /// Accounts waiting their turn, in arrival order. One drain loop walks
+    /// this list, so every trigger — timer, wake, network, popover, boundary
+    /// — just extends the same queue instead of racing a second walk.
+    /// `refreshTask` is that loop: non-nil means draining.
+    private var queue: [QueuedRefresh] = []
     private var refreshTask: Task<Void, Never>?
-    private var activeAccountIds: Set<String> = []
-    private var pendingAccounts: [String: AccountIdentity] = [:]
-    private var refreshCompletions: [@MainActor () -> Void] = []
+    /// A boundary observation is queued, so the boundary timer has to be
+    /// recomputed once the queue empties.
+    private var needsBoundaryReschedule = false
     private var pathMonitor: NWPathMonitor?
     private var lastNetworkStatus: NWPath.Status = .satisfied
     private var observers: [NSObjectProtocol] = []
     private var quotaObservation: AnyCancellable?
+
+    private struct QueuedRefresh {
+        let account: AccountIdentity
+        /// A boundary observation stamps `lastBoundaryRefreshByAccount` when
+        /// it is *dequeued*, so a long queue cannot claim the reset was
+        /// observed before the request actually ran.
+        var isBoundaryObservation: Bool
+    }
 
     public init(
         service: QuotaService,
@@ -64,9 +77,8 @@ public final class QuotaRefreshScheduler {
         boundaryAccountIds = []
         refreshTask?.cancel()
         refreshTask = nil
-        activeAccountIds = []
-        pendingAccounts = [:]
-        refreshCompletions = []
+        queue = []
+        needsBoundaryReschedule = false
         pathMonitor?.cancel()
         pathMonitor = nil
         #if canImport(AppKit)
@@ -118,7 +130,7 @@ public final class QuotaRefreshScheduler {
     public func triggerRefreshForStaleCacheIfNeeded(now: Date = Date()) -> Bool {
         let maxAge = TimeInterval(max(60, intervalProvider()))
         let accounts = accountsProvider().filter { account in
-            !activeAccountIds.contains(account.id)
+            !isQueued(account.id)
                 && !service.inFlightAccountIds.contains(account.id)
                 && service.needsRefresh(accountId: account.id, now: now, maxAge: maxAge)
         }
@@ -201,56 +213,55 @@ public final class QuotaRefreshScheduler {
             scheduleBoundaryTimer()
             return
         }
-        let started = startAccountRefresh(accounts) { [weak self] in
-            self?.scheduleBoundaryTimer()
-        }
-        if started {
-            let refreshedAt = Date()
-            for account in accounts {
-                lastBoundaryRefreshByAccount[account.id] = refreshedAt
-            }
-        } else {
-            scheduleBoundaryTimer()
-        }
+        needsBoundaryReschedule = true
+        startAccountRefresh(accounts, isBoundaryObservation: true)
     }
 
+    private func isQueued(_ accountId: String) -> Bool {
+        queue.contains { $0.account.id == accountId }
+    }
+
+    /// Append the accounts that aren't already waiting and make sure the
+    /// drain loop is running. An account currently being refreshed is not in
+    /// the queue, so a trigger that arrives mid-walk can re-queue it —
+    /// `QuotaService` no-ops a genuinely re-entrant refresh on its own.
     @discardableResult
     private func startAccountRefresh(
         _ accounts: [AccountIdentity],
-        completion: @escaping @MainActor () -> Void = {}
+        isBoundaryObservation: Bool = false
     ) -> Bool {
         guard !accounts.isEmpty else { return false }
-        refreshCompletions.append(completion)
-        if refreshTask != nil {
-            for account in accounts where !activeAccountIds.contains(account.id) {
-                pendingAccounts[account.id] = account
-            }
-            return true
-        }
-        activeAccountIds = Set(accounts.map(\.id))
-        refreshTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            for account in accounts where !Task.isCancelled {
-                _ = await self.service.refresh(account)
-                // A later trigger (especially the post-reset observation) must
-                // be able to queue an account that already completed earlier
-                // in this still-running multi-account walk.
-                self.activeAccountIds.remove(account.id)
-            }
-            self.refreshTask = nil
-            self.activeAccountIds = []
-            if !self.pendingAccounts.isEmpty {
-                let next = Array(self.pendingAccounts.values)
-                    .sorted { $0.id < $1.id }
-                self.pendingAccounts = [:]
-                _ = self.startAccountRefresh(next)
+        for account in accounts {
+            if let index = queue.firstIndex(where: { $0.account.id == account.id }) {
+                if isBoundaryObservation { queue[index].isBoundaryObservation = true }
             } else {
-                let callbacks = self.refreshCompletions
-                self.refreshCompletions = []
-                for callback in callbacks { callback() }
+                queue.append(
+                    QueuedRefresh(account: account, isBoundaryObservation: isBoundaryObservation)
+                )
             }
         }
+        drain()
         return true
+    }
+
+    private func drain() {
+        guard refreshTask == nil, !queue.isEmpty else { return }
+        refreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, !self.queue.isEmpty else { break }
+                let queued = self.queue.removeFirst()
+                if queued.isBoundaryObservation {
+                    self.lastBoundaryRefreshByAccount[queued.account.id] = Date()
+                }
+                _ = await self.service.refresh(queued.account)
+            }
+            guard let self else { return }
+            self.refreshTask = nil
+            if self.needsBoundaryReschedule {
+                self.needsBoundaryReschedule = false
+                self.scheduleBoundaryTimer()
+            }
+        }
     }
 
     private func installSystemObservers() {
