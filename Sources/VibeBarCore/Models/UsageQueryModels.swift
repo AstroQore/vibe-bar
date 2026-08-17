@@ -19,11 +19,20 @@ import Foundation
 public struct UsageQueryFilter: Sendable, Equatable {
     public var range: DateInterval
     public var tools: [ToolType]?
+    /// Local harnesses to keep. Orthogonal to `tools`: a company chip narrows
+    /// the quota-side tool, this narrows the CLI / app the events came from.
+    public var harnesses: [Harness]?
     public var models: [String]?
 
-    public init(range: DateInterval, tools: [ToolType]? = nil, models: [String]? = nil) {
+    public init(
+        range: DateInterval,
+        tools: [ToolType]? = nil,
+        harnesses: [Harness]? = nil,
+        models: [String]? = nil
+    ) {
         self.range = range
         self.tools = tools
+        self.harnesses = harnesses
         self.models = models
     }
 }
@@ -310,6 +319,7 @@ public struct UsageProviderStat: Sendable, Equatable, Identifiable {
         }
     }
 
+
     /// L2 contributors for each L1 total, ordered by the canonical company
     /// membership rather than by token volume. Filtered-out tools never appear.
     public static func subProviderSummariesByCompany(
@@ -323,6 +333,53 @@ public struct UsageProviderStat: Sendable, Equatable, Identifiable {
         return contributors.reduce(into: [:]) { result, entry in
             let ordered = entry.key.coreProviderMembers.filter { entry.value.contains($0) }
             result[entry.key] = ordered.map(\.productName).joined(separator: " + ")
+        }
+    }
+}
+
+/// Totals for one local harness — the unit every usage / cost surface groups
+/// by. Never mixed with `UsageProviderStat` in the same list: that one speaks
+/// the quota hierarchy's company level, this one speaks harnesses.
+public struct UsageHarnessStat: Sendable, Equatable, Identifiable {
+    public let harness: Harness
+    public let requests: Int
+    public let totalTokens: Int64
+    public let costMicros: Int64
+
+    public var id: Harness { harness }
+
+    public init(harness: Harness, requests: Int, totalTokens: Int64, costMicros: Int64) {
+        self.harness = harness
+        self.requests = requests
+        self.totalTokens = totalTokens
+        self.costMicros = costMicros
+    }
+
+    /// Fold the ledger's raw `(tool, harness)` groups into one row per
+    /// harness, heaviest first.
+    ///
+    /// The merge is real work, not a formality: a ledger migrated from before
+    /// the harness dimension existed can hold both a backfilled group and a
+    /// freshly stamped one for the same harness, and rows for one harness can
+    /// arrive under more than one group key while a re-scan is in flight.
+    public static func mergedByHarness(_ rows: [UsageHarnessStat]) -> [UsageHarnessStat] {
+        var totals: [Harness: (requests: Int, tokens: Int64, cost: Int64)] = [:]
+        for row in rows {
+            totals[row.harness, default: (0, 0, 0)].requests += row.requests
+            totals[row.harness, default: (0, 0, 0)].tokens += row.totalTokens
+            totals[row.harness, default: (0, 0, 0)].cost += row.costMicros
+        }
+        return totals.map { harness, total in
+            UsageHarnessStat(
+                harness: harness,
+                requests: total.requests,
+                totalTokens: total.tokens,
+                costMicros: total.cost
+            )
+        }.sorted {
+            $0.totalTokens == $1.totalTokens
+                ? $0.harness.displayName < $1.harness.displayName
+                : $0.totalTokens > $1.totalTokens
         }
     }
 }

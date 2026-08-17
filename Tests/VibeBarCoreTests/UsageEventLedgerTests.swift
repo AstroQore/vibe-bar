@@ -33,7 +33,8 @@ enum UsageLedgerFixtures {
         isSidechain: Bool? = nil,
         pathRole: CostUsageScanCache.PathRole? = nil,
         sourceKey: String? = nil,
-        serviceTier: String? = nil
+        serviceTier: String? = nil,
+        harness: Harness? = nil
     ) -> CostUsageScanCache.ParsedEvent {
         CostUsageScanCache.ParsedEvent(
             date: date,
@@ -48,7 +49,8 @@ enum UsageLedgerFixtures {
             isSidechain: isSidechain,
             pathRole: pathRole,
             sourceKey: sourceKey,
-            serviceTier: serviceTier
+            serviceTier: serviceTier,
+            harness: harness
         )
     }
 
@@ -139,6 +141,7 @@ final class UsageEventLedgerTests: XCTestCase {
             CREATE TABLE usage_events(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tool TEXT NOT NULL,
+                harness TEXT,
                 source_key TEXT,
                 dedupe_key TEXT NOT NULL UNIQUE
             );
@@ -209,6 +212,7 @@ final class UsageEventLedgerTests: XCTestCase {
             CREATE TABLE usage_events(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tool TEXT NOT NULL,
+                harness TEXT,
                 source_key TEXT,
                 dedupe_key TEXT NOT NULL UNIQUE
             );
@@ -241,6 +245,7 @@ final class UsageEventLedgerTests: XCTestCase {
             CREATE TABLE usage_events(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tool TEXT NOT NULL,
+                harness TEXT,
                 source_key TEXT,
                 dedupe_key TEXT NOT NULL UNIQUE
             );
@@ -275,12 +280,14 @@ final class UsageEventLedgerTests: XCTestCase {
             CREATE TABLE usage_events(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tool TEXT NOT NULL,
+                harness TEXT,
                 source_key TEXT,
                 dedupe_key TEXT NOT NULL UNIQUE
             );
             CREATE TABLE usage_daily_rollups(
                 day TEXT NOT NULL,
                 tool TEXT NOT NULL,
+                harness TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL,
                 requests INTEGER NOT NULL DEFAULT 0,
                 fresh_input INTEGER NOT NULL DEFAULT 0,
@@ -289,15 +296,15 @@ final class UsageEventLedgerTests: XCTestCase {
                 cache_creation INTEGER NOT NULL DEFAULT 0,
                 cost_micros INTEGER NOT NULL DEFAULT 0,
                 unpriced INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY(day, tool, model)
+                PRIMARY KEY(day, tool, harness, model)
             );
             INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
             INSERT INTO usage_daily_rollups
-                VALUES('2026-07-01', 'grok', 'cursor-grok-4.6-high-fast', 3, 30, 6, 4, 2, 90, 1);
+                VALUES('2026-07-01', 'grok', 'grokBuild', 'cursor-grok-4.6-high-fast', 3, 30, 6, 4, 2, 90, 1);
             INSERT INTO usage_daily_rollups
-                VALUES('2026-07-01', 'cursor', 'cursor-grok-4.6-high-fast', 2, 20, 4, 3, 1, 60, 0);
+                VALUES('2026-07-01', 'cursor', 'cursor', 'cursor-grok-4.6-high-fast', 2, 20, 4, 3, 1, 60, 0);
             INSERT INTO usage_daily_rollups
-                VALUES('2026-07-01', 'grok', 'grok-4', 7, 70, 14, 8, 3, 210, 0);
+                VALUES('2026-07-01', 'grok', 'grokBuild', 'grok-4', 7, 70, 14, 8, 3, 210, 0);
             """, nil, nil, nil), SQLITE_OK)
 
         XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
@@ -355,12 +362,14 @@ final class UsageEventLedgerTests: XCTestCase {
             CREATE TABLE usage_events(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tool TEXT NOT NULL,
+                harness TEXT,
                 source_key TEXT,
                 dedupe_key TEXT NOT NULL UNIQUE
             );
             CREATE TABLE usage_daily_rollups(
                 day TEXT NOT NULL,
                 tool TEXT NOT NULL,
+                harness TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL,
                 requests INTEGER NOT NULL DEFAULT 0,
                 fresh_input INTEGER NOT NULL DEFAULT 0,
@@ -369,12 +378,12 @@ final class UsageEventLedgerTests: XCTestCase {
                 cache_creation INTEGER NOT NULL DEFAULT 0,
                 cost_micros INTEGER NOT NULL DEFAULT 0,
                 unpriced INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY(day, tool, model)
+                PRIMARY KEY(day, tool, harness, model)
             );
             INSERT INTO ledger_meta VALUES('cursor_tool_v1', '1');
             INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
             INSERT INTO usage_daily_rollups
-                VALUES('2026-07-01', 'grok', 'gemini-3.5-flash-high', 4, 40, 8, 5, 2, 120, 0);
+                VALUES('2026-07-01', 'grok', 'grokBuild', 'gemini-3.5-flash-high', 4, 40, 8, 5, 2, 120, 0);
             """, nil, nil, nil), SQLITE_OK)
 
         XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
