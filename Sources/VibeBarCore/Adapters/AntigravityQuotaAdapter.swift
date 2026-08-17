@@ -107,7 +107,10 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
 
         do {
             let snapshot = try await AntigravityCLIQuotaFetcher.fetch()
-            return accountQuota(snapshot: snapshot, account: account)
+            let cliQuota = accountQuota(snapshot: snapshot, account: account)
+            return localQuota.map {
+                Self.mergingPartialQuota(primary: $0, fallback: cliQuota)
+            } ?? cliQuota
         } catch let cliError {
             if let localQuota { return localQuota }
             throw Self.preferredLocalSourceError(
@@ -128,6 +131,39 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
             return cliError
         }
         return desktopError
+    }
+
+    /// Keep every desktop lane and append only lanes recovered by `agy`.
+    /// Known shared buckets are normalized back to their canonical order.
+    static func mergingPartialQuota(primary: AccountQuota, fallback: AccountQuota) -> AccountQuota {
+        var buckets = primary.buckets
+        var seen = Set(buckets.map(\.id))
+        for bucket in fallback.buckets where seen.insert(bucket.id).inserted {
+            buckets.append(bucket)
+        }
+        let canonical = [
+            "gemini_five_hour",
+            "gemini_weekly",
+            "claude_gpt_five_hour",
+            "claude_gpt_weekly"
+        ]
+        var byID: [String: QuotaBucket] = [:]
+        for bucket in buckets where byID[bucket.id] == nil {
+            byID[bucket.id] = bucket
+        }
+        let canonicalBuckets = canonical.compactMap { byID[$0] }
+        let extras = buckets.filter { !canonical.contains($0.id) }
+        return AccountQuota(
+            accountId: primary.accountId,
+            tool: primary.tool,
+            buckets: canonicalBuckets + extras,
+            plan: primary.plan ?? fallback.plan,
+            email: primary.email ?? fallback.email,
+            queriedAt: max(primary.queriedAt, fallback.queriedAt),
+            error: nil,
+            providerExtras: primary.providerExtras ?? fallback.providerExtras,
+            resetCredits: primary.resetCredits ?? fallback.resetCredits
+        )
     }
 
     private func accountQuota(

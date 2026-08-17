@@ -129,6 +129,36 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
     }
 
+    func testCursorToolMigrationUpdatesOnlyIdentifiableDetailRowsInPlace() throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        let db = try XCTUnwrap(database)
+        defer { sqlite3_close_v2(db) }
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE usage_events(tool TEXT NOT NULL, source_key TEXT);
+            INSERT INTO usage_events VALUES('grok', 'cursor-event-v1-fixture');
+            INSERT INTO usage_events VALUES('grok', 'grok-session-fixture');
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT tool FROM usage_events ORDER BY source_key",
+            -1,
+            &statement,
+            nil
+        ), SQLITE_OK)
+        let query = try XCTUnwrap(statement)
+        defer { sqlite3_finalize(query) }
+        var tools: [String] = []
+        while sqlite3_step(query) == SQLITE_ROW {
+            tools.append(String(cString: sqlite3_column_text(query, 0)))
+        }
+        XCTAssertEqual(tools, ["cursor", "grok"])
+    }
+
     /// A second batch carrying the same `(mtime, size)` fingerprint is
     /// skipped wholesale — proven by handing it *more* events than the
     /// first and watching the extra one never land.

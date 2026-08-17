@@ -76,4 +76,46 @@ final class AntigravityCLIQuotaFetcherTests: XCTestCase {
             .parseFailure("desktop response changed")
         )
     }
+
+    func testPartialDesktopAndAgyQuotasMergeWithoutLosingRicherLanes() {
+        func bucket(_ id: String, used: Double) -> QuotaBucket {
+            QuotaBucket(id: id, title: id, shortLabel: id, usedPercent: used)
+        }
+        let desktop = AccountQuota(
+            accountId: "antigravity",
+            tool: .antigravity,
+            buckets: [
+                bucket("gemini_five_hour", used: 10),
+                bucket("gemini_weekly", used: 20),
+                bucket("claude_gpt_weekly", used: 30)
+            ],
+            plan: "Desktop",
+            queriedAt: Date(timeIntervalSince1970: 10)
+        )
+        let agy = AccountQuota(
+            accountId: "antigravity",
+            tool: .antigravity,
+            buckets: [
+                bucket("gemini_weekly", used: 99),
+                bucket("claude_gpt_five_hour", used: 40)
+            ],
+            plan: "CLI",
+            queriedAt: Date(timeIntervalSince1970: 20)
+        )
+
+        let merged = AntigravityQuotaAdapter.mergingPartialQuota(
+            primary: desktop,
+            fallback: agy
+        )
+        XCTAssertEqual(merged.buckets.map(\.id), [
+            "gemini_five_hour",
+            "gemini_weekly",
+            "claude_gpt_five_hour",
+            "claude_gpt_weekly"
+        ])
+        XCTAssertEqual(merged.bucket(id: "gemini_weekly")?.usedPercent, 20)
+        XCTAssertEqual(merged.bucket(id: "claude_gpt_five_hour")?.usedPercent, 40)
+        XCTAssertEqual(merged.plan, "Desktop")
+        XCTAssertEqual(merged.queriedAt, Date(timeIntervalSince1970: 20))
+    }
 }

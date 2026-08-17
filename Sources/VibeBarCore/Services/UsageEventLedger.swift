@@ -72,11 +72,12 @@ public actor UsageEventLedger: CostUsageEventSink {
     private let calendar: Calendar
     private let dayFormatter: DateFormatter
 
-    /// Bumping this drops and rebuilds every table on the next open.
-    /// v4 preserves Cursor as its own L2 SubProvider in request/detail and
-    /// daily rollup rows. Provider-level queries merge it back into SpaceXAI.
-    static let schemaVersion = 4
+    /// Bumping this drops and rebuilds every table on the next open. Cursor's
+    /// L2 migration is intentionally in-place below so retained rollups are
+    /// never discarded merely to change request-source attribution.
+    static let schemaVersion = 3
     private static let schemaVersionKey = "schema_version"
+    private static let cursorToolMigrationKey = "cursor_tool_v1"
     private static let pricingRevisionKey = "pricing_revision"
     private static let floorKeyPrefix = "detail_floor_day:"
     /// Guard rail on zero-filled trend enumeration: ~135 years of daily
@@ -199,6 +200,9 @@ public actor UsageEventLedger: CostUsageEventSink {
         guard sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK else {
             throw UsageLedgerError.open
         }
+        guard Self.migrateCursorToolRows(database) else {
+            throw UsageLedgerError.open
+        }
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(
             database,
@@ -213,6 +217,24 @@ public actor UsageEventLedger: CostUsageEventSink {
         sqlite3_bind_text(statement, 1, schemaVersionKey, -1, destructor)
         sqlite3_bind_text(statement, 2, String(schemaVersion), -1, destructor)
         guard sqlite3_step(statement) == SQLITE_DONE else { throw UsageLedgerError.open }
+    }
+
+    /// v3 originally stored Cursor dashboard detail under `.grok`. Preserve
+    /// every table and historical daily rollup, but relabel identifiable
+    /// request rows once using their privacy-safe Cursor source key.
+    static func migrateCursorToolRows(_ database: OpaquePointer) -> Bool {
+        let sql = """
+            UPDATE usage_events
+               SET tool = 'cursor'
+             WHERE tool = 'grok'
+               AND source_key LIKE 'cursor-event-v1-%'
+               AND NOT EXISTS (
+                   SELECT 1 FROM ledger_meta WHERE key = '\(cursorToolMigrationKey)'
+               );
+            INSERT INTO ledger_meta(key, value) VALUES('\(cursorToolMigrationKey)', '1')
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """
+        return sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK
     }
 
     private static func storedSchemaVersion(_ database: OpaquePointer) -> Int? {
