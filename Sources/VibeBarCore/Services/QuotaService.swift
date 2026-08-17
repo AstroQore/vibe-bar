@@ -28,7 +28,14 @@ public final class QuotaService: ObservableObject {
     public static let credentialFallbackMaxAge: TimeInterval = 30 * 60
     @Published public private(set) var lastSuccessByAccount: [String: AccountQuota] = [:]
     @Published public private(set) var lastErrorByAccount: [String: QuotaError] = [:]
+    /// When the *data* currently on screen was fetched. Only a success writes
+    /// here — a failed refresh used to bump it too, which made every card
+    /// claim it had just updated while it was still drawing hours-old buckets.
     @Published public private(set) var lastUpdatedByAccount: [String: Date] = [:]
+    /// When a refresh last ran for this account, successful or not. Paired
+    /// with `lastUpdatedByAccount` this separates "we keep trying" from "the
+    /// numbers are current".
+    @Published public private(set) var lastAttemptedByAccount: [String: Date] = [:]
     @Published public private(set) var inFlightAccountIds: Set<String> = []
     /// Per-(accountId, bucketId) subscription fill history loaded from
     /// `SubscriptionHistoryStore`. Hydrated asynchronously on init and
@@ -61,6 +68,9 @@ public final class QuotaService: ObservableObject {
         let cached = QuotaCacheStore.loadAll(accountIds: initialAccountIds)
         self.lastSuccessByAccount = cached
         self.lastUpdatedByAccount = cached.mapValues(\.queriedAt)
+        // A cache entry is by definition the last thing that succeeded, so at
+        // launch the two timestamps agree; they diverge on the first failure.
+        self.lastAttemptedByAccount = cached.mapValues(\.queriedAt)
 
         // Hydrate the subscription history dictionary from disk. The
         // store is an actor, so this has to be deferred — the popover
@@ -185,6 +195,7 @@ public final class QuotaService: ObservableObject {
         lastSuccessByAccount.removeValue(forKey: accountId)
         lastErrorByAccount.removeValue(forKey: accountId)
         lastUpdatedByAccount.removeValue(forKey: accountId)
+        lastAttemptedByAccount.removeValue(forKey: accountId)
         // Through the writer so a coalesced write for this account cannot land
         // after the delete and resurrect the file.
         Task { await QuotaCacheWriter.shared.delete(accountId: accountId) }
@@ -220,10 +231,11 @@ public final class QuotaService: ObservableObject {
 
     // MARK: - Private
 
-    private func store(success: AccountQuota) {
+    private func store(success: AccountQuota, now: Date = Date()) {
         lastSuccessByAccount[success.accountId] = success
         lastErrorByAccount.removeValue(forKey: success.accountId)
         lastUpdatedByAccount[success.accountId] = success.queriedAt
+        lastAttemptedByAccount[success.accountId] = now
 
         // Store both the point observations used by the personal forecast and
         // the inferred completed cycles used by reset history. Both paths
@@ -370,16 +382,19 @@ public final class QuotaService: ObservableObject {
         historyByAccountBucket = merged
     }
 
-    private func store(error: QuotaError, for account: AccountIdentity) {
+    private func store(error: QuotaError, for account: AccountIdentity, now: Date = Date()) {
+        // A failed refresh is an attempt, never an update: `lastUpdated` must
+        // keep pointing at the snapshot the UI is actually drawing, otherwise
+        // the freshness label ages from the failure instead of from the data.
+        lastAttemptedByAccount[account.id] = now
         if error.isCredentialState,
            let cached = lastSuccessByAccount[account.id],
            !cached.buckets.isEmpty,
-           Date().timeIntervalSince(cached.queriedAt) < Self.credentialFallbackMaxAge {
+           now.timeIntervalSince(cached.queriedAt) < Self.credentialFallbackMaxAge {
             lastErrorByAccount.removeValue(forKey: account.id)
             return
         }
         lastErrorByAccount[account.id] = error
-        lastUpdatedByAccount[account.id] = Date()
     }
 
     private func cachedOrEmpty(for account: AccountIdentity, error: QuotaError) -> AccountQuota {

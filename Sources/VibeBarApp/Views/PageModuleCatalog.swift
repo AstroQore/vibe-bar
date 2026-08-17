@@ -396,10 +396,17 @@ enum PageModuleCatalog {
         let accountId: String?
         var additional: [FillTimelineSeries] = []
         if tool == .gemini {
-            let geminiAccount = environment.accountStore
+            // Sort order alone picked the alphabetically-first Gemini account
+            // even when it had never returned a bucket, so a second account
+            // holding the only real snapshot rendered as an empty card. Prefer
+            // whichever account actually has data; fall back to the same
+            // deterministic order when none does.
+            let geminiAccounts = environment.accountStore
                 .accounts(for: .gemini)
                 .sorted { $0.id < $1.id }
-                .first
+            let geminiAccount = geminiAccounts.first { account in
+                environment.quotaService.cachedQuota(for: account.id)?.buckets.isEmpty == false
+            } ?? geminiAccounts.first
             accountId = geminiAccount?.id
             buckets = geminiAccount.flatMap {
                 environment.quotaService.cachedQuota(for: $0.id)?.buckets

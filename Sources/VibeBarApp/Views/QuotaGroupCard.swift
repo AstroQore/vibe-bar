@@ -310,20 +310,16 @@ struct QuotaGroupCard: View {
         }
     }
 
-    private var providerFreshnessWarning: (label: String, help: String)? {
+    private var providerFreshnessWarning: QuotaFreshnessLabel.Description? {
         guard module.showsProviderHeader || module.linkedSectionTitle != nil,
-              let accountId = module.accountId,
-              let updatedAt = quotaService.lastUpdatedByAccount[accountId]
+              let accountId = module.accountId
         else { return nil }
-        let age = now.timeIntervalSince(updatedAt)
-        let staleAfter = TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2))
-        let error = quotaService.lastErrorByAccount[accountId]
-        guard age >= staleAfter || error != nil else { return nil }
-        let updated = ResetCountdownFormatter.updatedAgo(from: updatedAt, now: now)
-        let label = age >= staleAfter ? "Stale · \(updated)" : "Refresh failed · \(updated)"
-        return (
-            label: label,
-            help: error?.userFacingMessage ?? "Live quota has not refreshed within the expected interval."
+        return QuotaFreshnessLabel.describe(
+            lastSuccessAt: quotaService.lastUpdatedByAccount[accountId],
+            lastAttemptAt: quotaService.lastAttemptedByAccount[accountId],
+            errorMessage: quotaService.lastErrorByAccount[accountId]?.userFacingMessage,
+            staleAfter: TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2)),
+            now: now
         )
     }
 
@@ -406,14 +402,18 @@ struct QuotaGroupCard: View {
                 displayMode: mode
             )
         }
+        // A window that already rolled over is showing the previous cycle's
+        // fill. Say so on the reset line and pull the percentage and bar back
+        // to secondary, so a stale 100% cannot pass for a live one.
+        let resetStatus = ResetCountdownFormatter.resetStatus(resetAt: bucket.resetAt, now: now)
+        let isExpired = resetStatus?.isExpired ?? false
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
-                if let resetAt = bucket.resetAt,
-                   let reset = ResetCountdownFormatter.stringWithAbsoluteTime(from: resetAt, now: now) {
-                    Text("resets in \(reset)")
+                if let resetStatus {
+                    Text(resetStatus.label)
                         .font(.system(size: resetCountdownFontSize(for: item.tool)))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
@@ -423,10 +423,12 @@ struct QuotaGroupCard: View {
                 Spacer(minLength: 6)
                 Text(percentLabel(used: used))
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(isExpired ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
             quotaReferenceBar(used: used, pace: pace, forecast: forecast)
+                .opacity(isExpired ? 0.45 : 1)
             percentageAxis
             referenceLegend(
                 timeExpected: timeExpected,

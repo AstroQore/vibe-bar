@@ -13,6 +13,7 @@ struct PopoverRoot: View {
     @EnvironmentObject var quotaService: QuotaService
     @EnvironmentObject var remoteProbeService: RemoteProbeService
     @State private var overviewPage: OverviewPage = .overview
+    @State private var staleCacheCheckedPage: OverviewPage?
 
     var body: some View {
         let shellDensity = shellDensity
@@ -60,9 +61,22 @@ struct PopoverRoot: View {
         .frame(width: width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
+        .onAppear { refreshStaleCacheForCurrentPage() }
         .onChange(of: overviewPage) { _, _ in
-            environment.scheduler.triggerRefreshForStaleCacheIfNeeded()
+            refreshStaleCacheForCurrentPage()
         }
+    }
+
+    /// Switching pages already refreshed a missing/stale/expired cache, but
+    /// opening the popover straight onto the page it was last left on changes
+    /// nothing and so triggered nothing — the provider the user is looking at
+    /// right now was the one page that never got this check. Run it on appear
+    /// too, and remember the page it ran for so the two paths cannot both fire
+    /// for the same one.
+    private func refreshStaleCacheForCurrentPage() {
+        guard staleCacheCheckedPage != overviewPage else { return }
+        staleCacheCheckedPage = overviewPage
+        environment.scheduler.triggerRefreshForStaleCacheIfNeeded()
     }
 
     /// The tabbed popover is one shared shell. The title band, content cards,
@@ -2042,7 +2056,7 @@ struct ProviderQuotaCard: View {
         resolvedAccount.map { quotaService.inFlightAccountIds.contains($0.id) } == true
     }
 
-    private var currentFreshnessWarning: (label: String, help: String)? {
+    private var currentFreshnessWarning: QuotaFreshnessLabel.Description? {
         guard showsFreshnessWarning else { return nil }
         return resolvedAccount.flatMap { freshnessWarning(for: $0, now: Date()) }
     }
@@ -2074,19 +2088,19 @@ struct ProviderQuotaCard: View {
         }
     }
 
+    /// Same composition as `QuotaGroupCard.providerFreshnessWarning`; both go
+    /// through `QuotaFreshnessLabel` so the overview card and the provider
+    /// page cannot describe one account's staleness two different ways.
     private func freshnessWarning(
         for account: AccountIdentity,
         now: Date
-    ) -> (label: String, help: String)? {
-        guard let updatedAt = quotaService.lastUpdatedByAccount[account.id] else { return nil }
-        let age = now.timeIntervalSince(updatedAt)
-        let staleAfter = TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2))
-        let error = quotaService.lastErrorByAccount[account.id]
-        guard age >= staleAfter || error != nil else { return nil }
-        let updated = ResetCountdownFormatter.updatedAgo(from: updatedAt, now: now)
-        return (
-            label: age >= staleAfter ? "Stale · \(updated)" : "Refresh failed · \(updated)",
-            help: error?.userFacingMessage ?? "Live quota has not refreshed within the expected interval."
+    ) -> QuotaFreshnessLabel.Description? {
+        QuotaFreshnessLabel.describe(
+            lastSuccessAt: quotaService.lastUpdatedByAccount[account.id],
+            lastAttemptAt: quotaService.lastAttemptedByAccount[account.id],
+            errorMessage: quotaService.lastErrorByAccount[account.id]?.userFacingMessage,
+            staleAfter: TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2)),
+            now: now
         )
     }
 
@@ -2245,13 +2259,17 @@ private struct ProviderBucketRow: View {
         let pace = UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
         let forecast = paceForecast(now: now)
         let timePaceDisplayed = pace.map { expectedDisplay(for: $0, mode: mode) }
+        // Same expired-window treatment as `QuotaGroupCard`: past the reset
+        // grace this row is drawing the previous cycle, so it says "reset
+        // passed" and drops the live percent colour.
+        let resetStatus = ResetCountdownFormatter.resetStatus(resetAt: bucket.resetAt, now: now)
+        let isExpired = resetStatus?.isExpired ?? false
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(bucket.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                if let resetAt = bucket.resetAt,
-                   let reset = ResetCountdownFormatter.stringWithAbsoluteTime(from: resetAt, now: now) {
-                    Text("resets in \(reset)")
+                if let resetStatus {
+                    Text(resetStatus.label)
                         .font(.system(size: resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
@@ -2261,9 +2279,39 @@ private struct ProviderBucketRow: View {
                 Spacer(minLength: 6)
                 Text("\(Int(percent.rounded()))%")
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
+                    .foregroundStyle(
+                        isExpired
+                            ? AnyShapeStyle(.secondary)
+                            : AnyShapeStyle(Theme.barColor(percent: percent, mode: mode))
+                    )
                     .fixedSize(horizontal: true, vertical: false)
             }
+            bucketBar(
+                percent: percent,
+                forecast: forecast,
+                timePaceDisplayed: timePaceDisplayed
+            )
+            .opacity(isExpired ? 0.45 : 1)
+            if let forecast {
+                QuotaForecastRow(
+                    forecast: forecast,
+                    now: now,
+                    fontSize: density.resetCountdownFontSize,
+                    displayMode: mode
+                )
+            } else if let pace {
+                UsagePaceRow(pace: pace, now: now, fontSize: density.resetCountdownFontSize)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bucketBar(
+        percent: Double,
+        forecast: QuotaPaceForecast?,
+        timePaceDisplayed: Double?
+    ) -> some View {
+        Group {
             if let forecast {
                 ForecastQuotaBar(
                     percent: percent,
@@ -2287,16 +2335,6 @@ private struct ProviderBucketRow: View {
                 )
             } else {
                 QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
-            }
-            if let forecast {
-                QuotaForecastRow(
-                    forecast: forecast,
-                    now: now,
-                    fontSize: density.resetCountdownFontSize,
-                    displayMode: mode
-                )
-            } else if let pace {
-                UsagePaceRow(pace: pace, now: now, fontSize: density.resetCountdownFontSize)
             }
         }
     }

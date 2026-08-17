@@ -10,11 +10,19 @@ import Foundation
 public struct GeminiQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .gemini
 
+    /// How often a `.needsLogin` may spend one extra retry on an unchanged
+    /// cookie header. See `forcedReimportGate` for why that retry exists.
+    static let forcedReimportInterval: TimeInterval = 3_600
+
     private let session: URLSession
     private let now: @Sendable () -> Date
     private let cookieHeader: @Sendable () throws -> String
     private let browserCookieImporter: @Sendable () -> GeminiBrowserCookieImporter.Result?
     private let webFallback: (@Sendable (AccountIdentity, String) async throws -> AccountQuota)?
+    /// Reference type on purpose: the adapter is a value, `QuotaService` keeps
+    /// one instance for the process lifetime, and this rate limit is a
+    /// within-session guard rather than user state — nothing here reaches disk.
+    private let forcedReimportGate = GeminiForcedReimportGate()
 
     public init(
         session: URLSession = .shared,
@@ -55,7 +63,8 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             // browser once before surfacing a login error; this keeps the
             // source purely gemini.google.com and never falls back to CLI
             // OAuth quota.
-            if let imported = browserCookieImporter(), imported.header != header {
+            let imported = browserCookieImporter()
+            if let imported, imported.header != header {
                 do {
                     let refreshed = try await fetcher.fetch(cookieHeader: imported.header)
                     try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
@@ -68,6 +77,26 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
                     }
                     throw error
                 }
+            }
+            // The header-changed short circuit above is the only self-heal
+            // there was, and `AppEnvironment` skips its background importer
+            // whenever *any* header exists — so an account that started
+            // answering `.needsLogin` had no path back on its own. `/usage`
+            // also serves a logged-out shell for a session that is still
+            // valid (edge-cached or soft rate limited), which lands here
+            // looking identical. Spend one extra attempt an hour on it; a
+            // transient shell recovers, and a genuinely dead cookie costs two
+            // requests per hour instead of two per refresh.
+            if let imported,
+               isRecoverableLoginFailure(initialError),
+               forcedReimportGate.consume(
+                   accountId: account.id,
+                   now: now(),
+                   interval: Self.forcedReimportInterval
+               ),
+               let refreshed = try? await fetcher.fetch(cookieHeader: imported.header) {
+                try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+                return quota(from: refreshed, for: account)
             }
             if shouldCalibrate(initialError), let webFallback {
                 return try await webFallback(account, header)
@@ -92,6 +121,10 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         )
     }
 
+    private func isRecoverableLoginFailure(_ error: Error) -> Bool {
+        (error as? QuotaError) == .needsLogin
+    }
+
     private func shouldCalibrate(_ error: Error) -> Bool {
         guard let quotaError = error as? QuotaError else { return false }
         switch quotaError {
@@ -105,6 +138,25 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         case .noCredential, .needsLogin, .rateLimited, .notImplemented, .unknown:
             return false
         }
+    }
+}
+
+/// Per-account clock for the adapter's forced `.needsLogin` retry. In memory
+/// only, and never consulted for anything a user can see.
+final class GeminiForcedReimportGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastForcedAt: [String: Date] = [:]
+
+    /// Returns true at most once per `interval` per account, recording the
+    /// attempt as it does.
+    func consume(accountId: String, now: Date, interval: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let last = lastForcedAt[accountId], now.timeIntervalSince(last) < interval {
+            return false
+        }
+        lastForcedAt[accountId] = now
+        return true
     }
 }
 
