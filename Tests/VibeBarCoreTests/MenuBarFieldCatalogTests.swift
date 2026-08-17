@@ -49,14 +49,14 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         }
     }
 
-    func testCursorFieldsUseGroupedWeeklyLabels() throws {
+    func testCursorFieldsUseMonthlyModelsAndWeeklyBotLabels() throws {
         XCTAssertEqual(
             try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.models")).title,
-            "Cursor Models · Weekly"
+            "Cursor Models · Monthly"
         )
         XCTAssertEqual(
             try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.other_models")).title,
-            "Other Models · Weekly"
+            "Other Models · Monthly"
         )
         XCTAssertEqual(
             try XCTUnwrap(MenuBarFieldCatalog.field(id: "cursor.grok_bot_weekly")).title,

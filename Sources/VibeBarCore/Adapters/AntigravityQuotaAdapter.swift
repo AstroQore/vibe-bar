@@ -40,7 +40,7 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
             do {
                 switch source {
                 case .localProbe:
-                    return try await fetchWithLocalProbe(for: account)
+                    return try await fetchWithLocalSources(for: account)
                 case .webCookie:
                     // Spike-gated: returns `.noCredential` until the
                     // Antigravity Cloud endpoint is reverse-engineered
@@ -68,29 +68,77 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         let client = AntigravityLanguageServerClient(timeout: timeout)
         let endpoints = try await client.connectedEndpoints()
         var lastError: Error?
+        var bestSnapshot: AntigravityResponseParser.Snapshot?
         for endpoint in endpoints {
             do {
                 let snapshot = try await Self.fetchLocalSnapshot { path, body in
                     try await client.postLocal(endpoint: endpoint, path: path, body: body)
                 }
-                // Keep the id → label map fresh so the cost scanner can
-                // resolve placeholder model ids to real names and rates.
-                AntigravityModelLabelStore.merge(snapshot.modelLabels)
-                return AccountQuota(
-                    accountId: account.id,
-                    tool: .antigravity,
-                    buckets: snapshot.buckets,
-                    plan: snapshot.planName,
-                    email: snapshot.email,
-                    queriedAt: now(),
-                    error: nil
-                )
+                if Self.hasCompleteSharedQuota(snapshot.buckets) {
+                    return accountQuota(snapshot: snapshot, account: account)
+                }
+                if bestSnapshot.map({ snapshot.buckets.count > $0.buckets.count }) ?? true {
+                    bestSnapshot = snapshot
+                }
             } catch {
                 lastError = error
                 continue
             }
         }
+        if let bestSnapshot {
+            return accountQuota(snapshot: bestSnapshot, account: account)
+        }
         throw mapError(lastError)
+    }
+
+    /// Prefer the desktop language server when it has all four shared lanes;
+    /// otherwise ask the installed `agy` CLI for its richer local summary.
+    /// A partial desktop result remains the fallback if `agy` is unavailable.
+    private func fetchWithLocalSources(for account: AccountIdentity) async throws -> AccountQuota {
+        var localQuota: AccountQuota?
+        var localError: Error?
+        do {
+            let quota = try await fetchWithLocalProbe(for: account)
+            if Self.hasCompleteSharedQuota(quota.buckets) { return quota }
+            localQuota = quota
+        } catch {
+            localError = error
+        }
+
+        do {
+            let snapshot = try await AntigravityCLIQuotaFetcher.fetch()
+            return accountQuota(snapshot: snapshot, account: account)
+        } catch {
+            if let localQuota { return localQuota }
+            throw mapError(localError ?? error)
+        }
+    }
+
+    private func accountQuota(
+        snapshot: AntigravityResponseParser.Snapshot,
+        account: AccountIdentity
+    ) -> AccountQuota {
+        // Keep the id → label map fresh so the cost scanner can resolve
+        // placeholder model ids to real names and rates.
+        AntigravityModelLabelStore.merge(snapshot.modelLabels)
+        return AccountQuota(
+            accountId: account.id,
+            tool: .antigravity,
+            buckets: snapshot.buckets,
+            plan: snapshot.planName,
+            email: snapshot.email,
+            queriedAt: now(),
+            error: nil
+        )
+    }
+
+    static func hasCompleteSharedQuota(_ buckets: [QuotaBucket]) -> Bool {
+        Set(buckets.map(\.id)).isSuperset(of: [
+            "gemini_five_hour",
+            "gemini_weekly",
+            "claude_gpt_five_hour",
+            "claude_gpt_weekly"
+        ])
     }
 
     /// Fetch the grouped quota payload first, then attach identity on a

@@ -160,7 +160,7 @@ struct CursorCostUsageFetcher: Sendable {
         if let eventSink {
             await eventSink.consume(UsageEventFileBatch(
                 // Workbench uses the same product-level contract as the Grok
-                // cost card: Grok Build + Cursor is one final Grok total.
+                // cost card: Grok CLI + Cursor is one final SpaceXAI total.
                 tool: .grok,
                 filePath: "cursor-dashboard://\(sourceID)",
                 mtime: latestEventDate ?? now,

@@ -107,6 +107,32 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         XCTAssertEqual(service.lastErrorByAccount[account.id], .needsLogin)
         XCTAssertEqual(fallback.buckets.count, 1)
     }
+
+    func testExpiredResetMakesFreshCacheRefreshable() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let account = AccountIdentity(id: "expired-reset", tool: .antigravity, source: .localProbe)
+        let service = QuotaService(
+            adapters: [.antigravity: SequenceAdapter(tool: .antigravity, results: [
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .antigravity,
+                    buckets: [QuotaBucket(
+                        id: "gemini_five_hour",
+                        title: "5 Hours",
+                        shortLabel: "5 Hours",
+                        usedPercent: 2,
+                        resetAt: now.addingTimeInterval(-1),
+                        rawWindowSeconds: 18_000
+                    )],
+                    queriedAt: now
+                ))
+            ])],
+            mockProvider: { false }
+        )
+
+        _ = await service.refresh(account)
+        XCTAssertTrue(service.needsRefresh(accountId: account.id, now: now, maxAge: 600))
+    }
 }
 
 private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {

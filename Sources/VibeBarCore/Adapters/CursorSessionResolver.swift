@@ -12,7 +12,7 @@ struct CursorSessionResolutionPlan: Sendable {
 /// Automatic mode prefers Cursor.app's active session. Browser/manual cookie
 /// slots remain a fallback for machines where Cursor.app is absent or logged
 /// out, and preserve the existing `misc-cursor` Keychain account during the
-/// move from the Misc page into the Grok product family.
+/// move from the Misc page into the SpaceXAI provider family.
 enum CursorSessionResolver {
     static let stableAccountID = AccountStore.miscAccountId(for: .cursor)
 

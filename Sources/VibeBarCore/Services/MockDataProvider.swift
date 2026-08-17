@@ -267,10 +267,10 @@ public enum MockDataProvider {
         case .cursor:
             let monthlyReset = now.addingTimeInterval(26 * 24 * 3600)
             buckets = [
-                QuotaBucket(id: "models", title: "Weekly", shortLabel: "Cursor",
+                QuotaBucket(id: "models", title: "Monthly", shortLabel: "Cursor",
                             usedPercent: 1, resetAt: monthlyReset, rawWindowSeconds: 2_678_400,
                             groupTitle: "Cursor Models"),
-                QuotaBucket(id: "other_models", title: "Weekly", shortLabel: "Other",
+                QuotaBucket(id: "other_models", title: "Monthly", shortLabel: "Other",
                             usedPercent: 1, resetAt: monthlyReset, rawWindowSeconds: 2_678_400,
                             groupTitle: "Other Models"),
                 QuotaBucket(id: "grok_bot_weekly", title: "Weekly", shortLabel: "Grok Bot",

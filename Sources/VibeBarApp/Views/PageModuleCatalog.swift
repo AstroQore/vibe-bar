@@ -161,7 +161,7 @@ enum PageModuleCatalog {
                 PageModuleDescriptor(
                     id: .custom("overview-quota:\(tool.rawValue)"),
                     kind: .overviewQuota(tool),
-                    displayName: "\(tool.menuTitle) Quota",
+                    displayName: "\(tool.vendorName) Quota",
                     defaultColumn: 0,
                     accent: .provider(tool),
                     masonryPhase: .quota,
@@ -199,7 +199,7 @@ enum PageModuleCatalog {
                 PageModuleDescriptor(
                     id: .cost(tool: tool),
                     kind: .overviewCost(tool),
-                    displayName: "\(tool.menuTitle) Cost",
+                    displayName: "\(tool.vendorName) Cost",
                     defaultColumn: 1,
                     accent: .cost,
                     masonryPhase: .cost,
@@ -212,7 +212,7 @@ enum PageModuleCatalog {
                 PageModuleDescriptor(
                     id: .cost(tool: .gemini),
                     kind: .overviewCost(.gemini),
-                    displayName: "Gemini Cost",
+                    displayName: "Google AI Cost",
                     defaultColumn: 1,
                     accent: .cost,
                     masonryPhase: .cost,
@@ -298,7 +298,7 @@ enum PageModuleCatalog {
         )
 
         // Right column: cost, then the analytics derived from it.
-        let costTitle = tool == .gemini ? "Gemini" : tool.menuTitle
+        let costTitle = tool.vendorName
         guard let snapshot = detailCostSnapshot(tool: tool, environment: environment),
               snapshot.jsonlFilesFound > 0
         else {
@@ -375,7 +375,7 @@ enum PageModuleCatalog {
 
     private static func quotaGroupDisplayName(_ module: QuotaGroupModule) -> String {
         let scope = module.title ?? "All Models"
-        // A linked product's groups (AntiGravity under Gemini) say whose they
+        // A linked SubProvider's groups (AntiGravity under Google AI) say whose they
         // are; the page tool's own groups do not need repeating.
         guard module.tool != module.pageTool else { return scope }
         return "\(module.tool.toolName) · \(scope)"
@@ -470,7 +470,7 @@ enum PageModuleCatalog {
         )
     }
 
-    /// Combined Grok Build local sessions + Cursor dashboard events.
+    /// Combined Grok CLI sessions + Cursor dashboard events.
     @MainActor
     static func grokCostSnapshot(environment: AppEnvironment) -> CostSnapshot {
         environment.costService.combinedSnapshot(

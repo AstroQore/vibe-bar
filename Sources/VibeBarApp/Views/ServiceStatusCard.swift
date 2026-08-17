@@ -17,7 +17,13 @@ struct ServiceStatusCard: View {
         // they never belong in this card. Default to the providers
         // that actually publish a status feed; callers can still pass
         // an explicit subset (e.g. just `.codex` or `.claude`).
-        self.tools = tools.filter(\.supportsStatusPage)
+        var filtered = tools.filter(\.supportsStatusPage)
+        if filtered.contains(.grok) {
+            // Cursor is a SubProvider group inside SpaceXAI, not a duplicate
+            // top-level company row.
+            filtered.removeAll { $0 == .cursor }
+        }
+        self.tools = filtered
         self.density = density
     }
 
@@ -69,9 +75,11 @@ private struct ServiceStatusRow: View {
     @EnvironmentObject var serviceStatus: ServiceStatusController
 
     var body: some View {
-        let snapshot = serviceStatus.snapshotByTool[tool]
+        let snapshot = displaySnapshot
         let inFlight = serviceStatus.inFlight.contains(tool)
+            || (tool == .grok && serviceStatus.inFlight.contains(.cursor))
         let error = serviceStatus.errorByTool[tool]
+            ?? (tool == .grok ? serviceStatus.errorByTool[.cursor] : nil)
 
         VStack(alignment: .leading, spacing: density.statusComponentSpacing + 2) {
             HStack(alignment: .center, spacing: 8) {
@@ -127,6 +135,26 @@ private struct ServiceStatusRow: View {
         }
     }
 
+    private var displaySnapshot: ServiceStatusSnapshot? {
+        guard tool == .grok else { return serviceStatus.snapshotByTool[tool] }
+        let grok = serviceStatus.snapshotByTool[.grok]
+        guard let cursor = serviceStatus.snapshotByTool[.cursor] else { return grok }
+        let base = grok ?? ServiceStatusSnapshot(
+            tool: .grok,
+            indicator: .none,
+            description: "Cursor status available",
+            updatedAt: cursor.updatedAt,
+            groups: [],
+            components: [],
+            recentIncidents: []
+        )
+        return base.mergingSubProvider(
+            cursor,
+            groupID: "subprovider:cursor",
+            groupName: "Cursor"
+        )
+    }
+
     @ViewBuilder
     private func groupedComponents(_ snapshot: ServiceStatusSnapshot) -> some View {
         // Default-expand most provider component groups so the
@@ -135,7 +163,7 @@ private struct ServiceStatusRow: View {
         // Codex / FedRAMP groups, and AQ only cares about Codex on
         // this app, so we open just that one and let the user click
         // through to APIs / ChatGPT / FedRAMP if they want. Claude /
-        // Google / xAI keep the all-expanded behaviour.
+        // Google AI / SpaceXAI keep the all-expanded behaviour.
         if snapshot.groups.isEmpty {
             ComponentGroupBlock(
                 title: "Components",
@@ -185,10 +213,7 @@ private struct ServiceStatusRow: View {
         return true
     }
 
-    /// Service Status rows now render at the L1 vendor level
-    /// (`tool.statusProviderName`), so `.gemini` reads "Google" in
-    /// line with the rest of the hierarchy. The old "Google AI"
-    /// override predated the unified L1/L2/L3 catalog.
+    /// Service Status rows render at the L1 company/brand level.
     private var displayName: String {
         tool.statusProviderName
     }

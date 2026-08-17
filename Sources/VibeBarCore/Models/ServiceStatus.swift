@@ -222,4 +222,38 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
             return components.filter { $0.groupId == nil }
         }
     }
+
+    /// Adds a linked provider as one component group while preserving this
+    /// snapshot's L1 company identity. Used by the SpaceXAI card to include
+    /// Cursor Status without implying a second top-level company row.
+    public func mergingSubProvider(
+        _ child: ServiceStatusSnapshot,
+        groupID: String,
+        groupName: String
+    ) -> ServiceStatusSnapshot {
+        let childComponents = child.components.map { component in
+            ServiceComponentSummary(
+                id: "\(groupID):\(component.id)",
+                name: component.name,
+                status: component.status,
+                groupId: groupID,
+                uptimePercent: component.uptimePercent,
+                recentDays: component.recentDays
+            )
+        }
+        let childIsWorse = child.effectiveIndicator.severity > effectiveIndicator.severity
+        let incidents = (recentIncidents + child.recentIncidents)
+            .sorted { $0.createdAt > $1.createdAt }
+        return ServiceStatusSnapshot(
+            tool: tool,
+            indicator: childIsWorse ? child.effectiveIndicator : effectiveIndicator,
+            description: childIsWorse ? "\(groupName) · \(child.effectiveDescription)" : effectiveDescription,
+            updatedAt: max(updatedAt, child.updatedAt),
+            groups: groups + [ServiceComponentGroup(id: groupID, name: groupName)],
+            components: components + childComponents,
+            recentIncidents: Array(incidents.prefix(4)),
+            incidentDays: incidentDays,
+            incidentAdjustedUptimePercent: incidentAdjustedUptimePercent
+        )
+    }
 }

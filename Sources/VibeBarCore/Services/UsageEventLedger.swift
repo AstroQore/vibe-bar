@@ -58,7 +58,7 @@ public enum UsageLedgerError: Error, Sendable {
 /// - **Cursor** — dashboard rows report fresh input, cache writes, cache reads,
 ///   output, and authoritative metered cents independently. The fetcher keeps
 ///   those token columns non-overlapping and records them under `.grok`, so the
-///   Workbench final total matches the Grok Build + Cursor product card.
+///   Workbench final total matches the combined SpaceXAI cost card.
 ///
 /// So `cache_creation` is non-zero for Claude and Cursor when their sources
 /// report writes, and the three columns sum to the real token count without
@@ -577,9 +577,9 @@ public actor UsageEventLedger: CostUsageEventSink {
             for row in details {
                 // Cursor dashboard cents are authoritative provider facts,
                 // not estimates from our price table. They are stored under
-                // the Grok product key for final-total consistency, so source
+                // the SpaceXAI provider key for final-total consistency, so source
                 // provenance—not `tool`—must keep repricing from overwriting
-                // them with Grok Build rates.
+                // them with Grok CLI rates.
                 if row.sourceKey?.hasPrefix("cursor-event-v1") == true { continue }
                 let costBinding: Binding = if let micros = costMicros(for: row) {
                     .integer(micros)

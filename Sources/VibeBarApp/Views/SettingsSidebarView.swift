@@ -302,7 +302,7 @@ struct SettingsSidebarView: View {
         case .codex: "OpenAI"
         case .claude: "Anthropic"
         case .gemini: "Google AI"
-        case .grok: "xAI"
+        case .grok: "SpaceXAI"
         default: tool.vendorName
         }
     }

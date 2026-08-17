@@ -26,7 +26,9 @@ public actor ServiceStatusClient {
             return try await fetchGoogleAppsStatus(tool: tool, dayCount: dayCount, now: now)
         case .grok:
             return try await fetchXAIStatus(dayCount: dayCount, now: now)
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .cursor:
+            return try await fetchStatuspage(tool: .cursor)
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
             // upstream callers should already be filtering to primary
@@ -44,6 +46,48 @@ public actor ServiceStatusClient {
                 recentIncidents: []
             )
         }
+    }
+
+    // MARK: - Generic Statuspage v2 (Cursor)
+
+    private func fetchStatuspage(tool: ToolType) async throws -> ServiceStatusSnapshot {
+        let summary = try await fetchJSON(SummaryDTO.self, from: tool.statusSummaryAPI)
+        let incidentsDTO = try await fetchJSON(IncidentsDTO.self, from: tool.statusIncidentsAPI)
+        let groups = summary.components.compactMap { component -> ServiceComponentGroup? in
+            guard component.group == true else { return nil }
+            return ServiceComponentGroup(id: component.id, name: component.name)
+        }
+        let components = summary.components.compactMap { component -> ServiceComponentSummary? in
+            guard component.group != true else { return nil }
+            return ServiceComponentSummary(
+                id: component.id,
+                name: component.name,
+                status: component.status,
+                groupId: component.group_id
+            )
+        }
+        let incidents = incidentsDTO.incidents
+            .sorted { $0.created_at > $1.created_at }
+            .prefix(4)
+            .map {
+                IncidentSummary(
+                    id: $0.id,
+                    name: $0.name,
+                    impact: $0.impact,
+                    createdAt: $0.created_at,
+                    resolvedAt: $0.resolved_at,
+                    url: $0.shortlink
+                )
+            }
+        return ServiceStatusSnapshot(
+            tool: tool,
+            indicator: summary.status.indicator,
+            description: summary.status.description,
+            updatedAt: summary.page.updated_at,
+            groups: groups,
+            components: components,
+            recentIncidents: Array(incidents)
+        )
     }
 
     // MARK: - xAI Status (HTML status.x.ai)
@@ -373,9 +417,8 @@ public actor ServiceStatusClient {
 
     /// Product id for Gemini on Google's Workspace Status dashboard.
     /// Confirmed against `https://www.google.com/appsstatus/dashboard/products.json`
-    /// on 2026-05-22. Antigravity quotas / incidents currently roll up
-    /// into the same Gemini product entry — Google hasn't split them
-    /// out.
+    /// on 2026-05-22. Gemini Web and AntiGravity currently share this
+    /// Google status product entry — Google hasn't split them out.
     private static let googleGeminiProductId = "npdyhgECDJ6tB66MxXyo"
     private static let googleIncidentsURL = URL(string: "https://www.google.com/appsstatus/dashboard/incidents.json")!
 

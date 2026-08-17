@@ -11,6 +11,7 @@ final class CursorParserEdgeCasesTests: XCTestCase {
         let json = """
         {
           "membershipType": "pro",
+          "billingCycleStart": "2026-05-01T00:00:00Z",
           "billingCycleEnd": "2026-06-01T00:00:00Z",
           "individualUsage": {
             "plan": {
@@ -32,10 +33,11 @@ final class CursorParserEdgeCasesTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(snap.planName, "Pro")
-        XCTAssertEqual(snap.buckets.map(\.title), ["Weekly", "Weekly"])
+        XCTAssertEqual(snap.buckets.map(\.title), ["Monthly", "Monthly"])
         XCTAssertEqual(snap.buckets.map(\.groupTitle), ["Cursor Models", "Other Models"])
         let cursorModels = try XCTUnwrap(snap.buckets.first { $0.id == "models" })
         XCTAssertEqual(cursorModels.usedPercent, 0.20, accuracy: 0.001)
+        XCTAssertEqual(cursorModels.rawWindowSeconds, 2_678_400)
         let otherModels = try XCTUnwrap(snap.buckets.first { $0.id == "other_models" })
         XCTAssertEqual(otherModels.usedPercent, 0.52, accuracy: 0.001)
     }
