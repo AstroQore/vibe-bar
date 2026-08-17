@@ -243,7 +243,7 @@ public struct CursorSessionAdapter: SessionProviderAdapter {
         while cursor < queue.count, visited < maxBlobsVisited, budgetBytes > 0 {
             let id = queue[cursor]
             cursor += 1
-            guard let data = blob(statement, id: id) else { continue }
+            guard let data = try blob(statement, id: id) else { continue }
             visited += 1
             budgetBytes -= data.count
 
@@ -303,12 +303,19 @@ public struct CursorSessionAdapter: SessionProviderAdapter {
     /// Blob ids are SHA-256, so a reference is exactly 32 bytes.
     static let referenceByteCount = 32
 
-    private static func blob(_ statement: OpaquePointer, id: String) -> Data? {
+    /// `nil` only for a genuinely missing row. A step error (`SQLITE_BUSY`,
+    /// `SQLITE_LOCKED`, …) on Cursor's live handle throws so
+    /// `LiveSQLiteReader.read` abandons this pass and retries on a snapshot
+    /// instead of indexing a silently partial walk.
+    private static func blob(_ statement: OpaquePointer, id: String) throws -> Data? {
         sqlite3_reset(statement)
         sqlite3_clear_bindings(statement)
         sqlite3_bind_text(statement, 1, id, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
-        return LiveSQLiteReader.blob(statement, 0)
+        switch sqlite3_step(statement) {
+        case SQLITE_ROW: return LiveSQLiteReader.blob(statement, 0)
+        case SQLITE_DONE: return nil
+        default: throw LiveSQLiteReader.ReadError.statement
+        }
     }
 
     /// A blob that is a message rather than a node. Cheap rejection first:
