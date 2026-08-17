@@ -93,13 +93,19 @@ enum SettingsDestination: Hashable {
     }
 }
 
+/// The Workbench's Settings page.
+///
+/// It is a page, not a window: the Workbench's own sidebar, header and
+/// density own the chrome, and everything here is content. The section
+/// column on the left is a navigator inside the page — no fill and no title
+/// of its own — so Settings reads as the fourth Workbench page rather than a
+/// second application bolted into the detail pane.
 struct SettingsView: View {
+    let density: Theme.Density
+    @Binding var selection: SettingsDestination
+
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
-    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
-    @Environment(\.colorScheme) private var colorScheme
-    var dismiss: () -> Void
-    var showsDismissButton: Bool = true
 
     private let intervalOptions = AppSettings.refreshIntervalOptions
     private let popoverRefreshCooldownOptions: [Int] = [60, 120, 300, 600]
@@ -111,7 +117,8 @@ struct SettingsView: View {
     @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
     @State private var launchAtLoginError: String?
-    @State private var selectedDestination: SettingsDestination = .page(.system)
+
+    private var selectedDestination: SettingsDestination { selection }
 
     private var selectedSection: SettingsSectionID {
         selectedDestination.sectionID
@@ -119,29 +126,12 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SettingsSidebarView(selection: $selectedDestination)
+            SettingsSidebarView(selection: $selection)
 
-            VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Text(selectedDestination.title(settings: settingsStore.settings))
-                            .font(.system(size: 20, weight: .semibold))
-                        Spacer()
-                        if showsDismissButton {
-                            BorderlessIconButton(
-                                systemImage: "xmark.circle.fill",
-                                help: "Close Settings",
-                                size: 15,
-                                action: dismiss
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 16)
+            Divider().opacity(0.45)
 
-                    Divider()
-
-                    ScrollView(.vertical, showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 18) {
+            ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                     if selectedSection == .system {
                     settingsSection("System") {
                         Toggle("Launch at login", isOn: launchAtLoginBinding())
@@ -557,7 +547,9 @@ struct SettingsView: View {
                     if selectedSection == .miscProviders {
                     if case let .miscProvider(instanceID) = selectedDestination,
                        let instance = settingsStore.settings.miscProviderInstance(id: instanceID) {
-                        MiscProviderSettingsSection(instance: instance)
+                        settingsSection(instance.displayTitle(fallback: instance.tool.menuTitle)) {
+                            MiscProviderSettingsSection(instance: instance)
+                        }
                     } else {
                         settingsSection("Misc Provider") {
                             MiscProviderLandingView()
@@ -612,12 +604,12 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .pricing {
-                    PricingSettingsSection()
+                    PricingSettingsSection(density: density)
                         .id(SettingsSectionID.pricing.id)
                     }
 
                     if selectedSection == .remote {
-                    RemoteSettingsSection(service: environment.remoteProbeService)
+                    RemoteSettingsSection(density: density, service: environment.remoteProbeService)
                         .id(SettingsSectionID.remote.id)
                     }
 
@@ -630,45 +622,21 @@ struct SettingsView: View {
                     .id(SettingsSectionID.privacy.id)
                     }
                         }
-                        .padding(22)
-                    }
+                        .padding(.horizontal, density.popoverPaddingH)
+                        .padding(.vertical, density.popoverPaddingV)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 820, idealWidth: 980, minHeight: 600, idealHeight: 760)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: refreshLaunchAtLoginState)
     }
 
     private func settingsSection<Content: View>(
         _ title: String,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 10) {
-                content()
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: usesWorkbenchPorcelain ? 14 : 8, style: .continuous)
-                    .fill(
-                        usesWorkbenchPorcelain
-                            ? WorkbenchPorcelain.cardFill(for: colorScheme)
-                            : Color.primary.opacity(0.045)
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: usesWorkbenchPorcelain ? 14 : 8, style: .continuous)
-                    .stroke(
-                        usesWorkbenchPorcelain
-                            ? WorkbenchPorcelain.hairline(for: colorScheme)
-                            : Color.primary.opacity(0.08),
-                        lineWidth: Theme.Card.hairlineWidth
-                    )
-            )
-        }
+        SettingsSectionCard(title: title, density: density, content: content)
     }
 
     private func connectionHealthRows(provider: ToolType) -> some View {
@@ -705,14 +673,6 @@ struct SettingsView: View {
                         .fill(healthColor(health.status).opacity(health.status == .ok ? 0.08 : 0.04))
                 )
             }
-        }
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor).opacity(0.72))
-                .frame(width: 1)
-                .offset(x: SettingsSidebarView.width)
-                .ignoresSafeArea(.container, edges: .vertical)
-                .allowsHitTesting(false)
         }
     }
 

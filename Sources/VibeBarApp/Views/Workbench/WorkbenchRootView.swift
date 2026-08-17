@@ -67,6 +67,10 @@ struct WorkbenchRootView: View {
     @AppStorage("workbench.selectedPage") private var storedPage: String = WorkbenchPage.usageStats.rawValue
     @ObservedObject private var navigation: WorkbenchNavigation
     @State private var appearanceOverride: ColorScheme?
+    /// Which Settings section is open. Window state, and owned here rather
+    /// than inside `SettingsView` so the page header can name it and so
+    /// leaving Settings and coming back does not silently reset it.
+    @State private var settingsDestination: SettingsDestination = .page(.system)
 
     init(initialPage: WorkbenchPage?, navigation: WorkbenchNavigation) {
         self.initialPage = initialPage
@@ -132,7 +136,7 @@ struct WorkbenchRootView: View {
             let count = workbench.skills.skills.count
             return count == 0 ? "shared library" : "\(count.formatted()) installed"
         case .settings:
-            return nil
+            return settingsDestination.title(settings: settingsStore.settings)
         }
     }
 
@@ -166,7 +170,7 @@ struct WorkbenchRootView: View {
         case .skillsManager:
             SkillsManagerPage(density: density, model: workbench.skills)
         case .settings:
-            SettingsView(dismiss: {}, showsDismissButton: false)
+            SettingsView(density: density, selection: $settingsDestination)
         }
     }
 }

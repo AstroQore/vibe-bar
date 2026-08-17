@@ -25,10 +25,6 @@ enum WorkbenchPorcelain {
         scheme == .dark ? Color.white.opacity(0.035) : Color.white.opacity(0.58)
     }
 
-    static func cardFill(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.052) : Color.white.opacity(0.82)
-    }
-
     /// Opaque ground for content that floats over other content — a chart
     /// tooltip, a toast. Flat surfaces cast no shadow, so the only honest way
     /// for one to sit above another is to be opaque.

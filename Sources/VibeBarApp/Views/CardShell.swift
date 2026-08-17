@@ -43,6 +43,30 @@ struct CardShell<Content: View>: View {
     }
 }
 
+/// A titled Settings block: a quiet caption over a `CardShell`.
+///
+/// Settings is a Workbench page, so a Settings block is a Workbench card.
+/// Three panes used to hand-roll this same stack with three different corner
+/// radii and three different fills — one shared shell means a fourth pane
+/// cannot invent a fourth.
+struct SettingsSectionCard<Content: View>: View {
+    let title: String
+    let density: Theme.Density
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            CardShell(density: density, spacing: 10) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 extension View {
     func cardSurface(density: Theme.Density) -> some View {
         modifier(CardSurfaceModifier(density: density))
