@@ -331,6 +331,27 @@ summary cannot delete a different session. Vibe Bar never edits the
 *contents* of a session file, never deletes a credential file at all, and
 no other code path may remove anything outside `~/.vibebar/`.
 
+**Three providers are listed and readable but never deletable**, because
+another running app owns the store and removing from underneath it
+corrupts rather than cleans:
+
+| Provider        | Store                                              | Why it is refused                               |
+| --------------- | -------------------------------------------------- | ----------------------------------------------- |
+| `antigravity`   | `~/.gemini/antigravity{,-cli,-ide}/conversations`   | The CLI and IDE hold live WAL handles.          |
+| `cursor`        | `~/.cursor/chats/**/store.db`                       | Cursor keeps the agent store open.              |
+| `claudeCowork`  | `…/Application Support/Claude/local-agent-mode-sessions` | The files are inside Claude.app's own container. |
+
+`SessionProvider.supportsDeletion` is the single source of truth: those
+adapters throw `SessionDeleteError.providerIsReadOnly(provider)` — which
+carries a per-provider message naming the app to delete from — and the
+Sessions page asks the same property before offering the action, so the
+gate and the adapters cannot drift. A new read-only provider adds a case
+there and nowhere else. Read-only also means read-only in the small: these
+adapters open the SQLite stores through
+`Sources/VibeBarCore/Sessions/LiveSQLiteReader.swift`, which only ever
+opens the real file `SQLITE_OPEN_READONLY` and falls back to a private
+temp-directory snapshot it deletes again.
+
 ## 6. Home Directory (and why we no longer sandbox)
 
 Vibe Bar runs **unsandboxed**. Every Foundation home API returns the
@@ -516,25 +537,52 @@ the display names).
 | Gemini CLI    | Google AI  | `~/.gemini/tmp/*/chats/session-*.jsonl`, telemetry log |
 | AntiGravity   | Google AI  | `~/.gemini/antigravity{,-cli,-ide}/conversations`    |
 | Grok Build    | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                  |
-| Cursor        | SpaceXAI   | Cursor dashboard events (no local counters)          |
+| Cursor        | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard events for cost |
 
 Consequences worth stating out loud:
 
 - Quota surfaces (Overview, mini window, menu bar, Settings) speak
   company / SubProvider / group. Usage and cost surfaces (Workbench
   Harness Mix, harness filter, cost cards) speak harnesses, grouped or
-  filtered by company.
+  filtered by company. **The Sessions page is a usage surface**: its rows
+  are labelled with the harness, its source menu lists harnesses, and only
+  its company chips speak L1.
 - "Gemini Web" is a quota SubProvider with **no** local usage; the
   deprecated CLI's historical tokens are always labelled "Gemini CLI".
-- Cowork is a cost/usage source only. It is deliberately absent from the
-  Sessions manager, its adapters, and `SessionDeleter` — that page owns a
-  delete path, and nothing may remove files inside Claude.app's container
-  (§ 5).
 - The ledger stores the harness per detail row *and* per daily rollup.
   Rows written before the dimension existed are backfilled from
   `Harness.defaultHarness(for:)`, so ChatGPT Desktop usage already folded
   into rollups stays attributed to "Codex"; only detail rows get
   corrected by a re-scan.
+
+#### Coverage matrix
+
+What Vibe Bar can say about each harness from purely local evidence.
+"Sessions" means a listed, readable, searchable row in the Workbench's
+Sessions page; "Delete" is § 5's read-only rule.
+
+| Harness       | Model                              | Usage / cost              | Sessions                    | Delete |
+| ------------- | ---------------------------------- | ------------------------- | --------------------------- | ------ |
+| Codex         | ✅ `turn_context.model`            | ✅ local rollouts         | ✅ `CodexSessionAdapter`     | ✅ |
+| ChatGPT Work  | ✅ same, `originator`-separated    | ✅ local rollouts         | ✅ same adapter, own harness | ✅ |
+| Claude Code   | ✅ `message.model`                 | ✅ local JSONL            | ✅ `ClaudeSessionAdapter`    | ✅ |
+| Claude Cowork | ✅ `message.model`                 | ✅ local JSONL            | ✅ `ClaudeCoworkSessionAdapter` | ❌ Claude.app's container |
+| Gemini CLI    | ⚠️ newer vintages only             | ✅ telemetry + chat JSONL | ✅ `GeminiSessionAdapter`    | ✅ |
+| AntiGravity   | ✅ `gen_metadata` turn             | ✅ conversation databases | ✅ `AntigravitySessionAdapter` | ❌ live WAL handles |
+| Grok Build    | ✅ `current_model_id`              | ✅ local session state    | ✅ `GrokSessionAdapter`      | ✅ |
+| Cursor        | ⚠️ when a turn recorded one        | ☁️ dashboard events only  | ✅ `CursorSessionAdapter`    | ❌ store stays open |
+
+Where a ⚠️ appears the log genuinely does not carry the value — an aborted
+Cursor conversation records no `modelName` at all, and old Gemini CLI
+chats predate the per-turn `model` field. Leave those `nil`. Never infer a
+model from the provider's "usual" one; a wrong model on a row is worse
+than an empty chip, and it would also be wrong at pricing time.
+
+Cursor's tokens stay remote on purpose. The nested field-5 accounting in
+its blobs is context-window bookkeeping, not billable usage, so the
+Sessions page lists Cursor conversations while the cost cards keep
+sourcing Cursor from the dashboard — do not "fix" that by inventing local
+counters.
 
 **Model names.** Display always uses the canonical vendor id —
 `gemini-3.5-flash-high`, not "Gemini 3.5 Flash (High)". Route every
