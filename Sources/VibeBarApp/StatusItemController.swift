@@ -186,6 +186,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             enabled: settings.refreshOnPopoverOpen,
             cooldownSeconds: settings.popoverOpenRefreshCooldownSeconds
         )
+        environment.scheduler.triggerRefreshForStaleCacheIfNeeded()
         // Set before `show`: the refresh above publishes into the popover's own
         // render pass, and anything that would rather not compete with it (the
         // hidden Claude budget WebView) checks this flag.

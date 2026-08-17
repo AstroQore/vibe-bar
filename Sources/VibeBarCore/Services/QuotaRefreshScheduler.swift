@@ -105,6 +105,26 @@ public final class QuotaRefreshScheduler {
         return true
     }
 
+    /// Even when the user disables unconditional popover-open refresh, an
+    /// actually missing/stale/expired cache must not remain silently visible.
+    /// This path refreshes only the affected accounts and does not trigger a
+    /// full cost scan.
+    @discardableResult
+    public func triggerRefreshForStaleCacheIfNeeded(now: Date = Date()) -> Bool {
+        let maxAge = TimeInterval(max(60, intervalProvider()))
+        let accounts = accountsProvider().filter { account in
+            !service.inFlightAccountIds.contains(account.id)
+                && service.needsRefresh(accountId: account.id, now: now, maxAge: maxAge)
+        }
+        guard !accounts.isEmpty else { return false }
+        Task { @MainActor in
+            for account in accounts {
+                _ = await service.refresh(account)
+            }
+        }
+        return true
+    }
+
     private func scheduleTimer() {
         timer?.invalidate()
         let interval = TimeInterval(max(60, intervalProvider()))

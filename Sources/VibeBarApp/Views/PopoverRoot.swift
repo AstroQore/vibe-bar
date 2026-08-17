@@ -60,6 +60,9 @@ struct PopoverRoot: View {
         .frame(width: width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
+        .onChange(of: overviewPage) { _, _ in
+            environment.scheduler.triggerRefreshForStaleCacheIfNeeded()
+        }
     }
 
     /// The tabbed popover is one shared shell. The title band, content cards,

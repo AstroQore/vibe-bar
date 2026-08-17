@@ -133,6 +133,63 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         _ = await service.refresh(account)
         XCTAssertTrue(service.needsRefresh(accountId: account.id, now: now, maxAge: 600))
     }
+
+    func testPopoverStaleCachePathActuallyRefreshesExpiredReset() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let account = AccountIdentity(id: "expired-page", tool: .antigravity, source: .localProbe)
+        let expired = QuotaBucket(
+            id: "gemini_five_hour",
+            title: "5 Hours",
+            shortLabel: "5 Hours",
+            usedPercent: 2,
+            resetAt: now.addingTimeInterval(-1),
+            rawWindowSeconds: 18_000
+        )
+        let refreshed = QuotaBucket(
+            id: "gemini_five_hour",
+            title: "5 Hours",
+            shortLabel: "5 Hours",
+            usedPercent: 0,
+            resetAt: now.addingTimeInterval(18_000),
+            rawWindowSeconds: 18_000
+        )
+        let service = QuotaService(
+            adapters: [.antigravity: SequenceAdapter(tool: .antigravity, results: [
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .antigravity,
+                    buckets: [expired],
+                    queriedAt: now
+                )),
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .antigravity,
+                    buckets: [refreshed],
+                    queriedAt: now
+                ))
+            ])],
+            mockProvider: { false }
+        )
+        _ = await service.refresh(account)
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { [account] },
+            intervalProvider: { 600 }
+        )
+
+        XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+        for _ in 0..<20 {
+            if service.cachedQuota(for: account.id)?.buckets.first?.resetAt == refreshed.resetAt {
+                break
+            }
+            await Task.yield()
+        }
+        XCTAssertEqual(
+            service.cachedQuota(for: account.id)?.buckets.first?.resetAt,
+            refreshed.resetAt
+        )
+        XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
+    }
 }
 
 private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {

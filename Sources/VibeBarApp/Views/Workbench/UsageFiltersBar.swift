@@ -100,6 +100,7 @@ struct UsageFiltersBar: View {
     private var controls: some View {
         HStack(spacing: 8) {
             rangeMenu
+            subProviderMenu
             modelMenu
             refreshMenu
             if model.selectedTools != nil || model.selectedModels != nil {
@@ -196,6 +197,29 @@ struct UsageFiltersBar: View {
         .accessibilityLabel("Choose which models to include")
     }
 
+    private var subProviderMenu: some View {
+        Menu {
+            Button("All SubProviders") { model.setSelectedTools(nil) }
+            Divider()
+            ForEach(model.knownTools, id: \.self) { tool in
+                Toggle(isOn: subProviderBinding(tool)) {
+                    Text("\(tool.vendorName) · \(tool.productName)")
+                }
+            }
+        } label: {
+            menuLabel(
+                systemImage: "square.stack.3d.up",
+                title: "SubProviders",
+                detail: subProviderSummary
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Choose individual SubProviders")
+    }
+
     private var refreshMenu: some View {
         Menu {
             Picker("Auto refresh", selection: $model.refreshInterval) {
@@ -246,6 +270,13 @@ struct UsageFiltersBar: View {
         )
     }
 
+    private func subProviderBinding(_ tool: ToolType) -> Binding<Bool> {
+        Binding(
+            get: { model.selectedTools?.contains(tool) ?? true },
+            set: { _ in model.toggleTool(tool) }
+        )
+    }
+
     private var rangeSummary: String {
         if model.rangePreset == .all { return "All time" }
         let range = model.range
@@ -276,6 +307,12 @@ struct UsageFiltersBar: View {
         if selected.count == 1, let only = selected.first {
             return UsageModelNaming.canonicalDisplayName(only)
         }
+        return "\(selected.count) selected"
+    }
+
+    private var subProviderSummary: String {
+        guard let selected = model.selectedTools else { return "All" }
+        if selected.count == 1, let only = selected.first { return only.productName }
         return "\(selected.count) selected"
     }
 
