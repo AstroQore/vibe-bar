@@ -136,10 +136,17 @@ final class UsageEventLedgerTests: XCTestCase {
         defer { sqlite3_close_v2(db) }
         XCTAssertEqual(sqlite3_exec(db, """
             CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
-            CREATE TABLE usage_events(tool TEXT NOT NULL, source_key TEXT);
+            CREATE TABLE usage_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                source_key TEXT,
+                dedupe_key TEXT NOT NULL UNIQUE
+            );
             INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
-            INSERT INTO usage_events VALUES('grok', 'cursor-event-v1-fixture');
-            INSERT INTO usage_events VALUES('grok', 'grok-session-fixture');
+            INSERT INTO usage_events(tool, source_key, dedupe_key)
+                VALUES('grok', 'cursor-event-v1-fixture', 'f:legacy-cursor');
+            INSERT INTO usage_events(tool, source_key, dedupe_key)
+                VALUES('grok', 'grok-session-fixture', 'f:grok');
             """, nil, nil, nil), SQLITE_OK)
 
         XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
@@ -158,6 +165,25 @@ final class UsageEventLedgerTests: XCTestCase {
             tools.append(String(cString: sqlite3_column_text(query, 0)))
         }
         XCTAssertEqual(tools, ["cursor", "grok"])
+
+        var dedupeStatement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT dedupe_key FROM usage_events WHERE tool = 'cursor'",
+            -1,
+            &dedupeStatement,
+            nil
+        ), SQLITE_OK)
+        let dedupeQuery = try XCTUnwrap(dedupeStatement)
+        defer { sqlite3_finalize(dedupeQuery) }
+        XCTAssertEqual(sqlite3_step(dedupeQuery), SQLITE_ROW)
+        XCTAssertEqual(
+            String(cString: sqlite3_column_text(dedupeQuery, 0)),
+            PrivacyPreservingHash.fileComponent(
+                prefix: "cursor-ledger-v1",
+                rawValue: "cursor-event-v1-fixture"
+            )
+        )
 
         var floorStatement: OpaquePointer?
         XCTAssertEqual(sqlite3_prepare_v2(
@@ -180,9 +206,15 @@ final class UsageEventLedgerTests: XCTestCase {
         defer { sqlite3_close_v2(db) }
         XCTAssertEqual(sqlite3_exec(db, """
             CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
-            CREATE TABLE usage_events(tool TEXT NOT NULL, source_key TEXT);
+            CREATE TABLE usage_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool TEXT NOT NULL,
+                source_key TEXT,
+                dedupe_key TEXT NOT NULL UNIQUE
+            );
             INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
-            INSERT INTO usage_events VALUES('grok', 'grok-session-fixture');
+            INSERT INTO usage_events(tool, source_key, dedupe_key)
+                VALUES('grok', 'grok-session-fixture', 'f:grok');
             """, nil, nil, nil), SQLITE_OK)
 
         XCTAssertTrue(UsageEventLedger.migrateCursorToolRows(db))
