@@ -499,8 +499,17 @@ final class SessionManagerModel: ObservableObject {
     // MARK: - Filter mutation
 
     func toggleProvider(_ provider: SessionProvider) {
+        toggleProviders([provider])
+    }
+
+    func toggleProviders(_ providers: Set<SessionProvider>) {
+        guard !providers.isEmpty else { return }
         var next = providerFilter ?? Set(SessionProvider.allCases)
-        if next.contains(provider) { next.remove(provider) } else { next.insert(provider) }
+        if providers.allSatisfy(next.contains) {
+            next.subtract(providers)
+        } else {
+            next.formUnion(providers)
+        }
         // Everything selected is the same statement as no filter, and saying
         // it that way keeps the chip row and the FTS query in agreement.
         setProviderFilter(next.count == SessionProvider.allCases.count ? nil : next)

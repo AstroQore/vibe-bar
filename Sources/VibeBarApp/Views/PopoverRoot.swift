@@ -801,8 +801,11 @@ private struct GrokCombinedCard: View {
     var body: some View {
         let grokAccount = environment.account(for: .grok)
         let cursorAccount = environment.account(for: .cursor)
+        let cursorQuota = cursorAccount.flatMap { quotaService.cachedQuota(for: $0.id) }
+            ?? environment.quota(for: .cursor)
         let showsCursor = (cursorAccount.map { $0.source != .notConfigured } ?? false)
-            || cursorAccount.flatMap { quotaService.cachedQuota(for: $0.id) } != nil
+            || cursorQuota != nil
+        let showsGrokBot = cursorQuota?.buckets.contains { $0.id == "grok_bot_weekly" } == true
         let anyInFlight = [grokAccount, cursorAccount].compactMap { $0 }.contains {
             quotaService.inFlightAccountIds.contains($0.id)
         }
@@ -877,28 +880,30 @@ private struct GrokCombinedCard: View {
                     includedBucketIDs: ["models", "other_models"]
                 )
 
-                HStack(alignment: .center, spacing: 6) {
-                    ToolBrandIconView(tool: .grok, size: 13)
-                        .opacity(0.85)
-                    Text("Grok Bot")
-                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 4)
-                    if let cursorBadge {
-                        PlanBadgeView(text: cursorBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                if showsGrokBot {
+                    HStack(alignment: .center, spacing: 6) {
+                        ToolBrandIconView(tool: .grok, size: 13)
+                            .opacity(0.85)
+                        Text("Grok Bot")
+                            .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        if let cursorBadge {
+                            PlanBadgeView(text: cursorBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                        }
                     }
-                }
-                .padding(.top, 4)
+                    .padding(.top, 4)
 
-                ProviderQuotaCard(
-                    tool: .cursor,
-                    density: density,
-                    compact: false,
-                    embedded: true,
-                    includedBucketIDs: ["grok_bot_weekly"],
-                    suppressGroupTitles: true,
-                    showsFreshnessWarning: false
-                )
+                    ProviderQuotaCard(
+                        tool: .cursor,
+                        density: density,
+                        compact: false,
+                        embedded: true,
+                        includedBucketIDs: ["grok_bot_weekly"],
+                        suppressGroupTitles: true,
+                        showsFreshnessWarning: false
+                    )
+                }
             }
         }
         .padding(density.cardPadding)

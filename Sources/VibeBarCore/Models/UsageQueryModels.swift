@@ -284,6 +284,31 @@ public struct UsageProviderStat: Sendable, Equatable, Identifiable {
         self.totalTokens = totalTokens
         self.costMicros = costMicros
     }
+
+    /// Collapse tool/SubProvider rows into the L1 company/brand totals used by
+    /// Provider Mix and the Providers table. Filters and request rows remain
+    /// at L2 so users can still narrow individual SubProviders.
+    public static func mergedByCompany(_ rows: [UsageProviderStat]) -> [UsageProviderStat] {
+        var totals: [ToolType: (requests: Int, tokens: Int64, cost: Int64)] = [:]
+        for row in rows {
+            let representative = row.tool.coreProviderRepresentative ?? row.tool
+            totals[representative, default: (0, 0, 0)].requests += row.requests
+            totals[representative, default: (0, 0, 0)].tokens += row.totalTokens
+            totals[representative, default: (0, 0, 0)].cost += row.costMicros
+        }
+        return totals.map { tool, total in
+            UsageProviderStat(
+                tool: tool,
+                requests: total.requests,
+                totalTokens: total.tokens,
+                costMicros: total.cost
+            )
+        }.sorted {
+            $0.totalTokens == $1.totalTokens
+                ? $0.tool.vendorName < $1.tool.vendorName
+                : $0.totalTokens > $1.totalTokens
+        }
+    }
 }
 
 public struct UsageModelStat: Sendable, Equatable, Identifiable {

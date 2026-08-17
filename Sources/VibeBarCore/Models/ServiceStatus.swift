@@ -256,4 +256,27 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
             incidentAdjustedUptimePercent: incidentAdjustedUptimePercent
         )
     }
+
+    /// One canonical SpaceXAI status projection shared by the Workbench card
+    /// and the menu-bar context menu.
+    public static func mergedSpaceXAI(
+        grok: ServiceStatusSnapshot?,
+        cursor: ServiceStatusSnapshot?
+    ) -> ServiceStatusSnapshot? {
+        guard let cursor else { return grok }
+        let base = grok ?? ServiceStatusSnapshot(
+            tool: .grok,
+            indicator: .none,
+            description: "Cursor status available",
+            updatedAt: cursor.updatedAt,
+            groups: [],
+            components: [],
+            recentIncidents: []
+        )
+        return base.mergingSubProvider(
+            cursor,
+            groupID: "subprovider:cursor",
+            groupName: "Cursor"
+        )
+    }
 }

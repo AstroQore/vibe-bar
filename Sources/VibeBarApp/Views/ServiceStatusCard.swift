@@ -137,21 +137,9 @@ private struct ServiceStatusRow: View {
 
     private var displaySnapshot: ServiceStatusSnapshot? {
         guard tool == .grok else { return serviceStatus.snapshotByTool[tool] }
-        let grok = serviceStatus.snapshotByTool[.grok]
-        guard let cursor = serviceStatus.snapshotByTool[.cursor] else { return grok }
-        let base = grok ?? ServiceStatusSnapshot(
-            tool: .grok,
-            indicator: .none,
-            description: "Cursor status available",
-            updatedAt: cursor.updatedAt,
-            groups: [],
-            components: [],
-            recentIncidents: []
-        )
-        return base.mergingSubProvider(
-            cursor,
-            groupID: "subprovider:cursor",
-            groupName: "Cursor"
+        return ServiceStatusSnapshot.mergedSpaceXAI(
+            grok: serviceStatus.snapshotByTool[.grok],
+            cursor: serviceStatus.snapshotByTool[.cursor]
         )
     }
 

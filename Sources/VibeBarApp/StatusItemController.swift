@@ -344,7 +344,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(disabledMenuItem("Service Status"))
-        for tool in ToolType.statusPageProviders {
+        for tool in ToolType.combinedStatusPageProviders {
             menu.addItem(disabledMenuItem(statusSummaryLine(for: tool)))
         }
         menu.addItem(.separator())
@@ -404,13 +404,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func statusSummaryLine(for tool: ToolType) -> String {
-        if environment.serviceStatus.inFlight.contains(tool) {
+        let members: [ToolType] = tool == .grok ? [.grok, .cursor] : [tool]
+        if members.contains(where: environment.serviceStatus.inFlight.contains) {
             return "\(tool.statusProviderName) · Checking"
         }
-        if environment.serviceStatus.errorByTool[tool] != nil {
+        if members.contains(where: { environment.serviceStatus.errorByTool[$0] != nil }) {
             return "\(tool.statusProviderName) · Down"
         }
-        guard let snapshot = environment.serviceStatus.snapshotByTool[tool] else {
+        let snapshot = tool == .grok
+            ? ServiceStatusSnapshot.mergedSpaceXAI(
+                grok: environment.serviceStatus.snapshotByTool[.grok],
+                cursor: environment.serviceStatus.snapshotByTool[.cursor]
+            )
+            : environment.serviceStatus.snapshotByTool[tool]
+        guard let snapshot else {
             return "\(tool.statusProviderName) · Checking"
         }
         let label: String

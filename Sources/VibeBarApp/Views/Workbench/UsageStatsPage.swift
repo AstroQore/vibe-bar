@@ -50,7 +50,7 @@ struct UsageStatsPage: View {
                 UsageCompositionCards(
                     density: density,
                     summary: model.summary,
-                    providers: model.providerStats
+                    providers: model.companyProviderStats
                 )
                 .frame(minWidth: 300, maxWidth: .infinity)
             }
@@ -59,7 +59,7 @@ struct UsageStatsPage: View {
                 UsageCompositionCards(
                     density: density,
                     summary: model.summary,
-                    providers: model.providerStats
+                    providers: model.companyProviderStats
                 )
             }
         }

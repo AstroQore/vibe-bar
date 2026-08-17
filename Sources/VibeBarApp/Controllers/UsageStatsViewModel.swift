@@ -11,6 +11,7 @@ import VibeBarCore
 final class UsageStatsViewModel: ObservableObject {
     /// Range presets deliberately mix two shapes:
     ///
+    /// - `all` starts at the ledger's first retained fact;
     /// - `today` is the local calendar day so far — midnight → now.
     /// - `24 h` is a rolling window ending now;
     /// - every multi-day preset is aligned to local calendar days, matching
@@ -20,6 +21,7 @@ final class UsageStatsViewModel: ObservableObject {
     /// creating a second, contradictory definition of "7 days" inside the
     /// same app.
     enum RangePreset: String, CaseIterable, Identifiable {
+        case all
         case today
         case day1
         case day7
@@ -31,6 +33,7 @@ final class UsageStatsViewModel: ObservableObject {
 
         var title: String {
             switch self {
+            case .all:    "All"
             case .today:  "Today"
             case .day1:   "24 h"
             case .day7:   "7 d"
@@ -42,6 +45,7 @@ final class UsageStatsViewModel: ObservableObject {
 
         var systemImage: String {
             switch self {
+            case .all:    "infinity"
             case .today:  "sun.max"
             case .day1:   "clock"
             case .day7:   "calendar"
@@ -56,7 +60,25 @@ final class UsageStatsViewModel: ObservableObject {
             case .day7: 7
             case .day14: 14
             case .day30: 30
-            case .today, .day1, .custom: nil
+            case .all, .today, .day1, .custom: nil
+            }
+        }
+    }
+
+    enum Breakdown: String, CaseIterable, Identifiable, Sendable {
+        case periods
+        case requests
+        case providers
+        case models
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .periods: "Periods"
+            case .requests: "Requests"
+            case .providers: "Providers"
+            case .models: "Models"
             }
         }
     }
@@ -81,6 +103,7 @@ final class UsageStatsViewModel: ObservableObject {
         didSet {
             guard oldValue != rangePreset else { return }
             windowStart = nil
+            allTimeStart = nil
             reload(cascadeModels: false)
         }
     }
@@ -116,11 +139,12 @@ final class UsageStatsViewModel: ObservableObject {
         }
     }
 
-    /// `nil` means "every provider". An empty selection is normalized back to
+    /// `nil` means "every SubProvider". An empty selection is normalized back to
     /// `nil` rather than kept as "match nothing" — a filter bar with no chip
     /// lit should read as unfiltered, not as an empty page.
     @Published private(set) var selectedTools: Set<ToolType>?
     @Published private(set) var selectedModels: Set<String>?
+    @Published private(set) var activeBreakdown: Breakdown = .periods
 
     // MARK: - Results
 
@@ -132,12 +156,15 @@ final class UsageStatsViewModel: ObservableObject {
     var summary: UsageSummaryMetrics { results.summary }
     var trend: UsageTrendSeries { results.trend }
     var providerStats: [UsageProviderStat] { results.providerStats }
+    var companyProviderStats: [UsageProviderStat] {
+        UsageProviderStat.mergedByCompany(results.providerStats)
+    }
     var modelStats: [UsageModelStat] { results.modelStats }
     var requestRows: [UsageRequestRow] { results.requestRows }
     var requestTotalCount: Int { results.requestTotalCount }
     @Published private(set) var availableModels: [String] = []
-    /// Providers offered as filter chips: the cost-aware set, widened by any
-    /// provider the ledger actually has rows for.
+    /// SubProviders offered as filter chips: the cost-aware set, widened by
+    /// any tool the ledger actually has rows for.
     @Published private(set) var knownTools: [ToolType] = ToolType.usageStatsProviders
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
@@ -153,11 +180,24 @@ final class UsageStatsViewModel: ObservableObject {
         requestRows.count < requestTotalCount
     }
 
+    var knownCompanyRepresentatives: [ToolType] {
+        ToolType.coreProviderRepresentatives.filter { representative in
+            !Set(representative.coreProviderMembers).isDisjoint(with: knownTools)
+        }
+    }
+
+    func isCompanySelected(_ representative: ToolType) -> Bool {
+        guard let selectedTools else { return true }
+        let members = representative.coreProviderMembers.filter { knownTools.contains($0) }
+        return !members.isEmpty && members.allSatisfy(selectedTools.contains)
+    }
+
     var range: DateInterval {
         windowStart.map(anchoredRange(start:)) ?? currentRange
     }
 
-    var canNavigateForward: Bool { windowStart != nil }
+    var canNavigateBackward: Bool { rangePreset != .all }
+    var canNavigateForward: Bool { rangePreset != .all && windowStart != nil }
 
     /// Manual buckets stay available only while they remain a useful
     /// interactive chart. The renderer also thins marks, but avoiding a huge
@@ -178,6 +218,9 @@ final class UsageStatsViewModel: ObservableObject {
     private var currentRange: DateInterval {
         let now = Date()
         switch rangePreset {
+        case .all:
+            let start = min(allTimeStart ?? now.addingTimeInterval(-60), now)
+            return DateInterval(start: start, end: max(now, start.addingTimeInterval(60)))
         case .today:
             let start = min(Calendar.current.startOfDay(for: now), now)
             return DateInterval(start: start, end: now)
@@ -200,7 +243,7 @@ final class UsageStatsViewModel: ObservableObject {
     }
 
     func navigateWindow(by direction: Int) {
-        guard direction == -1 || direction == 1 else { return }
+        guard rangePreset != .all, direction == -1 || direction == 1 else { return }
         let present = currentRange
         let candidate = shiftedStart(range.start, by: direction)
         if direction > 0, candidate >= present.start {
@@ -219,6 +262,8 @@ final class UsageStatsViewModel: ObservableObject {
 
     private func anchoredRange(start: Date) -> DateInterval {
         switch rangePreset {
+        case .all:
+            return currentRange
         case .today:
             let end = Calendar.current.date(byAdding: .day, value: 1, to: start)
                 ?? start.addingTimeInterval(86_400)
@@ -237,6 +282,8 @@ final class UsageStatsViewModel: ObservableObject {
 
     private func shiftedStart(_ start: Date, by direction: Int) -> Date {
         switch rangePreset {
+        case .all:
+            return start
         case .today:
             return Calendar.current.date(byAdding: .day, value: direction, to: start)
                 ?? start.addingTimeInterval(TimeInterval(direction * 86_400))
@@ -275,6 +322,9 @@ final class UsageStatsViewModel: ObservableObject {
     private var lastAvailableModelsRevision: UInt64?
     private var generation: UInt64 = 0
     private var hasLoadedOnce = false
+    /// Resolved lazily from the ledger whenever All is active. Keeping it at
+    /// the real data floor prevents zero-filled decades and large chart trees.
+    private var allTimeStart: Date?
     /// A historical window start, or `nil` when the preset follows now.
     private var windowStart: Date?
     /// The filter page 0 was fetched with. Later pages reuse it verbatim: a
@@ -330,6 +380,7 @@ final class UsageStatsViewModel: ObservableObject {
         let normalized = (tools?.isEmpty ?? true) ? nil : tools
         guard normalized != selectedTools else { return }
         selectedTools = normalized
+        if rangePreset == .all { allTimeStart = nil }
         reload(cascadeModels: true)
     }
 
@@ -338,6 +389,18 @@ final class UsageStatsViewModel: ObservableObject {
         if next.contains(tool) { next.remove(tool) } else { next.insert(tool) }
         // Re-selecting everything is the same statement as "no provider
         // filter", and saying it that way keeps the query unrestricted.
+        setSelectedTools(next.count == knownTools.count ? nil : next)
+    }
+
+    func toggleCompany(_ representative: ToolType) {
+        let members = Set(representative.coreProviderMembers.filter { knownTools.contains($0) })
+        guard !members.isEmpty else { return }
+        var next = selectedTools ?? Set(knownTools)
+        if members.allSatisfy(next.contains) {
+            next.subtract(members)
+        } else {
+            next.formUnion(members)
+        }
         setSelectedTools(next.count == knownTools.count ? nil : next)
     }
 
@@ -359,6 +422,18 @@ final class UsageStatsViewModel: ObservableObject {
         customEnd = end
     }
 
+    func setActiveBreakdown(_ breakdown: Breakdown) {
+        guard activeBreakdown != breakdown else { return }
+        activeBreakdown = breakdown
+        // Periods and Providers are already backed by the chart/provider
+        // queries. Models and Requests are intentionally loaded only when the
+        // user opens those tabs, avoiding two full 30-day scans on every range
+        // change.
+        if breakdown == .models || breakdown == .requests {
+            reload(cascadeModels: false)
+        }
+    }
+
     // MARK: - Queries
 
     func refresh() {
@@ -369,6 +444,7 @@ final class UsageStatsViewModel: ObservableObject {
     /// screen. Pages from a superseded filter are dropped on arrival.
     func loadMoreRequests() {
         guard let ledger, let filter = activeFilter,
+              activeBreakdown == .requests,
               !isLoadingMore, !isLoading, hasMoreRequests
         else { return }
         let generation = self.generation
@@ -403,10 +479,17 @@ final class UsageStatsViewModel: ObservableObject {
             applyEmpty()
             return
         }
-        let tools = filter.tools
+        let toolsForBounds = selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } }
         isLoading = true
         reloadTask = Task { [weak self] in
             guard let self else { return }
+            if self.rangePreset == .all {
+                let earliest = try? await ledger.earliestUsageDate(tools: toolsForBounds)
+                guard !Task.isCancelled, generation == self.generation else { return }
+                self.allTimeStart = earliest.map { Calendar.current.startOfDay(for: $0) }
+                    ?? Date().addingTimeInterval(-60)
+            }
+            let tools = self.filter.tools
             // Model availability depends on the provider filter and ledger
             // contents, not the time range. The ledger revision lets 7 d →
             // 30 d reuse the same options while an automatic usage refresh
@@ -451,7 +534,10 @@ final class UsageStatsViewModel: ObservableObject {
             }
             let granularity = self.trendGranularity
             let snapshot = await Self.load(
-                ledger: ledger, filter: resolved, granularity: granularity
+                ledger: ledger,
+                filter: resolved,
+                granularity: granularity,
+                breakdown: self.activeBreakdown
             )
             guard !Task.isCancelled, generation == self.generation else { return }
             self.activeFilter = resolved
@@ -474,7 +560,7 @@ final class UsageStatsViewModel: ObservableObject {
             requestRows: snapshot.requests.rows,
             requestTotalCount: snapshot.requests.totalCount
         )
-        loadedRequestPages = 1
+        loadedRequestPages = activeBreakdown == .requests ? 1 : 0
         observedTools.formUnion(snapshot.providers.map(\.tool))
         observedTools.formUnion(selectedTools ?? [])
         knownTools = ToolType.allCases.filter {
@@ -568,16 +654,21 @@ final class UsageStatsViewModel: ObservableObject {
     private nonisolated static func load(
         ledger: UsageEventLedger,
         filter: UsageQueryFilter,
-        granularity: UsageTrendGranularity
+        granularity: UsageTrendGranularity,
+        breakdown: Breakdown
     ) async -> LoadedUsage {
         let summary = (try? await ledger.summary(filter)) ?? .empty
         let bucket = granularity.resolved(for: filter.range)
         let trend = (try? await ledger.trend(filter, bucket: bucket))
             ?? UsageTrendSeries(bucket: bucket, points: [])
         let providers = (try? await ledger.providerStats(filter)) ?? []
-        let models = (try? await ledger.modelStats(filter)) ?? []
-        let requests = (try? await ledger.requestPage(filter, page: 0, pageSize: requestPageSize))
-            ?? UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: requestPageSize)
+        let models = breakdown == .models
+            ? ((try? await ledger.modelStats(filter)) ?? [])
+            : []
+        let requests = breakdown == .requests
+            ? ((try? await ledger.requestPage(filter, page: 0, pageSize: requestPageSize))
+                ?? UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: requestPageSize))
+            : UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: requestPageSize)
         return LoadedUsage(
             summary: summary,
             trend: trend,

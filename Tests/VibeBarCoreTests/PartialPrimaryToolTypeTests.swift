@@ -93,11 +93,11 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         )
     }
 
-    func testUsageStatsFoldsCursorIntoGrok() {
-        XCTAssertEqual(ToolType.cursor.usageStatsRepresentative, .grok)
+    func testUsageStatsKeepsCursorAsSubProvider() {
+        XCTAssertEqual(ToolType.cursor.usageStatsRepresentative, .cursor)
         XCTAssertEqual(
             ToolType.usageStatsProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
     }
 

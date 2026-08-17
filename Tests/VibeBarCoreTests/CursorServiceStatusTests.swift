@@ -48,7 +48,7 @@ final class CursorServiceStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.components.map(\.name), ["Cloud Agents", "IDE"])
         XCTAssertEqual(snapshot.recentIncidents.first?.name, "Cloud Agents degraded")
 
-        let spaceXAI = ServiceStatusSnapshot(
+        let grok = ServiceStatusSnapshot(
             tool: .grok,
             indicator: .none,
             description: "All systems operational",
@@ -60,17 +60,25 @@ final class CursorServiceStatusTests: XCTestCase {
                 status: .operational
             )],
             recentIncidents: []
-        ).mergingSubProvider(
-            snapshot,
-            groupID: "subprovider:cursor",
-            groupName: "Cursor"
         )
+        let spaceXAI = try XCTUnwrap(ServiceStatusSnapshot.mergedSpaceXAI(
+            grok: grok,
+            cursor: snapshot
+        ))
         XCTAssertEqual(spaceXAI.tool, .grok)
         XCTAssertEqual(spaceXAI.indicator, .minor)
         XCTAssertEqual(spaceXAI.groups.last?.name, "Cursor")
         XCTAssertTrue(spaceXAI.components(in: spaceXAI.groups.last).contains {
             $0.name == "Cloud Agents"
         })
+
+        let cursorOnly = try XCTUnwrap(ServiceStatusSnapshot.mergedSpaceXAI(
+            grok: nil,
+            cursor: snapshot
+        ))
+        XCTAssertEqual(cursorOnly.tool, .grok)
+        XCTAssertEqual(cursorOnly.indicator, .minor)
+        XCTAssertEqual(cursorOnly.groups.map(\.name), ["Cursor"])
     }
 }
 

@@ -240,9 +240,9 @@ extension PricingDataSet {
             providers: Providers(
                 codex: .init(displayName: "OpenAI", models: [:]),
                 claude: .init(displayName: "Anthropic", models: [:]),
-                gemini: .init(displayName: "Google", models: [:]),
-                grok: .init(displayName: "xAI", models: [:]),
-                antigravity: .init(displayName: "AntiGravity", models: [:])
+                gemini: .init(displayName: "Google AI", models: [:]),
+                grok: .init(displayName: "SpaceXAI", models: [:]),
+                antigravity: .init(displayName: "Google AI", models: [:])
             )
         )
     }

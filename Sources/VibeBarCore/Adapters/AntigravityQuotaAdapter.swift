@@ -108,10 +108,26 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         do {
             let snapshot = try await AntigravityCLIQuotaFetcher.fetch()
             return accountQuota(snapshot: snapshot, account: account)
-        } catch {
+        } catch let cliError {
             if let localQuota { return localQuota }
-            throw mapError(localError ?? error)
+            throw Self.preferredLocalSourceError(
+                desktopError: localError.map { mapError($0) },
+                cliError: mapError(cliError)
+            )
         }
+    }
+
+    /// A missing desktop process is expected and must not hide an actionable
+    /// error from the installed CLI. A specific desktop failure still wins
+    /// because it came from the preferred source.
+    static func preferredLocalSourceError(
+        desktopError: QuotaError?,
+        cliError: QuotaError
+    ) -> QuotaError {
+        guard let desktopError, desktopError != .noCredential else {
+            return cliError
+        }
+        return desktopError
     }
 
     private func accountQuota(

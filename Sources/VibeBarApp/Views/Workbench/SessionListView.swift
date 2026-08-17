@@ -106,7 +106,7 @@ struct SessionListView: View {
         }
         if model.indexProgress != nil { return "Still scanning the session logs on disk." }
         if !model.searchText.isEmpty { return "Nothing in the indexed sessions matches that search." }
-        return "No Codex, Claude Code, Grok, Gemini, or AntiGravity session logs were found on this Mac."
+        return "No Codex, Claude Code, Grok, Gemini CLI, or AntiGravity session logs were found on this Mac."
     }
 }
 

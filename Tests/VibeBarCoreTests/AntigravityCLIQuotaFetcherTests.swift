@@ -49,4 +49,31 @@ final class AntigravityCLIQuotaFetcherTests: XCTestCase {
             complete.filter { $0.id != "claude_gpt_five_hour" }
         ))
     }
+
+    func testAgyErrorWinsWhenDesktopProbeIsAbsent() {
+        XCTAssertEqual(
+            AntigravityQuotaAdapter.preferredLocalSourceError(
+                desktopError: .noCredential,
+                cliError: .needsLogin
+            ),
+            .needsLogin
+        )
+        XCTAssertEqual(
+            AntigravityQuotaAdapter.preferredLocalSourceError(
+                desktopError: nil,
+                cliError: .network("loopback unavailable")
+            ),
+            .network("loopback unavailable")
+        )
+    }
+
+    func testSpecificDesktopErrorWinsOverAgyError() {
+        XCTAssertEqual(
+            AntigravityQuotaAdapter.preferredLocalSourceError(
+                desktopError: .parseFailure("desktop response changed"),
+                cliError: .needsLogin
+            ),
+            .parseFailure("desktop response changed")
+        )
+    }
 }

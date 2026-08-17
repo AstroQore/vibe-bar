@@ -159,9 +159,10 @@ struct CursorCostUsageFetcher: Sendable {
         }
         if let eventSink {
             await eventSink.consume(UsageEventFileBatch(
-                // Workbench uses the same product-level contract as the Grok
-                // cost card: Grok CLI + Cursor is one final SpaceXAI total.
-                tool: .grok,
+                // Preserve Cursor as an L2 SubProvider in the request ledger.
+                // Provider Mix folds it into SpaceXAI, while the outer cost
+                // card independently combines Grok + Cursor snapshots.
+                tool: .cursor,
                 filePath: "cursor-dashboard://\(sourceID)",
                 mtime: latestEventDate ?? now,
                 // Synthetic source: use a content-derived fingerprint rather

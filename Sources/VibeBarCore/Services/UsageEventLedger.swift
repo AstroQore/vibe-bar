@@ -73,7 +73,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     private let dayFormatter: DateFormatter
 
     /// Bumping this drops and rebuilds every table on the next open.
-    static let schemaVersion = 3
+    /// v4 preserves Cursor as its own L2 SubProvider in request/detail and
+    /// daily rollup rows. Provider-level queries merge it back into SpaceXAI.
+    static let schemaVersion = 4
     private static let schemaVersionKey = "schema_version"
     private static let pricingRevisionKey = "pricing_revision"
     private static let floorKeyPrefix = "detail_floor_day:"
@@ -365,7 +367,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                source_key = excluded.source_key
            WHERE
                (
-                   excluded.tool = 'grok'
+                   excluded.tool = 'cursor'
                    AND excluded.source_key LIKE 'cursor-event-v1-%'
                    AND excluded.source_key = usage_events.source_key
                )
@@ -420,7 +422,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 .joined(separator: "|")
             return PrivacyPreservingHash.fileComponent(prefix: "cm-v3", rawValue: tuple)
         }
-        if tool == .grok,
+        if tool == .cursor,
            let sourceKey = event.sourceKey,
            sourceKey.hasPrefix("cursor-event-v1") {
             return PrivacyPreservingHash.fileComponent(
@@ -576,10 +578,8 @@ public actor UsageEventLedger: CostUsageEventSink {
         do {
             for row in details {
                 // Cursor dashboard cents are authoritative provider facts,
-                // not estimates from our price table. They are stored under
-                // the SpaceXAI provider key for final-total consistency, so source
-                // provenance—not `tool`—must keep repricing from overwriting
-                // them with Grok CLI rates.
+                // not estimates from our price table. Source provenance keeps
+                // repricing from overwriting them with catalog rates.
                 if row.sourceKey?.hasPrefix("cursor-event-v1") == true { continue }
                 let costBinding: Binding = if let micros = costMicros(for: row) {
                     .integer(micros)
@@ -1110,6 +1110,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     public func modelStats(_ filter: UsageQueryFilter) throws -> [UsageModelStat] {
         var totals: [String: (requests: Int, tokens: Int64, cost: Int64)] = [:]
         try forEachGroup(filter, column: "model") { key, requests, tokens, cost in
+            guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             totals[key, default: (0, 0, 0)].requests += requests
             totals[key, default: (0, 0, 0)].tokens += tokens
             totals[key, default: (0, 0, 0)].cost += cost
@@ -1138,12 +1139,13 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// date range.
     public func availableModels(tools: [ToolType]? = nil) throws -> [String] {
         if let tools, tools.isEmpty { return [] }
-        var clause = ""
+        var clauses = ["TRIM(model) <> ''"]
         var bindings: [Binding] = []
         if let tools {
-            clause = " WHERE tool IN (\(placeholders(tools.count)))"
+            clauses.append("tool IN (\(placeholders(tools.count)))")
             bindings = tools.map { .text($0.rawValue) }
         }
+        let clause = " WHERE " + clauses.joined(separator: " AND ")
         let statement = try prepare(
             """
             SELECT model FROM usage_events\(clause)
@@ -1159,6 +1161,46 @@ public actor UsageEventLedger: CostUsageEventSink {
             if let model = columnText(statement, 0) { models.append(model) }
         }
         return models
+    }
+
+    /// Earliest retained fact for an optional SubProvider filter. The All
+    /// preset uses this real boundary instead of manufacturing decades of
+    /// empty trend buckets from a distant sentinel date.
+    public func earliestUsageDate(tools: [ToolType]? = nil) throws -> Date? {
+        if let tools, tools.isEmpty { return nil }
+        var clause = ""
+        var bindings: [Binding] = []
+        if let tools {
+            clause = " WHERE tool IN (\(placeholders(tools.count)))"
+            bindings = tools.map { .text($0.rawValue) }
+        }
+
+        let detail = try prepare("SELECT MIN(ts) FROM usage_events\(clause)")
+        defer { sqlite3_finalize(detail) }
+        bindAll(bindings, to: detail)
+        let detailStart: Date? = if sqlite3_step(detail) == SQLITE_ROW,
+                                    sqlite3_column_type(detail, 0) != SQLITE_NULL {
+            Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(detail, 0)))
+        } else {
+            nil
+        }
+
+        let rollup = try prepare("SELECT MIN(day) FROM usage_daily_rollups\(clause)")
+        defer { sqlite3_finalize(rollup) }
+        bindAll(bindings, to: rollup)
+        let rollupStart: Date? = if sqlite3_step(rollup) == SQLITE_ROW,
+                                    let raw = columnText(rollup, 0) {
+            dayFormatter.date(from: raw)
+        } else {
+            nil
+        }
+
+        switch (detailStart, rollupStart) {
+        case let (detail?, rollup?): return min(detail, rollup)
+        case let (detail?, nil): return detail
+        case let (nil, rollup?): return rollup
+        case (nil, nil): return nil
+        }
     }
 
     private func forEachGroup(

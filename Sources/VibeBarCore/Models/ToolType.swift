@@ -140,7 +140,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     public var usageStatsRepresentative: ToolType {
-        self == .cursor ? .grok : self
+        self
     }
 
     public static var statusPageProviders: [ToolType] {
@@ -172,6 +172,21 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
              .kilo, .kiro, .ollama, .openRouter, .warp:
             return nil
         }
+    }
+
+    /// L2 members represented by one L1 company filter / aggregate row.
+    public var coreProviderMembers: [ToolType] {
+        switch coreProviderRepresentative ?? self {
+        case .codex: [.codex]
+        case .claude: [.claude]
+        case .gemini: [.gemini, .antigravity]
+        case .grok: [.grok, .cursor]
+        default: [self]
+        }
+    }
+
+    public var companySubProviderSummary: String {
+        coreProviderMembers.map(\.productName).joined(separator: " + ")
     }
 
     public static var miscPageProviders: [ToolType] {

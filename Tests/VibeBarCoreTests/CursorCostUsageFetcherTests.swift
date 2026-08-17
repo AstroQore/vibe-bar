@@ -114,7 +114,7 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         XCTAssertEqual(ledgerSummary.cacheCreation, 5)
         XCTAssertEqual(ledgerSummary.cacheRead, 10)
         let ledgerTools = try await ledger.providerStats(filter).map(\.tool)
-        XCTAssertEqual(ledgerTools, [.grok])
+        XCTAssertEqual(ledgerTools, [.cursor])
         _ = try await ledger.prepareForPricingRevision("cursor-authoritative-v1")
         let repricedSummary = try await ledger.summary(filter)
         XCTAssertEqual(repricedSummary.costMicros, ledgerSummary.costMicros)

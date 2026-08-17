@@ -12,28 +12,10 @@ struct UsageBreakdownTables: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @State private var tab: Tab = .periods
-
-    private enum Tab: String, CaseIterable, Identifiable {
-        case periods
-        case requests
-        case providers
-        case models
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .periods: "Periods"
-            case .requests: "Requests"
-            case .providers: "Providers"
-            case .models: "Models"
-            }
-        }
-    }
+    @State private var tab: UsageStatsViewModel.Breakdown = .periods
 
     private var sortedProviders: [UsageProviderStat] {
-        model.providerStats.sorted { $0.costMicros > $1.costMicros }
+        model.companyProviderStats.sorted { $0.costMicros > $1.costMicros }
     }
 
     private var sortedModels: [UsageModelStat] {
@@ -56,12 +38,13 @@ struct UsageBreakdownTables: View {
     private var header: some View {
         HStack(spacing: 10) {
             HStack(spacing: 2) {
-                ForEach(Tab.allCases) { value in
+                ForEach(UsageStatsViewModel.Breakdown.allCases) { value in
                     let selected = tab == value
                     Button {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
                             tab = value
                         }
+                        model.setActiveBreakdown(value)
                     } label: {
                         Text(value.title)
                             .font(.system(size: 10.5, weight: .semibold))
@@ -125,7 +108,7 @@ struct UsageBreakdownTables: View {
                 ? "\(loaded) of \(total) requests"
                 : "\(total) request\(total == 1 ? "" : "s")"
         case .providers:
-            return "\(model.providerStats.count) provider\(model.providerStats.count == 1 ? "" : "s")"
+            return "\(model.companyProviderStats.count) compan\(model.companyProviderStats.count == 1 ? "y" : "ies")"
         case .models:
             return "\(model.modelStats.count) model\(model.modelStats.count == 1 ? "" : "s")"
         }
@@ -204,7 +187,7 @@ struct UsageBreakdownTables: View {
             VStack(spacing: 0) {
                 tableHeader {
                     headerCell("Time", width: 138)
-                    headerCell("Provider", width: 138)
+                    headerCell("SubProvider", width: 138)
                     headerCell("Model", width: 220)
                     headerCell("Input", width: 114, alignment: .trailing)
                     headerCell("Output", width: 88, alignment: .trailing)
@@ -215,8 +198,12 @@ struct UsageBreakdownTables: View {
                     ForEach(model.requestRows) { row in
                         PorcelainUsageRow(accessibilityLabel: requestAccessibilityLabel(row)) {
                             valueCell(timestamp(row.date), width: 138, secondary: true, tooltip: timestamp(row.date))
-                            providerCell(row.tool, width: 138)
-                            valueCell(row.model, width: 220, tooltip: row.model)
+                            subProviderCell(row.tool, width: 138)
+                            valueCell(
+                                UsageModelNaming.canonicalDisplayName(row.model),
+                                width: 220,
+                                tooltip: row.model
+                            )
                             inputCell(row, width: 114)
                             numericCell(row.output, width: 88)
                             optionalMoneyCell(row.costMicros, width: 96)
@@ -246,7 +233,7 @@ struct UsageBreakdownTables: View {
                 LazyVStack(spacing: 0) {
                     ForEach(sortedProviders) { stat in
                         PorcelainUsageRow(accessibilityLabel: providerAccessibilityLabel(stat)) {
-                            providerCell(stat.tool, width: providerWidth)
+                            companyCell(stat.tool, width: providerWidth)
                             countCell(stat.requests, width: 112)
                             numericCell(stat.totalTokens, width: 132, emphasis: true)
                             moneyCell(stat.costMicros, width: 120, emphasis: true)
@@ -273,7 +260,11 @@ struct UsageBreakdownTables: View {
                 LazyVStack(spacing: 0) {
                     ForEach(sortedModels) { stat in
                         PorcelainUsageRow(accessibilityLabel: modelAccessibilityLabel(stat)) {
-                            valueCell(stat.model, width: modelWidth, tooltip: stat.model)
+                            valueCell(
+                                UsageModelNaming.canonicalDisplayName(stat.model),
+                                width: modelWidth,
+                                tooltip: stat.model
+                            )
                             countCell(stat.requests, width: 112)
                             numericCell(stat.totalTokens, width: 132, emphasis: true)
                             moneyCell(stat.costMicros, width: 120, emphasis: true)
@@ -330,15 +321,26 @@ struct UsageBreakdownTables: View {
             .help(tooltip ?? value)
     }
 
-    private func providerCell(_ tool: ToolType, width: CGFloat) -> some View {
+    private func subProviderCell(_ tool: ToolType, width: CGFloat) -> some View {
         HStack(spacing: 7) {
             ToolBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
-            Text(tool.menuTitle)
+            Text(tool.productName)
                 .font(bodyFont)
                 .lineLimit(1)
         }
         .frame(width: width, alignment: .leading)
-        .help(tool.displayName)
+        .help("\(tool.vendorName) · \(tool.productName)")
+    }
+
+    private func companyCell(_ tool: ToolType, width: CGFloat) -> some View {
+        HStack(spacing: 7) {
+            ToolBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
+            Text(tool.vendorName)
+                .font(bodyFont)
+                .lineLimit(1)
+        }
+        .frame(width: width, alignment: .leading)
+        .help(tool.vendorName)
     }
 
     private func inputCell(_ row: UsageRequestRow, width: CGFloat) -> some View {
@@ -479,15 +481,15 @@ struct UsageBreakdownTables: View {
     }
 
     private func requestAccessibilityLabel(_ row: UsageRequestRow) -> String {
-        "\(timestamp(row.date)), \(row.tool.displayName), \(row.model), \(UsageFormatting.formatTokens(row.totalTokens)), \(row.costMicros.map { UsageFormatting.formatMicroUSD($0) } ?? "unpriced")"
+        "\(timestamp(row.date)), \(row.tool.productName), \(UsageModelNaming.canonicalDisplayName(row.model)), \(UsageFormatting.formatTokens(row.totalTokens)), \(row.costMicros.map { UsageFormatting.formatMicroUSD($0) } ?? "unpriced")"
     }
 
     private func providerAccessibilityLabel(_ stat: UsageProviderStat) -> String {
-        "\(stat.tool.displayName), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
+        "\(stat.tool.vendorName), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
     }
 
     private func modelAccessibilityLabel(_ stat: UsageModelStat) -> String {
-        "\(stat.model), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
+        "\(UsageModelNaming.canonicalDisplayName(stat.model)), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
     }
 
     /// Cached: request rows can be formatted while scrolling a long ledger.
