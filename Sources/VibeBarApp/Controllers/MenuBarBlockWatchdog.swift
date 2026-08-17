@@ -117,11 +117,11 @@ final class MenuBarBlockWatchdog {
     /// says nothing about the bar a given display actually draws — 39 on a
     /// notched built-in, 30 on an external here. The inset also drops to zero
     /// while a display runs a full-screen app, which is exactly the signal the
-    /// detector needs to stay quiet in that case.
+    /// detector needs to stay quiet in that case — so zero insets are kept,
+    /// not dropped, or a mixed-display setup would hide that evidence.
     private static func menuBarHeights() -> [CGFloat] {
-        NSScreen.screens.compactMap { screen in
-            let inset = screen.frame.maxY - screen.visibleFrame.maxY
-            return inset > 0 ? inset : nil
+        NSScreen.screens.map { screen in
+            max(0, screen.frame.maxY - screen.visibleFrame.maxY)
         }
     }
 }

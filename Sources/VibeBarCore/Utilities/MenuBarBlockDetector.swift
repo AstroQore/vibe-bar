@@ -104,15 +104,17 @@ public struct MenuBarBlockDetector: Sendable {
         if probe.occlusionVisible {
             return .healthy
         }
-        // No bar anywhere means a full-screen app or an auto-hiding bar is in
-        // play, and an invisible status item says nothing about a block.
+        // A missing bar on *any* screen means a full-screen app or an
+        // auto-hiding bar is in play there, and an invisible status item —
+        // which may well live on that very display — says nothing about a
+        // block. Zero insets are kept in the sample so this can be seen.
         //
         // Compared against the *shortest* bar on purpose. A display whose bar
         // is itself 22pt would make a correctly placed item indistinguishable
         // from a stub, and taking the tallest bar would convict it — so the
         // shortest bar both picks the safe comparison and lets the guard below
         // bail out entirely on such a setup.
-        guard let shortestBar = probe.menuBarHeights.filter({ $0 > 0 }).min(),
+        guard let shortestBar = probe.menuBarHeights.min(),
               shortestBar >= Self.minimumTrustworthyBarHeight else {
             return .inconclusive
         }

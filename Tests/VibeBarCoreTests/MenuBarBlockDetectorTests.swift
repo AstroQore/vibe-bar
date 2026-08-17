@@ -56,6 +56,16 @@ final class MenuBarBlockDetectorTests: XCTestCase {
         XCTAssertEqual(detector.verdict(for: probe(menuBarHeights: [0, 0])), .inconclusive)
     }
 
+    /// One display is full-screen (no bar) while another still draws a tall
+    /// bar. The stub-height item may live on the hidden display, so a block
+    /// cannot be told apart from ordinary full-screen state.
+    func testMixedDisplayWithOneHiddenBarIsInconclusive() {
+        XCTAssertEqual(
+            detector.verdict(for: probe(windowHeight: 22, menuBarHeights: [0, 39])),
+            .inconclusive
+        )
+    }
+
     func testItemWeNeverAskedToShowIsInconclusive() {
         XCTAssertEqual(detector.verdict(for: probe(isVisible: false)), .inconclusive)
     }
