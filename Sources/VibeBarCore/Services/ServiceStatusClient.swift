@@ -26,7 +26,9 @@ public actor ServiceStatusClient {
             return try await fetchGoogleAppsStatus(tool: tool, dayCount: dayCount, now: now)
         case .grok:
             return try await fetchXAIStatus(dayCount: dayCount, now: now)
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .cursor:
+            return try await fetchStatuspage(tool: .cursor)
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
             // upstream callers should already be filtering to primary
@@ -44,6 +46,48 @@ public actor ServiceStatusClient {
                 recentIncidents: []
             )
         }
+    }
+
+    // MARK: - Generic Statuspage v2 (Cursor)
+
+    private func fetchStatuspage(tool: ToolType) async throws -> ServiceStatusSnapshot {
+        let summary = try await fetchJSON(SummaryDTO.self, from: tool.statusSummaryAPI)
+        let incidentsDTO = try await fetchJSON(IncidentsDTO.self, from: tool.statusIncidentsAPI)
+        let groups = summary.components.compactMap { component -> ServiceComponentGroup? in
+            guard component.group == true else { return nil }
+            return ServiceComponentGroup(id: component.id, name: component.name)
+        }
+        let components = summary.components.compactMap { component -> ServiceComponentSummary? in
+            guard component.group != true else { return nil }
+            return ServiceComponentSummary(
+                id: component.id,
+                name: component.name,
+                status: component.status,
+                groupId: component.group_id
+            )
+        }
+        let incidents = incidentsDTO.incidents
+            .sorted { $0.created_at > $1.created_at }
+            .prefix(4)
+            .map {
+                IncidentSummary(
+                    id: $0.id,
+                    name: $0.name,
+                    impact: $0.impact,
+                    createdAt: $0.created_at,
+                    resolvedAt: $0.resolved_at,
+                    url: $0.shortlink
+                )
+            }
+        return ServiceStatusSnapshot(
+            tool: tool,
+            indicator: summary.status.indicator,
+            description: summary.status.description,
+            updatedAt: summary.page.updated_at,
+            groups: groups,
+            components: components,
+            recentIncidents: Array(incidents)
+        )
     }
 
     // MARK: - xAI Status (HTML status.x.ai)
@@ -95,16 +139,17 @@ public actor ServiceStatusClient {
                 now: now
             )
         }
-        let components: [ServiceComponentSummary]
-        if parsedComponents.isEmpty {
-            components = parseXAIOverviewComponents(
-                overviewHTML,
-                dayCount: dayCount,
-                now: now
-            )
-        } else {
-            components = parsedComponents.map(\.component)
-        }
+        let detailedComponents = parsedComponents.map(\.component)
+        let detailedNames = Set(detailedComponents.map { xAISlug($0.name) })
+        // Every component page is an independent request. Keep the richer
+        // history for pages that succeeded, then backfill any failed request
+        // from the all-components overview so its outage status is not lost.
+        let overviewFallbacks = parseXAIOverviewComponents(
+            overviewHTML,
+            dayCount: dayCount,
+            now: now
+        ).filter { !detailedNames.contains(xAISlug($0.name)) }
+        let components = detailedComponents + overviewFallbacks
 
         let recentIncidents = parsedComponents
             .flatMap(\.incidents)
@@ -213,18 +258,20 @@ public actor ServiceStatusClient {
             guard let match,
                   let dateRange = Range(match.range(at: 1), in: normalized),
                   let nameRange = Range(match.range(at: 2), in: normalized),
+                  let durationRange = Range(match.range(at: 3), in: normalized),
                   let impactRange = Range(match.range(at: 4), in: normalized),
                   let createdAt = parseXAIStatusDate(String(normalized[dateRange]))
             else { return }
             let name = String(normalized[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines)
             let impact = xAIIncidentImpact(String(normalized[impactRange]))
+            let duration = parseXAIDuration(String(normalized[durationRange]))
             incidents.append(
                 IncidentSummary(
                     id: "\(componentId)-\(Int(createdAt.timeIntervalSince1970))-\(xAISlug(name))",
                     name: name,
                     impact: impact,
                     createdAt: createdAt,
-                    resolvedAt: createdAt,
+                    resolvedAt: createdAt.addingTimeInterval(duration ?? 0),
                     url: url
                 )
             )
@@ -240,24 +287,68 @@ public actor ServiceStatusClient {
         return formatter.date(from: raw)
     }
 
+    nonisolated static func parseXAIDuration(_ raw: String) -> TimeInterval? {
+        let pattern = #"(\d+(?:\.\d+)?)\s*(days?|hours?|minutes?|seconds?)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(raw.startIndex..<raw.endIndex, in: raw)
+        var total: TimeInterval = 0
+        var matched = false
+        regex.enumerateMatches(in: raw, options: [], range: range) { match, _, _ in
+            guard let match,
+                  let valueRange = Range(match.range(at: 1), in: raw),
+                  let unitRange = Range(match.range(at: 2), in: raw),
+                  let value = Double(raw[valueRange]),
+                  value.isFinite,
+                  value >= 0
+            else { return }
+            let unit = raw[unitRange].lowercased()
+            let multiplier: TimeInterval
+            if unit.hasPrefix("day") {
+                multiplier = 86_400
+            } else if unit.hasPrefix("hour") {
+                multiplier = 3_600
+            } else if unit.hasPrefix("minute") {
+                multiplier = 60
+            } else {
+                multiplier = 1
+            }
+            total += value * multiplier
+            matched = true
+        }
+        return matched ? total : nil
+    }
+
     private nonisolated static func xAIComponentStatus(from lines: [String]) -> ComponentStatusLevel {
-        let head = lines.prefix(12).joined(separator: " ").lowercased()
-        if head.contains("service fully operational")
-            || head.contains("not aware of any issues")
-            || head.contains("available") {
-            return .operational
-        }
-        if head.contains("major outage") || head.contains("unavailable") {
-            return .majorOutage
-        }
-        if head.contains("partial outage") {
-            return .partialOutage
-        }
-        if head.contains("maintenance") {
-            return .underMaintenance
-        }
-        if head.contains("degraded") || head.contains("disruption") {
-            return .degradedPerformance
+        // Status appears before Past Issues. Parse each visible line in order
+        // so a historical incident cannot override the current status, and
+        // require an availability word boundary so "unavailable" never
+        // satisfies "available".
+        for rawLine in lines.prefix(12) {
+            let line = rawLine.lowercased()
+            if line.contains("service fully operational")
+                || line.contains("not aware of any issues") {
+                return .operational
+            }
+            if line.contains("major outage")
+                || line.contains("service unavailable")
+                || line == "unavailable"
+                || line.hasSuffix(" unavailable") {
+                return .majorOutage
+            }
+            if line.contains("partial outage") {
+                return .partialOutage
+            }
+            if line.contains("maintenance") {
+                return .underMaintenance
+            }
+            if line.contains("degraded") || line.contains("disruption") {
+                return .degradedPerformance
+            }
+            if line == "available" || line.hasSuffix(" available") {
+                return .operational
+            }
         }
         return .operational
     }
@@ -373,9 +464,8 @@ public actor ServiceStatusClient {
 
     /// Product id for Gemini on Google's Workspace Status dashboard.
     /// Confirmed against `https://www.google.com/appsstatus/dashboard/products.json`
-    /// on 2026-05-22. Antigravity quotas / incidents currently roll up
-    /// into the same Gemini product entry — Google hasn't split them
-    /// out.
+    /// on 2026-05-22. Gemini Web and AntiGravity currently share this
+    /// Google status product entry — Google hasn't split them out.
     private static let googleGeminiProductId = "npdyhgECDJ6tB66MxXyo"
     private static let googleIncidentsURL = URL(string: "https://www.google.com/appsstatus/dashboard/incidents.json")!
 

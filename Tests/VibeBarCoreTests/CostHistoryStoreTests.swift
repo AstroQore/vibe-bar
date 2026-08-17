@@ -2,6 +2,92 @@ import XCTest
 @testable import VibeBarCore
 
 final class CostHistoryStoreTests: XCTestCase {
+    func testAuthoritativeReplacementAllowsCursorHistoryToDecreaseAndRemoveDays() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryCursorReplacement-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let utc = TimeZone(secondsFromGMT: 0)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 17, hour: 12
+        )))
+        let today = calendar.startOfDay(for: now)
+        let yesterday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: today))
+        let store = CostHistoryStore(
+            fileURL: directory.appendingPathComponent("cost_history.json"),
+            timeZone: utc
+        )
+        let original = CostSnapshot(
+            tool: .cursor,
+            todayCostUSD: 9,
+            last7DaysCostUSD: 13,
+            last30DaysCostUSD: 13,
+            allTimeCostUSD: 13,
+            todayTokens: 900,
+            last7DaysTokens: 1_300,
+            last30DaysTokens: 1_300,
+            allTimeTokens: 1_300,
+            dailyHistory: [
+                DailyCostPoint(date: yesterday, costUSD: 4, totalTokens: 400),
+                DailyCostPoint(date: today, costUSD: 9, totalTokens: 900)
+            ],
+            heatmap: .empty(tool: .cursor),
+            modelBreakdowns: [],
+            jsonlFilesFound: 2,
+            updatedAt: now
+        )
+        _ = await store.replaceAndAugment(
+            original,
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        await store.mergeSeries(
+            [DailyCostPoint(date: yesterday, costUSD: 2, totalTokens: 200)],
+            tool: .codex,
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        let corrected = CostSnapshot(
+            tool: .cursor,
+            todayCostUSD: 3,
+            last7DaysCostUSD: 3,
+            last30DaysCostUSD: 3,
+            allTimeCostUSD: 3,
+            todayTokens: 300,
+            last7DaysTokens: 300,
+            last30DaysTokens: 300,
+            allTimeTokens: 300,
+            dailyHistory: [
+                DailyCostPoint(date: today, costUSD: 3, totalTokens: 300)
+            ],
+            heatmap: .empty(tool: .cursor),
+            modelBreakdowns: [],
+            jsonlFilesFound: 1,
+            updatedAt: now
+        )
+        let replaced = await store.replaceAndAugment(
+            corrected,
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        XCTAssertEqual(replaced.dailyHistory.count, 1)
+        XCTAssertEqual(replaced.todayCostUSD, 3, accuracy: 0.001)
+        XCTAssertEqual(replaced.todayTokens, 300)
+        XCTAssertEqual(replaced.allTimeCostUSD, 3, accuracy: 0.001)
+        XCTAssertEqual(replaced.allTimeTokens, 300)
+        let codex = await store.history(
+            for: .codex,
+            days: nil,
+            now: now,
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        XCTAssertEqual(codex.days.first?.costUSD, 2)
+        XCTAssertEqual(codex.days.first?.totalTokens, 200)
+    }
+
     func testMergeAndAugmentPreservesHourlyHistoryAndModelDetails() async throws {
         let fileManager = FileManager.default
         let directory = fileManager.temporaryDirectory

@@ -1,7 +1,7 @@
 import SwiftUI
 import VibeBarCore
 
-/// Everything that narrows the Usage Stats page: provider chips, a model
+/// Everything that narrows the Usage Stats page: company/provider chips, a model
 /// picker, the date range, and how often the page re-queries.
 ///
 /// Providers are chips rather than another menu because they are the filter
@@ -38,8 +38,8 @@ struct UsageFiltersBar: View {
         ScrollView(.horizontal) {
             HStack(spacing: 6) {
                 allProvidersChip
-                ForEach(model.knownTools, id: \.self) { tool in
-                    providerChip(tool)
+                ForEach(model.knownCompanyRepresentatives, id: \.self) { representative in
+                    providerChip(representative)
                 }
             }
             .padding(.vertical, 1)
@@ -64,13 +64,13 @@ struct UsageFiltersBar: View {
 
     private func providerChip(_ tool: ToolType) -> some View {
         let accent = Theme.providerAccent(for: tool)
-        let selected = model.selectedTools?.contains(tool) ?? true
+        let selected = model.isCompanySelected(tool)
         return Button {
-            model.toggleTool(tool)
+            model.toggleCompany(tool)
         } label: {
             HStack(spacing: 5) {
                 ToolBrandIconView(tool: tool, size: density.segmentedFontSize + 1)
-                Text(tool.menuTitle)
+                Text(tool.vendorName)
                     .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                     .lineLimit(1)
             }
@@ -83,8 +83,8 @@ struct UsageFiltersBar: View {
         // that a provider is in the query, so an off chip must not wear it.
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help(tool.displayName)
-        .accessibilityLabel(tool.displayName)
+        .help("\(tool.vendorName) · \(tool.companySubProviderSummary)")
+        .accessibilityLabel(tool.vendorName)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -100,6 +100,7 @@ struct UsageFiltersBar: View {
     private var controls: some View {
         HStack(spacing: 8) {
             rangeMenu
+            subProviderMenu
             modelMenu
             refreshMenu
             if model.selectedTools != nil || model.selectedModels != nil {
@@ -182,7 +183,7 @@ struct UsageFiltersBar: View {
                 Divider()
                 ForEach(model.availableModels, id: \.self) { name in
                     Toggle(isOn: modelBinding(name)) {
-                        Text(name)
+                        Text(UsageModelNaming.canonicalDisplayName(name))
                     }
                 }
             }
@@ -194,6 +195,29 @@ struct UsageFiltersBar: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Choose which models to include")
+    }
+
+    private var subProviderMenu: some View {
+        Menu {
+            Button("All SubProviders") { model.setSelectedTools(nil) }
+            Divider()
+            ForEach(model.knownTools, id: \.self) { tool in
+                Toggle(isOn: subProviderBinding(tool)) {
+                    Text("\(tool.vendorName) · \(tool.productName)")
+                }
+            }
+        } label: {
+            menuLabel(
+                systemImage: "square.stack.3d.up",
+                title: "SubProviders",
+                detail: subProviderSummary
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Choose individual SubProviders")
     }
 
     private var refreshMenu: some View {
@@ -246,7 +270,15 @@ struct UsageFiltersBar: View {
         )
     }
 
+    private func subProviderBinding(_ tool: ToolType) -> Binding<Bool> {
+        Binding(
+            get: { model.selectedTools?.contains(tool) ?? true },
+            set: { _ in model.toggleTool(tool) }
+        )
+    }
+
     private var rangeSummary: String {
+        if model.rangePreset == .all { return "All time" }
         let range = model.range
         let formatter = range.duration <= 86_400 ? Self.hourFormatter : Self.dayFormatter
         return "\(formatter.string(from: range.start)) – \(formatter.string(from: range.end))"
@@ -272,7 +304,15 @@ struct UsageFiltersBar: View {
 
     private var modelSummary: String {
         guard let selected = model.selectedModels else { return "All" }
-        if selected.count == 1, let only = selected.first { return only }
+        if selected.count == 1, let only = selected.first {
+            return UsageModelNaming.canonicalDisplayName(only)
+        }
+        return "\(selected.count) selected"
+    }
+
+    private var subProviderSummary: String {
+        guard let selected = model.selectedTools else { return "All" }
+        if selected.count == 1, let only = selected.first { return only.productName }
         return "\(selected.count) selected"
     }
 

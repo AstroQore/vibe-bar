@@ -48,7 +48,7 @@ It answers two questions that raw quota percentages do not:
   spend and tokens, plus per-model ranking.
 - **Usage history** — daily/weekly/monthly cost charts, reset-cycle fill
   history, yearly heatmaps, and hour-of-week activity maps.
-- **Live provider status** — OpenAI, Anthropic, Google, and xAI incidents and
+- **Live provider status** — OpenAI, Anthropic, Google AI, SpaceXAI, and Cursor incidents and
   component uptime in the same place as quota data.
 - **Two floating layouts** — a spacious gauge view and a compact view that
   can stay pinned above your work.
@@ -89,12 +89,12 @@ patterns on the right.
 
 <table>
   <tr>
-    <td width="50%"><img src="Resources/README/openai-detail.png" alt="ChatGPT and Codex detail page"><br><sub><strong>ChatGPT / Codex</strong> — weekly and Spark quota, cost, model ranking, reset history, and OpenAI status.</sub></td>
+    <td width="50%"><img src="Resources/README/openai-detail.png" alt="OpenAI detail page"><br><sub><strong>OpenAI</strong> — ChatGPT Agentic quota, cost, model ranking, reset history, and service status.</sub></td>
     <td width="50%"><img src="Resources/README/claude-detail.png" alt="Claude Code detail page"><br><sub><strong>Claude Code</strong> — 5 Hours, Weekly, Fable, cost analytics, reset history, and Anthropic status.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="Resources/README/gemini-detail.png" alt="Gemini and AntiGravity detail page"><br><sub><strong>Gemini + AntiGravity</strong> — Gemini Chat and model-family quotas alongside local usage analytics.</sub></td>
-    <td width="50%"><img src="Resources/README/grok-detail.png" alt="Grok detail page"><br><sub><strong>Grok</strong> — weekly quota, model cost, reset history, xAI status, and activity patterns.</sub></td>
+    <td width="50%"><img src="Resources/README/gemini-detail.png" alt="Google AI detail page"><br><sub><strong>Google AI</strong> — Gemini Web and AntiGravity quotas alongside local usage analytics.</sub></td>
+    <td width="50%"><img src="Resources/README/grok-detail.png" alt="Grok detail page"><br><sub><strong>SpaceXAI</strong> — Grok quota, model cost, Cursor status, reset history, and activity patterns.</sub></td>
   </tr>
 </table>
 
@@ -139,7 +139,7 @@ visibility and ordering from one two-column settings window.
 | ChatGPT / Codex | Codex subscription windows, Spark, OpenAI status | `~/.codex/sessions/**/*.jsonl` |
 | Claude Code | 5 Hours, Weekly, Fable, Anthropic status | `~/.claude/projects/**/*.jsonl` |
 | Gemini + AntiGravity | Gemini Web quotas and local AntiGravity language-server quotas | Local Gemini/AntiGravity usage records |
-| Grok + Cursor | Grok Build quota, Cursor Models, Other Models, Grok Bot weekly quota, xAI status | Local Grok Build records + Cursor account usage events; Grok Bot is quota-only |
+| Grok + Cursor | Grok quota, Cursor Models, Other Models, Grok Bot weekly quota, SpaceXAI + Cursor status | Local Grok records + Cursor account usage events; Grok Bot is quota-only |
 | Misc providers | Provider-specific coding/token plan endpoints | Quota-only unless an adapter exposes local usage |
 
 Provider contracts can change without notice. Vibe Bar keeps refresh errors

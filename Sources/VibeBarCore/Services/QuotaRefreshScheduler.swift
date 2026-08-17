@@ -22,6 +22,10 @@ public final class QuotaRefreshScheduler {
     private var boundaryAccountIds: Set<String> = []
     private var lastBoundaryRefreshByAccount: [String: Date] = [:]
     private var lastPopoverOpenRefreshAt: Date?
+    private var refreshTask: Task<Void, Never>?
+    private var activeAccountIds: Set<String> = []
+    private var pendingAccounts: [String: AccountIdentity] = [:]
+    private var refreshCompletions: [@MainActor () -> Void] = []
     private var pathMonitor: NWPathMonitor?
     private var lastNetworkStatus: NWPath.Status = .satisfied
     private var observers: [NSObjectProtocol] = []
@@ -58,6 +62,11 @@ public final class QuotaRefreshScheduler {
         boundaryTimer?.invalidate()
         boundaryTimer = nil
         boundaryAccountIds = []
+        refreshTask?.cancel()
+        refreshTask = nil
+        activeAccountIds = []
+        pendingAccounts = [:]
+        refreshCompletions = []
         pathMonitor?.cancel()
         pathMonitor = nil
         #if canImport(AppKit)
@@ -77,11 +86,7 @@ public final class QuotaRefreshScheduler {
         onRefreshTriggered()
         let accounts = accountsProvider()
         guard !accounts.isEmpty else { return }
-        Task { @MainActor in
-            for account in accounts {
-                _ = await service.refresh(account)
-            }
-        }
+        _ = startAccountRefresh(accounts)
     }
 
     /// Refresh when the user explicitly opens the menu popover, subject to a
@@ -103,6 +108,22 @@ public final class QuotaRefreshScheduler {
         lastPopoverOpenRefreshAt = now
         triggerRefresh()
         return true
+    }
+
+    /// Even when the user disables unconditional popover-open refresh, an
+    /// actually missing/stale/expired cache must not remain silently visible.
+    /// This path refreshes only the affected accounts and does not trigger a
+    /// full cost scan.
+    @discardableResult
+    public func triggerRefreshForStaleCacheIfNeeded(now: Date = Date()) -> Bool {
+        let maxAge = TimeInterval(max(60, intervalProvider()))
+        let accounts = accountsProvider().filter { account in
+            !activeAccountIds.contains(account.id)
+                && !service.inFlightAccountIds.contains(account.id)
+                && service.needsRefresh(accountId: account.id, now: now, maxAge: maxAge)
+        }
+        guard !accounts.isEmpty else { return false }
+        return startAccountRefresh(accounts)
     }
 
     private func scheduleTimer() {
@@ -169,18 +190,67 @@ public final class QuotaRefreshScheduler {
         boundaryAccountIds = []
         boundaryTimer?.invalidate()
         boundaryTimer = nil
+        triggerBoundaryRefresh(accountIds: ids)
+    }
+
+    /// Kept internal so the scheduler's coalescing behavior can be exercised
+    /// deterministically without installing a wall-clock Timer in tests.
+    func triggerBoundaryRefresh(accountIds ids: Set<String>) {
         let accounts = accountsProvider().filter { ids.contains($0.id) }
         guard !accounts.isEmpty else {
             scheduleBoundaryTimer()
             return
         }
-        Task { @MainActor in
+        let started = startAccountRefresh(accounts) { [weak self] in
+            self?.scheduleBoundaryTimer()
+        }
+        if started {
+            let refreshedAt = Date()
             for account in accounts {
-                lastBoundaryRefreshByAccount[account.id] = Date()
-                _ = await service.refresh(account)
+                lastBoundaryRefreshByAccount[account.id] = refreshedAt
             }
+        } else {
             scheduleBoundaryTimer()
         }
+    }
+
+    @discardableResult
+    private func startAccountRefresh(
+        _ accounts: [AccountIdentity],
+        completion: @escaping @MainActor () -> Void = {}
+    ) -> Bool {
+        guard !accounts.isEmpty else { return false }
+        refreshCompletions.append(completion)
+        if refreshTask != nil {
+            for account in accounts where !activeAccountIds.contains(account.id) {
+                pendingAccounts[account.id] = account
+            }
+            return true
+        }
+        activeAccountIds = Set(accounts.map(\.id))
+        refreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            for account in accounts where !Task.isCancelled {
+                _ = await self.service.refresh(account)
+                // A later trigger (especially the post-reset observation) must
+                // be able to queue an account that already completed earlier
+                // in this still-running multi-account walk.
+                self.activeAccountIds.remove(account.id)
+            }
+            self.refreshTask = nil
+            self.activeAccountIds = []
+            if !self.pendingAccounts.isEmpty {
+                let next = Array(self.pendingAccounts.values)
+                    .sorted { $0.id < $1.id }
+                self.pendingAccounts = [:]
+                _ = self.startAccountRefresh(next)
+            } else {
+                let callbacks = self.refreshCompletions
+                self.refreshCompletions = []
+                for callback in callbacks { callback() }
+            }
+        }
+        return true
     }
 
     private func installSystemObservers() {
@@ -213,6 +283,7 @@ public final class QuotaRefreshScheduler {
     deinit {
         timer?.invalidate()
         boundaryTimer?.invalidate()
+        refreshTask?.cancel()
         pathMonitor?.cancel()
         #if canImport(AppKit)
         for observer in observers {

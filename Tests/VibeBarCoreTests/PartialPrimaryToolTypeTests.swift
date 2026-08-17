@@ -56,9 +56,10 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertTrue(ToolType.cursor.supportsDedicatedCard)
         XCTAssertTrue(ToolType.cursor.isPartialPrimary)
         XCTAssertTrue(ToolType.cursor.supportsTokenCost)
-        XCTAssertFalse(ToolType.cursor.supportsStatusPage)
+        XCTAssertTrue(ToolType.cursor.supportsStatusPage)
         XCTAssertFalse(ToolType.cursor.isMiscPageProvider)
-        XCTAssertEqual(ToolType.cursor.productName, ToolType.grok.productName)
+        XCTAssertEqual(ToolType.cursor.productName, "Cursor")
+        XCTAssertEqual(ToolType.cursor.vendorName, ToolType.grok.vendorName)
         XCTAssertEqual(ToolType.cursor.toolName, "Cursor")
     }
 
@@ -74,7 +75,7 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     func testDedicatedStatusProvidersIncludeGrok() {
         XCTAssertEqual(
             ToolType.statusPageProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
     }
 
@@ -92,11 +93,11 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         )
     }
 
-    func testUsageStatsFoldsCursorIntoGrok() {
-        XCTAssertEqual(ToolType.cursor.usageStatsRepresentative, .grok)
+    func testUsageStatsKeepsCursorAsSubProvider() {
+        XCTAssertEqual(ToolType.cursor.usageStatsRepresentative, .cursor)
         XCTAssertEqual(
             ToolType.usageStatsProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
     }
 

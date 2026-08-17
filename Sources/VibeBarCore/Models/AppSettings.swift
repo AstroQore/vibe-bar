@@ -236,7 +236,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// selection is intentionally automatic and not exposed in the UI;
     /// region / enterprise host remain as provider-specific knobs.
     /// Linked partial-primary tools (`.gemini`, `.antigravity`, `.cursor`) are
-    /// excluded — they live on the Google AI / Grok product surfaces instead.
+    /// excluded — they live on the Google AI / SpaceXAI company surfaces instead.
     public static var defaultMiscProviders: [ToolType: MiscProviderSettings] {
         var out: [ToolType: MiscProviderSettings] = [:]
         for tool in ToolType.miscPageProviders {
@@ -1248,19 +1248,19 @@ public enum AntigravityUsageMode: String, Codable, CaseIterable, Identifiable, S
     public var label: String {
         switch self {
         case .auto: return "Auto"
-        case .localThenWeb: return "Local LSP, then Web"
-        case .webThenLocal: return "Web, then Local LSP"
-        case .localOnly: return "Local LSP only"
+        case .localThenWeb: return "Local sources, then Web"
+        case .webThenLocal: return "Web, then Local sources"
+        case .localOnly: return "Local sources only"
         case .webOnly: return "Web only"
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: return "Probe the running Antigravity language server first; fall back to imported cookies when the web source is available."
-        case .localThenWeb: return "Probe the running Antigravity language server first; fall back to imported cookies."
-        case .webThenLocal: return "Use imported cookies first; fall back to the running Antigravity language server."
-        case .localOnly: return "Only probe the running Antigravity language server."
+        case .auto: return "Use the Antigravity app first, then the installed agy CLI; fall back to imported cookies when the web source is available."
+        case .localThenWeb: return "Use the Antigravity app or agy CLI first; fall back to imported cookies."
+        case .webThenLocal: return "Use imported cookies first; fall back to the Antigravity app or agy CLI."
+        case .localOnly: return "Only use the Antigravity app or installed agy CLI."
         case .webOnly: return "Only use imported cookies. Falls back to the local probe until the Antigravity Cloud endpoint ships."
         }
     }

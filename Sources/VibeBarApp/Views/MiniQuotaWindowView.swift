@@ -153,42 +153,42 @@ private struct MiniL2Member {
     let content: MiniToolContent
 }
 
-/// Tools sharing the same L2 product (e.g. Gemini Web + AntiGravity)
-/// collapse into one super-column with a single L2 header and one
-/// L3 sub-label per tool. The mini window renders one super-column
-/// per `MiniL2Group`, not one per `ToolType`.
-private struct MiniL2Group: Identifiable {
-    let productName: String
+/// Tools sharing the same L1 enterprise/brand (e.g. Gemini Web + AntiGravity)
+/// collapse into one super-column with a single company header and one
+/// SubProvider label per tool. The mini window renders one super-column
+/// per `MiniCompanyGroup`, not one per `ToolType`.
+private struct MiniCompanyGroup: Identifiable {
+    let companyName: String
     let accentTool: ToolType
     let members: [MiniL2Member]
 
-    var id: String { productName }
+    var id: String { companyName }
     var isMultiTool: Bool { members.count > 1 }
 }
 
 /// Walks `visibleTools` in their `dedicatedCardProviders` order and
-/// folds consecutive tools sharing the same `productName` into one
-/// `MiniL2Group`. Tools with empty content are skipped.
+/// folds consecutive tools sharing the same `vendorName` into one
+/// `MiniCompanyGroup`. Tools with empty content are skipped.
 private func miniProductGroups(
     visibleTools: [ToolType],
     contentByTool: [ToolType: MiniToolContent]
-) -> [MiniL2Group] {
-    var groups: [MiniL2Group] = []
+) -> [MiniCompanyGroup] {
+    var groups: [MiniCompanyGroup] = []
     for tool in visibleTools {
         guard let content = contentByTool[tool], !content.isEmpty else { continue }
-        let product = tool.productName
+        let company = tool.vendorName
         let member = MiniL2Member(tool: tool, content: content)
-        if let last = groups.last, last.productName == product {
-            let merged = MiniL2Group(
-                productName: last.productName,
+        if let last = groups.last, last.companyName == company {
+            let merged = MiniCompanyGroup(
+                companyName: last.companyName,
                 accentTool: last.accentTool,
                 members: last.members + [member]
             )
             groups[groups.count - 1] = merged
         } else {
             groups.append(
-                MiniL2Group(
-                    productName: product,
+                MiniCompanyGroup(
+                    companyName: company,
                     accentTool: tool,
                     members: [member]
                 )
@@ -213,7 +213,7 @@ private struct MiniWindowProviderLayout: View {
                 }
                 switch displayMode {
                 case .regular:
-                    MiniL2GroupColumn(group: group)
+                    MiniCompanyGroupColumn(group: group)
                 case .compact:
                     MiniCompactL2GroupColumn(group: group)
                 }
@@ -279,7 +279,9 @@ private struct MiniBranchCell: Identifiable {
         case "weekly_opus": return "Weekly"
         case "weekly_fable": return "Weekly"
         case "weekly_oauth_apps": return "Weekly"
-        case let id where tool == .cursor && ["models", "other_models", "grok_bot_weekly"].contains(id):
+        case let id where tool == .cursor && ["models", "other_models"].contains(id):
+            return "Monthly"
+        case "grok_bot_weekly" where tool == .cursor:
             return "Weekly"
         case let id where tool == .antigravity && id.contains("gpt-oss"):
             return "GPT"
@@ -569,8 +571,8 @@ private func miniPrimaryGroupTitle(
 /// Build + Cursor) get the L2 header on top, each L3 tool as a
 /// sub-section beneath with its own small toolName sub-label,
 /// separated by a thin divider.
-private struct MiniL2GroupColumn: View {
-    let group: MiniL2Group
+private struct MiniCompanyGroupColumn: View {
+    let group: MiniCompanyGroup
 
     @EnvironmentObject var settingsStore: SettingsStore
 
@@ -580,7 +582,7 @@ private struct MiniL2GroupColumn: View {
                 Circle()
                     .fill(providerAccent(for: group.accentTool))
                     .frame(width: 5, height: 5)
-                Text(group.productName.uppercased())
+                Text(group.companyName.uppercased())
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.86))
                     .tracking(0.2)
@@ -1016,11 +1018,11 @@ private enum MiniCompactMetrics {
     static let resetHeight: CGFloat = 8
 }
 
-/// Compact-mode counterpart of `MiniL2GroupColumn`. Same L2 header
-/// + (optional L3 sub-label) + bar cells, sized for the shorter
+/// Compact-mode counterpart of `MiniCompanyGroupColumn`. Same L1 header
+/// + SubProvider labels + bar cells, sized for the shorter
 /// compact panel.
 private struct MiniCompactL2GroupColumn: View {
-    let group: MiniL2Group
+    let group: MiniCompanyGroup
 
     @EnvironmentObject var settingsStore: SettingsStore
 
@@ -1030,7 +1032,7 @@ private struct MiniCompactL2GroupColumn: View {
                 Circle()
                     .fill(providerAccent(for: group.accentTool))
                     .frame(width: 5, height: 5)
-                Text(group.productName.uppercased())
+                Text(group.companyName.uppercased())
                     .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.86))
                     .tracking(0.2)

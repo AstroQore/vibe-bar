@@ -26,7 +26,7 @@ enum SettingsSectionID: String {
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
         case .googleAI: "Google AI"
-        case .xAI: "xAI"
+        case .xAI: "SpaceXAI"
         case .miscProviders: "Misc Providers"
         case .system: "System"
         case .costData: "Cost Data"
@@ -83,7 +83,7 @@ enum SettingsDestination: Hashable {
             case .codex: return "OpenAI"
             case .claude: return "Anthropic"
             case .gemini: return "Google AI"
-            case .grok: return "xAI"
+            case .grok: return "SpaceXAI"
             default: return tool.vendorName
             }
         case let .miscProvider(id):
@@ -465,7 +465,7 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .xAI {
-                    settingsSection("xAI") {
+                    settingsSection("SpaceXAI") {
                         coreProviderSummary(
                             representative: .grok,
                             healthProviders: [.grok]
@@ -473,7 +473,7 @@ struct SettingsView: View {
                         coreProviderPlanBadgeRows(for: [.grok, .cursor])
                         Divider()
                             .padding(.vertical, 2)
-                        Text("Grok combines Grok Build with Cursor. Grok Build reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota only — its cloud runs do not add token/cost rows.")
+                        Text("The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota only — its cloud runs do not add token/cost rows.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -544,10 +544,10 @@ struct SettingsView: View {
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .grok)
                         } label: {
-                            Label("Check xAI connections", systemImage: "checkmark.circle")
+                            Label("Check SpaceXAI connections", systemImage: "checkmark.circle")
                         }
 
-                        Link("Open xAI status page",
+                        Link("Open SpaceXAI status page",
                              destination: ToolType.grok.statusPageURL)
                             .font(.caption2)
                     }
@@ -963,14 +963,7 @@ struct SettingsView: View {
     }
 
     private func providerBadgeTitle(for tool: ToolType) -> String {
-        switch tool {
-        case .codex: return "ChatGPT"
-        case .claude: return "Claude"
-        case .gemini: return "Gemini Web"
-        case .antigravity: return "AntiGravity"
-        case .grok: return "Grok"
-        default: return tool.menuTitle
-        }
+        tool.quotaSubProviderName()
     }
 
     private func fieldRowHorizontal(
@@ -1262,7 +1255,7 @@ private struct MiniWindowFieldProviderSection {
     static let all: [MiniWindowFieldProviderSection] = [
         .init(tool: .codex,       title: ToolType.codex.productName,       fields: MenuBarFieldCatalog.codexFields),
         .init(tool: .claude,      title: ToolType.claude.productName,      fields: MenuBarFieldCatalog.claudeFields),
-        .init(tool: .gemini,      title: ToolType.gemini.productName + " Web", fields: MenuBarFieldCatalog.geminiFields),
+        .init(tool: .gemini,      title: ToolType.gemini.productName, fields: MenuBarFieldCatalog.geminiFields),
         .init(tool: .antigravity, title: ToolType.antigravity.toolName,    fields: MenuBarFieldCatalog.antigravityFields),
         .init(tool: .grok,        title: ToolType.grok.toolName,           fields: MenuBarFieldCatalog.grokFields),
         .init(tool: .cursor,      title: ToolType.cursor.toolName,         fields: MenuBarFieldCatalog.cursorFields)

@@ -173,6 +173,11 @@ public final class QuotaService: ObservableObject {
         maxAge: TimeInterval
     ) -> Bool {
         guard let cached = lastSuccessByAccount[accountId] else { return true }
+        if cached.buckets.contains(where: { bucket in
+            bucket.resetAt.map { $0 <= now } ?? false
+        }) {
+            return true
+        }
         return now.timeIntervalSince(cached.queriedAt) >= max(0, maxAge)
     }
 

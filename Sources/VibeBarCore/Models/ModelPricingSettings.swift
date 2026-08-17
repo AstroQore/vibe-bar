@@ -4,18 +4,18 @@ public enum PricingProviderFamily: String, Codable, CaseIterable, Sendable, Iden
     case codex
     case claude
     case gemini
-    case grok
     case antigravity
+    case grok
 
     public var id: String { rawValue }
 
     public var label: String {
         switch self {
-        case .codex: "OpenAI / Codex"
-        case .claude: "Anthropic / Claude"
-        case .gemini: "Google / Gemini"
-        case .grok: "xAI / Grok"
-        case .antigravity: "AntiGravity"
+        case .codex: "OpenAI · ChatGPT Agentic"
+        case .claude: "Anthropic · Claude"
+        case .gemini: "Google AI · Gemini Web"
+        case .grok: "SpaceXAI · Grok"
+        case .antigravity: "Google AI · AntiGravity"
         }
     }
 }

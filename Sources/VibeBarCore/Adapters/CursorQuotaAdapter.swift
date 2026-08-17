@@ -15,8 +15,8 @@ import Foundation
 ///    plan" accounts whose summary is partial.
 ///
 /// Output:
-/// - **Cursor Models** — Cursor's first-party pool (Cursor Grok + Composer).
-/// - **Other Models** — named third-party models.
+/// - **Cursor Models / Monthly** — Cursor's first-party pool (Cursor Grok + Composer).
+/// - **Other Models / Monthly** — named third-party models.
 /// - **Grok Bot / Weekly** — Cursor's cloud-only Bot allowance.
 ///
 /// Edge-case tests (`CursorParserEdgeCasesTests`) pin the four
@@ -292,7 +292,7 @@ enum CursorResponseParser {
         if let auto = autoPct {
             buckets.append(QuotaBucket(
                 id: "models",
-                title: "Weekly",
+                title: "Monthly",
                 shortLabel: "Cursor",
                 usedPercent: auto,
                 resetAt: billingCycleEnd,
@@ -303,7 +303,7 @@ enum CursorResponseParser {
         if let api = apiPct {
             buckets.append(QuotaBucket(
                 id: "other_models",
-                title: "Weekly",
+                title: "Monthly",
                 shortLabel: "Other",
                 usedPercent: api,
                 resetAt: billingCycleEnd,
@@ -317,7 +317,7 @@ enum CursorResponseParser {
         if buckets.isEmpty {
             buckets.append(QuotaBucket(
                 id: "models",
-                title: "Weekly",
+                title: "Monthly",
                 shortLabel: "Cursor",
                 usedPercent: totalPct,
                 resetAt: billingCycleEnd,

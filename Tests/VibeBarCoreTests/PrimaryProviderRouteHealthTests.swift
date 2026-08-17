@@ -31,7 +31,7 @@ final class PrimaryProviderRouteHealthTests: XCTestCase {
         XCTAssertTrue(result.output.contains("antigravity language_server_macos"))
     }
 
-    func testAntigravityCachedDataIsHealthyWhileLSPIsOffline() {
+    func testAntigravityCachedDataIsMarkedStaleWithoutLiveSource() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let health = PrimaryProviderRouteHealthChecker.antigravityLocalProbeHealth(
             languageServerRunning: false,
@@ -39,9 +39,22 @@ final class PrimaryProviderRouteHealthTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(health.status, .ok)
-        XCTAssertEqual(health.detail, "Local data available; LSP offline")
+        XCTAssertEqual(health.status, .failed)
+        XCTAssertEqual(health.detail, "Cached data only; live quota unavailable")
         XCTAssertEqual(health.checkedAt, now)
+    }
+
+    func testAntigravityCLIAvailabilityKeepsLiveRouteHealthy() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let health = PrimaryProviderRouteHealthChecker.antigravityLocalProbeHealth(
+            languageServerRunning: false,
+            cliAvailable: true,
+            hasLocalData: true,
+            now: now
+        )
+
+        XCTAssertEqual(health.status, .ok)
+        XCTAssertEqual(health.detail, "agy CLI available")
     }
 
     func testAntigravityWithoutLSPOrLocalDataNeedsSetup() {

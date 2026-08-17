@@ -3,14 +3,12 @@ import Foundation
 /// Three-level vendor / product / tool hierarchy used everywhere the
 /// UI needs to identify a provider at a single, consistent level.
 ///
-/// - `vendor` (L1) — who issues the plan / bills the account
-///   (OpenAI, Anthropic, Google, xAI).
-/// - `product` (L2) — what users call the AI brand
-///   (ChatGPT, Claude, Gemini, Grok). Both Gemini Web and the
-///   AntiGravity IDE share the Gemini product because that's how
-///   Google brands them.
-/// - `tool` (L3) — the specific surface Vibe Bar tracks
-///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok Build, Cursor).
+/// - `vendor` (L1) — the enterprise / brand owner shown by Vibe Bar
+///   (OpenAI, Anthropic, Google AI, SpaceXAI).
+/// - `product` (L2) — the SubProvider users consume inside that owner
+///   (ChatGPT Agentic, Claude, Gemini Web, AntiGravity, Grok, Cursor).
+/// - `tool` (L3) — the concrete local or web surface Vibe Bar tracks
+///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok, Cursor).
 ///
 /// `ToolType` derives its `vendorName` / `productName` / `toolName`
 /// from a single entry per case in `ProviderHierarchyCatalog`, so
@@ -36,16 +34,16 @@ public struct ProviderHierarchy: Sendable, Equatable, Hashable {
 public enum ProviderHierarchyCatalog {
     // MARK: - Dedicated and linked tool hierarchy
     //
-    //   L1 vendor   : OpenAI    | Anthropic   | Google    | Google      | xAI        | Cursor
-    //   L2 product  : ChatGPT   | Claude      | Gemini    | Gemini      | Grok       | Grok
-    //   L3 tool     : Codex     | Claude Code | Gemini Web| AntiGravity | Grok Build | Cursor
+    //   L1 vendor      : OpenAI         | Anthropic   | Google AI | Google AI   | SpaceXAI | SpaceXAI
+    //   L2 SubProvider : ChatGPT Agentic| Claude      | Gemini Web| AntiGravity | Grok     | Cursor
+    //   L3 tool        : Codex          | Claude Code | Gemini Web| AntiGravity | Grok     | Cursor
 
-    public static let codex       = ProviderHierarchy(vendor: "OpenAI",    product: "ChatGPT", tool: "Codex")
-    public static let claude      = ProviderHierarchy(vendor: "Anthropic", product: "Claude",  tool: "Claude Code")
-    public static let gemini      = ProviderHierarchy(vendor: "Google",    product: "Gemini",  tool: "Gemini Web")
-    public static let antigravity = ProviderHierarchy(vendor: "Google",    product: "Gemini",  tool: "AntiGravity")
-    public static let grok        = ProviderHierarchy(vendor: "xAI",       product: "Grok",    tool: "Grok Build")
-    public static let cursor      = ProviderHierarchy(vendor: "Cursor",    product: "Grok",    tool: "Cursor")
+    public static let codex       = ProviderHierarchy(vendor: "OpenAI",    product: "ChatGPT Agentic", tool: "Codex")
+    public static let claude      = ProviderHierarchy(vendor: "Anthropic", product: "Claude",          tool: "Claude Code")
+    public static let gemini      = ProviderHierarchy(vendor: "Google AI", product: "Gemini Web",      tool: "Gemini Web")
+    public static let antigravity = ProviderHierarchy(vendor: "Google AI", product: "AntiGravity",     tool: "AntiGravity")
+    public static let grok        = ProviderHierarchy(vendor: "SpaceXAI",  product: "Grok",    tool: "Grok")
+    public static let cursor      = ProviderHierarchy(vendor: "SpaceXAI",  product: "Cursor",  tool: "Cursor")
 
     // MARK: - Misc providers
     //

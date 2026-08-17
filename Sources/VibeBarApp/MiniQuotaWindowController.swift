@@ -299,10 +299,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
 
         // Sizing now mirrors the L2-grouped layout in
         // `MiniWindowProviderLayout`: consecutive tools sharing the
-        // same L2 productName (Gemini Web + AntiGravity → "Gemini",
-        // Grok Build + Cursor → "Grok")
-        // share one provider column with an internal divider between
-        // L3 sub-tools. Group dividers come from the actual primary +
+        // same L1 vendorName (Gemini Web + AntiGravity → "Google AI",
+        // Grok + Cursor → "SpaceXAI")
+        // share one company column with an internal divider between
+        // SubProviders. Group dividers come from the actual primary +
         // branch-group count derived from selected bucket ids; the
         // old `min(count - 1, 4)` heuristic over-counted dividers for
         // tools with many primary cells (Codex 4 cells reserved space
@@ -310,7 +310,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         // visible empty padding on the L/R edges of the panel.
         var width: CGFloat = 0
         var visibleProductGroupCount = 0
-        var lastProductName: String? = nil
+        var lastCompanyName: String? = nil
         for tool in ToolType.dedicatedCardProviders {
             guard let bucketIds = bucketsByTool[tool], !bucketIds.isEmpty else { continue }
             let cellCount = bucketIds.count
@@ -318,13 +318,13 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             width += CGFloat(max(0, cellCount - 1)) * cellSpacing
             let groupCount = Self.miniGroupCount(tool: tool, selectedBucketIds: bucketIds)
             width += CGFloat(max(0, groupCount - 1)) * groupDividerReserve
-            if lastProductName == tool.productName {
-                // Same L2 product as the previous tool — adds one
-                // intra-group divider between L3 sub-columns.
+            if lastCompanyName == tool.vendorName {
+                // Same L1 company as the previous tool — adds one
+                // intra-group divider between SubProvider columns.
                 width += groupDividerReserve
             } else {
                 visibleProductGroupCount += 1
-                lastProductName = tool.productName
+                lastCompanyName = tool.vendorName
             }
         }
         if visibleProductGroupCount > 1 {

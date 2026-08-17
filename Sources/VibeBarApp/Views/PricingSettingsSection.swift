@@ -36,11 +36,13 @@ struct PricingSettingsSection: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text("\(environment.pricingRefreshStatus.mergedModelCount) models")
+                    Text("\(PricingResolver.active.effectiveModelPrices.count) models")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
+
+            EffectivePricingCatalogView()
 
             settingsSection("Priority and source health") {
                 priorityRow(number: 1, name: "Local overrides", detail: "Always wins")

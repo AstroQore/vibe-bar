@@ -37,9 +37,96 @@ final class XAIServiceStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.tool, .grok)
         XCTAssertEqual(snapshot.indicator, .none)
         XCTAssertEqual(snapshot.description, "All services operational")
-        XCTAssertEqual(snapshot.components.count, 1)
-        XCTAssertEqual(snapshot.components[0].status, .operational)
+        XCTAssertEqual(snapshot.components.count, 2)
+        XCTAssertEqual(
+            snapshot.components.first { $0.name == "API (us-east-1.api.x.ai)" }?.status,
+            .operational
+        )
         XCTAssertEqual(snapshot.recentIncidents.first?.name, "Requests Using grok-imagine Models have Reduced Success Rate")
         XCTAssertEqual(snapshot.recentIncidents.first?.impact, .minor)
+        let incident = try XCTUnwrap(snapshot.recentIncidents.first)
+        XCTAssertEqual(
+            try XCTUnwrap(incident.resolvedAt).timeIntervalSince(incident.createdAt),
+            47 * 60,
+            accuracy: 0.001
+        )
+    }
+
+    func testUnavailableComponentIsNotConfusedWithAvailable() throws {
+        let now = try XCTUnwrap(ServiceStatusClient.parseXAIStatusDate("May 22, 2026, 12:00 PM UTC"))
+        let snapshot = ServiceStatusClient.parseXAIStatusPages(
+            tool: .grok,
+            overviewHTML: "<h3>Incident declared</h3>",
+            componentPages: [(
+                id: "grok-com",
+                name: "Grok (Web)",
+                url: URL(string: "https://status.x.ai/grok-com")!,
+                html: "<h1>Grok (Web)</h1><h3>Service unavailable</h3>"
+            )],
+            dayCount: 30,
+            now: now
+        )
+
+        XCTAssertEqual(snapshot.indicator, .critical)
+        XCTAssertEqual(snapshot.components.first?.status, .majorOutage)
+    }
+
+    func testIncidentDurationMarksEveryAffectedUTCDate() throws {
+        let now = try XCTUnwrap(ServiceStatusClient.parseXAIStatusDate("May 15, 2026, 12:00 PM UTC"))
+        let snapshot = ServiceStatusClient.parseXAIStatusPages(
+            tool: .grok,
+            overviewHTML: "<h3>No incidents declared</h3>",
+            componentPages: [(
+                id: "api-us-east-1",
+                name: "API (us-east-1.api.x.ai)",
+                url: URL(string: "https://status.x.ai/api-us-east-1")!,
+                html: """
+                <h3>Service fully operational</h3>
+                <a>May 13, 2026, 11:30 PM UTC Cross-day incident Resolved · Duration: 2 hours 15 minutes · outage</a>
+                """
+            )],
+            dayCount: 3,
+            now: now
+        )
+
+        let incident = try XCTUnwrap(snapshot.recentIncidents.first)
+        XCTAssertEqual(
+            try XCTUnwrap(incident.resolvedAt).timeIntervalSince(incident.createdAt),
+            2 * 3_600 + 15 * 60,
+            accuracy: 0.001
+        )
+        let affectedDays = try XCTUnwrap(snapshot.components.first).recentDays
+            .filter { $0.worstImpact != nil }
+        XCTAssertEqual(affectedDays.count, 2)
+    }
+
+    func testOverviewBackfillsAComponentWhoseDetailRequestFailed() throws {
+        let now = try XCTUnwrap(ServiceStatusClient.parseXAIStatusDate("May 22, 2026, 12:00 PM UTC"))
+        let snapshot = ServiceStatusClient.parseXAIStatusPages(
+            tool: .grok,
+            overviewHTML: """
+            <a>Grok (Web) unavailable</a>
+            <a>API (us-east-1.api.x.ai) available</a>
+            """,
+            componentPages: [(
+                id: "api-us-east-1",
+                name: "API (us-east-1.api.x.ai)",
+                url: URL(string: "https://status.x.ai/api-us-east-1")!,
+                html: "<h3>Service fully operational</h3>"
+            )],
+            dayCount: 30,
+            now: now
+        )
+
+        XCTAssertEqual(snapshot.components.count, 2)
+        XCTAssertEqual(snapshot.indicator, .critical)
+        XCTAssertEqual(
+            snapshot.components.first { $0.name == "Grok (Web)" }?.status,
+            .majorOutage
+        )
+        XCTAssertEqual(
+            snapshot.components.first { $0.name == "API (us-east-1.api.x.ai)" }?.status,
+            .operational
+        )
     }
 }

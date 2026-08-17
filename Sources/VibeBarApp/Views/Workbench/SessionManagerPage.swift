@@ -18,6 +18,20 @@ extension SessionProvider {
     var accent: Color { Theme.providerAccent(for: tool) }
 }
 
+private struct SessionCompanyFilter: Identifiable {
+    let representative: ToolType
+    let providers: Set<SessionProvider>
+
+    var id: ToolType { representative }
+
+    static let all: [SessionCompanyFilter] = [
+        SessionCompanyFilter(representative: .codex, providers: [.codex]),
+        SessionCompanyFilter(representative: .claude, providers: [.claude]),
+        SessionCompanyFilter(representative: .gemini, providers: [.gemini, .antigravity]),
+        SessionCompanyFilter(representative: .grok, providers: [.grok])
+    ]
+}
+
 /// The Workbench's Sessions page.
 ///
 /// A split, not a scroll: the list is a place you keep coming back to while
@@ -114,9 +128,10 @@ struct SessionFiltersBar: View {
                     }
                     .help("Rescan the session logs on disk")
                     allProvidersChip
-                    ForEach(SessionProvider.allCases, id: \.self) { provider in
-                        providerChip(provider)
+                    ForEach(SessionCompanyFilter.all) { group in
+                        providerChip(group)
                     }
+                    sessionSourceMenu
                     rangeMenu
                     sortMenu
                     optionsMenu
@@ -202,15 +217,17 @@ struct SessionFiltersBar: View {
         .accessibilityLabel("Show every provider")
     }
 
-    private func providerChip(_ provider: SessionProvider) -> some View {
-        let selected = model.providerFilter?.contains(provider) ?? true
-        let count = model.providerCounts[provider] ?? 0
+    private func providerChip(_ group: SessionCompanyFilter) -> some View {
+        let selected = model.providerFilter.map { selected in
+            group.providers.allSatisfy(selected.contains)
+        } ?? true
+        let count = group.providers.reduce(0) { $0 + (model.providerCounts[$1] ?? 0) }
         return Button {
-            model.toggleProvider(provider)
+            model.toggleProviders(group.providers)
         } label: {
             HStack(spacing: 5) {
-                ToolBrandIconView(tool: provider.tool, size: density.segmentedFontSize + 1)
-                Text(provider.displayName)
+                ToolBrandIconView(tool: group.representative, size: density.segmentedFontSize + 1)
+                Text(group.representative.vendorName)
                     .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                     .lineLimit(1)
                 if count > 0 {
@@ -224,10 +241,10 @@ struct SessionFiltersBar: View {
             .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
-        .background(chipBackground(tint: provider.accent, selected: selected))
+        .background(chipBackground(tint: Theme.providerAccent(for: group.representative), selected: selected))
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help(provider.displayName)
+        .help(group.representative.vendorName)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -239,6 +256,29 @@ struct SessionFiltersBar: View {
     }
 
     // MARK: - Controls
+
+    private var sessionSourceMenu: some View {
+        Menu {
+            Button("All session sources") { model.setProviderFilter(nil) }
+            Divider()
+            ForEach(SessionProvider.allCases, id: \.self) { provider in
+                Toggle(isOn: sessionSourceBinding(provider)) {
+                    Text(provider.displayName)
+                }
+            }
+        } label: {
+            menuLabel(
+                systemImage: "square.stack.3d.up",
+                title: "Sources",
+                detail: sessionSourceSummary
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Choose individual session sources")
+    }
 
     private var rangeMenu: some View {
         Menu {
@@ -336,6 +376,19 @@ struct SessionFiltersBar: View {
 
     private var bodyIndexingBinding: Binding<Bool> {
         Binding(get: { model.isBodyIndexingEnabled }, set: { model.setBodyIndexing($0) })
+    }
+
+    private func sessionSourceBinding(_ provider: SessionProvider) -> Binding<Bool> {
+        Binding(
+            get: { model.providerFilter?.contains(provider) ?? true },
+            set: { _ in model.toggleProvider(provider) }
+        )
+    }
+
+    private var sessionSourceSummary: String {
+        guard let selected = model.providerFilter else { return "All" }
+        if selected.count == 1, let only = selected.first { return only.displayName }
+        return "\(selected.count) selected"
     }
 
     private func menuLabel(systemImage: String, title: String, detail: String) -> some View {
