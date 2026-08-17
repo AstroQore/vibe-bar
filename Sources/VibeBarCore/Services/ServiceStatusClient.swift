@@ -572,6 +572,9 @@ public actor ServiceStatusClient {
         // as best-effort: a redesign or a blocked HTML request must still
         // leave the current status and the incident feed usable.
         let html = try? await fetchHTML(url: tool.statusPageURL)
+        // `try?` must not swallow a cancelled refresh into a history-less
+        // "success"; only ordinary scrape failures are best-effort.
+        try Task.checkCancellation()
         let uptimeMap = html.map { Self.parseStatuspageUptimeData(html: $0) } ?? [:]
 
         // Grouped pages (a `group: true` row owns the `group_id` children);
