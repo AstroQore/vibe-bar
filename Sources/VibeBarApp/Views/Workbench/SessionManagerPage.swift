@@ -19,30 +19,32 @@ extension SessionProvider {
     var accent: Color { Theme.providerAccent(for: tool) }
 }
 
-/// Session chips group by L1 company, and the members are `SessionProvider`s
-/// rather than harnesses because a session is a file on disk owned by one
-/// provider adapter.
-///
-/// Two harnesses that show up on the usage axis are deliberately absent here.
-/// Cursor has no local transcript with a session identity Vibe Bar can index,
-/// so SpaceXAI is Grok-only; Claude Cowork transcripts are scanned for cost
-/// but never indexed, because this page owns a delete path and nothing may
-/// remove files from inside Claude.app's own container (AGENTS.md § 5).
+extension Harness {
+    /// The brand this harness is drawn as — its own L2 tool, not the L1
+    /// company. Cursor gets the Cursor mark rather than Grok's, and
+    /// AntiGravity its own rather than Gemini's, while the *chip* that
+    /// groups them still says "SpaceXAI" / "Google AI".
+    var brandTool: ToolType { quotaTool }
+}
+
+/// Session chips group by L1 company; the members are harnesses, because a
+/// harness is what a row is labelled with and two harnesses can share one
+/// provider adapter (a Codex rollout is Codex or ChatGPT Work depending on
+/// its `originator`). See AGENTS.md § 7.1.
 private struct SessionCompanyFilter: Identifiable {
     let representative: ToolType
-    let providers: Set<SessionProvider>
+    let harnesses: Set<Harness>
 
     var id: ToolType { representative }
 
-    /// Derived, not restated: a company's chip covers whichever of its
-    /// `coreProviderMembers` this page can actually index, and a company with
-    /// none of them never gets a chip.
+    /// Derived, not restated: a company's chip covers every harness that
+    /// company owns, and a company with none never gets a chip. All eight
+    /// harnesses are indexable today, so all four companies appear.
     static let all: [SessionCompanyFilter] = ToolType.coreProviderRepresentatives
         .compactMap { representative in
-            let members = Set(representative.coreProviderMembers)
-            let providers = Set(SessionProvider.allCases.filter { members.contains($0.tool) })
-            guard !providers.isEmpty else { return nil }
-            return SessionCompanyFilter(representative: representative, providers: providers)
+            let harnesses = Set(Harness.harnesses(forCompany: representative))
+            guard !harnesses.isEmpty else { return nil }
+            return SessionCompanyFilter(representative: representative, harnesses: harnesses)
         }
 }
 
@@ -218,26 +220,26 @@ struct SessionFiltersBar: View {
 
     private var allProvidersChip: some View {
         Button {
-            model.setProviderFilter(nil)
+            model.setHarnessFilter(nil)
         } label: {
             Text("All providers")
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                .foregroundStyle(model.providerFilter == nil ? .primary : .secondary)
+                .foregroundStyle(model.harnessFilter == nil ? .primary : .secondary)
                 .padding(.horizontal, 10)
                 .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
-        .background(chipBackground(tint: .accentColor, selected: model.providerFilter == nil))
+        .background(chipBackground(tint: .accentColor, selected: model.harnessFilter == nil))
         .accessibilityLabel("Show every provider")
     }
 
     private func providerChip(_ group: SessionCompanyFilter) -> some View {
-        let selected = model.providerFilter.map { selected in
-            group.providers.allSatisfy(selected.contains)
+        let selected = model.harnessFilter.map { selected in
+            group.harnesses.allSatisfy(selected.contains)
         } ?? true
-        let count = group.providers.reduce(0) { $0 + (model.providerCounts[$1] ?? 0) }
+        let count = group.harnesses.reduce(0) { $0 + (model.harnessCounts[$1] ?? 0) }
         return Button {
-            model.toggleProviders(group.providers)
+            model.toggleHarnesses(group.harnesses)
         } label: {
             HStack(spacing: 5) {
                 ToolBrandIconView(tool: group.representative, size: density.segmentedFontSize + 1)
@@ -271,13 +273,19 @@ struct SessionFiltersBar: View {
 
     // MARK: - Controls
 
+    /// One row per harness, not per provider: Codex and ChatGPT Work share a
+    /// rollout tree and are only separable here.
     private var sessionSourceMenu: some View {
         Menu {
-            Button("All session sources") { model.setProviderFilter(nil) }
+            Button("All session sources") { model.setHarnessFilter(nil) }
             Divider()
-            ForEach(SessionProvider.allCases, id: \.self) { provider in
-                Toggle(isOn: sessionSourceBinding(provider)) {
-                    Text(provider.displayName)
+            ForEach(SessionCompanyFilter.all) { group in
+                Section(group.representative.vendorName) {
+                    ForEach(Harness.harnesses(forCompany: group.representative), id: \.self) { harness in
+                        Toggle(isOn: sessionSourceBinding(harness)) {
+                            Text(harness.displayName)
+                        }
+                    }
                 }
             }
         } label: {
@@ -392,15 +400,15 @@ struct SessionFiltersBar: View {
         Binding(get: { model.isBodyIndexingEnabled }, set: { model.setBodyIndexing($0) })
     }
 
-    private func sessionSourceBinding(_ provider: SessionProvider) -> Binding<Bool> {
+    private func sessionSourceBinding(_ harness: Harness) -> Binding<Bool> {
         Binding(
-            get: { model.providerFilter?.contains(provider) ?? true },
-            set: { _ in model.toggleProvider(provider) }
+            get: { model.harnessFilter?.contains(harness) ?? true },
+            set: { _ in model.toggleHarness(harness) }
         )
     }
 
     private var sessionSourceSummary: String {
-        guard let selected = model.providerFilter else { return "All" }
+        guard let selected = model.harnessFilter else { return "All" }
         if selected.count == 1, let only = selected.first { return only.displayName }
         return "\(selected.count) selected"
     }

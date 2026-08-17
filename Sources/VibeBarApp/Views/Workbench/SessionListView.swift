@@ -106,7 +106,8 @@ struct SessionListView: View {
         }
         if model.indexProgress != nil { return "Still scanning the session logs on disk." }
         if !model.searchText.isEmpty { return "Nothing in the indexed sessions matches that search." }
-        return "No Codex, Claude Code, Grok, Gemini CLI, or AntiGravity session logs were found on this Mac."
+        return "No session logs were found on this Mac for any of the "
+            + "\(Harness.allCases.count) harnesses Vibe Bar scans."
     }
 }
 
@@ -133,13 +134,18 @@ private struct SessionRow: View {
                 if isDeleteMode {
                     checkbox
                 }
-                ToolBrandBadge(tool: summary.provider.tool, iconSize: 15, containerSize: 20)
-                    .padding(.top, 1)
+                ToolBrandBadge(
+                    tool: summary.effectiveHarness.brandTool,
+                    iconSize: 15,
+                    containerSize: 20
+                )
+                .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.system(size: density.subtitleFontSize + 1, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
+                    provenance
                     if let snippet = row.snippet {
                         Text(SessionSnippet.attributed(snippet))
                             .font(.system(size: density.subtitleFontSize - 1))
@@ -206,6 +212,31 @@ private struct SessionRow: View {
     private var subtitle: String? {
         guard let text = summary.summary, !text.isEmpty, text != summary.title else { return nil }
         return text
+    }
+
+    /// Which harness produced this session, and — where the log said so —
+    /// which model it ran on.
+    ///
+    /// The harness is the label rather than the provider because they differ
+    /// exactly where it matters: a `codex` rollout reads "Codex" or "ChatGPT
+    /// Work" depending on its originator. The brand badge above stays on the
+    /// harness's own tool, so the two never disagree about the colour.
+    private var provenance: some View {
+        HStack(spacing: 5) {
+            Text(summary.effectiveHarness.displayName)
+                .fontWeight(.medium)
+                .lineLimit(1)
+            if let model = summary.model, !model.isEmpty {
+                Text(UsageModelNaming.canonicalDisplayName(model))
+                    .lineLimit(1)
+                    .padding(.horizontal, 5)
+                    .frame(minHeight: 14)
+                    .background(Capsule().fill(Color.primary.opacity(0.07)))
+                    .help(model)
+            }
+        }
+        .font(.system(size: max(10, density.resetCountdownFontSize - 1)))
+        .foregroundStyle(.secondary)
     }
 
     private var footer: some View {
