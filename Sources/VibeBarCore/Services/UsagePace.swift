@@ -5,8 +5,8 @@ import Foundation
 /// after reset; allowing one extra minute prevents the bar from dropping all
 /// of its predictive context during that bounded handoff without treating an
 /// actually stale cache as a current cycle.
-enum QuotaWindowEvaluation {
-    static let postResetGraceSeconds: TimeInterval = 180
+public enum QuotaWindowEvaluation {
+    public static let postResetGraceSeconds: TimeInterval = 180
 
     static func date(resetAt: Date, now: Date, allowsPostResetGrace: Bool) -> Date? {
         let remaining = resetAt.timeIntervalSince(now)
