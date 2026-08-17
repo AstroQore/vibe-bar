@@ -13,3 +13,7 @@ dist/
 .gemini/
 .cursor/
 .research/
+
+# Python bytecode from helper scripts
+__pycache__/
+*.pyc
