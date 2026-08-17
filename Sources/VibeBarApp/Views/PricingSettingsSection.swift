@@ -2,11 +2,13 @@ import SwiftUI
 import VibeBarCore
 
 struct PricingSettingsSection: View {
+    let density: Theme.Density
+
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             settingsSection("Model Pricing") {
                 Text("Catalogs refresh in the background. Higher entries win when the same provider and model name appears more than once.")
                     .font(.caption)
@@ -141,19 +143,9 @@ struct PricingSettingsSection: View {
 
     private func settingsSection<Content: View>(
         _ title: String,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-            content()
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
+        SettingsSectionCard(title: title, density: density, content: content)
     }
 }
 

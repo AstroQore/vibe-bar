@@ -53,7 +53,7 @@ struct SessionListView: View {
                 ProgressView()
                     .controlSize(.small)
                     .padding(8)
-                    .background(.regularMaterial, in: Capsule())
+                    .workbenchOverlaySurface(in: Capsule())
                     .padding(.bottom, 8)
             }
         }

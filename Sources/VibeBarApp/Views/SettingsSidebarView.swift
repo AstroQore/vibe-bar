@@ -5,11 +5,15 @@ import VibeBarCore
 /// One settings navigator for both static preferences and provider-specific
 /// configuration. Provider ordering is edited directly where it is consumed,
 /// rather than in a second, disconnected ordering screen.
+///
+/// This is a column *inside* the Settings page, not a second window sidebar:
+/// no fill, no title of its own, no chrome the Workbench already provides.
+/// It reads as a segmented list of sections, which is what it is — the
+/// Workbench's own rail stays the only navigation surface in the window.
 struct SettingsSidebarView: View {
     static let width: CGFloat = 236
 
     @EnvironmentObject private var settingsStore: SettingsStore
-    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
     @Environment(\.colorScheme) private var colorScheme
     @Binding var selection: SettingsDestination
 
@@ -30,12 +34,6 @@ struct SettingsSidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Vibe Bar")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 12)
-
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -44,24 +42,9 @@ struct SettingsSidebarView: View {
             }
             .padding(.horizontal, 10)
             .frame(height: 31)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        usesWorkbenchPorcelain
-                            ? WorkbenchPorcelain.fieldFill(for: colorScheme)
-                            : Color.primary.opacity(0.055)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(
-                                usesWorkbenchPorcelain
-                                    ? WorkbenchPorcelain.hairline(for: colorScheme)
-                                    : Color.primary.opacity(0.08),
-                                lineWidth: 0.7
-                            )
-                    )
-            )
+            .workbenchFieldSurface(cornerRadius: 8)
             .padding(.horizontal, 14)
+            .padding(.top, 16)
             .padding(.bottom, 12)
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -145,11 +128,6 @@ struct SettingsSidebarView: View {
             }
         }
         .frame(width: Self.width)
-        .background(
-            usesWorkbenchPorcelain
-                ? WorkbenchPorcelain.sidebarFill(for: colorScheme)
-                : Color.primary.opacity(0.035)
-        )
     }
 
     private var filteredBasicPages: [SettingsSectionID] {
@@ -274,18 +252,12 @@ struct SettingsSidebarView: View {
             .background {
                 if selected {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(
-                            usesWorkbenchPorcelain
-                                ? WorkbenchPorcelain.selectedNavigationFill(for: colorScheme)
-                                : Color.accentColor.opacity(0.20)
-                        )
+                        .fill(WorkbenchPorcelain.selectedNavigationFill(for: colorScheme))
                         .overlay(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
                                 .stroke(
-                                    usesWorkbenchPorcelain
-                                        ? WorkbenchPorcelain.hairline(for: colorScheme)
-                                        : Color.accentColor.opacity(0.32),
-                                    lineWidth: 0.7
+                                    WorkbenchPorcelain.hairline(for: colorScheme),
+                                    lineWidth: Theme.Card.hairlineWidth
                                 )
                         )
                 }

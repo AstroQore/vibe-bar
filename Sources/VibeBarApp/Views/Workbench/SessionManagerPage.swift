@@ -104,7 +104,7 @@ struct SessionManagerPage: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
                 .frame(maxWidth: 460)
-                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                .workbenchOverlaySurface(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .padding(.bottom, 16)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .onTapGesture { model.dismissToast() }
