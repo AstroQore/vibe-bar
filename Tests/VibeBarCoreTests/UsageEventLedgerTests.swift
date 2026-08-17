@@ -137,6 +137,7 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(sqlite3_exec(db, """
             CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
             CREATE TABLE usage_events(tool TEXT NOT NULL, source_key TEXT);
+            INSERT INTO ledger_meta VALUES('detail_floor_day:grok', '2026-07-17');
             INSERT INTO usage_events VALUES('grok', 'cursor-event-v1-fixture');
             INSERT INTO usage_events VALUES('grok', 'grok-session-fixture');
             """, nil, nil, nil), SQLITE_OK)
@@ -157,6 +158,19 @@ final class UsageEventLedgerTests: XCTestCase {
             tools.append(String(cString: sqlite3_column_text(query, 0)))
         }
         XCTAssertEqual(tools, ["cursor", "grok"])
+
+        var floorStatement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT value FROM ledger_meta WHERE key = 'detail_floor_day:cursor'",
+            -1,
+            &floorStatement,
+            nil
+        ), SQLITE_OK)
+        let floorQuery = try XCTUnwrap(floorStatement)
+        defer { sqlite3_finalize(floorQuery) }
+        XCTAssertEqual(sqlite3_step(floorQuery), SQLITE_ROW)
+        XCTAssertEqual(String(cString: sqlite3_column_text(floorQuery, 0)), "2026-07-17")
     }
 
     /// A second batch carrying the same `(mtime, size)` fingerprint is

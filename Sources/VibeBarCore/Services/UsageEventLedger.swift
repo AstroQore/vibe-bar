@@ -220,8 +220,10 @@ public actor UsageEventLedger: CostUsageEventSink {
     }
 
     /// v3 originally stored Cursor dashboard detail under `.grok`. Preserve
-    /// every table and historical daily rollup, but relabel identifiable
-    /// request rows once using their privacy-safe Cursor source key.
+    /// every table and historical daily rollup, relabel identifiable request
+    /// rows, and carry the Grok detail floor forward. The copied floor prevents
+    /// the first `.cursor` batch from backfilling days that are already folded
+    /// into the inseparable legacy Grok rollups.
     static func migrateCursorToolRows(_ database: OpaquePointer) -> Bool {
         let sql = """
             UPDATE usage_events
@@ -231,6 +233,15 @@ public actor UsageEventLedger: CostUsageEventSink {
                AND NOT EXISTS (
                    SELECT 1 FROM ledger_meta WHERE key = '\(cursorToolMigrationKey)'
                );
+            INSERT INTO ledger_meta(key, value)
+                 SELECT '\(floorKeyPrefix)cursor', value
+                   FROM ledger_meta
+                  WHERE key = '\(floorKeyPrefix)grok'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM ledger_meta WHERE key = '\(cursorToolMigrationKey)'
+                    )
+               ON CONFLICT(key) DO UPDATE SET
+                   value = MAX(ledger_meta.value, excluded.value);
             INSERT INTO ledger_meta(key, value) VALUES('\(cursorToolMigrationKey)', '1')
                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
             """
