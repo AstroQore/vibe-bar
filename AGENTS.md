@@ -481,6 +481,69 @@ Tests keep working because they pass an explicit value.
   `CostUsageScanner.forEachJSONLLine`: use a moving cursor, not
   `removeSubrange`.
 
+### 7.1 Provider and harness naming
+
+Vibe Bar names a provider along **two orthogonal axes**. A surface picks
+one axis and stays on it; never mix levels of the two in one list.
+
+**Quota axis** — what an account is billed against. L1 company → L2
+SubProvider → L3 quota / model group. Source of truth:
+`Sources/VibeBarCore/Models/ProviderHierarchy.swift` plus
+`ToolType.hierarchy` / `ToolType.quotaSubProviderName`.
+
+| L1 company | L2 SubProvider        | L3 quota / model groups                  |
+| ---------- | --------------------- | ---------------------------------------- |
+| OpenAI     | ChatGPT Agentic       | All Models, Codex Spark …                 |
+| Anthropic  | Claude                | All Models, Sonnet, Opus, Fable …         |
+| Google AI  | Gemini Web            | 5 Hours, Weekly                           |
+| Google AI  | AntiGravity           | Gemini Models, Claude & GPT Models        |
+| SpaceXAI   | Grok                  | Weekly Credits                            |
+| SpaceXAI   | Cursor                | Cursor Models, Other Models               |
+| SpaceXAI   | Grok Bot              | Weekly (cloud-only SubProvider)           |
+
+**Usage / cost axis** — where the tokens were actually spent. The unit is
+the local **harness**: the CLI or app that produced the sessions we
+scanned. It is neither the company nor the quota SubProvider. Source of
+truth: `Sources/VibeBarCore/Models/Harness.swift` (`HarnessCatalog` holds
+the display names).
+
+| Harness       | L1 company | Local evidence                                      |
+| ------------- | ---------- | --------------------------------------------------- |
+| Codex         | OpenAI     | `~/.codex/sessions`, `originator` ≠ "Codex Desktop"  |
+| ChatGPT Work  | OpenAI     | same tree, `originator` == "Codex Desktop"           |
+| Claude Code   | Anthropic  | `~/.claude/projects`, `~/.config/claude/projects`    |
+| Claude Cowork | Anthropic  | `…/Application Support/Claude/local-agent-mode-sessions/**/.claude/projects` |
+| Gemini CLI    | Google AI  | `~/.gemini/tmp/*/chats/session-*.jsonl`, telemetry log |
+| AntiGravity   | Google AI  | `~/.gemini/antigravity{,-cli,-ide}/conversations`    |
+| Grok Build    | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                  |
+| Cursor        | SpaceXAI   | Cursor dashboard events (no local counters)          |
+
+Consequences worth stating out loud:
+
+- Quota surfaces (Overview, mini window, menu bar, Settings) speak
+  company / SubProvider / group. Usage and cost surfaces (Workbench
+  Harness Mix, harness filter, cost cards) speak harnesses, grouped or
+  filtered by company.
+- "Gemini Web" is a quota SubProvider with **no** local usage; the
+  deprecated CLI's historical tokens are always labelled "Gemini CLI".
+- Cowork is a cost/usage source only. It is deliberately absent from the
+  Sessions manager, its adapters, and `SessionDeleter` — that page owns a
+  delete path, and nothing may remove files inside Claude.app's container
+  (§ 5).
+- The ledger stores the harness per detail row *and* per daily rollup.
+  Rows written before the dimension existed are backfilled from
+  `Harness.defaultHarness(for:)`, so ChatGPT Desktop usage already folded
+  into rollups stays attributed to "Codex"; only detail rows get
+  corrected by a re-scan.
+
+**Model names.** Display always uses the canonical vendor id —
+`gemini-3.5-flash-high`, not "Gemini 3.5 Flash (High)". Route every
+user-visible model string through
+`UsageModelNaming.canonicalDisplayName` (and keep the raw value as a
+tooltip where the surface has one). The ledger and the pricing tables
+keep whatever the provider wrote, because rates are matched on those
+upstream labels — canonicalize the display, never the stored value.
+
 ## 8. Privacy & Source-Content Rules
 
 These apply regardless of who you commit as. The repo is public
@@ -723,6 +786,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 - **Mini-window geometry stays in `mini_window_geometry.json`.** Do not
   fold it back into `AppSettings` — every settings write fans out to
   every Combine subscriber.
+- **Keep the two naming axes intentionally separate.** Quota surfaces
+  speak company / SubProvider / quota group; usage and cost surfaces speak
+  the local harness that produced the sessions. The tables, the source-of-
+  truth types, and the model-name rule are in § 7.1 — read it before
+  adding a provider label to any list.
 - **Keep the two pace systems intentionally separate.** The core-provider
   surfaces (ChatGPT/Codex, Claude, Gemini Web, AntiGravity, and Grok) may use
   `QuotaPaceForecast` and reset-cycle observations. Misc provider cards must

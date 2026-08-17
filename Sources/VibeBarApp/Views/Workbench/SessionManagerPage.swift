@@ -18,6 +18,15 @@ extension SessionProvider {
     var accent: Color { Theme.providerAccent(for: tool) }
 }
 
+/// Session chips group by L1 company, and the members are `SessionProvider`s
+/// rather than harnesses because a session is a file on disk owned by one
+/// provider adapter.
+///
+/// Two harnesses that show up on the usage axis are deliberately absent here.
+/// Cursor has no local transcript with a session identity Vibe Bar can index,
+/// so SpaceXAI is Grok-only; Claude Cowork transcripts are scanned for cost
+/// but never indexed, because this page owns a delete path and nothing may
+/// remove files from inside Claude.app's own container (AGENTS.md § 5).
 private struct SessionCompanyFilter: Identifiable {
     let representative: ToolType
     let providers: Set<SessionProvider>

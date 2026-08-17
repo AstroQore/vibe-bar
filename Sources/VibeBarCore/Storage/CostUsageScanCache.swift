@@ -45,6 +45,11 @@ public struct CostUsageScanCache: Codable, Sendable {
         /// its tier globally from `~/.codex/config.toml` at scan time, so
         /// codex events leave this `nil`.
         public let serviceTier: String?
+        /// Local harness that produced this event — the CLI / app, not the
+        /// company and not the quota SubProvider. `nil` only for entries
+        /// cached before the harness dimension existed; consumers fall back
+        /// to `Harness.defaultHarness(for:)`.
+        public let harness: Harness?
 
         public init(
             date: Date,
@@ -60,7 +65,8 @@ public struct CostUsageScanCache: Codable, Sendable {
             isSidechain: Bool? = nil,
             pathRole: PathRole? = nil,
             sourceKey: String? = nil,
-            serviceTier: String? = nil
+            serviceTier: String? = nil,
+            harness: Harness? = nil
         ) {
             self.date = date
             self.model = model
@@ -76,6 +82,7 @@ public struct CostUsageScanCache: Codable, Sendable {
             self.pathRole = pathRole
             self.sourceKey = sourceKey
             self.serviceTier = serviceTier
+            self.harness = harness
         }
     }
 
@@ -174,7 +181,15 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// v4 fixes the AntiGravity `.db` decoder re-summing the cumulative
     /// cache-read counter per turn; bumping forces a re-parse so cached
     /// events drop the inflated cache tokens.
-    public static let currentSchemaVersion = 4
+    /// v5 adds `ParsedEvent.harness`. Codex is the reason it has to be a
+    /// global bump rather than a defaulted field: a rollout's harness is
+    /// decided by its `session_meta.originator`, which only a fresh parse
+    /// can read, so ChatGPT Desktop sessions stay mislabelled "Codex" until
+    /// their cache entry is thrown away. AntiGravity `.pb` cascades lose
+    /// their cached RPC result on this one bump and re-fetch the next time
+    /// the language server is reachable; ledger rows already ingested from
+    /// them are untouched.
+    public static let currentSchemaVersion = 5
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)
