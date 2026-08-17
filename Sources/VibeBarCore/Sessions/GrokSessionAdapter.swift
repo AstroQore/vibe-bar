@@ -69,6 +69,10 @@ public struct GrokSessionAdapter: SessionProviderAdapter {
         return SessionSummary(
             provider: .grok,
             sessionID: sessionID,
+            harness: .grokBuild,
+            model: SessionParsing.firstString(
+                root["current_model_id"], info?["current_model_id"], root["model"]
+            ),
             title: SessionParsing.display(title ?? summaryText, limit: SessionParsing.titleLimit),
             summary: SessionParsing.display(summaryText, limit: SessionParsing.summaryLimit),
             projectDir: projectDir,

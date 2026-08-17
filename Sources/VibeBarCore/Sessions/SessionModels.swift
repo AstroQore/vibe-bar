@@ -1,26 +1,64 @@
 import Foundation
 
-/// A CLI whose local session logs Vibe Bar can list, read, resume, and
-/// (on explicit request) delete.
+/// A local session store Vibe Bar can list, read, resume, and — for the
+/// three providers that own their files outright — delete.
 ///
-/// `antigravity` is listed and readable like the rest, but its sessions
-/// cannot be deleted: the CLI and IDE hold live SQLite handles on the
-/// conversation databases, so its adapter fails closed with
-/// `SessionDeleteError.unsupportedProvider`.
+/// This is the *file layout* axis, not the harness axis: one provider can
+/// produce sessions for two harnesses (a `codex` rollout is Codex or
+/// ChatGPT Work depending on its `originator`), which is why every summary
+/// also carries a `harness`. See `AGENTS.md` § 7.1.
+///
+/// Three providers are listed and readable but never deletable, because
+/// another running app owns the store — see `supportsDeletion`.
 public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
     case claude
+    case claudeCowork
     case codex
     case grok
+    case cursor
     case gemini
     case antigravity
 
     public var displayName: String {
         switch self {
-        case .claude: return "Claude Code"
-        case .codex: return "Codex"
-        case .grok: return "Grok"
-        case .gemini: return "Gemini CLI"
-        case .antigravity: return "AntiGravity"
+        case .claude: return HarnessCatalog.claudeCode
+        case .claudeCowork: return HarnessCatalog.claudeCowork
+        case .codex: return HarnessCatalog.codex
+        case .grok: return HarnessCatalog.grokBuild
+        case .cursor: return HarnessCatalog.cursor
+        case .gemini: return HarnessCatalog.geminiCLI
+        case .antigravity: return HarnessCatalog.antigravity
+        }
+    }
+
+    /// The harness a session of this provider belongs to unless the file
+    /// itself says otherwise. Only Codex has a second answer: a rollout
+    /// whose `originator` is `codex_work_desktop` is ChatGPT Work.
+    public var defaultHarness: Harness {
+        switch self {
+        case .claude: return .claudeCode
+        case .claudeCowork: return .claudeCowork
+        case .codex: return .codex
+        case .grok: return .grokBuild
+        case .cursor: return .cursor
+        case .gemini: return .geminiCLI
+        case .antigravity: return .antigravity
+        }
+    }
+
+    /// Whether Vibe Bar will ever remove this provider's session files.
+    ///
+    /// `false` means another running app owns the store and removing from
+    /// underneath it is how a store gets corrupted rather than emptied —
+    /// AntiGravity's live WAL handles, Cursor's open agent database, and
+    /// Cowork's transcripts inside Claude.app's own container (AGENTS.md
+    /// § 5). The adapters fail closed with
+    /// `SessionDeleteError.providerIsReadOnly`; this is the same fact
+    /// stated where a UI can ask it before offering the action.
+    public var supportsDeletion: Bool {
+        switch self {
+        case .claude, .codex, .grok, .gemini: return true
+        case .claudeCowork, .cursor, .antigravity: return false
         }
     }
 }
@@ -37,6 +75,17 @@ public struct SessionSummary: Identifiable, Hashable, Codable, Sendable {
     /// Provider-specific flavor (AntiGravity's `cli` vs IDE surface, for
     /// instance). `nil` when the provider has exactly one shape.
     public let providerVariant: String?
+    /// The harness that produced this session — the usage/cost axis of
+    /// `AGENTS.md` § 7.1, which the provider alone cannot answer for Codex
+    /// rollouts. `nil` only for a summary built without one; the index
+    /// substitutes `provider.defaultHarness` on write, so an indexed row
+    /// always has a value.
+    public let harness: Harness?
+    /// Raw vendor model id as the session log spelled it, when the metadata
+    /// pass could see one cheaply. Display it through
+    /// `UsageModelNaming.canonicalDisplayName`; never canonicalize the
+    /// stored value.
+    public let model: String?
     public let title: String?
     public let summary: String?
     public let projectDir: String?
@@ -53,10 +102,16 @@ public struct SessionSummary: Identifiable, Hashable, Codable, Sendable {
 
     public var hasKnownMessageCount: Bool { messageCount >= 0 }
 
+    /// The harness to label this row with. Falls back to the provider's
+    /// default so a summary assembled outside the index still reads right.
+    public var effectiveHarness: Harness { harness ?? provider.defaultHarness }
+
     public init(
         provider: SessionProvider,
         sessionID: String,
         providerVariant: String? = nil,
+        harness: Harness? = nil,
+        model: String? = nil,
         title: String? = nil,
         summary: String? = nil,
         projectDir: String? = nil,
@@ -69,6 +124,8 @@ public struct SessionSummary: Identifiable, Hashable, Codable, Sendable {
         self.provider = provider
         self.sessionID = sessionID
         self.providerVariant = providerVariant
+        self.harness = harness
+        self.model = model
         self.title = title
         self.summary = summary
         self.projectDir = projectDir
@@ -86,6 +143,8 @@ public struct SessionSummary: Identifiable, Hashable, Codable, Sendable {
             provider: provider,
             sessionID: sessionID,
             providerVariant: providerVariant,
+            harness: harness,
+            model: model,
             title: newTitle ?? title,
             summary: summary,
             projectDir: newProjectDir ?? projectDir,
@@ -190,8 +249,11 @@ public struct SessionDeletionPlan: Hashable, Codable, Sendable {
 }
 
 public enum SessionDeleteError: Error, Hashable, Codable, Sendable {
-    /// No adapter can plan a delete for this provider.
+    /// No adapter is registered for this provider at all.
     case unsupportedProvider
+    /// An adapter exists, and refuses by policy: another running app owns
+    /// this store. See `SessionProvider.supportsDeletion`.
+    case providerIsReadOnly(SessionProvider)
     /// A path in the plan resolves outside every provider root.
     case pathEscapesProviderRoot
     /// The removal target is itself a symlink; following it would
@@ -207,6 +269,17 @@ public enum SessionDeleteError: Error, Hashable, Codable, Sendable {
         switch self {
         case .unsupportedProvider:
             return "Deleting sessions is not supported for this provider."
+        case let .providerIsReadOnly(provider):
+            switch provider {
+            case .antigravity:
+                return "AntiGravity keeps its conversation databases open; delete from the IDE."
+            case .claudeCowork:
+                return "Cowork sessions live inside Claude.app's container and are never removed by Vibe Bar."
+            case .cursor:
+                return "Cursor keeps its session store open; delete from Cursor itself."
+            case .claude, .codex, .grok, .gemini:
+                return "Deleting sessions is not supported for this provider."
+            }
         case .pathEscapesProviderRoot:
             return "Refused: the target resolves outside the provider's session directory."
         case .symlinkedTarget:

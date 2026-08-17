@@ -75,6 +75,13 @@ public struct CodexSessionAdapter: SessionProviderAdapter {
         return SessionSummary(
             provider: .codex,
             sessionID: sessionID,
+            // Every Codex surface writes into the same tree; only the
+            // `originator` separates ChatGPT Work from ordinary Codex, and
+            // the cost scanner already owns that mapping.
+            harness: CostUsageScanner.codexHarness(
+                originator: SessionParsing.string(meta?["originator"])
+            ),
+            model: Self.model(in: head) ?? Self.model(in: tail),
             title: SessionParsing.display(hydrated?.title ?? prompt, limit: SessionParsing.titleLimit),
             summary: SessionParsing.display(prompt, limit: SessionParsing.summaryLimit),
             projectDir: SessionParsing.firstString(meta?["cwd"], hydrated?.cwd),
@@ -84,6 +91,27 @@ public struct CodexSessionAdapter: SessionProviderAdapter {
             sizeBytes: SessionParsing.fileSize(fileURL),
             messageCount: JSONLHeadTail.lineCountIfSmall(url: fileURL) ?? SessionSummary.unknownMessageCount
         )
+    }
+
+    /// The model a rollout ran on, from whichever of the three places this
+    /// vintage of Codex wrote it.
+    ///
+    /// `turn_context` carries it on every turn and lands within the first
+    /// handful of lines, which is why the head window is enough in practice;
+    /// `token_count`'s `info` and a bare top-level `model` are the older
+    /// shapes `CostUsageScanner` also probes. Nothing here reads past the
+    /// window the metadata pass already had.
+    static func model(in lines: [[String: Any]]) -> String? {
+        for line in lines {
+            let payload = line["payload"] as? [String: Any]
+            let info = payload?["info"] as? [String: Any]
+            if let model = SessionParsing.firstString(
+                payload?["model"], info?["model"], info?["model_name"], line["model"]
+            ) {
+                return model
+            }
+        }
+        return nil
     }
 
     private func firstUserText(_ lines: [[String: Any]]) -> String? {

@@ -81,6 +81,7 @@ public actor SessionIndexService {
 
     public func summaryPage(
         providers: [SessionProvider]? = nil,
+        harnesses: [Harness]? = nil,
         since: Date? = nil,
         order: SessionSummaryOrder = .recentFirst,
         offset: Int = 0,
@@ -88,6 +89,7 @@ public actor SessionIndexService {
     ) async throws -> SessionSummaryPage {
         try await store.summaryPage(
             providers: providers,
+            harnesses: harnesses,
             since: since,
             order: order,
             offset: offset,
@@ -99,12 +101,22 @@ public actor SessionIndexService {
         try await store.providerCounts()
     }
 
+    public func harnessCounts() async throws -> [Harness: Int] {
+        try await store.harnessCounts()
+    }
+
     public func search(
         _ text: String,
         providers: [SessionProvider]? = nil,
+        harnesses: [Harness]? = nil,
         limit: Int = 50
     ) async throws -> [SessionSearchHit] {
-        try await store.search(text: text, providers: providers, limit: limit)
+        try await store.search(
+            text: text,
+            providers: providers,
+            harnesses: harnesses,
+            limit: limit
+        )
     }
 
     // MARK: - One file

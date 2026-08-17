@@ -166,16 +166,40 @@ final class SessionDeleterTests: XCTestCase {
         XCTAssertTrue(exists(url))
     }
 
-    func testAntigravityIsReportedAsUnsupported() {
-        let summary = SessionSummary(
-            provider: .antigravity,
-            sessionID: sessionID,
-            sourcePath: home.appendingPathComponent(".antigravity/conversation.json").path
-        )
-        let outcomes = deleter.delete([summary], registry: registry)
+    /// The three providers whose stores belong to another running app never
+    /// reach the containment fence at all — their adapters refuse first, and
+    /// each says which app to delete from instead.
+    func testProvidersWhoseStoreAnotherAppOwnsAreRefused() {
+        let paths: [SessionProvider: String] = [
+            .antigravity: ".gemini/antigravity/conversations/\(sessionID).db",
+            .cursor: ".cursor/chats/workspace/\(sessionID)/store.db",
+            .claudeCowork: "Library/Application Support/Claude/local-agent-mode-sessions/"
+                + "space/x/local_\(sessionID)/.claude/projects/-Users-example-proj/\(sessionID).jsonl"
+        ]
+        for (provider, path) in paths {
+            XCTAssertFalse(provider.supportsDeletion, "\(provider) must not be deletable")
+            let summary = SessionSummary(
+                provider: provider,
+                sessionID: sessionID,
+                sourcePath: home.appendingPathComponent(path).path
+            )
+            let outcomes = deleter.delete([summary], registry: registry)
 
-        XCTAssertFalse(outcomes[0].success)
-        XCTAssertEqual(outcomes[0].failureReason, .unsupportedProvider)
+            XCTAssertFalse(outcomes[0].success)
+            XCTAssertEqual(outcomes[0].failureReason, .providerIsReadOnly(provider))
+        }
+    }
+
+    /// Every provider the registry does claim can plan a delete, and every
+    /// one it refuses is exactly the read-only set.
+    func testDeletabilityMatchesTheAdaptersThatPlan() {
+        for provider in SessionProvider.allCases {
+            XCTAssertNotNil(registry.adapter(for: provider), "\(provider) has no adapter")
+        }
+        XCTAssertEqual(
+            Set(SessionProvider.allCases.filter { !$0.supportsDeletion }),
+            [.antigravity, .cursor, .claudeCowork]
+        )
     }
 
     // MARK: - Batch behavior

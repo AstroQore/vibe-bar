@@ -26,6 +26,8 @@ final class SessionIndexStoreTests: XCTestCase {
     private func summary(
         provider: SessionProvider = .claude,
         id: String = "11111111-2222-3333-4444-555555555555",
+        harness: Harness? = nil,
+        model: String? = nil,
         title: String? = "Wire up the session list",
         summaryText: String? = "Done.",
         projectDir: String? = "/Users/example/proj",
@@ -36,6 +38,8 @@ final class SessionIndexStoreTests: XCTestCase {
             provider: provider,
             sessionID: id,
             providerVariant: provider == .antigravity ? "cli" : nil,
+            harness: harness,
+            model: model,
             title: title,
             summary: summaryText,
             projectDir: projectDir,
@@ -112,6 +116,114 @@ final class SessionIndexStoreTests: XCTestCase {
         try await store.upsertSession(summary(provider: .antigravity, path: "/conv.db"))
         let variant = try await store.allSummaries().first?.providerVariant
         XCTAssertEqual(variant, "cli")
+    }
+
+    // MARK: - Harness and model (schema v2)
+
+    func testHarnessAndModelRoundTrip() async throws {
+        let store = try makeStore()
+        try await store.upsertSession(summary(
+            provider: .codex,
+            id: "work",
+            harness: .chatgptWork,
+            model: "gpt-daybreak-blue-latest",
+            path: "/work.jsonl"
+        ))
+        let row = try await store.allSummaries().first
+        XCTAssertEqual(row?.harness, .chatgptWork)
+        XCTAssertEqual(row?.model, "gpt-daybreak-blue-latest")
+    }
+
+    /// Two rollouts from the same tree, told apart only by their harness —
+    /// which is the whole reason the column exists.
+    func testCodexAndChatGPTWorkAreSeparableInTheSameProvider() async throws {
+        let store = try makeStore()
+        try await store.upsertSession(summary(
+            provider: .codex, id: "plain", harness: .codex, path: "/plain.jsonl"
+        ))
+        try await store.upsertSession(summary(
+            provider: .codex, id: "work", harness: .chatgptWork, path: "/work.jsonl"
+        ))
+
+        let onlyWork = try await store.summaryPage(harnesses: [.chatgptWork])
+        XCTAssertEqual(onlyWork.summaries.map(\.sessionID), ["work"])
+        XCTAssertEqual(onlyWork.totalCount, 1)
+
+        let counts = try await store.harnessCounts()
+        XCTAssertEqual(counts[.codex], 1)
+        XCTAssertEqual(counts[.chatgptWork], 1)
+        XCTAssertNil(counts[.cursor])
+    }
+
+    /// A summary that arrived without a harness is still filterable: the
+    /// write substitutes the provider's default rather than storing null.
+    func testAMissingHarnessIsStoredAsTheProvidersDefault() async throws {
+        let store = try makeStore()
+        try await store.upsertSession(summary(provider: .grok, id: "grok", path: "/grok.json"))
+        let stored = try await store.allSummaries().first?.harness
+        let counts = try await store.harnessCounts()
+        let page = try await store.summaryPage(harnesses: [.grokBuild])
+        XCTAssertEqual(stored, .grokBuild)
+        XCTAssertEqual(counts[.grokBuild], 1)
+        XCTAssertEqual(page.totalCount, 1)
+    }
+
+    func testEveryProviderDefaultsToADistinctHarness() async throws {
+        let store = try makeStore()
+        for provider in SessionProvider.allCases {
+            try await store.upsertSession(summary(
+                provider: provider, id: provider.rawValue, path: "/\(provider.rawValue)"
+            ))
+        }
+        let counts = try await store.harnessCounts()
+        XCTAssertEqual(counts.values.reduce(0, +), SessionProvider.allCases.count)
+        XCTAssertEqual(counts.count, SessionProvider.allCases.count,
+                       "two providers must not collapse onto one default harness")
+    }
+
+    func testAnEmptyHarnessFilterSelectsNothing() async throws {
+        let store = try makeStore()
+        try await store.upsertSession(summary())
+        let page = try await store.summaryPage(harnesses: [])
+        let hits = try await store.search(text: "session", harnesses: [])
+        XCTAssertEqual(page.totalCount, 0)
+        XCTAssertTrue(hits.isEmpty)
+    }
+
+    func testSearchIsNarrowedByHarness() async throws {
+        let store = try makeStore()
+        try await seed(
+            store,
+            summary: summary(provider: .codex, id: "plain", harness: .codex, path: "/plain.jsonl"),
+            messages: ["Refactoring the transcript indexer"]
+        )
+        try await seed(
+            store,
+            summary: summary(provider: .codex, id: "work", harness: .chatgptWork, path: "/work.jsonl"),
+            messages: ["Refactoring the transcript indexer"]
+        )
+
+        let all = try await store.search(text: "transcript")
+        XCTAssertEqual(all.count, 2)
+        let scoped = try await store.search(text: "transcript", harnesses: [.chatgptWork])
+        XCTAssertEqual(scoped.map(\.summary.sessionID), ["work"])
+        XCTAssertNotNil(scoped.first?.snippet, "the row id column moved; the snippet must follow it")
+        XCTAssertEqual(scoped.first?.matchedSeq, 0)
+    }
+
+    /// Metadata hits come back through the same column layout as body hits,
+    /// so a bad index would show up as a decoded-but-wrong summary.
+    func testMetadataHitsStillDecodeTheWholeRow() async throws {
+        let store = try makeStore()
+        try await store.upsertSession(summary(
+            provider: .cursor, id: "cursor", harness: .cursor,
+            model: "gpt-5.3-codex-xhigh", title: "Polish the showcase", path: "/store.db"
+        ))
+        let hit = try await store.search(text: "Polish").first
+        XCTAssertEqual(hit?.summary.harness, .cursor)
+        XCTAssertEqual(hit?.summary.model, "gpt-5.3-codex-xhigh")
+        XCTAssertNil(hit?.snippet)
+        XCTAssertNil(hit?.matchedSeq)
     }
 
     func testSummaryPageFiltersOrdersAndBoundsTheRead() async throws {
@@ -421,6 +533,27 @@ final class SessionIndexStoreTests: XCTestCase {
     }
 
     // MARK: - Schema versioning
+
+    /// v2 is what introduced `harness` / `model`. A v1 database therefore has
+    /// to be dropped rather than adopted — its rows have no harness at all,
+    /// and a filter over them would silently show nothing.
+    func testAV1DatabaseIsRebuiltRatherThanAdopted() async throws {
+        do {
+            let store = try makeStore()
+            try await seed(store, summary: summary(), messages: ["needle"])
+        }
+        try setUserVersion(1)
+
+        let rebuilt = try makeStore()
+        let remaining = try await rebuilt.sessionCount()
+        XCTAssertEqual(SessionIndexStore.schemaVersion, 2)
+        XCTAssertEqual(remaining, 0)
+        XCTAssertEqual(try userVersion(), 2)
+
+        try await rebuilt.upsertSession(summary(harness: .claudeCode, model: "claude-fable-5"))
+        let model = try await rebuilt.allSummaries().first?.model
+        XCTAssertEqual(model, "claude-fable-5")
+    }
 
     func testASchemaVersionMismatchDropsAndRebuilds() async throws {
         do {

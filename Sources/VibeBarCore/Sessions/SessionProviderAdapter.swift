@@ -83,14 +83,18 @@ public struct SessionProviderRegistry: Sendable {
         self.byProvider = map
     }
 
-    /// The adapters shipped today. AntiGravity lists and reads like the
-    /// others but refuses to plan a delete — see
-    /// `AntigravitySessionAdapter.deletionPlan`.
+    /// The adapters shipped today, one per `SessionProvider`.
+    ///
+    /// AntiGravity, Claude Cowork, and Cursor list and read like the rest but
+    /// refuse to plan a delete, because another running app owns those stores
+    /// — see `SessionProvider.supportsDeletion`.
     public static func standard(homeDirectory: String = RealHomeDirectory.path) -> SessionProviderRegistry {
         SessionProviderRegistry(adapters: [
             ClaudeSessionAdapter(),
+            ClaudeCoworkSessionAdapter(),
             CodexSessionAdapter(homeDirectory: homeDirectory),
             GrokSessionAdapter(),
+            CursorSessionAdapter(),
             GeminiSessionAdapter(),
             AntigravitySessionAdapter()
         ])

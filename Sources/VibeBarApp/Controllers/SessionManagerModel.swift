@@ -105,7 +105,7 @@ final class SessionManagerModel: ObservableObject {
     /// sessions inside `body` is how a keystroke starts costing frames.
     @Published private(set) var rows: [Row] = []
     @Published private(set) var groupedRows: [ProjectGroup] = []
-    @Published private(set) var providerCounts: [SessionProvider: Int] = [:]
+    @Published private(set) var harnessCounts: [Harness: Int] = [:]
     @Published private(set) var totalSessionCount = 0
     @Published private(set) var isLoadingSummaries = false
 
@@ -117,7 +117,13 @@ final class SessionManagerModel: ObservableObject {
         }
     }
 
-    @Published var providerFilter: Set<SessionProvider>? {
+    /// Which harnesses the list is narrowed to, or `nil` for all of them.
+    ///
+    /// The filter axis is the harness rather than the `SessionProvider`,
+    /// because a Codex rollout tree holds both Codex and ChatGPT Work
+    /// sessions and only the harness stamp tells them apart (AGENTS.md
+    /// § 7.1).
+    @Published var harnessFilter: Set<Harness>? {
         didSet {
             reloadSummaryPage(reset: true)
             rerunSearch()
@@ -330,7 +336,7 @@ final class SessionManagerModel: ObservableObject {
         summaryGeneration &+= 1
         let generation = summaryGeneration
         let offset = reset ? 0 : summaries.count
-        let providers = providerFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
+        let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
         let since = dateRange.start()
         let order: SessionSummaryOrder
         switch sortOrder {
@@ -341,13 +347,13 @@ final class SessionManagerModel: ObservableObject {
         isLoadingSummaries = true
         Task { [weak self] in
             let page = try? await service.summaryPage(
-                providers: providers,
+                harnesses: harnesses,
                 since: since,
                 order: order,
                 offset: offset,
                 limit: Self.summaryPageSize
             )
-            let counts = reset ? (try? await service.providerCounts()) : nil
+            let counts = reset ? (try? await service.harnessCounts()) : nil
             guard let self, generation == self.summaryGeneration else { return }
             self.isLoadingSummaries = false
             guard let page else { return }
@@ -358,7 +364,7 @@ final class SessionManagerModel: ObservableObject {
                 self.summaries.append(contentsOf: page.summaries.filter { !existing.contains($0.id) })
             }
             self.totalSessionCount = page.totalCount
-            if let counts { self.providerCounts = counts }
+            if let counts { self.harnessCounts = counts }
             self.reconcileSelection()
         }
     }
@@ -396,8 +402,8 @@ final class SessionManagerModel: ObservableObject {
 
     private func runSearch(_ needle: String, generation: UInt64) async {
         guard let service else { return }
-        let providers = providerFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
-        let found = (try? await service.search(needle, providers: providers, limit: 200)) ?? []
+        let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
+        let found = (try? await service.search(needle, harnesses: harnesses, limit: 200)) ?? []
         guard generation == searchGeneration else { return }
         hits = found
     }
@@ -464,7 +470,7 @@ final class SessionManagerModel: ObservableObject {
     }
 
     private func passesFilters(_ row: Row) -> Bool {
-        if let providerFilter, !providerFilter.contains(row.summary.provider) { return false }
+        if let harnessFilter, !harnessFilter.contains(row.summary.effectiveHarness) { return false }
         guard let start = dateRange.start() else { return true }
         let stamp = row.summary.lastActiveAt ?? row.summary.createdAt
         guard let stamp else { return false }
@@ -498,25 +504,25 @@ final class SessionManagerModel: ObservableObject {
 
     // MARK: - Filter mutation
 
-    func toggleProvider(_ provider: SessionProvider) {
-        toggleProviders([provider])
+    func toggleHarness(_ harness: Harness) {
+        toggleHarnesses([harness])
     }
 
-    func toggleProviders(_ providers: Set<SessionProvider>) {
-        guard !providers.isEmpty else { return }
-        var next = providerFilter ?? Set(SessionProvider.allCases)
-        if providers.allSatisfy(next.contains) {
-            next.subtract(providers)
+    func toggleHarnesses(_ harnesses: Set<Harness>) {
+        guard !harnesses.isEmpty else { return }
+        var next = harnessFilter ?? Set(Harness.allCases)
+        if harnesses.allSatisfy(next.contains) {
+            next.subtract(harnesses)
         } else {
-            next.formUnion(providers)
+            next.formUnion(harnesses)
         }
         // Everything selected is the same statement as no filter, and saying
         // it that way keeps the chip row and the FTS query in agreement.
-        setProviderFilter(next.count == SessionProvider.allCases.count ? nil : next)
+        setHarnessFilter(next.count == Harness.allCases.count ? nil : next)
     }
 
-    func setProviderFilter(_ providers: Set<SessionProvider>?) {
-        providerFilter = (providers?.isEmpty ?? true) ? nil : providers
+    func setHarnessFilter(_ harnesses: Set<Harness>?) {
+        harnessFilter = (harnesses?.isEmpty ?? true) ? nil : harnesses
     }
 
     // MARK: - Selection
@@ -648,11 +654,13 @@ final class SessionManagerModel: ObservableObject {
 
     // MARK: - Deletion
 
-    /// AntiGravity holds live SQLite handles on its conversation databases,
-    /// so its adapter refuses to plan a delete. Filtering those rows out here
-    /// keeps the confirmation sheet from promising something that will fail.
+    /// AntiGravity, Cursor, and Claude Cowork all keep their stores under
+    /// another running app, so their adapters refuse to plan a delete.
+    /// Filtering those rows out here keeps the confirmation sheet from
+    /// promising something that will fail — the fact itself lives in Core so
+    /// the gate and the adapters cannot drift apart.
     static func isDeletable(_ summary: SessionSummary) -> Bool {
-        summary.provider != .antigravity
+        summary.provider.supportsDeletion
     }
 
     var checkedSummaries: [SessionSummary] {
@@ -671,7 +679,10 @@ final class SessionManagerModel: ObservableObject {
     func requestDelete(_ summaries: [SessionSummary]) {
         let deletable = summaries.filter(Self.isDeletable)
         guard !deletable.isEmpty else {
-            show(toast: "AntiGravity sessions are managed by the IDE.")
+            // One refusal reason per provider, so the toast says which app
+            // owns the store rather than a generic "not supported".
+            let refused = summaries.first?.provider ?? .antigravity
+            show(toast: SessionDeleteError.providerIsReadOnly(refused).message)
             return
         }
         pendingDeletion = deletable

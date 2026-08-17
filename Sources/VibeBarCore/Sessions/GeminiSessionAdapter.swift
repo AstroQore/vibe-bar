@@ -60,6 +60,8 @@ public struct GeminiSessionAdapter: SessionProviderAdapter {
         return SessionSummary(
             provider: .gemini,
             sessionID: sessionID,
+            harness: .geminiCLI,
+            model: Self.model(in: messages) ?? SessionParsing.firstString(root["model"]),
             title: SessionParsing.display(Self.text(firstUser), limit: SessionParsing.titleLimit),
             summary: SessionParsing.display(Self.text(last), limit: SessionParsing.summaryLimit),
             projectDir: projectRoot(for: fileURL),
@@ -113,6 +115,20 @@ public struct GeminiSessionAdapter: SessionProviderAdapter {
         case "system": return .system
         default: return .other
         }
+    }
+
+    /// Newer Gemini CLI vintages stamp the model on each turn; older ones
+    /// write no model at all, and the session then simply has none. The whole
+    /// document is already in memory here, so this costs nothing extra.
+    static func model(in messages: [[String: Any]]) -> String? {
+        for entry in messages {
+            if let model = SessionParsing.firstString(
+                entry["model"], entry["modelName"], entry["model_name"]
+            ) {
+                return model
+            }
+        }
+        return nil
     }
 
     static func text(_ entry: [String: Any]?) -> String {
