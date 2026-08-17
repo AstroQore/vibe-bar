@@ -112,7 +112,7 @@ final class ClaudeUptimeScrapeTests: XCTestCase {
         </script>
         <script>window.uptimeData = \(blob);</script>
         """
-        let map = ServiceStatusClient.parseClaudeUptimeData(html: html)
+        let map = ServiceStatusClient.parseStatuspageUptimeData(html: html)
         XCTAssertEqual(map.count, 1)
         XCTAssertEqual(map["abc123"]?.days.count, 2)
         XCTAssertEqual(map["abc123"]?.days.first?.outages["p"], 5100)
@@ -120,13 +120,13 @@ final class ClaudeUptimeScrapeTests: XCTestCase {
 
     func testParsesLegacyVarUptimeDataAnchor() {
         let html = "<script>var uptimeData = \(blob);</script>"
-        let map = ServiceStatusClient.parseClaudeUptimeData(html: html)
+        let map = ServiceStatusClient.parseStatuspageUptimeData(html: html)
         XCTAssertEqual(map.count, 1)
         XCTAssertEqual(map["abc123"]?.component.name, "Claude Code")
     }
 
     func testReturnsEmptyWhenNoBlobDecodes() {
         let html = "<script>var uptimeData = window.uptimeData; var x = {\"a\": 1};</script>"
-        XCTAssertTrue(ServiceStatusClient.parseClaudeUptimeData(html: html).isEmpty)
+        XCTAssertTrue(ServiceStatusClient.parseStatuspageUptimeData(html: html).isEmpty)
     }
 }
