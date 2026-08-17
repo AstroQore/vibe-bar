@@ -139,16 +139,17 @@ public actor ServiceStatusClient {
                 now: now
             )
         }
-        let components: [ServiceComponentSummary]
-        if parsedComponents.isEmpty {
-            components = parseXAIOverviewComponents(
-                overviewHTML,
-                dayCount: dayCount,
-                now: now
-            )
-        } else {
-            components = parsedComponents.map(\.component)
-        }
+        let detailedComponents = parsedComponents.map(\.component)
+        let detailedNames = Set(detailedComponents.map { xAISlug($0.name) })
+        // Every component page is an independent request. Keep the richer
+        // history for pages that succeeded, then backfill any failed request
+        // from the all-components overview so its outage status is not lost.
+        let overviewFallbacks = parseXAIOverviewComponents(
+            overviewHTML,
+            dayCount: dayCount,
+            now: now
+        ).filter { !detailedNames.contains(xAISlug($0.name)) }
+        let components = detailedComponents + overviewFallbacks
 
         let recentIncidents = parsedComponents
             .flatMap(\.incidents)

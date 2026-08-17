@@ -190,6 +190,12 @@ public final class QuotaRefreshScheduler {
         boundaryAccountIds = []
         boundaryTimer?.invalidate()
         boundaryTimer = nil
+        triggerBoundaryRefresh(accountIds: ids)
+    }
+
+    /// Kept internal so the scheduler's coalescing behavior can be exercised
+    /// deterministically without installing a wall-clock Timer in tests.
+    func triggerBoundaryRefresh(accountIds ids: Set<String>) {
         let accounts = accountsProvider().filter { ids.contains($0.id) }
         guard !accounts.isEmpty else {
             scheduleBoundaryTimer()
@@ -226,6 +232,10 @@ public final class QuotaRefreshScheduler {
             guard let self else { return }
             for account in accounts where !Task.isCancelled {
                 _ = await self.service.refresh(account)
+                // A later trigger (especially the post-reset observation) must
+                // be able to queue an account that already completed earlier
+                // in this still-running multi-account walk.
+                self.activeAccountIds.remove(account.id)
             }
             self.refreshTask = nil
             self.activeAccountIds = []

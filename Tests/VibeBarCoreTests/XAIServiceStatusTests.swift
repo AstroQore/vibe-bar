@@ -37,8 +37,11 @@ final class XAIServiceStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.tool, .grok)
         XCTAssertEqual(snapshot.indicator, .none)
         XCTAssertEqual(snapshot.description, "All services operational")
-        XCTAssertEqual(snapshot.components.count, 1)
-        XCTAssertEqual(snapshot.components[0].status, .operational)
+        XCTAssertEqual(snapshot.components.count, 2)
+        XCTAssertEqual(
+            snapshot.components.first { $0.name == "API (us-east-1.api.x.ai)" }?.status,
+            .operational
+        )
         XCTAssertEqual(snapshot.recentIncidents.first?.name, "Requests Using grok-imagine Models have Reduced Success Rate")
         XCTAssertEqual(snapshot.recentIncidents.first?.impact, .minor)
         let incident = try XCTUnwrap(snapshot.recentIncidents.first)
@@ -95,5 +98,35 @@ final class XAIServiceStatusTests: XCTestCase {
         let affectedDays = try XCTUnwrap(snapshot.components.first).recentDays
             .filter { $0.worstImpact != nil }
         XCTAssertEqual(affectedDays.count, 2)
+    }
+
+    func testOverviewBackfillsAComponentWhoseDetailRequestFailed() throws {
+        let now = try XCTUnwrap(ServiceStatusClient.parseXAIStatusDate("May 22, 2026, 12:00 PM UTC"))
+        let snapshot = ServiceStatusClient.parseXAIStatusPages(
+            tool: .grok,
+            overviewHTML: """
+            <a>Grok (Web) unavailable</a>
+            <a>API (us-east-1.api.x.ai) available</a>
+            """,
+            componentPages: [(
+                id: "api-us-east-1",
+                name: "API (us-east-1.api.x.ai)",
+                url: URL(string: "https://status.x.ai/api-us-east-1")!,
+                html: "<h3>Service fully operational</h3>"
+            )],
+            dayCount: 30,
+            now: now
+        )
+
+        XCTAssertEqual(snapshot.components.count, 2)
+        XCTAssertEqual(snapshot.indicator, .critical)
+        XCTAssertEqual(
+            snapshot.components.first { $0.name == "Grok (Web)" }?.status,
+            .majorOutage
+        )
+        XCTAssertEqual(
+            snapshot.components.first { $0.name == "API (us-east-1.api.x.ai)" }?.status,
+            .operational
+        )
     }
 }

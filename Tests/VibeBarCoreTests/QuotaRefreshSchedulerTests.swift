@@ -239,6 +239,38 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         }
         XCTAssertNotNil(service.cachedQuota(for: other.id))
     }
+
+    func testBoundaryRefreshRequeuesAccountCompletedEarlierInActiveWalk() async {
+        let first = AccountIdentity(id: "finished-a", tool: .claude, source: .oauthCLI)
+        let blocking = AccountIdentity(id: "blocking-b", tool: .gemini, source: .webCookie)
+        let counter = CountingQuotaAdapter(tool: .claude)
+        let gate = QuotaRefreshGate()
+        let service = QuotaService(
+            adapters: [
+                .claude: counter,
+                .gemini: GatedQuotaAdapter(tool: .gemini, gate: gate)
+            ],
+            mockProvider: { false }
+        )
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { [first, blocking] },
+            intervalProvider: { 600 }
+        )
+
+        scheduler.triggerRefresh()
+        await gate.waitUntilStarted()
+        XCTAssertEqual(counter.fetchCount, 1)
+
+        scheduler.triggerBoundaryRefresh(accountIds: [first.id])
+        await gate.release()
+        for _ in 0..<40 {
+            if counter.fetchCount == 2 { break }
+            await Task.yield()
+        }
+
+        XCTAssertEqual(counter.fetchCount, 2)
+    }
 }
 
 private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {
@@ -258,5 +290,63 @@ private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {
         case .failure(let error):
             throw error
         }
+    }
+}
+
+private final class CountingQuotaAdapter: QuotaAdapter, @unchecked Sendable {
+    let tool: ToolType
+    private let lock = NSLock()
+    private var count = 0
+
+    init(tool: ToolType) {
+        self.tool = tool
+    }
+
+    var fetchCount: Int {
+        lock.withLock { count }
+    }
+
+    func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        lock.withLock { count += 1 }
+        return AccountQuota(accountId: account.id, tool: tool, buckets: [], queriedAt: Date())
+    }
+}
+
+private actor QuotaRefreshGate {
+    private var started = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func block() async {
+        started = true
+        let waiters = startWaiters
+        startWaiters = []
+        for waiter in waiters { waiter.resume() }
+        await withCheckedContinuation { releaseContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+private final class GatedQuotaAdapter: QuotaAdapter, @unchecked Sendable {
+    let tool: ToolType
+    private let gate: QuotaRefreshGate
+
+    init(tool: ToolType, gate: QuotaRefreshGate) {
+        self.tool = tool
+        self.gate = gate
+    }
+
+    func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        await gate.block()
+        return AccountQuota(accountId: account.id, tool: tool, buckets: [], queriedAt: Date())
     }
 }
