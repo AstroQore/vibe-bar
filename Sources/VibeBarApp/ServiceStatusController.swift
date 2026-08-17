@@ -91,3 +91,51 @@ final class ServiceStatusController: ObservableObject {
         }
     }
 }
+
+// MARK: - Row projection
+
+extension ServiceStatusController {
+    /// Everything one service-status row needs, derived once.
+    struct Projection {
+        let snapshot: ServiceStatusSnapshot?
+        let isRefreshing: Bool
+        /// Non-nil only when *no* member produced a snapshot. A row backed
+        /// by the healthy half of a pair reports that snapshot, not the
+        /// failure of its sibling feed.
+        let error: String?
+    }
+
+    /// The feeds that roll up into one row. Status rows render at the L1
+    /// company level, so Google AI covers Gemini + AntiGravity and SpaceXAI
+    /// covers Grok + Cursor; every other provider is its own row.
+    static func statusMembers(of tool: ToolType) -> [ToolType] {
+        switch tool {
+        case .gemini: ToolType.googleAIPair
+        case .grok: ToolType.grokFamily
+        default: [tool]
+        }
+    }
+
+    func projection(for tool: ToolType) -> Projection {
+        let snapshot: ServiceStatusSnapshot? = switch tool {
+        case .gemini:
+            ServiceStatusSnapshot.preferredGoogleAI(
+                gemini: snapshotByTool[.gemini],
+                antigravity: snapshotByTool[.antigravity]
+            )
+        case .grok:
+            ServiceStatusSnapshot.mergedSpaceXAI(
+                grok: snapshotByTool[.grok],
+                cursor: snapshotByTool[.cursor]
+            )
+        default:
+            snapshotByTool[tool]
+        }
+        let members = Self.statusMembers(of: tool)
+        return Projection(
+            snapshot: snapshot,
+            isRefreshing: members.contains(where: inFlight.contains),
+            error: snapshot == nil ? members.compactMap { errorByTool[$0] }.first : nil
+        )
+    }
+}

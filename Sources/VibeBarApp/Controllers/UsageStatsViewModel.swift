@@ -125,12 +125,17 @@ final class UsageStatsViewModel: ObservableObject {
     }
 
     /// This changes the ledger query's grouping, not just the chart label.
-    @Published var trendGranularity: UsageTrendGranularity = .automatic {
+    /// `nil` is the automatic bucket.
+    @Published var trendGranularity: UsageTrendBucket? {
         didSet {
-            guard oldValue != trendGranularity else { return }
+            guard oldValue != trendGranularity, !isApplyingGranularityFallback else { return }
             reload(cascadeModels: false)
         }
     }
+    /// Set while `fallBackToAutomaticGranularity` writes `trendGranularity`,
+    /// so the reload it triggers is issued explicitly with the original
+    /// caller's cascade intent instead of the `didSet`'s hardcoded `false`.
+    private var isApplyingGranularityFallback = false
 
     @Published var refreshInterval: RefreshInterval = .off {
         didSet {
@@ -160,7 +165,6 @@ final class UsageStatsViewModel: ObservableObject {
     @Published private var results = UsageResults.empty
     var summary: UsageSummaryMetrics { results.summary }
     var trend: UsageTrendSeries { results.trend }
-    var providerStats: [UsageProviderStat] { results.providerStats }
     var companyProviderStats: [UsageProviderStat] {
         UsageProviderStat.mergedByCompany(results.providerStats)
     }
@@ -219,11 +223,10 @@ final class UsageStatsViewModel: ObservableObject {
     /// interactive chart. The renderer also thins marks, but avoiding a huge
     /// zero-filled provider matrix here keeps a years-long custom range from
     /// allocating tens of thousands of points before drawing even begins.
-    func isTrendGranularityAvailable(_ granularity: UsageTrendGranularity) -> Bool {
-        guard granularity != .automatic else { return true }
+    func isTrendGranularityAvailable(_ granularity: UsageTrendBucket?) -> Bool {
+        guard let granularity else { return true }
         if granularity == .hour, !isHourlyTrendAvailable { return false }
         let seconds: TimeInterval = switch granularity {
-        case .automatic: 1
         case .hour: 3_600
         case .day: 86_400
         case .week: 7 * 86_400
@@ -321,10 +324,6 @@ final class UsageStatsViewModel: ObservableObject {
             harnesses: selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } },
             models: selectedModels.map { $0.sorted() }
         )
-    }
-
-    var trendBucket: UsageTrendBucket {
-        trend.bucket
     }
 
     // MARK: - Dependencies
@@ -455,11 +454,6 @@ final class UsageStatsViewModel: ObservableObject {
         setSelectedModels(next.count == availableModels.count ? nil : next)
     }
 
-    func setCustomRange(start: Date, end: Date) {
-        customStart = start
-        customEnd = end
-    }
-
     func setActiveBreakdown(_ breakdown: Breakdown) {
         guard activeBreakdown != breakdown else { return }
         activeBreakdown = breakdown
@@ -499,11 +493,19 @@ final class UsageStatsViewModel: ObservableObject {
         }
     }
 
+    /// Re-run the query at the automatic bucket, keeping the caller's cascade
+    /// intent. Assigning `trendGranularity` reloads through its `didSet`,
+    /// which always passes `cascadeModels: false`; a reload that narrowed the
+    /// provider set would then skip `pruneSelectedModels` and strand a model
+    /// filter the new set can no longer produce.
+    private func fallBackToAutomaticGranularity(cascadeModels: Bool) {
+        isApplyingGranularityFallback = true
+        trendGranularity = nil
+        isApplyingGranularityFallback = false
+        reload(cascadeModels: cascadeModels)
+    }
+
     private func reload(cascadeModels: Bool) {
-        if !isTrendGranularityAvailable(trendGranularity) {
-            trendGranularity = .automatic
-            return
-        }
         generation &+= 1
         let generation = self.generation
         reloadTask?.cancel()
@@ -529,10 +531,14 @@ final class UsageStatsViewModel: ObservableObject {
                 guard !Task.isCancelled, generation == self.generation else { return }
                 self.allTimeStart = earliest.map { Calendar.current.startOfDay(for: $0) }
                     ?? Date().addingTimeInterval(-60)
-                if !self.isTrendGranularityAvailable(self.trendGranularity) {
-                    self.trendGranularity = .automatic
-                    return
-                }
+            }
+            // Only now is `range` settled: under "All" it depends on the
+            // ledger's earliest row, which the caller had just cleared, so a
+            // check before this point tested a 60-second placeholder window
+            // and could never fail.
+            if !self.isTrendGranularityAvailable(self.trendGranularity) {
+                self.fallBackToAutomaticGranularity(cascadeModels: cascadeModels)
+                return
             }
             let tools = self.filter.tools
             let harnesses = self.filter.harnesses
@@ -577,7 +583,7 @@ final class UsageStatsViewModel: ObservableObject {
                 // Keep the Picker's intent and the returned series aligned.
                 // `trend` also falls back defensively in case the floor moves
                 // between this check and the subsequent query.
-                self.trendGranularity = .automatic
+                self.fallBackToAutomaticGranularity(cascadeModels: cascadeModels)
                 return
             }
             let granularity = self.trendGranularity
@@ -712,7 +718,7 @@ final class UsageStatsViewModel: ObservableObject {
     private nonisolated static func load(
         ledger: UsageEventLedger,
         filter: UsageQueryFilter,
-        granularity: UsageTrendGranularity,
+        granularity: UsageTrendBucket?,
         breakdown: Breakdown
     ) async -> LoadedUsage {
         let summary = (try? await ledger.summary(filter)) ?? .empty

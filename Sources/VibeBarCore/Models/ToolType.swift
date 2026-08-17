@@ -129,19 +129,12 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     /// Provider keys exposed by the Workbench usage ledger. Cursor dashboard
-    /// events are a source inside the SpaceXAI provider total, matching the combined
-    /// cost card instead of creating a second, contradictory provider total.
-    public static var usageStatsProviders: [ToolType] {
-        var seen: Set<ToolType> = []
-        return costAwareProviders.compactMap { tool in
-            let representative = tool.usageStatsRepresentative
-            return seen.insert(representative).inserted ? representative : nil
-        }
-    }
-
-    public var usageStatsRepresentative: ToolType {
-        self
-    }
+    /// events are a source inside the SpaceXAI provider total, matching the
+    /// combined cost card instead of creating a second, contradictory provider
+    /// total — which is exactly the set that can be priced per token, so this
+    /// is `costAwareProviders`. It stays a separate name because the two
+    /// answer different questions and could diverge again.
+    public static var usageStatsProviders: [ToolType] { costAwareProviders }
 
     public static var statusPageProviders: [ToolType] {
         allCases.filter { $0.supportsStatusPage }

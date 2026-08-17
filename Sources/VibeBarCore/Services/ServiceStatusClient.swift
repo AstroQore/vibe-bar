@@ -2,13 +2,17 @@ import Foundation
 
 public actor ServiceStatusClient {
     private let session: URLSession
-    private let calendar: Calendar
+
+    /// Every provider publishes its day buckets in UTC, so all of the day
+    /// math here shares one calendar rather than each parser building its own.
+    private nonisolated static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
 
     public init(session: URLSession = .shared) {
         self.session = session
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        self.calendar = cal
     }
 
     public func fetch(
@@ -118,22 +122,16 @@ public actor ServiceStatusClient {
 
         let worstStatus = components.map(\.status).max { $0.severity < $1.severity } ?? .operational
         let indicator = xAIIndicator(for: worstStatus)
-        let overviewText = visibleTextLines(fromHTML: overviewHTML).joined(separator: " ").lowercased()
-        let description: String
-        if overviewText.contains("no incidents declared") && indicator == .none {
-            description = "All services operational"
-        } else {
-            description = xAIDescription(for: indicator)
-        }
 
-        let updatedAt = recentIncidents.compactMap(\.resolvedAt).max()
-            ?? recentIncidents.map(\.createdAt).max()
-            ?? now
+        // Every incident this parser emits comes from a "Resolved · Duration:"
+        // row, so `resolvedAt` is never nil and an empty result means there
+        // were no incidents at all.
+        let updatedAt = recentIncidents.compactMap(\.resolvedAt).max() ?? now
 
         return ServiceStatusSnapshot(
             tool: tool,
             indicator: indicator,
-            description: description,
+            description: indicator.summaryDescription,
             updatedAt: updatedAt,
             groups: [],
             components: components,
@@ -156,7 +154,7 @@ public actor ServiceStatusClient {
             componentId: id,
             url: url
         )
-        let dayBuckets = buildXAIDayBuckets(
+        let dayBuckets = buildDayBuckets(
             from: incidents.map { incident in
                 (start: incident.createdAt, end: incident.resolvedAt ?? now, impact: incident.impact)
             },
@@ -168,7 +166,7 @@ public actor ServiceStatusClient {
             name: name,
             status: status,
             groupId: nil,
-            uptimePercent: xAIUptime(dayBuckets),
+            uptimePercent: computeUptime(dayBuckets),
             recentDays: dayBuckets
         )
         return (component, incidents)
@@ -180,16 +178,19 @@ public actor ServiceStatusClient {
         now: Date
     ) -> [ServiceComponentSummary] {
         let lines = visibleTextLines(fromHTML: html)
-        let statusWords = ["available", "degraded", "unavailable", "maintenance"]
+        // The overview lists one row per service as "<name> <word>", so the
+        // trailing vocabulary word is the status and everything before it is
+        // the name.
         let services = lines.compactMap { line -> (name: String, status: ComponentStatusLevel)? in
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let word = statusWords.first(where: { trimmed.lowercased().hasSuffix(" \($0)") }) else {
-                return nil
-            }
-            let name = String(trimmed.dropLast(word.count))
+            let lowered = trimmed.lowercased()
+            guard let token = xAIStatusVocabulary.first(where: {
+                $0.endsAnOverviewRow && lowered.hasSuffix(" \($0.token)")
+            }) else { return nil }
+            let name = String(trimmed.dropLast(token.token.count))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return nil }
-            return (name, xAIComponentStatus(fromAvailabilityWord: word))
+            return (name, token.level)
         }
         return services.map { service in
             ServiceComponentSummary(
@@ -198,7 +199,7 @@ public actor ServiceStatusClient {
                 status: service.status,
                 groupId: nil,
                 uptimePercent: service.status == .operational ? 100 : nil,
-                recentDays: buildXAIDayBuckets(from: [], dayCount: dayCount, now: now)
+                recentDays: buildDayBuckets(from: [], dayCount: dayCount, now: now)
             )
         }
     }
@@ -230,7 +231,7 @@ public actor ServiceStatusClient {
                     name: name,
                     impact: impact,
                     createdAt: createdAt,
-                    resolvedAt: createdAt.addingTimeInterval(duration ?? 0),
+                    resolvedAt: createdAt.addingTimeInterval(duration),
                     url: url
                 )
             )
@@ -246,14 +247,17 @@ public actor ServiceStatusClient {
         return formatter.date(from: raw)
     }
 
-    nonisolated static func parseXAIDuration(_ raw: String) -> TimeInterval? {
+    /// Sum of every "<number> <unit>" the duration text spells out. An
+    /// unparseable duration is 0 — the caller only ever adds it to the
+    /// incident's start, so an unresolvable text and a zero-length incident
+    /// are the same answer.
+    nonisolated static func parseXAIDuration(_ raw: String) -> TimeInterval {
         let pattern = #"(\d+(?:\.\d+)?)\s*(days?|hours?|minutes?|seconds?)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return nil
+            return 0
         }
         let range = NSRange(raw.startIndex..<raw.endIndex, in: raw)
         var total: TimeInterval = 0
-        var matched = false
         regex.enumerateMatches(in: raw, options: [], range: range) { match, _, _ in
             guard let match,
                   let valueRange = Range(match.range(at: 1), in: raw),
@@ -274,52 +278,71 @@ public actor ServiceStatusClient {
                 multiplier = 1
             }
             total += value * multiplier
-            matched = true
         }
-        return matched ? total : nil
+        return total
     }
+
+    private struct XAIStatusToken {
+        let token: String
+        let level: ComponentStatusLevel
+        /// Most tokens are phrases matched anywhere in a component page's
+        /// prose. The two halves of the available/unavailable pair are not:
+        /// "available" is a suffix of "unavailable", so they only count as a
+        /// line's final word.
+        let matchesAnywhere: Bool
+        /// Also part of the vocabulary that terminates an all-components
+        /// overview row.
+        let endsAnOverviewRow: Bool
+
+        init(
+            _ token: String,
+            _ level: ComponentStatusLevel,
+            matchesAnywhere: Bool = true,
+            endsAnOverviewRow: Bool = false
+        ) {
+            self.token = token
+            self.level = level
+            self.matchesAnywhere = matchesAnywhere
+            self.endsAnOverviewRow = endsAnOverviewRow
+        }
+
+        func matches(_ line: String) -> Bool {
+            matchesAnywhere
+                ? line.contains(token)
+                : (line == token || line.hasSuffix(" \(token)"))
+        }
+    }
+
+    /// status.x.ai writes health as prose rather than a machine-readable
+    /// status, and the same vocabulary appears on the per-component pages and
+    /// on the all-components overview. **Order is load-bearing** — the first
+    /// hit wins, so the specific phrasings must precede the bare words they
+    /// contain ("service unavailable" before "unavailable") and "maintenance"
+    /// / "degraded" must precede "available", or "Under maintenance —
+    /// service available shortly" would read as fully operational.
+    private nonisolated static let xAIStatusVocabulary: [XAIStatusToken] = [
+        XAIStatusToken("service fully operational", .operational),
+        XAIStatusToken("not aware of any issues", .operational),
+        XAIStatusToken("major outage", .majorOutage),
+        XAIStatusToken("service unavailable", .majorOutage),
+        XAIStatusToken("unavailable", .majorOutage, matchesAnywhere: false, endsAnOverviewRow: true),
+        XAIStatusToken("partial outage", .partialOutage),
+        XAIStatusToken("maintenance", .underMaintenance, endsAnOverviewRow: true),
+        XAIStatusToken("degraded", .degradedPerformance, endsAnOverviewRow: true),
+        XAIStatusToken("disruption", .degradedPerformance),
+        XAIStatusToken("available", .operational, matchesAnywhere: false, endsAnOverviewRow: true)
+    ]
 
     private nonisolated static func xAIComponentStatus(from lines: [String]) -> ComponentStatusLevel {
         // Status appears before Past Issues. Parse each visible line in order
-        // so a historical incident cannot override the current status, and
-        // require an availability word boundary so "unavailable" never
-        // satisfies "available".
+        // so a historical incident cannot override the current status.
         for rawLine in lines.prefix(12) {
             let line = rawLine.lowercased()
-            if line.contains("service fully operational")
-                || line.contains("not aware of any issues") {
-                return .operational
-            }
-            if line.contains("major outage")
-                || line.contains("service unavailable")
-                || line == "unavailable"
-                || line.hasSuffix(" unavailable") {
-                return .majorOutage
-            }
-            if line.contains("partial outage") {
-                return .partialOutage
-            }
-            if line.contains("maintenance") {
-                return .underMaintenance
-            }
-            if line.contains("degraded") || line.contains("disruption") {
-                return .degradedPerformance
-            }
-            if line == "available" || line.hasSuffix(" available") {
-                return .operational
+            if let hit = xAIStatusVocabulary.first(where: { $0.matches(line) }) {
+                return hit.level
             }
         }
         return .operational
-    }
-
-    private nonisolated static func xAIComponentStatus(fromAvailabilityWord word: String) -> ComponentStatusLevel {
-        switch word.lowercased() {
-        case "available": return .operational
-        case "maintenance": return .underMaintenance
-        case "degraded": return .degradedPerformance
-        case "unavailable": return .majorOutage
-        default: return .operational
-        }
     }
 
     private nonisolated static func xAIIncidentImpact(_ raw: String) -> IncidentImpact {
@@ -341,16 +364,6 @@ public actor ServiceStatusClient {
         }
     }
 
-    private nonisolated static func xAIDescription(for indicator: StatusIndicator) -> String {
-        switch indicator {
-        case .none: return "All services operational"
-        case .maintenance: return "Under maintenance"
-        case .minor: return "Service issue"
-        case .major: return "Partial outage"
-        case .critical: return "Major outage"
-        }
-    }
-
     private nonisolated static func visibleTextLines(fromHTML html: String) -> [String] {
         var text = html
             .replacingOccurrences(of: "(?is)<script.*?</script>", with: "\n", options: .regularExpression)
@@ -367,44 +380,6 @@ public actor ServiceStatusClient {
             .split(separator: "\n")
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-    }
-
-    private nonisolated static func buildXAIDayBuckets(
-        from impacts: [(start: Date, end: Date, impact: IncidentImpact)],
-        dayCount: Int,
-        now: Date
-    ) -> [DayUptime] {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let today = calendar.startOfDay(for: now)
-        var bucket: [Date: IncidentImpact] = [:]
-        for entry in impacts {
-            let start = calendar.startOfDay(for: entry.start)
-            let end = calendar.startOfDay(for: entry.end)
-            var date = start
-            while date <= end {
-                if let existing = bucket[date] {
-                    if entry.impact.severity > existing.severity {
-                        bucket[date] = entry.impact
-                    }
-                } else {
-                    bucket[date] = entry.impact
-                }
-                guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
-                date = next
-                if date > today { break }
-            }
-        }
-        return stride(from: dayCount - 1, through: 0, by: -1).compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
-            return DayUptime(date: date, worstImpact: bucket[date])
-        }
-    }
-
-    private nonisolated static func xAIUptime(_ days: [DayUptime]) -> Double {
-        guard !days.isEmpty else { return 0 }
-        let clean = days.filter { $0.worstImpact == nil }.count
-        return Double(clean) / Double(days.count) * 100
     }
 
     private nonisolated static func xAISlug(_ raw: String) -> String {
@@ -445,18 +420,17 @@ public actor ServiceStatusClient {
             return (start: start, end: end, impact: ServiceStatusClient.googleStatusImpact(incident))
         }
 
-        let perDay = buildDayBuckets(from: impacts, dayCount: dayCount, now: now)
-        let uptime = computeUptime(perDay)
+        let perDay = Self.buildDayBuckets(from: impacts, dayCount: dayCount, now: now)
+        let uptime = Self.computeUptime(perDay)
 
         // The component summary for the dedicated card. Google's feed
         // doesn't expose per-subsystem health, so the single "Gemini"
         // component reflects the worst recent impact.
         let currentImpact = perDay.last?.worstImpact ?? .none
-        let currentStatus: ComponentStatusLevel = ServiceStatusClient.componentStatus(for: currentImpact)
         let component = ServiceComponentSummary(
             id: Self.googleGeminiProductId,
             name: tool == .antigravity ? "Antigravity (shared Gemini status)" : "Gemini",
-            status: currentStatus,
+            status: currentImpact.componentStatus,
             groupId: nil,
             uptimePercent: uptime,
             recentDays: perDay
@@ -482,15 +456,7 @@ public actor ServiceStatusClient {
             .prefix(4)
             .map { $0.1 }
 
-        let topIndicator: StatusIndicator = ServiceStatusClient.statusIndicator(for: currentImpact)
-        let description: String
-        switch topIndicator {
-        case .none: description = "All services operational"
-        case .minor: description = "Service issue"
-        case .major: description = "Partial outage"
-        case .critical: description = "Major outage"
-        case .maintenance: description = "Under maintenance"
-        }
+        let topIndicator = currentImpact.indicator
 
         let mostRecentUpdate = geminiIncidents
             .compactMap { incident -> Date? in
@@ -504,7 +470,7 @@ public actor ServiceStatusClient {
         return ServiceStatusSnapshot(
             tool: tool,
             indicator: topIndicator,
-            description: description,
+            description: topIndicator.summaryDescription,
             updatedAt: mostRecentUpdate,
             groups: [],
             components: [component],
@@ -528,26 +494,6 @@ public actor ServiceStatusClient {
         if impact.contains("DEGRADED") || impact.contains("DELAY")  { return .minor }
         if impact.contains("MAINTENANCE") { return .maintenance }
         return .minor
-    }
-
-    private nonisolated static func componentStatus(for impact: IncidentImpact) -> ComponentStatusLevel {
-        switch impact {
-        case .none:        return .operational
-        case .maintenance: return .underMaintenance
-        case .minor:       return .degradedPerformance
-        case .major:       return .partialOutage
-        case .critical:    return .majorOutage
-        }
-    }
-
-    private nonisolated static func statusIndicator(for impact: IncidentImpact) -> StatusIndicator {
-        switch impact {
-        case .none:        return .none
-        case .maintenance: return .maintenance
-        case .minor:       return .minor
-        case .major:       return .major
-        case .critical:    return .critical
-        }
     }
 
     // MARK: - Classic Statuspage (summary/incidents + embedded uptimeData)
@@ -596,9 +542,9 @@ public actor ServiceStatusClient {
                     name: raw.name,
                     status: raw.status,
                     groupId: raw.group_id,
-                    uptimePercent: rawDays.map { computeStatuspageUptime($0, dayCount: dayCount) },
+                    uptimePercent: rawDays.map { Self.computeStatuspageUptime($0, dayCount: dayCount) },
                     recentDays: rawDays.map {
-                        buildStatuspageDays(from: $0, dayCount: dayCount, now: now)
+                        Self.buildStatuspageDays(from: $0, dayCount: dayCount, now: now)
                     } ?? []
                 )
             )
@@ -646,12 +592,12 @@ public actor ServiceStatusClient {
         var components: [ServiceComponentSummary] = []
         for raw in componentsDTO.components {
             let groupId = groupAssignments[raw.id]
-            let perDay = buildDayBuckets(
+            let perDay = Self.buildDayBuckets(
                 from: perComponentIncidents[raw.id] ?? [],
                 dayCount: dayCount,
                 now: now
             )
-            let uptime: Double? = uptimeMap[raw.id] ?? (perDay.isEmpty ? nil : computeUptime(perDay))
+            let uptime: Double? = uptimeMap[raw.id] ?? (perDay.isEmpty ? nil : Self.computeUptime(perDay))
             components.append(
                 ServiceComponentSummary(
                     id: raw.id,
@@ -726,7 +672,7 @@ public actor ServiceStatusClient {
 
     // MARK: - Day bucket helpers
 
-    private func buildDayBuckets(
+    private nonisolated static func buildDayBuckets(
         from impacts: [(start: Date, end: Date, impact: IncidentImpact)],
         dayCount: Int,
         now: Date
@@ -758,7 +704,7 @@ public actor ServiceStatusClient {
         return result
     }
 
-    private func buildStatuspageDays(
+    private nonisolated static func buildStatuspageDays(
         from days: [StatuspageDay],
         dayCount: Int,
         now: Date
@@ -766,9 +712,9 @@ public actor ServiceStatusClient {
         let today = calendar.startOfDay(for: now)
         var byDate: [Date: IncidentImpact?] = [:]
         for day in days {
-            guard let parsed = ServiceStatusClient.parseDate(day.date) else { continue }
+            guard let parsed = parseDate(day.date) else { continue }
             let key = calendar.startOfDay(for: parsed)
-            byDate[key] = ServiceStatusClient.statuspageOutageImpact(day.outages)
+            byDate[key] = statuspageOutageImpact(day.outages)
         }
         var result: [DayUptime] = []
         for offset in stride(from: dayCount - 1, through: 0, by: -1) {
@@ -799,13 +745,13 @@ public actor ServiceStatusClient {
         return formatter.date(from: raw)
     }
 
-    private func computeUptime(_ days: [DayUptime]) -> Double {
+    private nonisolated static func computeUptime(_ days: [DayUptime]) -> Double {
         guard !days.isEmpty else { return 0 }
         let clean = days.filter { $0.worstImpact == nil }.count
         return Double(clean) / Double(days.count) * 100
     }
 
-    private func computeStatuspageUptime(_ days: [StatuspageDay], dayCount: Int) -> Double {
+    private nonisolated static func computeStatuspageUptime(_ days: [StatuspageDay], dayCount: Int) -> Double {
         // Statuspage uptime: 100 - (total_outage_seconds / total_window_seconds) * 100
         // Outage values in `days[].outages` dict are in seconds.
         let windowSeconds = Double(dayCount) * 86400.0

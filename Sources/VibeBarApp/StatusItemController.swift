@@ -420,33 +420,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func statusSummaryLine(for tool: ToolType) -> String {
-        let members: [ToolType] = switch tool {
-        case .gemini: [.gemini, .antigravity]
-        case .grok: [.grok, .cursor]
-        default: [tool]
-        }
-        if members.contains(where: environment.serviceStatus.inFlight.contains) {
+        let projection = environment.serviceStatus.projection(for: tool)
+        if projection.isRefreshing {
             return "\(tool.statusProviderName) · Checking"
         }
-        let snapshot: ServiceStatusSnapshot? = switch tool {
-        case .gemini:
-            ServiceStatusSnapshot.preferredGoogleAI(
-                gemini: environment.serviceStatus.snapshotByTool[.gemini],
-                antigravity: environment.serviceStatus.snapshotByTool[.antigravity]
-            )
-        case .grok:
-            ServiceStatusSnapshot.mergedSpaceXAI(
-                grok: environment.serviceStatus.snapshotByTool[.grok],
-                cursor: environment.serviceStatus.snapshotByTool[.cursor]
-            )
-        default:
-            environment.serviceStatus.snapshotByTool[tool]
-        }
-        if snapshot == nil,
-           members.contains(where: { environment.serviceStatus.errorByTool[$0] != nil }) {
+        if projection.error != nil {
             return "\(tool.statusProviderName) · Down"
         }
-        guard let snapshot else {
+        guard let snapshot = projection.snapshot else {
             return "\(tool.statusProviderName) · Checking"
         }
         let label: String

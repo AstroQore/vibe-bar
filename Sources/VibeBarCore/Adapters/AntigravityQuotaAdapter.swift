@@ -34,37 +34,23 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
         "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary"
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let order = AntigravitySourcePlanner.resolve(mode: usageModeProvider())
-        var lastError: Error?
-        for source in order {
+        // The planner collapses every mode to `[.localProbe]` until the
+        // Antigravity Cloud spike flips `antigravityWebSourceAvailable`
+        // (see `PrimaryProviderSourcePlanner`). The loop is the seam that
+        // keeps adding the web source a one-line change.
+        var lastError: Error = QuotaError.noCredential
+        for source in AntigravitySourcePlanner.resolve(mode: usageModeProvider())
+        where source == .localProbe {
             do {
-                switch source {
-                case .localProbe:
-                    return try await fetchWithLocalSources(for: account)
-                case .webCookie:
-                    // Spike-gated: returns `.noCredential` until the
-                    // Antigravity Cloud endpoint is reverse-engineered
-                    // and `antigravityWebSourceAvailable` flips. See
-                    // plan §9. The planner already collapses
-                    // `webOnly` / `webThenLocal` to `[.localProbe]`
-                    // while the flag is off, so this arm is unreachable
-                    // in practice until the spike lands.
-                    throw QuotaError.noCredential
-                default:
-                    continue
-                }
-            } catch QuotaError.noCredential {
-                lastError = QuotaError.noCredential
-                continue
+                return try await fetchWithLocalSources(for: account)
             } catch {
                 lastError = error
-                continue
             }
         }
-        throw mapURLError(lastError ?? QuotaError.noCredential)
+        throw mapURLError(lastError)
     }
 
-    private func fetchWithLocalProbe(for account: AccountIdentity) async throws -> AccountQuota {
+    private func fetchWithLocalProbe() async throws -> AntigravityResponseParser.Snapshot {
         let client = AntigravityLanguageServerClient(timeout: timeout)
         let endpoints = try await client.connectedEndpoints()
         var lastError: Error?
@@ -74,9 +60,9 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
                 let snapshot = try await Self.fetchLocalSnapshot { path, body in
                     try await client.postLocal(endpoint: endpoint, path: path, body: body)
                 }
-                if Self.hasCompleteSharedQuota(snapshot.buckets) {
-                    return accountQuota(snapshot: snapshot, account: account)
-                }
+                // A complete answer ends the walk; there is nothing a further
+                // endpoint could add.
+                if Self.hasCompleteSharedQuota(snapshot.buckets) { return snapshot }
                 if bestSnapshot.map({ snapshot.buckets.count > $0.buckets.count }) ?? true {
                     bestSnapshot = snapshot
                 }
@@ -85,36 +71,36 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
                 continue
             }
         }
-        if let bestSnapshot {
-            return accountQuota(snapshot: bestSnapshot, account: account)
-        }
+        if let bestSnapshot { return bestSnapshot }
         throw mapError(lastError)
     }
 
     /// Prefer the desktop language server when it has all four shared lanes;
     /// otherwise ask the installed `agy` CLI for its richer local summary.
     /// A partial desktop result remains the fallback if `agy` is unavailable.
+    ///
+    /// Both sources speak `AntigravityResponseParser.Snapshot`, so the merge
+    /// happens there and exactly once — see `Snapshot.merging`.
     private func fetchWithLocalSources(for account: AccountIdentity) async throws -> AccountQuota {
-        var localQuota: AccountQuota?
-        var localError: Error?
+        var desktop: AntigravityResponseParser.Snapshot?
+        var desktopError: Error?
         do {
-            let quota = try await fetchWithLocalProbe(for: account)
-            if Self.hasCompleteSharedQuota(quota.buckets) { return quota }
-            localQuota = quota
+            let snapshot = try await fetchWithLocalProbe()
+            if Self.hasCompleteSharedQuota(snapshot.buckets) {
+                return accountQuota(snapshot: snapshot, account: account)
+            }
+            desktop = snapshot
         } catch {
-            localError = error
+            desktopError = error
         }
 
         do {
-            let snapshot = try await AntigravityCLIQuotaFetcher.fetch()
-            let cliQuota = accountQuota(snapshot: snapshot, account: account)
-            return localQuota.map {
-                Self.mergingPartialQuota(primary: $0, fallback: cliQuota)
-            } ?? cliQuota
+            let cli = try await AntigravityCLIQuotaFetcher.fetch()
+            return accountQuota(snapshot: desktop?.merging(cli) ?? cli, account: account)
         } catch let cliError {
-            if let localQuota { return localQuota }
+            if let desktop { return accountQuota(snapshot: desktop, account: account) }
             throw Self.preferredLocalSourceError(
-                desktopError: localError.map { mapError($0) },
+                desktopError: desktopError.map { mapError($0) },
                 cliError: mapError(cliError)
             )
         }
@@ -131,39 +117,6 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
             return cliError
         }
         return desktopError
-    }
-
-    /// Keep every desktop lane and append only lanes recovered by `agy`.
-    /// Known shared buckets are normalized back to their canonical order.
-    static func mergingPartialQuota(primary: AccountQuota, fallback: AccountQuota) -> AccountQuota {
-        var buckets = primary.buckets
-        var seen = Set(buckets.map(\.id))
-        for bucket in fallback.buckets where seen.insert(bucket.id).inserted {
-            buckets.append(bucket)
-        }
-        let canonical = [
-            "gemini_five_hour",
-            "gemini_weekly",
-            "claude_gpt_five_hour",
-            "claude_gpt_weekly"
-        ]
-        var byID: [String: QuotaBucket] = [:]
-        for bucket in buckets where byID[bucket.id] == nil {
-            byID[bucket.id] = bucket
-        }
-        let canonicalBuckets = canonical.compactMap { byID[$0] }
-        let extras = buckets.filter { !canonical.contains($0.id) }
-        return AccountQuota(
-            accountId: primary.accountId,
-            tool: primary.tool,
-            buckets: canonicalBuckets + extras,
-            plan: primary.plan ?? fallback.plan,
-            email: primary.email ?? fallback.email,
-            queriedAt: max(primary.queriedAt, fallback.queriedAt),
-            error: nil,
-            providerExtras: primary.providerExtras ?? fallback.providerExtras,
-            resetCredits: primary.resetCredits ?? fallback.resetCredits
-        )
     }
 
     private func accountQuota(
@@ -185,12 +138,7 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
     }
 
     static func hasCompleteSharedQuota(_ buckets: [QuotaBucket]) -> Bool {
-        Set(buckets.map(\.id)).isSuperset(of: [
-            "gemini_five_hour",
-            "gemini_weekly",
-            "claude_gpt_five_hour",
-            "claude_gpt_weekly"
-        ])
+        Set(buckets.map(\.id)).isSuperset(of: QuotaSummarySlot.displayOrder.map(\.id))
     }
 
     /// Fetch the grouped quota payload first, then attach identity on a
@@ -213,7 +161,7 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
             // Quotas remain useful when this older endpoint is unavailable.
             identitySnapshot = nil
         }
-        return quotaSnapshot.mergingIdentity(identitySnapshot)
+        return quotaSnapshot.merging(identitySnapshot)
     }
 
     /// Reads the persisted `antigravityUsageMode` setting from disk.
@@ -255,19 +203,31 @@ enum AntigravityResponseParser {
         /// real model names and rates.
         var modelLabels: [String: String] = [:]
 
-        func mergingIdentity(_ identity: Snapshot?) -> Snapshot {
-            guard let identity else { return self }
+        /// The one merge policy for this provider, used both to fold
+        /// `GetUserStatus` into the quota summary and to fold the `agy` CLI's
+        /// summary into a partial desktop one.
+        ///
+        /// The receiver is authoritative in every field — the quota summary
+        /// outranks `GetUserStatus`'s per-model 5-hour fallback, and the
+        /// desktop language server outranks the CLI. `other` only fills gaps:
+        /// lanes the receiver is missing, and identity fields it left nil.
+        /// The result is always in `QuotaSummarySlot.displayOrder`, which is
+        /// also the only place these four lane ids are spelled out.
+        func merging(_ other: Snapshot?) -> Snapshot {
+            guard let other else { return self }
             var mergedBuckets = buckets
             let existingIds = Set(mergedBuckets.map(\.id))
-            mergedBuckets.append(contentsOf: identity.buckets.filter { !existingIds.contains($0.id) })
-            let orderedBuckets = QuotaSummarySlot.displayOrder.compactMap { slot in
-                mergedBuckets.first { $0.id == slot.id }
-            }
+            mergedBuckets.append(contentsOf: other.buckets.filter { !existingIds.contains($0.id) })
             return Snapshot(
-                buckets: orderedBuckets,
-                planName: identity.planName ?? planName,
-                email: identity.email ?? email,
-                modelLabels: identity.modelLabels.isEmpty ? modelLabels : identity.modelLabels
+                buckets: QuotaSummarySlot.displayOrder.compactMap { slot in
+                    mergedBuckets.first { $0.id == slot.id }
+                },
+                planName: planName ?? other.planName,
+                email: email ?? other.email,
+                // Labels are additive: both sources describe the same model
+                // catalog, and every one we learn helps the cost scanner
+                // resolve a placeholder id.
+                modelLabels: other.modelLabels.merging(modelLabels) { _, mine in mine }
             )
         }
     }

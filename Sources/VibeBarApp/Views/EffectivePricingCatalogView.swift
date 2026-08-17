@@ -5,6 +5,11 @@ import VibeBarCore
 /// The fixed viewport and LazyVStack keep large remote catalogs from inflating
 /// the whole Settings page or eagerly creating every row.
 struct EffectivePricingCatalogView: View {
+    /// Passed in rather than read here: `effectiveModelPrices` rebuilds and
+    /// sorts five provider tables on every access, and the enclosing section
+    /// needs the same rows for its model count.
+    let allRows: [EffectiveModelPricingRow]
+
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
 
@@ -13,7 +18,6 @@ struct EffectivePricingCatalogView: View {
     @State private var localOverridesOnly = false
 
     var body: some View {
-        let allRows = PricingResolver.active.effectiveModelPrices
         let rows = filteredRows(allRows)
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {

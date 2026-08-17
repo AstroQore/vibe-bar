@@ -1247,8 +1247,9 @@ private struct OverviewStatusSummaryCard: View {
     }
 
     private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
-        let state = statusState(for: tool)
-        let snapshot = statusSnapshot(for: tool)
+        let projection = serviceStatus.projection(for: tool)
+        let state = statusState(projection)
+        let snapshot = projection.snapshot
         return VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(spacing: 7) {
                 Image(systemName: state.iconName)
@@ -1277,7 +1278,7 @@ private struct OverviewStatusSummaryCard: View {
                     .lineLimit(1)
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(statusDetail(for: tool, snapshot: snapshot, state: state))
+                Text(statusDetail(projection, state: state))
                     .font(.system(size: max(9, density.subtitleFontSize - 1)))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -1309,26 +1310,25 @@ private struct OverviewStatusSummaryCard: View {
     }
 
     private func statusDetail(
-        for tool: ToolType,
-        snapshot: ServiceStatusSnapshot?,
+        _ projection: ServiceStatusController.Projection,
         state: OverviewStatusState
     ) -> String {
-        if statusInFlight(for: tool) { return "Refreshing" }
-        if statusError(for: tool) != nil { return "Fetch failed" }
-        if let incident = snapshot?.recentIncidents.first, !incident.isResolved {
+        if projection.isRefreshing { return "Refreshing" }
+        if projection.error != nil { return "Fetch failed" }
+        if let incident = projection.snapshot?.recentIncidents.first, !incident.isResolved {
             return incident.name
         }
-        return snapshot?.description ?? state.detail
+        return projection.snapshot?.description ?? state.detail
     }
 
-    private func statusState(for tool: ToolType) -> OverviewStatusState {
-        if statusInFlight(for: tool) {
+    private func statusState(_ projection: ServiceStatusController.Projection) -> OverviewStatusState {
+        if projection.isRefreshing {
             return .checking
         }
-        if statusError(for: tool) != nil {
+        if projection.error != nil {
             return .down
         }
-        guard let indicator = statusSnapshot(for: tool)?.effectiveIndicator else {
+        guard let indicator = projection.snapshot?.effectiveIndicator else {
             return .checking
         }
         switch indicator {
@@ -1354,47 +1354,6 @@ private struct OverviewStatusSummaryCard: View {
         tool.statusProviderName
     }
 
-    private func statusSnapshot(for tool: ToolType) -> ServiceStatusSnapshot? {
-        if tool == .gemini {
-            return ServiceStatusSnapshot.preferredGoogleAI(
-                gemini: serviceStatus.snapshotByTool[.gemini],
-                antigravity: serviceStatus.snapshotByTool[.antigravity]
-            )
-        }
-        if tool == .grok {
-            return ServiceStatusSnapshot.mergedSpaceXAI(
-                grok: serviceStatus.snapshotByTool[.grok],
-                cursor: serviceStatus.snapshotByTool[.cursor]
-            )
-        }
-        return serviceStatus.snapshotByTool[tool]
-    }
-
-    private func statusInFlight(for tool: ToolType) -> Bool {
-        if tool == .gemini {
-            return serviceStatus.inFlight.contains(.gemini)
-                || serviceStatus.inFlight.contains(.antigravity)
-        }
-        if tool == .grok {
-            return serviceStatus.inFlight.contains(.grok)
-                || serviceStatus.inFlight.contains(.cursor)
-        }
-        return serviceStatus.inFlight.contains(tool)
-    }
-
-    private func statusError(for tool: ToolType) -> String? {
-        if tool == .gemini {
-            if statusSnapshot(for: tool) != nil { return nil }
-            return serviceStatus.errorByTool[.gemini]
-                ?? serviceStatus.errorByTool[.antigravity]
-        }
-        if tool == .grok {
-            if statusSnapshot(for: tool) != nil { return nil }
-            return serviceStatus.errorByTool[.grok]
-                ?? serviceStatus.errorByTool[.cursor]
-        }
-        return serviceStatus.errorByTool[tool]
-    }
 }
 
 private enum OverviewStatusState {

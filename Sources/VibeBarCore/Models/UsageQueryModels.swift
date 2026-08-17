@@ -55,22 +55,14 @@ public enum UsageTrendBucket: String, Sendable, Equatable, CaseIterable, Codable
     }
 }
 
-/// The chart control's intent. `auto` resolves through the same Core policy
-/// as callers that do not specify a bucket, so changing it always changes the
-/// underlying query rather than merely relabelling an already-built series.
-public enum UsageTrendGranularity: String, Sendable, Equatable, CaseIterable, Codable {
-    case automatic
-    case hour
-    case day
-    case week
-
+extension Optional where Wrapped == UsageTrendBucket {
+    /// The chart control's intent: an explicit bucket, or `nil` for
+    /// "automatic", which resolves through the same Core policy as callers
+    /// that do not specify a bucket. Changing it always changes the
+    /// underlying query rather than merely relabelling an already-built
+    /// series.
     public func resolved(for range: DateInterval) -> UsageTrendBucket {
-        switch self {
-        case .automatic: .recommended(for: range)
-        case .hour: .hour
-        case .day: .day
-        case .week: .week
-        }
+        self ?? .recommended(for: range)
     }
 }
 

@@ -8,7 +8,10 @@ struct PricingSettingsSection: View {
     @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+        // One build of the merged price table per body pass, shared with the
+        // catalog below.
+        let modelPrices = PricingResolver.active.effectiveModelPrices
+        return VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             settingsSection("Model Pricing") {
                 Text("Catalogs refresh in the background. Higher entries win when the same provider and model name appears more than once.")
                     .font(.caption)
@@ -38,13 +41,13 @@ struct PricingSettingsSection: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text("\(PricingResolver.active.effectiveModelPrices.count) models")
+                    Text("\(modelPrices.count) models")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
 
-            EffectivePricingCatalogView()
+            EffectivePricingCatalogView(allRows: modelPrices)
 
             settingsSection("Priority and source health") {
                 priorityRow(number: 1, name: "Local overrides", detail: "Always wins")

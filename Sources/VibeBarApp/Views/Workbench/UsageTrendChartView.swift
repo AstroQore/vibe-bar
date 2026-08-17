@@ -240,7 +240,7 @@ struct UsageTrendChartView: View {
     private var granularitySelector: some View {
         Menu {
             Picker("Granularity", selection: $model.trendGranularity) {
-                ForEach(UsageTrendGranularity.allCases, id: \.self) { value in
+                ForEach(Self.granularityOptions, id: \.self) { value in
                     Text(granularityTitle(value)).tag(value)
                         .disabled(!model.isTrendGranularityAvailable(value))
                 }
@@ -749,9 +749,13 @@ struct UsageTrendChartView: View {
             + "\(UsageFormatting.formatMicroUSD(totalCost))"
     }
 
-    private func granularityTitle(_ value: UsageTrendGranularity) -> String {
+    /// Automatic first, then every explicit bucket.
+    private static let granularityOptions: [UsageTrendBucket?] =
+        [nil] + UsageTrendBucket.allCases.map { $0 }
+
+    private func granularityTitle(_ value: UsageTrendBucket?) -> String {
         switch value {
-        case .automatic: "Auto"
+        case .none: "Auto"
         case .hour: "Hourly"
         case .day: "Daily"
         case .week: "Weekly"

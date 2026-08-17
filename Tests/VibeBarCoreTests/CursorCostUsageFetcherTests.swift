@@ -7,6 +7,31 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         super.tearDown()
     }
 
+    /// `prepareSnapshot` is the single-slot seam `fetch` drives; these tests
+    /// call it directly and feed the ledger the way `fetch` would.
+    private func snapshot(
+        from fetcher: CursorCostUsageFetcher,
+        cookieHeader: String,
+        since: Date? = nil,
+        until: Date?,
+        now: Date,
+        eventSink: (any CostUsageEventSink)? = nil,
+        sourceID: String = "default"
+    ) async throws -> CostSnapshot {
+        let prepared = try await fetcher.prepareSnapshot(
+            cookieHeader: cookieHeader,
+            since: since,
+            until: until,
+            now: now,
+            sourceID: sourceID,
+            includeEventBatch: eventSink != nil
+        )
+        if let eventSink, let batch = prepared.eventBatch {
+            await eventSink.consume(batch)
+        }
+        return prepared.snapshot
+    }
+
     func testBuildsSnapshotFromCursorEventsAndExcludesGrokBotRows() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CursorCostStubURLProtocol.self]
@@ -78,14 +103,15 @@ final class CursorCostUsageFetcherTests: XCTestCase {
             """)
         }
 
-        let snapshot = try await CursorCostUsageFetcher(
+        let fetcher = CursorCostUsageFetcher(
             session: session,
             baseURL: URL(string: "https://cursor.test")!,
             pageSize: 2,
             maxPages: 3
-        ).fetchSnapshot(
+        )
+        let snapshot = try await self.snapshot(
+            from: fetcher,
             cookieHeader: "WorkosCursorSessionToken=fixture",
-            since: nil,
             until: now,
             now: now,
             eventSink: ledger,
@@ -121,14 +147,9 @@ final class CursorCostUsageFetcherTests: XCTestCase {
 
         // Re-fetching an unchanged dashboard must update neither side's
         // final totals nor duplicate request rows in the Workbench ledger.
-        _ = try await CursorCostUsageFetcher(
-            session: session,
-            baseURL: URL(string: "https://cursor.test")!,
-            pageSize: 2,
-            maxPages: 3
-        ).fetchSnapshot(
+        _ = try await self.snapshot(
+            from: fetcher,
             cookieHeader: "WorkosCursorSessionToken=fixture",
-            since: nil,
             until: now,
             now: now,
             eventSink: ledger,
@@ -143,14 +164,9 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         // of duplicating the request.
         firstEventInputTokens = 120
         firstEventCostCents = 125
-        let correctedSnapshot = try await CursorCostUsageFetcher(
-            session: session,
-            baseURL: URL(string: "https://cursor.test")!,
-            pageSize: 2,
-            maxPages: 3
-        ).fetchSnapshot(
+        let correctedSnapshot = try await self.snapshot(
+            from: fetcher,
             cookieHeader: "WorkosCursorSessionToken=fixture",
-            since: nil,
             until: now,
             now: now,
             eventSink: ledger,
@@ -276,6 +292,124 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         let summary = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now))
         XCTAssertEqual(summary.requests, 0)
         XCTAssertEqual(summary.realTotalTokens, 0)
+    }
+
+    /// Cursor.app plus a separate browser cookie slot are two independent
+    /// accounts. Publishing only the preferred one used to look like a
+    /// complete refresh, and `CostHistoryStore.replaceAndAugment` would drop
+    /// the cookie account's history on the floor.
+    func testCursorAppSlotIsCombinedWithCookieSlotsInsteadOfPublishedAlone() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CursorCostStubURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let now = Date(timeIntervalSince1970: 1_786_968_000)
+        let preferred = MiscCookieResolver.Resolution(
+            slotID: nil,
+            header: "WorkosCursorSessionToken=app-account",
+            sourceLabel: "Cursor.app"
+        )
+        let cookieSlot = MiscCookieResolver.Resolution(
+            slotID: UUID(),
+            header: "WorkosCursorSessionToken=browser-account",
+            sourceLabel: "Browser"
+        )
+        let plan = CursorSessionResolutionPlan(preferred: preferred, fallbacks: [cookieSlot])
+
+        var seenCookies: Set<String> = []
+        CursorCostStubURLProtocol.handler = { request in
+            let cookie = request.value(forHTTPHeaderField: "Cookie") ?? ""
+            seenCookies.insert(cookie)
+            let cents = cookie == preferred.header ? 25 : 75
+            return Self.response("""
+            {
+              "totalUsageEventsCount": 1,
+              "usageEventsDisplay": [{
+                "timestamp": "1786967900000",
+                "model": "composer-2.5",
+                "tokenUsage": {
+                  "inputTokens": 100,
+                  "outputTokens": 50,
+                  "cacheWriteTokens": 0,
+                  "cacheReadTokens": 0,
+                  "totalCents": \(cents)
+                }
+              }]
+            }
+            """)
+        }
+
+        let outcome = await CursorCostUsageFetcher.fetch(
+            homeDirectory: "/Users/example",
+            now: now,
+            retentionDays: 30,
+            session: session,
+            resolutionPlan: plan
+        )
+        guard case .success(let snapshot) = outcome else {
+            return XCTFail("Expected both Cursor accounts to publish together")
+        }
+        XCTAssertEqual(seenCookies, [preferred.header, cookieSlot.header])
+        XCTAssertEqual(snapshot.allTimeRequests, 2)
+        XCTAssertEqual(snapshot.allTimeTokens, 300)
+        XCTAssertEqual(snapshot.allTimeCostUSD, 1.00, accuracy: 0.000_001)
+    }
+
+    /// The mirror case: a failing cookie slot must not let the healthy
+    /// Cursor.app slot publish a snapshot that omits the other account.
+    func testFailingCookieSlotSuppressesTheHealthyCursorAppSlot() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CursorCostStubURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let now = Date(timeIntervalSince1970: 1_786_968_000)
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("cursor-preferred-partial")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let preferred = MiscCookieResolver.Resolution(
+            slotID: nil,
+            header: "WorkosCursorSessionToken=app-account",
+            sourceLabel: "Cursor.app"
+        )
+        let cookieSlot = MiscCookieResolver.Resolution(
+            slotID: UUID(),
+            header: "WorkosCursorSessionToken=broken-account",
+            sourceLabel: "Browser"
+        )
+        let plan = CursorSessionResolutionPlan(preferred: preferred, fallbacks: [cookieSlot])
+
+        CursorCostStubURLProtocol.handler = { request in
+            if request.value(forHTTPHeaderField: "Cookie") == cookieSlot.header {
+                return (500, Data())
+            }
+            return Self.response("""
+            {
+              "totalUsageEventsCount": 1,
+              "usageEventsDisplay": [{
+                "timestamp": "1786967900000",
+                "model": "composer-2.5",
+                "tokenUsage": {
+                  "inputTokens": 100,
+                  "outputTokens": 50,
+                  "cacheWriteTokens": 0,
+                  "cacheReadTokens": 0,
+                  "totalCents": 25
+                }
+              }]
+            }
+            """)
+        }
+
+        let outcome = await CursorCostUsageFetcher.fetch(
+            homeDirectory: "/Users/example",
+            now: now,
+            retentionDays: 30,
+            session: session,
+            resolutionPlan: plan,
+            eventSink: ledger
+        )
+        guard case .failed = outcome else {
+            return XCTFail("A partial account set must retain the previous complete snapshot")
+        }
+        let summary = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now))
+        XCTAssertEqual(summary.requests, 0)
     }
 
     private static func body(of request: URLRequest) throws -> Data {

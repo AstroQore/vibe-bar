@@ -78,7 +78,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     static let schemaVersion = 3
     private static let schemaVersionKey = "schema_version"
     private static let cursorToolMigrationKey = "cursor_tool_v1"
-    private static let cursorRollupMigrationKey = "cursor_rollup_tool_v1"
+    /// Written by an earlier revision of the Cursor migration. Only read now,
+    /// as a second "already ran" signal.
+    private static let legacyCursorRollupMigrationKey = "cursor_rollup_tool_v1"
     static let harnessMigrationKey = "harness_v1"
     private static let pricingRevisionKey = "pricing_revision"
     private static let floorKeyPrefix = "detail_floor_day:"
@@ -112,13 +114,8 @@ public actor UsageEventLedger: CostUsageEventSink {
             throw UsageLedgerError.open
         }
         sqlite3_busy_timeout(handle, 5_000)
-        let legacyCursorEvidence = url == VibeBarLocalStore.usageEventsLedgerURL
-            && FileManager.default.fileExists(
-                atPath: VibeBarLocalStore.costSnapshotDirectory
-                    .appendingPathComponent("cursor.json").path
-            )
         do {
-            try Self.initialize(handle, legacyCursorEvidence: legacyCursorEvidence)
+            try Self.initialize(handle)
             database = handle
         } catch {
             sqlite3_close_v2(handle)
@@ -132,10 +129,7 @@ public actor UsageEventLedger: CostUsageEventSink {
 
     // MARK: - Schema
 
-    private static func initialize(
-        _ database: OpaquePointer,
-        legacyCursorEvidence: Bool
-    ) throws {
+    private static func initialize(_ database: OpaquePointer) throws {
         let preamble = """
             PRAGMA journal_mode=WAL;
             PRAGMA synchronous=NORMAL;
@@ -217,10 +211,7 @@ public actor UsageEventLedger: CostUsageEventSink {
         guard Self.migrateHarnessColumns(database) else {
             throw UsageLedgerError.open
         }
-        guard Self.migrateCursorToolRows(
-            database,
-            legacyCursorEvidence: legacyCursorEvidence
-        ) else {
+        guard Self.migrateCursorToolRows(database) else {
             throw UsageLedgerError.open
         }
         var statement: OpaquePointer?
@@ -372,34 +363,36 @@ public actor UsageEventLedger: CostUsageEventSink {
         return true
     }
 
-    /// v3 originally stored Cursor dashboard detail under `.grok`. Preserve
-    /// every table, relabel identifiable request rows *and their dedupe
-    /// identity*, merge identifiable daily rollups into `.cursor`, and carry
-    /// the Grok detail floor forward. The copied floor prevents the first
-    /// `.cursor` batch from backfilling already-folded days; the rewritten
-    /// dedupe key makes newer rows update rather than duplicate.
-    static func migrateCursorToolRows(
-        _ database: OpaquePointer,
-        legacyCursorEvidence: Bool = false
-    ) -> Bool {
+    /// v3 originally stored Cursor dashboard detail under `.grok`. Relabel
+    /// those request rows — the only ones the source key can identify — and
+    /// carry the Grok detail floor forward so the first `.cursor` batch cannot
+    /// backfill days that were already folded away.
+    ///
+    /// Cursor history already folded into daily rollups under grok stays under
+    /// grok; new days accrue under cursor. There is no per-request evidence
+    /// left in a rollup row, and guessing from model families would re-attribute
+    /// genuine Grok Build usage, so the rule is deliberately one-directional —
+    /// the same bargain `migrateHarnessColumns` already strikes.
+    ///
+    /// The dedupe key needs no rewrite: it has always been
+    /// `PrivacyPreservingHash.fileComponent(prefix: "cursor-ledger-v1",
+    /// rawValue: sourceKey)` for these rows and does not encode the tool.
+    @discardableResult
+    static func migrateCursorToolRows(_ database: OpaquePointer) -> Bool {
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        func hasMarker(_ key: String) -> Bool? {
-            var marker: OpaquePointer?
-            guard sqlite3_prepare_v2(
-                database,
-                "SELECT 1 FROM ledger_meta WHERE key = ?",
-                -1,
-                &marker,
-                nil
-            ) == SQLITE_OK, let marker else { return nil }
-            defer { sqlite3_finalize(marker) }
-            sqlite3_bind_text(marker, 1, key, -1, transient)
-            return sqlite3_step(marker) == SQLITE_ROW
-        }
-        guard let detailAlreadyMigrated = hasMarker(cursorToolMigrationKey),
-              let rollupsAlreadyMigrated = hasMarker(cursorRollupMigrationKey)
-        else { return false }
-        if detailAlreadyMigrated && rollupsAlreadyMigrated { return true }
+        var marker: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "SELECT 1 FROM ledger_meta WHERE key IN (?, ?)",
+            -1,
+            &marker,
+            nil
+        ) == SQLITE_OK, let marker else { return false }
+        sqlite3_bind_text(marker, 1, cursorToolMigrationKey, -1, transient)
+        sqlite3_bind_text(marker, 2, legacyCursorRollupMigrationKey, -1, transient)
+        let alreadyMigrated = sqlite3_step(marker) == SQLITE_ROW
+        sqlite3_finalize(marker)
+        if alreadyMigrated { return true }
 
         guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
             return false
@@ -409,74 +402,27 @@ public actor UsageEventLedger: CostUsageEventSink {
             return false
         }
 
-        var rows: [(id: Int64, sourceKey: String)] = []
-        if !detailAlreadyMigrated {
-            var select: OpaquePointer?
-            guard sqlite3_prepare_v2(
-                database,
-                "SELECT id, source_key FROM usage_events WHERE tool = 'grok' AND source_key LIKE 'cursor-event-v1-%'",
-                -1,
-                &select,
-                nil
-            ) == SQLITE_OK, let select else { return rollback() }
-            while sqlite3_step(select) == SQLITE_ROW {
-                guard let raw = sqlite3_column_text(select, 1) else { continue }
-                rows.append((sqlite3_column_int64(select, 0), String(cString: raw)))
-            }
-            sqlite3_finalize(select)
-        }
-
-        if !rows.isEmpty {
-            var update: OpaquePointer?
-            guard sqlite3_prepare_v2(
-                database,
-                """
-                UPDATE usage_events
-                   SET tool = 'cursor', harness = '\(Harness.cursor.rawValue)', dedupe_key = ?
-                 WHERE id = ?
-                """,
-                -1,
-                &update,
-                nil
-            ) == SQLITE_OK, let update else { return rollback() }
-            defer { sqlite3_finalize(update) }
-            for row in rows {
-                let dedupe = PrivacyPreservingHash.fileComponent(
-                    prefix: "cursor-ledger-v1",
-                    rawValue: row.sourceKey
-                )
-                sqlite3_reset(update)
-                sqlite3_clear_bindings(update)
-                sqlite3_bind_text(update, 1, dedupe, -1, transient)
-                sqlite3_bind_int64(update, 2, row.id)
-                guard sqlite3_step(update) == SQLITE_DONE else { return rollback() }
-            }
-
-        }
-
-        let rolledCursorEvidence = !rollupsAlreadyMigrated
-            && hasLegacyCursorRollupEvidence(database)
-        let shouldCopyCursorFloor = (
-            !detailAlreadyMigrated
-                && (!rows.isEmpty || legacyCursorEvidence || rolledCursorEvidence)
-        ) || (detailAlreadyMigrated && rolledCursorEvidence)
-        if shouldCopyCursorFloor {
-            let floorSQL = """
-                INSERT INTO ledger_meta(key, value)
-                     SELECT '\(floorKeyPrefix)cursor', value
-                       FROM ledger_meta
-                      WHERE key = '\(floorKeyPrefix)grok'
-                   ON CONFLICT(key) DO UPDATE SET
-                       value = MAX(ledger_meta.value, excluded.value)
-                """
-            guard sqlite3_exec(database, floorSQL, nil, nil, nil) == SQLITE_OK else {
-                return rollback()
-            }
-        }
-
-        if rolledCursorEvidence && !mergeLegacyCursorRollups(database) {
-            return rollback()
-        }
+        // The floor copy is not cosmetic: ingest skips any day at or below the
+        // per-tool floor, so without it the first `.cursor` batch would
+        // re-insert detail rows for days already counted in the rollups.
+        let sql = """
+            UPDATE usage_events
+               SET tool = '\(ToolType.cursor.rawValue)',
+                   harness = '\(Harness.cursor.rawValue)'
+             WHERE tool = '\(ToolType.grok.rawValue)'
+               AND source_key LIKE 'cursor-event-v1-%';
+            INSERT INTO ledger_meta(key, value)
+                 SELECT '\(floorKeyPrefix)cursor', value
+                   FROM ledger_meta
+                  WHERE key = '\(floorKeyPrefix)grok'
+                    AND EXISTS(
+                        SELECT 1 FROM usage_events
+                         WHERE source_key LIKE 'cursor-event-v1-%'
+                    )
+               ON CONFLICT(key) DO UPDATE SET
+                   value = MAX(ledger_meta.value, excluded.value);
+            """
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { return rollback() }
 
         var insertMarker: OpaquePointer?
         guard sqlite3_prepare_v2(
@@ -489,85 +435,10 @@ public actor UsageEventLedger: CostUsageEventSink {
         sqlite3_bind_text(insertMarker, 1, cursorToolMigrationKey, -1, transient)
         let markerResult = sqlite3_step(insertMarker)
         sqlite3_finalize(insertMarker)
-        guard markerResult == SQLITE_DONE else { return rollback() }
-
-        var insertRollupMarker: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            database,
-            "INSERT INTO ledger_meta(key, value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            -1,
-            &insertRollupMarker,
-            nil
-        ) == SQLITE_OK, let insertRollupMarker else { return rollback() }
-        sqlite3_bind_text(insertRollupMarker, 1, cursorRollupMigrationKey, -1, transient)
-        let rollupMarkerResult = sqlite3_step(insertRollupMarker)
-        sqlite3_finalize(insertRollupMarker)
-        guard rollupMarkerResult == SQLITE_DONE,
+        guard markerResult == SQLITE_DONE,
               sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
         else { return rollback() }
         return true
-    }
-
-    /// Legacy Cursor events were rolled up under `.grok`, but their dashboard
-    /// model families remain distinguishable from Grok CLI's own rows.
-    private static func hasLegacyCursorRollupEvidence(_ database: OpaquePointer) -> Bool {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            database,
-            """
-            SELECT 1 FROM usage_daily_rollups
-             WHERE tool = 'grok'
-               AND (
-                    model LIKE 'cursor-%'
-                 OR model LIKE 'composer-%'
-                 OR model LIKE 'claude-%'
-                 OR model LIKE 'gemini-%'
-                 OR model LIKE 'gpt-%'
-               )
-             LIMIT 1
-            """,
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK, let statement else { return false }
-        defer { sqlite3_finalize(statement) }
-        return sqlite3_step(statement) == SQLITE_ROW
-    }
-
-    /// Move only model families that the legacy Cursor dashboard emitted.
-    /// Insert-before-delete safely folds into an existing `.cursor` row with
-    /// the same `(day, model)` primary key instead of losing either total.
-    private static func mergeLegacyCursorRollups(_ database: OpaquePointer) -> Bool {
-        let predicate = """
-            tool = 'grok'
-            AND (
-                   model LIKE 'cursor-%'
-                OR model LIKE 'composer-%'
-                OR model LIKE 'claude-%'
-                OR model LIKE 'gemini-%'
-                OR model LIKE 'gpt-%'
-            )
-            """
-        let sql = """
-            INSERT INTO usage_daily_rollups(
-                   day, tool, harness, model, requests, fresh_input, output,
-                   cache_read, cache_creation, cost_micros, unpriced
-               )
-               SELECT day, 'cursor', '\(Harness.cursor.rawValue)', model, requests,
-                      fresh_input, output, cache_read, cache_creation, cost_micros, unpriced
-                 FROM usage_daily_rollups
-                WHERE \(predicate)
-               ON CONFLICT(day, tool, harness, model) DO UPDATE SET
-                   requests = usage_daily_rollups.requests + excluded.requests,
-                   fresh_input = usage_daily_rollups.fresh_input + excluded.fresh_input,
-                   output = usage_daily_rollups.output + excluded.output,
-                   cache_read = usage_daily_rollups.cache_read + excluded.cache_read,
-                   cache_creation = usage_daily_rollups.cache_creation + excluded.cache_creation,
-                   cost_micros = usage_daily_rollups.cost_micros + excluded.cost_micros,
-                   unpriced = usage_daily_rollups.unpriced + excluded.unpriced;
-            DELETE FROM usage_daily_rollups WHERE \(predicate);
-            """
-        return sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK
     }
 
     private static func storedSchemaVersion(_ database: OpaquePointer) -> Int? {
