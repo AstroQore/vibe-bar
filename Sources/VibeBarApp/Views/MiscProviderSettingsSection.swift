@@ -2,11 +2,14 @@ import AppKit
 import SwiftUI
 import VibeBarCore
 
-/// Per-misc-provider Settings row.
+/// Per-misc-provider Settings block.
 ///
 /// Each provider shows its name and the auth controls that match the
 /// provider's current integration path (API key, device login, local
 /// CLI/OAuth status, browser-cookie import, or local process probe).
+///
+/// Content only: the caller wraps this in the page's `SettingsSectionCard`,
+/// so it must not draw a surface of its own.
 struct MiscProviderSettingsSection: View {
     let instance: MiscProviderInstance
 
@@ -62,12 +65,6 @@ struct MiscProviderSettingsSection: View {
             }
             placeholderRow
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
-        )
     }
 
     private var visibilityBinding: Binding<Bool> {

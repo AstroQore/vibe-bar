@@ -11,6 +11,7 @@ import VibeBarCore
 /// provisioning file is consumed by `RemoteCoreConfigStore.install(from:)`,
 /// which routes the bearer token straight into the credential Vault.
 struct RemoteSettingsSection: View {
+    let density: Theme.Density
     @ObservedObject var service: RemoteProbeService
     @EnvironmentObject private var settingsStore: SettingsStore
 
@@ -36,7 +37,7 @@ struct RemoteSettingsSection: View {
     @State private var confirmingDiscardPending = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             statusSection
             provisioningSection
             if service.isConfigured {
@@ -457,29 +458,10 @@ struct RemoteSettingsSection: View {
         )
     }
 
-    /// Mirrors SettingsView.settingsSection so this pane matches the other
-    /// pages without widening that private helper's access.
     private func section<Content: View>(
         _ title: String,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 10) {
-                content()
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.045))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
-            )
-        }
+        SettingsSectionCard(title: title, density: density, content: content)
     }
 }

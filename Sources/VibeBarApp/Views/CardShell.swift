@@ -1,12 +1,20 @@
 import SwiftUI
 
-/// The popover's card surface, in one place.
+/// The app's card surface, in one place.
 ///
-/// Every card in the workspace — quota groups, cost modules, misc providers,
-/// machines — is the same rounded rectangle: density padding, a tertiary
-/// background fill, and a hairline separator stroke. Repeating that stack by
-/// hand is how a page ends up with its own corner radius and its own opacity,
-/// so callers compose `CardShell` instead.
+/// Every card on every surface — quota groups, cost modules, misc providers,
+/// machines, Workbench pages, Settings blocks — is the same rounded
+/// rectangle: density padding, a tertiary background fill, and a hairline
+/// separator stroke. No drop shadow: cards are flat everywhere, and the
+/// mini window's Liquid Glass panel is the only surface in the app allowed
+/// to look like it is floating. Repeating that stack by hand is how a page
+/// ends up with its own corner radius and its own opacity, so callers
+/// compose `CardShell` instead. See `docs/DESIGN.md`.
+///
+/// The Workbench window opts in to larger metrics via
+/// `workbenchPorcelain()` — same fill, same hairline, floored padding and
+/// radius, because the same card has a whole window to sit in rather than a
+/// 420pt popover.
 ///
 /// Use `cardSurface(density:)` directly when the card already owns its
 /// internal layout (a centered empty state, a pinned-height summary) and only
@@ -26,10 +34,40 @@ struct CardShell<Content: View>: View {
         .cardSurface(density: density)
     }
 
-    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
+    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchMetrics
 
     private var cardPadding: CGFloat {
-        usesWorkbenchPorcelain ? max(16, density.cardPadding) : density.cardPadding
+        usesWorkbenchMetrics
+            ? max(Theme.Card.workbenchMinPadding, density.cardPadding)
+            : density.cardPadding
+    }
+}
+
+/// A titled Settings block: a quiet caption over a `CardShell`.
+///
+/// Settings is a Workbench page, so a Settings block is a Workbench card.
+/// Three panes used to hand-roll this same stack with three different corner
+/// radii and three different fills — one shared shell means a fourth pane
+/// cannot invent a fourth.
+struct SettingsSectionCard<Content: View>: View {
+    let title: String
+    let density: Theme.Density
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            // The surface is painted inside `CardShell`, so the width has to
+            // be claimed by the content: a frame on the outside would only
+            // stretch a transparent wrapper and let a narrow section (System,
+            // Privacy) collapse around its controls.
+            CardShell(density: density, spacing: 10) {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }
 
@@ -39,35 +77,25 @@ extension View {
     }
 }
 
+/// One recipe, two densities. The Workbench branch differs only in how big
+/// the corner is — the fill and the hairline are literally the same tokens,
+/// which is what keeps a quota card in the popover and a quota card in the
+/// Workbench reading as the same object.
 private struct CardSurfaceModifier: ViewModifier {
     let density: Theme.Density
 
-    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchPorcelain
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.workbenchPorcelainEnabled) private var usesWorkbenchMetrics
 
-    @ViewBuilder
+    private var cornerRadius: CGFloat {
+        usesWorkbenchMetrics
+            ? max(Theme.Card.workbenchMinCornerRadius, density.cardCornerRadius)
+            : density.cardCornerRadius
+    }
+
     func body(content: Content) -> some View {
-        if usesWorkbenchPorcelain {
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: max(16, density.cardCornerRadius), style: .continuous)
-                        .fill(WorkbenchPorcelain.cardFill(for: colorScheme))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: max(16, density.cardCornerRadius), style: .continuous)
-                        .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
-                )
-                .shadow(color: WorkbenchPorcelain.cardShadow(for: colorScheme), radius: 15, y: 7)
-        } else {
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                        .fill(.background.tertiary.opacity(0.6))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                        .stroke(.separator.opacity(0.4), lineWidth: 0.5)
-                )
-        }
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return content
+            .background(shape.fill(Theme.Card.fill))
+            .overlay(shape.stroke(Theme.Card.stroke, lineWidth: Theme.Card.hairlineWidth))
     }
 }

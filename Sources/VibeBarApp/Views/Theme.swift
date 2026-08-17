@@ -11,6 +11,39 @@ enum Theme {
     static let miniCornerRadius: CGFloat = 22
     static let glassPillCornerRadius: CGFloat = 12
 
+    /// The one card recipe, as tokens.
+    ///
+    /// Every Vibe Bar surface — menu-bar popover, mini window, Workbench
+    /// window — draws a card the same way: a tertiary fill, a hairline
+    /// separator stroke, and no drop shadow. Surfaces differ in *density*,
+    /// not in material: the Workbench floors the popover's padding and corner
+    /// radius so a 1180×820 window doesn't read as a stack of compact popover
+    /// cards, and that is the whole difference.
+    ///
+    /// `CardShell` is the only place these are composed. `docs/DESIGN.md` is
+    /// the prose version.
+    enum Card {
+        /// Applied to `.background.tertiary`.
+        static let fillOpacity: Double = 0.6
+        /// Applied to `.separator`.
+        static let strokeOpacity: Double = 0.4
+        /// One device pixel at 2x — the only stroke weight a card edge uses.
+        static let hairlineWidth: CGFloat = 0.5
+
+        /// Floors used inside the Workbench window. The popover's own values
+        /// win whenever they are already larger (spacious density).
+        static let workbenchMinCornerRadius: CGFloat = 16
+        static let workbenchMinPadding: CGFloat = 16
+
+        static var fill: AnyShapeStyle {
+            AnyShapeStyle(BackgroundStyle().tertiary.opacity(fillOpacity))
+        }
+
+        static var stroke: AnyShapeStyle {
+            AnyShapeStyle(SeparatorShapeStyle().opacity(strokeOpacity))
+        }
+    }
+
     /// Per-density spacing/sizing for the popover. Returned by `Theme.density(for:)`.
     /// One profile drives the full tabbed workspace. The semantic tokens below
     /// deliberately change layout, chart presence, and information rhythm —

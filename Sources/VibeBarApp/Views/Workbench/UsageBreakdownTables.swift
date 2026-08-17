@@ -61,7 +61,7 @@ struct UsageBreakdownTables: View {
                                         selected
                                             ? WorkbenchPorcelain.hairline(for: colorScheme)
                                             : Color.clear,
-                                        lineWidth: 0.7
+                                        lineWidth: Theme.Card.hairlineWidth
                                     )
                             )
                     }
@@ -77,7 +77,7 @@ struct UsageBreakdownTables: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
+                    .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: Theme.Card.hairlineWidth)
             )
 
             Spacer(minLength: 8)
@@ -419,7 +419,7 @@ struct UsageBreakdownTables: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 0.7)
+                .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: Theme.Card.hairlineWidth)
         )
         .accessibilityElement(children: .combine)
     }
