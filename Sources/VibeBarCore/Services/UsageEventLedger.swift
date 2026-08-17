@@ -237,6 +237,10 @@ public actor UsageEventLedger: CostUsageEventSink {
                  SELECT '\(floorKeyPrefix)cursor', value
                    FROM ledger_meta
                   WHERE key = '\(floorKeyPrefix)grok'
+                    AND EXISTS (
+                        SELECT 1 FROM usage_events
+                         WHERE source_key LIKE 'cursor-event-v1-%'
+                    )
                     AND NOT EXISTS (
                         SELECT 1 FROM ledger_meta WHERE key = '\(cursorToolMigrationKey)'
                     )

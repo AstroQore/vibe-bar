@@ -264,7 +264,7 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         cursor: ServiceStatusSnapshot?
     ) -> ServiceStatusSnapshot? {
         guard let cursor else { return grok }
-        let base = grok ?? ServiceStatusSnapshot(
+        var base = grok ?? ServiceStatusSnapshot(
             tool: .grok,
             indicator: .none,
             description: "Cursor status available",
@@ -273,6 +273,29 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
             components: [],
             recentIncidents: []
         )
+        if grok != nil {
+            let groupID = "subprovider:grok"
+            base = ServiceStatusSnapshot(
+                tool: base.tool,
+                indicator: base.indicator,
+                description: base.description,
+                updatedAt: base.updatedAt,
+                groups: [ServiceComponentGroup(id: groupID, name: "Grok")],
+                components: base.components.map { component in
+                    ServiceComponentSummary(
+                        id: component.id,
+                        name: component.name,
+                        status: component.status,
+                        groupId: groupID,
+                        uptimePercent: component.uptimePercent,
+                        recentDays: component.recentDays
+                    )
+                },
+                recentIncidents: base.recentIncidents,
+                incidentDays: base.incidentDays,
+                incidentAdjustedUptimePercent: base.incidentAdjustedUptimePercent
+            )
+        }
         return base.mergingSubProvider(
             cursor,
             groupID: "subprovider:cursor",

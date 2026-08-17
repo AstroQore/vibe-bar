@@ -17,7 +17,7 @@ final class CursorServiceStatusTests: XCTestCase {
                 return Data("""
                 {
                   "page": {"id":"cursor","name":"Cursor","updated_at":"2026-08-17T08:00:00Z"},
-                  "status": {"indicator":"minor","description":"Degraded Performance"},
+                  "status": {"indicator":"none","description":"All Systems Operational"},
                   "components": [
                     {"id":"agents","name":"Agents","status":"degraded_performance","group_id":null,"group":true},
                     {"id":"cloud","name":"Cloud Agents","status":"degraded_performance","group_id":"agents","group":false},
@@ -43,7 +43,8 @@ final class CursorServiceStatusTests: XCTestCase {
 
         let snapshot = try await ServiceStatusClient(session: session).fetch(tool: .cursor)
         XCTAssertEqual(snapshot.tool, .cursor)
-        XCTAssertEqual(snapshot.indicator, .minor)
+        XCTAssertEqual(snapshot.indicator, .none)
+        XCTAssertEqual(snapshot.effectiveIndicator, .minor)
         XCTAssertEqual(snapshot.groups, [ServiceComponentGroup(id: "agents", name: "Agents")])
         XCTAssertEqual(snapshot.components.map(\.name), ["Cloud Agents", "IDE"])
         XCTAssertEqual(snapshot.recentIncidents.first?.name, "Cloud Agents degraded")
@@ -67,7 +68,10 @@ final class CursorServiceStatusTests: XCTestCase {
         ))
         XCTAssertEqual(spaceXAI.tool, .grok)
         XCTAssertEqual(spaceXAI.indicator, .minor)
-        XCTAssertEqual(spaceXAI.groups.last?.name, "Cursor")
+        XCTAssertEqual(spaceXAI.groups.map(\.name), ["Grok", "Cursor"])
+        XCTAssertTrue(spaceXAI.components(in: spaceXAI.groups.first).contains {
+            $0.name == "Grok Web"
+        })
         XCTAssertTrue(spaceXAI.components(in: spaceXAI.groups.last).contains {
             $0.name == "Cloud Agents"
         })

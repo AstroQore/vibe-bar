@@ -1320,7 +1320,7 @@ private struct OverviewStatusSummaryCard: View {
         if statusError(for: tool) != nil {
             return .down
         }
-        guard let indicator = statusSnapshot(for: tool)?.indicator else {
+        guard let indicator = statusSnapshot(for: tool)?.effectiveIndicator else {
             return .checking
         }
         switch indicator {
@@ -1352,11 +1352,10 @@ private struct OverviewStatusSummaryCard: View {
                 ?? serviceStatus.snapshotByTool[.antigravity]
         }
         if tool == .grok {
-            let grok = serviceStatus.snapshotByTool[.grok]
-            let cursor = serviceStatus.snapshotByTool[.cursor]
-            guard let grok else { return cursor }
-            guard let cursor else { return grok }
-            return cursor.indicator.severity > grok.indicator.severity ? cursor : grok
+            return ServiceStatusSnapshot.mergedSpaceXAI(
+                grok: serviceStatus.snapshotByTool[.grok],
+                cursor: serviceStatus.snapshotByTool[.cursor]
+            )
         }
         return serviceStatus.snapshotByTool[tool]
     }
