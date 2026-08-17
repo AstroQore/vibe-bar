@@ -50,6 +50,83 @@ final class ResetCountdownFormatterTests: XCTestCase {
         )
     }
 
+    func testResetStatusCountsDownBeforeTheReset() {
+        let now = date(2026, 8, 17, 14, 0)
+        let reset = date(2026, 8, 17, 17, 5)
+
+        let status = ResetCountdownFormatter.resetStatus(
+            resetAt: reset,
+            now: now,
+            calendar: calendar,
+            timeZone: timeZone
+        )
+
+        XCTAssertEqual(status?.isExpired, false)
+        XCTAssertEqual(status?.label, "resets in 3h 5m · 17:05")
+    }
+
+    /// Inside the boundary-refresh grace the row still reads as live — the
+    /// scheduler is mid-handoff and a fresh snapshot is seconds away.
+    func testResetStatusWithinGraceStillReadsAsLive() {
+        let reset = date(2026, 8, 17, 17, 5)
+        let now = reset.addingTimeInterval(120)
+
+        let status = ResetCountdownFormatter.resetStatus(
+            resetAt: reset,
+            now: now,
+            calendar: calendar,
+            timeZone: timeZone
+        )
+
+        XCTAssertEqual(status?.isExpired, false)
+        XCTAssertEqual(status?.label, "resets in now · 17:05")
+    }
+
+    /// Past the grace the snapshot belongs to a cycle that no longer exists,
+    /// so the row must stop saying "resets in now" next to a live-looking bar.
+    func testResetStatusPastGraceReportsAnExpiredWindow() {
+        let reset = date(2026, 8, 17, 17, 5)
+        let now = date(2026, 8, 18, 1, 5)
+
+        let status = ResetCountdownFormatter.resetStatus(
+            resetAt: reset,
+            now: now,
+            calendar: calendar,
+            timeZone: timeZone
+        )
+
+        XCTAssertEqual(status?.isExpired, true)
+        XCTAssertEqual(status?.label, "reset passed · Aug 17, 17:05")
+    }
+
+    func testResetStatusExpiresExactlyAtTheGraceBoundary() {
+        let reset = date(2026, 8, 17, 17, 5)
+        let grace = QuotaWindowEvaluation.postResetGraceSeconds
+
+        XCTAssertEqual(
+            ResetCountdownFormatter.resetStatus(
+                resetAt: reset,
+                now: reset.addingTimeInterval(grace),
+                calendar: calendar,
+                timeZone: timeZone
+            )?.isExpired,
+            false
+        )
+        XCTAssertEqual(
+            ResetCountdownFormatter.resetStatus(
+                resetAt: reset,
+                now: reset.addingTimeInterval(grace + 1),
+                calendar: calendar,
+                timeZone: timeZone
+            )?.isExpired,
+            true
+        )
+    }
+
+    func testResetStatusIsNilWithoutAResetTime() {
+        XCTAssertNil(ResetCountdownFormatter.resetStatus(resetAt: nil, now: Date()))
+    }
+
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
