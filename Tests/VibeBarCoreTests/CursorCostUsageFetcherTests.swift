@@ -221,6 +221,63 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         XCTAssertEqual(snapshot.allTimeCostUSD, 0.25, accuracy: 0.000_001)
     }
 
+    func testPartialFallbackFailurePublishesAndIngestsNothing() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CursorCostStubURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let now = Date(timeIntervalSince1970: 1_786_968_000)
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("cursor-partial-slots")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let working = MiscCookieResolver.Resolution(
+            slotID: UUID(),
+            header: "WorkosCursorSessionToken=working-slot",
+            sourceLabel: "Working"
+        )
+        let failed = MiscCookieResolver.Resolution(
+            slotID: UUID(),
+            header: "WorkosCursorSessionToken=failed-slot",
+            sourceLabel: "Failed"
+        )
+        let plan = CursorSessionResolutionPlan(preferred: nil, fallbacks: [working, failed])
+
+        CursorCostStubURLProtocol.handler = { request in
+            if request.value(forHTTPHeaderField: "Cookie") == failed.header {
+                return (500, Data())
+            }
+            return Self.response("""
+            {
+              "totalUsageEventsCount": 1,
+              "usageEventsDisplay": [{
+                "timestamp": "1786967900000",
+                "model": "composer-2.5",
+                "tokenUsage": {
+                  "inputTokens": 100,
+                  "outputTokens": 50,
+                  "cacheWriteTokens": 0,
+                  "cacheReadTokens": 0,
+                  "totalCents": 25
+                }
+              }]
+            }
+            """)
+        }
+
+        let outcome = await CursorCostUsageFetcher.fetch(
+            homeDirectory: "/Users/example",
+            now: now,
+            retentionDays: 30,
+            session: session,
+            resolutionPlan: plan,
+            eventSink: ledger
+        )
+        guard case .failed = outcome else {
+            return XCTFail("A partial account set must retain the previous complete snapshot")
+        }
+        let summary = try await ledger.summary(UsageLedgerFixtures.wideFilter(around: now))
+        XCTAssertEqual(summary.requests, 0)
+        XCTAssertEqual(summary.realTotalTokens, 0)
+    }
+
     private static func body(of request: URLRequest) throws -> Data {
         if let body = request.httpBody { return body }
         guard let stream = request.httpBodyStream else { return Data() }

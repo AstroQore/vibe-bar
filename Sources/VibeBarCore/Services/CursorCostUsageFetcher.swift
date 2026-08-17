@@ -13,6 +13,11 @@ enum CursorCostFetchOutcome: Sendable {
 /// cloud-only weekly allowance is a separate endpoint and is intentionally not
 /// synthesized into these events.
 struct CursorCostUsageFetcher: Sendable {
+    private struct PreparedSnapshot: Sendable {
+        let snapshot: CostSnapshot
+        let eventBatch: UsageEventFileBatch?
+    }
+
     private let session: URLSession
     private let baseURL: URL
     private let pageSize: Int
@@ -51,18 +56,22 @@ struct CursorCostUsageFetcher: Sendable {
             ? calendar.date(byAdding: .day, value: -(normalizedRetention - 1), to: today)
             : nil
         let fetcher = CursorCostUsageFetcher(session: session)
+        let includeEventBatch = eventSink != nil
 
         if let preferred = plan.preferred {
             do {
-                let snapshot = try await fetcher.fetchSnapshot(
+                let prepared = try await fetcher.prepareSnapshot(
                     cookieHeader: preferred.header,
                     since: since,
                     until: now,
                     now: now,
-                    eventSink: eventSink,
-                    sourceID: sourceIdentifier(for: preferred)
+                    sourceID: sourceIdentifier(for: preferred),
+                    includeEventBatch: includeEventBatch
                 )
-                return .success(snapshot)
+                if let eventSink, let batch = prepared.eventBatch {
+                    await eventSink.consume(batch)
+                }
+                return .success(prepared.snapshot)
             } catch let error as QuotaError {
                 guard error.isCredentialState, !plan.fallbacks.isEmpty else {
                     SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
@@ -74,26 +83,38 @@ struct CursorCostUsageFetcher: Sendable {
             }
         }
 
-        var snapshots: [CostSnapshot] = []
+        var preparedSnapshots: [PreparedSnapshot] = []
+        var allFallbacksSucceeded = true
         for resolution in plan.fallbacks {
             do {
-                let snapshot = try await fetcher.fetchSnapshot(
+                let prepared = try await fetcher.prepareSnapshot(
                     cookieHeader: resolution.header,
                     since: since,
                     until: now,
                     now: now,
-                    eventSink: eventSink,
-                    sourceID: sourceIdentifier(for: resolution)
+                    sourceID: sourceIdentifier(for: resolution),
+                    includeEventBatch: includeEventBatch
                 )
-                snapshots.append(snapshot)
+                preparedSnapshots.append(prepared)
             } catch {
+                allFallbacksSucceeded = false
                 SafeLog.net("Cursor cost refresh failed: \(SafeLog.sanitize(error.localizedDescription))")
             }
         }
-        guard !snapshots.isEmpty else { return .failed }
+        guard allFallbacksSucceeded, !preparedSnapshots.isEmpty else {
+            // Cookie slots may represent independent Cursor accounts. Never
+            // publish or ingest a partial set: CostUsageService treats success
+            // as a complete authoritative replacement of retained history.
+            return .failed
+        }
+        if let eventSink {
+            for prepared in preparedSnapshots {
+                if let batch = prepared.eventBatch { await eventSink.consume(batch) }
+            }
+        }
         return .success(CostSnapshotAggregator.combinedSnapshot(
             tool: .cursor,
-            snapshots: snapshots,
+            snapshots: preparedSnapshots.map(\.snapshot),
             now: now
         ))
     }
@@ -106,6 +127,28 @@ struct CursorCostUsageFetcher: Sendable {
         eventSink: (any CostUsageEventSink)? = nil,
         sourceID: String = "default"
     ) async throws -> CostSnapshot {
+        let prepared = try await prepareSnapshot(
+            cookieHeader: cookieHeader,
+            since: since,
+            until: until,
+            now: now,
+            sourceID: sourceID,
+            includeEventBatch: eventSink != nil
+        )
+        if let eventSink, let batch = prepared.eventBatch {
+            await eventSink.consume(batch)
+        }
+        return prepared.snapshot
+    }
+
+    private func prepareSnapshot(
+        cookieHeader: String,
+        since: Date?,
+        until: Date?,
+        now: Date,
+        sourceID: String,
+        includeEventBatch: Bool
+    ) async throws -> PreparedSnapshot {
         let events = try await fetchAllEvents(
             cookieHeader: cookieHeader,
             since: since,
@@ -114,7 +157,7 @@ struct CursorCostUsageFetcher: Sendable {
         var accumulator = CostUsageScanner.CostAggregator(tool: .cursor, now: now)
         var includedEvents = 0
         var pricedEvents: [PricedUsageEvent] = []
-        pricedEvents.reserveCapacity(eventSink == nil ? 0 : events.count)
+        pricedEvents.reserveCapacity(includeEventBatch ? events.count : 0)
         var eventOccurrences: [String: Int] = [:]
         var latestEventDate: Date?
         for event in events {
@@ -133,7 +176,7 @@ struct CursorCostUsageFetcher: Sendable {
                 cache: usage.cacheReadTokens,
                 costUSD: costUSD
             )
-            if eventSink != nil {
+            if includeEventBatch {
                 let seed = event.stableIdentitySeed(model: model)
                 let occurrence = (eventOccurrences[seed] ?? 0) + 1
                 eventOccurrences[seed] = occurrence
@@ -157,8 +200,8 @@ struct CursorCostUsageFetcher: Sendable {
             if latestEventDate.map({ date > $0 }) ?? true { latestEventDate = date }
             includedEvents += 1
         }
-        if let eventSink {
-            await eventSink.consume(UsageEventFileBatch(
+        let eventBatch: UsageEventFileBatch? = if includeEventBatch {
+            UsageEventFileBatch(
                 // Preserve Cursor as an L2 SubProvider in the request ledger.
                 // Provider Mix folds it into SpaceXAI, while the outer cost
                 // card independently combines Grok + Cursor snapshots.
@@ -171,9 +214,14 @@ struct CursorCostUsageFetcher: Sendable {
                 // the same event identity with its revised tokens/cents.
                 size: Self.batchFingerprint(pricedEvents),
                 events: pricedEvents
-            ))
+            )
+        } else {
+            nil
         }
-        return accumulator.snapshot(jsonlFilesFound: includedEvents)
+        return PreparedSnapshot(
+            snapshot: accumulator.snapshot(jsonlFilesFound: includedEvents),
+            eventBatch: eventBatch
+        )
     }
 
     private static func sourceIdentifier(for resolution: MiscCookieResolver.Resolution) -> String {
