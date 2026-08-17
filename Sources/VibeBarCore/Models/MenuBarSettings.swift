@@ -247,12 +247,20 @@ public enum MenuBarFieldCatalog {
 
     public static let cursorFields: [MenuBarFieldOption] = [
         option(.cursor, "models", "Cursor Models · Monthly", "Cursor Models"),
-        option(.cursor, "other_models", "Other Models · Monthly", "Other Models"),
+        option(.cursor, "other_models", "Other Models · Monthly", "Other Models")
+    ]
+
+    /// Grok Bot rides Cursor's adapter but is its own L2 SubProvider (see
+    /// `ToolType.quotaSubProviderName`), so it gets its own catalog slice and
+    /// its own section header instead of hiding under "Cursor". The field id
+    /// is unchanged — this is a regrouping, not a migration.
+    public static let grokBotFields: [MenuBarFieldOption] = [
         option(.cursor, "grok_bot_weekly", "Grok Bot · Weekly", "Grok Bot")
     ]
 
     public static let allFields: [MenuBarFieldOption] =
-        codexFields + claudeFields + geminiFields + antigravityFields + grokFields + cursorFields
+        codexFields + claudeFields + geminiFields + antigravityFields
+            + grokFields + cursorFields + grokBotFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
         allFields
