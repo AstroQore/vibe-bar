@@ -44,6 +44,24 @@ public enum ResetCountdownFormatter {
         timeZone: TimeZone = .current
     ) -> String? {
         guard let resetAt, let countdown = string(from: resetAt, now: now) else { return nil }
+        guard let absolute = absoluteTime(
+            for: resetAt,
+            now: now,
+            calendar: calendar,
+            timeZone: timeZone
+        ) else { return countdown }
+        return "\(countdown) · \(absolute)"
+    }
+
+    /// The concrete local reset time on its own — "17:05" for a same-day
+    /// reset, "Aug 17, 17:05" later in the same year, "Aug 17, 2026, 17:05"
+    /// beyond it. Returns nil only when the date cannot be decomposed.
+    static func absoluteTime(
+        for resetAt: Date,
+        now: Date,
+        calendar: Calendar = .current,
+        timeZone: TimeZone = .current
+    ) -> String? {
         var calendar = calendar
         calendar.timeZone = timeZone
 
@@ -53,14 +71,55 @@ public enum ResetCountdownFormatter {
               let day = components.day,
               let hour = components.hour,
               let minute = components.minute,
-              shortMonthNames.indices.contains(month - 1) else { return countdown }
+              shortMonthNames.indices.contains(month - 1) else { return nil }
         let time = String(format: "%02d:%02d", hour, minute)
         if calendar.isDate(resetAt, inSameDayAs: now) {
-            return "\(countdown) · \(time)"
+            return time
         } else if calendar.component(.year, from: resetAt) == calendar.component(.year, from: now) {
-            return "\(countdown) · \(shortMonthNames[month - 1]) \(day), \(time)"
+            return "\(shortMonthNames[month - 1]) \(day), \(time)"
         }
-        return "\(countdown) · \(shortMonthNames[month - 1]) \(day), \(year), \(time)"
+        return "\(shortMonthNames[month - 1]) \(day), \(year), \(time)"
+    }
+
+    /// One bucket's reset line, decided here so every surface treats a window
+    /// that already rolled over the same way.
+    ///
+    /// `string(from:)` collapses to "now" the moment the countdown reaches
+    /// zero and never distinguishes "about to reset" from "reset hours ago".
+    /// A snapshot whose window expired is not live: its fill belongs to a
+    /// cycle that no longer exists, so a row that keeps rendering "resets in
+    /// now" next to a full bar reads as current data when it is not. Past the
+    /// boundary-refresh grace, say so and let the caller de-emphasise the
+    /// percentage it is still showing.
+    public static func resetStatus(
+        resetAt: Date?,
+        now: Date = Date(),
+        graceSeconds: TimeInterval = QuotaWindowEvaluation.postResetGraceSeconds,
+        calendar: Calendar = .current,
+        timeZone: TimeZone = .current
+    ) -> ResetStatus? {
+        guard let resetAt else { return nil }
+        let absolute = absoluteTime(for: resetAt, now: now, calendar: calendar, timeZone: timeZone)
+        if now.timeIntervalSince(resetAt) > max(0, graceSeconds) {
+            return ResetStatus(
+                isExpired: true,
+                label: absolute.map { "reset passed · \($0)" } ?? "reset passed"
+            )
+        }
+        guard let countdown = string(from: resetAt, now: now) else { return nil }
+        let detail = absolute.map { "\(countdown) · \($0)" } ?? countdown
+        return ResetStatus(isExpired: false, label: "resets in \(detail)")
+    }
+
+    /// Whether a bucket's reset already passed, plus the line to render for it.
+    public struct ResetStatus: Equatable, Sendable {
+        public let isExpired: Bool
+        public let label: String
+
+        public init(isExpired: Bool, label: String) {
+            self.isExpired = isExpired
+            self.label = label
+        }
     }
 
     /// "Updated 10 seconds ago", "Updated 3 minutes ago", "Updated just now",
