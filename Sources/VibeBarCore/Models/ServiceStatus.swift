@@ -16,6 +16,20 @@ public enum StatusIndicator: String, Codable, Sendable {
         case .critical:    return 4
         }
     }
+
+    /// Badge text for a page-level indicator. `effectiveDescription` speaks
+    /// for an *unacknowledged* incident and deliberately words `.minor`
+    /// differently; everything reporting a provider's own indicator uses
+    /// this.
+    public var summaryDescription: String {
+        switch self {
+        case .none:        return "All services operational"
+        case .maintenance: return "Under maintenance"
+        case .minor:       return "Service issue"
+        case .major:       return "Partial outage"
+        case .critical:    return "Major outage"
+        }
+    }
 }
 
 public enum ComponentStatusLevel: String, Codable, Sendable {
@@ -50,6 +64,28 @@ public enum IncidentImpact: String, Codable, Sendable {
         case .minor:       return 2
         case .major:       return 3
         case .critical:    return 4
+        }
+    }
+
+    /// The two ladders are deliberately one-to-one: an incident's impact is
+    /// the page indicator it would justify on its own.
+    public var indicator: StatusIndicator {
+        switch self {
+        case .none:        return .none
+        case .maintenance: return .maintenance
+        case .minor:       return .minor
+        case .major:       return .major
+        case .critical:    return .critical
+        }
+    }
+
+    public var componentStatus: ComponentStatusLevel {
+        switch self {
+        case .none:        return .operational
+        case .maintenance: return .underMaintenance
+        case .minor:       return .degradedPerformance
+        case .major:       return .partialOutage
+        case .critical:    return .majorOutage
         }
     }
 }
@@ -186,7 +222,7 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
     public var effectiveIndicator: StatusIndicator {
         let unresolvedWorst = recentIncidents
             .filter { !$0.isResolved }
-            .map { Self.indicator(for: $0.impact) }
+            .map(\.impact.indicator)
             .max { $0.severity < $1.severity }
         guard let unresolvedWorst else { return indicator }
         return unresolvedWorst.severity > indicator.severity ? unresolvedWorst : indicator
@@ -202,16 +238,6 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         case .minor:       return "Active incident"
         case .major:       return "Partial outage"
         case .critical:    return "Major outage"
-        }
-    }
-
-    private static func indicator(for impact: IncidentImpact) -> StatusIndicator {
-        switch impact {
-        case .none:        return .none
-        case .maintenance: return .maintenance
-        case .minor:       return .minor
-        case .major:       return .major
-        case .critical:    return .critical
         }
     }
 
