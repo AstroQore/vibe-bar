@@ -583,7 +583,7 @@ struct UsageTrendChartView: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .frame(width: Self.tooltipWidth)
-        .glassEffect(.regular, in: .rect(cornerRadius: 10))
+        .workbenchOverlaySurface(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .padding(.top, 4)
     }
 
@@ -592,7 +592,7 @@ struct UsageTrendChartView: View {
             .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
             .padding(.horizontal, 9)
             .frame(minHeight: 20)
-            .glassEffect(.regular, in: .capsule)
+            .workbenchOverlaySurface(in: Capsule())
             .padding(.top, 4)
     }
 

@@ -303,13 +303,8 @@ struct SkillsManagerPage: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(maxWidth: 520)
-            .background(
-                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                    .fill(.regularMaterial)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
-                    .stroke(.separator.opacity(0.5), lineWidth: 0.5)
+            .workbenchOverlaySurface(
+                in: RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
             )
             .padding(.bottom, density.popoverPaddingV)
             .transition(.move(edge: .bottom).combined(with: .opacity))
