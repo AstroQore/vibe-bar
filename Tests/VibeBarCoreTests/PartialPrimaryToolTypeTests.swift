@@ -13,14 +13,19 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(ToolType.googleAIPair, [.gemini, .antigravity])
     }
 
-    func testPartialPrimaryProvidersAreGeminiAntigravityAndGrok() {
-        XCTAssertEqual(ToolType.partialPrimaryProviders, [.gemini, .antigravity, .grok])
+    func testGrokFamilyIsExactlyGrokAndCursor() {
+        XCTAssertEqual(ToolType.grokFamily, [.grok, .cursor])
+        XCTAssertEqual(ToolType.cursor.coreProviderRepresentative, .grok)
+    }
+
+    func testPartialPrimaryProvidersIncludeCursorAgent() {
+        XCTAssertEqual(ToolType.partialPrimaryProviders, [.gemini, .antigravity, .grok, .cursor])
     }
 
     func testDedicatedCardProvidersIncludePrimaryAndPartialPrimary() {
         XCTAssertEqual(
             ToolType.dedicatedCardProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
     }
 
@@ -47,6 +52,16 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
                       "AntiGravity should support token cost via per-conversation SQLite scanning")
     }
 
+    func testCursorIsGrokLinkedAndCostAware() {
+        XCTAssertTrue(ToolType.cursor.supportsDedicatedCard)
+        XCTAssertTrue(ToolType.cursor.isPartialPrimary)
+        XCTAssertTrue(ToolType.cursor.supportsTokenCost)
+        XCTAssertFalse(ToolType.cursor.supportsStatusPage)
+        XCTAssertFalse(ToolType.cursor.isMiscPageProvider)
+        XCTAssertEqual(ToolType.cursor.productName, ToolType.grok.productName)
+        XCTAssertEqual(ToolType.cursor.toolName, "Cursor Agent")
+    }
+
     func testGoogleAIPairSupportsStatusPage() {
         // Both Gemini and Antigravity share Google's Workspace Status
         // dashboard feed (one product entry covers the Gemini family).
@@ -70,15 +85,15 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         )
     }
 
-    func testCostAwareProvidersIncludeGoogleAIAndGrok() {
+    func testCostAwareProvidersIncludeGoogleAIAndGrokFamily() {
         XCTAssertEqual(
             ToolType.costAwareProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
     }
 
-    func testGoogleAIPairSupportsDedicatedCard() {
-        for tool in ToolType.googleAIPair {
+    func testPartialPrimaryProvidersSupportDedicatedCards() {
+        for tool in ToolType.partialPrimaryProviders {
             XCTAssertTrue(tool.supportsDedicatedCard, "\(tool) should support a dedicated card")
             XCTAssertTrue(tool.isPartialPrimary, "\(tool) should be partial-primary")
             XCTAssertFalse(tool.isPrimary, "\(tool) should not be `isPrimary`")
@@ -87,7 +102,7 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     }
 
     func testIsMiscStaysTrueForPartialPrimaryForBackwardCompat() {
-        // The plan keeps `isMisc` true for Gemini/Antigravity so legacy
+        // Keep `isMisc` true for linked tools so legacy
         // misc-only call sites (MiscCookieSlotStore, etc.) keep working.
         // Code that wants to filter the Misc page should use the new
         // `isMiscPageProvider`.
@@ -100,6 +115,6 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertFalse(ToolType.miscPageProviders.contains(.gemini))
         XCTAssertFalse(ToolType.miscPageProviders.contains(.antigravity))
         XCTAssertTrue(ToolType.miscPageProviders.contains(.copilot))
-        XCTAssertTrue(ToolType.miscPageProviders.contains(.cursor))
+        XCTAssertFalse(ToolType.miscPageProviders.contains(.cursor))
     }
 }

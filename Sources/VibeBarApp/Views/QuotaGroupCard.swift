@@ -364,7 +364,7 @@ struct QuotaGroupCard: View {
         let bucket = item.bucket
         let pace = UsagePace.compute(bucket: bucket, now: now)
         let forecast = paceForecast(for: item)
-        let used = bucket.usedPercent
+        let used = bucket.displayPercent(.used, tool: item.tool)
         let timeExpected = pace.map { displayedPercent(fromUsed: $0.expectedUsedPercent) }
         let forecastProjection = forecast.map {
             QuotaForecastBarProjection(
@@ -402,7 +402,7 @@ struct QuotaGroupCard: View {
                 forecastColor: forecast.map { QuotaForecastPalette.color(for: $0.verdict) }
             )
             Text(SubscriptionWindowProgress.summary(
-                usedPercent: bucket.usedPercent,
+                usedPercent: used,
                 resetAt: bucket.resetAt,
                 rawWindowSeconds: bucket.rawWindowSeconds,
                 displayMode: mode,

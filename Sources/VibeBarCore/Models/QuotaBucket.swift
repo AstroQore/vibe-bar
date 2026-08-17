@@ -98,4 +98,17 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         case .used: return usedPercent
         }
     }
+
+    /// Provider-aware display normalization. Cursor's current dashboard labels
+    /// any positive sub-1% pool as `1% used`; keep the stored observation exact
+    /// for history/forecast math while matching that visible contract.
+    public func displayPercent(_ mode: DisplayMode, tool: ToolType) -> Double {
+        let displayedUsed = tool == .cursor && usedPercent > 0 && usedPercent < 1
+            ? 1
+            : usedPercent
+        switch mode {
+        case .remaining: return max(0, min(100, 100 - displayedUsed))
+        case .used: return displayedUsed
+        }
+    }
 }

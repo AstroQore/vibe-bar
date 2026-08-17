@@ -52,6 +52,10 @@ public final class CostUsageService: ObservableObject {
     /// merged dictionary is published, so remote facts are never written into
     /// the local scan cache/history and cannot be counted again after relaunch.
     private var localSnapshots: [ToolType: CostSnapshot] = [:]
+    /// Account-wide provider APIs that are authoritative but not local files.
+    /// Kept memory-only so a dashboard refresh can never be mistaken for a
+    /// newly scanned local session on the next launch.
+    private var directRemoteSnapshots: [ToolType: CostSnapshot] = [:]
     private var remoteSnapshots: [ToolType: CostSnapshot] = [:]
     /// Every value the UI derives from `snapshots` — rebased per-tool
     /// snapshots, combined platform snapshots, the Overview rollups — is a pure
@@ -191,11 +195,33 @@ public final class CostUsageService: ObservableObject {
         _ = try? await usageLedger?.prepareForPricingRevision(PricingResolver.activeRevision)
 
         var results: [ToolType: CostSnapshot] = [:]
+        var directRemoteResults = directRemoteSnapshots
         let home = homeDirectory
         // Privacy mode is already handled above (it erases and returns), so
         // reaching here means the ledger is allowed to record.
         let sink = usageLedger
         for tool in ToolType.allCases where tool.supportsTokenCost {
+            if tool == .cursor {
+                let outcome = await AsyncTimeout.run(seconds: Self.perToolScanTimeoutSeconds) {
+                    await CursorCostUsageFetcher.fetch(
+                        homeDirectory: home,
+                        now: now,
+                        retentionDays: retentionDays
+                    )
+                }
+                switch outcome {
+                case .completed(.success(let snapshot)):
+                    directRemoteResults[.cursor] = snapshot
+                case .completed(.unavailable):
+                    directRemoteResults.removeValue(forKey: .cursor)
+                case .completed(.failed), .timedOut:
+                    // A transient dashboard failure keeps the last in-memory
+                    // success, just as a timed-out local scan keeps its prior
+                    // snapshot. Logging happens inside the fetcher.
+                    break
+                }
+                continue
+            }
             // Scan on a detached utility task so JSONL parsing doesn't block
             // the main actor. CostUsageService itself is `@MainActor`; without
             // this hop, `nonisolated async` callees still run inline on the
@@ -247,6 +273,7 @@ public final class CostUsageService: ObservableObject {
             }
         }
         localSnapshots = results
+        directRemoteSnapshots = directRemoteResults
         publishMergedSnapshots()
         // Extras (credits / overage) display was removed from the UI — see the
         // user-feedback round that turned them off because the loaders weren't
@@ -311,6 +338,7 @@ public final class CostUsageService: ObservableObject {
         CostUsageScanCache.eraseAll(homeDirectory: homeDirectory)
         try? await usageLedger?.eraseAll()
         localSnapshots = [:]
+        directRemoteSnapshots = [:]
         publishMergedSnapshots()
         extrasByTool = [:]
         lastRefreshedAt = nil
@@ -328,8 +356,19 @@ public final class CostUsageService: ObservableObject {
             return
         }
         var merged = localSnapshots
+        for (tool, remote) in directRemoteSnapshots {
+            if let local = merged[tool] {
+                merged[tool] = CostSnapshotAggregator.combinedSnapshot(
+                    tool: tool,
+                    snapshots: [local, remote],
+                    now: now
+                )
+            } else {
+                merged[tool] = remote
+            }
+        }
         for (tool, remote) in remoteSnapshots {
-            if let local = localSnapshots[tool] {
+            if let local = merged[tool] {
                 merged[tool] = CostSnapshotAggregator.combinedSnapshot(
                     tool: tool,
                     snapshots: [local, remote],

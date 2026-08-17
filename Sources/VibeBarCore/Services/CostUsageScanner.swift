@@ -1488,7 +1488,11 @@ public enum CostUsageScanner {
 
     // MARK: - Aggregator
 
-    private struct CostAggregator {
+    /// Shared accumulator for local scans and authoritative remote usage rows.
+    /// Cursor's dashboard is the latter: its local transcripts contain content
+    /// but no stable token/cost counters, so the same snapshot math is fed from
+    /// cursor.com's account usage events instead.
+    struct CostAggregator {
         let tool: ToolType
         let now: Date
         let calendar: Calendar

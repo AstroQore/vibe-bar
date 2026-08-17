@@ -10,7 +10,7 @@ import Foundation
 ///   AntiGravity IDE share the Gemini product because that's how
 ///   Google brands them.
 /// - `tool` (L3) — the specific surface Vibe Bar tracks
-///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok Build).
+///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok Build, Cursor Agent).
 ///
 /// `ToolType` derives its `vendorName` / `productName` / `toolName`
 /// from a single entry per case in `ProviderHierarchyCatalog`, so
@@ -28,23 +28,24 @@ public struct ProviderHierarchy: Sendable, Equatable, Hashable {
     }
 }
 
-/// Canonical lookup table for the five primary tools and every misc
+/// Canonical lookup table for the dedicated/linked tools and every misc
 /// provider Vibe Bar tracks. Each `ToolType` maps to exactly one
 /// entry; the constants below double as the public spec — adding or
 /// renaming a provider is a single edit here, not a hunt across
 /// five `switch` statements.
 public enum ProviderHierarchyCatalog {
-    // MARK: - Primary five-tool hierarchy
+    // MARK: - Dedicated and linked tool hierarchy
     //
-    //   L1 vendor   : OpenAI    | Anthropic   | Google    | Google      | xAI
-    //   L2 product  : ChatGPT   | Claude      | Gemini    | Gemini      | Grok
-    //   L3 tool     : Codex     | Claude Code | Gemini Web| AntiGravity | Grok Build
+    //   L1 vendor   : OpenAI    | Anthropic   | Google    | Google      | xAI        | Cursor
+    //   L2 product  : ChatGPT   | Claude      | Gemini    | Gemini      | Grok       | Grok
+    //   L3 tool     : Codex     | Claude Code | Gemini Web| AntiGravity | Grok Build | Cursor Agent
 
     public static let codex       = ProviderHierarchy(vendor: "OpenAI",    product: "ChatGPT", tool: "Codex")
     public static let claude      = ProviderHierarchy(vendor: "Anthropic", product: "Claude",  tool: "Claude Code")
     public static let gemini      = ProviderHierarchy(vendor: "Google",    product: "Gemini",  tool: "Gemini Web")
     public static let antigravity = ProviderHierarchy(vendor: "Google",    product: "Gemini",  tool: "AntiGravity")
     public static let grok        = ProviderHierarchy(vendor: "xAI",       product: "Grok",    tool: "Grok Build")
+    public static let cursor      = ProviderHierarchy(vendor: "Cursor",    product: "Grok",    tool: "Cursor Agent")
 
     // MARK: - Misc providers
     //
@@ -59,7 +60,6 @@ public enum ProviderHierarchyCatalog {
     public static let zai              = ProviderHierarchy(vendor: "Zhipu",      product: "GLM",         tool: "GLM Coding Plan")
     public static let minimax          = ProviderHierarchy(vendor: "MiniMax",    product: "MiniMax",     tool: "MiniMax Token Plan")
     public static let kimi             = ProviderHierarchy(vendor: "Moonshot",   product: "Kimi",        tool: "Kimi Coding Plan")
-    public static let cursor           = ProviderHierarchy(vendor: "Cursor",     product: "Cursor",      tool: "Cursor")
     public static let mimo             = ProviderHierarchy(vendor: "Xiaomi",     product: "MiMo",        tool: "MiMo Token Plan")
     public static let iflytek          = ProviderHierarchy(vendor: "iFlytek",    product: "Spark",       tool: "Spark Coding Plan")
     public static let tencentHunyuan   = ProviderHierarchy(vendor: "Tencent",    product: "Hunyuan",     tool: "Hunyuan Coding Plan")
