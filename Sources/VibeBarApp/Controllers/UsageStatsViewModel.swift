@@ -172,7 +172,12 @@ final class UsageStatsViewModel: ObservableObject {
     var modelStats: [UsageModelStat] { results.modelStats }
     var requestRows: [UsageRequestRow] { results.requestRows }
     var requestTotalCount: Int { results.requestTotalCount }
-    @Published private(set) var availableModels: [String] = []
+    /// Both of these used to be their own `@Published`, written mid-reload
+    /// at two different await points — so a single query rebuilt the whole
+    /// analytics tree three times: once for the model list, once for the
+    /// hourly flag, once for the results they describe. They travel with the
+    /// snapshot now and land in the same publication.
+    var availableModels: [String] { results.availableModels }
     /// Tools behind the company chips: the cost-aware set, widened by any
     /// tool the ledger actually has rows for.
     @Published private(set) var knownTools: [ToolType] = ToolType.usageStatsProviders
@@ -185,7 +190,7 @@ final class UsageStatsViewModel: ObservableObject {
     /// True only when the current filter lies wholly above every selected
     /// provider's ledger detail floor. This drives the Hourly menu state and
     /// is refreshed alongside the query it describes.
-    @Published private(set) var isHourlyTrendAvailable = true
+    var isHourlyTrendAvailable: Bool { results.isHourlyTrendAvailable }
 
     let isLedgerAvailable: Bool
 
@@ -640,14 +645,9 @@ final class UsageStatsViewModel: ObservableObject {
             if cascadeModels {
                 self.pruneSelectedModels(to: models)
             }
-            self.availableModels = models
-            if let refreshedModelsRevision {
-                self.lastAvailableModelsRevision = refreshedModelsRevision
-            }
             let resolved = self.filter
             let supportsHourly = (try? await ledger.supportsHourlyTrend(resolved)) ?? false
             guard !Task.isCancelled, generation == self.generation else { return }
-            self.isHourlyTrendAvailable = supportsHourly
             if self.trendGranularity == .hour, !supportsHourly {
                 // Keep the Picker's intent and the returned series aligned.
                 // `trend` also falls back defensively in case the floor moves
@@ -664,7 +664,12 @@ final class UsageStatsViewModel: ObservableObject {
             )
             guard !Task.isCancelled, generation == self.generation else { return }
             self.activeFilter = resolved
-            self.apply(snapshot)
+            if let refreshedModelsRevision {
+                self.lastAvailableModelsRevision = refreshedModelsRevision
+            }
+            self.apply(
+                snapshot, availableModels: models, isHourlyTrendAvailable: supportsHourly
+            )
         }
     }
 
@@ -674,7 +679,11 @@ final class UsageStatsViewModel: ObservableObject {
         self.selectedModels = kept.isEmpty ? nil : kept
     }
 
-    private func apply(_ snapshot: LoadedUsage) {
+    private func apply(
+        _ snapshot: LoadedUsage,
+        availableModels: [String],
+        isHourlyTrendAvailable: Bool
+    ) {
         results = UsageResults(
             summary: snapshot.summary,
             trend: snapshot.trend,
@@ -683,7 +692,9 @@ final class UsageStatsViewModel: ObservableObject {
             modelStats: snapshot.models,
             requestRows: snapshot.requests.rows,
             requestTotalCount: snapshot.requests.totalCount ?? 0,
-            nextRequestCursor: snapshot.requests.nextCursor
+            nextRequestCursor: snapshot.requests.nextCursor,
+            availableModels: availableModels,
+            isHourlyTrendAvailable: isHourlyTrendAvailable
         )
         // Key off the breakdown the snapshot was *queried* for: the user can
         // open a different tab while the query is in flight, and claiming that
@@ -716,9 +727,10 @@ final class UsageStatsViewModel: ObservableObject {
             modelStats: [],
             requestRows: [],
             requestTotalCount: 0,
-            nextRequestCursor: nil
+            nextRequestCursor: nil,
+            availableModels: [],
+            isHourlyTrendAvailable: isHourlyTrendAvailable
         )
-        availableModels = []
         isLoading = false
     }
 
@@ -788,6 +800,8 @@ final class UsageStatsViewModel: ObservableObject {
         /// Where the loaded run stops. `nil` means the range holds nothing
         /// more, so paging is finished rather than merely not started.
         var nextRequestCursor: UsageRequestCursor?
+        var availableModels: [String]
+        var isHourlyTrendAvailable: Bool
 
         static let empty = UsageResults(
             summary: .empty,
@@ -797,7 +811,9 @@ final class UsageStatsViewModel: ObservableObject {
             modelStats: [],
             requestRows: [],
             requestTotalCount: 0,
-            nextRequestCursor: nil
+            nextRequestCursor: nil,
+            availableModels: [],
+            isHourlyTrendAvailable: true
         )
     }
 
