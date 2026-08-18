@@ -109,7 +109,15 @@ public enum SkillInstallSource: Sendable, Equatable {
             if rest.first == "refs", rest.dropFirst().first == "heads" { rest = Array(rest.dropFirst(2)) }
             switch kind {
             case "archive", "zip", "tree", "blob":
-                guard var last = rest.last else { throw SkillInstallSourceError.unsupportedURL(raw) }
+                // Exactly one component may follow: the branch. A slash-qualified
+                // branch (`/tree/feature/foo`) and a path below the branch
+                // (`/tree/main/skills/x`) are indistinguishable here, and
+                // guessing would let the fetcher fall back to main/master and
+                // silently install a different revision. Ask for the
+                // `owner/repo@branch#skill` form instead.
+                guard rest.count == 1, var last = rest.first else {
+                    throw SkillInstallSourceError.unsupportedURL(raw)
+                }
                 if last.hasSuffix(".zip") { last = String(last.dropLast(4)) }
                 branch = last
             default:
