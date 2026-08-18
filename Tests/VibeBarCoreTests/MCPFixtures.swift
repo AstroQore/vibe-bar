@@ -18,12 +18,25 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
     private(set) var lastRequestPageSize: Int?
     private(set) var lastSessionQuery: String?
     private(set) var lastSessionLimit: Int?
-    private(set) var refreshCalls: [(tools: [ToolType]?, force: Bool)] = []
+
+    /// `refreshQuota` is the one method a test drives from two tasks at once,
+    /// so its recording is the one that needs a lock.
+    private let refreshLock = NSLock()
+    private var recordedRefreshCalls: [(tools: [ToolType]?, force: Bool)] = []
+    var refreshCalls: [(tools: [ToolType]?, force: Bool)] {
+        refreshLock.lock()
+        defer { refreshLock.unlock() }
+        return recordedRefreshCalls
+    }
 
     /// Flip to make every ledger-backed tool report the "no ledger" failure.
     var ledgerAvailable = true
     /// What `refreshQuota` claims happened.
     var refreshTriggered = true
+    /// How long `refreshQuota` stays inside the data source. Non-nil keeps two
+    /// concurrent calls overlapping long enough to expose a throttle that
+    /// admits before it marks.
+    var refreshDuration: Duration?
 
     // MARK: Identity
 
@@ -95,7 +108,11 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
     }
 
     func refreshQuota(tools: [ToolType]?, force: Bool) async throws -> MCPRefreshResultDTO {
-        refreshCalls.append((tools, force))
+        refreshLock.lock()
+        recordedRefreshCalls.append((tools, force))
+        let duration = refreshDuration
+        refreshLock.unlock()
+        if let duration { try? await Task.sleep(for: duration) }
         return MCPRefreshResultDTO(
             triggered: refreshTriggered,
             mode: force ? "forced" : "stale-only",

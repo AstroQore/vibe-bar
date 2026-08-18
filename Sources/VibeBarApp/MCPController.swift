@@ -44,10 +44,19 @@ final class MCPController: ObservableObject, MCPDataSource {
     /// to open the Workbench, which reads as a bug rather than as an empty
     /// index.
     private var didAttemptSessionBackfill = false
+    /// The privacy switch, mirrored so the index actor can read it without a
+    /// main-actor hop — and, unlike a captured `Bool`, re-read on every pass.
+    /// Toggling "Index message text" off has to reach the MCP surface too, or
+    /// an agent's `sessions.search` would keep hitting (and re-populating) an
+    /// index the user just disabled.
+    private let bodyIndexing: BodyIndexingFlag
 
     init(environment: AppEnvironment, socketPath: String = MCPSocketServer.defaultSocketPath) {
         self.environment = environment
         self.socketPath = socketPath
+        self.bodyIndexing = BodyIndexingFlag(
+            environment.settingsStore.settings.sessionBodyIndexingEnabled
+        )
     }
 
     // MARK: - Lifecycle
@@ -61,6 +70,14 @@ final class MCPController: ObservableObject, MCPDataSource {
             .sink { [weak self] enabled in
                 Task { @MainActor in self?.applyEnabled(enabled) }
             }
+            .store(in: &cancellables)
+
+        // Follow the body-indexing switch for as long as the app runs, not
+        // just until the first `sessions.*` call opened the index.
+        settingsStore.$settings
+            .map(\.sessionBodyIndexingEnabled)
+            .removeDuplicates()
+            .sink { [bodyIndexing] enabled in bodyIndexing.set(enabled) }
             .store(in: &cancellables)
     }
 
@@ -194,13 +211,23 @@ final class MCPController: ObservableObject, MCPDataSource {
             )
         }
 
-        let triggered = environment.scheduler.triggerRefreshForStaleCacheIfNeeded()
+        // The same `tools` filter the forced path honours. Without it a
+        // narrowly-scoped call would quietly refresh every provider — and an
+        // explicitly empty list, which the argument parser preserves on
+        // purpose, would widen to "everything" instead of matching nothing.
+        let triggered = environment.scheduler.triggerRefreshForStaleCacheIfNeeded(tools: tools)
+        let scope = tools.map { $0.map(\.rawValue).joined(separator: ", ") }
         return MCPRefreshResultDTO(
             triggered: triggered,
             mode: "stale-only",
             message: triggered
                 ? "Refreshing the accounts whose cache was stale. Call quota.get in a few seconds."
-                : "Nothing was stale — every account is inside its refresh interval. "
+                : scope.map {
+                    $0.isEmpty
+                        ? "'tools' was empty, so nothing was selected to refresh."
+                        : "Nothing was stale for \($0) — it is inside its refresh interval. "
+                            + "quota.get already has current numbers."
+                } ?? "Nothing was stale — every account is inside its refresh interval. "
                     + "quota.get already has current numbers."
         )
     }
@@ -349,13 +376,12 @@ final class MCPController: ObservableObject, MCPDataSource {
         guard !sessionIndexUnavailable else {
             throw MCPToolFailure("The session index could not be opened, so sessions cannot be listed.")
         }
-        let bodies = environment?.settingsStore.settings.sessionBodyIndexingEnabled ?? true
         do {
             let store = try SessionIndexStore()
             let service = SessionIndexService(
                 store: store,
                 registry: SessionProviderRegistry.standard(),
-                bodyIndexing: { bodies }
+                bodyIndexing: { [bodyIndexing] in bodyIndexing.current }
             )
             sessionIndex = service
             return service
