@@ -321,7 +321,7 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(repriced.costMicros, 5_200_000)
         let detailFloor = try await ledger.detailFloorDay(for: .grok)
         XCTAssertNotNil(detailFloor)
-        let detailPage = try await ledger.requestPage(filter, page: 0, pageSize: 10)
+        let detailPage = try await ledger.requestPage(filter, pageSize: 10)
         XCTAssertEqual(detailPage.totalCount, 1)
         let modelStats = try await ledger.modelStats(filter)
         XCTAssertEqual(modelStats.first?.costMicros, 5_200_000)
@@ -652,5 +652,73 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(claudeModels, ["claude-sonnet-4-5"])
         let noToolModels = try await ledger.availableModels(tools: [])
         XCTAssertEqual(noToolModels, [])
+    }
+
+    // MARK: - Schema upkeep
+
+    /// A ledger created before the harness index existed must gain it on the
+    /// next open — the whole point of `CREATE INDEX IF NOT EXISTS` running on
+    /// every open rather than only at create time. Dropping the index from an
+    /// otherwise current database is exactly that shape, and it also proves
+    /// the retained rows survive: adding an index must not take the
+    /// drop-and-recreate path that a schema-version bump does.
+    func testOpeningAnIndexlessDatabaseRestoresTheHarnessIndex() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("HarnessIndex")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("usage_events.sqlite3")
+
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: now, harness: .claudeCode)
+            )
+        ]))
+        XCTAssertTrue(try Self.indexNames(at: url).contains("usage_events_harness_ts_idx"))
+
+        try Self.execute("DROP INDEX usage_events_harness_ts_idx", at: url)
+        XCTAssertFalse(try Self.indexNames(at: url).contains("usage_events_harness_ts_idx"))
+
+        let reopened = try UsageEventLedger(url: url)
+        XCTAssertTrue(try Self.indexNames(at: url).contains("usage_events_harness_ts_idx"))
+
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+        let retained = try await reopened.requestPage(filter, pageSize: 10)
+        XCTAssertEqual(retained.rows.count, 1)
+    }
+
+    /// Index names on `usage_events`, read through a connection of the test's
+    /// own so nothing has to be exposed from the actor for the assertion.
+    private static func indexNames(at url: URL) throws -> [String] {
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let handle
+        else { throw UsageLedgerError.open }
+        defer { sqlite3_close_v2(handle) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            handle,
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'usage_events'",
+            -1, &statement, nil
+        ) == SQLITE_OK, let statement else { throw UsageLedgerError.statement }
+        defer { sqlite3_finalize(statement) }
+        var names: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let raw = sqlite3_column_text(statement, 0) {
+                names.append(String(cString: raw))
+            }
+        }
+        return names
+    }
+
+    private static func execute(_ sql: String, at url: URL) throws {
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
+              let handle
+        else { throw UsageLedgerError.open }
+        defer { sqlite3_close_v2(handle) }
+        sqlite3_busy_timeout(handle, 5_000)
+        guard sqlite3_exec(handle, sql, nil, nil, nil) == SQLITE_OK else {
+            throw UsageLedgerError.statement
+        }
     }
 }

@@ -56,11 +56,6 @@ final class UsageQueryMetricsTests: XCTestCase {
         )
     }
 
-    func testRequestPageCountReportsWholePages() {
-        XCTAssertEqual(UsageRequestPage(rows: [], totalCount: 10, page: 0, pageSize: 5).pageCount, 2)
-        XCTAssertEqual(UsageRequestPage(rows: [], totalCount: 11, page: 0, pageSize: 5).pageCount, 3)
-        XCTAssertEqual(UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: 5).pageCount, 0)
-    }
 
     func testProviderStatsMergeAtCompanyLevel() {
         let rows = [
@@ -383,7 +378,7 @@ final class UsageQueryMetricsTests: XCTestCase {
 
     // MARK: - Pagination
 
-    func testRequestPageBoundaries() async throws {
+    func testRequestPageWalksTheWholeRunByCursor() async throws {
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsPaging")
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -399,35 +394,85 @@ final class UsageQueryMetricsTests: XCTestCase {
         try await ledger.ingest(UsageLedgerFixtures.batch(events: events))
         let filter = UsageLedgerFixtures.wideFilter(around: now)
 
-        let first = try await ledger.requestPage(filter, page: 0, pageSize: 5)
+        let first = try await ledger.requestPage(filter, pageSize: 5)
         XCTAssertEqual(first.totalCount, 10)
         XCTAssertEqual(first.rows.count, 5)
-        XCTAssertEqual(first.pageCount, 2)
+        XCTAssertNil(first.cursor)
         // Newest first.
         XCTAssertEqual(first.rows.first?.date, now)
         XCTAssertEqual(first.rows.first?.freshInput, 100)
         XCTAssertEqual(first.rows.first?.tool, .codex)
         XCTAssertEqual(first.rows.first?.costMicros, 10_000)
 
-        let second = try await ledger.requestPage(filter, page: 1, pageSize: 5)
+        let firstCursor = try XCTUnwrap(first.nextCursor)
+        XCTAssertEqual(firstCursor.ts, Int64(first.rows.last!.date.timeIntervalSince1970))
+        XCTAssertEqual(firstCursor.id, first.rows.last?.id)
+
+        let second = try await ledger.requestPage(filter, after: firstCursor, pageSize: 5)
+        XCTAssertEqual(second.cursor, firstCursor)
         XCTAssertEqual(second.rows.count, 5)
         XCTAssertEqual(second.rows.last?.freshInput, 109)
 
-        // Exact multiple: the page right after the last full one is empty
-        // but still reports the real total.
-        let past = try await ledger.requestPage(filter, page: 2, pageSize: 5)
+        // Full run, in order, with nothing repeated or missed.
+        XCTAssertEqual(
+            (first.rows + second.rows).map(\.freshInput),
+            (0..<10).map { Int64(100 + $0) }
+        )
+
+        // The page after the last full one is empty but still reports the
+        // real total, and ends the sequence.
+        let past = try await ledger.requestPage(
+            filter, after: try XCTUnwrap(second.nextCursor), pageSize: 5
+        )
         XCTAssertTrue(past.rows.isEmpty)
         XCTAssertEqual(past.totalCount, 10)
-        XCTAssertEqual(past.page, 2)
+        XCTAssertNil(past.nextCursor)
 
-        let wayPast = try await ledger.requestPage(filter, page: 99, pageSize: 5)
-        XCTAssertTrue(wayPast.rows.isEmpty)
-        XCTAssertEqual(wayPast.totalCount, 10)
-
-        // Negative page and zero page size are clamped, never fatal.
-        let clamped = try await ledger.requestPage(filter, page: -3, pageSize: 0)
-        XCTAssertEqual(clamped.page, 0)
+        // A zero page size is clamped, never fatal.
+        let clamped = try await ledger.requestPage(filter, pageSize: 0)
         XCTAssertEqual(clamped.pageSize, 1)
         XCTAssertEqual(clamped.rows.count, 1)
     }
+
+    /// Ten events in the same second. `ts` alone cannot order them, so a
+    /// cursor that only carried the timestamp would either re-serve the whole
+    /// second on every page or skip the rest of it.
+    func testRequestPagingIsStableAcrossRowsSharingOneTimestamp() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsPagingTies")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // Distinct `input` values give each row an identity; identical dates
+        // force every tie-break through `id`.
+        let events = (0..<10).map { index in
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(
+                    date: now, input: 500 + index, output: 1,
+                    messageId: "tie-\(index)"
+                ),
+                costUSD: 0.01
+            )
+        }
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: events))
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+
+        var collected: [UsageRequestRow] = []
+        var cursor: UsageRequestCursor?
+        for _ in 0..<10 {
+            let page = try await ledger.requestPage(filter, after: cursor, pageSize: 3)
+            collected.append(contentsOf: page.rows)
+            guard let next = page.nextCursor else { break }
+            cursor = next
+        }
+
+        XCTAssertEqual(collected.count, 10)
+        XCTAssertEqual(Set(collected.map(\.id)).count, 10, "no row served twice")
+        XCTAssertEqual(
+            Set(collected.map(\.freshInput)),
+            Set((0..<10).map { Int64(500 + $0) },
+            ), "no row skipped"
+        )
+        // Every row shares the second, so the run must descend by id.
+        XCTAssertEqual(collected.map(\.id), collected.map(\.id).sorted(by: >))
+    }
+
 }

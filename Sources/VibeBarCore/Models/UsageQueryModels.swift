@@ -253,25 +253,49 @@ public struct UsageRequestRow: Sendable, Equatable, Identifiable {
     }
 }
 
-/// One page of the request log. `page` is **zero-based**; a page past the
-/// end is not an error, it just comes back with no rows and the real
+/// A position in the request log's `ts DESC, id DESC` ordering.
+///
+/// Paging by `LIMIT`/`OFFSET` makes SQLite re-walk and re-skip everything
+/// ahead of the page, and it silently drops or repeats rows when the ledger
+/// gains events between two pages. A cursor names the last row of the page
+/// the caller already has, so the next page is a range scan that starts
+/// exactly where the previous one stopped. `id` breaks the tie between
+/// events that share a second.
+public struct UsageRequestCursor: Sendable, Equatable, Hashable {
+    public let ts: Int64
+    public let id: Int64
+
+    public init(ts: Int64, id: Int64) {
+        self.ts = ts
+        self.id = id
+    }
+}
+
+/// One page of the request log, newest first. A page past the end is not an
+/// error: it comes back with no rows, no `nextCursor`, and the real
 /// `totalCount`.
 public struct UsageRequestPage: Sendable, Equatable {
     public let rows: [UsageRequestRow]
     public let totalCount: Int
-    public let page: Int
     public let pageSize: Int
+    /// The cursor this page continued from — `nil` for the first page. Lets a
+    /// caller drop a page that answers a position it has already moved past.
+    public let cursor: UsageRequestCursor?
+    /// Pass as `after:` to fetch the next page. `nil` ends the sequence.
+    public let nextCursor: UsageRequestCursor?
 
-    public init(rows: [UsageRequestRow], totalCount: Int, page: Int, pageSize: Int) {
+    public init(
+        rows: [UsageRequestRow],
+        totalCount: Int,
+        pageSize: Int,
+        cursor: UsageRequestCursor? = nil,
+        nextCursor: UsageRequestCursor? = nil
+    ) {
         self.rows = rows
         self.totalCount = totalCount
-        self.page = page
         self.pageSize = pageSize
-    }
-
-    public var pageCount: Int {
-        guard pageSize > 0 else { return 0 }
-        return (totalCount + pageSize - 1) / pageSize
+        self.cursor = cursor
+        self.nextCursor = nextCursor
     }
 }
 

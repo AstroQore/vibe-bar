@@ -189,9 +189,9 @@ final class UsageStatsViewModel: ObservableObject {
 
     let isLedgerAvailable: Bool
 
-    var hasMoreRequests: Bool {
-        requestRows.count < requestTotalCount
-    }
+    /// The ledger reports where the loaded run stops, so this no longer has
+    /// to infer "more exist" from a count that a concurrent scan can move.
+    var hasMoreRequests: Bool { results.nextRequestCursor != nil }
 
     var knownCompanyRepresentatives: [ToolType] {
         ToolType.coreProviderRepresentatives.filter { representative in
@@ -342,7 +342,6 @@ final class UsageStatsViewModel: ObservableObject {
     private var loadedBreakdowns: Set<Breakdown> = []
     private var tickTask: Task<Void, Never>?
     private var lastCostRefreshAt: Date?
-    private var loadedRequestPages = 0
     private var lastAvailableModelsRevision: UInt64?
     private var generation: UInt64 = 0
     private var hasLoadedOnce = false
@@ -504,7 +503,7 @@ final class UsageStatsViewModel: ObservableObject {
                 : []
             let requests: UsageRequestPage? = breakdown == .requests
                 ? (try? await ledger.requestPage(
-                    filter, page: 0, pageSize: UsageStatsViewModel.requestPageSize
+                    filter, pageSize: UsageStatsViewModel.requestPageSize
                 ))
                 : nil
             guard let self, !Task.isCancelled, generation == self.generation else { return }
@@ -529,7 +528,7 @@ final class UsageStatsViewModel: ObservableObject {
             guard let requests else { return }
             updated.requestRows = requests.rows
             updated.requestTotalCount = requests.totalCount
-            loadedRequestPages = 1
+            updated.nextRequestCursor = requests.nextCursor
         }
         results = updated
         loadedBreakdowns.insert(breakdown)
@@ -541,19 +540,19 @@ final class UsageStatsViewModel: ObservableObject {
         reload(cascadeModels: true)
     }
 
-    /// Next zero-based page of request rows, appended to what is already on
-    /// screen. Pages from a superseded filter are dropped on arrival.
+    /// The next run of request rows, appended to what is already on screen.
+    /// Pages from a superseded filter are dropped on arrival.
     func loadMoreRequests() {
         guard let ledger, let filter = activeFilter,
+              let cursor = results.nextRequestCursor,
               activeBreakdown == .requests,
-              !isLoadingMore, !isLoading, hasMoreRequests
+              !isLoadingMore, !isLoading
         else { return }
         let generation = self.generation
-        let page = loadedRequestPages
         isLoadingMore = true
         Task { [weak self] in
             let result = try? await ledger.requestPage(
-                filter, page: page, pageSize: Self.requestPageSize
+                filter, after: cursor, pageSize: Self.requestPageSize
             )
             guard let self, generation == self.generation else { return }
             self.isLoadingMore = false
@@ -580,7 +579,6 @@ final class UsageStatsViewModel: ObservableObject {
         reloadTask?.cancel()
         breakdownTask?.cancel()
         loadedBreakdowns.removeAll()
-        loadedRequestPages = 0
         activeFilter = nil
         // A page still in flight is now for a filter nobody is looking at; it
         // drops itself on the generation check and never clears this, so the
@@ -684,12 +682,12 @@ final class UsageStatsViewModel: ObservableObject {
             harnessStats: snapshot.harnesses,
             modelStats: snapshot.models,
             requestRows: snapshot.requests.rows,
-            requestTotalCount: snapshot.requests.totalCount
+            requestTotalCount: snapshot.requests.totalCount,
+            nextRequestCursor: snapshot.requests.nextCursor
         )
         // Key off the breakdown the snapshot was *queried* for: the user can
         // open a different tab while the query is in flight, and claiming that
         // tab is loaded would leave it permanently empty.
-        loadedRequestPages = snapshot.breakdown == .requests ? 1 : 0
         loadedBreakdowns = snapshot.breakdown == .models || snapshot.breakdown == .requests
             ? [snapshot.breakdown]
             : []
@@ -717,20 +715,23 @@ final class UsageStatsViewModel: ObservableObject {
             harnessStats: [],
             modelStats: [],
             requestRows: [],
-            requestTotalCount: 0
+            requestTotalCount: 0,
+            nextRequestCursor: nil
         )
         availableModels = []
         isLoading = false
     }
 
+    /// A keyset page starts strictly after the cursor it was asked for, so
+    /// the rows can never overlap what is already on screen — as long as this
+    /// really is the page that continues from where the list currently ends.
     private func append(_ page: UsageRequestPage) {
-        guard page.page == loadedRequestPages else { return }
-        let known = Set(requestRows.map(\.id))
+        guard page.cursor == results.nextRequestCursor else { return }
         var updated = results
-        updated.requestRows.append(contentsOf: page.rows.filter { !known.contains($0.id) })
+        updated.requestRows.append(contentsOf: page.rows)
         updated.requestTotalCount = page.totalCount
+        updated.nextRequestCursor = page.nextCursor
         results = updated
-        loadedRequestPages = page.page + 1
     }
 
     // MARK: - Polling
@@ -782,6 +783,9 @@ final class UsageStatsViewModel: ObservableObject {
         var modelStats: [UsageModelStat]
         var requestRows: [UsageRequestRow]
         var requestTotalCount: Int
+        /// Where the loaded run stops. `nil` means the range holds nothing
+        /// more, so paging is finished rather than merely not started.
+        var nextRequestCursor: UsageRequestCursor?
 
         static let empty = UsageResults(
             summary: .empty,
@@ -790,7 +794,8 @@ final class UsageStatsViewModel: ObservableObject {
             harnessStats: [],
             modelStats: [],
             requestRows: [],
-            requestTotalCount: 0
+            requestTotalCount: 0,
+            nextRequestCursor: nil
         )
     }
 
@@ -810,9 +815,9 @@ final class UsageStatsViewModel: ObservableObject {
             ? ((try? await ledger.modelStats(filter)) ?? [])
             : []
         let requests = breakdown == .requests
-            ? ((try? await ledger.requestPage(filter, page: 0, pageSize: requestPageSize))
-                ?? UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: requestPageSize))
-            : UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: requestPageSize)
+            ? ((try? await ledger.requestPage(filter, pageSize: requestPageSize))
+                ?? UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize))
+            : UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize)
         return LoadedUsage(
             summary: summary,
             trend: trend,
