@@ -17,16 +17,16 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "claude.opus", title: "CLAUDE · Opus", defaultLabel: "Opus"),
         .init(id: "claude.fable", title: "CLAUDE · Fable", defaultLabel: "Fable"),
         .init(id: "claude.oauth", title: "CLAUDE · OAuth", defaultLabel: "OAuth"),
-        .init(id: "gemini.chat", title: "GEMINI · Gemini Chat", defaultLabel: "Gemini Chat"),
-        .init(id: "gemini.pro", title: "GEMINI · Pro", defaultLabel: "Pro"),
+.init(id: "gemini.pro", title: "GEMINI · Pro", defaultLabel: "Pro"),
         .init(id: "gemini.flash", title: "GEMINI · Flash", defaultLabel: "Flash"),
         .init(id: "gemini.flash-lite", title: "GEMINI · Flash Lite", defaultLabel: "Lite"),
         .init(id: "antigravity.gemini-models", title: "ANTIGRAVITY · Gemini Models", defaultLabel: "Gemini"),
         .init(id: "antigravity.claude-gpt-models", title: "ANTIGRAVITY · Claude + GPT Models", defaultLabel: "C+G"),
-        .init(id: "grok.all-models", title: "GROK · All Models", defaultLabel: "All Models"),
+        // Stable persisted key (custom labels are stored under it); the
+        // wording is the L3 group name from AGENTS.md § 7.1.
+        .init(id: "grok.all-models", title: "GROK · Weekly Credits", defaultLabel: "Weekly Credits"),
         .init(id: "cursor.models", title: "CURSOR · Cursor Models", defaultLabel: "Cursor Models"),
-        .init(id: "cursor.other-models", title: "CURSOR · Other Models", defaultLabel: "Other Models"),
-        .init(id: "cursor.grok-bot", title: "CURSOR · Grok Bot", defaultLabel: "Grok Bot")
+        .init(id: "cursor.other-models", title: "CURSOR · Other Models", defaultLabel: "Other Models")
     ]
 
     static func defaultLabel(for id: String) -> String? {

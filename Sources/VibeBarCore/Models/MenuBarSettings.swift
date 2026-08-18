@@ -203,6 +203,48 @@ public struct MenuBarFieldOption: Identifiable, Hashable, Sendable {
     }
 }
 
+/// One L2 SubProvider slice of a company's selected quota fields: the tool
+/// whose adapter produced the buckets, the SubProvider name shown between the
+/// company header and the quota-group titles, and the fields underneath it in
+/// catalog order.
+///
+/// The owning tool is part of the identity because one adapter can serve two
+/// SubProviders — Grok Bot rides Cursor's (see `ToolType.quotaSubProviderName`).
+public struct MenuBarSubProviderGroup: Equatable, Sendable, Identifiable {
+    public let tool: ToolType
+    public let name: String
+    public var fields: [MenuBarFieldOption]
+
+    public init(tool: ToolType, name: String, fields: [MenuBarFieldOption]) {
+        self.tool = tool
+        self.name = name
+        self.fields = fields
+    }
+
+    public var id: String { "\(tool.rawValue)/\(name)" }
+
+    public var fieldIds: [String] { fields.map(\.id) }
+
+    public var bucketIds: [String] { fields.map(\.bucketId) }
+}
+
+/// One L1 company column. Consecutive tools sharing a `vendorName` fold into
+/// a single group (Gemini Web + AntiGravity → Google AI; Grok + Cursor →
+/// SpaceXAI), each contributing one or more SubProviders.
+public struct MenuBarCompanyFieldGroup: Equatable, Sendable, Identifiable {
+    public let company: String
+    public let accentTool: ToolType
+    public var subProviders: [MenuBarSubProviderGroup]
+
+    public init(company: String, accentTool: ToolType, subProviders: [MenuBarSubProviderGroup]) {
+        self.company = company
+        self.accentTool = accentTool
+        self.subProviders = subProviders
+    }
+
+    public var id: String { company }
+}
+
 public enum MenuBarFieldCatalog {
     public static let codexFields: [MenuBarFieldOption] = [
         option(.codex, "five_hour", "5 Hours", "5 Hours"),
@@ -272,6 +314,56 @@ public enum MenuBarFieldCatalog {
 
     public static func fieldId(tool: ToolType, bucketId: String) -> String {
         "\(tool.rawValue).\(bucketId)"
+    }
+
+    /// Buckets the selected quota fields into the three tiers of the quota
+    /// naming axis — L1 company → L2 SubProvider → L3 quota bucket — walking
+    /// `tools` in the order given and `allFields` in catalog order.
+    ///
+    /// This is the shape the mini window renders: one column per company, one
+    /// labelled section per SubProvider, gauges underneath. A single tool can
+    /// contribute more than one SubProvider (Cursor → Cursor + Grok Bot) and
+    /// several tools can share one company (Gemini Web + AntiGravity). Tools
+    /// and SubProviders with nothing selected are dropped, so the result never
+    /// describes an empty column.
+    ///
+    /// Pure and adapter-free on purpose: the SwiftUI layout and the AppKit
+    /// panel-sizing code both need the same grouping, and they must not
+    /// disagree. See `AGENTS.md` § 7.1.
+    public static func subProviderGroups(
+        for tools: [ToolType],
+        selectedFieldIds: Set<String>
+    ) -> [MenuBarCompanyFieldGroup] {
+        var groups: [MenuBarCompanyFieldGroup] = []
+        for tool in tools {
+            var subProviders: [MenuBarSubProviderGroup] = []
+            var indexByName: [String: Int] = [:]
+            for field in allFields
+            where field.tool == tool && selectedFieldIds.contains(field.id) {
+                let name = tool.quotaSubProviderName(bucketID: field.bucketId)
+                if let index = indexByName[name] {
+                    subProviders[index].fields.append(field)
+                } else {
+                    indexByName[name] = subProviders.count
+                    subProviders.append(
+                        MenuBarSubProviderGroup(tool: tool, name: name, fields: [field])
+                    )
+                }
+            }
+            guard !subProviders.isEmpty else { continue }
+            if let last = groups.last, last.company == tool.vendorName {
+                groups[groups.count - 1].subProviders.append(contentsOf: subProviders)
+            } else {
+                groups.append(
+                    MenuBarCompanyFieldGroup(
+                        company: tool.vendorName,
+                        accentTool: tool,
+                        subProviders: subProviders
+                    )
+                )
+            }
+        }
+        return groups
     }
 
     public static func migratedFieldIds(_ ids: [String]) -> [String] {
