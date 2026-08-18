@@ -47,19 +47,37 @@ Vibe Bar's data and design language.
 
 ### A. On the notch, wings left and right (recommended)
 
-A single panel centred on the notch, `notchWidth + 2 × wingWidth` wide
-and exactly `safeAreaInsets.top` tall in the closed state. The middle
-is opaque black and disappears against the physical notch; each wing
-draws a few compact ring gauges. It uses space that is *already*
+A single panel centred on the notch, `leftWing + notchWidth + rightWing`
+wide and exactly `safeAreaInsets.top` tall in the closed state. The
+middle is opaque black and disappears against the physical notch; each
+wing draws a few compact ring gauges. It uses space that is *already*
 unusable by the menu bar (the notch itself) plus a small, fixed strip on
-each side.
+one or both sides.
 
-- Pros: never collides with status items; wing width is deterministic;
-  looks intentional on a notched Mac; the same panel expands downward.
-- Cons: on a non-notched external display there is nothing to hide
-  behind — open-vibe-island falls back to a top-centre pill (a fake
-  notch), which is a taste decision. Default here: **disabled on
-  non-notched displays**, with an opt-in "top-centre pill" mode.
+Which side matters. The **right** of the notch is where macOS packs
+status items, and in the very overflow scenario that motivates this
+feature they run right up to the notch — an opaque right wing would
+paint over them (`ignoresMouseEvents` only passes clicks through, it
+does not stop the wing from covering the item). The **left** of the
+notch is the frontmost app's menu-title band, which for most apps ends
+well short of the notch. So the defaults are `leftWing = 88`,
+`rightWing = 0`; the right wing is opt-in for people whose status-item
+strip is short. The controller additionally shrinks or hides a wing
+when it can see that the band is occupied: for the right side by
+measuring our own status item's frame (`NSStatusItem.button.window`),
+for the left side — where the frontmost app's menu extent is not
+observable without the Accessibility API — by keeping the default
+width conservative and letting the user set it.
+
+- Pros: does not touch the status-item strip by default; wing width is
+  deterministic; looks intentional on a notched Mac; the same panel
+  expands downward.
+- Cons: the left wing can still overlap an unusually long app menu bar;
+  that is a user-visible setting, not a hidden heuristic. On a
+  non-notched external display there is nothing to hide behind —
+  open-vibe-island falls back to a top-centre pill (a fake notch),
+  which is a taste decision. Default here: **disabled on non-notched
+  displays**, with an opt-in "top-centre pill" mode.
 
 ### B. Left of the notch only, in the app-menu gap
 
@@ -77,9 +95,10 @@ last menu title and the notch. This is what AQ described.
   Clicking a title that the island covers would be a real regression.
 
 Verdict: **B is feasible but not worth its fragility.** Option A gets the
-"more room" outcome with a fixed geometry. If a left-only variant is
-still wanted later, it can be a *wing configuration* of A (right wing
-width 0) rather than a different mechanism.
+"more room" outcome with a fixed geometry, and its default
+(`rightWing = 0`) *is* the left-of-notch layout AQ described — the
+difference is that A anchors on the notch and treats the sides as
+configuration rather than measuring another app's menu bar.
 
 ### C. A second status item / a wider status item
 
@@ -110,14 +129,27 @@ also close to `MiniQuotaWindowController.makePanel`:
 - `collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces,
   .ignoresCycle, .stationary]` — `.stationary` keeps it pinned during
   Mission Control / "click wallpaper to reveal desktop".
-- The panel is created at its **opened** size and never resized; closed
-  vs opened is a SwiftUI state inside a fixed frame. That avoids
-  AppKit resize flicker and keeps hit-testing simple.
-- `ignoresMouseEvents = true` while closed. A global `NSEvent` monitor
-  for `.mouseMoved` decides when the pointer is inside the closed hit
-  rect (wings + notch, inset by a few points), starts the hover timer,
-  and flips `ignoresMouseEvents` to `false` only while opened, so the
-  island never steals clicks from the menu bar when closed.
+- The panel is created at its **opened** size and not resized during
+  hover/expand transitions; closed vs opened is a SwiftUI state inside
+  a fixed frame, which avoids AppKit resize flicker and keeps
+  hit-testing simple. The frame *is* recomputed (and the panel rebuilt
+  if needed) whenever a sizing input changes: wing widths, the selected
+  fields, density, the target screen's parameters.
+- The opened width is clamped to the target screen's `visibleFrame`
+  width minus a margin (the same rule `MiniQuotaWindowController`
+  applies); past that the strip compresses to the compact density and
+  then truncates trailing fields with a "+N" marker rather than
+  running off-screen.
+- Pointer handling: while closed, `ignoresMouseEvents = true` for the
+  notch/black region so the menu bar under it keeps working, but the
+  visible **wing** rects are hit-testable (an `NSView` subclass that
+  returns itself only inside the wing rects), so a click on a gauge
+  opens/pins immediately without waiting for the hover delay and never
+  reaches an underlying control. Hover detection uses **both** a
+  global `NSEvent` monitor (events delivered to other apps) and a
+  local monitor plus tracking areas (events delivered to Vibe Bar,
+  e.g. when it is frontmost or the pointer came from our status item);
+  the timer starts on either.
 - One panel per eligible screen; screens re-evaluated on
   `NSApplication.didChangeScreenParametersNotification`.
 
@@ -128,12 +160,12 @@ notchHeight = screen.safeAreaInsets.top                  // 0 on non-notched dis
 notchWidth  = screen.frame.width
             - (screen.auxiliaryTopLeftArea?.width  ?? 0)
             - (screen.auxiliaryTopRightArea?.width ?? 0)
-closedRect  = centred on screen.frame.midX, width notchWidth + 2·wing, height notchHeight
-openedRect  = same centre, width max(closedWidth, contentWidth), height notchHeight + stripHeight
+closedRect  = x from midX − notchWidth/2 − leftWing, width leftWing + notchWidth + rightWing, height notchHeight
+openedRect  = same notch centre, width min(max(closedWidth, contentWidth), visibleFrame.width − 32), height notchHeight + stripHeight
 ```
 
-`wing` defaults to 88pt (room for two compact rings) and is
-configurable. On `notchHeight == 0` the island is off unless the
+`leftWing` defaults to 88pt (room for two compact rings), `rightWing`
+to 0; both configurable. On `notchHeight == 0` the island is off unless the
 "top-centre pill" fallback is enabled, in which case a 38pt-tall,
 190pt-wide fake notch is drawn (open-vibe-island's numbers).
 
@@ -188,10 +220,11 @@ timeline scoped to visibility (AGENTS.md § 11: no periodic
 | --- | --- | --- |
 | `enabled` | `false` | master switch |
 | `displays` | `.builtInNotchedOnly` | `.builtInNotchedOnly` / `.allNotched` / `.allDisplays` (fake-notch fallback) |
-| `wingWidth` | `88` | pt per wing, 0 allowed (single-sided) |
+| `leftWingWidth` | `88` | pt, 0 allowed |
+| `rightWingWidth` | `0` | pt; off by default because status items live there |
 | `hoverDelayMilliseconds` | `350` | |
 | `hideOverFullScreen` | `false` | |
-| `hiddenFromScreenSharing` | `false` | maps to `panel.sharingType = .readOnly` when `true` |
+| `hiddenFromScreenSharing` | `false` | when `true`, `panel.sharingType = .none` (excluded from capture); `.readOnly` is not exclusion |
 | `fields` | mirrors `miniWindowFields` | field ids from `MenuBarFieldCatalog` |
 
 Edited in Settings → a new "Notch Island" section next to the menu-bar
