@@ -179,20 +179,19 @@ struct UsageBreakdownTables: View {
 
     /// Requests intentionally retain a horizontal scroll surface: a request
     /// carries seven useful fields and compressing it would erase the model or
-    /// tier. The last realized row remains the paging trigger.
+    /// tier.
+    ///
+    /// Unlike the other three tables this one owns its vertical scrolling too,
+    /// clamped to `requestsMaxViewportHeight`. A `LazyVStack` only culls what
+    /// its enclosing scroll view clips, and the table used to hand the parent
+    /// scroller its full content height — so every loaded row realized, and
+    /// the last row's `onAppear` immediately asked for the next page, which
+    /// realized more rows, which fired again. Paging is an explicit button
+    /// now; nothing chains.
     private var requestsTable: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            VStack(spacing: 0) {
-                tableHeader {
-                    headerCell("Time", width: 138)
-                    headerCell("Harness", width: 138)
-                    headerCell("Model", width: 220)
-                    headerCell("Input", width: 114, alignment: .trailing)
-                    headerCell("Output", width: 88, alignment: .trailing)
-                    headerCell("Cost", width: 96, alignment: .trailing)
-                    headerCell("Tier", width: 86)
-                }
-                LazyVStack(spacing: 0) {
+        ScrollView([.horizontal, .vertical], showsIndicators: true) {
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                Section {
                     ForEach(model.requestRows) { row in
                         PorcelainUsageRow(accessibilityLabel: requestAccessibilityLabel(row)) {
                             valueCell(timestamp(row.date), width: 138, secondary: true, tooltip: timestamp(row.date))
@@ -207,14 +206,64 @@ struct UsageBreakdownTables: View {
                             optionalMoneyCell(row.costMicros, width: 96)
                             valueCell(row.serviceTier ?? "—", width: 86, secondary: true, tooltip: row.serviceTier)
                         }
-                        .onAppear { loadMoreIfLast(row) }
                     }
+                    if model.hasMoreRequests { loadMoreRow }
+                } header: {
+                    tableHeader {
+                        headerCell("Time", width: 138)
+                        headerCell("Harness", width: 138)
+                        headerCell("Model", width: 220)
+                        headerCell("Input", width: 114, alignment: .trailing)
+                        headerCell("Output", width: 88, alignment: .trailing)
+                        headerCell("Cost", width: 96, alignment: .trailing)
+                        headerCell("Tier", width: 86)
+                    }
+                    // Opaque: a pinned header floats over the rows it labels,
+                    // and flat surfaces cast no shadow to separate them.
+                    .background(WorkbenchPorcelain.overlayFill(for: colorScheme))
                 }
             }
             .frame(minWidth: 898, alignment: .leading)
         }
         .accessibilityLabel("Request usage table")
-        .frame(height: tableHeight(for: model.requestRows.count))
+        .frame(height: requestsViewportHeight)
+    }
+
+    /// Explicit paging. An `onAppear` sentinel on the last row cannot tell
+    /// "the user scrolled to the end" from "SwiftUI realized the row", and the
+    /// second reading walks the whole ledger one 50-row publish at a time.
+    private var loadMoreRow: some View {
+        let remaining = max(0, model.requestTotalCount - model.requestRows.count)
+        return Button {
+            model.loadMoreRequests()
+        } label: {
+            HStack(spacing: 6) {
+                if model.isLoadingMore {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                Text(model.isLoadingMore
+                    ? "Loading more requests…"
+                    : "Load more (\(remaining.formatted(.number.grouping(.automatic))) remaining)")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 33)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isLoadingMore)
+    }
+
+    /// Enough rows to read a burst of activity without handing SwiftUI a
+    /// viewport tall enough to realize a whole page at once.
+    private static let requestsMaxViewportHeight: CGFloat = 27 + 34 * 15
+
+    private var requestsViewportHeight: CGFloat {
+        let rows = model.requestRows.count + (model.hasMoreRequests ? 1 : 0)
+        return min(tableHeight(for: rows), Self.requestsMaxViewportHeight)
     }
 
     private var providersTable: some View {
@@ -427,14 +476,9 @@ struct UsageBreakdownTables: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func loadMoreIfLast(_ row: UsageRequestRow) {
-        guard row.id == model.requestRows.last?.id else { return }
-        model.loadMoreRequests()
-    }
-
-    /// Header plus 34-point rows, instead of a density-dependent empty pane.
-    /// The parent Usage Stats scroller owns vertical scrolling, so this is
-    /// deliberately the real content height rather than a fixed viewport.
+    /// Header plus 34-point rows. Periods / Providers / Models hand this to
+    /// the parent Usage Stats scroller as their real content height; Requests
+    /// clamps it into its own viewport so its `LazyVStack` can cull.
     private func tableHeight(for rowCount: Int) -> CGFloat {
         CGFloat(max(rowCount, 1)) * 34 + 27
     }
