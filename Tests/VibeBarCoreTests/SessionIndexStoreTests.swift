@@ -546,9 +546,9 @@ final class SessionIndexStoreTests: XCTestCase {
 
         let rebuilt = try makeStore()
         let remaining = try await rebuilt.sessionCount()
-        XCTAssertEqual(SessionIndexStore.schemaVersion, 2)
+        XCTAssertEqual(SessionIndexStore.schemaVersion, 3)
         XCTAssertEqual(remaining, 0)
-        XCTAssertEqual(try userVersion(), 2)
+        XCTAssertEqual(try userVersion(), 3)
 
         try await rebuilt.upsertSession(summary(harness: .claudeCode, model: "claude-fable-5"))
         let model = try await rebuilt.allSummaries().first?.model

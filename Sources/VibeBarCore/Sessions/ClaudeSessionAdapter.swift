@@ -52,11 +52,18 @@ public struct ClaudeSessionAdapter: SessionProviderAdapter {
             throw SessionParseError.unreadable(fileURL.lastPathComponent)
         }
 
+        // The file name is the session id `claude --resume` accepts. The
+        // per-line `sessionId` field is *not* authoritative: a forked or
+        // "continued" session keeps its ancestors' lines (their ids
+        // included) ahead of its own, so reading the first line's field
+        // resumed the parent — a different transcript with a different tail.
         let stem = fileURL.deletingPathExtension().lastPathComponent
-        let sessionID = SessionParsing.firstString(
-            head.compactMap { $0["sessionId"] }.first,
-            tail.compactMap { $0["sessionId"] }.first
-        ) ?? stem
+        let sessionID = CodexSessionAdapter.isUUIDShaped(stem)
+            ? stem
+            : SessionParsing.firstString(
+                tail.compactMap { $0["sessionId"] }.last,
+                head.compactMap { $0["sessionId"] }.first
+            ) ?? stem
 
         let projectDir = SessionParsing.firstString(
             head.compactMap { $0["cwd"] }.first,
