@@ -62,12 +62,11 @@ does not stop the wing from covering the item). The **left** of the
 notch is the frontmost app's menu-title band, which for most apps ends
 well short of the notch. So the defaults are `leftWing = 88`,
 `rightWing = 0`; the right wing is opt-in for people whose status-item
-strip is short. The controller additionally shrinks or hides a wing
-when it can see that the band is occupied: for the right side by
-measuring our own status item's frame (`NSStatusItem.button.window`),
-for the left side — where the frontmost app's menu extent is not
-observable without the Accessibility API — by keeping the default
-width conservative and letting the user set it.
+strip is short. Neither band's occupancy is observable without the Accessibility API
+(other apps' status items and menu titles are not ours to measure), so
+the proposal makes **no collision-detection claim**: wing widths are
+user-managed settings, the right wing is off by default because that is
+where status items live, and the left default is conservative.
 
 - Pros: does not touch the status-item strip by default; wing width is
   deterministic; looks intentional on a notched Mac; the same panel
@@ -112,11 +111,17 @@ New App-layer pieces; no Core changes beyond a settings struct.
 ```
 Sources/VibeBarApp/
   NotchIslandController.swift      // NSPanel lifecycle, screen tracking, hover/click state
-  NotchGeometry.swift               // pure: notch rect, wing rects, closed/opened frames
   Views/NotchIslandView.swift       // SwiftUI content: closed wings + opened strip
-Sources/VibeBarCore/Models/
-  NotchIslandSettings.swift         // Codable settings, part of AppSettings
+Sources/VibeBarCore/
+  Models/NotchIslandSettings.swift  // Codable settings, part of AppSettings (decodeIfPresent + defaults)
+  Utilities/NotchGeometry.swift     // pure geometry — in Core so VibeBarCoreTests can cover it
 ```
+
+`NotchGeometry` lives in Core on purpose: the package has one test target
+(`VibeBarCoreTests`, Core-only), and phase 1 promises geometry tests.
+`NotchIslandSettings` follows the settings rule every other section
+obeys — `decodeIfPresent` with defaults so an older `settings.json`
+without the key still loads, plus an encode/decode round-trip test.
 
 ### Panel
 
@@ -140,16 +145,17 @@ also close to `MiniQuotaWindowController.makePanel`:
   applies); past that the strip compresses to the compact density and
   then truncates trailing fields with a "+N" marker rather than
   running off-screen.
-- Pointer handling: while closed, `ignoresMouseEvents = true` for the
-  notch/black region so the menu bar under it keeps working, but the
-  visible **wing** rects are hit-testable (an `NSView` subclass that
-  returns itself only inside the wing rects), so a click on a gauge
-  opens/pins immediately without waiting for the hover delay and never
-  reaches an underlying control. Hover detection uses **both** a
-  global `NSEvent` monitor (events delivered to other apps) and a
-  local monitor plus tracking areas (events delivered to Vibe Bar,
-  e.g. when it is frontmost or the pointer came from our status item);
-  the timer starts on either.
+- Pointer handling: `ignoresMouseEvents` is per-window, so pass-through
+  and clickable regions cannot share one panel. Use **two** panels:
+  a *wing panel* sized to exactly the visible wing rects, always
+  hit-testable (a click on a gauge opens/pins immediately and never
+  reaches the menu bar), and the *strip panel* that covers the notch
+  and the opened area, `ignoresMouseEvents = true` while closed and
+  `false` while opened. Hover detection uses **both** a global
+  `NSEvent` monitor (events delivered to other apps) and a local
+  monitor plus tracking areas on the wing panel (events delivered to
+  Vibe Bar, e.g. when it is frontmost or the pointer came from our
+  status item); the timer starts on either.
 - One panel per eligible screen; screens re-evaluated on
   `NSApplication.didChangeScreenParametersNotification`.
 
@@ -160,9 +166,13 @@ notchHeight = screen.safeAreaInsets.top                  // 0 on non-notched dis
 notchWidth  = screen.frame.width
             - (screen.auxiliaryTopLeftArea?.width  ?? 0)
             - (screen.auxiliaryTopRightArea?.width ?? 0)
-closedRect  = x from midX − notchWidth/2 − leftWing, width leftWing + notchWidth + rightWing, height notchHeight
+maxWing     = (visibleFrame.width − 32 − notchWidth) / 2   // effective wings are clamped first
+leftWing'   = min(leftWing,  maxWing);  rightWing' = min(rightWing, maxWing)
+closedRect  = x from midX − notchWidth/2 − leftWing', width leftWing' + notchWidth + rightWing', height notchHeight
 openedRect  = same notch centre, width min(max(closedWidth, contentWidth), visibleFrame.width − 32), height notchHeight + stripHeight
 ```
+Both rects derive from the *clamped* wing widths, so the opened frame is
+never narrower than the closed one.
 
 `leftWing` defaults to 88pt (room for two compact rings), `rightWing`
 to 0; both configurable. On `notchHeight == 0` the island is off unless the
