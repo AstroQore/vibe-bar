@@ -17,7 +17,12 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "claude.opus", title: "CLAUDE · Opus", defaultLabel: "Opus"),
         .init(id: "claude.fable", title: "CLAUDE · Fable", defaultLabel: "Fable"),
         .init(id: "claude.oauth", title: "CLAUDE · OAuth", defaultLabel: "OAuth"),
-        .init(id: "gemini.chat", title: "GEMINI · Gemini Chat", defaultLabel: "Gemini Chat"),
+        // The id is a persisted `groupLabels` key — renaming it would orphan
+        // every custom label. The *label* is what changed: "Gemini Chat" was
+        // an L2-flavoured name sitting in the L3 slot, and now that the mini
+        // window prints "GEMINI WEB" as its own SubProvider row, the group
+        // below it has to name a quota group like every other provider's does.
+        .init(id: "gemini.chat", title: "GEMINI WEB · All Models", defaultLabel: "All Models"),
         .init(id: "gemini.pro", title: "GEMINI · Pro", defaultLabel: "Pro"),
         .init(id: "gemini.flash", title: "GEMINI · Flash", defaultLabel: "Flash"),
         .init(id: "gemini.flash-lite", title: "GEMINI · Flash Lite", defaultLabel: "Lite"),
