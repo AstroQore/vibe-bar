@@ -307,6 +307,10 @@ public final class MCPSocketServer: @unchecked Sendable {
     /// live peer — `poll` bounds that wait.
     static func isAnyoneListening(atPath path: String, timeoutMilliseconds: Int32 = 250) -> Bool {
         guard var address = unixAddress(for: path) else { return false }
+        // Not a socket at all (a plain file left at the path) can never be a
+        // live listener; that is the one shape safe to call stale up front.
+        var info = stat()
+        if stat(path, &info) == 0, (info.st_mode & S_IFMT) != S_IFSOCK { return false }
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
         defer { close(fd) }
@@ -318,14 +322,20 @@ public final class MCPSocketServer: @unchecked Sendable {
             }
         }
         if result == 0 { return true }
-        guard errno == EINPROGRESS || errno == EAGAIN || errno == EALREADY else { return false }
+        // Only a definitive refusal / vanished path proves the inode is stale.
+        // Anything still pending after the timeout, or any probe error, is
+        // treated as occupied: a slow or busy peer is a live peer, and
+        // guessing wrong here would unlink a socket agents are attached to.
+        guard errno == EINPROGRESS || errno == EAGAIN || errno == EALREADY else {
+            return !(errno == ECONNREFUSED || errno == ENOENT)
+        }
 
         var descriptor = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-        guard poll(&descriptor, 1, timeoutMilliseconds) > 0 else { return false }
+        guard poll(&descriptor, 1, timeoutMilliseconds) > 0 else { return true }
         var pending: Int32 = 0
         var length = socklen_t(MemoryLayout<Int32>.size)
-        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &pending, &length) == 0 else { return false }
-        return pending == 0
+        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &pending, &length) == 0 else { return true }
+        return !(pending == ECONNREFUSED || pending == ENOENT)
     }
 }
 
