@@ -73,12 +73,13 @@ Single SwiftPM package, two product targets and one test target:
 │   │   └── Views/                 # SwiftUI view tree
 │   └── VibeBarCore/               # Pure-Swift testable library
 │       ├── Adapters/              # Provider quota + response parsers
+│       ├── Compat/                # agent-session-kit re-export + host defaults
 │       ├── Credentials/           # CLI credential readers + Keychain store
-│       ├── MCP/                   # Local MCP server + stdio bridge (see § 5.1)
+│       ├── MCP/                   # MCP dispatch, tools, DTOs (see § 5.1)
 │       ├── Models/                # Plain data types (settings, quotas, cost)
 │       ├── Services/              # Cost scanner, quota refresh, status fetch
 │       ├── Storage/               # Local-store roots, caches, settings
-│       ├── Utilities/             # Privacy helpers, real-home, formatters
+│       ├── Utilities/             # Privacy helpers, formatters
 │       └── Vendored/
 ├── Tests/
 │   └── VibeBarCoreTests/          # `swift test` target (~90 tests)
@@ -116,6 +117,54 @@ Targets:
 Boundary rule: heavy logic lives in `VibeBarCore`; UI glue lives in
 `VibeBarApp`. If you find yourself adding parsers, scanners, or storage
 to `VibeBarApp`, that's a sign it should move down to Core.
+
+### 2.1 What lives in agent-session-kit instead
+
+Everything that reads a coding agent's **session store** was extracted
+into [`agent-session-kit`](https://github.com/AstroQore/agent-session-kit)
+and is a package dependency now:
+
+- session discovery, parsing and the per-harness adapters (what used to
+  be `Sources/VibeBarCore/Sessions/`),
+- the FTS5 session index (`SessionIndexStore`, `SessionIndexService`),
+- deletion planning (`SessionDeleter`) and `LiveSQLiteReader`,
+- `Harness` / `HarnessCatalog` — the *usage* axis naming only,
+- the MCP transports (`MCPSocketServer`, `MCPStdioBridge`) and the
+  JSON-RPC primitives (`MCPJSON`, `MCPTool`, `MCPArguments`, …),
+- `RealHomeDirectory`, `JSONLHeadTail`, `JSONLLineScanner`.
+
+What stayed here is what needs Vibe Bar's *billing* vocabulary or its
+app: `MCPServer` and its tool catalog, DTOs and resource catalog;
+`Harness+Quota.swift`; `CostUsageScanner`; everything quota-shaped.
+
+`Sources/VibeBarCore/Compat/AgentSessionKitReexport.swift` is the seam.
+It `@_exported import`s the package — so no call site needs a second
+import — and supplies the defaults the package refuses to invent for its
+host: `~/.vibebar/mcp.sock`, the `--mcp-stdio` flag, `VIBEBAR_MCP_SOCKET`
+and the "Vibe Bar is not running" message. Add host-shaped defaults
+there, not in the package.
+
+**Checking it out.** `Package.swift` uses `.package(path:)` until the
+package is published, so the two repositories must be siblings:
+
+```sh
+cd ..                       # the directory that holds vibe-bar
+git clone https://github.com/AstroQore/agent-session-kit.git
+```
+
+A sibling worktree (§ 9.1's `../vibe-bar-<topic>`) resolves
+`../agent-session-kit` on its own. A worktree nested inside the
+repository does not — it is two levels down — so give it a sibling of
+its own:
+
+```sh
+git worktree add .agents/worktrees/<topic> -b <prefix>/<topic> main
+ln -s ../../../agent-session-kit .agents/worktrees/agent-session-kit
+```
+
+The link target is relative to `.agents/worktrees/`, so it points back
+out to the repository's own sibling. `.agents/` is gitignored, which
+keeps both the worktree and the link out of `git status`.
 
 ## 3. Toolchain Prerequisites
 
@@ -329,7 +378,7 @@ credential files and their session JSONL logs. Treat those as read-only
 inputs.
 
 There is exactly one exception, and it is whole-session deletion:
-`Sources/VibeBarCore/Sessions/SessionDeleter.swift` removes a session's
+`SessionDeleter` (agent-session-kit) removes a session's
 own log files, only when the user explicitly asks for that session to go
 from the Workbench's Sessions page. It is fenced accordingly — every
 target is canonicalized and must resolve strictly below one of the owning
@@ -355,15 +404,16 @@ carries a per-provider message naming the app to delete from — and the
 Sessions page asks the same property before offering the action, so the
 gate and the adapters cannot drift. A new read-only provider adds a case
 there and nowhere else. Read-only also means read-only in the small: these
-adapters open the SQLite stores through
-`Sources/VibeBarCore/Sessions/LiveSQLiteReader.swift`, which only ever
+adapters open the SQLite stores through the package's
+`LiveSQLiteReader`, which only ever
 opens the real file `SQLITE_OPEN_READONLY` and falls back to a private
 temp-directory snapshot it deletes again.
 
 ### 5.1 The local MCP server
 
 Vibe Bar exposes its own data to the user's coding agents over MCP. Code
-lives in `Sources/VibeBarCore/MCP/` (protocol, tools, transports) plus
+lives in `Sources/VibeBarCore/MCP/` (data-source protocol, tool catalog,
+DTOs) over agent-session-kit's transports, plus
 `Sources/VibeBarApp/MCPController.swift` (the `MCPDataSource`
 implementation over `AppEnvironment`) and
 `Sources/VibeBarApp/Views/MCPSettingsSection.swift`.
@@ -459,8 +509,9 @@ plist. The trade-offs:
 
 ### 6.2 Why `RealHomeDirectory` still exists
 
-`Sources/VibeBarCore/Utilities/RealHomeDirectory.swift` is the
-canonical entry point for any path under the real user home —
+`RealHomeDirectory` — agent-session-kit's, re-exported through
+`Compat/AgentSessionKitReexport.swift` — is the canonical entry point
+for any path under the real user home —
 `~/.codex/`, `~/.claude/`, `~/.config/claude/`, `~/.vibebar/`,
 `~/.gemini/`. Without the sandbox it is functionally equivalent to
 `NSHomeDirectory()`, but keeping every call site routed through one
@@ -566,9 +617,9 @@ Tests keep working because they pass an explicit value.
   JSON file (`mini_window_geometry.json`) — don't fold it back into
   `AppSettings`, because every settings write fans out to every Combine
   subscriber.
-- **JSONL parsing must be O(n).** See
-  `CostUsageScanner.forEachJSONLLine`: use a moving cursor, not
-  `removeSubrange`.
+- **JSONL parsing must be O(n).** Go through
+  `CostUsageScanner.forEachJSONLLine`, which forwards to the package's
+  `JSONLLineScanner.forEachLine`: a moving cursor, not `removeSubrange`.
 
 ### 7.1 Provider and harness naming
 
@@ -593,8 +644,10 @@ SubProvider → L3 quota / model group. Source of truth:
 **Usage / cost axis** — where the tokens were actually spent. The unit is
 the local **harness**: the CLI or app that produced the sessions we
 scanned. It is neither the company nor the quota SubProvider. Source of
-truth: `Sources/VibeBarCore/Models/Harness.swift` (`HarnessCatalog` holds
-the display names).
+truth: agent-session-kit's `Harness.swift` (`HarnessCatalog` holds the
+display names). The mapping from a harness onto the quota axis —
+`quotaTool`, `company`, the filter chips — is Vibe Bar's and lives in
+`Sources/VibeBarCore/Models/Harness+Quota.swift`.
 
 | Harness       | L1 company | Local evidence                                      |
 | ------------- | ---------- | --------------------------------------------------- |

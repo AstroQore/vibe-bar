@@ -23,6 +23,16 @@ portions is included in this repository at the local license link above.
 
 ## Direct dependencies
 
+### agent-session-kit
+
+- Project:
+  [AstroQore/agent-session-kit](https://github.com/AstroQore/agent-session-kit)
+- Use in Vibe Bar: local coding-agent session discovery, parsing, the
+  full-text session index, session deletion planning, and the local MCP
+  Unix-socket / stdio transport. Extracted from this repository.
+- License: AGPL-3.0-only — the same license as Vibe Bar, so no separate
+  notice file is bundled.
+
 ### SweetCookieKit 0.4.0 or later compatible releases
 
 - Project: [steipete/SweetCookieKit](https://github.com/steipete/SweetCookieKit)
