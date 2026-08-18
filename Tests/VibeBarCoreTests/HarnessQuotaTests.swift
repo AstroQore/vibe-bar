@@ -1,23 +1,11 @@
 import XCTest
 @testable import VibeBarCore
 
-final class HarnessTests: XCTestCase {
-    func testDisplayNamesMatchTheCatalogTable() {
-        XCTAssertEqual(
-            Harness.allCases.map(\.displayName),
-            [
-                "Codex",
-                "ChatGPT Work",
-                "Claude Code",
-                "Claude Cowork",
-                "Gemini CLI",
-                "AntiGravity",
-                "Grok Build",
-                "Cursor"
-            ]
-        )
-    }
-
+/// The billing half of `Harness`. Naming, ordering and the raw-value
+/// storage keys are `AgentSessionKit`'s and are covered by its own
+/// `HarnessNamingTests`; what is Vibe Bar's — and tested here — is the
+/// mapping onto `ToolType`, the company grouping, and the filter chips.
+final class HarnessQuotaTests: XCTestCase {
     /// Gemini Web is a quota SubProvider with no local usage at all. The
     /// deprecated CLI owns the historical tokens under `~/.gemini/tmp`, and
     /// labelling those "Gemini Web" would put a quota name on a usage row.
@@ -123,17 +111,5 @@ final class HarnessTests: XCTestCase {
         XCTAssertEqual(groups.map(\.company), [.grok])
         XCTAssertEqual(groups.first?.harnesses, [.grokBuild, .cursor])
         XCTAssertEqual(groups.first?.harnessSet, Set([Harness.grokBuild, .cursor]))
-    }
-
-    func testRawValuesAreStableStorageKeys() {
-        // These land in SQLite and in the scan cache; renaming one silently
-        // orphans every stored row.
-        XCTAssertEqual(
-            Harness.allCases.map(\.rawValue),
-            [
-                "codex", "chatgptWork", "claudeCode", "claudeCowork",
-                "geminiCLI", "antigravity", "grokBuild", "cursor"
-            ]
-        )
     }
 }
