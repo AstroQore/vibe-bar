@@ -86,7 +86,7 @@ final class CostUsageServiceLedgerTests: XCTestCase {
         let models = try await ledger.modelStats(filter)
         XCTAssertEqual(Set(models.map(\.model)), ["gpt-5", "gpt-5-mini"])
 
-        let page = try await ledger.requestPage(filter, page: 0, pageSize: 10)
+        let page = try await ledger.requestPage(filter, pageSize: 10)
         XCTAssertEqual(page.totalCount, snapshot.allTimeRequests)
         XCTAssertEqual(page.rows.first?.model, "gpt-5-mini")
     }
