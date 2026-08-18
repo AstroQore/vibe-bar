@@ -198,6 +198,7 @@ public final class CostUsageService: ObservableObject {
 
         var results: [ToolType: CostSnapshot] = [:]
         var directRemoteResults = directRemoteSnapshots
+        var ledgerDidIngest = false
         let home = homeDirectory
         // Privacy mode is already handled above (it erases and returns), so
         // reaching here means the ledger is allowed to record.
@@ -230,11 +231,7 @@ public final class CostUsageService: ObservableObject {
                     // Cursor dashboard events now feed the same request ledger
                     // as local scanners, so Workbench and the outer Grok cost
                     // surface share one set of token/cost facts.
-                    try? await usageLedger?.rollupAndPrune(
-                        now: now,
-                        detailDays: Self.ledgerDetailDays,
-                        retentionDays: retentionDays
-                    )
+                    ledgerDidIngest = true
                 case .completed(.unavailable):
                     directRemoteResults.removeValue(forKey: .cursor)
                     // Match the in-memory decision on the next launch: once
@@ -288,20 +285,28 @@ public final class CostUsageService: ObservableObject {
                 // Persist the post-merge snapshot so a future launch can show
                 // these numbers without waiting for a fresh scan.
                 await CostSnapshotCache.shared.save(merged, retentionDays: retentionDays)
-                // Fold this tool's freshly ingested history down to daily
-                // rollups past the detail window and apply retention. Done
-                // per tool rather than once at the end so a long pass never
-                // leaves the ledger holding an unbounded detail table.
-                try? await usageLedger?.rollupAndPrune(
-                    now: now,
-                    detailDays: Self.ledgerDetailDays,
-                    retentionDays: retentionDays
-                )
+                ledgerDidIngest = true
             }
         }
         localSnapshots = results
         directRemoteSnapshots = directRemoteResults
         publishMergedSnapshots()
+        // Fold everything ingested this pass down to daily rollups past the
+        // detail window and apply retention — once, at the end.
+        //
+        // This used to run inside the loop, per tool. `rollupAndPrune` opens a
+        // BEGIN IMMEDIATE transaction and aggregates the whole detail table,
+        // and it holds the ledger actor while it does: with ~20 scannable
+        // tools, a single refresh took that write lock twenty times, and every
+        // Workbench query issued during the pass queued behind whichever one
+        // was running. One call folds exactly the same rows.
+        if ledgerDidIngest {
+            try? await usageLedger?.rollupAndPrune(
+                now: now,
+                detailDays: Self.ledgerDetailDays,
+                retentionDays: retentionDays
+            )
+        }
         // Extras (credits / overage) display was removed from the UI — see the
         // user-feedback round that turned them off because the loaders weren't
         // reliable. Parsing infrastructure for Claude.providerExtras is kept

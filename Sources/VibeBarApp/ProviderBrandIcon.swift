@@ -4,13 +4,62 @@ import VibeBarCore
 
 @MainActor
 enum ProviderBrandIcon {
+    /// Finished glyphs, keyed by everything that can change one.
+    ///
+    /// Every brand mark used to be re-read from disk (or re-parsed from the
+    /// inline SVG), resized, and composited through an off-screen
+    /// `lockFocus` pass on *every* SwiftUI body evaluation. A Workbench
+    /// Requests page draws one badge per row, so scrolling a 30-day ledger
+    /// meant a hundred `NSImage(contentsOf:)` calls per frame. The assets are
+    /// static, so the result of that pipeline is a pure function of the key
+    /// below and can be memoized for the life of the process.
+    private static var renderCache: [RenderKey: NSImage] = [:]
+    /// Decoded, resized source marks. Never handed to a caller — the tinted
+    /// path only uses them as a draw source, and the untinted path vends a
+    /// copy so a caller's `isTemplate` never leaks back into the cache.
+    private static var sourceCache: [SourceKey: NSImage] = [:]
+    /// Sizes come from layout, so a pathological caller could feed fractional
+    /// values forever. Dropping the whole cache past this many entries keeps
+    /// the memoization bounded without pretending to be an LRU.
+    private static let cacheLimit = 512
+
+    private struct SourceKey: Hashable {
+        let tool: ToolType
+        let width: CGFloat
+        let height: CGFloat
+    }
+
+    private struct RenderKey: Hashable {
+        /// `nil` is the Vibe Bar glyph drawn for a `MenuBarItemKind`, which
+        /// ignores the kind itself.
+        let tool: ToolType?
+        let width: CGFloat
+        let height: CGFloat
+        let tint: NSColor?
+        let appearance: String?
+        let includeStatusDot: Bool
+    }
+
     static func image(
         for kind: MenuBarItemKind,
         size: NSSize = NSSize(width: 16, height: 16),
         tint: NSColor? = nil,
         appearance: NSAppearance? = nil
     ) -> NSImage? {
-        vibeBarGlyphImage(size: size, tint: tint, appearance: appearance, includeStatusDot: false)
+        let key = RenderKey(
+            tool: nil,
+            width: size.width,
+            height: size.height,
+            tint: tint,
+            appearance: appearance?.name.rawValue,
+            includeStatusDot: false
+        )
+        if let cached = renderCache[key] { return cached }
+        let image = vibeBarGlyphImage(
+            size: size, tint: tint, appearance: appearance, includeStatusDot: false
+        )
+        if let image { store(image, for: key) }
+        return image
     }
 
     static func image(
@@ -19,12 +68,25 @@ enum ProviderBrandIcon {
         tint: NSColor? = nil,
         appearance: NSAppearance? = nil
     ) -> NSImage? {
+        let key = RenderKey(
+            tool: tool,
+            width: size.width,
+            height: size.height,
+            tint: tint,
+            appearance: appearance?.name.rawValue,
+            includeStatusDot: false
+        )
+        if let cached = renderCache[key] { return cached }
         guard let source = sourceImage(for: tool, size: size) else { return nil }
         guard let tint else {
-            source.isTemplate = true
-            return source
+            // The cached source stays untouched: `isTemplate` is a property of
+            // the image object, and the tinted path draws from the same one.
+            let template = (source.copy() as? NSImage) ?? source
+            template.isTemplate = true
+            store(template, for: key)
+            return template
         }
-        return drawWithAppearance(appearance) {
+        let image = drawWithAppearance(appearance) {
             let image = NSImage(size: size)
             image.lockFocus()
             let rect = NSRect(origin: .zero, size: size)
@@ -38,6 +100,13 @@ enum ProviderBrandIcon {
             image.isTemplate = false
             return image
         }
+        store(image, for: key)
+        return image
+    }
+
+    private static func store(_ image: NSImage, for key: RenderKey) {
+        if renderCache.count >= cacheLimit { renderCache.removeAll(keepingCapacity: true) }
+        renderCache[key] = image
     }
 
     static func fallbackSystemImage(for kind: MenuBarItemKind) -> String {
@@ -139,6 +208,15 @@ enum ProviderBrandIcon {
     }
 
     private static func sourceImage(for tool: ToolType, size: NSSize) -> NSImage? {
+        let key = SourceKey(tool: tool, width: size.width, height: size.height)
+        if let cached = sourceCache[key] { return cached }
+        guard let image = decodeSourceImage(for: tool, size: size) else { return nil }
+        if sourceCache.count >= cacheLimit { sourceCache.removeAll(keepingCapacity: true) }
+        sourceCache[key] = image
+        return image
+    }
+
+    private static func decodeSourceImage(for tool: ToolType, size: NSSize) -> NSImage? {
         if let url = providerIconURL(for: tool),
            let image = NSImage(contentsOf: url) {
             image.size = size
@@ -156,7 +234,19 @@ enum ProviderBrandIcon {
         return image
     }
 
+    /// Resolving a bundle resource hits the filesystem, so the answer is
+    /// memoized alongside the decoded marks: `Bundle.main.url(forResource:)`
+    /// used to run once per row per render.
+    private static var iconURLCache: [ToolType: URL?] = [:]
+
     private static func providerIconURL(for tool: ToolType) -> URL? {
+        if let cached = iconURLCache[tool] { return cached }
+        let resolved = resolveProviderIconURL(for: tool)
+        iconURLCache[tool] = resolved
+        return resolved
+    }
+
+    private static func resolveProviderIconURL(for tool: ToolType) -> URL? {
         let name = tool.providerIconResourceName
         if let url = Bundle.main.url(
             forResource: name,
