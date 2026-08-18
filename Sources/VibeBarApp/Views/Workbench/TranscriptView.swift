@@ -310,6 +310,7 @@ struct SessionMetadataHeader: View {
                         .font(.system(size: density.titleFontSize, weight: .semibold))
                         .lineLimit(1)
                     compactMetadata
+                    sessionIDLine
                 }
                 Spacer(minLength: 0)
                 headerActions
@@ -345,6 +346,34 @@ struct SessionMetadataHeader: View {
         }
         .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded))
         .foregroundStyle(.secondary)
+    }
+
+    /// The session id is what AQ reaches for first — to resume, to grep a
+    /// log, to hand to another agent — so it lives under the title, always
+    /// visible, and the whole line is a copy button.
+    private var sessionIDLine: some View {
+        Button {
+            model.copyToClipboard(summary.sessionID, note: "Session ID copied.")
+        } label: {
+            HStack(spacing: 5) {
+                Text(summary.sessionID)
+                    .font(.system(size: max(10, density.subtitleFontSize - 1), design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Copy session ID")
+        .accessibilityLabel("Session ID \(summary.sessionID). Copy")
     }
 
     private var headerActions: some View {
