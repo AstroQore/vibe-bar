@@ -106,9 +106,13 @@ final class UsageEventLedgerTests: XCTestCase {
         )
     }
 
-    func testInitCreatesTimeOrderedRequestIndex() throws {
-        let (_, directory) = try UsageLedgerFixtures.makeLedger("LedgerTimeIndex")
+    func testInitCreatesTimeOrderedRequestIndex() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerTimeIndex")
         defer { try? FileManager.default.removeItem(at: directory) }
+        // `init` schedules storage upkeep (index build + ANALYZE) on the actor;
+        // opening the file read-only while that write is in flight returns
+        // SQLITE_BUSY. Await it so the assertion is deterministic.
+        await ledger.optimizeStorage()
         let url = directory.appendingPathComponent("usage_events.sqlite3")
         var database: OpaquePointer?
         XCTAssertEqual(

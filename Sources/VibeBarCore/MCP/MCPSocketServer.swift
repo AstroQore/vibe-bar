@@ -312,7 +312,9 @@ public final class MCPSocketServer: @unchecked Sendable {
         var info = stat()
         if stat(path, &info) == 0, (info.st_mode & S_IFMT) != S_IFSOCK { return false }
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return false }
+        // Cannot even make a probe socket (EMFILE, ENOBUFS…): we know nothing,
+        // so leave the path alone rather than unlink a possibly live listener.
+        guard fd >= 0 else { return true }
         defer { close(fd) }
         setNonBlocking(fd)
 
