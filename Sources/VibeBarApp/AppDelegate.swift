@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if handleMCPStdioCommandLine() { return }
         if handleRemoteCommandLine() { return }
         // Belt-and-braces: Info.plist already sets LSUIElement, but if we are
         // launched from `swift run` (no bundle), force accessory policy here.
@@ -153,11 +154,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         statusItem?.applicationWillTerminate()
+        // First: the socket file has to go before anything else tears down, so
+        // an agent connecting during shutdown gets a clean "not running"
+        // rather than a connection to a half-stopped environment.
+        environment?.mcp?.stop()
         environment?.scheduler.stop()
         environment?.serviceStatus.stop()
         environment?.remoteProbeService.stop()
         CookieRefreshScheduler.shared.stop()
         return .terminateNow
+    }
+
+    /// `--mcp-stdio`: be a plain stdio MCP server that forwards to the running
+    /// app's socket, and nothing else.
+    ///
+    /// This runs before any UI is created, so the process installs no status
+    /// item, opens no window, and builds no `AppEnvironment`. It never returns
+    /// — the pump owns the rest of this process's life — but it still reports
+    /// a `Bool` so the call site reads like `handleRemoteCommandLine()` above.
+    private func handleMCPStdioCommandLine() -> Bool {
+        guard ProcessInfo.processInfo.arguments.contains(MCPStdioBridge.commandLineFlag) else {
+            return false
+        }
+        // Belt and braces against the Dock or the app switcher noticing a
+        // process that is really a pipe.
+        NSApp.setActivationPolicy(.prohibited)
+        let code = MCPStdioBridge.run(socketPath: MCPStdioBridge.socketPath())
+        Darwin.exit(code)
     }
 
     private func handleRemoteCommandLine() -> Bool {

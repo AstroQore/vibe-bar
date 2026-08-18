@@ -19,6 +19,9 @@ final class AppEnvironment: ObservableObject {
     /// cannot be opened — every reader treats that as "no history", so a
     /// broken ledger costs the usage page, not the app.
     let usageLedger: UsageEventLedger?
+    /// Local MCP server. Built here so its lifetime matches the app's; the
+    /// socket itself exists only while `AppSettings.mcpServer.enabled` is on.
+    private(set) var mcp: MCPController!
 
     @Published private(set) var hasClaudeWebCookies: Bool
     @Published private(set) var hasOpenAIWebCookies: Bool
@@ -287,6 +290,13 @@ final class AppEnvironment: ObservableObject {
         scheduler.start()
         serviceStatus.start()
         remoteProbeService.start()
+
+        // Last, and after every service it reads from is live: an agent that
+        // connects the instant the socket appears must not race a half-built
+        // environment.
+        let mcp = MCPController(environment: self)
+        self.mcp = mcp
+        mcp.start(settingsStore: settings)
 
         // Kick off an initial cost scan in the background. Cost data updates
         // slowly compared to live quota, so we re-scan only on app relaunch,

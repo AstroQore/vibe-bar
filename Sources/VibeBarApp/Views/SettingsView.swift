@@ -15,6 +15,7 @@ enum SettingsSectionID: String {
     case pricing
     case privacy
     case remote
+    case mcp
 
     var id: String { rawValue }
 
@@ -33,6 +34,7 @@ enum SettingsSectionID: String {
         case .pricing: "Model Pricing"
         case .privacy: "Privacy"
         case .remote: "Remote Probes"
+        case .mcp: "MCP Server"
         }
     }
 
@@ -51,6 +53,7 @@ enum SettingsSectionID: String {
         case .pricing: "dollarsign.circle"
         case .privacy: "hand.raised.fill"
         case .remote: "antenna.radiowaves.left.and.right"
+        case .mcp: "point.3.connected.trianglepath.dotted"
         }
     }
 }
@@ -611,6 +614,11 @@ struct SettingsView: View {
                     if selectedSection == .remote {
                     RemoteSettingsSection(density: density, service: environment.remoteProbeService)
                         .id(SettingsSectionID.remote.id)
+                    }
+
+                    if selectedSection == .mcp, let mcp = environment.mcp {
+                    MCPSettingsSection(density: density, controller: mcp)
+                        .id(SettingsSectionID.mcp.id)
                     }
 
                     if selectedSection == .privacy {
