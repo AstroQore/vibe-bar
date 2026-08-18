@@ -220,9 +220,15 @@ final class SkillsManagerModel: ObservableObject {
 
     var isDiscovering: Bool { isBusy(BusyKey.discover) }
 
+    /// Bumped per discovery so a phase update still queued on the main actor
+    /// when a run ends (or is cancelled) cannot resurrect stale text.
+    private var discoverGeneration = 0
+
     func discover() {
         discoverFailures = []
         discoverPhase = nil
+        discoverGeneration += 1
+        let generation = discoverGeneration
         discoverTask = perform(BusyKey.discover) { [self] in
             let refs = await service.discoverRepoRefs()
             guard !refs.isEmpty else {
@@ -234,8 +240,12 @@ final class SkillsManagerModel: ObservableObject {
             // The phases arrive from the download tasks; the hop back is what
             // keeps `@Published` on the main actor.
             let result = await service.discover(from: refs) { [weak self] phase in
-                Task { @MainActor in self?.discoverPhase = Self.text(for: phase) }
+                Task { @MainActor in
+                    guard let self, self.discoverGeneration == generation, self.isDiscovering else { return }
+                    self.discoverPhase = Self.text(for: phase)
+                }
             }
+            discoverGeneration += 1
             discoverPhase = nil
             discoverResults = result.skills
             discoverSource = "Configured repositories"
@@ -255,6 +265,7 @@ final class SkillsManagerModel: ObservableObject {
     /// Stops an in-flight scan. The service returns what it already had, so
     /// the results list keeps any repository that finished first.
     func cancelDiscover() {
+        discoverGeneration += 1
         discoverTask?.cancel()
     }
 
@@ -277,6 +288,7 @@ final class SkillsManagerModel: ObservableObject {
     func discoverSheetDismissed() {
         searchTask?.cancel()
         searchTask = nil
+        discoverGeneration += 1
         discoverTask?.cancel()
         discoverTask = nil
         discoverPhase = nil

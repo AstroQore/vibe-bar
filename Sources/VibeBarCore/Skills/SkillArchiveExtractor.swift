@@ -114,6 +114,9 @@ public struct SkillArchiveExtractor {
         var written = 0
         var produced: Int64 = 0
         for entry in directory {
+            // Cooperative: a Cancel that lands after the download must not
+            // have to wait for a large archive to finish inflating.
+            if Task.isCancelled { throw CancellationError() }
             let target = try resolve(components: entry.components, under: destination)
             if entry.isDirectory {
                 try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
