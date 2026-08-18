@@ -332,6 +332,14 @@ final class UsageStatsViewModel: ObservableObject {
     private let costService: CostUsageService
 
     private var reloadTask: Task<Void, Never>?
+    /// A deferred Models / Requests fetch that fills one tab without redoing
+    /// the whole query set. Separate from `reloadTask` so a tab switch never
+    /// cancels the reload that produced the numbers it is merging into.
+    private var breakdownTask: Task<Void, Never>?
+    /// The deferred breakdowns whose contents in `results` belong to
+    /// `activeFilter`. Cleared by every reload, so a filter or range change
+    /// re-fetches rather than showing a tab's stale rows.
+    private var loadedBreakdowns: Set<Breakdown> = []
     private var tickTask: Task<Void, Never>?
     private var lastCostRefreshAt: Date?
     private var loadedRequestPages = 0
@@ -391,6 +399,8 @@ final class UsageStatsViewModel: ObservableObject {
         tickTask = nil
         reloadTask?.cancel()
         reloadTask = nil
+        breakdownTask?.cancel()
+        breakdownTask = nil
     }
 
     // MARK: - Filter mutation
@@ -461,9 +471,68 @@ final class UsageStatsViewModel: ObservableObject {
         // queries. Models and Requests are intentionally loaded only when the
         // user opens those tabs, avoiding two full 30-day scans on every range
         // change.
-        if breakdown == .models || breakdown == .requests {
-            reload(cascadeModels: false)
+        switch breakdown {
+        case .periods, .providers:
+            break
+        case .models, .requests:
+            guard !loadedBreakdowns.contains(breakdown) else { break }
+            loadDeferredBreakdown(breakdown)
         }
+    }
+
+    /// Fetch only what a newly opened tab needs, against the filter the
+    /// visible results were already produced with.
+    ///
+    /// Opening a tab used to call `reload`, which re-ran the whole analytic
+    /// set — up to nine sequential ledger round trips, including the day × tool
+    /// trend GROUP BY that dominates the query at 30 days — to redraw numbers
+    /// that had not changed and were already on screen. Filter, range and
+    /// refresh changes still take the full path; this one only fills the hole.
+    private func loadDeferredBreakdown(_ breakdown: Breakdown) {
+        guard let ledger, let filter = activeFilter, !isLoading else {
+            // No settled filter to reuse (first load still in flight, or the
+            // ledger is unavailable): the full path is the only correct one.
+            reload(cascadeModels: false)
+            return
+        }
+        breakdownTask?.cancel()
+        let generation = self.generation
+        isLoadingMore = true
+        breakdownTask = Task { [weak self] in
+            let models: [UsageModelStat] = breakdown == .models
+                ? ((try? await ledger.modelStats(filter)) ?? [])
+                : []
+            let requests: UsageRequestPage? = breakdown == .requests
+                ? (try? await ledger.requestPage(
+                    filter, page: 0, pageSize: UsageStatsViewModel.requestPageSize
+                ))
+                : nil
+            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            self.isLoadingMore = false
+            self.applyDeferred(breakdown, models: models, requests: requests)
+        }
+    }
+
+    private func applyDeferred(
+        _ breakdown: Breakdown,
+        models: [UsageModelStat],
+        requests: UsageRequestPage?
+    ) {
+        guard activeBreakdown == breakdown else { return }
+        var updated = results
+        switch breakdown {
+        case .periods, .providers:
+            return
+        case .models:
+            updated.modelStats = models
+        case .requests:
+            guard let requests else { return }
+            updated.requestRows = requests.rows
+            updated.requestTotalCount = requests.totalCount
+            loadedRequestPages = 1
+        }
+        results = updated
+        loadedBreakdowns.insert(breakdown)
     }
 
     // MARK: - Queries
@@ -509,6 +578,8 @@ final class UsageStatsViewModel: ObservableObject {
         generation &+= 1
         let generation = self.generation
         reloadTask?.cancel()
+        breakdownTask?.cancel()
+        loadedBreakdowns.removeAll()
         loadedRequestPages = 0
         activeFilter = nil
         // A page still in flight is now for a filter nobody is looking at; it
@@ -615,7 +686,13 @@ final class UsageStatsViewModel: ObservableObject {
             requestRows: snapshot.requests.rows,
             requestTotalCount: snapshot.requests.totalCount
         )
-        loadedRequestPages = activeBreakdown == .requests ? 1 : 0
+        // Key off the breakdown the snapshot was *queried* for: the user can
+        // open a different tab while the query is in flight, and claiming that
+        // tab is loaded would leave it permanently empty.
+        loadedRequestPages = snapshot.breakdown == .requests ? 1 : 0
+        loadedBreakdowns = snapshot.breakdown == .models || snapshot.breakdown == .requests
+            ? [snapshot.breakdown]
+            : []
         observedTools.formUnion(snapshot.providers.map(\.tool))
         observedTools.formUnion(selectedTools ?? [])
         knownTools = ToolType.allCases.filter {
@@ -693,6 +770,8 @@ final class UsageStatsViewModel: ObservableObject {
         let harnesses: [UsageHarnessStat]
         let models: [UsageModelStat]
         let requests: UsageRequestPage
+        /// Which deferred tab this snapshot actually answered for.
+        let breakdown: Breakdown
     }
 
     private struct UsageResults {
@@ -740,7 +819,8 @@ final class UsageStatsViewModel: ObservableObject {
             providers: providers,
             harnesses: harnesses,
             models: models,
-            requests: requests
+            requests: requests,
+            breakdown: breakdown
         )
     }
 }
