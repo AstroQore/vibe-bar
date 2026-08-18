@@ -81,7 +81,8 @@ struct MiniQuotaWindowView: View {
                     field.tool == tool
                 else { continue }
                 let liveBucket = environment.quota(for: tool)?.bucket(id: field.bucketId)
-                if liveBucket?.groupTitle != nil || isBranchField(field) {
+                if Self.hasQuotaGroup(liveBucket, tool: tool, bucketId: field.bucketId)
+                    || isBranchField(field) {
                     continue
                 }
                 cells.append(
@@ -103,6 +104,18 @@ struct MiniQuotaWindowView: View {
             if !content.isEmpty { contentByTool[tool] = content }
         }
         return contentByTool
+    }
+
+    /// A live `groupTitle` marks an L3 quota group — unless it merely repeats
+    /// the bucket's own SubProvider name (Cursor's `grok_bot_weekly` carries
+    /// "Grok Bot"), in which case the SubProvider row already says it and the
+    /// bucket is a flat primary cell: SpaceXAI → Grok Bot → Weekly, not
+    /// SpaceXAI → Grok Bot → Grok Bot → Weekly.
+    static func hasQuotaGroup(_ bucket: QuotaBucket?, tool: ToolType, bucketId: String) -> Bool {
+        guard let group = bucket?.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !group.isEmpty
+        else { return false }
+        return group.caseInsensitiveCompare(tool.quotaSubProviderName(bucketID: bucketId)) != .orderedSame
     }
 
     private func isBranchField(_ field: MenuBarFieldOption) -> Bool {
@@ -144,8 +157,7 @@ struct MiniQuotaWindowView: View {
                 selectedFieldIds.contains(fieldId),
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 !selectedBucketIds.contains(bucket.id),
-                let rawGroup = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
-                !rawGroup.isEmpty
+                Self.hasQuotaGroup(bucket, tool: tool, bucketId: bucket.id)
             else { return nil }
             return MiniBranchCell(
                 tool: tool,
@@ -369,8 +381,6 @@ private struct MiniBranchCell: Identifiable {
             return "cursor.models"
         case "other_models" where tool == .cursor:
             return "cursor.other-models"
-        case "grok_bot_weekly" where tool == .cursor:
-            return "cursor.grok-bot"
         case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "antigravity.gemini-models"
         case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
@@ -604,7 +614,9 @@ private func miniGroupTitle(for cell: MiniBranchCell, settings: MiniWindowSettin
 /// Heading for a SubProvider's primary (flat, ungrouped) buckets. Every
 /// entry resolves to a quota-group name — the SubProvider itself is printed
 /// one tier up by `MiniMemberStack`, so nothing here may name a product.
-/// `gemini.chat` keeps its persisted key and now resolves to "All Models".
+/// Gemini Web has no L3 group at all (its buckets *are* "5 Hours" and
+/// "Weekly", AGENTS.md § 7.1), so it gets no heading rather than an invented
+/// one; Grok's single group is "Weekly Credits".
 private func miniPrimaryGroupTitle(
     for tool: ToolType,
     settings: MiniWindowSettings
@@ -613,8 +625,7 @@ private func miniPrimaryGroupTitle(
     switch tool {
     case .codex: key = "codex.all-models"
     case .claude: key = "claude.all-models"
-    case .gemini: key = "gemini.chat"
-    case .grok: key = "grok.all-models"
+    case .grok: key = "grok.weekly-credits"
     default: return nil
     }
     let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
