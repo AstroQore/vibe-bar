@@ -162,8 +162,11 @@ struct UsageBreakdownTables: View {
                 }
                 LazyVStack(spacing: 0) {
                     ForEach(populatedPeriods, id: \.bucketStart) { point in
-                        PorcelainUsageRow(accessibilityLabel: periodAccessibilityLabel(point)) {
-                            valueCell(period(point.bucketStart), width: periodWidth, tooltip: period(point.bucketStart))
+                        let label = period(point.bucketStart)
+                        PorcelainUsageRow(
+                            accessibilityLabel: periodAccessibilityLabel(point, label: label)
+                        ) {
+                            valueCell(label, width: periodWidth, tooltip: label)
                             numericCell(point.freshInput, width: 108)
                             numericCell(point.output, width: 108)
                             numericCell(point.cacheRead + point.cacheCreation, width: 108)
@@ -193,18 +196,20 @@ struct UsageBreakdownTables: View {
             LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                 Section {
                     ForEach(model.requestRows) { row in
-                        PorcelainUsageRow(accessibilityLabel: requestAccessibilityLabel(row)) {
-                            valueCell(timestamp(row.date), width: 138, secondary: true, tooltip: timestamp(row.date))
-                            harnessCell(row.harness, width: 138)
-                            valueCell(
-                                UsageModelNaming.canonicalDisplayName(row.model),
-                                width: 220,
-                                tooltip: row.model
+                        let time = timestamp(row.date)
+                        let modelName = UsageModelNaming.canonicalDisplayName(row.model)
+                        PorcelainUsageRow(
+                            accessibilityLabel: requestAccessibilityLabel(
+                                row, time: time, model: modelName
                             )
+                        ) {
+                            valueCell(time, width: 138, secondary: true)
+                            harnessCell(row.harness, width: 138)
+                            valueCell(modelName, width: 220, tooltip: row.model)
                             inputCell(row, width: 114)
                             numericCell(row.output, width: 88)
                             optionalMoneyCell(row.costMicros, width: 96)
-                            valueCell(row.serviceTier ?? "—", width: 86, secondary: true, tooltip: row.serviceTier)
+                            valueCell(row.serviceTier ?? "—", width: 86, secondary: true)
                         }
                     }
                     if model.hasMoreRequests { loadMoreRow }
@@ -279,8 +284,11 @@ struct UsageBreakdownTables: View {
                 }
                 LazyVStack(spacing: 0) {
                     ForEach(sortedProviders) { stat in
-                        PorcelainUsageRow(accessibilityLabel: providerAccessibilityLabel(stat)) {
-                            companyCell(stat.tool, width: providerWidth)
+                        let vendor = stat.tool.vendorName
+                        PorcelainUsageRow(
+                            accessibilityLabel: providerAccessibilityLabel(stat, vendor: vendor)
+                        ) {
+                            companyCell(stat.tool, name: vendor, width: providerWidth)
                             countCell(stat.requests, width: 112)
                             numericCell(stat.totalTokens, width: 132, emphasis: true)
                             moneyCell(stat.costMicros, width: 120, emphasis: true)
@@ -306,12 +314,11 @@ struct UsageBreakdownTables: View {
                 }
                 LazyVStack(spacing: 0) {
                     ForEach(sortedModels) { stat in
-                        PorcelainUsageRow(accessibilityLabel: modelAccessibilityLabel(stat)) {
-                            valueCell(
-                                UsageModelNaming.canonicalDisplayName(stat.model),
-                                width: modelWidth,
-                                tooltip: stat.model
-                            )
+                        let name = UsageModelNaming.canonicalDisplayName(stat.model)
+                        PorcelainUsageRow(
+                            accessibilityLabel: modelAccessibilityLabel(stat, name: name)
+                        ) {
+                            valueCell(name, width: modelWidth, tooltip: stat.model)
                             countCell(stat.requests, width: 112)
                             numericCell(stat.totalTokens, width: 132, emphasis: true)
                             moneyCell(stat.costMicros, width: 120, emphasis: true)
@@ -353,6 +360,10 @@ struct UsageBreakdownTables: View {
             .frame(width: width, alignment: alignment)
     }
 
+    /// `.help` installs a tracking area, so seven per row across fifty rows
+    /// is three hundred and fifty of them for one table. It is opt-in here
+    /// and reserved for cells that can truncate — passing the cell's own
+    /// visible text back as its tooltip bought nothing.
     private func valueCell(
         _ value: String,
         width: CGFloat,
@@ -365,7 +376,7 @@ struct UsageBreakdownTables: View {
             .lineLimit(1)
             .truncationMode(.middle)
             .frame(width: width, alignment: .leading)
-            .help(tooltip ?? value)
+            .modifier(OptionalHelp(tooltip))
     }
 
     /// A request row is usage, so it names the harness that produced it, not
@@ -382,15 +393,14 @@ struct UsageBreakdownTables: View {
         .help("\(harness.companyName) · \(harness.displayName)")
     }
 
-    private func companyCell(_ tool: ToolType, width: CGFloat) -> some View {
+    private func companyCell(_ tool: ToolType, name: String, width: CGFloat) -> some View {
         HStack(spacing: 7) {
             ToolBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
-            Text(tool.vendorName)
+            Text(name)
                 .font(bodyFont)
                 .lineLimit(1)
         }
         .frame(width: width, alignment: .leading)
-        .help(tool.vendorName)
     }
 
     private func inputCell(_ row: UsageRequestRow, width: CGFloat) -> some View {
@@ -424,7 +434,6 @@ struct UsageBreakdownTables: View {
         Text(value.formatted(.number.grouping(.automatic)))
             .font(numericFont)
             .frame(width: width, alignment: .trailing)
-            .help("\(value.formatted(.number.grouping(.automatic))) requests")
     }
 
     private func moneyCell(
@@ -521,20 +530,24 @@ struct UsageBreakdownTables: View {
         }
     }
 
-    private func periodAccessibilityLabel(_ point: UsageTrendPoint) -> String {
-        "\(period(point.bucketStart)), \(UsageFormatting.formatTokens(point.totalTokens)), \(UsageFormatting.formatMicroUSD(point.costMicros))"
+    private func periodAccessibilityLabel(_ point: UsageTrendPoint, label: String) -> String {
+        "\(label), \(UsageFormatting.formatTokens(point.totalTokens)), \(UsageFormatting.formatMicroUSD(point.costMicros))"
     }
 
-    private func requestAccessibilityLabel(_ row: UsageRequestRow) -> String {
-        "\(timestamp(row.date)), \(row.harness.displayName), \(UsageModelNaming.canonicalDisplayName(row.model)), \(UsageFormatting.formatTokens(row.totalTokens)), \(row.costMicros.map { UsageFormatting.formatMicroUSD($0) } ?? "unpriced")"
+    private func requestAccessibilityLabel(
+        _ row: UsageRequestRow,
+        time: String,
+        model: String
+    ) -> String {
+        "\(time), \(row.harness.displayName), \(model), \(UsageFormatting.formatTokens(row.totalTokens)), \(row.costMicros.map { UsageFormatting.formatMicroUSD($0) } ?? "unpriced")"
     }
 
-    private func providerAccessibilityLabel(_ stat: UsageProviderStat) -> String {
-        "\(stat.tool.vendorName), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
+    private func providerAccessibilityLabel(_ stat: UsageProviderStat, vendor: String) -> String {
+        "\(vendor), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
     }
 
-    private func modelAccessibilityLabel(_ stat: UsageModelStat) -> String {
-        "\(UsageModelNaming.canonicalDisplayName(stat.model)), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
+    private func modelAccessibilityLabel(_ stat: UsageModelStat, name: String) -> String {
+        "\(name), \(stat.requests) requests, \(UsageFormatting.formatTokens(stat.totalTokens)), \(UsageFormatting.formatMicroUSD(stat.costMicros))"
     }
 
     /// Cached: request rows can be formatted while scrolling a long ledger.
@@ -595,6 +608,24 @@ private struct PorcelainUsageRow<Content: View>: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+    }
+}
+
+/// `.help` unconditionally installs a tracking area, so the cheapest tooltip
+/// is the one that is never attached. Whether a given cell has one is decided
+/// by its call site and never by its data, so the branch is stable and cannot
+/// churn view identity while scrolling.
+private struct OptionalHelp: ViewModifier {
+    let tooltip: String?
+
+    init(_ tooltip: String?) { self.tooltip = tooltip }
+
+    func body(content: Content) -> some View {
+        if let tooltip {
+            content.help(tooltip)
+        } else {
+            content
+        }
     }
 }
 
