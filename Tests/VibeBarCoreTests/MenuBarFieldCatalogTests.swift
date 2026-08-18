@@ -95,6 +95,104 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         XCTAssertEqual(sliced.map(\.id), all)
     }
 
+    // MARK: - SubProvider grouping
+
+    private func allSelectedGroups() -> [MenuBarCompanyFieldGroup] {
+        MenuBarFieldCatalog.subProviderGroups(
+            for: ToolType.dedicatedCardProviders,
+            selectedFieldIds: Set(MenuBarFieldCatalog.allFields.map(\.id))
+        )
+    }
+
+    /// The mini window's middle tier. Companies fold by vendor, and one tool
+    /// can contribute two SubProviders — which is the whole point: Grok Bot
+    /// rides Cursor's adapter but must not sit inside Cursor's section.
+    func testSubProviderGroupsFollowTheQuotaHierarchy() {
+        let groups = allSelectedGroups()
+        XCTAssertEqual(groups.map(\.company), ["OpenAI", "Anthropic", "Google AI", "SpaceXAI"])
+        XCTAssertEqual(
+            groups.map { $0.subProviders.map(\.name) },
+            [
+                ["ChatGPT Agentic"],
+                ["Claude"],
+                ["Gemini Web", "AntiGravity"],
+                ["Grok", "Cursor", "Grok Bot"]
+            ]
+        )
+        XCTAssertEqual(groups.map(\.accentTool), [.codex, .claude, .gemini, .grok])
+    }
+
+    func testSubProviderGroupsCarryTheirBucketsInCatalogOrder() throws {
+        let byName = allSelectedGroups()
+            .flatMap(\.subProviders)
+            .reduce(into: [String: MenuBarSubProviderGroup]()) { $0[$1.name] = $1 }
+
+        XCTAssertEqual(
+            try XCTUnwrap(byName["ChatGPT Agentic"]).bucketIds,
+            ["five_hour", "weekly", "gpt_5_3_codex_spark_five_hour", "gpt_5_3_codex_spark_weekly"]
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(byName["Claude"]).bucketIds,
+            [
+                "five_hour", "weekly", "weekly_sonnet", "weekly_design",
+                "daily_routines", "weekly_opus", "weekly_fable", "weekly_oauth_apps"
+            ]
+        )
+        XCTAssertEqual(try XCTUnwrap(byName["Gemini Web"]).bucketIds, ["five_hour", "weekly"])
+        XCTAssertEqual(
+            try XCTUnwrap(byName["AntiGravity"]).bucketIds,
+            ["gemini_five_hour", "gemini_weekly", "claude_gpt_five_hour", "claude_gpt_weekly"]
+        )
+        XCTAssertEqual(try XCTUnwrap(byName["Grok"]).bucketIds, ["weekly"])
+        XCTAssertEqual(try XCTUnwrap(byName["Cursor"]).bucketIds, ["models", "other_models"])
+        XCTAssertEqual(try XCTUnwrap(byName["Grok Bot"]).bucketIds, ["grok_bot_weekly"])
+
+        // Cursor and Grok Bot share one adapter, so the tool alone can't
+        // identify a section — the id has to carry the SubProvider name.
+        XCTAssertEqual(try XCTUnwrap(byName["Cursor"]).tool, .cursor)
+        XCTAssertEqual(try XCTUnwrap(byName["Grok Bot"]).tool, .cursor)
+        XCTAssertEqual(try XCTUnwrap(byName["Grok Bot"]).id, "cursor/Grok Bot")
+    }
+
+    /// Every selected field lands in exactly one section, and nothing that
+    /// wasn't selected sneaks in — the layout partitions the selection.
+    func testSubProviderGroupsPartitionTheSelection() {
+        let selected: Set<String> = [
+            "codex.weekly",
+            "claude.five_hour",
+            "antigravity.gemini_weekly",
+            "cursor.grok_bot_weekly"
+        ]
+        let groups = MenuBarFieldCatalog.subProviderGroups(
+            for: ToolType.dedicatedCardProviders,
+            selectedFieldIds: selected
+        )
+        XCTAssertEqual(groups.map(\.company), ["OpenAI", "Anthropic", "Google AI", "SpaceXAI"])
+        XCTAssertEqual(
+            groups.map { $0.subProviders.map(\.name) },
+            [["ChatGPT Agentic"], ["Claude"], ["AntiGravity"], ["Grok Bot"]]
+        )
+        let emitted = groups.flatMap { $0.subProviders.flatMap(\.fieldIds) }
+        XCTAssertEqual(Set(emitted), selected)
+        XCTAssertEqual(emitted.count, selected.count)
+    }
+
+    func testSubProviderGroupsDropCompaniesWithNothingSelected() {
+        XCTAssertTrue(
+            MenuBarFieldCatalog.subProviderGroups(
+                for: ToolType.dedicatedCardProviders,
+                selectedFieldIds: []
+            ).isEmpty
+        )
+        let onlyCursor = MenuBarFieldCatalog.subProviderGroups(
+            for: ToolType.dedicatedCardProviders,
+            selectedFieldIds: ["cursor.models"]
+        )
+        XCTAssertEqual(onlyCursor.map(\.company), ["SpaceXAI"])
+        XCTAssertEqual(onlyCursor.first?.accentTool, .cursor)
+        XCTAssertEqual(onlyCursor.flatMap { $0.subProviders.map(\.name) }, ["Cursor"])
+    }
+
     func testGeminiCLIModelIdsMigrateToWebBuckets() {
         // Old Gemini CLI fields no longer have catalog entries; all of
         // them must migrate to the Web parser's `gemini.five_hour`

@@ -27,7 +27,8 @@ struct MiniQuotaWindowView: View {
             MiniWindowProviderLayout(
                 displayMode: displayMode,
                 visibleTools: visibleTools,
-                contentByTool: contentByTool
+                contentByTool: contentByTool,
+                selectedFieldIds: miniSelectedFieldIds
             )
             .padding(.horizontal, displayMode == .compact ? 8 : 14)
             .padding(.top, displayMode == .compact ? 16 : 22)
@@ -47,13 +48,24 @@ struct MiniQuotaWindowView: View {
         }
         .frame(
             minWidth: displayMode == .compact ? 156 : 240,
-            minHeight: displayMode == .compact ? 134 : 166,
+            // Three tiers now: company header, SubProvider label, quota
+            // groups. `MiniQuotaWindowController.stableContentSize` reserves
+            // the same extra label row — keep the two in step.
+            minHeight: displayMode == .compact ? 146 : 181,
             alignment: .center
         )
         .glassEffect(
             .regular.interactive(),
             in: .rect(cornerRadius: Theme.miniCornerRadius)
         )
+    }
+
+    /// The field ids selected for the current display mode. Also the input to
+    /// `MenuBarFieldCatalog.subProviderGroups`, which decides the company →
+    /// SubProvider skeleton the layout renders into.
+    private var miniSelectedFieldIds: Set<String> {
+        let mini = settingsStore.settings.miniWindow
+        return Set(mini.fieldIds(for: mini.displayMode))
     }
 
     private var miniContentByTool: [ToolType: MiniToolContent] {
@@ -69,7 +81,8 @@ struct MiniQuotaWindowView: View {
                     field.tool == tool
                 else { continue }
                 let liveBucket = environment.quota(for: tool)?.bucket(id: field.bucketId)
-                if liveBucket?.groupTitle != nil || isBranchField(field) {
+                if Self.hasQuotaGroup(liveBucket, tool: tool, bucketId: field.bucketId)
+                    || isBranchField(field) {
                     continue
                 }
                 cells.append(
@@ -91,6 +104,18 @@ struct MiniQuotaWindowView: View {
             if !content.isEmpty { contentByTool[tool] = content }
         }
         return contentByTool
+    }
+
+    /// A live `groupTitle` marks an L3 quota group — unless it merely repeats
+    /// the bucket's own SubProvider name (Cursor's `grok_bot_weekly` carries
+    /// "Grok Bot"), in which case the SubProvider row already says it and the
+    /// bucket is a flat primary cell: SpaceXAI → Grok Bot → Weekly, not
+    /// SpaceXAI → Grok Bot → Grok Bot → Weekly.
+    static func hasQuotaGroup(_ bucket: QuotaBucket?, tool: ToolType, bucketId: String) -> Bool {
+        guard let group = bucket?.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !group.isEmpty
+        else { return false }
+        return group.caseInsensitiveCompare(tool.quotaSubProviderName(bucketID: bucketId)) != .orderedSame
     }
 
     private func isBranchField(_ field: MenuBarFieldOption) -> Bool {
@@ -132,8 +157,7 @@ struct MiniQuotaWindowView: View {
                 selectedFieldIds.contains(fieldId),
                 let field = MenuBarFieldCatalog.field(id: fieldId),
                 !selectedBucketIds.contains(bucket.id),
-                let rawGroup = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
-                !rawGroup.isEmpty
+                Self.hasQuotaGroup(bucket, tool: tool, bucketId: bucket.id)
             else { return nil }
             return MiniBranchCell(
                 tool: tool,
@@ -145,17 +169,22 @@ struct MiniQuotaWindowView: View {
     }
 }
 
-/// Snapshot of a tool's contribution to its L2 product group — the
-/// tool itself plus its primary + branch cells. Used as the unit of
-/// rendering inside a multi-tool group (Gemini Web + AntiGravity).
-private struct MiniL2Member {
+/// One L2 SubProvider inside a company column — its name, the tool whose
+/// adapter produced the buckets, and the primary + branch cells that belong to
+/// it. This is the middle tier of the mini window's company → SubProvider →
+/// quota-group layout, and it is **not** one per `ToolType`: Cursor's adapter
+/// yields both "Cursor" and "Grok Bot" (see `ToolType.quotaSubProviderName`).
+private struct MiniL2Member: Identifiable {
     let tool: ToolType
+    let subProviderName: String
     let content: MiniToolContent
+
+    var id: String { "\(tool.rawValue)/\(subProviderName)" }
 }
 
 /// Tools sharing the same L1 enterprise/brand (e.g. Gemini Web + AntiGravity)
 /// collapse into one super-column with a single company header and one
-/// SubProvider label per tool. The mini window renders one super-column
+/// labelled section per SubProvider. The mini window renders one super-column
 /// per `MiniCompanyGroup`, not one per `ToolType`.
 private struct MiniCompanyGroup: Identifiable {
     let companyName: String
@@ -163,37 +192,46 @@ private struct MiniCompanyGroup: Identifiable {
     let members: [MiniL2Member]
 
     var id: String { companyName }
-    var isMultiTool: Bool { members.count > 1 }
+    var isMultiSubProvider: Bool { members.count > 1 }
 }
 
-/// Walks `visibleTools` in their `dedicatedCardProviders` order and
-/// folds consecutive tools sharing the same `vendorName` into one
-/// `MiniCompanyGroup`. Tools with empty content are skipped.
+/// Fills `MenuBarFieldCatalog.subProviderGroups`' company → SubProvider
+/// skeleton with the live cells built above. The skeleton owns the ordering
+/// (catalog order inside a tool, `visibleTools` order across tools, companies
+/// folded by `vendorName`); this only attaches content and drops whatever the
+/// live quota had nothing for.
 private func miniProductGroups(
     visibleTools: [ToolType],
-    contentByTool: [ToolType: MiniToolContent]
+    contentByTool: [ToolType: MiniToolContent],
+    selectedFieldIds: Set<String>
 ) -> [MiniCompanyGroup] {
+    let skeleton = MenuBarFieldCatalog.subProviderGroups(
+        for: visibleTools,
+        selectedFieldIds: selectedFieldIds
+    )
     var groups: [MiniCompanyGroup] = []
-    for tool in visibleTools {
-        guard let content = contentByTool[tool], !content.isEmpty else { continue }
-        let company = tool.vendorName
-        let member = MiniL2Member(tool: tool, content: content)
-        if let last = groups.last, last.companyName == company {
-            let merged = MiniCompanyGroup(
-                companyName: last.companyName,
-                accentTool: last.accentTool,
-                members: last.members + [member]
-            )
-            groups[groups.count - 1] = merged
-        } else {
-            groups.append(
-                MiniCompanyGroup(
-                    companyName: company,
-                    accentTool: tool,
-                    members: [member]
+    for company in skeleton {
+        var members: [MiniL2Member] = []
+        for subProvider in company.subProviders {
+            guard let content = contentByTool[subProvider.tool] else { continue }
+            let member = MiniL2Member(
+                tool: subProvider.tool,
+                subProviderName: subProvider.name,
+                content: MiniToolContent(
+                    primaryCells: content.primaryCells.filter { $0.subProviderKey == subProvider.id },
+                    branchCells: content.branchCells.filter { $0.subProviderKey == subProvider.id }
                 )
             )
+            if !member.content.isEmpty { members.append(member) }
         }
+        guard !members.isEmpty else { continue }
+        groups.append(
+            MiniCompanyGroup(
+                companyName: company.company,
+                accentTool: company.accentTool,
+                members: members
+            )
+        )
     }
     return groups
 }
@@ -202,13 +240,18 @@ private struct MiniWindowProviderLayout: View {
     let displayMode: MiniWindowDisplayMode
     let visibleTools: [ToolType]
     let contentByTool: [ToolType: MiniToolContent]
+    let selectedFieldIds: Set<String>
 
     var body: some View {
-        let groups = miniProductGroups(visibleTools: visibleTools, contentByTool: contentByTool)
+        let groups = miniProductGroups(
+            visibleTools: visibleTools,
+            contentByTool: contentByTool,
+            selectedFieldIds: selectedFieldIds
+        )
         HStack(alignment: .top, spacing: displayMode == .compact ? 8 : 14) {
             ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                 if index > 0 {
-                    MiniProviderDivider(height: displayMode == .compact ? 82 : 116)
+                    MiniProviderDivider(height: displayMode == .compact ? 94 : 131)
                         .padding(.top, 2)
                 }
                 switch displayMode {
@@ -239,9 +282,26 @@ private struct MiniCell: Identifiable {
 
     var id: String { "\(tool.rawValue).\(field.id)" }
 
+    /// L2 SubProvider this bucket bills against. Almost always the tool's own
+    /// product name — Grok Bot is the exception that makes this a per-bucket
+    /// question rather than a per-tool one.
+    var subProviderName: String { tool.quotaSubProviderName(bucketID: field.bucketId) }
+
+    /// Matches `MenuBarSubProviderGroup.id`, so a cell can be routed into the
+    /// SubProvider section the catalog says it belongs to.
+    var subProviderKey: String { "\(tool.rawValue)/\(subProviderName)" }
+
     var resolvedLabel: String {
         if let trimmed = customLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty {
             return trimmed
+        }
+        // A bucket whose group title is just its SubProvider (Grok Bot) is
+        // drawn flat under that SubProvider row, so its cell must name the
+        // L3 window ("Weekly"), not repeat "Grok Bot" a third time.
+        if let bucket,
+           let group = bucket.groupTitle,
+           group.caseInsensitiveCompare(subProviderName) == .orderedSame {
+            return bucket.title
         }
         if let bucket, field.defaultLabel != bucket.shortLabel {
             return bucket.shortLabel
@@ -257,6 +317,12 @@ private struct MiniBranchCell: Identifiable {
     let customLabel: String?
 
     var id: String { "\(tool.rawValue).branch.\(bucket.id)" }
+
+    /// See `MiniCell.subProviderName`. Cursor's `grok_bot_weekly` resolves to
+    /// "Grok Bot" here, which is what splits it out of the Cursor section.
+    var subProviderName: String { tool.quotaSubProviderName(bucketID: field.bucketId) }
+
+    var subProviderKey: String { "\(tool.rawValue)/\(subProviderName)" }
 
     var title: String {
         if let trimmed = customLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty {
@@ -323,8 +389,6 @@ private struct MiniBranchCell: Identifiable {
             return "cursor.models"
         case "other_models" where tool == .cursor:
             return "cursor.other-models"
-        case "grok_bot_weekly" where tool == .cursor:
-            return "cursor.grok-bot"
         case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "antigravity.gemini-models"
         case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
@@ -510,6 +574,15 @@ private enum MiniRingMetrics {
     static let labelHeight: CGFloat = 12
     static let paceHeight: CGFloat = 10
     static let resetHeight: CGFloat = 10
+    /// Gap between quota-group columns *inside* one SubProvider. There is no
+    /// rule here on purpose: a divider at this depth read as a SubProvider
+    /// boundary when it was only separating model groups. Their own titles
+    /// plus this gap do the separating.
+    static let groupSpacing: CGFloat = 14
+    /// Gap on each side of the `MiniGroupDivider` that separates SubProviders.
+    static let memberSpacing: CGFloat = 10
+    static let subProviderLabelHeight: CGFloat = 12
+    static let subProviderLabelGap: CGFloat = 3
 }
 
 private struct MiniBranchGroup: Identifiable {
@@ -546,6 +619,12 @@ private func miniGroupTitle(for cell: MiniBranchCell, settings: MiniWindowSettin
     return cell.defaultGroupTitle
 }
 
+/// Heading for a SubProvider's primary (flat, ungrouped) buckets. Every
+/// entry resolves to a quota-group name — the SubProvider itself is printed
+/// one tier up by `MiniMemberStack`, so nothing here may name a product.
+/// Gemini Web has no L3 group at all (its buckets *are* "5 Hours" and
+/// "Weekly", AGENTS.md § 7.1), so it gets no heading rather than an invented
+/// one; Grok's single group is "Weekly Credits".
 private func miniPrimaryGroupTitle(
     for tool: ToolType,
     settings: MiniWindowSettings
@@ -554,7 +633,6 @@ private func miniPrimaryGroupTitle(
     switch tool {
     case .codex: key = "codex.all-models"
     case .claude: key = "claude.all-models"
-    case .gemini: key = "gemini.chat"
     case .grok: key = "grok.all-models"
     default: return nil
     }
@@ -565,12 +643,11 @@ private func miniPrimaryGroupTitle(
     return MiniWindowGroupLabelCatalog.defaultLabel(for: key)
 }
 
-/// Renders one L2 product super-column in the regular (ring) layout.
-/// Single-tool groups (ChatGPT / Claude) get a compact L2 header + bucket
-/// rings. Multi-tool groups (Gemini = Gemini Web + AntiGravity; Grok = Grok
-/// Build + Cursor) get the L2 header on top, each L3 tool as a
-/// sub-section beneath with its own small toolName sub-label,
-/// separated by a thin divider.
+/// Renders one L1 company super-column in the regular (ring) layout: the
+/// company header on top, then one `MiniMemberStack` per L2 SubProvider,
+/// separated by a thin divider. A company with a single SubProvider
+/// (OpenAI → ChatGPT Agentic) still gets the SubProvider label, so the three
+/// tiers read the same everywhere.
 private struct MiniCompanyGroupColumn: View {
     let group: MiniCompanyGroup
 
@@ -589,11 +666,11 @@ private struct MiniCompanyGroupColumn: View {
             }
             .frame(width: totalContentWidth, alignment: .center)
 
-            HStack(alignment: .top, spacing: 10) {
-                ForEach(Array(group.members.enumerated()), id: \.element.tool) { index, member in
+            HStack(alignment: .top, spacing: MiniRingMetrics.memberSpacing) {
+                ForEach(Array(group.members.enumerated()), id: \.element.id) { index, member in
                     if index > 0 {
-                        MiniGroupDivider()
-                            .padding(.top, 15)
+                        MiniGroupDivider(height: 112)
+                            .padding(.top, 4)
                     }
                     MiniMemberStack(
                         member: member,
@@ -604,6 +681,10 @@ private struct MiniCompanyGroupColumn: View {
         }
     }
 
+    /// Width of the SubProvider row, so the company header centres over the
+    /// gauges instead of over the column's leading edge. Every gap has to be
+    /// counted exactly: the divider is a layout sibling, so it takes the
+    /// stack's spacing on *both* sides plus its own hairline.
     private var totalContentWidth: CGFloat {
         var width: CGFloat = 0
         for member in group.members {
@@ -613,33 +694,42 @@ private struct MiniCompanyGroupColumn: View {
             )
         }
         if group.members.count > 1 {
-            width += CGFloat(group.members.count - 1) * 10
+            width += CGFloat(group.members.count - 1)
+                * (2 * MiniRingMetrics.memberSpacing + MiniGroupDivider.thickness)
         }
         return width
     }
 }
 
-/// One L3 member inside an L2 super-column. Primary provider quotas get an
-/// explicit group heading: "All Models" for ChatGPT, Claude, and Grok, and
-/// "Gemini Chat" for Gemini Web so it stays distinct from AntiGravity groups.
+/// One L2 SubProvider section: its name, then its L3 quota groups. Primary
+/// provider quotas get an explicit group heading — "All Models" for ChatGPT,
+/// Claude, Gemini Web, and Grok — so the tier below the SubProvider always
+/// names a quota group rather than a product.
 private struct MiniMemberStack: View {
     let member: MiniL2Member
     let settings: MiniWindowSettings
 
     var body: some View {
-        VStack(alignment: .center, spacing: 0) {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .center, spacing: MiniRingMetrics.subProviderLabelGap) {
+            Text(member.subProviderName.uppercased())
+                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .tracking(1.2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(
+                    width: Self.width(for: member, settings: settings),
+                    height: MiniRingMetrics.subProviderLabelHeight,
+                    alignment: .center
+                )
+            HStack(alignment: .top, spacing: MiniRingMetrics.groupSpacing) {
                 if !member.content.primaryCells.isEmpty {
                     MiniPrimaryRingGroup(
                         cells: member.content.primaryCells,
                         title: primaryGroupTitle
                     )
                 }
-                ForEach(Array(branchGroups.enumerated()), id: \.element.id) { index, group in
-                    if !member.content.primaryCells.isEmpty || index > 0 {
-                        MiniGroupDivider()
-                            .padding(.top, 15)
-                    }
+                ForEach(branchGroups) { group in
                     MiniBranchRingGroup(group: group)
                 }
             }
@@ -672,7 +762,7 @@ private struct MiniMemberStack: View {
             groupCount += 1
         }
         if groupCount > 1 {
-            width += CGFloat(groupCount - 1) * 16.5
+            width += CGFloat(groupCount - 1) * MiniRingMetrics.groupSpacing
         }
         return width
     }
@@ -856,13 +946,17 @@ private struct MiniBranchRingCell: View {
     }
 }
 
+/// The rule between two L2 SubProviders inside one company column. Quota
+/// groups *within* a SubProvider are deliberately undivided.
 private struct MiniGroupDivider: View {
+    static let thickness: CGFloat = 0.75
+
     var height: CGFloat = 92
 
     var body: some View {
         Rectangle()
             .fill(Color.primary.opacity(0.055))
-            .frame(width: 0.75, height: height)
+            .frame(width: Self.thickness, height: height)
     }
 }
 
@@ -1016,11 +1110,17 @@ private enum MiniCompactMetrics {
     static let percentHeight: CGFloat = 12
     static let paceHeight: CGFloat = 8
     static let resetHeight: CGFloat = 8
+    /// See `MiniRingMetrics.groupSpacing` — no rule between quota groups
+    /// inside one SubProvider.
+    static let groupSpacing: CGFloat = 9
+    static let memberSpacing: CGFloat = 6
+    static let subProviderLabelHeight: CGFloat = 10
+    static let subProviderLabelGap: CGFloat = 2
 }
 
-/// Compact-mode counterpart of `MiniCompanyGroupColumn`. Same L1 header
-/// + SubProvider labels + bar cells, sized for the shorter
-/// compact panel.
+/// Compact-mode counterpart of `MiniCompanyGroupColumn`. Same three tiers —
+/// company header, SubProvider label, quota-group bars — sized for the
+/// shorter compact panel.
 private struct MiniCompactL2GroupColumn: View {
     let group: MiniCompanyGroup
 
@@ -1039,11 +1139,11 @@ private struct MiniCompactL2GroupColumn: View {
             }
             .frame(width: totalContentWidth, alignment: .center)
 
-            HStack(alignment: .top, spacing: 6) {
-                ForEach(Array(group.members.enumerated()), id: \.element.tool) { index, member in
+            HStack(alignment: .top, spacing: MiniCompactMetrics.memberSpacing) {
+                ForEach(Array(group.members.enumerated()), id: \.element.id) { index, member in
                     if index > 0 {
-                        MiniGroupDivider(height: 66)
-                            .padding(.top, 12)
+                        MiniGroupDivider(height: 98)
+                            .padding(.top, 3)
                     }
                     MiniCompactMemberStack(
                         member: member,
@@ -1063,7 +1163,8 @@ private struct MiniCompactL2GroupColumn: View {
             )
         }
         if group.members.count > 1 {
-            width += CGFloat(group.members.count - 1) * 6
+            width += CGFloat(group.members.count - 1)
+                * (2 * MiniCompactMetrics.memberSpacing + MiniGroupDivider.thickness)
         }
         return width
     }
@@ -1074,19 +1175,26 @@ private struct MiniCompactMemberStack: View {
     let settings: MiniWindowSettings
 
     var body: some View {
-        VStack(alignment: .center, spacing: 0) {
-            HStack(alignment: .top, spacing: 5) {
+        VStack(alignment: .center, spacing: MiniCompactMetrics.subProviderLabelGap) {
+            Text(member.subProviderName.uppercased())
+                .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .tracking(1.2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+                .frame(
+                    width: Self.width(for: member, settings: settings),
+                    height: MiniCompactMetrics.subProviderLabelHeight,
+                    alignment: .center
+                )
+            HStack(alignment: .top, spacing: MiniCompactMetrics.groupSpacing) {
                 if !member.content.primaryCells.isEmpty {
                     MiniCompactPrimaryGroup(
                         cells: member.content.primaryCells,
                         title: primaryGroupTitle
                     )
                 }
-                ForEach(Array(branchGroups.enumerated()), id: \.element.id) { index, group in
-                    if !member.content.primaryCells.isEmpty || index > 0 {
-                        MiniGroupDivider(height: 66)
-                            .padding(.top, 12)
-                    }
+                ForEach(branchGroups) { group in
                     MiniCompactBranchGroup(group: group)
                 }
             }
@@ -1119,7 +1227,7 @@ private struct MiniCompactMemberStack: View {
             groupCount += 1
         }
         if groupCount > 1 {
-            width += CGFloat(groupCount - 1) * 10
+            width += CGFloat(groupCount - 1) * MiniCompactMetrics.groupSpacing
         }
         return width
     }

@@ -1,14 +1,14 @@
 import SwiftUI
 import VibeBarCore
 
-/// Everything that narrows the Usage Stats page: company chips, a harness
-/// picker, a model picker, the date range, and how often the page re-queries.
+/// Everything that narrows the Usage Stats page: harness chips, a model
+/// picker, the date range, and how often the page re-queries.
 ///
-/// The two narrowing axes stay separate on purpose. Companies are chips
-/// because they are the filter users reach for most and because a chip can
-/// carry the brand accent — which is how this app says "provider" everywhere
-/// else. Harnesses are a menu below them: they are the usage axis (which CLI
-/// or app produced the sessions), not another level of the quota hierarchy.
+/// This is a usage surface, so the unit is the **harness** — the CLI or app
+/// that produced the tokens — and the company is supplementary: a muted
+/// section head that toggles its harnesses in one click. Chips, not a menu,
+/// because a chip can carry the brand accent, which is how this app says
+/// "provider" everywhere else. See AGENTS.md § 7.1.
 struct UsageFiltersBar: View {
     let density: Theme.Density
     @ObservedObject var model: UsageStatsViewModel
@@ -34,14 +34,19 @@ struct UsageFiltersBar: View {
         .workbenchToolbarSurface()
     }
 
-    // MARK: - Providers
+    // MARK: - Harnesses
 
     private var providerChips: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 6) {
-                allProvidersChip
-                ForEach(model.knownCompanyRepresentatives, id: \.self) { representative in
-                    providerChip(representative)
+            HStack(spacing: 7) {
+                allHarnessesChip
+                ForEach(model.harnessChipGroups) { group in
+                    HStack(spacing: 4) {
+                        companyChip(group)
+                        ForEach(group.harnesses, id: \.self) { harness in
+                            harnessChip(harness, in: group)
+                        }
+                    }
                 }
             }
             .padding(.vertical, 1)
@@ -49,30 +54,63 @@ struct UsageFiltersBar: View {
         .scrollIndicators(.never)
     }
 
-    private var allProvidersChip: some View {
-        Button {
-            model.setSelectedTools(nil)
+    private var allHarnessesChip: some View {
+        let selected = model.selectedHarnesses == nil
+        return Button {
+            model.setSelectedHarnesses(nil)
         } label: {
-            Text("All providers")
+            Text("All harnesses")
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                .foregroundStyle(model.selectedTools == nil ? .primary : .secondary)
+                .foregroundStyle(selected ? .primary : .secondary)
                 .padding(.horizontal, 10)
                 .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
-        .background(chipBackground(tint: .accentColor, selected: model.selectedTools == nil))
-        .accessibilityLabel("Show every provider")
+        .background(chipBackground(tint: .accentColor, selected: selected))
+        .help("Include every harness")
+        .accessibilityLabel("Show every harness")
     }
 
-    private func providerChip(_ tool: ToolType) -> some View {
-        let accent = Theme.providerAccent(for: tool)
-        let selected = model.isCompanySelected(tool)
+    /// The company section head. Quieter than the harness chips beside it —
+    /// smaller, barely any fill — because the company is context here, not
+    /// another level to filter by: clicking it toggles its harnesses.
+    private func companyChip(_ group: Harness.ChipGroup) -> some View {
+        let accent = Theme.providerAccent(for: group.company)
+        let selected = isSelected(group)
         return Button {
-            model.toggleCompany(tool)
+            model.toggleHarnesses(group.harnessSet)
+        } label: {
+            HStack(spacing: 4) {
+                ToolBrandIconView(tool: group.company, size: max(9, density.segmentedFontSize - 1))
+                Text(group.company.vendorName)
+                    .font(.system(size: max(9, density.segmentedFontSize - 2), weight: .semibold))
+                    .tracking(0.3)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .frame(minHeight: 28)
+        }
+        .buttonStyle(.plain)
+        .background(Capsule().fill(accent.opacity(selected ? 0.10 : 0.035)))
+        .opacity(selected ? 1 : 0.65)
+        .saturation(selected ? 1 : 0.50)
+        .help(companyHelp(group))
+        .accessibilityLabel("\(group.company.vendorName), every harness")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    /// One chip per harness — the axis this page actually groups by. The icon
+    /// is the harness's own brand (Cursor's mark, not Grok's); the accent is
+    /// the company's, so a group still reads as one block of colour.
+    private func harnessChip(_ harness: Harness, in group: Harness.ChipGroup) -> some View {
+        let selected = model.selectedHarnesses?.contains(harness) ?? true
+        return Button {
+            model.toggleHarness(harness)
         } label: {
             HStack(spacing: 5) {
-                ToolBrandIconView(tool: tool, size: density.segmentedFontSize + 1)
-                Text(tool.vendorName)
+                ToolBrandIconView(tool: harness.brandTool, size: density.segmentedFontSize + 1)
+                Text(harness.displayName)
                     .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                     .lineLimit(1)
             }
@@ -80,14 +118,18 @@ struct UsageFiltersBar: View {
             .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
-        .background(chipBackground(tint: accent, selected: selected))
+        .background(chipBackground(tint: Theme.providerAccent(for: group.company), selected: selected))
         // Unselected chips stay legible but recede — the accent is the signal
-        // that a provider is in the query, so an off chip must not wear it.
+        // that a harness is in the query, so an off chip must not wear it.
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help(companyHelp(tool))
-        .accessibilityLabel(tool.vendorName)
+        .help("\(group.company.vendorName) · \(harness.displayName)")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    private func isSelected(_ group: Harness.ChipGroup) -> Bool {
+        guard let selected = model.selectedHarnesses else { return true }
+        return group.harnesses.allSatisfy(selected.contains)
     }
 
     private func chipBackground(tint: Color, selected: Bool) -> some View {
@@ -102,15 +144,17 @@ struct UsageFiltersBar: View {
     private var controls: some View {
         HStack(spacing: 8) {
             rangeMenu
-            harnessMenu
             modelMenu
             refreshMenu
             if model.selectedTools != nil
                 || model.selectedHarnesses != nil
                 || model.selectedModels != nil {
                 Button {
-                    model.setSelectedTools(nil)
+                    // Harnesses first: `setSelectedTools` prunes any harness
+                    // whose company just left the query, so clearing tools
+                    // ahead of it would leave a stale, half-applied filter.
                     model.setSelectedHarnesses(nil)
+                    model.setSelectedTools(nil)
                     model.setSelectedModels(nil)
                 } label: {
                     Label("Clear", systemImage: "xmark")
@@ -119,7 +163,7 @@ struct UsageFiltersBar: View {
                         .frame(minHeight: 22)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle())
-                .help("Clear company, harness, and model filters")
+                .help("Clear harness, company, and model filters")
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -202,36 +246,6 @@ struct UsageFiltersBar: View {
         .accessibilityLabel("Choose which models to include")
     }
 
-    /// Harnesses, not SubProviders: usage and cost surfaces speak the local
-    /// tool that produced the sessions. The list follows the lit company
-    /// chips so the menu never offers a combination that returns nothing.
-    private var harnessMenu: some View {
-        Menu {
-            Button("All harnesses") { model.setSelectedHarnesses(nil) }
-            if model.harnessOptions.isEmpty {
-                Text("No harnesses in range")
-            } else {
-                Divider()
-                ForEach(model.harnessOptions, id: \.self) { harness in
-                    Toggle(isOn: harnessBinding(harness)) {
-                        Text("\(harness.companyName) · \(harness.displayName)")
-                    }
-                }
-            }
-        } label: {
-            menuLabel(
-                systemImage: "terminal",
-                title: "Harness",
-                detail: harnessSummary
-            )
-        }
-        .menuStyle(.button)
-        .buttonStyle(WorkbenchPillButtonStyle())
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel("Choose which harnesses to include")
-    }
-
     private var refreshMenu: some View {
         Menu {
             Picker("Auto refresh", selection: $model.refreshInterval) {
@@ -282,20 +296,13 @@ struct UsageFiltersBar: View {
         )
     }
 
-    private func harnessBinding(_ harness: Harness) -> Binding<Bool> {
-        Binding(
-            get: { model.selectedHarnesses?.contains(harness) ?? true },
-            set: { _ in model.toggleHarness(harness) }
-        )
-    }
-
-    /// Company chip tooltip: the harnesses that company actually contributes
-    /// to usage, which is the level this page groups by.
-    private func companyHelp(_ tool: ToolType) -> String {
-        let harnesses = Harness.harnesses(forCompany: tool)
-            .map(\.displayName)
-            .joined(separator: " + ")
-        return harnesses.isEmpty ? tool.vendorName : "\(tool.vendorName) · \(harnesses)"
+    /// Company chip tooltip: the harnesses that chip actually toggles, which
+    /// is the level this page groups by.
+    private func companyHelp(_ group: Harness.ChipGroup) -> String {
+        let harnesses = group.harnesses.map(\.displayName).joined(separator: " + ")
+        return harnesses.isEmpty
+            ? group.company.vendorName
+            : "\(group.company.vendorName) · \(harnesses)"
     }
 
     private var rangeSummary: String {
@@ -323,9 +330,4 @@ struct UsageFiltersBar: View {
         return "\(selected.count) selected"
     }
 
-    private var harnessSummary: String {
-        guard let selected = model.selectedHarnesses else { return "All" }
-        if selected.count == 1, let only = selected.first { return only.displayName }
-        return "\(selected.count) selected"
-    }
 }

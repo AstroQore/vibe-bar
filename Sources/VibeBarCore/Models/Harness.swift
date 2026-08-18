@@ -124,4 +124,48 @@ public enum Harness: String, CaseIterable, Codable, Sendable, Hashable {
         let representative = company.coreProviderRepresentative ?? company
         return allCases.filter { $0.company == representative }
     }
+
+    /// One filter-chip group: an L1 company and the harnesses under it.
+    ///
+    /// The company is context, not a peer of its members. Usage and cost
+    /// surfaces filter by harness — that is the unit a row is labelled with —
+    /// and the company chip exists only to toggle its harnesses in one click.
+    public struct ChipGroup: Equatable, Sendable, Identifiable {
+        public let company: ToolType
+        public let harnesses: [Harness]
+
+        public init(company: ToolType, harnesses: [Harness]) {
+            self.company = company
+            self.harnesses = harnesses
+        }
+
+        public var id: ToolType { company }
+
+        public var harnessSet: Set<Harness> { Set(harnesses) }
+    }
+
+    /// Groups `harnesses` under `companies` for a harness-primary filter row.
+    ///
+    /// Companies are normalized to their representative and de-duplicated, the
+    /// members keep `allCases` declaration order, and a company that
+    /// contributes no harness is dropped — a chip that can only ever narrow to
+    /// nothing should not be drawn. Pass a narrowed `harnesses` list (the ones
+    /// a page actually knows about) to keep the row honest.
+    public static func chipGroups(
+        companies: [ToolType],
+        harnesses: [Harness] = Harness.allCases
+    ) -> [ChipGroup] {
+        let available = Set(harnesses)
+        var seen: Set<ToolType> = []
+        var groups: [ChipGroup] = []
+        for company in companies {
+            let representative = company.coreProviderRepresentative ?? company
+            guard seen.insert(representative).inserted else { continue }
+            let members = Self.harnesses(forCompany: representative)
+                .filter(available.contains)
+            guard !members.isEmpty else { continue }
+            groups.append(ChipGroup(company: representative, harnesses: members))
+        }
+        return groups
+    }
 }
