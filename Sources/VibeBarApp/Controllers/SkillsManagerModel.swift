@@ -48,6 +48,14 @@ final class SkillsManagerModel: ObservableObject {
 
     @Published private(set) var repoList: [String] = []
     @Published private(set) var discoverResults: [DiscoveredSkill] = []
+    /// What the running scan is doing, shown under the button. A repository
+    /// zipball is megabytes over someone else's network; without this the
+    /// sheet is a spinner with no story.
+    @Published private(set) var discoverPhase: String?
+    /// One line per repository the scan could not read, kept on screen after
+    /// the scan ends — a toast that has already faded cannot explain an empty
+    /// results list.
+    @Published private(set) var discoverFailures: [String] = []
     /// What produced `discoverResults`. Shown in the sheet because a single
     /// staging directory backs them: scanning the configured repos and
     /// installing a skills.sh hit are the same operation underneath, and the
@@ -60,6 +68,9 @@ final class SkillsManagerModel: ObservableObject {
     private let service: SkillsService
     private let searchClient: SkillsSearchClient
     private var searchTask: Task<Void, Never>?
+    /// Held so "Scan repos" can become "Cancel". Discovery is the one action
+    /// here that can legitimately run for a minute.
+    private var discoverTask: Task<Void, Never>?
     private var hasActivated = false
 
     init(
@@ -207,8 +218,12 @@ final class SkillsManagerModel: ObservableObject {
 
     // MARK: - Discovery
 
+    var isDiscovering: Bool { isBusy(BusyKey.discover) }
+
     func discover() {
-        perform(BusyKey.discover) { [self] in
+        discoverFailures = []
+        discoverPhase = nil
+        discoverTask = perform(BusyKey.discover) { [self] in
             let refs = await service.discoverRepoRefs()
             guard !refs.isEmpty else {
                 discoverResults = []
@@ -216,11 +231,43 @@ final class SkillsManagerModel: ObservableObject {
                 toast = "Add a repository first."
                 return
             }
-            discoverResults = await service.discoverSkills(from: refs)
+            // The phases arrive from the download tasks; the hop back is what
+            // keeps `@Published` on the main actor.
+            let result = await service.discover(from: refs) { [weak self] phase in
+                Task { @MainActor in self?.discoverPhase = Self.text(for: phase) }
+            }
+            discoverPhase = nil
+            discoverResults = result.skills
             discoverSource = "Configured repositories"
-            if discoverResults.isEmpty {
+            discoverFailures = result.failures.map(\.displayText)
+            if result.wasCancelled {
+                toast = "Stopped scanning."
+            } else if !result.failures.isEmpty {
+                toast = result.failures.count == 1
+                    ? result.failures[0].displayText
+                    : "\(result.failures.count) repositories could not be read."
+            } else if result.skills.isEmpty {
                 toast = "No skills were found in the configured repositories."
             }
+        }
+    }
+
+    /// Stops an in-flight scan. The service returns what it already had, so
+    /// the results list keeps any repository that finished first.
+    func cancelDiscover() {
+        discoverTask?.cancel()
+    }
+
+    private static func text(for phase: SkillDiscoveryPhase) -> String {
+        switch phase {
+        case let .downloading(slug):
+            return "Downloading \(slug)…"
+        case let .scanning(slug):
+            return "Scanning \(slug)…"
+        case let .repositoryFinished(_, completed, total):
+            return total == 1
+                ? "Downloaded 1 repository"
+                : "Downloaded \(completed) of \(total) repositories"
         }
     }
 
@@ -230,6 +277,10 @@ final class SkillsManagerModel: ObservableObject {
     func discoverSheetDismissed() {
         searchTask?.cancel()
         searchTask = nil
+        discoverTask?.cancel()
+        discoverTask = nil
+        discoverPhase = nil
+        discoverFailures = []
         Task { [service] in await service.clearDiscoveryStaging() }
         discoverResults = []
         discoverSource = nil
@@ -415,12 +466,22 @@ final class SkillsManagerModel: ObservableObject {
 
     /// Runs one mutating action: guards re-entry on `key`, reloads the
     /// registry when it finishes, and routes any error to `toast`.
-    private func perform(_ key: String, _ body: @MainActor @escaping () async throws -> Void) {
-        guard !busy.contains(key) else { return }
+    ///
+    /// Returns the task so a long-running action can be cancelled later; `nil`
+    /// means the key was already busy and nothing new was started.
+    @discardableResult
+    private func perform(
+        _ key: String,
+        _ body: @MainActor @escaping () async throws -> Void
+    ) -> Task<Void, Never>? {
+        guard !busy.contains(key) else { return nil }
         busy.insert(key)
-        Task {
+        return Task {
             do {
                 try await body()
+            } catch is CancellationError {
+                // The user asked for it; the action that was cancelled says
+                // what happened, if anything needs saying at all.
             } catch {
                 toast = error.localizedDescription
             }

@@ -17,6 +17,54 @@ public struct SkillUpdateState: Sendable, Hashable, Identifiable {
     }
 }
 
+/// One repository a discovery pass could not read.
+///
+/// Discovery is a browser, not a transaction, so a repository that 404s or
+/// times out must not take the others down with it — but it must not vanish
+/// either. This is what the UI shows instead of an empty list with no
+/// explanation.
+public struct SkillDiscoveryFailure: Sendable, Hashable, Identifiable {
+    public let slug: String
+    public let message: String
+    /// True when the user (or the surrounding task) called it off, which is
+    /// not a failure worth an error style in the UI.
+    public let wasCancelled: Bool
+
+    public var id: String { slug }
+
+    public init(slug: String, message: String, wasCancelled: Bool) {
+        self.slug = slug
+        self.message = message
+        self.wasCancelled = wasCancelled
+    }
+
+    /// `AstroQore/vibe-bar: timed out after 120 s.`
+    public var displayText: String { "\(slug): \(message)" }
+}
+
+public struct SkillDiscoveryResult: Sendable {
+    public let skills: [DiscoveredSkill]
+    public let failures: [SkillDiscoveryFailure]
+    public let wasCancelled: Bool
+
+    public init(skills: [DiscoveredSkill], failures: [SkillDiscoveryFailure], wasCancelled: Bool) {
+        self.skills = skills
+        self.failures = failures
+        self.wasCancelled = wasCancelled
+    }
+}
+
+/// What a discovery pass is doing right now.
+///
+/// Downloading a repository zipball is seconds of silence at best and a stuck
+/// spinner at worst, so the pass narrates itself. The phases carry data, not
+/// sentences: the wording belongs to the surface that shows it.
+public enum SkillDiscoveryPhase: Sendable, Equatable {
+    case downloading(slug: String)
+    case scanning(slug: String)
+    case repositoryFinished(slug: String, completed: Int, total: Int)
+}
+
 /// The repository-facing half of `SkillsService`: browse, install, check, and
 /// update.
 ///
@@ -62,46 +110,136 @@ extension SkillsService {
 
     /// Downloads `repos` in parallel and lists the skills in them.
     ///
+    /// Convenience over `discover(from:progress:)` for callers that only want
+    /// the skills; per-repository failures are logged and dropped.
+    public func discoverSkills(from repos: [SkillRepoRef]) async -> [DiscoveredSkill] {
+        await discover(from: repos).skills
+    }
+
+    /// Downloads `repos` in parallel, lists the skills in them, and reports
+    /// what each repository is doing while it happens.
+    ///
     /// The results point into a staging directory this actor owns; it survives
     /// until the next discovery pass or `clearDiscoveryStaging()`, which is
     /// what makes `install(_:enableFor:)` able to copy from them later.
-    public func discoverSkills(from repos: [SkillRepoRef]) async -> [DiscoveredSkill] {
-        guard !repos.isEmpty else { return [] }
+    ///
+    /// Cancellable: cancelling the calling task cancels every in-flight
+    /// download, and the pass returns whatever finished plus a `wasCancelled`
+    /// failure for each repository that did not. `progress` is called from the
+    /// download tasks, so it must be safe to call from any thread.
+    public func discover(
+        from repos: [SkillRepoRef],
+        progress: (@Sendable (SkillDiscoveryPhase) -> Void)? = nil
+    ) async -> SkillDiscoveryResult {
+        guard !repos.isEmpty else {
+            return SkillDiscoveryResult(skills: [], failures: [], wasCancelled: false)
+        }
         clearDiscoveryStaging()
         let staging = Self.temporaryDirectory(prefix: "discover")
         do {
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         } catch {
             SafeLog.warn("Skills discovery: no staging directory")
-            return []
+            return SkillDiscoveryResult(
+                skills: [],
+                failures: repos.map {
+                    SkillDiscoveryFailure(
+                        slug: $0.slug,
+                        message: "no staging directory could be created",
+                        wasCancelled: false
+                    )
+                },
+                wasCancelled: false
+            )
         }
         discoveryStaging = staging
 
         let fetcher = self.fetcher
-        let discovered = await withTaskGroup(of: [DiscoveredSkill].self) { group in
+        let total = repos.count
+        let outcomes = await withTaskGroup(of: RepositoryOutcome.self) { group in
             for (index, ref) in repos.enumerated() {
                 let directory = staging.appendingPathComponent("repo-\(index)", isDirectory: true)
                 group.addTask {
                     do {
+                        progress?(.downloading(slug: ref.slug))
                         let (root, branch) = try await fetcher.downloadRepo(ref, into: directory)
-                        return try fetcher.scanSkills(inRepoRoot: root, ref: ref, resolvedBranch: branch)
+                        progress?(.scanning(slug: ref.slug))
+                        return .found(try fetcher.scanSkills(inRepoRoot: root, ref: ref, resolvedBranch: branch))
                     } catch {
                         SafeLog.warn(
                             "Skills discovery skipped \(ref.slug): \(SafeLog.sanitize(error.localizedDescription))"
                         )
-                        return []
+                        return .failed(Self.failure(for: error, slug: ref.slug))
                     }
                 }
             }
-            var all: [DiscoveredSkill] = []
-            for await batch in group { all.append(contentsOf: batch) }
-            return all
+            var collected: [RepositoryOutcome] = []
+            for await outcome in group {
+                collected.append(outcome)
+                progress?(
+                    .repositoryFinished(
+                        slug: outcome.slug ?? "",
+                        completed: collected.count,
+                        total: total
+                    )
+                )
+            }
+            return collected
         }
 
+        var discovered: [DiscoveredSkill] = []
+        var failures: [SkillDiscoveryFailure] = []
+        for outcome in outcomes {
+            switch outcome {
+            case let .found(skills): discovered.append(contentsOf: skills)
+            case let .failed(failure): failures.append(failure)
+            }
+        }
         var seen = Set<SkillID>()
-        return discovered
-            .filter { seen.insert($0.id).inserted }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return SkillDiscoveryResult(
+            skills: discovered
+                .filter { seen.insert($0.id).inserted }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            failures: failures.sorted { $0.slug.localizedCaseInsensitiveCompare($1.slug) == .orderedAscending },
+            wasCancelled: Task.isCancelled || failures.contains { $0.wasCancelled }
+        )
+    }
+
+    private enum RepositoryOutcome: Sendable {
+        case found([DiscoveredSkill])
+        case failed(SkillDiscoveryFailure)
+
+        var slug: String? {
+            switch self {
+            case let .found(skills): return skills.first?.repositorySlug
+            case let .failed(failure): return failure.slug
+            }
+        }
+    }
+
+    /// Cancellation reaches here in two spellings — `CancellationError` from
+    /// the cooperative checks, and `URLError.cancelled` from a URLSession task
+    /// that was already in flight — and neither should read as a broken
+    /// repository.
+    ///
+    /// The timeout is re-phrased rather than quoted: `displayText` already
+    /// prefixes the slug, and the error's own description names it too.
+    static func failure(for error: Error, slug: String) -> SkillDiscoveryFailure {
+        if error is CancellationError || (error as? URLError)?.code == .cancelled {
+            return SkillDiscoveryFailure(slug: slug, message: "cancelled", wasCancelled: true)
+        }
+        if let repoError = error as? SkillRepoError, case let .timedOut(_, seconds) = repoError {
+            return SkillDiscoveryFailure(
+                slug: slug,
+                message: "timed out after \(seconds) s",
+                wasCancelled: false
+            )
+        }
+        return SkillDiscoveryFailure(
+            slug: slug,
+            message: error.localizedDescription,
+            wasCancelled: false
+        )
     }
 
     /// Drops the extracted repositories the last discovery pass left behind.

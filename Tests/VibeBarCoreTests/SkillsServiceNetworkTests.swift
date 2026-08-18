@@ -191,6 +191,69 @@ final class SkillsServiceNetworkTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: discovered[0].sourceRoot.path))
     }
 
+    /// The bug this exists for: a repository that never answers used to leave
+    /// the sheet spinning with nothing to say and no way out.
+    func testDiscoveryReportsWhichRepositoryFailedInsteadOfReturningNothing() async throws {
+        let home = try SkillTestHome()
+        let fetcher = FakeRepoFetcher()
+        fetcher.repos["acme/good"] = FakeRepoFetcher.Repo(
+            branch: "main",
+            skills: ["skills/alpha": ["SKILL.md": Self.frontmatter(name: "Alpha")]]
+        )
+        let service = SkillsService(homeDirectory: home.path, fetcher: fetcher)
+
+        let result = await service.discover(from: [
+            SkillRepoRef("acme/good")!,
+            SkillRepoRef("acme/missing")!
+        ])
+
+        XCTAssertEqual(result.skills.map(\.directory), ["alpha"])
+        XCTAssertFalse(result.wasCancelled)
+        XCTAssertEqual(result.failures.map(\.slug), ["acme/missing"])
+        XCTAssertFalse(result.failures[0].wasCancelled)
+        XCTAssertTrue(
+            result.failures[0].displayText.hasPrefix("acme/missing: Could not download acme/missing"),
+            result.failures[0].displayText
+        )
+    }
+
+    func testDiscoveryReportsPhasesForEveryRepository() async throws {
+        let home = try SkillTestHome()
+        let fetcher = FakeRepoFetcher()
+        fetcher.repos["acme/one"] = FakeRepoFetcher.Repo(
+            branch: "main",
+            skills: ["skills/alpha": ["SKILL.md": Self.frontmatter(name: "Alpha")]]
+        )
+        let service = SkillsService(homeDirectory: home.path, fetcher: fetcher)
+        let recorder = PhaseRecorder()
+
+        _ = await service.discover(from: [SkillRepoRef("acme/one")!]) { recorder.record($0) }
+
+        XCTAssertEqual(recorder.phases, [
+            .downloading(slug: "acme/one"),
+            .scanning(slug: "acme/one"),
+            .repositoryFinished(slug: "acme/one", completed: 1, total: 1)
+        ])
+    }
+
+    /// Cancelling has to resolve the call — the point of the Cancel button is
+    /// that the caller stops waiting, not that the download is asked nicely.
+    func testDiscoveryCancellationResolvesWithACancelledFailure() async throws {
+        let home = try SkillTestHome()
+        let fetcher = HangingRepoFetcher()
+        let service = SkillsService(homeDirectory: home.path, fetcher: fetcher)
+
+        let discovery = Task { await service.discover(from: [SkillRepoRef("acme/slow")!]) }
+        try await fetcher.waitUntilStarted()
+        discovery.cancel()
+
+        let result = await discovery.value
+        XCTAssertTrue(result.skills.isEmpty)
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertEqual(result.failures.map(\.displayText), ["acme/slow: cancelled"])
+        XCTAssertTrue(result.failures[0].wasCancelled)
+    }
+
     func testDiscoveryDedupesAndSortsByName() async throws {
         let home = try SkillTestHome()
         let fetcher = FakeRepoFetcher()
@@ -445,5 +508,47 @@ final class FakeRepoFetcher: SkillRepoFetching, @unchecked Sendable {
         resolvedBranch: String
     ) throws -> [DiscoveredSkill] {
         try SkillRepoFetcher().scanSkills(inRepoRoot: root, ref: ref, resolvedBranch: resolvedBranch)
+    }
+}
+
+/// A fetcher whose download never lands, standing in for the slow network the
+/// Cancel button exists for. `Task.sleep` is the cooperative check: it throws
+/// `CancellationError` the moment the surrounding task is cancelled.
+final class HangingRepoFetcher: SkillRepoFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+
+    func downloadRepo(_ ref: SkillRepoRef, into tempDir: URL) async throws -> (root: URL, resolvedBranch: String) {
+        lock.withLock { started = true }
+        try await Task.sleep(for: .seconds(600))
+        throw SkillRepoError.branchNotFound(slug: ref.slug, tried: ["main"])
+    }
+
+    func scanSkills(
+        inRepoRoot root: URL,
+        ref: SkillRepoRef,
+        resolvedBranch: String
+    ) throws -> [DiscoveredSkill] {
+        []
+    }
+
+    func waitUntilStarted(timeout: TimeInterval = 5) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !lock.withLock({ started }) {
+            guard Date() < deadline else { throw MCPTestError("The download never started") }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
+}
+
+/// Collects discovery phases from whatever thread emits them.
+final class PhaseRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [SkillDiscoveryPhase] = []
+
+    var phases: [SkillDiscoveryPhase] { lock.withLock { recorded } }
+
+    func record(_ phase: SkillDiscoveryPhase) {
+        lock.withLock { recorded.append(phase) }
     }
 }

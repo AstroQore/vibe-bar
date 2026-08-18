@@ -286,6 +286,83 @@ final class SkillRepoFetcherTests: XCTestCase {
         }
     }
 
+    /// The complaint this whole path exists to answer: a download that never
+    /// finishes must end when the user says so, not when the server does.
+    func testDownloaderFailsWithCancellationWhenTheTaskIsCancelled() async throws {
+        StubURLProtocol.replies["https://github.com/a/b.zip"] = .init(hangs: true)
+        let destination = workspace.appendingPathComponent("out.zip")
+        let downloader = Self.stubbedDownloader()
+
+        let download = Task {
+            try await downloader.download(
+                from: URL(string: "https://github.com/a/b.zip")!,
+                to: destination,
+                maxBytes: 1_000_000,
+                timeout: 30,
+                allowedHosts: ["github.com"]
+            )
+        }
+        try await Self.waitUntil { StubURLProtocol.requested.contains("https://github.com/a/b.zip") }
+        download.cancel()
+
+        do {
+            try await download.value
+            XCTFail("Expected the cancelled download to throw")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Got \(error)")
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destination.path),
+            "The partial download must be deleted"
+        )
+    }
+
+    /// `timeout` is an idle timer, so a repository budget needs its own clock.
+    func testDownloadRepoGivesUpOnceTheWallClockBudgetIsSpent() async {
+        StubURLProtocol.replies[Self.archive("acme", "slow", "main")] = .init(hangs: true)
+        StubURLProtocol.replies[Self.archive("acme", "slow", "master")] = .init(hangs: true)
+
+        let fetcher = SkillRepoFetcher(
+            downloader: Self.stubbedDownloader(),
+            timeout: 30,
+            maxWallTime: 0.4
+        )
+        let started = Date()
+        do {
+            _ = try await fetcher.downloadRepo(
+                SkillRepoRef("acme/slow")!,
+                into: workspace.appendingPathComponent("dl", isDirectory: true)
+            )
+            XCTFail("Expected timedOut")
+        } catch let error as SkillRepoError {
+            XCTAssertEqual(error, .timedOut(slug: "acme/slow", seconds: 0))
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+        XCTAssertLessThan(
+            Date().timeIntervalSince(started),
+            20,
+            "The budget must bound the whole repository, not each branch candidate"
+        )
+    }
+
+    func testDownloadRepoIsCancellable() async {
+        StubURLProtocol.replies[Self.archive("acme", "slow", "main")] = .init(hangs: true)
+        let fetcher = SkillRepoFetcher(downloader: Self.stubbedDownloader())
+        let directory = workspace.appendingPathComponent("dl", isDirectory: true)
+
+        let download = Task { try await fetcher.downloadRepo(SkillRepoRef("acme/slow@main")!, into: directory) }
+        try? await Self.waitUntil { !StubURLProtocol.requested.isEmpty }
+        download.cancel()
+
+        do {
+            _ = try await download.value
+            XCTFail("Expected the cancelled fetch to throw")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Got \(error)")
+        }
+    }
+
     func testDownloaderWritesTheBodyItWasGiven() async throws {
         let payload = Data(repeating: 0x5A, count: 12_345)
         StubURLProtocol.replies["https://github.com/a/b.zip"] = .init(body: payload)
@@ -303,6 +380,19 @@ final class SkillRepoFetcherTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    /// Polls until `condition` holds, so a cancellation test cancels something
+    /// that is actually in flight rather than a task that has not started.
+    private static func waitUntil(
+        timeout: TimeInterval = 5,
+        _ condition: @Sendable () -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            guard Date() < deadline else { throw MCPTestError("Timed out waiting for the condition") }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
 
     private static func stubbedDownloader() -> BoundedDownloader {
         BoundedDownloader {
@@ -354,6 +444,9 @@ final class StubURLProtocol: URLProtocol {
         var body: Data?
         var redirectTo: URL?
         var includeContentLength = true
+        /// Accepts the request and never answers, standing in for the server
+        /// that made "Scan repos" spin for twenty seconds.
+        var hangs = false
     }
 
     nonisolated(unsafe) static var replies: [String: Reply] = [:]
@@ -375,6 +468,8 @@ final class StubURLProtocol: URLProtocol {
         }
         Self.requested.append(url.absoluteString)
         let reply = Self.replies[url.absoluteString] ?? Reply(statusCode: 404)
+
+        if reply.hangs { return }
 
         if let redirect = reply.redirectTo {
             let response = HTTPURLResponse(
