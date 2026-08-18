@@ -122,6 +122,30 @@ Plans, and Tencent Hunyuan.
   <img src="Resources/README/misc-providers.png" alt="Vibe Bar miscellaneous coding plan providers" width="860">
 </p>
 
+## Agents (MCP)
+
+Vibe Bar can answer your coding agent's questions about your own usage. While
+the app is running it exposes a read-only MCP server on a Unix domain socket in
+your home directory — no network port, no API key — so Claude Code, Codex CLI,
+Cursor or any other stdio MCP client can ask "how much Claude do I have left?",
+"who burned the most tokens this month?" or "find my session about the parser".
+
+Set it up by pasting this into any agent that can fetch a URL:
+
+```
+Fetch and execute the appropriate instructions to set me up for Vibe Bar from https://raw.githubusercontent.com/AstroQore/vibe-bar/main/docs/agent-setup/prompt.md
+```
+
+Or configure it by hand — every client runs the same command:
+
+```sh
+claude mcp add --scope user vibebar -- "/Applications/Vibe Bar.app/Contents/MacOS/VibeBar" --mcp-stdio
+```
+
+Settings → MCP Server has the switch, the socket path, and a copy button for
+each client. Everything agents can reach is read-only except an opt-in "refresh
+my quota" tool; credentials are never exposed and emails are masked.
+
 ## Settings That Stay Out of the Way
 
 Choose Remaining or Used percentages, refresh on a timer or when the popover
@@ -165,9 +189,12 @@ and audit metadata only. Derived state stays under:
 ├── service_status.json
 ├── remote_core.json
 ├── remote_usage.sqlite3
-└── cost_history.json
+├── cost_history.json
+└── mcp.sock            (only while the app runs, mode 0600)
 ```
 
+- The MCP socket is created 0600 inside the 0700 `~/.vibebar/`, is never bound
+  to a network interface, and is removed when Vibe Bar quits.
 - CLI credential and session files are read-only inputs. The one exception
   is whole-session deletion from the Workbench's Sessions page, performed
   only at your explicit request and never editing a session file's contents.

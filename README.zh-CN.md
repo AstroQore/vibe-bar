@@ -114,6 +114,29 @@ OpenCode Go、Ollama Cloud、智谱 GLM、小米 MiMo、Kimi、MiniMax、阿里�
   <img src="Resources/README/misc-providers.png" alt="Vibe Bar 杂项 Coding Plan 服务商" width="860">
 </p>
 
+## Agent 接入（MCP）
+
+Vibe Bar 可以让你的编程 Agent 直接查询你自己的用量。应用运行时，它会在你的 home
+目录下开一个只读的 MCP 服务，走 Unix domain socket——不开网络端口，也没有 API
+Key——Claude Code、Codex CLI、Cursor 以及任何 stdio MCP 客户端都能问「我的 Claude
+还剩多少」「这个月谁烧的 token 最多」「找一下我那个改 parser 的会话」。
+
+把下面这一行粘贴给任意一个能抓取 URL 的 Agent，它会自己完成配置：
+
+```
+Fetch and execute the appropriate instructions to set me up for Vibe Bar from https://raw.githubusercontent.com/AstroQore/vibe-bar/main/docs/agent-setup/prompt.md
+```
+
+也可以手动配置，所有客户端跑的都是同一条命令：
+
+```sh
+claude mcp add --scope user vibebar -- "/Applications/Vibe Bar.app/Contents/MacOS/VibeBar" --mcp-stdio
+```
+
+设置 → MCP Server 里有开关、socket 路径，以及各客户端配置的一键复制。除了一个可
+关闭的「刷新配额」工具外，Agent 能访问的全部是只读数据；凭据不会暴露，邮箱会被
+脱敏。
+
 ## 不打扰工作的设置
 
 在同一个左右分栏窗口中切换 Remaining/Used、定时刷新或打开 Popover 时刷新、
@@ -154,9 +177,12 @@ Vibe Bar 没有遥测管线或托管明文分析后端。本地与远端 Probe �
 ├── service_status.json
 ├── remote_core.json
 ├── remote_usage.sqlite3
-└── cost_history.json
+├── cost_history.json
+└── mcp.sock            （仅在应用运行期间存在，权限 0600）
 ```
 
+- MCP socket 位于权限 0700 的 `~/.vibebar/` 内，自身权限 0600，从不绑定网络
+  接口，Vibe Bar 退出时会一并删除。
 - CLI 凭据和 Session 文件只读，不会被 Vibe Bar 修改。
 - Vibe Bar 自己持有的 Cookie 与 Provider Secret 统一放在一个版本化 Keychain
   Vault 中，不再为每个 Secret 建一个反复弹窗的 Keychain Item。
