@@ -100,6 +100,19 @@ final class ClaudeSessionAdapterTests: XCTestCase {
         XCTAssertEqual(summary.createdAt, ISO8601DateFormatter.vibeBarTest.date(from: "2026-01-01T00:00:01.000Z"))
     }
 
+    /// A forked / "continued" session keeps its ancestors' lines — with the
+    /// ancestors' `sessionId` — ahead of its own. `claude --resume` takes the
+    /// file's UUID, so that is the id the row must carry.
+    func testForkedSessionUsesTheFileNameNotTheInheritedSessionIdField() throws {
+        let forkID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        let url = try writeSession(lines: conversationLines, fileName: "\(forkID).jsonl")
+        let summary = try adapter.extractMetadata(fileURL: url)
+
+        XCTAssertEqual(summary.sessionID, forkID)
+        XCTAssertNotEqual(summary.sessionID, sessionID)
+        XCTAssertEqual(summary.id, "claude:\(forkID):\(url.path)")
+    }
+
     func testPinnedCustomTitleWinsOverTheFirstUserPrompt() throws {
         let url = try writeSession(lines: conversationLines + [customTitleLine("Pinned title")])
         XCTAssertEqual(try adapter.extractMetadata(fileURL: url).title, "Pinned title")
