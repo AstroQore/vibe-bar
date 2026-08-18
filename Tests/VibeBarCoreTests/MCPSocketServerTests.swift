@@ -59,6 +59,56 @@ final class MCPSocketServerTests: XCTestCase {
         FileManager.default.createFile(atPath: socketPath, contents: Data())
         let socket = try startServer()
         XCTAssertTrue(socket.isRunning)
+        XCTAssertEqual(socket.status, .listening)
+    }
+
+    /// A second Vibe Bar — the usual case is a source build launched next to
+    /// the installed app — must not unlink a socket that is being served. The
+    /// file looks identical either way, so the check is a probe connect.
+    func testASecondServerReportsAConflictInsteadOfStealingTheSocket() throws {
+        let first = try startServer()
+        XCTAssertEqual(first.status, .listening)
+
+        let second = MCPSocketServer(
+            server: MCPServer(dataSource: FakeMCPDataSource()),
+            socketPath: socketPath
+        )
+        defer { second.stop() }
+        XCTAssertThrowsError(try second.start()) { error in
+            XCTAssertEqual(error as? MCPSocketError, .socketOwnedByAnotherInstance(socketPath))
+        }
+        XCTAssertEqual(second.status, .conflict)
+        XCTAssertFalse(second.isRunning)
+
+        // The point of the whole exercise: the first server is still there.
+        XCTAssertTrue(first.isRunning)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
+        let client = try MCPSocketTestClient(path: socketPath)
+        defer { client.close() }
+        let pong = try client.request(MCPTestSupport.line(id: 7, method: "ping"))
+        XCTAssertEqual(pong["id"]?.intValue, 7)
+    }
+
+    /// The conflicting server never bound, so stopping it must leave the live
+    /// server's socket file alone.
+    func testStoppingAConflictedServerDoesNotRemoveTheLiveSocket() throws {
+        let first = try startServer()
+        let second = MCPSocketServer(
+            server: MCPServer(dataSource: FakeMCPDataSource()),
+            socketPath: socketPath
+        )
+        XCTAssertThrowsError(try second.start())
+        second.stop()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
+        XCTAssertTrue(first.isRunning)
+    }
+
+    func testTheLivenessProbeReadsAStaleInodeAsFree() throws {
+        FileManager.default.createFile(atPath: socketPath, contents: Data())
+        XCTAssertFalse(MCPSocketServer.isAnyoneListening(atPath: socketPath))
+        _ = try startServer()
+        XCTAssertTrue(MCPSocketServer.isAnyoneListening(atPath: socketPath))
     }
 
     func testInitializeAndToolsListOverTheSocket() throws {

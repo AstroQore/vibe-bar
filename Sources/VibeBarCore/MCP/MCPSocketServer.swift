@@ -11,6 +11,9 @@ public enum MCPSocketError: Error, Sendable, Equatable {
     case bindFailed(Int32)
     case listenFailed(Int32)
     case staleSocketNotRemovable(String)
+    /// Something is already answering on this path — almost always a second
+    /// copy of Vibe Bar (a source build alongside the installed one).
+    case socketOwnedByAnotherInstance(String)
 
     public var message: String {
         switch self {
@@ -24,8 +27,21 @@ public enum MCPSocketError: Error, Sendable, Equatable {
             return "Listening on the MCP socket failed (errno \(code))."
         case let .staleSocketNotRemovable(path):
             return "A stale MCP socket at \(path) could not be removed."
+        case let .socketOwnedByAnotherInstance(path):
+            return "Another instance of Vibe Bar already owns the MCP socket at \(path). "
+                + "Quit the other copy — agents are still being served by it."
         }
     }
+}
+
+/// What the listener is doing, for the Settings pane.
+public enum MCPSocketServerStatus: String, Sendable, Equatable {
+    case stopped
+    case listening
+    /// Another live server holds the path, so this one deliberately did not
+    /// bind: unlinking a socket someone is answering on would silently cut
+    /// every agent attached to the other instance.
+    case conflict
 }
 
 /// A newline-delimited JSON-RPC listener on a Unix domain socket.
@@ -58,6 +74,7 @@ public final class MCPSocketServer: @unchecked Sendable {
     private var acceptSource: DispatchSourceRead?
     private var connections: [ObjectIdentifier: Connection] = [:]
     private var didBindSocketFile = false
+    private var statusValue: MCPSocketServerStatus = .stopped
 
     /// Called on the accept queue whenever a client connects or disconnects,
     /// with the live connection count. The Settings pane uses it to show
@@ -83,6 +100,15 @@ public final class MCPSocketServer: @unchecked Sendable {
         return listenFD >= 0
     }
 
+    /// `.conflict` outlives the failed `start()` on purpose: it is the one
+    /// failure the user can act on, and the Settings pane reads it to say who
+    /// actually owns the socket.
+    public var status: MCPSocketServerStatus {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return statusValue
+    }
+
     public var connectionCount: Int {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -97,14 +123,10 @@ public final class MCPSocketServer: @unchecked Sendable {
         stateLock.unlock()
         guard !alreadyRunning else { return }
 
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = Array(socketPath.utf8)
         // One byte is reserved for the terminating NUL. Checked before
         // anything touches the filesystem, so an unusable path fails as
         // itself rather than as whatever the first syscall happened to hit.
-        let capacity = MemoryLayout.size(ofValue: address.sun_path) - 1
-        guard pathBytes.count <= capacity else {
+        guard var address = Self.unixAddress(for: socketPath) else {
             throw MCPSocketError.pathTooLong(socketPath)
         }
 
@@ -117,10 +139,20 @@ public final class MCPSocketServer: @unchecked Sendable {
         }
 
         // A socket file left behind by a crash refuses `bind` with EADDRINUSE
-        // forever. Removing it is safe precisely because a live server holds
-        // no lock on the inode: if another Vibe Bar really is listening, the
-        // `listen` below is what fails, not this.
+        // forever, so it has to go — but a *live* server's socket looks
+        // identical on disk, and unlinking that one would leave the other
+        // instance accepting on an inode no client can reach any more. Ask
+        // first: a connect that succeeds means someone is answering.
         if FileManager.default.fileExists(atPath: socketPath) {
+            guard !Self.isAnyoneListening(atPath: socketPath) else {
+                stateLock.lock()
+                statusValue = .conflict
+                stateLock.unlock()
+                SafeLog.warn(
+                    "MCP server did not start: \(SafeLog.sanitize(socketPath)) is served by another instance."
+                )
+                throw MCPSocketError.socketOwnedByAnotherInstance(socketPath)
+            }
             do {
                 try FileManager.default.removeItem(atPath: socketPath)
             } catch {
@@ -130,13 +162,6 @@ public final class MCPSocketServer: @unchecked Sendable {
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw MCPSocketError.socketCreationFailed(errno) }
-
-        withUnsafeMutableBytes(of: &address.sun_path) { raw in
-            guard let base = raw.baseAddress else { return }
-            base.initializeMemory(as: UInt8.self, repeating: 0, count: raw.count)
-            base.copyMemory(from: pathBytes, byteCount: pathBytes.count)
-        }
-        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
 
         // The window between `bind` (which creates the file) and `chmod` is
         // the only moment the socket could be group/other-accessible, so the
@@ -172,6 +197,7 @@ public final class MCPSocketServer: @unchecked Sendable {
         listenFD = fd
         acceptSource = source
         didBindSocketFile = true
+        statusValue = .listening
         stateLock.unlock()
 
         source.resume()
@@ -187,6 +213,7 @@ public final class MCPSocketServer: @unchecked Sendable {
         connections = [:]
         listenFD = -1
         didBindSocketFile = false
+        statusValue = .stopped
         stateLock.unlock()
 
         source?.cancel()
@@ -248,6 +275,69 @@ public final class MCPSocketServer: @unchecked Sendable {
     static func setNonBlocking(_ fd: Int32) {
         let flags = fcntl(fd, F_GETFL, 0)
         _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+    }
+
+    // MARK: - Address + liveness
+
+    /// `nil` when the path cannot fit in `sun_path`.
+    private static func unixAddress(for path: String) -> sockaddr_un? {
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let bytes = Array(path.utf8)
+        guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) - 1 else { return nil }
+        withUnsafeMutableBytes(of: &address.sun_path) { raw in
+            guard let base = raw.baseAddress else { return }
+            base.initializeMemory(as: UInt8.self, repeating: 0, count: raw.count)
+            base.copyMemory(from: bytes, byteCount: bytes.count)
+        }
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        return address
+    }
+
+    /// Is a server actually accepting on this path?
+    ///
+    /// The filesystem cannot answer this — a socket inode looks the same
+    /// whether its server is alive or was killed — so ask the kernel with a
+    /// throwaway connect. `ECONNREFUSED` (nobody is listening) and `ENOENT`
+    /// (the file went away underneath us) both mean the inode is stale and
+    /// safe to unlink; a completed handshake means it is not.
+    ///
+    /// Non-blocking, because an `AF_UNIX` connect against a server whose
+    /// backlog is full parks until a slot opens, and a busy peer is still a
+    /// live peer — `poll` bounds that wait.
+    static func isAnyoneListening(atPath path: String, timeoutMilliseconds: Int32 = 250) -> Bool {
+        guard var address = unixAddress(for: path) else { return false }
+        // Not a socket at all (a plain file left at the path) can never be a
+        // live listener; that is the one shape safe to call stale up front.
+        var info = stat()
+        if stat(path, &info) == 0, (info.st_mode & S_IFMT) != S_IFSOCK { return false }
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        // Cannot even make a probe socket (EMFILE, ENOBUFS…): we know nothing,
+        // so leave the path alone rather than unlink a possibly live listener.
+        guard fd >= 0 else { return true }
+        defer { close(fd) }
+        setNonBlocking(fd)
+
+        let result = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                Darwin.connect(fd, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        if result == 0 { return true }
+        // Only a definitive refusal / vanished path proves the inode is stale.
+        // Anything still pending after the timeout, or any probe error, is
+        // treated as occupied: a slow or busy peer is a live peer, and
+        // guessing wrong here would unlink a socket agents are attached to.
+        guard errno == EINPROGRESS || errno == EAGAIN || errno == EALREADY else {
+            return !(errno == ECONNREFUSED || errno == ENOENT)
+        }
+
+        var descriptor = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+        guard poll(&descriptor, 1, timeoutMilliseconds) > 0 else { return true }
+        var pending: Int32 = 0
+        var length = socklen_t(MemoryLayout<Int32>.size)
+        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &pending, &length) == 0 else { return true }
+        return !(pending == ECONNREFUSED || pending == ENOENT)
     }
 }
 

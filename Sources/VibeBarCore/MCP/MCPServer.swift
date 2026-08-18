@@ -254,18 +254,34 @@ public final class MCPServer: @unchecked Sendable {
     private func quotaRefresh(_ arguments: MCPArguments) async throws -> MCPRefreshResultDTO {
         let tools = try arguments.optionalEnumList("tools", ToolType.self)
         let force = try arguments.optionalBool("force") ?? false
-        if force, let wait = throttledForcedRefreshSeconds() {
-            return MCPRefreshResultDTO(
-                triggered: false,
-                mode: "forced",
-                message: "A forced refresh ran less than "
-                    + "\(Int(Self.forcedRefreshMinimumInterval))s ago. Try again in \(wait)s, "
-                    + "or call quota.get — the cached numbers are almost certainly current."
-            )
+
+        var reservation: ForcedRefreshReservation?
+        if force {
+            switch admitForcedRefresh() {
+            case let .throttled(wait):
+                return MCPRefreshResultDTO(
+                    triggered: false,
+                    mode: "forced",
+                    message: "A forced refresh ran less than "
+                        + "\(Int(Self.forcedRefreshMinimumInterval))s ago. Try again in \(wait)s, "
+                        + "or call quota.get — the cached numbers are almost certainly current."
+                )
+            case let .admitted(slot):
+                reservation = slot
+            }
         }
-        let result = try await dataSource.refreshQuota(tools: tools, force: force)
-        if force, result.triggered { markForcedRefresh() }
-        return result
+
+        do {
+            let result = try await dataSource.refreshQuota(tools: tools, force: force)
+            // The app declined (the toggle is off, or it is shutting down):
+            // give the window back rather than charging the caller for a
+            // refresh that never happened.
+            if let reservation, !result.triggered { release(reservation) }
+            return result
+        } catch {
+            if let reservation { release(reservation) }
+            throw error
+        }
     }
 
     private func usageSummary(_ arguments: MCPArguments) async throws -> MCPUsageSummaryDTO {
@@ -392,19 +408,49 @@ public final class MCPServer: @unchecked Sendable {
 
     // MARK: Forced-refresh throttle
 
-    /// Seconds still to wait, or `nil` when a forced refresh may run.
-    private func throttledForcedRefreshSeconds() -> Int? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let last = lastForcedRefreshAt else { return nil }
-        let elapsed = now().timeIntervalSince(last)
-        guard elapsed < Self.forcedRefreshMinimumInterval else { return nil }
-        return max(1, Int((Self.forcedRefreshMinimumInterval - elapsed).rounded(.up)))
+    /// A claimed forced-refresh window, and what to put back if it is released.
+    private struct ForcedRefreshReservation {
+        let claimedAt: Date
+        let previous: Date?
     }
 
-    private func markForcedRefresh() {
+    private enum ForcedRefreshAdmission {
+        case admitted(ForcedRefreshReservation)
+        case throttled(seconds: Int)
+    }
+
+    /// Claim the forced-refresh window, or report the seconds still to wait.
+    ///
+    /// Checking and stamping have to happen under one lock hold. Two clients
+    /// calling `quota.refresh {force:true}` at the same instant would otherwise
+    /// both read an expired timestamp, both pass, and both suspend on the data
+    /// source before either of them marked anything — which is exactly the
+    /// double API hit the throttle exists to prevent.
+    private func admitForcedRefresh() -> ForcedRefreshAdmission {
         lock.lock()
-        lastForcedRefreshAt = now()
+        defer { lock.unlock() }
+        let current = now()
+        if let last = lastForcedRefreshAt {
+            let elapsed = current.timeIntervalSince(last)
+            if elapsed < Self.forcedRefreshMinimumInterval {
+                return .throttled(seconds: max(1, Int((Self.forcedRefreshMinimumInterval - elapsed).rounded(.up))))
+            }
+        }
+        let reservation = ForcedRefreshReservation(claimedAt: current, previous: lastForcedRefreshAt)
+        lastForcedRefreshAt = current
+        return .admitted(reservation)
+    }
+
+    /// Roll a reservation back, so a refusal does not burn the window.
+    ///
+    /// Only the reservation still on record is rolled back: while it stands,
+    /// every other forced call is throttled, so a mismatch can only mean the
+    /// window already moved on and is not ours to undo.
+    private func release(_ reservation: ForcedRefreshReservation) {
+        lock.lock()
+        if lastForcedRefreshAt == reservation.claimedAt {
+            lastForcedRefreshAt = reservation.previous
+        }
         lock.unlock()
     }
 

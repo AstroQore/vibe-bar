@@ -240,6 +240,36 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         XCTAssertNotNil(service.cachedQuota(for: other.id))
     }
 
+    /// `quota.refresh {tools:[...]}` without `force` reaches this method, so a
+    /// scoped ask must not sweep the providers the caller did not name — and
+    /// an explicitly empty list must select nothing rather than everything.
+    func testStaleCacheRefreshHonorsTheToolsFilter() async {
+        let claude = AccountIdentity(id: "scoped-claude", tool: .claude, source: .oauthCLI)
+        let gemini = AccountIdentity(id: "scoped-gemini", tool: .gemini, source: .webCookie)
+        let claudeAdapter = CountingQuotaAdapter(tool: .claude)
+        let geminiAdapter = CountingQuotaAdapter(tool: .gemini)
+        let service = QuotaService(
+            adapters: [.claude: claudeAdapter, .gemini: geminiAdapter],
+            mockProvider: { false }
+        )
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { [claude, gemini] },
+            intervalProvider: { 600 }
+        )
+
+        // Nothing has ever been fetched, so both accounts are stale.
+        XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(tools: []))
+        XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(tools: [.claude]))
+        for _ in 0..<40 {
+            if claudeAdapter.fetchCount == 1 { break }
+            await Task.yield()
+        }
+
+        XCTAssertEqual(claudeAdapter.fetchCount, 1)
+        XCTAssertEqual(geminiAdapter.fetchCount, 0, "A scoped refresh must leave the others alone.")
+    }
+
     func testBoundaryRefreshRequeuesAccountCompletedEarlierInActiveWalk() async {
         let first = AccountIdentity(id: "finished-a", tool: .claude, source: .oauthCLI)
         let blocking = AccountIdentity(id: "blocking-b", tool: .gemini, source: .webCookie)

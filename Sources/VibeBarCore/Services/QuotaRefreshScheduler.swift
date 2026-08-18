@@ -126,11 +126,21 @@ public final class QuotaRefreshScheduler {
     /// actually missing/stale/expired cache must not remain silently visible.
     /// This path refreshes only the affected accounts and does not trigger a
     /// full cost scan.
+    ///
+    /// `tools` narrows it further, for callers that asked about a named
+    /// provider — the MCP `quota.refresh` tool, mainly. `nil` means every
+    /// visible account; an explicitly empty list matches nothing, the same
+    /// way every other list filter in the app reads it.
     @discardableResult
-    public func triggerRefreshForStaleCacheIfNeeded(now: Date = Date()) -> Bool {
+    public func triggerRefreshForStaleCacheIfNeeded(
+        tools: [ToolType]? = nil,
+        now: Date = Date()
+    ) -> Bool {
+        let wanted = tools.map(Set.init)
         let maxAge = TimeInterval(max(60, intervalProvider()))
         let accounts = accountsProvider().filter { account in
-            !isQueued(account.id)
+            (wanted?.contains(account.tool) ?? true)
+                && !isQueued(account.id)
                 && !service.inFlightAccountIds.contains(account.id)
                 && service.needsRefresh(accountId: account.id, now: now, maxAge: maxAge)
         }

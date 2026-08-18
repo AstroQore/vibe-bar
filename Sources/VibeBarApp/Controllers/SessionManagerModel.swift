@@ -205,28 +205,6 @@ final class SessionManagerModel: ObservableObject {
         summaries.count < totalSessionCount
     }
 
-    /// `AppSettings.sessionBodyIndexingEnabled`, readable from the index
-    /// actor's executor. The setting lives on the main actor and the scan
-    /// does not, so the value is mirrored instead of hopping mid-pass.
-    private final class BodyIndexingFlag: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value: Bool
-
-        init(_ value: Bool) { self.value = value }
-
-        var current: Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            return value
-        }
-
-        func set(_ newValue: Bool) {
-            lock.lock()
-            value = newValue
-            lock.unlock()
-        }
-    }
-
     init(settingsStore: SettingsStore, homeDirectory: String = RealHomeDirectory.path) {
         let registry = SessionProviderRegistry.standard(homeDirectory: homeDirectory)
         self.settingsStore = settingsStore

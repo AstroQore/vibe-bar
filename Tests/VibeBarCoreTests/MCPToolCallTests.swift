@@ -89,6 +89,45 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertFalse(second["message"]?.stringValue?.contains("Try again") ?? false)
     }
 
+    /// Two agents can call `quota.refresh {force:true}` at the same instant.
+    /// Admission has to be decided before the data source is awaited, or both
+    /// read an expired timestamp, both pass, and every provider's API is hit
+    /// twice — the exact thing the throttle exists to prevent.
+    func testConcurrentForcedRefreshesAdmitExactlyOne() async throws {
+        source.refreshDuration = .milliseconds(200)
+        async let first = call("quota.refresh", .object(["force": .bool(true)]))
+        async let second = call("quota.refresh", .object(["force": .bool(true)]))
+        let results = try await [first, second]
+
+        XCTAssertEqual(
+            results.filter { $0["triggered"]?.boolValue == true }.count,
+            1,
+            "Exactly one of two simultaneous forced refreshes may trigger."
+        )
+        XCTAssertEqual(source.refreshCalls.count, 1, "The loser must not reach the app at all.")
+        XCTAssertTrue(
+            results.contains { $0["message"]?.stringValue?.contains("Try again") ?? false },
+            "The loser is told when to retry."
+        )
+    }
+
+    /// The stale-only path takes the same `tools` filter as the forced one:
+    /// asking about one provider must not refresh the rest.
+    func testStaleOnlyRefreshPassesTheToolsFilterThrough() async throws {
+        let result = try await call("quota.refresh", .object(["tools": .array([.string("codex")])]))
+        XCTAssertEqual(result["mode"]?.stringValue, "stale-only")
+        XCTAssertEqual(source.refreshCalls.count, 1)
+        XCTAssertEqual(source.refreshCalls.first?.tools, [.codex])
+        XCTAssertEqual(source.refreshCalls.first?.force, false)
+    }
+
+    /// An explicitly empty list is a no-op rather than "everything", the same
+    /// rule `optionalEnumList` applies everywhere else.
+    func testStaleOnlyRefreshKeepsAnEmptyToolsListEmpty() async throws {
+        _ = try await call("quota.refresh", .object(["tools": .array([])]))
+        XCTAssertEqual(source.refreshCalls.first?.tools, [])
+    }
+
     // MARK: - usage
 
     func testUsageSummaryDefaultsToThirtyDaysAndReportsBothMoneyUnits() async throws {
