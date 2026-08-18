@@ -22,7 +22,9 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "gemini.flash-lite", title: "GEMINI · Flash Lite", defaultLabel: "Lite"),
         .init(id: "antigravity.gemini-models", title: "ANTIGRAVITY · Gemini Models", defaultLabel: "Gemini"),
         .init(id: "antigravity.claude-gpt-models", title: "ANTIGRAVITY · Claude + GPT Models", defaultLabel: "C+G"),
-        .init(id: "grok.weekly-credits", title: "GROK · Weekly Credits", defaultLabel: "Weekly Credits"),
+        // Stable persisted key (custom labels are stored under it); the
+        // wording is the L3 group name from AGENTS.md § 7.1.
+        .init(id: "grok.all-models", title: "GROK · Weekly Credits", defaultLabel: "Weekly Credits"),
         .init(id: "cursor.models", title: "CURSOR · Cursor Models", defaultLabel: "Cursor Models"),
         .init(id: "cursor.other-models", title: "CURSOR · Other Models", defaultLabel: "Other Models")
     ]

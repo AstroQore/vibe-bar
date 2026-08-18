@@ -295,6 +295,14 @@ private struct MiniCell: Identifiable {
         if let trimmed = customLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty {
             return trimmed
         }
+        // A bucket whose group title is just its SubProvider (Grok Bot) is
+        // drawn flat under that SubProvider row, so its cell must name the
+        // L3 window ("Weekly"), not repeat "Grok Bot" a third time.
+        if let bucket,
+           let group = bucket.groupTitle,
+           group.caseInsensitiveCompare(subProviderName) == .orderedSame {
+            return bucket.title
+        }
         if let bucket, field.defaultLabel != bucket.shortLabel {
             return bucket.shortLabel
         }
@@ -625,7 +633,7 @@ private func miniPrimaryGroupTitle(
     switch tool {
     case .codex: key = "codex.all-models"
     case .claude: key = "claude.all-models"
-    case .grok: key = "grok.weekly-credits"
+    case .grok: key = "grok.all-models"
     default: return nil
     }
     let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
