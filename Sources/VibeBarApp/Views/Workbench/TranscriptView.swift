@@ -451,7 +451,11 @@ struct SessionMetadataHeader: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .textSelection(.enabled)
+                    .help(summary.sourcePath)
+                BorderlessIconButton(systemImage: "doc.on.doc", help: "Copy source path") {
+                    model.copyToClipboard(summary.sourcePath, note: "Source path copied.")
+                }
+                Spacer(minLength: 0)
             }
         }
     }
@@ -472,7 +476,6 @@ struct SessionMetadataHeader: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .textSelection(.enabled)
             if let copy {
                 BorderlessIconButton(systemImage: "doc.on.doc", help: "Copy \(label)", action: copy)
             }
@@ -516,7 +519,6 @@ struct SessionMetadataHeader: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.middle)
-                    .textSelection(.enabled)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -650,13 +652,18 @@ struct TranscriptMessageCard: View {
         }
     }
 
+    /// `SelectableTextView` rather than `Text(...).textSelection(.enabled)`:
+    /// SwiftUI's selection overlay re-lays out every bubble on each graph
+    /// update and pinned the main thread at ~99 % with a transcript open.
     private func body(text: String) -> some View {
-        Text(TranscriptFormatting.highlighted(text, query: query, accent: accent))
-            .font(.system(size: density.subtitleFontSize, design: isMonospaced ? .monospaced : .default))
-            .foregroundStyle(message.role == .system ? .secondary : .primary)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        SelectableTextView(
+            text: TranscriptFormatting.highlighted(text, query: query, accent: accent),
+            font: isMonospaced
+                ? .monospacedSystemFont(ofSize: density.subtitleFontSize, weight: .regular)
+                : .systemFont(ofSize: density.subtitleFontSize),
+            textColor: message.role == .system ? .secondaryLabelColor : .labelColor
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var displayedText: String {
