@@ -388,17 +388,26 @@ and it is documented rather than hidden for that reason.
 
 **Tools.** `quota.get`, `quota.refresh`, `usage.summary`, `usage.trend`,
 `usage.requests`, `cost.snapshot`, `cost.history`, `sessions.search`,
-`sessions.list`, `status.get`, `pricing.effective`, plus the
+`sessions.list`, `status.get`, `pricing.effective`, `skills.install`, plus the
 `vibebar://naming-spec` and `vibebar://tools` resources. The naming-spec
 resource is **generated** from `ProviderHierarchyCatalog`, `ToolType` and
 `HarnessCatalog` — never transcribe § 7.1 into it by hand, because a stale
 spec teaches a model a label that no longer exists. `MCPResourceCatalogTests`
 enforces that every harness, company and provider key appears.
 
-**Privacy.** Everything is read-only except `quota.refresh`, which is
-gated on `AppSettings.mcpServer.allowRefreshTools` and throttled to one
-forced refresh per 20 s. Credentials, cookies and organization ids are
-never projected; emails go through `EmailMasker`; `cost.*` respects
+**Privacy.** Everything is read-only except two tools. `quota.refresh`
+is gated on `AppSettings.mcpServer.allowRefreshTools` and throttled to
+one forced refresh per 20 s. `skills.install` is gated on
+`AppSettings.mcpServer.allowSkillInstall` and is the only tool that
+writes: it parses its `source` into a `SkillInstallSource` (a
+`SkillRepoRef` or an absolute local directory — a github.com URL is
+folded into the former, never fetched as an arbitrary file) and hands it
+to the app-wide `SkillsService`, so the § 7 write allowlist holds for
+agents exactly as it does for the Workbench. That service lives on
+`AppEnvironment` and is shared with the Skills page: two instances would
+each read-modify-write `~/.vibebar/skills.json`. Credentials, cookies and
+organization ids are never projected; emails go through `EmailMasker`;
+`cost.*` respects
 `AppSettings.costData.privacyModeEnabled` the way `CostUsageService` does.
 When adding a tool, add its projection to `MCPDTOs.swift` rather than
 encoding a Core type directly — the DTO layer is where "what may an agent
@@ -545,6 +554,12 @@ Tests keep working because they pass an explicit value.
   AntiGravity's customization root, not the Gemini CLI's — nothing else
   under `~/.gemini/config/` may be touched. New code that needs a skills
   path goes through those two types; do not add a second write path.
+  That includes the MCP surface: `skills.install` (§ 5.1) resolves its
+  `source` to a repository ref or a local directory and then calls
+  `SkillsService.install(from:enableFor:method:)`, which reuses the same
+  discovery, SSOT copy, and materialization the Workbench uses. An agent
+  can therefore reach no path a user could not, and the gate on it is a
+  settings toggle, not a second implementation.
 - **Performance.** Avoid `TimelineView(.periodic(...))` in deep view
   trees that may be eagerly instantiated; prefer scoping to the visible
   surface. The mini window's screen position is persisted to its own
@@ -884,6 +899,16 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   and a round-trip test. Migrations must be one-time and evidence-based; never
   rewrite a currently selectable value (such as a refresh interval) on every
   launch.
+- **A URLSession request timeout is an idle timer, not a deadline.**
+  `timeoutIntervalForRequest` fires only when *nothing* arrives for that
+  long, so a slow trickle holds a download open forever. Anything a user
+  waits on needs a wall-clock budget of its own
+  (`timeoutIntervalForResource`, or a deadline recomputed across
+  retries — see `SkillRepoFetcher.maxWallTime`) **and** a way out:
+  `BoundedDownloader` fails with `CancellationError` when its task is
+  cancelled. A long-running action in a view model should hold its
+  `Task` so the button can become Cancel, and should say what it is
+  doing while it runs.
 - **Mini-window geometry stays in `mini_window_geometry.json`.** Do not
   fold it back into `AppSettings` — every settings write fans out to
   every Combine subscriber.

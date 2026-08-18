@@ -74,6 +74,16 @@ public protocol MCPDataSource: AnyObject, Sendable {
 
     func serviceStatus(tools: [ToolType]?) async throws -> MCPServiceStatusDTO
     func effectivePricing() async throws -> [EffectiveModelPricingRow]
+
+    /// The one tool that writes. Implementations gate it on
+    /// `AppSettings.mcpServer.allowSkillInstall` and route it through
+    /// `SkillsService`, so the write allowlist in `AGENTS.md` § 7 holds for
+    /// agents exactly as it does for the Workbench.
+    func installSkill(
+        source: SkillInstallSource,
+        apps: [SkillAppTarget],
+        method: SkillSyncMethod
+    ) async throws -> MCPSkillInstallDTO
 }
 
 // MARK: - Server
@@ -238,6 +248,7 @@ public final class MCPServer: @unchecked Sendable {
         case "sessions.list":     return try await sessionsList(arguments)
         case "status.get":        return try await statusGet(arguments)
         case "pricing.effective": return try await pricingEffective(arguments)
+        case "skills.install":    return try await skillsInstall(arguments)
         default:                  throw MCPRPCError.invalidParams("Unknown tool '\(tool)'.")
         }
     }
@@ -404,6 +415,30 @@ public final class MCPServer: @unchecked Sendable {
                 return row.model.lowercased().contains(needle)
             }
         return MCPPricingDTO(generatedAt: now(), rows: rows.map(MCPPricingRowDTO.init(row:)))
+    }
+
+    /// The source string is parsed here, before the app is involved: a typo or
+    /// an off-allowlist host is the caller's to fix, and saying so as
+    /// `invalidParams` keeps it out of the Skills manager entirely.
+    private func skillsInstall(_ arguments: MCPArguments) async throws -> MCPSkillInstallDTO {
+        let raw = try arguments.requiredString("source")
+        let source: SkillInstallSource
+        do {
+            source = try SkillInstallSource(raw)
+        } catch {
+            throw MCPRPCError.invalidParams("skills.install: \(error.localizedDescription)")
+        }
+        let apps = try arguments.optionalEnumList("apps", SkillAppTarget.self) ?? []
+        var method = SkillSyncMethod.auto
+        if let requested = try arguments.optionalEnum("method", SkillSyncMethod.self) {
+            guard requested != .auto else {
+                throw MCPRPCError.invalidParams(
+                    "skills.install: 'method' must be 'symlink' or 'copy'; omit it for the default."
+                )
+            }
+            method = requested
+        }
+        return try await dataSource.installSkill(source: source, apps: apps, method: method)
     }
 
     // MARK: Forced-refresh throttle

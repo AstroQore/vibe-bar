@@ -126,6 +126,7 @@ public enum SkillRepoError: Error, Equatable, Sendable {
     case invalidRepositoryReference(String)
     case branchNotFound(slug: String, tried: [String])
     case malformedArchive(String)
+    case timedOut(slug: String, seconds: Int)
 }
 
 extension SkillRepoError: LocalizedError {
@@ -134,9 +135,11 @@ extension SkillRepoError: LocalizedError {
         case let .invalidRepositoryReference(raw):
             return "\"\(raw)\" is not a valid owner/repo reference."
         case let .branchNotFound(slug, tried):
-            return "Could not download \(slug) (tried \(tried.joined(separator: ", "))))."
+            return "Could not download \(slug) (tried \(tried.joined(separator: ", ")))."
         case let .malformedArchive(detail):
             return "The repository archive was not laid out as expected (\(detail))."
+        case let .timedOut(slug, seconds):
+            return "Downloading \(slug) timed out after \(seconds) s."
         }
     }
 }
@@ -168,26 +171,39 @@ public protocol SkillRepoFetching: Sendable {
 /// `[requested, main, master]`: a 404 is a normal outcome for `main` on older
 /// repositories, not an error worth surfacing. Only when every candidate fails
 /// does this report `branchNotFound`, naming what it tried.
+///
+/// One repository gets `maxWallTime` in total, spread across every candidate
+/// branch it tries. `timeout` alone cannot bound this: it is an idle timer per
+/// request, so three candidates each dribbling bytes could hold a "Scan repos"
+/// spinner open indefinitely. The remaining budget is recomputed before each
+/// candidate and handed to the downloader as its resource ceiling.
 public struct SkillRepoFetcher: SkillRepoFetching {
     /// A GitHub zipball of a skills repository is a few hundred KB; 128 MiB is
     /// a hard stop for something that has gone wrong, not a working budget.
     public static let maxArchiveBytes: Int64 = 128 * 1024 * 1024
     public static let defaultTimeout: TimeInterval = 60
+    /// Wall-clock ceiling for one repository, every branch candidate included.
+    /// A `vibe-bar`-sized zipball (8 MB) lands in about four seconds, so this
+    /// is a "something is wrong" stop, not a working budget.
+    public static let maxWallTime: TimeInterval = 120
     public static let allowedHosts: Set<String> = ["github.com", "codeload.github.com"]
     public static let fallbackBranches = ["main", "master"]
 
     private let downloader: BoundedDownloader
     private let maxArchiveBytes: Int64
     private let timeout: TimeInterval
+    private let maxWallTime: TimeInterval
 
     public init(
         downloader: BoundedDownloader = BoundedDownloader(),
         maxArchiveBytes: Int64 = SkillRepoFetcher.maxArchiveBytes,
-        timeout: TimeInterval = SkillRepoFetcher.defaultTimeout
+        timeout: TimeInterval = SkillRepoFetcher.defaultTimeout,
+        maxWallTime: TimeInterval = SkillRepoFetcher.maxWallTime
     ) {
         self.downloader = downloader
         self.maxArchiveBytes = maxArchiveBytes
         self.timeout = timeout
+        self.maxWallTime = maxWallTime
     }
 
     public static func archiveURL(owner: String, repo: String, branch: String) -> URL? {
@@ -200,9 +216,14 @@ public struct SkillRepoFetcher: SkillRepoFetching {
     ) async throws -> (root: URL, resolvedBranch: String) {
         let candidates = Self.branchCandidates(for: ref)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let deadline = Date().addingTimeInterval(maxWallTime)
+        let expired = SkillRepoError.timedOut(slug: ref.slug, seconds: Int(maxWallTime.rounded()))
 
         var lastError: Error?
         for branch in candidates {
+            try Task.checkCancellation()
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { throw expired }
             guard let url = Self.archiveURL(owner: ref.owner, repo: ref.repo, branch: branch) else { continue }
             let zipURL = tempDir.appendingPathComponent("\(ref.repo)-\(branch).zip")
             do {
@@ -210,8 +231,9 @@ public struct SkillRepoFetcher: SkillRepoFetching {
                     from: url,
                     to: zipURL,
                     maxBytes: maxArchiveBytes,
-                    timeout: timeout,
-                    allowedHosts: Self.allowedHosts
+                    timeout: min(timeout, remaining),
+                    allowedHosts: Self.allowedHosts,
+                    resourceTimeout: remaining
                 )
             } catch let error as BoundedDownloader.DownloadError {
                 // A redirect off the allowlist is a security signal, not a
@@ -219,11 +241,18 @@ public struct SkillRepoFetcher: SkillRepoFetching {
                 if case .redirectHostNotAllowed = error { throw error }
                 lastError = error
                 continue
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError where error.code == .timedOut {
+                // The budget is per repository, not per branch: a candidate
+                // that ran out of clock means the next one has none either.
+                throw expired
             } catch {
                 lastError = error
                 continue
             }
             defer { try? FileManager.default.removeItem(at: zipURL) }
+            try Task.checkCancellation()
             let extraction = tempDir.appendingPathComponent("extract-\(branch)", isDirectory: true)
             try? FileManager.default.removeItem(at: extraction)
             try SkillArchiveExtractor.extract(zipFileURL: zipURL, into: extraction)

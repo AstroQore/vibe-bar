@@ -433,4 +433,34 @@ final class MCPController: ObservableObject, MCPDataSource {
     func effectivePricing() async throws -> [EffectiveModelPricingRow] {
         PricingResolver.active.effectiveModelPrices
     }
+
+    // MARK: - MCPDataSource: skills
+
+    /// The only tool that writes, and it writes nothing this app could not
+    /// already write: `SkillsService` owns the SSOT copy, the per-app
+    /// projection, and the write allowlist (`AGENTS.md` § 7). Everything here
+    /// is the gate and the hand-off.
+    func installSkill(
+        source: SkillInstallSource,
+        apps: [SkillAppTarget],
+        method: SkillSyncMethod
+    ) async throws -> MCPSkillInstallDTO {
+        guard let environment else { throw MCPToolFailure("Vibe Bar is shutting down.") }
+        guard environment.settingsStore.settings.mcpServer.allowSkillInstall else {
+            throw MCPToolFailure(
+                "Installing skills from agents is switched off in Vibe Bar → Settings → MCP Server. "
+                    + "The user can install it themselves from Workbench → Skills → Discover."
+            )
+        }
+        let outcome = try await environment.skillsService.install(
+            from: source,
+            enableFor: apps,
+            method: method
+        )
+        // Directory names only: the source can be a path under the user's home.
+        SafeLog.info(
+            "MCP: installed \(outcome.installed.map(\.skill.directory).joined(separator: ", "))"
+        )
+        return MCPSkillInstallDTO(outcome: outcome)
+    }
 }

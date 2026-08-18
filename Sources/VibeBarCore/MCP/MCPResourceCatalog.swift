@@ -166,7 +166,8 @@ public enum MCPResourceCatalog {
 
         Vibe Bar exposes one Mac's local AI usage. Everything is read from the
         running app's own caches; nothing here calls a provider directly except
-        `quota.refresh`, which asks the app to.
+        `quota.refresh`, which asks the app to. `skills.install` is the one tool
+        that writes, and only inside the skills directories Vibe Bar manages.
 
         ## Routing
 
@@ -185,6 +186,7 @@ public enum MCPResourceCatalog {
         | "what have I been working on?" | `sessions.list` |
         | "is Anthropic down?" | `status.get` |
         | "why is this model costing so much?" | `pricing.effective` |
+        | "install the Vibe Bar skill" / "add this skill" | `skills.install` |
 
         ## Rules that keep the answer right
 
@@ -207,5 +209,12 @@ public enum MCPResourceCatalog {
         - **Request-level history is about 30 days deep.** Older usage survives as
           daily totals, visible through `usage.summary` and `usage.trend` but not
           through `usage.requests`.
+        - **`skills.install` installs; it does not browse.** Name a source —
+          `owner/repo`, `owner/repo@branch`, either plus `#<skill>` when the
+          repository holds several, a github.com URL, or an absolute local
+          directory — and pass `apps` for the agent CLIs that should get it.
+          Without `apps` the skill lands in `~/.agents/skills/` switched on for
+          nobody. It can be switched off in Settings → MCP Server, in which case
+          the tool says so rather than failing silently.
         """
 }

@@ -71,23 +71,48 @@ struct SkillDiscoverSheet: View {
                 sectionTitle("Configured repositories")
                 Spacer(minLength: 8)
                 Button {
-                    model.discover()
+                    if model.isDiscovering {
+                        model.cancelDiscover()
+                    } else {
+                        model.discover()
+                    }
                 } label: {
                     HStack(spacing: 5) {
-                        if model.isBusy(SkillsManagerModel.BusyKey.discover) {
+                        if model.isDiscovering {
                             ProgressView().controlSize(.small).scaleEffect(0.7)
                                 .frame(width: 12, height: 12)
                         } else {
                             Image(systemName: "arrow.down.circle")
                                 .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
                         }
-                        Text("Scan repos")
+                        // A download nobody can stop is the whole complaint
+                        // this button answers.
+                        Text(model.isDiscovering ? "Cancel" : "Scan repos")
                             .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                     }
                     .frame(minHeight: 22)
                 }
                 .buttonStyle(.bordered)
-                .disabled(model.repoList.isEmpty)
+                .disabled(model.repoList.isEmpty && !model.isDiscovering)
+                .help(model.isDiscovering ? "Stop the running scan" : "Download every configured repository")
+            }
+
+            if let phase = model.discoverPhase {
+                Text(phase)
+                    .font(.system(size: max(9, density.resetCountdownFontSize)))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            ForEach(model.discoverFailures, id: \.self) { failure in
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
+                    Text(failure)
+                        .font(.system(size: max(9, density.resetCountdownFontSize)))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(.orange)
             }
 
             if model.repoList.isEmpty {

@@ -1336,9 +1336,9 @@ public struct CostDataSettings: Codable, Equatable, Sendable {
     }
 }
 
-/// The local MCP server's two switches.
+/// The local MCP server's three switches.
 ///
-/// Both default to **on**, which is a deliberate choice rather than an
+/// All default to **on**, which is a deliberate choice rather than an
 /// oversight. The whole point of the feature is that configuring a client is
 /// one line and needs no trip through Settings first, and the exposure is
 /// bounded by what the socket already is: a 0600 file inside a 0700 directory,
@@ -1355,14 +1355,24 @@ public struct MCPServerSettings: Codable, Equatable, Sendable {
     /// so an agent learns the numbers are cached instead of silently believing
     /// it just refreshed them.
     public var allowRefreshTools: Bool
+    /// Whether `skills.install` may write. On by default because it writes
+    /// only where the Skills manager already may — `~/.agents/skills/` and the
+    /// managed app skills directories — through the same `SkillsService`, and
+    /// because the agent asking is one the user already gave a shell.
+    public var allowSkillInstall: Bool
 
-    public init(enabled: Bool = true, allowRefreshTools: Bool = true) {
+    public init(
+        enabled: Bool = true,
+        allowRefreshTools: Bool = true,
+        allowSkillInstall: Bool = true
+    ) {
         self.enabled = enabled
         self.allowRefreshTools = allowRefreshTools
+        self.allowSkillInstall = allowSkillInstall
     }
 
     private enum CodingKeys: String, CodingKey {
-        case enabled, allowRefreshTools
+        case enabled, allowRefreshTools, allowSkillInstall
     }
 
     public init(from decoder: Decoder) throws {
@@ -1370,11 +1380,14 @@ public struct MCPServerSettings: Codable, Equatable, Sendable {
         self.enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? Self.default.enabled
         self.allowRefreshTools =
             try c.decodeIfPresent(Bool.self, forKey: .allowRefreshTools) ?? Self.default.allowRefreshTools
+        self.allowSkillInstall =
+            try c.decodeIfPresent(Bool.self, forKey: .allowSkillInstall) ?? Self.default.allowSkillInstall
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(enabled, forKey: .enabled)
         try c.encode(allowRefreshTools, forKey: .allowRefreshTools)
+        try c.encode(allowSkillInstall, forKey: .allowSkillInstall)
     }
 }

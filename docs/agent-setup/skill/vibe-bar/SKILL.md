@@ -7,16 +7,19 @@ description: >-
   Grok / Cursor do I have left", "when does my 5-hour window reset", "am I
   going to run out", "refresh my usage", "what did I spend this month", "who
   used the most tokens", "why is this costing so much", "is Anthropic down", or
-  "find my session about …". Requires the Vibe Bar app to be running with its
-  MCP server enabled.
+  "find my session about …". Also installs agent skills through Vibe Bar's
+  Skills manager ("install this skill", "set me up with the Vibe Bar skill").
+  Requires the Vibe Bar app to be running with its MCP server enabled.
 ---
 
 # Vibe Bar
 
 Vibe Bar is a macOS menu-bar app that watches this Mac's AI subscriptions. Its
-MCP server (`vibebar`) exposes what it knows, read-only. Everything comes from
+MCP server (`vibebar`) exposes what it knows. Everything it reports comes from
 the running app's own caches — answers are fast, and they are as fresh as the
-app made them, which is why every payload carries `generatedAt`.
+app made them, which is why every payload carries `generatedAt`. Every tool is
+read-only except `skills.install`, which writes only inside the skills
+directories Vibe Bar manages.
 
 If the `vibebar` tools are not available, the app is not running or the server
 is switched off in Settings → MCP Server. Say so; do not guess numbers.
@@ -60,6 +63,7 @@ never infer a model that a log recorded as absent.
 | "what have I been working on?" | `sessions.list` |
 | "is <provider> down?" | `status.get` |
 | "why is this model so expensive?" | `pricing.effective` |
+| "install this skill" / "set me up with the Vibe Bar skill" | `skills.install` |
 
 `vibebar://tools` carries the same routing table plus the rules below, if you
 would rather read it than trust this copy.
@@ -92,6 +96,11 @@ would rather read it than trust this copy.
   tokens is expected, not a bug.
 - **Empty filter lists mean "nothing"**, not "everything". Omit a filter to
   mean everything.
+- **`skills.install` is the only tool that writes.** It installs into
+  `~/.agents/skills/` and projects into the agent CLIs named in `apps` —
+  nowhere else, and never over a folder a different skill already holds. Pass
+  `apps` or the skill is on the machine switched on for nobody. It can be
+  turned off in Settings → MCP Server, in which case it says so.
 
 ## Worked patterns
 
@@ -116,3 +125,10 @@ render them as emphasis or strip them, do not print them raw.
 `quota.refresh` (no `force`), wait a couple of seconds, then `quota.get`. If
 `triggered` was false because nothing was stale, say the numbers were already
 current rather than pretending to have refreshed.
+
+**"Install the Vibe Bar skill for me."**
+`skills.install` with `source: "AstroQore/vibe-bar"` and `apps` set to the
+agent CLIs the user wants it in — yours at minimum. Report the `path` it came
+back with. Do not copy files by hand while this tool is available: the app
+keeps one copy and the projections in step, and a hand-made folder is one it
+will refuse to manage later.

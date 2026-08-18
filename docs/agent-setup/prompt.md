@@ -163,20 +163,39 @@ Report the user's actual remaining quota back to them as proof it worked.
 The skill teaches an agent which tool answers which question and, more
 importantly, the naming rules that keep the answers correct. Install it.
 
-The skill lives in this repository at
-`docs/agent-setup/skill/vibe-bar/`. Fetch it from
+The skill lives in this repository at `docs/agent-setup/skill/vibe-bar/`.
+
+**Preferred: ask Vibe Bar to install it.** Vibe Bar's Skills manager keeps one
+copy in `~/.agents/skills/` and projects it into each agent's own skills
+directory, and it is reachable over MCP — so this is one call:
+
+```json
+{"name": "skills.install",
+ "arguments": {"source": "AstroQore/vibe-bar", "apps": ["claude"]}}
+```
+
+Put the agent CLIs the user actually wants it in into `apps` — `claude`,
+`codex`, `gemini`, `grok`, `hermes`, `opencode`, `antigravity` — starting with
+your own. Omitting `apps` installs the skill without switching it on for
+anyone. The result carries the SSOT `path` and a `projectedTo` map; report the
+path. If the tool answers that installing is switched off, the user turned it
+off in Settings → MCP Server — ask them, or fall back to the manual steps
+below. If `skills.install` is not in the tool list at all, the installed app
+predates it; use the UI or the manual steps.
+
+Doing it through the app's own UI works too: Workbench → Skills → Discover,
+add `AstroQore/vibe-bar`, **Scan repos**, then press **Install** on the
+`vibe-bar` row. Scanning only *lists* what a repository contains — it downloads
+the zipball and shows the skills in it. Nothing is installed until Install is
+pressed, so "I scanned the repo" is not "I installed the skill".
+
+**Otherwise, install by hand.** Fetch it from
 
 ```
 https://raw.githubusercontent.com/AstroQore/vibe-bar/main/docs/agent-setup/skill/vibe-bar/SKILL.md
 ```
 
-**Preferred: let Vibe Bar manage it.** Vibe Bar has a Skills manager
-(Workbench → Skills) that keeps one copy in `~/.agents/skills/` and projects
-it into each agent's own skills directory. If the user already uses it, tell
-them to add the skill there instead of copying files yourself, and skip the
-rest of this section.
-
-**Otherwise, install by hand:**
+and then:
 
 1. Write the skill to the shared location:
    `~/.agents/skills/vibe-bar/SKILL.md`.

@@ -23,6 +23,17 @@ import Foundation
 /// The session is created per download from a caller-supplied configuration —
 /// ephemeral by default, so nothing is cached, and injectable so tests can
 /// stub `URLProtocol`.
+///
+/// Two clocks, because they answer different questions. `timeout` is
+/// `timeoutIntervalForRequest` — an *idle* timer that only fires when nothing
+/// arrives for that long, so a server dribbling one byte a second can hold a
+/// download open forever. `resourceTimeout` is the wall-clock ceiling on the
+/// whole transfer, redirects included. A user watching a spinner cares about
+/// the second one.
+///
+/// Cancellation is cooperative: cancelling the surrounding `Task` cancels the
+/// URLSession task and fails the call with `CancellationError`, partial file
+/// removed, rather than leaving the caller awaiting a body nobody wants.
 public struct BoundedDownloader: Sendable {
     public typealias ConfigurationProvider = @Sendable () -> URLSessionConfiguration
 
@@ -46,14 +57,17 @@ public struct BoundedDownloader: Sendable {
     ///
     /// Throws before touching the network on a non-https URL or a host outside
     /// `allowedHosts`; throws mid-stream once more than `maxBytes` have
-    /// arrived. `fileURL` only exists when this returns normally.
+    /// arrived, once `resourceTimeout` elapses, or once the calling `Task` is
+    /// cancelled. `fileURL` only exists when this returns normally.
     public func download(
         from url: URL,
         to fileURL: URL,
         maxBytes: Int64,
         timeout: TimeInterval,
-        allowedHosts: Set<String>
+        allowedHosts: Set<String>,
+        resourceTimeout: TimeInterval? = nil
     ) async throws {
+        try Task.checkCancellation()
         let hosts = Set(allowedHosts.map { $0.lowercased() })
         try Self.validate(url: url, allowedHosts: hosts)
 
@@ -75,6 +89,9 @@ public struct BoundedDownloader: Sendable {
 
         let configuration = makeConfiguration()
         configuration.timeoutIntervalForRequest = timeout
+        if let resourceTimeout, resourceTimeout > 0 {
+            configuration.timeoutIntervalForResource = resourceTimeout
+        }
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
@@ -83,9 +100,23 @@ public struct BoundedDownloader: Sendable {
         defer { session.invalidateAndCancel() }
 
         do {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                sink.onFinish = { continuation.resume(with: $0) }
-                session.dataTask(with: request).resume()
+            let task = session.dataTask(with: request)
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    sink.setFinish { continuation.resume(with: $0) }
+                    // Cancellation between the handler being installed and the
+                    // task starting would otherwise wait on a body that is
+                    // never requested.
+                    guard !Task.isCancelled else {
+                        sink.cancelByCaller()
+                        sink.complete(.failure(CancellationError()))
+                        return
+                    }
+                    task.resume()
+                }
+            } onCancel: {
+                sink.cancelByCaller()
+                task.cancel()
             }
         } catch {
             try? handle.close()
@@ -112,10 +143,11 @@ public struct BoundedDownloader: Sendable {
         "\(url.host ?? "?")\(url.path)"
     }
 
-    /// Owns the byte budget for one download. Every callback lands on the
-    /// session's serial delegate queue, so the counters need no locking; the
-    /// one cross-thread hand-off (`onFinish`) is installed before the task is
-    /// resumed and read only from that queue.
+    /// Owns the byte budget for one download. The counters are touched only on
+    /// the session's serial delegate queue, so they need no locking; the two
+    /// cross-thread facts — the continuation hand-off and the caller's cancel
+    /// flag — are guarded, because cancellation arrives from whatever thread
+    /// cancelled the `Task`.
     private final class Sink: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         private let handle: FileHandle
         private let maxBytes: Int64
@@ -123,12 +155,41 @@ public struct BoundedDownloader: Sendable {
         private var received: Int64 = 0
         private var failure: Error?
 
-        var onFinish: ((Result<Void, Error>) -> Void)?
+        private let lock = NSLock()
+        private var finish: ((Result<Void, Error>) -> Void)?
+        private var cancelledByCaller = false
 
         init(handle: FileHandle, maxBytes: Int64, allowedHosts: Set<String>) {
             self.handle = handle
             self.maxBytes = maxBytes
             self.allowedHosts = allowedHosts
+        }
+
+        func setFinish(_ handler: @escaping (Result<Void, Error>) -> Void) {
+            lock.lock()
+            finish = handler
+            lock.unlock()
+        }
+
+        /// Resumes the continuation exactly once, whoever gets here first.
+        func complete(_ result: Result<Void, Error>) {
+            lock.lock()
+            let handler = finish
+            finish = nil
+            lock.unlock()
+            handler?(result)
+        }
+
+        func cancelByCaller() {
+            lock.lock()
+            cancelledByCaller = true
+            lock.unlock()
+        }
+
+        var wasCancelledByCaller: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelledByCaller
         }
 
         func urlSession(
@@ -157,6 +218,11 @@ public struct BoundedDownloader: Sendable {
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
             guard failure == nil else { return }
+            // A caller that has walked away is not owed the rest of the body.
+            guard !wasCancelledByCaller else {
+                dataTask.cancel()
+                return
+            }
             received += Int64(data.count)
             if received > maxBytes {
                 failure = DownloadError.tooLarge(limit: maxBytes)
@@ -193,14 +259,17 @@ public struct BoundedDownloader: Sendable {
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-            let finish = onFinish
-            onFinish = nil
-            if let failure {
-                finish?(.failure(failure))
+            // The caller's cancellation wins over whatever URLSession reports
+            // for the task it just cancelled, so the caller sees the reason it
+            // asked for rather than `NSURLErrorCancelled`.
+            if wasCancelledByCaller {
+                complete(.failure(CancellationError()))
+            } else if let failure {
+                complete(.failure(failure))
             } else if let error {
-                finish?(.failure(error))
+                complete(.failure(error))
             } else {
-                finish?(.success(()))
+                complete(.success(()))
             }
         }
     }
