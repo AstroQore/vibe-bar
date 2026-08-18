@@ -11,6 +11,14 @@ let package = Package(
         .library(name: "VibeBarCore", targets: ["VibeBarCore"])
     ],
     dependencies: [
+        // agent-session-kit owns the session stores the coding agents leave
+        // on disk — discovery, parsing, the FTS5 index, deletion planning —
+        // plus the local MCP Unix-socket / stdio transport. It was extracted
+        // from this repository, so the types are the ones Vibe Bar used to
+        // declare itself; `Compat/AgentSessionKitReexport.swift` re-exports
+        // them and keeps the host-shaped defaults.
+        // TODO: switch to .package(url: "https://github.com/AstroQore/agent-session-kit.git", from: "0.1.0") once published
+        .package(path: "../agent-session-kit"),
         // SweetCookieKit encapsulates the Chromium SQLite parsing, "Chrome
         // Safe Storage" Keychain decryption, and Safari binarycookies /
         // Firefox SQLite reads that the misc-providers feature needs.
@@ -38,6 +46,7 @@ let package = Package(
         .target(
             name: "VibeBarCore",
             dependencies: [
+                .product(name: "AgentSessionKit", package: "agent-session-kit"),
                 .product(name: "SweetCookieKit", package: "SweetCookieKit")
             ],
             resources: [
