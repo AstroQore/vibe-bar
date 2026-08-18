@@ -57,12 +57,32 @@ struct SelectableTextView: NSViewRepresentable {
     }
 
     private func apply(to view: NSTextView) {
-        var attributed = text
-        attributed.font = font
-        attributed.foregroundColor = textColor
-        let rendered = NSAttributedString(attributed)
+        let rendered = Self.render(text, font: font, textColor: textColor)
         guard let storage = view.textStorage, !storage.isEqual(to: rendered) else { return }
         storage.setAttributedString(rendered)
+    }
+
+    /// `NSAttributedString(AttributedString)` drops SwiftUI-scoped attributes,
+    /// and `TranscriptFormatting.highlighted` stores search hits as a SwiftUI
+    /// `backgroundColor`, so translate those runs to AppKit's `.backgroundColor`
+    /// or the highlights vanish the moment the text is drawn by an `NSTextView`.
+    static func render(_ text: AttributedString, font: NSFont, textColor: NSColor) -> NSAttributedString {
+        let base = NSMutableAttributedString(string: String(text.characters))
+        let whole = NSRange(location: 0, length: base.length)
+        base.addAttributes([.font: font, .foregroundColor: textColor], range: whole)
+        var location = 0
+        for run in text.runs {
+            let length = (String(text[run.range].characters) as NSString).length
+            if let color = run.swiftUI.backgroundColor {
+                base.addAttribute(
+                    .backgroundColor,
+                    value: NSColor(color),
+                    range: NSRange(location: location, length: length)
+                )
+            }
+            location += length
+        }
+        return base
     }
 }
 

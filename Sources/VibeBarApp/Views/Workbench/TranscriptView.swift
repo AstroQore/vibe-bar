@@ -422,6 +422,11 @@ struct SessionMetadataHeader: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .help(summary.sourcePath)
+                BorderlessIconButton(systemImage: "doc.on.doc", help: "Copy source path") {
+                    model.copyToClipboard(summary.sourcePath, note: "Source path copied.")
+                }
+                Spacer(minLength: 0)
             }
         }
     }
