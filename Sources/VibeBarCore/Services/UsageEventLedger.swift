@@ -1473,19 +1473,27 @@ public actor UsageEventLedger: CostUsageEventSink {
     public func requestPage(
         _ filter: UsageQueryFilter,
         after cursor: UsageRequestCursor? = nil,
-        pageSize: Int
+        pageSize: Int,
+        includeTotal: Bool = true
     ) throws -> UsageRequestPage {
         let size = min(max(1, pageSize), 1_000)
         let detail = detailPredicate(filter)
 
-        let countStatement = try prepare(
-            "SELECT COUNT(*) FROM usage_events WHERE \(detail.sql)"
-        )
-        defer { sqlite3_finalize(countStatement) }
-        bindAll(detail.bindings, to: countStatement)
-        var total = 0
-        if sqlite3_step(countStatement) == SQLITE_ROW {
-            total = Int(sqlite3_column_int64(countStatement, 0))
+        // COUNT(*) has to visit every matched row, so it costs the same
+        // whether it answers for page 0 or page 40 — and it answers the same
+        // thing, because the filter a run pages through is pinned. Callers
+        // continuing a run pass `includeTotal: false` and keep the number the
+        // first page gave them.
+        var total: Int?
+        if includeTotal {
+            let countStatement = try prepare(
+                "SELECT COUNT(*) FROM usage_events WHERE \(detail.sql)"
+            )
+            defer { sqlite3_finalize(countStatement) }
+            bindAll(detail.bindings, to: countStatement)
+            total = sqlite3_step(countStatement) == SQLITE_ROW
+                ? Int(sqlite3_column_int64(countStatement, 0))
+                : 0
         }
 
         // Row values compare left to right, which is exactly the page's

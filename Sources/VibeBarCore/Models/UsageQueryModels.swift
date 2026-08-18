@@ -276,7 +276,11 @@ public struct UsageRequestCursor: Sendable, Equatable, Hashable {
 /// `totalCount`.
 public struct UsageRequestPage: Sendable, Equatable {
     public let rows: [UsageRequestRow]
-    public let totalCount: Int
+    /// Detail rows matching the filter, or `nil` when the caller asked not to
+    /// recount. The count is a full scan of the matched set and it cannot
+    /// change while the filter is pinned, so continuing a run re-uses the
+    /// number the first page already reported.
+    public let totalCount: Int?
     public let pageSize: Int
     /// The cursor this page continued from — `nil` for the first page. Lets a
     /// caller drop a page that answers a position it has already moved past.
@@ -286,7 +290,7 @@ public struct UsageRequestPage: Sendable, Equatable {
 
     public init(
         rows: [UsageRequestRow],
-        totalCount: Int,
+        totalCount: Int?,
         pageSize: Int,
         cursor: UsageRequestCursor? = nil,
         nextCursor: UsageRequestCursor? = nil

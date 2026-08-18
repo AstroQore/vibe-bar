@@ -527,7 +527,7 @@ final class UsageStatsViewModel: ObservableObject {
         case .requests:
             guard let requests else { return }
             updated.requestRows = requests.rows
-            updated.requestTotalCount = requests.totalCount
+            updated.requestTotalCount = requests.totalCount ?? 0
             updated.nextRequestCursor = requests.nextCursor
         }
         results = updated
@@ -552,7 +552,7 @@ final class UsageStatsViewModel: ObservableObject {
         isLoadingMore = true
         Task { [weak self] in
             let result = try? await ledger.requestPage(
-                filter, after: cursor, pageSize: Self.requestPageSize
+                filter, after: cursor, pageSize: Self.requestPageSize, includeTotal: false
             )
             guard let self, generation == self.generation else { return }
             self.isLoadingMore = false
@@ -682,7 +682,7 @@ final class UsageStatsViewModel: ObservableObject {
             harnessStats: snapshot.harnesses,
             modelStats: snapshot.models,
             requestRows: snapshot.requests.rows,
-            requestTotalCount: snapshot.requests.totalCount,
+            requestTotalCount: snapshot.requests.totalCount ?? 0,
             nextRequestCursor: snapshot.requests.nextCursor
         )
         // Key off the breakdown the snapshot was *queried* for: the user can
@@ -729,7 +729,9 @@ final class UsageStatsViewModel: ObservableObject {
         guard page.cursor == results.nextRequestCursor else { return }
         var updated = results
         updated.requestRows.append(contentsOf: page.rows)
-        updated.requestTotalCount = page.totalCount
+        // A continuation page does not recount; the pinned filter means the
+        // number the first page reported is still the right one.
+        if let totalCount = page.totalCount { updated.requestTotalCount = totalCount }
         updated.nextRequestCursor = page.nextCursor
         results = updated
     }

@@ -434,6 +434,41 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(clamped.rows.count, 1)
     }
 
+    /// COUNT(*) visits every matched row, so it costs the same on page 40 as
+    /// on page 0 — and returns the same number, because the filter a run
+    /// pages through is pinned. Continuing a run must be able to skip it.
+    func testRequestPageOmitsTheTotalWhenTheCallerDeclinesIt() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("MetricsCountOnce")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let events = (0..<10).map { index in
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(
+                    date: now.addingTimeInterval(TimeInterval(-60 * index)),
+                    input: 100 + index, output: 1
+                ),
+                costUSD: 0.01
+            )
+        }
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: events))
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+
+        let counted = try await ledger.requestPage(filter, pageSize: 4)
+        XCTAssertEqual(counted.totalCount, 10)
+
+        let cursor = try XCTUnwrap(counted.nextCursor)
+        let uncounted = try await ledger.requestPage(
+            filter, after: cursor, pageSize: 4, includeTotal: false
+        )
+        XCTAssertNil(uncounted.totalCount, "the caller kept the first page's number")
+
+        // Skipping the count changes nothing else about the page.
+        let recounted = try await ledger.requestPage(filter, after: cursor, pageSize: 4)
+        XCTAssertEqual(recounted.totalCount, 10)
+        XCTAssertEqual(uncounted.rows.map(\.id), recounted.rows.map(\.id))
+        XCTAssertEqual(uncounted.nextCursor, recounted.nextCursor)
+    }
+
     /// Ten events in the same second. `ts` alone cannot order them, so a
     /// cursor that only carried the timestamp would either re-serve the whole
     /// second on every page or skip the rest of it.
