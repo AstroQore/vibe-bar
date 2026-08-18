@@ -673,16 +673,18 @@ final class UsageEventLedgerTests: XCTestCase {
                 UsageLedgerFixtures.event(date: now, harness: .claudeCode)
             )
         ]))
+        await ledger.optimizeStorage()
         XCTAssertTrue(try Self.indexNames(at: url).contains("usage_events_harness_ts_idx"))
 
         try Self.execute("DROP INDEX usage_events_harness_ts_idx", at: url)
         XCTAssertFalse(try Self.indexNames(at: url).contains("usage_events_harness_ts_idx"))
 
+        // A page has to arrive indexed even if the background upkeep the
+        // initializer schedules has not landed yet.
         let reopened = try UsageEventLedger(url: url)
-        XCTAssertTrue(try Self.indexNames(at: url).contains("usage_events_harness_ts_idx"))
-
         let filter = UsageLedgerFixtures.wideFilter(around: now)
         let retained = try await reopened.requestPage(filter, pageSize: 10)
+        XCTAssertTrue(try Self.indexNames(at: url).contains("usage_events_harness_ts_idx"))
         XCTAssertEqual(retained.rows.count, 1)
     }
 

@@ -68,6 +68,8 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// In-process change token for cheap view-model cache invalidation. It
     /// advances only after a batch mutation or erase commits successfully.
     private var contentRevisionValue: UInt64 = 0
+    /// See `optimizeStorage`.
+    private var didOptimizeStorage = false
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private let calendar: Calendar
     private let dayFormatter: DateFormatter
@@ -126,10 +128,28 @@ public actor UsageEventLedger: CostUsageEventSink {
             sqlite3_close_v2(handle)
             throw error
         }
+        Task { await self.optimizeStorage() }
     }
 
     deinit {
         if let database { sqlite3_close_v2(database) }
+    }
+
+    /// One-time storage upkeep the query planner needs and correctness does
+    /// not: building the harness index on an established ledger, and
+    /// refreshing `sqlite_stat1`.
+    ///
+    /// Deliberately outside `initialize`. That runs synchronously inside
+    /// `init`, which `AppEnvironment` calls on the main thread before the
+    /// status item is installed — and on a 144k-row ledger this work measured
+    /// ~750 ms the first time it ran. It happens on the actor's own executor
+    /// instead, so a launch never waits on it. A query that somehow arrives
+    /// first performs it inline rather than running unindexed.
+    public func optimizeStorage() {
+        guard !didOptimizeStorage, let database else { return }
+        didOptimizeStorage = true
+        _ = sqlite3_exec(database, Self.harnessIndexSQL, nil, nil, nil)
+        Self.refreshStatisticsIfStale(database)
     }
 
     // MARK: - Schema
@@ -186,12 +206,6 @@ public actor UsageEventLedger: CostUsageEventSink {
             CREATE INDEX IF NOT EXISTS usage_events_ts_id_idx ON usage_events(ts DESC, id DESC);
             CREATE INDEX IF NOT EXISTS usage_events_day_idx ON usage_events(day);
             CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
-            -- The harness filter had no index at all: filtering by one meant
-            -- walking usage_events_ts_id_idx and fetching every row in range
-            -- to test it. Ordered like the page so a narrow harness is a
-            -- range scan, and covering for the matching COUNT(*).
-            CREATE INDEX IF NOT EXISTS usage_events_harness_ts_idx
-                ON usage_events(harness, ts DESC, id DESC);
             CREATE TABLE IF NOT EXISTS usage_daily_rollups (
                 day TEXT NOT NULL,
                 tool TEXT NOT NULL,
@@ -228,7 +242,6 @@ public actor UsageEventLedger: CostUsageEventSink {
         guard Self.migrateCursorToolRows(database) else {
             throw UsageLedgerError.open
         }
-        refreshStatisticsIfStale(database)
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(
             database,
@@ -526,6 +539,15 @@ public actor UsageEventLedger: CostUsageEventSink {
         else { return rollback() }
         return true
     }
+
+    /// The harness filter has no index of its own without this: filtering by
+    /// one means walking `usage_events_ts_id_idx` and fetching every row in
+    /// range to test it. Ordered like the request page so a narrow harness is
+    /// a range scan, and covering for the matching `COUNT(*)`.
+    private static let harnessIndexSQL = """
+        CREATE INDEX IF NOT EXISTS usage_events_harness_ts_idx
+            ON usage_events(harness, ts DESC, id DESC)
+        """
 
     /// Rebuild `sqlite_stat1` when the table's magnitude has moved.
     ///
@@ -1476,6 +1498,9 @@ public actor UsageEventLedger: CostUsageEventSink {
         pageSize: Int,
         includeTotal: Bool = true
     ) throws -> UsageRequestPage {
+        // The page this answers is exactly what the harness index and the
+        // statistics exist for, so never serve one without them.
+        optimizeStorage()
         let size = min(max(1, pageSize), 1_000)
         let detail = detailPredicate(filter)
 
