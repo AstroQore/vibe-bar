@@ -141,7 +141,10 @@ printf '%s\n%s\n' \
 
 You should see two JSON lines. The first carries
 `"serverInfo":{"name":"vibebar",…}`; the second lists the tools, including
-`quota.get`. If instead you see
+`quota.get`. (On Vibe Bar `1.3.0 (33)` and earlier the app closed the
+connection on stdin EOF before answering, so this printed nothing with exit
+0 — keep stdin open a moment, `{ printf …; sleep 1; } | … --mcp-stdio`, or
+update the app.) If instead you see
 
 ```
 Vibe Bar is not running (socket ~/.vibebar/mcp.sock not found). Launch "Vibe Bar.app" first.
