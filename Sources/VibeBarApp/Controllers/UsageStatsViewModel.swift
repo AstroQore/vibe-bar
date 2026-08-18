@@ -172,7 +172,12 @@ final class UsageStatsViewModel: ObservableObject {
     var modelStats: [UsageModelStat] { results.modelStats }
     var requestRows: [UsageRequestRow] { results.requestRows }
     var requestTotalCount: Int { results.requestTotalCount }
-    @Published private(set) var availableModels: [String] = []
+    /// Both of these used to be their own `@Published`, written mid-reload
+    /// at two different await points — so a single query rebuilt the whole
+    /// analytics tree three times: once for the model list, once for the
+    /// hourly flag, once for the results they describe. They travel with the
+    /// snapshot now and land in the same publication.
+    var availableModels: [String] { results.availableModels }
     /// Tools behind the company chips: the cost-aware set, widened by any
     /// tool the ledger actually has rows for.
     @Published private(set) var knownTools: [ToolType] = ToolType.usageStatsProviders
@@ -185,13 +190,13 @@ final class UsageStatsViewModel: ObservableObject {
     /// True only when the current filter lies wholly above every selected
     /// provider's ledger detail floor. This drives the Hourly menu state and
     /// is refreshed alongside the query it describes.
-    @Published private(set) var isHourlyTrendAvailable = true
+    var isHourlyTrendAvailable: Bool { results.isHourlyTrendAvailable }
 
     let isLedgerAvailable: Bool
 
-    var hasMoreRequests: Bool {
-        requestRows.count < requestTotalCount
-    }
+    /// The ledger reports where the loaded run stops, so this no longer has
+    /// to infer "more exist" from a count that a concurrent scan can move.
+    var hasMoreRequests: Bool { results.nextRequestCursor != nil }
 
     var knownCompanyRepresentatives: [ToolType] {
         ToolType.coreProviderRepresentatives.filter { representative in
@@ -332,9 +337,16 @@ final class UsageStatsViewModel: ObservableObject {
     private let costService: CostUsageService
 
     private var reloadTask: Task<Void, Never>?
+    /// A deferred Models / Requests fetch that fills one tab without redoing
+    /// the whole query set. Separate from `reloadTask` so a tab switch never
+    /// cancels the reload that produced the numbers it is merging into.
+    private var breakdownTask: Task<Void, Never>?
+    /// The deferred breakdowns whose contents in `results` belong to
+    /// `activeFilter`. Cleared by every reload, so a filter or range change
+    /// re-fetches rather than showing a tab's stale rows.
+    private var loadedBreakdowns: Set<Breakdown> = []
     private var tickTask: Task<Void, Never>?
     private var lastCostRefreshAt: Date?
-    private var loadedRequestPages = 0
     private var lastAvailableModelsRevision: UInt64?
     private var generation: UInt64 = 0
     private var hasLoadedOnce = false
@@ -391,6 +403,8 @@ final class UsageStatsViewModel: ObservableObject {
         tickTask = nil
         reloadTask?.cancel()
         reloadTask = nil
+        breakdownTask?.cancel()
+        breakdownTask = nil
     }
 
     // MARK: - Filter mutation
@@ -461,9 +475,68 @@ final class UsageStatsViewModel: ObservableObject {
         // queries. Models and Requests are intentionally loaded only when the
         // user opens those tabs, avoiding two full 30-day scans on every range
         // change.
-        if breakdown == .models || breakdown == .requests {
-            reload(cascadeModels: false)
+        switch breakdown {
+        case .periods, .providers:
+            break
+        case .models, .requests:
+            guard !loadedBreakdowns.contains(breakdown) else { break }
+            loadDeferredBreakdown(breakdown)
         }
+    }
+
+    /// Fetch only what a newly opened tab needs, against the filter the
+    /// visible results were already produced with.
+    ///
+    /// Opening a tab used to call `reload`, which re-ran the whole analytic
+    /// set — up to nine sequential ledger round trips, including the day × tool
+    /// trend GROUP BY that dominates the query at 30 days — to redraw numbers
+    /// that had not changed and were already on screen. Filter, range and
+    /// refresh changes still take the full path; this one only fills the hole.
+    private func loadDeferredBreakdown(_ breakdown: Breakdown) {
+        guard let ledger, let filter = activeFilter, !isLoading else {
+            // No settled filter to reuse (first load still in flight, or the
+            // ledger is unavailable): the full path is the only correct one.
+            reload(cascadeModels: false)
+            return
+        }
+        breakdownTask?.cancel()
+        let generation = self.generation
+        isLoadingMore = true
+        breakdownTask = Task { [weak self] in
+            let models: [UsageModelStat] = breakdown == .models
+                ? ((try? await ledger.modelStats(filter)) ?? [])
+                : []
+            let requests: UsageRequestPage? = breakdown == .requests
+                ? (try? await ledger.requestPage(
+                    filter, pageSize: UsageStatsViewModel.requestPageSize
+                ))
+                : nil
+            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            self.isLoadingMore = false
+            self.applyDeferred(breakdown, models: models, requests: requests)
+        }
+    }
+
+    private func applyDeferred(
+        _ breakdown: Breakdown,
+        models: [UsageModelStat],
+        requests: UsageRequestPage?
+    ) {
+        guard activeBreakdown == breakdown else { return }
+        var updated = results
+        switch breakdown {
+        case .periods, .providers:
+            return
+        case .models:
+            updated.modelStats = models
+        case .requests:
+            guard let requests else { return }
+            updated.requestRows = requests.rows
+            updated.requestTotalCount = requests.totalCount ?? 0
+            updated.nextRequestCursor = requests.nextCursor
+        }
+        results = updated
+        loadedBreakdowns.insert(breakdown)
     }
 
     // MARK: - Queries
@@ -472,19 +545,19 @@ final class UsageStatsViewModel: ObservableObject {
         reload(cascadeModels: true)
     }
 
-    /// Next zero-based page of request rows, appended to what is already on
-    /// screen. Pages from a superseded filter are dropped on arrival.
+    /// The next run of request rows, appended to what is already on screen.
+    /// Pages from a superseded filter are dropped on arrival.
     func loadMoreRequests() {
         guard let ledger, let filter = activeFilter,
+              let cursor = results.nextRequestCursor,
               activeBreakdown == .requests,
-              !isLoadingMore, !isLoading, hasMoreRequests
+              !isLoadingMore, !isLoading
         else { return }
         let generation = self.generation
-        let page = loadedRequestPages
         isLoadingMore = true
         Task { [weak self] in
             let result = try? await ledger.requestPage(
-                filter, page: page, pageSize: Self.requestPageSize
+                filter, after: cursor, pageSize: Self.requestPageSize, includeTotal: false
             )
             guard let self, generation == self.generation else { return }
             self.isLoadingMore = false
@@ -509,7 +582,8 @@ final class UsageStatsViewModel: ObservableObject {
         generation &+= 1
         let generation = self.generation
         reloadTask?.cancel()
-        loadedRequestPages = 0
+        breakdownTask?.cancel()
+        loadedBreakdowns.removeAll()
         activeFilter = nil
         // A page still in flight is now for a filter nobody is looking at; it
         // drops itself on the generation check and never clears this, so the
@@ -571,14 +645,9 @@ final class UsageStatsViewModel: ObservableObject {
             if cascadeModels {
                 self.pruneSelectedModels(to: models)
             }
-            self.availableModels = models
-            if let refreshedModelsRevision {
-                self.lastAvailableModelsRevision = refreshedModelsRevision
-            }
             let resolved = self.filter
             let supportsHourly = (try? await ledger.supportsHourlyTrend(resolved)) ?? false
             guard !Task.isCancelled, generation == self.generation else { return }
-            self.isHourlyTrendAvailable = supportsHourly
             if self.trendGranularity == .hour, !supportsHourly {
                 // Keep the Picker's intent and the returned series aligned.
                 // `trend` also falls back defensively in case the floor moves
@@ -595,7 +664,12 @@ final class UsageStatsViewModel: ObservableObject {
             )
             guard !Task.isCancelled, generation == self.generation else { return }
             self.activeFilter = resolved
-            self.apply(snapshot)
+            if let refreshedModelsRevision {
+                self.lastAvailableModelsRevision = refreshedModelsRevision
+            }
+            self.apply(
+                snapshot, availableModels: models, isHourlyTrendAvailable: supportsHourly
+            )
         }
     }
 
@@ -605,7 +679,11 @@ final class UsageStatsViewModel: ObservableObject {
         self.selectedModels = kept.isEmpty ? nil : kept
     }
 
-    private func apply(_ snapshot: LoadedUsage) {
+    private func apply(
+        _ snapshot: LoadedUsage,
+        availableModels: [String],
+        isHourlyTrendAvailable: Bool
+    ) {
         results = UsageResults(
             summary: snapshot.summary,
             trend: snapshot.trend,
@@ -613,9 +691,17 @@ final class UsageStatsViewModel: ObservableObject {
             harnessStats: snapshot.harnesses,
             modelStats: snapshot.models,
             requestRows: snapshot.requests.rows,
-            requestTotalCount: snapshot.requests.totalCount
+            requestTotalCount: snapshot.requests.totalCount ?? 0,
+            nextRequestCursor: snapshot.requests.nextCursor,
+            availableModels: availableModels,
+            isHourlyTrendAvailable: isHourlyTrendAvailable
         )
-        loadedRequestPages = activeBreakdown == .requests ? 1 : 0
+        // Key off the breakdown the snapshot was *queried* for: the user can
+        // open a different tab while the query is in flight, and claiming that
+        // tab is loaded would leave it permanently empty.
+        loadedBreakdowns = snapshot.breakdown == .models || snapshot.breakdown == .requests
+            ? [snapshot.breakdown]
+            : []
         observedTools.formUnion(snapshot.providers.map(\.tool))
         observedTools.formUnion(selectedTools ?? [])
         knownTools = ToolType.allCases.filter {
@@ -640,20 +726,26 @@ final class UsageStatsViewModel: ObservableObject {
             harnessStats: [],
             modelStats: [],
             requestRows: [],
-            requestTotalCount: 0
+            requestTotalCount: 0,
+            nextRequestCursor: nil,
+            availableModels: [],
+            isHourlyTrendAvailable: isHourlyTrendAvailable
         )
-        availableModels = []
         isLoading = false
     }
 
+    /// A keyset page starts strictly after the cursor it was asked for, so
+    /// the rows can never overlap what is already on screen — as long as this
+    /// really is the page that continues from where the list currently ends.
     private func append(_ page: UsageRequestPage) {
-        guard page.page == loadedRequestPages else { return }
-        let known = Set(requestRows.map(\.id))
+        guard page.cursor == results.nextRequestCursor else { return }
         var updated = results
-        updated.requestRows.append(contentsOf: page.rows.filter { !known.contains($0.id) })
-        updated.requestTotalCount = page.totalCount
+        updated.requestRows.append(contentsOf: page.rows)
+        // A continuation page does not recount; the pinned filter means the
+        // number the first page reported is still the right one.
+        if let totalCount = page.totalCount { updated.requestTotalCount = totalCount }
+        updated.nextRequestCursor = page.nextCursor
         results = updated
-        loadedRequestPages = page.page + 1
     }
 
     // MARK: - Polling
@@ -693,6 +785,8 @@ final class UsageStatsViewModel: ObservableObject {
         let harnesses: [UsageHarnessStat]
         let models: [UsageModelStat]
         let requests: UsageRequestPage
+        /// Which deferred tab this snapshot actually answered for.
+        let breakdown: Breakdown
     }
 
     private struct UsageResults {
@@ -703,6 +797,11 @@ final class UsageStatsViewModel: ObservableObject {
         var modelStats: [UsageModelStat]
         var requestRows: [UsageRequestRow]
         var requestTotalCount: Int
+        /// Where the loaded run stops. `nil` means the range holds nothing
+        /// more, so paging is finished rather than merely not started.
+        var nextRequestCursor: UsageRequestCursor?
+        var availableModels: [String]
+        var isHourlyTrendAvailable: Bool
 
         static let empty = UsageResults(
             summary: .empty,
@@ -711,7 +810,10 @@ final class UsageStatsViewModel: ObservableObject {
             harnessStats: [],
             modelStats: [],
             requestRows: [],
-            requestTotalCount: 0
+            requestTotalCount: 0,
+            nextRequestCursor: nil,
+            availableModels: [],
+            isHourlyTrendAvailable: true
         )
     }
 
@@ -731,16 +833,17 @@ final class UsageStatsViewModel: ObservableObject {
             ? ((try? await ledger.modelStats(filter)) ?? [])
             : []
         let requests = breakdown == .requests
-            ? ((try? await ledger.requestPage(filter, page: 0, pageSize: requestPageSize))
-                ?? UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: requestPageSize))
-            : UsageRequestPage(rows: [], totalCount: 0, page: 0, pageSize: requestPageSize)
+            ? ((try? await ledger.requestPage(filter, pageSize: requestPageSize))
+                ?? UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize))
+            : UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize)
         return LoadedUsage(
             summary: summary,
             trend: trend,
             providers: providers,
             harnesses: harnesses,
             models: models,
-            requests: requests
+            requests: requests,
+            breakdown: breakdown
         )
     }
 }

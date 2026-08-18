@@ -382,7 +382,7 @@ final class UsageLedgerHarnessTests: XCTestCase {
         ))
 
         let page = try await ledger.requestPage(
-            UsageLedgerFixtures.wideFilter(around: now), page: 0, pageSize: 10
+            UsageLedgerFixtures.wideFilter(around: now), pageSize: 10
         )
         XCTAssertEqual(page.rows.map(\.harness), [.chatgptWork, .claudeCode])
         // The quota-side tool is unchanged: the two axes coexist on one row.
@@ -565,7 +565,7 @@ final class UsageLedgerHarnessTests: XCTestCase {
 
         let filter = UsageLedgerFixtures.wideFilter(around: now)
         // Detail rows are gone; these totals can only come from the rollups.
-        let detailCount = try await ledger.requestPage(filter, page: 0, pageSize: 50).totalCount
+        let detailCount = try await ledger.requestPage(filter, pageSize: 50).totalCount
         XCTAssertEqual(detailCount, 0)
         let stats = try await ledger.harnessStats(filter)
         XCTAssertEqual(stats.map(\.harness), [.chatgptWork, .codex])
