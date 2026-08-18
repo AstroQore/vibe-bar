@@ -377,7 +377,15 @@ private final class Connection: @unchecked Sendable {
     }
 
     func close() {
-        queue.async { [weak self] in self?.closeOnQueue() }
+        // Strong capture on purpose: `stop()` drops the server's references
+        // right after calling this, and a weakly captured close would let the
+        // connection deallocate with its descriptor still open.
+        queue.async { self.closeOnQueue() }
+    }
+
+    deinit {
+        // Belt and braces: never leak an accepted descriptor.
+        if !isClosed { Darwin.close(fd) }
     }
 
     /// Stop listening for input without closing the descriptor, so replies
