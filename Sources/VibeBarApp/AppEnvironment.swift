@@ -22,6 +22,12 @@ final class AppEnvironment: ObservableObject {
     /// Local MCP server. Built here so its lifetime matches the app's; the
     /// socket itself exists only while `AppSettings.mcpServer.enabled` is on.
     private(set) var mcp: MCPController!
+    /// One skills actor for the whole process, shared by the Workbench's
+    /// Skills page and the MCP `skills.install` tool. Two instances would mean
+    /// two writers doing read-modify-write on `~/.vibebar/skills.json`, so an
+    /// agent installing a skill while the page is open could drop a record.
+    /// Free to hold: the registry file is read lazily on first access.
+    let skillsService = SkillsService()
 
     @Published private(set) var hasClaudeWebCookies: Bool
     @Published private(set) var hasOpenAIWebCookies: Bool
@@ -573,7 +579,8 @@ final class AppEnvironment: ObservableObject {
         let services = WorkbenchServices(
             usageLedger: usageLedger,
             costService: costService,
-            settingsStore: settingsStore
+            settingsStore: settingsStore,
+            skillsService: skillsService
         )
         workbenchServicesStorage = services
         return services

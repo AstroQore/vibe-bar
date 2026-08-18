@@ -698,6 +698,75 @@ public struct MCPPricingDTO: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - skills.install
+
+public struct MCPInstalledSkillDTO: Codable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let description: String?
+    /// SSOT directory name — what every agent CLI sees the skill as.
+    public let directory: String
+    public let branch: String?
+    /// Where the payload lives: `~/.agents/skills/<directory>`.
+    public let path: String
+    /// App key → the directory the skill was projected into. Empty when the
+    /// caller installed without naming any app, which is a valid outcome:
+    /// the skill is on the machine, switched on for nobody.
+    public let projectedTo: [String: String]
+
+    public init(installed: SkillInstallOutcome.Installed) {
+        self.id = installed.skill.id.rawValue
+        self.name = installed.skill.name
+        self.description = installed.skill.description
+        self.directory = installed.skill.directory
+        self.branch = installed.skill.repoBranch
+        self.path = installed.path
+        self.projectedTo = Dictionary(
+            uniqueKeysWithValues: installed.projectedTo.map { ($0.key.rawValue, $0.value) }
+        )
+    }
+}
+
+public struct MCPSkippedSkillDTO: Codable, Equatable, Sendable {
+    public let name: String
+    public let reason: String
+
+    public init(skipped: SkillInstallOutcome.Skipped) {
+        self.name = skipped.name
+        self.reason = skipped.reason
+    }
+}
+
+public struct MCPSkillInstallDTO: Codable, Equatable, Sendable {
+    public let source: String
+    public let installed: [MCPInstalledSkillDTO]
+    public let skipped: [MCPSkippedSkillDTO]
+    /// A sentence the agent can repeat to the user. Built here rather than in
+    /// the caller so every transport says the same thing.
+    public let message: String
+
+    public init(outcome: SkillInstallOutcome) {
+        self.source = outcome.source
+        self.installed = outcome.installed.map(MCPInstalledSkillDTO.init(installed:))
+        self.skipped = outcome.skipped.map(MCPSkippedSkillDTO.init(skipped:))
+        self.message = Self.message(for: outcome)
+    }
+
+    private static func message(for outcome: SkillInstallOutcome) -> String {
+        guard let first = outcome.installed.first else {
+            return "Nothing was installed from \(outcome.source)."
+        }
+        let names = outcome.installed.map(\.skill.name).joined(separator: ", ")
+        let apps = first.projectedTo.keys.map(\.displayName).sorted()
+        if apps.isEmpty {
+            return "Installed \(names) into \(first.path). No agent has it switched on yet — "
+                + "pass 'apps' to project it into an agent's skills directory."
+        }
+        return "Installed \(names) into \(first.path) and projected it into "
+            + "\(apps.joined(separator: ", "))."
+    }
+}
+
 // MARK: - Server identity
 
 public struct MCPServerInfo: Codable, Equatable, Sendable {

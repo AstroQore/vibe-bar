@@ -513,7 +513,10 @@ extension SkillsService {
 
     /// Installs one already-extracted skill directory as a `.local` skill and
     /// enables the requested apps. Filesystem first, store second.
-    private func installLocalDirectory(
+    ///
+    /// Internal rather than private: `SkillsService+SourceInstall` installs a
+    /// directory the user pointed at through the same path.
+    func installLocalDirectory(
         at source: URL,
         directoryName: String,
         enableFor apps: [SkillAppTarget],

@@ -13,11 +13,18 @@ final class WorkbenchServices: ObservableObject {
     private let usageLedger: UsageEventLedger?
     private let costService: CostUsageService
     private let settingsStore: SettingsStore
+    private let skillsService: SkillsService
 
-    init(usageLedger: UsageEventLedger?, costService: CostUsageService, settingsStore: SettingsStore) {
+    init(
+        usageLedger: UsageEventLedger?,
+        costService: CostUsageService,
+        settingsStore: SettingsStore,
+        skillsService: SkillsService
+    ) {
         self.usageLedger = usageLedger
         self.costService = costService
         self.settingsStore = settingsStore
+        self.skillsService = skillsService
     }
 
     lazy var usageStats = UsageStatsViewModel(
@@ -29,6 +36,7 @@ final class WorkbenchServices: ObservableObject {
 
     /// Lazy for the same reason as the usage page, and more so: building it
     /// opens `~/.vibebar/skills.json` and, on first activation, walks every
-    /// agent CLI's skills directory.
-    lazy var skills = SkillsManagerModel(settingsStore: settingsStore)
+    /// agent CLI's skills directory. The service behind it is the app-wide
+    /// one, shared with MCP's `skills.install`.
+    lazy var skills = SkillsManagerModel(settingsStore: settingsStore, service: skillsService)
 }

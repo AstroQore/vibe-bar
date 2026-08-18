@@ -43,7 +43,8 @@ public enum MCPToolCatalog {
         sessionsSearch,
         sessionsList,
         statusGet,
-        pricingEffective
+        pricingEffective,
+        skillsInstall
     ]
 
     public static func tool(named name: String) -> MCPTool? {
@@ -348,5 +349,37 @@ public enum MCPToolCatalog {
             ),
             "model": string("Case-insensitive substring of the model id.")
         ])
+    )
+
+    public static let skillsInstall = MCPTool(
+        name: "skills.install",
+        title: "Install an agent skill",
+        description: """
+            Install a skill through Vibe Bar's Skills manager: one copy in ~/.agents/skills/, projected \
+            into whichever agent CLIs you name. This is the non-UI equivalent of Workbench → Skills → \
+            Install, and the only write tool here. 'source' is 'owner/repo', 'owner/repo@branch', either \
+            with '#<skill>' when the repository holds more than one (the error lists them), a github.com \
+            repository / branch / archive URL, or an absolute path to a local directory containing \
+            SKILL.md. Installing without 'apps' puts the skill on the machine without switching it on for \
+            anyone — pass 'apps' to project it. Re-installing something already installed just enables the \
+            extra apps; it never overwrites the local copy. Vibe Bar's own companion skill is \
+            'AstroQore/vibe-bar'.
+            """,
+        inputSchema: object(
+            properties: [
+                "source": string(
+                    "owner/repo[@branch][#skill], a github.com URL, or an absolute local directory."
+                ),
+                "apps": stringEnumList(
+                    SkillAppTarget.allCases.map(\.rawValue),
+                    description: "Agent CLIs to project the skill into. Omit to install without enabling it anywhere."
+                ),
+                "method": string(
+                    "How to project it: 'symlink' (default, one copy) or 'copy' (independent per app).",
+                    enumValues: [SkillSyncMethod.symlink.rawValue, SkillSyncMethod.copy.rawValue]
+                )
+            ],
+            required: ["source"]
+        )
     )
 }

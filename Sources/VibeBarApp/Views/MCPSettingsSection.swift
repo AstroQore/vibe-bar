@@ -140,6 +140,18 @@ struct MCPSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            Toggle(
+                "Allow agents to install skills",
+                isOn: $settingsStore.settings.mcpServer.allowSkillInstall
+            )
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .disabled(!settingsStore.settings.mcpServer.enabled)
+
+            Text("With this on, an agent can call skills.install to add a skill from a GitHub repository or a local folder. It goes through the same Skills manager as Workbench → Skills, so it writes only to ~/.agents/skills and the agent skills directories Vibe Bar manages — never over a folder a different skill already holds. With it off the tool reports that installing is disabled.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Text("Everything else agents can reach is read-only: quota, token usage, cost, provider status, effective model prices, and the local session index (titles, projects, and — when session body indexing is on — message excerpts). Credentials, cookies and organization ids are never exposed, and email addresses are masked.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

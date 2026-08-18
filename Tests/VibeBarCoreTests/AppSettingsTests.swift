@@ -193,6 +193,28 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(unknown.displayMode, .used)
     }
 
+    func testMCPSkillInstallDefaultsToOnAndRoundTrips() throws {
+        // A settings file written before `skills.install` existed must decode
+        // to the same "on" the feature ships with, not to a switch the user
+        // never saw and cannot explain.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining","mcpServer":{"enabled":true}}"#.utf8)
+        )
+        XCTAssertTrue(legacy.mcpServer.allowSkillInstall)
+        XCTAssertTrue(legacy.mcpServer.allowRefreshTools)
+        XCTAssertTrue(AppSettings.default.mcpServer.allowSkillInstall)
+
+        var settings = AppSettings.default
+        settings.mcpServer.allowSkillInstall = false
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertFalse(decoded.mcpServer.allowSkillInstall)
+        XCTAssertTrue(decoded.mcpServer.enabled)
+    }
+
     func testOverviewQuotaHistoryHiddenCurvesDefaultToNoneAndRoundTrip() throws {
         // Stored as *hidden* ids, so a settings file written before the
         // Overview chart existed has to mean "show everything" — not "show

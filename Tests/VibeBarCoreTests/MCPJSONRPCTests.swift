@@ -52,8 +52,8 @@ final class MCPJSONRPCTests: XCTestCase {
             names.sorted(),
             [
                 "cost.history", "cost.snapshot", "pricing.effective", "quota.get", "quota.refresh",
-                "sessions.list", "sessions.search", "status.get", "usage.requests", "usage.summary",
-                "usage.trend"
+                "sessions.list", "sessions.search", "skills.install", "status.get", "usage.requests",
+                "usage.summary", "usage.trend"
             ]
         )
         for tool in tools {

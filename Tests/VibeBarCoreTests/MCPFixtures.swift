@@ -352,6 +352,38 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
         return MCPServiceStatusDTO(generatedAt: Self.epoch, lastFetched: Self.epoch, companies: rows)
     }
 
+    // MARK: Skills
+
+    /// Set to install for real into a temporary home. Left `nil`, the tool
+    /// behaves like an app that cannot reach its Skills manager.
+    var skillsService: SkillsService?
+    /// Stands in for `AppSettings.mcpServer.allowSkillInstall`.
+    var allowSkillInstall = true
+    private(set) var lastSkillSource: SkillInstallSource?
+    private(set) var lastSkillApps: [SkillAppTarget]?
+    private(set) var lastSkillMethod: SkillSyncMethod?
+
+    func installSkill(
+        source: SkillInstallSource,
+        apps: [SkillAppTarget],
+        method: SkillSyncMethod
+    ) async throws -> MCPSkillInstallDTO {
+        lastSkillSource = source
+        lastSkillApps = apps
+        lastSkillMethod = method
+        guard allowSkillInstall else {
+            throw MCPToolFailure(
+                "Installing skills from agents is switched off in Vibe Bar → Settings → MCP Server."
+            )
+        }
+        guard let skillsService else {
+            throw MCPToolFailure("Vibe Bar is shutting down.")
+        }
+        return MCPSkillInstallDTO(
+            outcome: try await skillsService.install(from: source, enableFor: apps, method: method)
+        )
+    }
+
     func effectivePricing() async throws -> [EffectiveModelPricingRow] {
         [
             EffectiveModelPricingRow(
