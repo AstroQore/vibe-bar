@@ -83,6 +83,48 @@ final class HarnessTests: XCTestCase {
         XCTAssertTrue(Harness.harnesses(forCompany: .warp).isEmpty)
     }
 
+    /// The filter rows on Sessions and Usage Stats are harness-primary: the
+    /// company is a section head that toggles its members, so the group has to
+    /// carry the members in display order.
+    func testChipGroupsCoverEveryCompanyInOrder() {
+        let groups = Harness.chipGroups(companies: ToolType.coreProviderRepresentatives)
+        XCTAssertEqual(groups.map(\.company), [.codex, .claude, .gemini, .grok])
+        XCTAssertEqual(
+            groups.map(\.harnesses),
+            [
+                [.codex, .chatgptWork],
+                [.claudeCode, .claudeCowork],
+                [.geminiCLI, .antigravity],
+                [.grokBuild, .cursor]
+            ]
+        )
+        XCTAssertEqual(groups.flatMap(\.harnesses), Harness.allCases)
+    }
+
+    func testChipGroupsNarrowToTheHarnessesAPageKnowsAbout() {
+        let groups = Harness.chipGroups(
+            companies: ToolType.coreProviderRepresentatives,
+            harnesses: [.cursor, .claudeCode]
+        )
+        XCTAssertEqual(groups.map(\.company), [.claude, .grok])
+        XCTAssertEqual(groups.map(\.harnesses), [[.claudeCode], [.cursor]])
+        XCTAssertTrue(
+            Harness.chipGroups(
+                companies: ToolType.coreProviderRepresentatives,
+                harnesses: []
+            ).isEmpty
+        )
+    }
+
+    /// A non-representative member and a company with no harness at all both
+    /// have to resolve without producing a duplicate or an empty chip.
+    func testChipGroupsNormalizeCompaniesAndDropEmptyOnes() {
+        let groups = Harness.chipGroups(companies: [.cursor, .grok, .warp])
+        XCTAssertEqual(groups.map(\.company), [.grok])
+        XCTAssertEqual(groups.first?.harnesses, [.grokBuild, .cursor])
+        XCTAssertEqual(groups.first?.harnessSet, Set([Harness.grokBuild, .cursor]))
+    }
+
     func testRawValuesAreStableStorageKeys() {
         // These land in SQLite and in the scan cache; renaming one silently
         // orphans every stored row.

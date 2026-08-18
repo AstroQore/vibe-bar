@@ -205,11 +205,24 @@ final class UsageStatsViewModel: ObservableObject {
         return !members.isEmpty && members.allSatisfy(selectedTools.contains)
     }
 
-    /// Harnesses the harness menu offers, narrowed to the companies whose
-    /// chips are lit. A harness filter that could only ever return nothing —
+    /// Harnesses the filter offers, narrowed to the companies whose tools are
+    /// in the query. A harness filter that could only ever return nothing —
     /// because its company is filtered out — should not be offered at all.
+    /// With the chip row as the only writer `selectedTools` stays nil, so this
+    /// degenerates to `knownHarnesses`.
     var harnessOptions: [Harness] {
         knownHarnesses.filter { isCompanySelected($0.company) }
+    }
+
+    /// The harness-primary chip row: one section per company, its known
+    /// harnesses underneath. Derived from `knownCompanyRepresentatives` and
+    /// `knownHarnesses` rather than stored, so it follows the ledger without a
+    /// second piece of state to keep in sync.
+    var harnessChipGroups: [Harness.ChipGroup] {
+        Harness.chipGroups(
+            companies: knownCompanyRepresentatives,
+            harnesses: knownHarnesses
+        )
     }
 
     var range: DateInterval {
@@ -412,6 +425,10 @@ final class UsageStatsViewModel: ObservableObject {
         reload(cascadeModels: true)
     }
 
+    /// The company-axis writer. No chip drives it since the filter row became
+    /// harness-primary — a harness already narrows the tools it belongs to —
+    /// but it stays as the counterpart to `toggleHarnesses` for any surface
+    /// that needs to select whole companies.
     func toggleCompany(_ representative: ToolType) {
         let members = Set(representative.coreProviderMembers.filter { knownTools.contains($0) })
         guard !members.isEmpty else { return }
@@ -433,11 +450,22 @@ final class UsageStatsViewModel: ObservableObject {
     }
 
     func toggleHarness(_ harness: Harness) {
+        toggleHarnesses([harness])
+    }
+
+    /// Toggles a whole company's harnesses in one click — what the muted
+    /// company chip at the head of each chip group does. Turning them all on
+    /// is the same statement as "no harness filter", and saying it that way
+    /// keeps the query unrestricted.
+    func toggleHarnesses(_ harnesses: Set<Harness>) {
+        guard !harnesses.isEmpty else { return }
         let options = harnessOptions
         var next = selectedHarnesses ?? Set(options)
-        if next.contains(harness) { next.remove(harness) } else { next.insert(harness) }
-        // Selecting every offered harness is the same statement as "no
-        // harness filter", and saying it that way keeps the query unrestricted.
+        if harnesses.allSatisfy(next.contains) {
+            next.subtract(harnesses)
+        } else {
+            next.formUnion(harnesses)
+        }
         setSelectedHarnesses(next.count == options.count ? nil : next)
     }
 
