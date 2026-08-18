@@ -1,30 +1,8 @@
 import Foundation
 
-/// One tool as `tools/list` renders it.
-public struct MCPTool: Sendable, Equatable {
-    public let name: String
-    public let title: String
-    public let description: String
-    public let inputSchema: MCPJSON
-
-    public init(name: String, title: String, description: String, inputSchema: MCPJSON) {
-        self.name = name
-        self.title = title
-        self.description = description
-        self.inputSchema = inputSchema
-    }
-
-    var json: MCPJSON {
-        .object([
-            "name": .string(name),
-            "title": .string(title),
-            "description": .string(description),
-            "inputSchema": inputSchema
-        ])
-    }
-}
-
-/// The tool surface, schemas included.
+/// The tool surface, schemas included. `MCPTool` itself is
+/// `AgentSessionKit`'s — the wire shape of `tools/list` is not Vibe
+/// Bar-specific; which tools exist is.
 ///
 /// Descriptions carry the two-axis rule (`AGENTS.md` § 7.1) inline rather
 /// than assuming the agent read the naming-spec resource first: a model

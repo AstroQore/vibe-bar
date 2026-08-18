@@ -1,32 +1,5 @@
 import Foundation
 
-/// One resource as `resources/list` renders it.
-public struct MCPResource: Sendable, Equatable {
-    public let uri: String
-    public let name: String
-    public let title: String
-    public let description: String
-    public let mimeType: String
-
-    public init(uri: String, name: String, title: String, description: String, mimeType: String) {
-        self.uri = uri
-        self.name = name
-        self.title = title
-        self.description = description
-        self.mimeType = mimeType
-    }
-
-    var json: MCPJSON {
-        .object([
-            "uri": .string(uri),
-            "name": .string(name),
-            "title": .string(title),
-            "description": .string(description),
-            "mimeType": .string(mimeType)
-        ])
-    }
-}
-
 /// The two documents the server hands out: the naming spec an agent has to
 /// read before it can phrase an answer correctly, and a short guide to which
 /// tool answers what.

@@ -156,23 +156,6 @@ public enum CostUsageScanner {
         let totals: Totals
     }
 
-    /// Every Codex surface writes into the same `~/.codex/sessions` tree, and
-    /// `session_meta.payload.originator` is the only stable thing that tells
-    /// them apart — the instructions, tools, turn context, model and sandbox
-    /// are identical across all of them.
-    ///
-    /// Exactly one originator is *not* Codex: `codex_work_desktop`, written by
-    /// ChatGPT **Work** mode in the desktop app. Everything else we have seen —
-    /// `Codex Desktop` (the desktop app's Codex tab), `codex-tui`,
-    /// `codex_cli_rs`, `codex_exec`, `codex_vscode` — is ordinary Codex, so
-    /// anything unrecognised, including a missing header, stays on the Codex
-    /// harness rather than being invented as ChatGPT Work usage.
-    static let chatgptWorkOriginator = "codex_work_desktop"
-
-    static func codexHarness(originator: String?) -> Harness {
-        originator == chatgptWorkOriginator ? .chatgptWork : .codex
-    }
-
     /// Returns the file's token events plus its `session_meta` originator.
     /// Both come out of the *same* single pass — the header is the first
     /// line, so reading it costs nothing and keeps the scan O(n).
@@ -1490,53 +1473,9 @@ public enum CostUsageScanner {
     // differs. Cowork is **read-only everywhere**: `ClaudeCoworkSessionAdapter`
     // lists and reads the same files for the Sessions manager, and refuses to
     // plan a delete, because nothing may remove files from inside Claude.app's
-    // own container (AGENTS.md § 5).
-
-    /// Claude.app's own directory name for a Cowork workspace tree. Used both
-    /// to find the root and to recognise a file that came from it.
-    static let claudeCoworkDirectoryName = "local-agent-mode-sessions"
-
-    static func claudeCoworkRoot(homeDirectory: String) -> URL {
-        URL(fileURLWithPath: homeDirectory)
-            .appendingPathComponent("Library/Application Support/Claude")
-            .appendingPathComponent(claudeCoworkDirectoryName)
-    }
-
-    /// Recognised by path *component* rather than by a prefix match against
-    /// the root: `FileManager.enumerator` hands back symlink-resolved paths
-    /// (`/private/var/...` for a `/var/...` root), so a prefix test silently
-    /// mislabels every Cowork transcript. Claude Code's own project
-    /// directories are percent-ish encoded with dashes, so a project whose cwd
-    /// merely mentions this name cannot collide with a real path component.
-    static func claudeHarness(file: URL) -> Harness {
-        file.pathComponents.contains(claudeCoworkDirectoryName) ? .claudeCowork : .claudeCode
-    }
-
-    /// Transcript files under the Cowork root.
-    ///
-    /// Unlike the Claude Code roots, the enumeration starts *above* a hidden
-    /// `.claude` directory, so `.skipsHiddenFiles` would find nothing. Hidden
-    /// entries are therefore walked, and the `/.claude/projects/` requirement
-    /// is what keeps the walk to transcripts rather than to whatever else the
-    /// app stores in that workspace. Symlinks are refused for the same reason
-    /// `collectJSONL` refuses them: they could resolve anywhere.
-    static func collectClaudeCoworkJSONL(under root: URL) -> [URL] {
-        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: []
-        ) else { return [] }
-        var out: [URL] = []
-        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
-            guard url.path.contains("/.claude/projects/") else { continue }
-            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
-            if values?.isSymbolicLink == true { continue }
-            if values?.isRegularFile == false { continue }
-            out.append(url)
-        }
-        return out
-    }
+    // own container (AGENTS.md § 5). The root, the harness test and the
+    // transcript walk are `ClaudeCoworkPaths` in agent-session-kit, reached
+    // through the forwarders in `Compat/AgentSessionKitReexport.swift`.
 
     private static func deduplicateClaudeEvents(
         _ events: [CostUsageScanCache.ParsedEvent]
@@ -1847,56 +1786,6 @@ public enum CostUsageScanner {
         let mtime = (attrs[.modificationDate] as? Date) ?? .distantPast
         let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
         return (mtime, size)
-    }
-
-    private static let lineChunkSize = 64 * 1024
-    private static let newlineData = Data([0x0A])
-
-    /// Internal rather than private so the session adapters can reuse the
-    /// same O(n) line walk instead of copying it.
-    static func forEachJSONLLine(in file: URL, _ body: (Data) -> Void) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
-        defer { try? handle.close() }
-
-        // Linear-time JSONL scan via [UInt8]: walks a single moving cursor
-        // and only compacts when the consumed prefix exceeds one chunk. We
-        // intentionally avoid Data as the scratch buffer — Data.removeFirst
-        // can leave heap-backed storage with a non-zero startIndex, after
-        // which 0-based subscripting like `buffer[i]` trips a bounds
-        // precondition under release optimization. Array<UInt8>.removeFirst
-        // physically shifts bytes and keeps indices 0-based, so this loop
-        // is safe and still O(n).
-        var buffer: [UInt8] = []
-        var lineStart = 0
-        do {
-            while let chunk = try handle.read(upToCount: lineChunkSize), !chunk.isEmpty {
-                buffer.append(contentsOf: chunk)
-                let end = buffer.count
-                var i = lineStart
-                while i < end {
-                    if buffer[i] == 0x0A {
-                        if i > lineStart {
-                            body(Data(buffer[lineStart..<i]))
-                        }
-                        lineStart = i + 1
-                    }
-                    i += 1
-                }
-                if lineStart > lineChunkSize {
-                    buffer.removeFirst(lineStart)
-                    lineStart = 0
-                }
-            }
-            if lineStart < buffer.count {
-                let tail = Data(buffer[lineStart..<buffer.count])
-                if !tail.isEmpty {
-                    body(tail)
-                }
-            }
-            return true
-        } catch {
-            return false
-        }
     }
 
     private static let isoWithFraction: ISO8601DateFormatter = {

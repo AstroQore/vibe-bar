@@ -218,7 +218,7 @@ final class SessionManagerModel: ObservableObject {
         // will not open costs this page its index, not the app.
         let opened: SessionIndexStore?
         do {
-            opened = try SessionIndexStore()
+            opened = try SessionIndexStore(url: VibeBarLocalStore.sessionIndexURL)
         } catch {
             SafeLog.warn("Opening the session index failed: \(SafeLog.sanitize(error.localizedDescription))")
             opened = nil

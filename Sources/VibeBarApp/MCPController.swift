@@ -377,7 +377,7 @@ final class MCPController: ObservableObject, MCPDataSource {
             throw MCPToolFailure("The session index could not be opened, so sessions cannot be listed.")
         }
         do {
-            let store = try SessionIndexStore()
+            let store = try SessionIndexStore(url: VibeBarLocalStore.sessionIndexURL)
             let service = SessionIndexService(
                 store: store,
                 registry: SessionProviderRegistry.standard(),
