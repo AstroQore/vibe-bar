@@ -66,6 +66,7 @@ Single SwiftPM package, two product targets and one test target:
 │   │   ├── ClaudeWebLoginController.swift
 │   │   ├── ClaudeRoutineBudgetWebViewFetcher.swift
 │   │   ├── LoginItemController.swift
+│   │   ├── MCPController.swift    # Local MCP server's data source (see § 5.1)
 │   │   ├── ProviderBrandIcon.swift
 │   │   ├── VibeBarApp.swift
 │   │   ├── Controllers/           # SwiftUI host controllers
@@ -73,6 +74,7 @@ Single SwiftPM package, two product targets and one test target:
 │   └── VibeBarCore/               # Pure-Swift testable library
 │       ├── Adapters/              # Provider quota + response parsers
 │       ├── Credentials/           # CLI credential readers + Keychain store
+│       ├── MCP/                   # Local MCP server + stdio bridge (see § 5.1)
 │       ├── Models/                # Plain data types (settings, quotas, cost)
 │       ├── Services/              # Cost scanner, quota refresh, status fetch
 │       ├── Storage/               # Local-store roots, caches, settings
@@ -88,6 +90,11 @@ Single SwiftPM package, two product targets and one test target:
 ├── Scripts/
 │   ├── build_app.sh               # App packaging + nested codesign
 │   └── release_app.sh             # ZIP, checksum, signed Sparkle appcast
+├── docs/
+│   ├── DESIGN.md
+│   └── agent-setup/               # One-line MCP setup an agent runs on itself
+│       ├── prompt.md              # Addressed to the agent, not to a human
+│       └── skill/vibe-bar/SKILL.md
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
 │   └── pull_request_template.md
@@ -297,7 +304,8 @@ Vibe Bar persists derived data under the user's **real** home directory:
 ├── scan_cache/
 ├── service_status.json
 ├── cost_history.json
-└── mini_window_geometry.json
+├── mini_window_geometry.json
+└── mcp.sock          (socket, 0600, only while the app runs — see § 5.1)
 ```
 
 If you are debugging odd behavior, that directory is the place to look.
@@ -351,6 +359,51 @@ adapters open the SQLite stores through
 `Sources/VibeBarCore/Sessions/LiveSQLiteReader.swift`, which only ever
 opens the real file `SQLITE_OPEN_READONLY` and falls back to a private
 temp-directory snapshot it deletes again.
+
+### 5.1 The local MCP server
+
+Vibe Bar exposes its own data to the user's coding agents over MCP. Code
+lives in `Sources/VibeBarCore/MCP/` (protocol, tools, transports) plus
+`Sources/VibeBarApp/MCPController.swift` (the `MCPDataSource`
+implementation over `AppEnvironment`) and
+`Sources/VibeBarApp/Views/MCPSettingsSection.swift`.
+
+**Transport.** A Unix domain socket at `~/.vibebar/mcp.sock`, mode 0600
+inside the 0700 `~/.vibebar/`, speaking newline-delimited JSON-RPC 2.0
+(protocol version `2025-06-18`). **No TCP port and no token file**: the
+filesystem is the whole authentication story, so there is no secret to
+leak and nothing reachable off this Mac. A stale socket is unlinked at
+start; `AppDelegate.applicationShouldTerminate` removes the live one, so
+the socket exists exactly while the app does.
+
+**The bridge.** The same binary run as `VibeBar --mcp-stdio` is a plain
+stdio MCP server that pumps bytes between stdin/stdout and that socket.
+`AppDelegate.applicationDidFinishLaunching` handles the flag *before* any
+UI exists — no status item, no `AppEnvironment`, no window — and the
+process exits with the pump. Missing socket ⇒ exit 1 with
+`Vibe Bar is not running (socket ~/.vibebar/mcp.sock not found). Launch
+"Vibe Bar.app" first.` on stderr. `VIBEBAR_MCP_SOCKET` overrides the path;
+it exists so tests (and a second build) can point at a temporary socket,
+and it is documented rather than hidden for that reason.
+
+**Tools.** `quota.get`, `quota.refresh`, `usage.summary`, `usage.trend`,
+`usage.requests`, `cost.snapshot`, `cost.history`, `sessions.search`,
+`sessions.list`, `status.get`, `pricing.effective`, plus the
+`vibebar://naming-spec` and `vibebar://tools` resources. The naming-spec
+resource is **generated** from `ProviderHierarchyCatalog`, `ToolType` and
+`HarnessCatalog` — never transcribe § 7.1 into it by hand, because a stale
+spec teaches a model a label that no longer exists. `MCPResourceCatalogTests`
+enforces that every harness, company and provider key appears.
+
+**Privacy.** Everything is read-only except `quota.refresh`, which is
+gated on `AppSettings.mcpServer.allowRefreshTools` and throttled to one
+forced refresh per 20 s. Credentials, cookies and organization ids are
+never projected; emails go through `EmailMasker`; `cost.*` respects
+`AppSettings.costData.privacyModeEnabled` the way `CostUsageService` does.
+When adding a tool, add its projection to `MCPDTOs.swift` rather than
+encoding a Core type directly — the DTO layer is where "what may an agent
+see" is decided, and the wire shape is camelCase, pinned by
+`MCPDTOEncodingTests`.
 
 ## 6. Home Directory (and why we no longer sandbox)
 

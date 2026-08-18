@@ -25,6 +25,7 @@ struct SettingsSidebarView: View {
         .system,
         .costData,
         .pricing,
+        .mcp,
         .remote,
         .privacy,
         .menuBar,
