@@ -103,6 +103,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// `~/.vibebar/skills.json` next to the registry it describes.
     public var skillsSyncMethod: SkillSyncMethod
 
+    /// The local MCP server: whether it listens, and whether agents reaching it
+    /// may ask for a quota refresh.
+    public var mcpServer: MCPServerSettings
+
     /// Curves the user switched **off** in the Overview's all-providers quota
     /// history chart, as `"<tool>|<accountId>|<bucketId>"`.
     ///
@@ -297,7 +301,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         menuBarColorBasis: MenuBarColorBasis = .forecast,
         preferredTerminal: PreferredTerminal = .terminal,
         sessionBodyIndexingEnabled: Bool = true,
-        skillsSyncMethod: SkillSyncMethod = .auto
+        skillsSyncMethod: SkillSyncMethod = .auto,
+        mcpServer: MCPServerSettings = .default
     ) {
         self.displayMode = displayMode
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -344,6 +349,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.preferredTerminal = preferredTerminal
         self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
         self.skillsSyncMethod = skillsSyncMethod
+        self.mcpServer = mcpServer
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
@@ -404,6 +410,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case preferredTerminal
         case sessionBodyIndexingEnabled
         case skillsSyncMethod
+        case mcpServer
     }
 
     public init(from decoder: Decoder) throws {
@@ -584,6 +591,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.skillsSyncMethod =
             (try? c.decodeIfPresent(SkillSyncMethod.self, forKey: .skillsSyncMethod))
             ?? Self.default.skillsSyncMethod
+        // A settings file written before the MCP server existed enables it,
+        // which is the point: the one-line client setup only works if the
+        // socket is already there when the agent first looks.
+        self.mcpServer =
+            (try? c.decodeIfPresent(MCPServerSettings.self, forKey: .mcpServer))
+            ?? Self.default.mcpServer
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -635,6 +648,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(preferredTerminal, forKey: .preferredTerminal)
         try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
         try c.encode(skillsSyncMethod, forKey: .skillsSyncMethod)
+        try c.encode(mcpServer, forKey: .mcpServer)
     }
 
     public func menuBarItem(_ kind: MenuBarItemKind) -> MenuBarItemSettings {
@@ -1319,5 +1333,48 @@ public struct CostDataSettings: Codable, Equatable, Sendable {
 
     public static func isUnlimitedRetention(_ days: Int) -> Bool {
         normalizedRetentionDays(days) == unlimitedRetentionDays
+    }
+}
+
+/// The local MCP server's two switches.
+///
+/// Both default to **on**, which is a deliberate choice rather than an
+/// oversight. The whole point of the feature is that configuring a client is
+/// one line and needs no trip through Settings first, and the exposure is
+/// bounded by what the socket already is: a 0600 file inside a 0700 directory,
+/// reachable only by processes already running as this user, never bound to a
+/// network interface, and present only while the app is running. Turning
+/// `enabled` off removes the socket immediately.
+public struct MCPServerSettings: Codable, Equatable, Sendable {
+    public static let `default` = MCPServerSettings()
+
+    /// Whether the app listens on `~/.vibebar/mcp.sock` at all.
+    public var enabled: Bool
+    /// Whether `quota.refresh` may actually trigger a provider fetch. With it
+    /// off the tool still answers — it reports that refreshing is disabled —
+    /// so an agent learns the numbers are cached instead of silently believing
+    /// it just refreshed them.
+    public var allowRefreshTools: Bool
+
+    public init(enabled: Bool = true, allowRefreshTools: Bool = true) {
+        self.enabled = enabled
+        self.allowRefreshTools = allowRefreshTools
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, allowRefreshTools
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? Self.default.enabled
+        self.allowRefreshTools =
+            try c.decodeIfPresent(Bool.self, forKey: .allowRefreshTools) ?? Self.default.allowRefreshTools
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(allowRefreshTools, forKey: .allowRefreshTools)
     }
 }
