@@ -265,6 +265,7 @@ final class SkillsManagerModel: ObservableObject {
     /// Stops an in-flight scan. The service returns what it already had, so
     /// the results list keeps any repository that finished first.
     func cancelDiscover() {
+        discoverGeneration += 1
         discoverTask?.cancel()
     }
 
@@ -287,6 +288,7 @@ final class SkillsManagerModel: ObservableObject {
     func discoverSheetDismissed() {
         searchTask?.cancel()
         searchTask = nil
+        discoverGeneration += 1
         discoverTask?.cancel()
         discoverTask = nil
         discoverPhase = nil
