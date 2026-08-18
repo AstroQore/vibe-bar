@@ -195,12 +195,13 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
 
     /// Count of primary + branch groups the mini window will render
     /// for `tool` given the selected bucket ids. Mirrors
-    /// `MiniBranchCell.groupKey` so a per-tool sizing decision in the
-    /// AppKit controller stays in sync with the SwiftUI layout
-    /// without having to query the live quota. A primary bucket
-    /// (anything that doesn't match a known branch-group prefix)
-    /// counts as one extra group. Used by `stableContentSize` to
-    /// reserve exactly the right number of `groupDividerReserve` gaps.
+    /// `MiniBranchCell.groupKey` so a sizing decision in the AppKit
+    /// controller stays in sync with the SwiftUI layout without having
+    /// to query the live quota. A primary bucket (anything that doesn't
+    /// match a known branch-group prefix) counts as one extra group.
+    /// `stableContentSize` calls it once per L2 SubProvider — the tier
+    /// that owns the groups — to reserve exactly the right number of
+    /// intra-SubProvider gaps.
     static func miniGroupCount(tool: ToolType, selectedBucketIds: [String]) -> Int {
         var keys: Set<String> = []
         var hasPrimary = false
@@ -260,76 +261,72 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         let displayMode = mini.displayMode
         let cellWidth: CGFloat
         let cellSpacing: CGFloat
-        let groupDividerReserve: CGFloat
-        let providerSpacing: CGFloat
+        /// Gap between quota groups inside one SubProvider — spacing only,
+        /// since PR "three-tier" removed the rule at that depth.
+        let groupSpacing: CGFloat
+        /// Gap between two SubProviders: the stack's spacing on both sides of
+        /// the `MiniGroupDivider` plus the hairline itself.
+        let subProviderSpacing: CGFloat
+        /// Same arithmetic for the divider between two company columns.
+        let companySpacing: CGFloat
         let horizontalPadding: CGFloat
         let closeButtonReserve: CGFloat
         let minWidth: CGFloat
         let height: CGFloat
+        let dividerThickness: CGFloat = 0.75
         switch displayMode {
         case .regular:
             cellWidth = 62
             cellSpacing = 8
-            groupDividerReserve = 16.5
-            providerSpacing = 14.75
+            groupSpacing = 14
+            subProviderSpacing = 2 * 10 + dividerThickness
+            companySpacing = 2 * 14 + dividerThickness
             horizontalPadding = 28
             closeButtonReserve = 24
             minWidth = 240
-            height = 166
+            height = 181
         case .compact:
             cellWidth = 40
             cellSpacing = 4
-            groupDividerReserve = 10
-            providerSpacing = 8.75
+            groupSpacing = 9
+            subProviderSpacing = 2 * 6 + dividerThickness
+            companySpacing = 2 * 8 + dividerThickness
             horizontalPadding = 16
             closeButtonReserve = 20
             minWidth = 156
-            height = 134
+            height = 146
         }
 
-        let selected = mini.fieldIds(for: displayMode)
-        var bucketsByTool: [ToolType: [String]] = [:]
-        for fieldId in selected {
-            guard
-                let field = MenuBarFieldCatalog.field(id: fieldId),
-                field.tool.supportsDedicatedCard
-            else { continue }
-            bucketsByTool[field.tool, default: []].append(field.bucketId)
-        }
-
-        // Sizing now mirrors the L2-grouped layout in
-        // `MiniWindowProviderLayout`: consecutive tools sharing the
-        // same L1 vendorName (Gemini Web + AntiGravity → "Google AI",
-        // Grok + Cursor → "SpaceXAI")
-        // share one company column with an internal divider between
-        // SubProviders. Group dividers come from the actual primary +
-        // branch-group count derived from selected bucket ids; the
-        // old `min(count - 1, 4)` heuristic over-counted dividers for
-        // tools with many primary cells (Codex 4 cells reserved space
-        // for 3 dividers when there's really only 1), which left
-        // visible empty padding on the L/R edges of the panel.
+        // Sizing mirrors the three-tier layout in
+        // `MiniWindowProviderLayout` exactly, off the same Core grouping the
+        // SwiftUI side renders: one column per L1 company (Gemini Web +
+        // AntiGravity → "Google AI"; Grok + Cursor + Grok Bot → "SpaceXAI"),
+        // one labelled section per L2 SubProvider inside it, and the L3 quota
+        // groups side by side within a section. Cells only take the cell
+        // spacing *inside* their own group, which is why the group count is
+        // subtracted rather than one.
+        let companies = MenuBarFieldCatalog.subProviderGroups(
+            for: ToolType.dedicatedCardProviders,
+            selectedFieldIds: Set(mini.fieldIds(for: displayMode))
+        )
         var width: CGFloat = 0
-        var visibleProductGroupCount = 0
-        var lastCompanyName: String? = nil
-        for tool in ToolType.dedicatedCardProviders {
-            guard let bucketIds = bucketsByTool[tool], !bucketIds.isEmpty else { continue }
-            let cellCount = bucketIds.count
-            width += CGFloat(cellCount) * cellWidth
-            width += CGFloat(max(0, cellCount - 1)) * cellSpacing
-            let groupCount = Self.miniGroupCount(tool: tool, selectedBucketIds: bucketIds)
-            width += CGFloat(max(0, groupCount - 1)) * groupDividerReserve
-            if lastCompanyName == tool.vendorName {
-                // Same L1 company as the previous tool — adds one
-                // intra-group divider between SubProvider columns.
-                width += groupDividerReserve
-            } else {
-                visibleProductGroupCount += 1
-                lastCompanyName = tool.vendorName
+        for company in companies {
+            for subProvider in company.subProviders {
+                let cellCount = subProvider.fields.count
+                let groupCount = max(
+                    1,
+                    Self.miniGroupCount(
+                        tool: subProvider.tool,
+                        selectedBucketIds: subProvider.bucketIds
+                    )
+                )
+                width += CGFloat(cellCount) * cellWidth
+                width += CGFloat(max(0, cellCount - groupCount)) * cellSpacing
+                width += CGFloat(groupCount - 1) * groupSpacing
             }
+            width += CGFloat(max(0, company.subProviders.count - 1)) * subProviderSpacing
         }
-        if visibleProductGroupCount > 1 {
-            width += CGFloat(visibleProductGroupCount - 1) * providerSpacing
-        }
+        width += CGFloat(max(0, companies.count - 1)) * companySpacing
         width += horizontalPadding + closeButtonReserve
 
         let screenMaxWidth = (NSScreen.main?.visibleFrame.width ?? 900) - 48
