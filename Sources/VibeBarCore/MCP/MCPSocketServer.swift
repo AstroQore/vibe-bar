@@ -353,6 +353,13 @@ private final class Connection: @unchecked Sendable {
     private var source: DispatchSourceRead?
     private var buffer = Data()
     private var isClosed = false
+    /// Requests handed to `server.handle` whose reply has not been written yet.
+    private var inFlight = 0
+    /// The peer half-closed its side (`shutdown(SHUT_WR)` or EOF). We stop
+    /// reading, but keep the descriptor open until every in-flight reply is
+    /// on the wire — a scripted client that writes `initialize` +
+    /// `tools/list` and closes stdin must still get both answers.
+    private var peerFinished = false
 
     var onClose: (@Sendable (Connection) -> Void)?
 
@@ -365,7 +372,6 @@ private final class Connection: @unchecked Sendable {
     func resume() {
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.readAvailable() }
-        source.setCancelHandler { [fd] in Darwin.close(fd) }
         self.source = source
         source.resume()
     }
@@ -374,13 +380,25 @@ private final class Connection: @unchecked Sendable {
         queue.async { [weak self] in self?.closeOnQueue() }
     }
 
+    /// Stop listening for input without closing the descriptor, so replies
+    /// still in flight can be written. `closeOnQueue` owns the descriptor.
+    private func stopReading() {
+        source?.cancel()
+        source = nil
+    }
+
     private func closeOnQueue() {
         guard !isClosed else { return }
         isClosed = true
-        source?.cancel()
-        source = nil
+        stopReading()
+        Darwin.close(fd)
         buffer = Data()
         onClose?(self)
+    }
+
+    /// Close once the peer is done *and* nothing is still being answered.
+    private func closeIfDrained() {
+        if peerFinished, inFlight == 0 { closeOnQueue() }
     }
 
     private func readAvailable() {
@@ -394,8 +412,11 @@ private final class Connection: @unchecked Sendable {
                 continue
             }
             if count == 0 {
-                // Orderly shutdown by the peer.
-                closeOnQueue()
+                // Orderly shutdown by the peer: finish what is in flight
+                // first. Stop the read source now, or EOF keeps it firing.
+                peerFinished = true
+                stopReading()
+                closeIfDrained()
                 return
             }
             if errno == EINTR { continue }
@@ -433,9 +454,15 @@ private final class Connection: @unchecked Sendable {
 
     private func dispatch(line: Data) {
         let server = self.server
+        inFlight += 1
         Task { [weak self] in
-            guard let reply = await server.handle(line: line) else { return }
-            self?.queue.async { [weak self] in self?.write(reply) }
+            let reply = await server.handle(line: line)
+            self?.queue.async { [weak self] in
+                guard let self else { return }
+                if let reply { self.write(reply) }
+                self.inFlight -= 1
+                self.closeIfDrained()
+            }
         }
     }
 

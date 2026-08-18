@@ -131,6 +131,27 @@ final class MCPSocketServerTests: XCTestCase {
         XCTAssertTrue(names.contains("quota.get"), "\(names)")
     }
 
+    /// A scripted client (`printf ... | VibeBar --mcp-stdio`) writes its
+    /// requests, half-closes, and expects every answer before the server
+    /// hangs up. Regression for the Dev.33 report where the replies were
+    /// dropped because EOF closed the connection while they were in flight.
+    func testRepliesInFlightAreDeliveredAfterThePeerHalfCloses() throws {
+        _ = try startServer()
+        let client = try MCPSocketTestClient(path: socketPath)
+        defer { client.close() }
+
+        try client.send(MCPTestSupport.line(id: 1, method: "initialize"))
+        try client.send(MCPTestSupport.line(id: nil, method: "notifications/initialized"))
+        try client.send(MCPTestSupport.line(id: 2, method: "tools/list"))
+        client.halfClose()
+
+        let first = try client.readLine()
+        let second = try client.readLine()
+        XCTAssertEqual(Set([first["id"]?.intValue, second["id"]?.intValue]), [1, 2])
+        // …and then the server closes on its own.
+        XCTAssertTrue(client.readUntilEOF(timeoutSeconds: 5))
+    }
+
     func testAToolCallRoundTripsOverTheSocket() throws {
         _ = try startServer()
         let client = try MCPSocketTestClient(path: socketPath)
@@ -231,6 +252,23 @@ final class MCPSocketTestClient {
 
     func close() {
         Darwin.close(fd)
+    }
+
+    /// Signal EOF to the server while keeping our read side open.
+    func halfClose() {
+        Darwin.shutdown(fd, SHUT_WR)
+    }
+
+    /// True when the server closes the connection within the timeout.
+    func readUntilEOF(timeoutSeconds: Int) -> Bool {
+        var timeout = timeval(tv_sec: timeoutSeconds, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        var chunk = [UInt8](repeating: 0, count: 1_024)
+        while true {
+            let count = chunk.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
+            if count == 0 { return true }
+            if count < 0 { return false }
+        }
     }
 
     func send(_ line: Data) throws {
