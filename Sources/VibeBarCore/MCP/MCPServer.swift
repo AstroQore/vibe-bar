@@ -1,0 +1,651 @@
+import Foundation
+
+// MARK: - Vocabulary
+
+public enum MCPUsageGrouping: String, Sendable, CaseIterable {
+    case harness
+    case provider
+    case model
+}
+
+/// The three windows `cost.history` offers, mapped onto `CostTimeframe`.
+/// Deliberately narrower than `CostTimeframe`: "today" and "yesterday" are
+/// one- and two-point series that `cost.snapshot` already answers better.
+public enum MCPCostHistoryTimeframe: String, Sendable, CaseIterable {
+    case sevenDays = "7d"
+    case thirtyDays = "30d"
+    case all
+
+    public var timeframe: CostTimeframe {
+        switch self {
+        case .sevenDays:  return .week
+        case .thirtyDays: return .month
+        case .all:        return .all
+        }
+    }
+}
+
+/// A tool that ran and could not answer. Surfaces as an `isError` result the
+/// model can read and react to, not as a JSON-RPC error the client swallows.
+public struct MCPToolFailure: Error, Sendable, Equatable {
+    public let message: String
+    public init(_ message: String) { self.message = message }
+}
+
+// MARK: - Data source
+
+/// Everything the MCP surface needs from the running app.
+///
+/// Core owns the protocol shape and every projection; the App supplies one
+/// implementation over `AppEnvironment`. That split is what lets the whole
+/// tool surface be tested against a fixture without a menu bar, a home
+/// directory, or a network.
+public protocol MCPDataSource: AnyObject, Sendable {
+    func serverInfo() async -> MCPServerInfo
+
+    func quotaAccounts(tools: [ToolType]?, includeForecast: Bool) async throws -> [MCPQuotaAccountDTO]
+    func refreshQuota(tools: [ToolType]?, force: Bool) async throws -> MCPRefreshResultDTO
+
+    func usageSummary(_ filter: UsageQueryFilter) async throws -> UsageSummaryMetrics
+    func usageGroupRows(_ filter: UsageQueryFilter, groupBy: MCPUsageGrouping) async throws -> [MCPUsageGroupRowDTO]
+    func usageTrend(_ filter: UsageQueryFilter, bucket: UsageTrendBucket?) async throws -> UsageTrendSeries
+    func usageRequests(
+        _ filter: UsageQueryFilter,
+        after cursor: UsageRequestCursor?,
+        pageSize: Int
+    ) async throws -> UsageRequestPage
+
+    func costSnapshots(tools: [ToolType]?) async throws -> MCPCostSnapshotsDTO
+    func costHistory(tool: ToolType, timeframe: MCPCostHistoryTimeframe) async throws -> CostHistory
+
+    func searchSessions(
+        query: String,
+        providers: [SessionProvider]?,
+        harnesses: [Harness]?,
+        limit: Int
+    ) async throws -> [SessionSearchHit]
+    func listSessions(
+        providers: [SessionProvider]?,
+        harnesses: [Harness]?,
+        since: Date?,
+        offset: Int,
+        limit: Int
+    ) async throws -> SessionSummaryPage
+
+    func serviceStatus(tools: [ToolType]?) async throws -> MCPServiceStatusDTO
+    func effectivePricing() async throws -> [EffectiveModelPricingRow]
+}
+
+// MARK: - Server
+
+/// Dispatches one JSON-RPC message at a time against an `MCPDataSource`.
+///
+/// Stateless apart from the forced-refresh throttle, so a second client
+/// connecting does not need a second server — `MCPSocketServer` hands every
+/// connection to the same instance.
+public final class MCPServer: @unchecked Sendable {
+    /// The MCP revision this server implements. Clients that ask for a
+    /// different one still get this; the spec's rule is that the server
+    /// answers with what it actually speaks and the client decides.
+    public static let protocolVersion = "2025-06-18"
+
+    /// Floor between two *forced* refreshes. Stale-only refreshes are already
+    /// self-limiting — they no-op when nothing is stale — but `force: true`
+    /// hits every provider's API, and an agent in a retry loop would otherwise
+    /// turn the user's own tooling into a rate-limit problem.
+    public static let forcedRefreshMinimumInterval: TimeInterval = 20
+
+    private let dataSource: any MCPDataSource
+    private let now: @Sendable () -> Date
+    private let lock = NSLock()
+    private var lastForcedRefreshAt: Date?
+
+    public init(dataSource: any MCPDataSource, now: @escaping @Sendable () -> Date = { Date() }) {
+        self.dataSource = dataSource
+        self.now = now
+    }
+
+    // MARK: Entry points
+
+    /// Handle one framed line. Returns the framed reply, or `nil` for a
+    /// notification (which must produce no output at all).
+    public func handle(line: Data) async -> Data? {
+        let request: MCPRequest
+        do {
+            request = try MCPRequest.decode(line: line)
+        } catch let error as MCPRPCError {
+            return MCPResponse(id: .null, error: error).framed()
+        } catch {
+            return MCPResponse(id: .null, error: .parseError()).framed()
+        }
+        return await respond(to: request)?.framed()
+    }
+
+    public func respond(to request: MCPRequest) async -> MCPResponse? {
+        guard let id = request.id else {
+            // Notifications are fire-and-forget. `notifications/initialized`
+            // is the only one that matters today; unknown ones are ignored
+            // rather than answered, because answering a notification is
+            // itself a protocol violation.
+            return nil
+        }
+        do {
+            return MCPResponse(id: id, result: try await result(for: request))
+        } catch let error as MCPRPCError {
+            return MCPResponse(id: id, error: error)
+        } catch {
+            return MCPResponse(id: id, error: .internalError(SafeLog.sanitize(error.localizedDescription)))
+        }
+    }
+
+    private func result(for request: MCPRequest) async throws -> MCPJSON {
+        switch request.method {
+        case "initialize":
+            return await initializeResult()
+        case "ping":
+            return .object([:])
+        case "tools/list":
+            return .object(["tools": .array(MCPToolCatalog.all.map(\.json))])
+        case "resources/list":
+            return .object(["resources": .array(MCPResourceCatalog.all.map(\.json))])
+        case "resources/templates/list":
+            return .object(["resourceTemplates": .array([])])
+        case "prompts/list":
+            return .object(["prompts": .array([])])
+        case "resources/read":
+            return try readResource(request.params)
+        case "tools/call":
+            return try await callTool(request.params)
+        default:
+            throw MCPRPCError.methodNotFound(request.method)
+        }
+    }
+
+    private func initializeResult() async -> MCPJSON {
+        let info = await dataSource.serverInfo()
+        return .object([
+            "protocolVersion": .string(Self.protocolVersion),
+            "capabilities": .object([
+                "tools": .object(["listChanged": .bool(false)]),
+                "resources": .object(["listChanged": .bool(false), "subscribe": .bool(false)])
+            ]),
+            "serverInfo": .object([
+                "name": .string(info.name),
+                "version": .string(info.version)
+            ]),
+            "instructions": .string(
+                "Vibe Bar reports this Mac's AI subscription quota, token usage, spend and local "
+                    + "agent sessions. Read the vibebar://naming-spec resource before comparing "
+                    + "providers: quota answers use company / SubProvider names, usage answers use "
+                    + "harness names, and the two must never be mixed in one list."
+            )
+        ])
+    }
+
+    // MARK: Resources
+
+    private func readResource(_ params: MCPJSON?) throws -> MCPJSON {
+        guard let uri = params?["uri"]?.stringValue, !uri.isEmpty else {
+            throw MCPRPCError.invalidParams("resources/read needs a string 'uri'.")
+        }
+        guard let contents = MCPResourceCatalog.contents(of: uri) else {
+            throw MCPRPCError.invalidParams("Unknown resource '\(uri)'.")
+        }
+        return .object([
+            "contents": .array([
+                .object([
+                    "uri": .string(uri),
+                    "mimeType": .string(contents.mimeType),
+                    "text": .string(contents.text)
+                ])
+            ])
+        ])
+    }
+
+    // MARK: Tools
+
+    private func callTool(_ params: MCPJSON?) async throws -> MCPJSON {
+        guard let name = params?["name"]?.stringValue, !name.isEmpty else {
+            throw MCPRPCError.invalidParams("tools/call needs a string 'name'.")
+        }
+        guard let tool = MCPToolCatalog.tool(named: name) else {
+            throw MCPRPCError.invalidParams("Unknown tool '\(name)'.")
+        }
+        let arguments = try MCPArguments(tool: tool, raw: params?["arguments"])
+        do {
+            return try Self.successResult(try await invoke(tool: name, arguments: arguments))
+        } catch let failure as MCPToolFailure {
+            return Self.errorResult(failure.message)
+        } catch let error as MCPRPCError {
+            // Argument problems stay JSON-RPC errors: the client, not the
+            // model, is the one that can fix a malformed call.
+            throw error
+        } catch {
+            return Self.errorResult(SafeLog.sanitize(error.localizedDescription))
+        }
+    }
+
+    private func invoke(tool: String, arguments: MCPArguments) async throws -> any Encodable {
+        switch tool {
+        case "quota.get":         return try await quotaGet(arguments)
+        case "quota.refresh":     return try await quotaRefresh(arguments)
+        case "usage.summary":     return try await usageSummary(arguments)
+        case "usage.trend":       return try await usageTrend(arguments)
+        case "usage.requests":    return try await usageRequests(arguments)
+        case "cost.snapshot":     return try await costSnapshot(arguments)
+        case "cost.history":      return try await costHistory(arguments)
+        case "sessions.search":   return try await sessionsSearch(arguments)
+        case "sessions.list":     return try await sessionsList(arguments)
+        case "status.get":        return try await statusGet(arguments)
+        case "pricing.effective": return try await pricingEffective(arguments)
+        default:                  throw MCPRPCError.invalidParams("Unknown tool '\(tool)'.")
+        }
+    }
+
+    // MARK: Tool implementations
+
+    private func quotaGet(_ arguments: MCPArguments) async throws -> MCPQuotaSnapshotDTO {
+        let tools = try arguments.optionalEnumList("tools", ToolType.self)
+        let includeForecast = try arguments.optionalBool("includeForecast") ?? false
+        let accounts = try await dataSource.quotaAccounts(tools: tools, includeForecast: includeForecast)
+        return MCPQuotaSnapshotDTO(generatedAt: now(), accounts: accounts)
+    }
+
+    private func quotaRefresh(_ arguments: MCPArguments) async throws -> MCPRefreshResultDTO {
+        let tools = try arguments.optionalEnumList("tools", ToolType.self)
+        let force = try arguments.optionalBool("force") ?? false
+        if force, let wait = throttledForcedRefreshSeconds() {
+            return MCPRefreshResultDTO(
+                triggered: false,
+                mode: "forced",
+                message: "A forced refresh ran less than "
+                    + "\(Int(Self.forcedRefreshMinimumInterval))s ago. Try again in \(wait)s, "
+                    + "or call quota.get — the cached numbers are almost certainly current."
+            )
+        }
+        let result = try await dataSource.refreshQuota(tools: tools, force: force)
+        if force, result.triggered { markForcedRefresh() }
+        return result
+    }
+
+    private func usageSummary(_ arguments: MCPArguments) async throws -> MCPUsageSummaryDTO {
+        let filter = try arguments.usageFilter(now: now())
+        let grouping = try arguments.optionalEnum("groupBy", MCPUsageGrouping.self)
+        let metrics = try await dataSource.usageSummary(filter)
+        let rows = grouping == nil
+            ? nil
+            : try await dataSource.usageGroupRows(filter, groupBy: grouping!)
+        return MCPUsageSummaryDTO(
+            generatedAt: now(),
+            range: MCPRangeDTO(from: filter.range.start, to: filter.range.end),
+            filters: filter.mcpFilters,
+            metrics: metrics,
+            groupBy: grouping?.rawValue,
+            rows: rows
+        )
+    }
+
+    private func usageTrend(_ arguments: MCPArguments) async throws -> MCPUsageTrendDTO {
+        let filter = try arguments.usageFilter(now: now())
+        let bucket = try arguments.optionalEnum("bucket", UsageTrendBucket.self)
+        let series = try await dataSource.usageTrend(filter, bucket: bucket)
+        return MCPUsageTrendDTO(
+            generatedAt: now(),
+            range: MCPRangeDTO(from: filter.range.start, to: filter.range.end),
+            filters: filter.mcpFilters,
+            series: series
+        )
+    }
+
+    private func usageRequests(_ arguments: MCPArguments) async throws -> MCPUsageRequestsDTO {
+        let filter = try arguments.usageFilter(now: now())
+        let pageSize = try arguments.optionalInt("pageSize", minimum: 1, maximum: 200) ?? 50
+        var cursor: UsageRequestCursor?
+        if let raw = try arguments.optionalString("cursor") {
+            guard let decoded = MCPCursorCoding.decode(raw) else {
+                throw MCPRPCError.invalidParams(
+                    "'cursor' is not a cursor this server issued. Pass back a 'nextCursor' verbatim, or omit it."
+                )
+            }
+            cursor = decoded
+        }
+        let page = try await dataSource.usageRequests(filter, after: cursor, pageSize: pageSize)
+        return MCPUsageRequestsDTO(
+            generatedAt: now(),
+            range: MCPRangeDTO(from: filter.range.start, to: filter.range.end),
+            filters: filter.mcpFilters,
+            page: page
+        )
+    }
+
+    private func costSnapshot(_ arguments: MCPArguments) async throws -> MCPCostSnapshotsDTO {
+        let tools = try arguments.optionalEnumList("tools", ToolType.self)
+        return try await dataSource.costSnapshots(tools: tools)
+    }
+
+    private func costHistory(_ arguments: MCPArguments) async throws -> MCPCostHistoryDTO {
+        let tool = try arguments.requiredEnum("tool", ToolType.self)
+        let timeframe = try arguments.optionalEnum("timeframe", MCPCostHistoryTimeframe.self) ?? .thirtyDays
+        let history = try await dataSource.costHistory(tool: tool, timeframe: timeframe)
+        return MCPCostHistoryDTO(timeframe: timeframe.rawValue, history: history)
+    }
+
+    private func sessionsSearch(_ arguments: MCPArguments) async throws -> MCPSessionListDTO {
+        let query = try arguments.requiredString("query")
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw MCPRPCError.invalidParams("'query' must not be blank.")
+        }
+        let limit = try arguments.optionalInt("limit", minimum: 1, maximum: 50) ?? 20
+        let hits = try await dataSource.searchSessions(
+            query: query,
+            providers: try arguments.optionalEnumList("providers", SessionProvider.self),
+            harnesses: try arguments.optionalEnumList("harnesses", Harness.self),
+            limit: limit
+        )
+        return MCPSessionListDTO(
+            generatedAt: now(),
+            sessions: hits.map {
+                MCPSessionSummaryDTO(summary: $0.summary, snippet: $0.snippet, matchedSeq: $0.matchedSeq)
+            },
+            totalCount: nil,
+            offset: nil,
+            limit: limit
+        )
+    }
+
+    private func sessionsList(_ arguments: MCPArguments) async throws -> MCPSessionListDTO {
+        let offset = try arguments.optionalInt("offset", minimum: 0, maximum: 1_000_000) ?? 0
+        let limit = try arguments.optionalInt("limit", minimum: 1, maximum: 100) ?? 50
+        let page = try await dataSource.listSessions(
+            providers: try arguments.optionalEnumList("providers", SessionProvider.self),
+            harnesses: try arguments.optionalEnumList("harnesses", Harness.self),
+            since: try arguments.optionalDate("since"),
+            offset: offset,
+            limit: limit
+        )
+        return MCPSessionListDTO(
+            generatedAt: now(),
+            sessions: page.summaries.map { MCPSessionSummaryDTO(summary: $0) },
+            totalCount: page.totalCount,
+            offset: page.offset,
+            limit: page.limit
+        )
+    }
+
+    private func statusGet(_ arguments: MCPArguments) async throws -> MCPServiceStatusDTO {
+        try await dataSource.serviceStatus(tools: try arguments.optionalEnumList("tools", ToolType.self))
+    }
+
+    private func pricingEffective(_ arguments: MCPArguments) async throws -> MCPPricingDTO {
+        let family = try arguments.optionalEnum("provider", PricingProviderFamily.self)
+        let needle = try arguments.optionalString("model")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let rows = try await dataSource.effectivePricing()
+            .filter { row in family == nil || row.provider == family }
+            .filter { row in
+                guard let needle else { return true }
+                return row.model.lowercased().contains(needle)
+            }
+        return MCPPricingDTO(generatedAt: now(), rows: rows.map(MCPPricingRowDTO.init(row:)))
+    }
+
+    // MARK: Forced-refresh throttle
+
+    /// Seconds still to wait, or `nil` when a forced refresh may run.
+    private func throttledForcedRefreshSeconds() -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let last = lastForcedRefreshAt else { return nil }
+        let elapsed = now().timeIntervalSince(last)
+        guard elapsed < Self.forcedRefreshMinimumInterval else { return nil }
+        return max(1, Int((Self.forcedRefreshMinimumInterval - elapsed).rounded(.up)))
+    }
+
+    private func markForcedRefresh() {
+        lock.lock()
+        lastForcedRefreshAt = now()
+        lock.unlock()
+    }
+
+    // MARK: Result shaping
+
+    /// Every tool answers the same way: pretty JSON in `content` for the model
+    /// to read, and the identical object in `structuredContent` for a client
+    /// that parses. One encode feeds both, so they cannot drift.
+    static func successResult(_ payload: any Encodable) throws -> MCPJSON {
+        let text = try MCPJSON.prettyText(AnyEncodableBox(payload))
+        let structured = try MCPJSON.encoding(AnyEncodableBox(payload))
+        return .object([
+            "content": .array([.object(["type": .string("text"), "text": .string(text)])]),
+            "structuredContent": structured,
+            "isError": .bool(false)
+        ])
+    }
+
+    static func errorResult(_ message: String) -> MCPJSON {
+        .object([
+            "content": .array([.object(["type": .string("text"), "text": .string(message)])]),
+            "isError": .bool(true)
+        ])
+    }
+}
+
+/// Existential `Encodable` cannot be handed to `JSONEncoder` directly.
+private struct AnyEncodableBox: Encodable {
+    let wrapped: any Encodable
+
+    init(_ wrapped: any Encodable) { self.wrapped = wrapped }
+
+    func encode(to encoder: Encoder) throws {
+        try wrapped.encode(to: encoder)
+    }
+}
+
+// MARK: - Argument parsing
+
+/// Typed access to one `tools/call` argument object.
+///
+/// Every failure here is `invalidParams` rather than a tool error, because
+/// the caller sent something the schema already ruled out — an agent fixes
+/// that by re-reading the schema, not by reasoning about the answer.
+struct MCPArguments {
+    private let toolName: String
+    private let fields: [String: MCPJSON]
+
+    init(tool: MCPTool, raw: MCPJSON?) throws {
+        self.toolName = tool.name
+        switch raw {
+        case .none, .some(.null):
+            self.fields = [:]
+        case let .some(value):
+            guard let object = value.objectValue else {
+                throw MCPRPCError.invalidParams("'arguments' for \(tool.name) must be an object.")
+            }
+            self.fields = object
+        }
+        let allowed = Set(tool.inputSchema["properties"]?.objectValue?.keys.map { $0 } ?? [])
+        let unknown = fields.keys.filter { !allowed.contains($0) }.sorted()
+        guard unknown.isEmpty else {
+            throw MCPRPCError.invalidParams(
+                "\(tool.name) does not accept \(unknown.map { "'\($0)'" }.joined(separator: ", "))."
+                    + " Accepted: \(allowed.sorted().map { "'\($0)'" }.joined(separator: ", "))."
+            )
+        }
+    }
+
+    private func present(_ key: String) -> MCPJSON? {
+        guard let value = fields[key], !value.isNull else { return nil }
+        return value
+    }
+
+    func optionalString(_ key: String) throws -> String? {
+        guard let value = present(key) else { return nil }
+        guard let string = value.stringValue else {
+            throw MCPRPCError.invalidParams("\(toolName): '\(key)' must be a string.")
+        }
+        return string
+    }
+
+    func requiredString(_ key: String) throws -> String {
+        guard let value = try optionalString(key) else {
+            throw MCPRPCError.invalidParams("\(toolName): '\(key)' is required.")
+        }
+        return value
+    }
+
+    func optionalBool(_ key: String) throws -> Bool? {
+        guard let value = present(key) else { return nil }
+        guard let flag = value.boolValue else {
+            throw MCPRPCError.invalidParams("\(toolName): '\(key)' must be true or false.")
+        }
+        return flag
+    }
+
+    func optionalInt(_ key: String, minimum: Int, maximum: Int) throws -> Int? {
+        guard let value = present(key) else { return nil }
+        guard let number = value.intValue else {
+            throw MCPRPCError.invalidParams("\(toolName): '\(key)' must be a whole number.")
+        }
+        guard number >= minimum, number <= maximum else {
+            throw MCPRPCError.invalidParams(
+                "\(toolName): '\(key)' must be between \(minimum) and \(maximum); got \(number)."
+            )
+        }
+        return number
+    }
+
+    func optionalDate(_ key: String) throws -> Date? {
+        guard let raw = try optionalString(key) else { return nil }
+        guard let date = MCPDateParsing.parse(raw) else {
+            throw MCPRPCError.invalidParams(
+                "\(toolName): '\(key)' must be an ISO-8601 instant (2026-08-01 or 2026-08-01T09:30:00Z); got '\(raw)'."
+            )
+        }
+        return date
+    }
+
+    func requiredEnum<T: RawRepresentable & CaseIterable>(
+        _ key: String,
+        _ type: T.Type
+    ) throws -> T where T.RawValue == String {
+        guard let value = try optionalEnum(key, type) else {
+            throw MCPRPCError.invalidParams("\(toolName): '\(key)' is required.")
+        }
+        return value
+    }
+
+    func optionalEnum<T: RawRepresentable & CaseIterable>(
+        _ key: String,
+        _ type: T.Type
+    ) throws -> T? where T.RawValue == String {
+        guard let raw = try optionalString(key) else { return nil }
+        guard let value = T(rawValue: raw) else {
+            throw MCPRPCError.invalidParams(
+                "\(toolName): '\(key)' must be one of "
+                    + "\(T.allCases.map { "'\($0.rawValue)'" }.joined(separator: ", ")); got '\(raw)'."
+            )
+        }
+        return value
+    }
+
+    /// A list filter. An explicitly empty list stays empty rather than
+    /// collapsing to `nil`: the ledger reads that as "nothing matches", and
+    /// silently widening it to "everything" would answer a question nobody
+    /// asked.
+    func optionalEnumList<T: RawRepresentable & CaseIterable>(
+        _ key: String,
+        _ type: T.Type
+    ) throws -> [T]? where T.RawValue == String {
+        guard let value = present(key) else { return nil }
+        guard let raws = value.stringListValue else {
+            throw MCPRPCError.invalidParams("\(toolName): '\(key)' must be an array of strings.")
+        }
+        var out: [T] = []
+        for raw in raws {
+            guard let parsed = T(rawValue: raw) else {
+                throw MCPRPCError.invalidParams(
+                    "\(toolName): '\(key)' contains '\(raw)', which is not one of "
+                        + "\(T.allCases.map { "'\($0.rawValue)'" }.joined(separator: ", "))."
+                )
+            }
+            out.append(parsed)
+        }
+        return out
+    }
+
+    func optionalStringList(_ key: String) throws -> [String]? {
+        guard let value = present(key) else { return nil }
+        guard let raws = value.stringListValue else {
+            throw MCPRPCError.invalidParams("\(toolName): '\(key)' must be an array of strings.")
+        }
+        return raws
+    }
+
+    /// `from` / `to` / `days` collapsed into the half-open interval every
+    /// ledger query takes, plus the three list filters.
+    func usageFilter(now: Date) throws -> UsageQueryFilter {
+        let end = try optionalDate("to") ?? now
+        let start: Date
+        if let from = try optionalDate("from") {
+            start = from
+        } else {
+            let days = try optionalInt("days", minimum: 1, maximum: 3_650) ?? 30
+            start = end.addingTimeInterval(-Double(days) * 86_400)
+        }
+        guard start < end else {
+            throw MCPRPCError.invalidParams(
+                "\(toolName): the window is empty — 'from' must be earlier than 'to'."
+            )
+        }
+        return UsageQueryFilter(
+            range: DateInterval(start: start, end: end),
+            tools: try optionalEnumList("tools", ToolType.self),
+            harnesses: try optionalEnumList("harnesses", Harness.self),
+            models: try optionalStringList("models")
+        )
+    }
+}
+
+extension UsageQueryFilter {
+    var mcpFilters: MCPUsageFiltersDTO {
+        MCPUsageFiltersDTO(
+            tools: tools?.map(\.rawValue),
+            harnesses: harnesses?.map(\.rawValue),
+            models: models
+        )
+    }
+}
+
+/// ISO-8601 in the two spellings clients actually send, plus a bare date.
+enum MCPDateParsing {
+    private static let withFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let internetDateTime: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    /// A bare `YYYY-MM-DD` means midnight *local*: an agent asking for
+    /// "since 2026-08-01" means the user's own first of August, not UTC's.
+    private static let calendarDay: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    static func parse(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let date = withFractionalSeconds.date(from: trimmed) { return date }
+        if let date = internetDateTime.date(from: trimmed) { return date }
+        return calendarDay.date(from: trimmed)
+    }
+}
