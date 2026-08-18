@@ -57,7 +57,12 @@ public actor SessionIndexStore {
     /// v2 added `sessions.harness` and `sessions.model`. There is no ALTER
     /// path on purpose: every row is reconstructible from the CLIs' own
     /// logs, and a rebuild is what fills the new columns anyway.
-    static let schemaVersion = 2
+    ///
+    /// v3 changes no columns; it forces a re-index because Claude Code rows
+    /// carried the inherited per-line `sessionId` of forked / continued
+    /// sessions instead of the file's own UUID, and a fingerprint-driven
+    /// incremental pass would never revisit those unchanged files.
+    static let schemaVersion = 3
 
     public init(url: URL = VibeBarLocalStore.sessionIndexURL) throws {
         if url == VibeBarLocalStore.sessionIndexURL {
