@@ -39,7 +39,7 @@ final class UsageLedgerRollupTests: XCTestCase {
         let before = try await ledger.summary(fullRange)
         XCTAssertEqual(before.requests, 4)
         XCTAssertEqual(before.costMicros, 4_000_000)
-        let seededPage = try await ledger.requestPage(fullRange, page: 0, pageSize: 50)
+        let seededPage = try await ledger.requestPage(fullRange, pageSize: 50)
         XCTAssertEqual(seededPage.totalCount, 4)
 
         try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 0)
@@ -49,7 +49,7 @@ final class UsageLedgerRollupTests: XCTestCase {
         XCTAssertEqual(after.requests, 4)
         XCTAssertEqual(after.costMicros, 4_000_000)
         XCTAssertEqual(after.realTotalTokens, before.realTotalTokens)
-        let foldedPage = try await ledger.requestPage(fullRange, page: 0, pageSize: 50)
+        let foldedPage = try await ledger.requestPage(fullRange, pageSize: 50)
         XCTAssertEqual(foldedPage.totalCount, 2)
 
         // Running it again must not double count the rows it already folded.
@@ -76,7 +76,7 @@ final class UsageLedgerRollupTests: XCTestCase {
         let summary = try await ledger.summary(fullRange)
         XCTAssertEqual(summary.requests, 4)
         XCTAssertEqual(summary.costMicros, 4_000_000)
-        let reconsumedPage = try await ledger.requestPage(fullRange, page: 0, pageSize: 50)
+        let reconsumedPage = try await ledger.requestPage(fullRange, pageSize: 50)
         XCTAssertEqual(reconsumedPage.totalCount, 2)
     }
 
