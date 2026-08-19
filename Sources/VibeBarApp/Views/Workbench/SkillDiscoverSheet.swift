@@ -18,7 +18,7 @@ struct SkillDiscoverSheet: View {
     @State private var query = ""
     /// Apps a row installs into when it has not been touched. Empty by
     /// design: installing is about getting the skill onto the machine, and
-    /// silently switching it on for seven agent CLIs is not that.
+    /// silently switching it on for every managed harness is not that.
     @State private var defaultApps: Set<SkillAppTarget> = []
     @State private var overrides: [String: Set<SkillAppTarget>] = [:]
 
@@ -47,10 +47,10 @@ struct SkillDiscoverSheet: View {
             Text("Discover Skills")
                 .font(.system(size: density.titleFontSize, weight: .semibold))
             Spacer(minLength: 8)
-            Button(defaultApps.count == SkillAppTarget.allCases.count ? "Select none" : "Select all") {
-                defaultApps = defaultApps.count == SkillAppTarget.allCases.count
+            Button(defaultApps.count == SkillAppTarget.managedHarnesses.count ? "Select none" : "Select all") {
+                defaultApps = defaultApps.count == SkillAppTarget.managedHarnesses.count
                     ? []
-                    : Set(SkillAppTarget.allCases)
+                    : Set(SkillAppTarget.managedHarnesses)
                 overrides.removeAll()
             }
             .buttonStyle(.bordered)

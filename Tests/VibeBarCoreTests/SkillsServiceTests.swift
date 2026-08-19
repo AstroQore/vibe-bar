@@ -80,6 +80,88 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(afterDisable.first?.enabledApps, [])
     }
 
+    func testInstalledSkillsClearsARecordedSymlinkRemovedOutsideVibeBar() async throws {
+        let home = try SkillTestHome()
+        let staging = try home.makeSkillDirectory(at: home.url.appendingPathComponent("Downloads/alpha"))
+        let service = SkillsService(homeDirectory: home.path)
+        let skill = try await service.installLocal(from: staging, name: "alpha")
+        _ = try await service.setEnabled(skill.id, app: .claude, enabled: true, method: .symlink)
+
+        let destination = home.appDirectory(.claude).appendingPathComponent("alpha")
+        try FileManager.default.removeItem(at: destination)
+
+        let live = await service.installedSkills()
+        XCTAssertFalse(try XCTUnwrap(live.first).isEnabled(for: .claude))
+        let persisted = await SkillsStore(homeDirectory: home.path).all()
+        XCTAssertFalse(try XCTUnwrap(persisted.first).isEnabled(for: .claude))
+    }
+
+    func testInstalledSkillsRejectsARecordedLinkReplacedByAForeignDirectory() async throws {
+        let home = try SkillTestHome()
+        let staging = try home.makeSkillDirectory(at: home.url.appendingPathComponent("Downloads/alpha"))
+        let service = SkillsService(homeDirectory: home.path)
+        let skill = try await service.installLocal(from: staging, name: "alpha")
+        _ = try await service.setEnabled(skill.id, app: .claude, enabled: true, method: .symlink)
+
+        let destination = home.appDirectory(.claude).appendingPathComponent("alpha")
+        try FileManager.default.removeItem(at: destination)
+        try home.makeSkillDirectory(at: destination, extraFiles: ["owner.txt": "user"])
+
+        let live = await service.installedSkills()
+        XCTAssertFalse(try XCTUnwrap(live.first).isEnabled(for: .claude))
+        XCTAssertEqual(home.contents(of: destination.appendingPathComponent("owner.txt")), "user")
+    }
+
+    func testStoreRevisionRejectsConcurrentAndSameValueABAReconciliation() async throws {
+        let home = try SkillTestHome()
+        let store = SkillsStore(homeDirectory: home.path)
+        let original = SkillMaterialization(method: .symlink)
+        let replacement = SkillMaterialization(method: .copy, contentHashAtCopy: "new")
+        let cursor = SkillMaterialization(method: .symlink)
+        let snapshot = Skill(
+            id: .local(directory: "alpha"),
+            name: "Alpha",
+            directory: "alpha",
+            installedAt: Date(timeIntervalSince1970: 1),
+            apps: [.claude: original]
+        )
+        var reconciled = snapshot
+        reconciled.apps[.claude] = nil
+        var current = snapshot
+        current.apps[.cursor] = cursor
+        try await store.upsert(snapshot)
+        let stale = await store.snapshot()
+        // Same-value write: semantically a reinstall even though the mapping
+        // compares equal to the old snapshot.
+        try await store.upsert(snapshot)
+        let afterABA = try await store.applyReconciliation(
+            expectedRevision: stale.revision,
+            appsBySkill: [snapshot.id: reconciled.apps]
+        )
+        XCTAssertEqual(afterABA.first?.apps[.claude], original)
+
+        let fresh = await store.snapshot()
+        try await store.upsert(current)
+        let afterConcurrent = try await store.applyReconciliation(
+            expectedRevision: fresh.revision,
+            appsBySkill: [snapshot.id: reconciled.apps]
+        )
+        XCTAssertEqual(afterConcurrent.first?.apps[.claude], original)
+        XCTAssertEqual(afterConcurrent.first?.apps[.cursor], cursor)
+
+        current.apps[.claude] = replacement
+        try await store.upsert(current)
+        let changed = await store.snapshot()
+        var removeClaude = current.apps
+        removeClaude[.claude] = nil
+        let applied = try await store.applyReconciliation(
+            expectedRevision: changed.revision,
+            appsBySkill: [snapshot.id: removeClaude]
+        )
+        XCTAssertNil(applied.first?.apps[.claude])
+        XCTAssertEqual(applied.first?.apps[.cursor], cursor)
+    }
+
     func testFailedMaterializeLeavesTheStoreUntouched() async throws {
         let home = try SkillTestHome()
         let staging = try home.makeSkillDirectory(at: home.url.appendingPathComponent("Downloads/alpha"))
@@ -180,6 +262,7 @@ final class SkillsServiceTests: XCTestCase {
         let result = try await service.uninstall(skill.id)
 
         XCTAssertEqual(result.removedByApp[.hermes], false)
+        XCTAssertEqual(result.retainedApps, [.hermes])
         XCTAssertEqual(home.contents(of: foreign.appendingPathComponent("ref.md")), "hand written")
         XCTAssertFalse(home.exists(home.ssot.appendingPathComponent("alpha")))
     }
@@ -189,7 +272,7 @@ final class SkillsServiceTests: XCTestCase {
         try home.makeSSOTSkill("alpha", name: "alpha-skill")
         try home.makeSSOTSkill("beta")
         try home.makeAbsoluteSymlink("alpha", in: .claude, toSSOT: "alpha")
-        try home.makeAbsoluteSymlink("alpha", in: .gemini, toSSOT: "alpha")
+        try home.makeAbsoluteSymlink("alpha", in: .cursor, toSSOT: "alpha")
         let service = SkillsService(homeDirectory: home.path)
 
         let report = service.scanForImport()
@@ -203,14 +286,14 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(persisted.first?.apps[.claude]?.adopted, true)
         // Import changed nothing on disk.
         XCTAssertEqual(
-            SkillFileSystem.kind(of: home.appDirectory(.gemini).appendingPathComponent("alpha")),
+            SkillFileSystem.kind(of: home.appDirectory(.cursor).appendingPathComponent("alpha")),
             .symlink
         )
 
         // A second import with another app selected keeps what was known.
-        _ = try await service.importAdopted(report, apps: [.gemini])
+        _ = try await service.importAdopted(report, apps: [.cursor])
         let merged = await SkillsStore(homeDirectory: home.path).all()
-        XCTAssertEqual(merged.first?.enabledApps, [.claude, .gemini])
+        XCTAssertEqual(merged.first?.enabledApps, [.claude, .cursor])
     }
 
     func testAdoptUnmanagedCopiesIntoTheSSOTThenMaterializes() async throws {

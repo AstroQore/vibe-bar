@@ -27,6 +27,7 @@ public enum SkillAppCatalog {
         case .hermes: return ".hermes/skills"
         case .opencode: return ".config/opencode/skills"
         case .antigravity: return ".gemini/config/skills"
+        case .cursor: return ".cursor/skills"
         }
     }
 

@@ -67,6 +67,12 @@ public actor SkillsStore {
     private let fileURL: URL
     private let baseDirectory: URL
     private var cache: Storage?
+    private var mutationRevision: UInt64 = 0
+
+    public struct Snapshot: Sendable {
+        public let skills: [Skill]
+        public let revision: UInt64
+    }
 
     public init(homeDirectory: String = RealHomeDirectory.path) {
         self.fileURL = VibeBarLocalStore.skillsStoreURL(homeDirectory: homeDirectory)
@@ -75,6 +81,10 @@ public actor SkillsStore {
 
     public func all() -> [Skill] {
         loaded().skills
+    }
+
+    public func snapshot() -> Snapshot {
+        Snapshot(skills: loaded().skills, revision: mutationRevision)
     }
 
     // MARK: - Discovery repositories
@@ -145,6 +155,25 @@ public actor SkillsStore {
         try save(storage)
     }
 
+    /// Atomically applies one filesystem poll. Any store mutation since the
+    /// poll's snapshot — even an ABA write of an equal materialization — makes
+    /// the whole proposal stale; the caller gets current rows and retries from
+    /// fresh disk evidence on its next pass.
+    public func applyReconciliation(
+        expectedRevision: UInt64,
+        appsBySkill: [SkillID: [SkillAppTarget: SkillMaterialization]]
+    ) throws -> [Skill] {
+        var storage = loaded()
+        guard mutationRevision == expectedRevision else { return storage.skills }
+        for index in storage.skills.indices {
+            let id = storage.skills[index].id
+            if let apps = appsBySkill[id] { storage.skills[index].apps = apps }
+        }
+        guard !appsBySkill.isEmpty else { return storage.skills }
+        try save(storage)
+        return storage.skills
+    }
+
     @discardableResult
     public func remove(id: SkillID) throws -> Bool {
         var storage = loaded()
@@ -164,6 +193,7 @@ public actor SkillsStore {
     /// needed when something outside this actor rewrote it.
     public func invalidate() {
         cache = nil
+        mutationRevision &+= 1
     }
 
     private func loaded() -> Storage {
@@ -179,6 +209,7 @@ public actor SkillsStore {
         next.skills.sort { $0.directory.utf8.lexicographicallyPrecedes($1.directory.utf8) }
         try VibeBarLocalStore.writeJSON(next, to: fileURL, base: baseDirectory)
         cache = next
+        mutationRevision &+= 1
     }
 
     private static func load(from url: URL) -> Storage {

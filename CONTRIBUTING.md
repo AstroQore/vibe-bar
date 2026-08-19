@@ -89,7 +89,7 @@ See `AGENTS.md` § 6 for the full reasoning.
   `SessionDeleter`, performed only at the user's explicit request and on
   the containment / symlink / re-parsed-session-id terms `AGENTS.md` § 5
   sets out; and the Skills manager, which writes only to
-  `~/.agents/skills/` and the seven managed app skills directories, and
+  `~/.agents/skills/` and the allowlisted app skills directories, and
   only through `SkillSyncEngine` / `SkillsService` (`AGENTS.md` § 7).
 
 ## Implementation Notes

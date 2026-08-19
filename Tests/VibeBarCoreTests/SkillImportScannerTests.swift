@@ -36,8 +36,8 @@ final class SkillImportScannerTests: XCTestCase {
             description: "hand written"
         )
 
-        try home.makeAbsoluteSymlink("alpha", in: .gemini, toSSOT: "alpha")
-        try home.makeSkillDirectory(at: home.appDirectory(.gemini).appendingPathComponent("beta"))
+        try home.makeAbsoluteSymlink("alpha", in: .cursor, toSSOT: "alpha")
+        try home.makeSkillDirectory(at: home.appDirectory(.cursor).appendingPathComponent("beta"))
 
         try home.makeAbsoluteSymlink("alpha", in: .antigravity, toSSOT: "alpha")
 
@@ -59,7 +59,7 @@ final class SkillImportScannerTests: XCTestCase {
             ["alpha", "beta", "delta", "epsilon", "eta", "gamma", "theta", "zeta"]
         )
         XCTAssertEqual(report.unrecognized, ["notaskill"])
-        XCTAssertEqual(report.conflicts, [SkillImportConflict(directoryName: "beta", app: .gemini)])
+        XCTAssertEqual(report.conflicts, [SkillImportConflict(directoryName: "beta", app: .cursor)])
         XCTAssertEqual(report.unmanagedDirectories.count, 1)
         let unmanaged = try XCTUnwrap(report.unmanagedDirectories.first)
         XCTAssertEqual(unmanaged.directoryName, "legacy-helper")
@@ -74,8 +74,8 @@ final class SkillImportScannerTests: XCTestCase {
         let byDirectory = Dictionary(uniqueKeysWithValues: report.adopted.map { ($0.directory, $0) })
 
         // Absolute links in three different app dirs, including AntiGravity's
-        // ~/.gemini/config/skills, which is distinct from the Gemini CLI's.
-        XCTAssertEqual(byDirectory["alpha"]?.enabledApps, [.claude, .gemini, .antigravity])
+        // ~/.gemini/config/skills and Cursor's ~/.cursor/skills.
+        XCTAssertEqual(byDirectory["alpha"]?.enabledApps, [.claude, .antigravity, .cursor])
         XCTAssertEqual(byDirectory["alpha"]?.apps[.claude], SkillMaterialization(method: .symlink, adopted: true))
         XCTAssertEqual(byDirectory["alpha"]?.name, "alpha-skill")
         XCTAssertEqual(byDirectory["alpha"]?.description, "Alpha does things")
@@ -83,7 +83,7 @@ final class SkillImportScannerTests: XCTestCase {
 
         // A relative link resolves the same way an absolute one does.
         XCTAssertEqual(byDirectory["gamma"]?.enabledApps, [.claude])
-        // The Gemini side of beta is a real directory: a conflict, not evidence.
+        // The Cursor side of beta is a real directory: a conflict, not evidence.
         XCTAssertEqual(byDirectory["beta"]?.enabledApps, [.claude])
         // Never linked anywhere.
         XCTAssertEqual(byDirectory["delta"]?.enabledApps, [])

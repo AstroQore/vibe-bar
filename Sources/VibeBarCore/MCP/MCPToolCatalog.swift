@@ -349,7 +349,7 @@ public enum MCPToolCatalog {
                     "owner/repo[@branch][#skill], a github.com URL, or an absolute local directory."
                 ),
                 "apps": stringEnumList(
-                    SkillAppTarget.allCases.map(\.rawValue),
+                    SkillAppTarget.managedHarnesses.map(\.rawValue),
                     description: "Agent CLIs to project the skill into. Omit to install without enabling it anywhere."
                 ),
                 "method": string(

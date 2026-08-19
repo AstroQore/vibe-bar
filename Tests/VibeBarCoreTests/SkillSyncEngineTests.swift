@@ -2,7 +2,7 @@ import XCTest
 @testable import VibeBarCore
 
 final class SkillSyncEngineTests: XCTestCase {
-    func testAutoOverRealDirectoryReplacesItWithACopyAndRecordsTheHash() throws {
+    func testAutoOverForeignDirectoryRefusesToReplaceIt() throws {
         let home = try SkillTestHome()
         let source = try home.makeSSOTSkill("alpha", extraFiles: ["ref.md": "fresh"])
         let destination = home.appDirectory(.claude).appendingPathComponent("alpha")
@@ -10,25 +10,15 @@ final class SkillSyncEngineTests: XCTestCase {
         try home.write("leftover", to: destination.appendingPathComponent("orphan.md"))
 
         let engine = SkillSyncEngine(homeDirectory: home.path)
-        let materialization = try engine.materialize(
-            skillDirectoryName: "alpha",
-            into: .claude,
-            method: .auto
-        )
-
-        XCTAssertEqual(materialization.method, .copy)
-        XCTAssertFalse(materialization.adopted)
+        XCTAssertThrowsError(try engine.materialize(
+            skillDirectoryName: "alpha", into: .claude, method: .auto
+        )) { error in
+            XCTAssertEqual(error as? SkillError, .directoryConflict("alpha"))
+        }
         XCTAssertEqual(SkillFileSystem.kind(of: destination), .directory)
-        XCTAssertEqual(home.contents(of: destination.appendingPathComponent("ref.md")), "fresh")
-        // Replaced as a unit, not merged into: the stale file is gone.
-        XCTAssertFalse(home.exists(destination.appendingPathComponent("orphan.md")))
-        XCTAssertEqual(materialization.contentHashAtCopy, try SkillDirectoryHasher.hash(directory: destination))
-        XCTAssertEqual(materialization.contentHashAtCopy, try SkillDirectoryHasher.hash(directory: source))
-        // No staging directory survives the swap.
-        let leftovers = try FileManager.default
-            .contentsOfDirectory(atPath: home.appDirectory(.claude).path)
-            .filter { $0.hasPrefix(".alpha.tmp-") }
-        XCTAssertEqual(leftovers, [])
+        XCTAssertEqual(home.contents(of: destination.appendingPathComponent("ref.md")), "stale")
+        XCTAssertEqual(home.contents(of: destination.appendingPathComponent("orphan.md")), "leftover")
+        XCTAssertTrue(home.exists(source.appendingPathComponent("SKILL.md")))
     }
 
     func testAutoOverStaleSymlinkRelinksIntoTheSSOT() throws {
@@ -75,6 +65,84 @@ final class SkillSyncEngineTests: XCTestCase {
         XCTAssertEqual(target, home.ssot.appendingPathComponent("alpha").path)
     }
 
+    func testLiveMaterializationRejectsAnEditedOrReplacedCopy() throws {
+        let home = try SkillTestHome()
+        try home.makeSSOTSkill("alpha", extraFiles: ["ref.md": "original"])
+        let engine = SkillSyncEngine(homeDirectory: home.path)
+        let recorded = try engine.materialize(
+            skillDirectoryName: "alpha",
+            into: .claude,
+            method: .copy
+        )
+
+        XCTAssertEqual(
+            engine.liveMaterialization(
+                skillDirectoryName: "alpha",
+                app: .claude,
+                recorded: recorded
+            ),
+            recorded
+        )
+
+        let destination = home.appDirectory(.claude).appendingPathComponent("alpha")
+        try home.write("edited", to: destination.appendingPathComponent("ref.md"))
+        XCTAssertNil(engine.liveMaterialization(
+            skillDirectoryName: "alpha",
+            app: .claude,
+            recorded: recorded
+        ))
+
+        try FileManager.default.removeItem(at: destination)
+        try home.makeSkillDirectory(at: destination, extraFiles: ["ref.md": "replacement"])
+        XCTAssertNil(engine.liveMaterialization(
+            skillDirectoryName: "alpha",
+            app: .claude,
+            recorded: recorded
+        ))
+    }
+
+    func testReenableRefusesAnEditedCopyAfterItsRecordWasCleared() throws {
+        let home = try SkillTestHome()
+        try home.makeSSOTSkill("alpha", extraFiles: ["ref.md": "original"])
+        let engine = SkillSyncEngine(homeDirectory: home.path)
+        _ = try engine.materialize(
+            skillDirectoryName: "alpha", into: .claude, method: .copy
+        )
+        let destination = home.appDirectory(.claude).appendingPathComponent("alpha")
+        try home.write("user edit", to: destination.appendingPathComponent("ref.md"))
+
+        for method in [SkillSyncMethod.auto, .copy] {
+            XCTAssertThrowsError(try engine.materialize(
+                skillDirectoryName: "alpha", into: .claude, method: method, recorded: nil
+            )) { error in
+                XCTAssertEqual(error as? SkillError, .directoryConflict("alpha"))
+            }
+            XCTAssertEqual(home.contents(of: destination.appendingPathComponent("ref.md")), "user edit")
+        }
+    }
+
+    func testLiveMaterializationRejectsADanglingSSOTLink() throws {
+        let home = try SkillTestHome()
+        let source = try home.makeSSOTSkill("alpha")
+        let engine = SkillSyncEngine(homeDirectory: home.path)
+        let recorded = try engine.materialize(
+            skillDirectoryName: "alpha",
+            into: .claude,
+            method: .symlink
+        )
+        try FileManager.default.removeItem(at: source)
+
+        XCTAssertNil(engine.liveMaterialization(
+            skillDirectoryName: "alpha",
+            app: .claude,
+            recorded: recorded
+        ))
+        XCTAssertEqual(
+            SkillFileSystem.kind(of: home.appDirectory(.claude).appendingPathComponent("alpha")),
+            .symlink
+        )
+    }
+
     func testSymlinkMethodRefusesAForeignDirectoryButReplacesAFaithfulCopy() throws {
         let home = try SkillTestHome()
         try home.makeSSOTSkill("alpha", extraFiles: ["ref.md": "fresh"])
@@ -90,6 +158,9 @@ final class SkillSyncEngineTests: XCTestCase {
         XCTAssertEqual(SkillFileSystem.kind(of: destination), .directory)
         XCTAssertEqual(home.contents(of: destination.appendingPathComponent("ref.md")), "hand-edited")
 
+        // Once the foreign directory is removed by its owner, Vibe Bar can
+        // create and later replace its own verified copy.
+        try FileManager.default.removeItem(at: destination)
         let copied = try engine.materialize(skillDirectoryName: "alpha", into: .claude, method: .copy)
         XCTAssertEqual(copied.method, .copy)
         let linked = try engine.materialize(
@@ -175,13 +246,13 @@ final class SkillSyncEngineTests: XCTestCase {
 
     func testWriteRootsCoverTheSSOTAndEveryAppDirectoryOnly() throws {
         let home = try SkillTestHome()
-        XCTAssertEqual(SkillAppCatalog.allowedWriteRoots(homeDirectory: home.path).count, 8)
+        XCTAssertEqual(SkillAppCatalog.allowedWriteRoots(homeDirectory: home.path).count, 9)
         XCTAssertTrue(SkillAppCatalog.isWriteAllowed(
             home.ssot.appendingPathComponent("alpha"),
             homeDirectory: home.path
         ))
         XCTAssertTrue(SkillAppCatalog.isWriteAllowed(
-            home.appDirectory(.opencode).appendingPathComponent("alpha"),
+            home.appDirectory(.cursor).appendingPathComponent("alpha"),
             homeDirectory: home.path
         ))
         XCTAssertFalse(SkillAppCatalog.isWriteAllowed(
@@ -192,6 +263,17 @@ final class SkillSyncEngineTests: XCTestCase {
             home.url.appendingPathComponent(".claude/settings.json"),
             homeDirectory: home.path
         ))
+    }
+
+    func testManagedHarnessTargetsExcludeUnmanageableAndLegacySurfaces() {
+        XCTAssertEqual(
+            SkillAppTarget.managedHarnesses,
+            [.codex, .claude, .antigravity, .grok, .cursor]
+        )
+        XCTAssertEqual(SkillAppCatalog.relativePath(for: .cursor), ".cursor/skills")
+        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.gemini))
+        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.hermes))
+        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.opencode))
     }
 
     func testUnmaterializeRemovesAnSSOTSymlinkAndIsIdempotent() throws {

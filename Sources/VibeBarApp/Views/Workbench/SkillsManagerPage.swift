@@ -25,7 +25,10 @@ struct SkillsManagerPage: View {
         .padding(.vertical, density.popoverPaddingV)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .bottom) { toastBanner }
-        .task { model.activate() }
+        .task {
+            model.activate()
+            await model.monitorFilesystem()
+        }
         .onChange(of: model.toast) { _, newValue in
             toastDismissal?.cancel()
             guard newValue != nil else { return }
@@ -187,7 +190,7 @@ struct SkillsManagerPage: View {
     /// above the list rather than inside a menu.
     private var appCountRow: some View {
         HStack(spacing: 6) {
-            ForEach(SkillAppTarget.allCases, id: \.self) { app in
+            ForEach(SkillAppTarget.managedHarnesses, id: \.self) { app in
                 let count = model.installedCount(for: app)
                 HStack(spacing: 4) {
                     SkillAppGlyph(app: app, size: density.segmentedFontSize)

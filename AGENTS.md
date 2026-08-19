@@ -650,10 +650,16 @@ Tests keep working because they pass an explicit value.
 - **The Skills manager is a narrow, documented exception to that write
   scope.** It writes to exactly two things: `~/.agents/skills/` — the
   single source of truth every agent CLI is projected from — and the
-  seven managed app skills directories (`~/.claude/skills`,
-  `~/.codex/skills`, `~/.gemini/skills`, `~/.grok/skills`,
-  `~/.hermes/skills`, `~/.config/opencode/skills`,
-  `~/.gemini/config/skills`). Nothing else, and never directly: every
+  allowlisted app skills directories. New management is shown only for the
+  locally controllable core harnesses: Codex (`~/.codex/skills`), Claude Code
+  (`~/.claude/skills`), AntiGravity (`~/.gemini/config/skills`), Grok Build
+  (`~/.grok/skills`), and Cursor (`~/.cursor/skills`). The older Gemini CLI,
+  Hermes, and OpenCode roots remain in the allowlist only so an existing
+  `skills.json` can be decoded and safely cleaned up; they are not offered for
+  new scans, installs, or toggles. ChatGPT Work, Claude Cowork, and Grok Bot do
+  not expose an independent, stable local skill directory that this feature
+  can safely write, so Vibe Bar does not display fake filesystem toggles for
+  them. Nothing else is touched, and never directly: every
   create, link, copy, and delete goes through `SkillSyncEngine` /
   `SkillsService`, which validate each directory name as a single safe
   path segment, refuse any resolved path outside those roots, require a
@@ -667,6 +673,9 @@ Tests keep working because they pass an explicit value.
   AntiGravity's customization root, not the Gemini CLI's — nothing else
   under `~/.gemini/config/` may be touched. New code that needs a skills
   path goes through those two types; do not add a second write path.
+  The visible Skills page also re-reads recorded app projections while it is
+  open; a missing or replaced symlink must clear the enabled state instead of
+  trusting stale registry metadata.
   That includes the MCP surface: `skills.install` (§ 5.1) resolves its
   `source` to a repository ref or a local directory and then calls
   `SkillsService.install(from:enableFor:method:)`, which reuses the same

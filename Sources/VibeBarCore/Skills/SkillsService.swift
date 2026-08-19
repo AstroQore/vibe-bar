@@ -18,6 +18,10 @@ public actor SkillsService {
         /// Per app: whether the app-side entry was actually removed. `false`
         /// means something the user could have authored was left in place.
         public let removedByApp: [SkillAppTarget: Bool]
+
+        public var retainedApps: [SkillAppTarget] {
+            SkillAppTarget.allCases.filter { removedByApp[$0] == false }
+        }
     }
 
     // Internal rather than private: the repository-facing half of this actor
@@ -32,6 +36,11 @@ public actor SkillsService {
     /// call that produced it; it is replaced on the next discovery pass and can
     /// be dropped explicitly once the user closes the browser.
     var discoveryStaging: URL?
+    private struct CopyVerification: Sendable {
+        let metadataStamp: String
+        let contentHash: String
+    }
+    private var copyVerificationCache: [String: CopyVerification] = [:]
 
     public init(
         homeDirectory: String = RealHomeDirectory.path,
@@ -49,7 +58,70 @@ public actor SkillsService {
     }
 
     public func installedSkills() async -> [Skill] {
-        await store.all()
+        let storeSnapshot = await store.snapshot()
+        let snapshots = storeSnapshot.skills
+        var result: [Skill] = []
+        var liveCopyKeys: Set<String> = []
+        var reconciledApps: [SkillID: [SkillAppTarget: SkillMaterialization]] = [:]
+        result.reserveCapacity(snapshots.count)
+        for snapshot in snapshots {
+            var reconciled = snapshot
+            let recordedApps = snapshot.apps
+            for (app, recorded) in recordedApps {
+                let currentCopyHash: String?
+                if recorded.method == .copy {
+                    let destination = engine.destination(for: snapshot.directory, app: app)
+                    let key = destination.standardizedFileURL.path
+                    liveCopyKeys.insert(key)
+                    currentCopyHash = verifiedCopyHash(at: destination, key: key)
+                } else {
+                    currentCopyHash = nil
+                }
+                if let live = engine.liveMaterialization(
+                    skillDirectoryName: snapshot.directory,
+                    app: app,
+                    recorded: recorded,
+                    currentCopyHash: currentCopyHash
+                ) {
+                    reconciled.apps[app] = live
+                } else {
+                    reconciled.apps[app] = nil
+                }
+            }
+            guard reconciled.apps != recordedApps else {
+                result.append(snapshot)
+                continue
+            }
+            reconciledApps[snapshot.id] = reconciled.apps
+            result.append(reconciled)
+        }
+        copyVerificationCache = copyVerificationCache.filter { liveCopyKeys.contains($0.key) }
+        guard !reconciledApps.isEmpty else { return result }
+        do {
+            return try await store.applyReconciliation(
+                expectedRevision: storeSnapshot.revision,
+                appsBySkill: reconciledApps
+            )
+        } catch {
+            SafeLog.warn("Persisting reconciled skill state failed.")
+            return result
+        }
+    }
+
+    private func verifiedCopyHash(at directory: URL, key: String) -> String? {
+        guard let stamp = try? SkillDirectoryHasher.metadataStamp(directory: directory) else {
+            copyVerificationCache[key] = nil
+            return nil
+        }
+        if let cached = copyVerificationCache[key], cached.metadataStamp == stamp {
+            return cached.contentHash
+        }
+        guard let hash = try? SkillDirectoryHasher.hash(directory: directory) else {
+            copyVerificationCache[key] = nil
+            return nil
+        }
+        copyVerificationCache[key] = CopyVerification(metadataStamp: stamp, contentHash: hash)
+        return hash
     }
 
     public func skill(with id: SkillID) async -> Skill? {
@@ -119,7 +191,7 @@ public actor SkillsService {
     @discardableResult
     public func importAdopted(
         _ report: SkillImportReport,
-        apps: [SkillAppTarget] = SkillAppTarget.allCases
+        apps: [SkillAppTarget] = SkillAppTarget.managedHarnesses
     ) async throws -> [Skill] {
         let allowed = Set(apps)
         var imported: [Skill] = []

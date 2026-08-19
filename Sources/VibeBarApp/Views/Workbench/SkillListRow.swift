@@ -4,15 +4,16 @@ import VibeBarCore
 
 extension SkillAppTarget {
     /// The provider this agent CLI shares a brand mark with, when there is
-    /// one. Five of the seven targets are also usage providers, so their rows
-    /// wear the same glyph and accent they wear everywhere else in the app.
+    /// one. Every visible managed harness has a real provider asset, so the
+    /// toggle row never falls back to an empty or unrelated glyph.
     var brandTool: ToolType? { ToolType(rawValue: rawValue) }
 
     var fallbackSystemImage: String {
         switch self {
         case .hermes: return "cross.case"
         case .opencode: return "chevron.left.forwardslash.chevron.right"
-        case .claude, .codex, .gemini, .grok, .antigravity: return "puzzlepiece.extension"
+        case .claude, .codex, .gemini, .grok, .antigravity, .cursor:
+            return "puzzlepiece.extension"
         }
     }
 
@@ -70,7 +71,7 @@ struct SkillAppGlyph: View {
     }
 }
 
-/// The seven-app row: one circular brand button per agent CLI.
+/// One circular brand button per locally manageable core harness.
 ///
 /// Used both as a live control (an installed skill's enable bits) and as a
 /// selection (which apps a pending install should be enabled for) — the two
@@ -87,7 +88,7 @@ struct SkillAppToggleRow: View {
 
     var body: some View {
         HStack(spacing: spacing) {
-            ForEach(SkillAppTarget.allCases, id: \.self) { app in
+            ForEach(SkillAppTarget.managedHarnesses, id: \.self) { app in
                 button(for: app)
             }
         }

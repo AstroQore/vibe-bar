@@ -171,6 +171,9 @@ public struct SkillSyncEngine: Sendable {
                 try fm.removeItem(at: destination)
                 return try link(source: source, destination: destination)
             case .directory:
+                guard try isVibeBarCopy(destination: destination, source: source, recorded: recorded) else {
+                    throw SkillError.directoryConflict(skillDirectoryName)
+                }
                 return try copy(source: source, destination: destination)
             default:
                 throw SkillError.directoryConflict(skillDirectoryName)
@@ -194,8 +197,12 @@ public struct SkillSyncEngine: Sendable {
 
         case .copy:
             switch existing {
-            case .missing, .directory:
+            case .missing:
                 break
+            case .directory:
+                guard try isVibeBarCopy(destination: destination, source: source, recorded: recorded) else {
+                    throw SkillError.directoryConflict(skillDirectoryName)
+                }
             case .symlink:
                 try fm.removeItem(at: destination)
             default:
@@ -257,6 +264,46 @@ public struct SkillSyncEngine: Sendable {
         let source = sourceDirectory(for: skillDirectoryName).standardizedFileURL
         guard resolved.path == source.path else { return nil }
         return SkillMaterialization(method: .symlink, adopted: true)
+    }
+
+    /// Re-reads one recorded projection from disk without changing it.
+    ///
+    /// The registry is only the last state Vibe Bar wrote. A user or another
+    /// installer can remove or replace an app-side entry while the Workbench
+    /// is open, so the UI must not treat that cached record as proof that the
+    /// skill is still enabled. Symlinks must still point to this skill's SSOT
+    /// directory; copies must still be real skill directories. Foreign links,
+    /// replaced directories, regular files, and missing entries are all stale.
+    public func liveMaterialization(
+        skillDirectoryName: String,
+        app: SkillAppTarget,
+        recorded: SkillMaterialization,
+        currentCopyHash: String? = nil
+    ) -> SkillMaterialization? {
+        guard SkillPathValidator.isValid(skillDirectoryName) else { return nil }
+        let destination = destination(for: skillDirectoryName, app: app)
+        switch SkillFileSystem.kind(of: destination) {
+        case .symlink:
+            let source = sourceDirectory(for: skillDirectoryName).standardizedFileURL
+            guard
+                let resolved = SkillFileSystem.lexicalSymlinkTarget(of: destination),
+                resolved.path == source.path,
+                SkillFileSystem.kind(of: source) == .directory,
+                FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path)
+            else { return nil }
+            return SkillMaterialization(method: .symlink, adopted: recorded.adopted)
+        case .directory:
+            guard
+                recorded.method == .copy,
+                let recordedHash = recorded.contentHashAtCopy,
+                let currentHash = currentCopyHash
+                    ?? (try? SkillDirectoryHasher.hash(directory: destination)),
+                currentHash == recordedHash
+            else { return nil }
+            return recorded
+        case .missing, .regularFile, .other:
+            return nil
+        }
     }
 
     // MARK: - Internals
