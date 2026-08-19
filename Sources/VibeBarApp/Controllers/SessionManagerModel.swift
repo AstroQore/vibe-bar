@@ -78,6 +78,7 @@ final class SessionManagerModel: ObservableObject {
         let summary: SessionSummary
         let snippet: String?
         let matchedSeq: Int?
+        let matchedRelated: SessionSummary?
         let reviewCount: Int
 
         var id: String { summary.id }
@@ -206,6 +207,7 @@ final class SessionManagerModel: ObservableObject {
     private var hasActivated = false
     private var lastScanFinishedAt: Date?
     private var reviewSummariesByParent: [String: [SessionSummary]] = [:]
+    private var relatedHitByParent: [String: SessionSummary] = [:]
 
     /// Floor between two automatic sweeps. A manual refresh ignores it.
     private static let rescanMinimumInterval: TimeInterval = 30
@@ -409,6 +411,7 @@ final class SessionManagerModel: ObservableObject {
         searchTask?.cancel()
         let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else {
+            relatedHitByParent = [:]
             hits = []
             return
         }
@@ -443,18 +446,25 @@ final class SessionManagerModel: ObservableObject {
         )) ?? []
         var resolved: [SessionSearchHit] = []
         var seen: Set<String> = []
+        var relatedHits: [String: SessionSummary] = [:]
         for hit in found {
             if let parentID = CodexSessionAdapter.autoReviewParentSessionID(
                 providerVariant: hit.summary.providerVariant
             ), let parent = try? await service.summary(provider: .codex, sessionID: parentID) {
                 guard seen.insert(parent.id).inserted else { continue }
-                resolved.append(SessionSearchHit(summary: parent, snippet: hit.snippet, matchedSeq: nil))
+                relatedHits[parent.id] = hit.summary
+                resolved.append(SessionSearchHit(
+                    summary: parent,
+                    snippet: hit.snippet,
+                    matchedSeq: hit.matchedSeq
+                ))
             } else {
                 guard seen.insert(hit.summary.id).inserted else { continue }
                 resolved.append(hit)
             }
         }
         guard generation == searchGeneration else { return }
+        relatedHitByParent = relatedHits
         hits = resolved
     }
 
@@ -495,6 +505,7 @@ final class SessionManagerModel: ObservableObject {
                     summary: $0.summary,
                     snippet: $0.snippet,
                     matchedSeq: $0.matchedSeq,
+                    matchedRelated: relatedHitByParent[$0.summary.id],
                     reviewCount: reviewSummariesByParent[$0.summary.sessionID]?.count ?? 0
                 )
             }
@@ -504,6 +515,7 @@ final class SessionManagerModel: ObservableObject {
                     summary: $0,
                     snippet: nil,
                     matchedSeq: nil,
+                    matchedRelated: nil,
                     reviewCount: reviewSummariesByParent[$0.sessionID]?.count ?? 0
                 )
             }
@@ -659,10 +671,18 @@ final class SessionManagerModel: ObservableObject {
     /// transcript opens on the line that produced the snippet instead of at
     /// the top of a session the user then has to search again by hand.
     func select(_ row: Row) {
-        select(row.summary, focusSeq: row.matchedSeq)
+        select(
+            row.summary,
+            focusSeq: row.matchedSeq,
+            focusedRelatedID: row.matchedRelated?.id
+        )
     }
 
-    func select(_ summary: SessionSummary?, focusSeq: Int? = nil) {
+    func select(
+        _ summary: SessionSummary?,
+        focusSeq: Int? = nil,
+        focusedRelatedID: String? = nil
+    ) {
         selection = summary
         self.focusSeq = focusSeq
         transcript = nil
@@ -682,9 +702,16 @@ final class SessionManagerModel: ObservableObject {
         let related = reviewSummariesByParent[summary.sessionID] ?? []
         isLoadingTranscript = true
         Task { [weak self] in
-            let parsed = await Self.parse(adapter: adapter, url: url, related: related)
+            let parsed = await Self.parse(
+                adapter: adapter,
+                url: url,
+                related: related,
+                requestedFocusSeq: focusSeq,
+                focusedRelatedID: focusedRelatedID
+            )
             guard let self, generation == self.transcriptGeneration else { return }
             self.isLoadingTranscript = false
+            self.focusSeq = parsed.focusSeq
             self.transcript = parsed.document
             self.transcriptError = parsed.errorMessage
         }
@@ -697,6 +724,7 @@ final class SessionManagerModel: ObservableObject {
     private struct ParsedTranscript: Sendable {
         let document: TranscriptDocument?
         let errorMessage: String?
+        let focusSeq: Int?
     }
 
     /// `nonisolated` so the parse runs off the main actor — a long rollout is
@@ -704,14 +732,17 @@ final class SessionManagerModel: ObservableObject {
     private nonisolated static func parse(
         adapter: any SessionProviderAdapter,
         url: URL,
-        related: [SessionSummary]
+        related: [SessionSummary],
+        requestedFocusSeq: Int?,
+        focusedRelatedID: String?
     ) async -> ParsedTranscript {
         do {
             let root = try adapter.parseTranscript(fileURL: url)
             guard !related.isEmpty else {
-                return ParsedTranscript(document: root, errorMessage: nil)
+                return ParsedTranscript(document: root, errorMessage: nil, focusSeq: requestedFocusSeq)
             }
             var messages = root.messages
+            var translatedFocus = focusedRelatedID == nil ? requestedFocusSeq : nil
             for review in related.sorted(by: {
                 ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast)
             }) {
@@ -724,7 +755,13 @@ final class SessionManagerModel: ObservableObject {
                     text: "Auto Review",
                     timestamp: review.createdAt
                 ))
+                let childStart = messages.count
                 messages.append(contentsOf: document.messages)
+                if review.id == focusedRelatedID,
+                   let requestedFocusSeq,
+                   let childIndex = document.messages.firstIndex(where: { $0.seq == requestedFocusSeq }) {
+                    translatedFocus = childStart + childIndex
+                }
             }
             let resequenced = messages.enumerated().map { index, message in
                 SessionMessage(
@@ -740,13 +777,15 @@ final class SessionManagerModel: ObservableObject {
                     totalMessageCount: resequenced.count,
                     truncated: false
                 ),
-                errorMessage: nil
+                errorMessage: nil,
+                focusSeq: translatedFocus
             )
         } catch {
             return ParsedTranscript(
                 document: nil,
                 errorMessage: (error as? LocalizedError)?.errorDescription
-                    ?? "This session's log could not be read."
+                    ?? "This session's log could not be read.",
+                focusSeq: nil
             )
         }
     }

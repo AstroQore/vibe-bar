@@ -116,10 +116,11 @@ struct SessionManagerPage: View {
 /// The filter unit is the **harness**, not the company: a row is labelled
 /// with the harness that produced it, and two harnesses can share one adapter
 /// (a Codex rollout is Codex or ChatGPT Work depending on its `originator`).
-/// Company names are intentionally absent from the chip row: they are parents
+/// Company names are intentionally separated from harnesses: they are parents
 /// in the billing hierarchy, not another peer filter beside Codex or Claude
-/// Code. Chips carry each harness's own brand accent; the rest stays in compact
-/// menus so a rarely-used control never outweighs the list. See AGENTS.md § 7.1.
+/// Code. Two compact menus provide company-wide and exact-harness controls
+/// without turning the toolbar into a long strip of mixed-level chips. See
+/// AGENTS.md § 7.1.
 struct SessionFiltersBar: View {
     let density: Theme.Density
     @ObservedObject var model: SessionManagerModel
@@ -142,9 +143,8 @@ struct SessionFiltersBar: View {
                     }
                     .help("Rescan the session logs on disk")
                     allProvidersChip
-                    ForEach(availableHarnesses, id: \.self) { harness in
-                        harnessChip(harness)
-                    }
+                    companyFilterMenu
+                    harnessFilterMenu
                     rangeMenu
                     sortMenu
                     optionsMenu
@@ -301,6 +301,13 @@ struct SessionFiltersBar: View {
         return Harness.allCases.filter { (counts[$0] ?? 0) > 0 }
     }
 
+    private var availableCompanyGroups: [Harness.ChipGroup] {
+        Harness.chipGroups(
+            companies: ToolType.coreProviderRepresentatives,
+            harnesses: availableHarnesses
+        )
+    }
+
     /// The All chip is a switch, not a shortcut: lit means every harness is
     /// listed and clicking it clears the selection outright; anything else
     /// and it puts every harness back.
@@ -322,44 +329,71 @@ struct SessionFiltersBar: View {
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    /// One chip per harness — the unit a session row is actually labelled
-    /// with. The icon is the harness's own brand (Cursor's mark, not Grok's,
-    /// matching the badge in the list); the accent is the company's, so a
-    /// group still reads as one block of colour.
-    ///
-    /// ⌥-click solos, which is the one-click way to ask "just this harness"
-    /// without turning eight other chips off by hand.
-    private func harnessChip(_ harness: Harness) -> some View {
-        let selected = model.harnessFilter?.contains(harness) ?? true
-        let count = model.harnessCounts[harness] ?? 0
-        return Button {
-            if NSEvent.modifierFlags.contains(.option) {
-                model.soloHarness(harness)
-            } else {
-                model.toggleHarness(harness)
+    /// L1 companies and harnesses are separate compact menus: the company
+    /// remains a batch control, while the row no longer pretends OpenAI and
+    /// Codex are peers or consumes the entire toolbar with nine chips.
+    private var companyFilterMenu: some View {
+        Menu {
+            ForEach(availableCompanyGroups) { group in
+                Toggle(group.company.vendorName, isOn: Binding(
+                    get: { isSelected(group) },
+                    set: { _ in model.toggleHarnesses(group.harnessSet) }
+                ))
             }
         } label: {
-            HStack(spacing: 5) {
-                ToolBrandIconView(tool: harness.brandTool, size: density.segmentedFontSize + 1)
-                Text(harness.displayName)
-                    .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                    .lineLimit(1)
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: max(8, density.segmentedFontSize - 3), design: .rounded)
-                            .monospacedDigit())
-                        .foregroundStyle(.secondary)
+            menuLabel(
+                systemImage: "building.2",
+                title: "Company",
+                detail: selectedCompanySummary
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    private var harnessFilterMenu: some View {
+        Menu {
+            ForEach(availableHarnesses, id: \.self) { harness in
+                Toggle(isOn: Binding(
+                    get: { model.harnessFilter?.contains(harness) ?? true },
+                    set: { _ in model.toggleHarness(harness) }
+                )) {
+                    Label {
+                        Text("\(harness.displayName)  \(model.harnessCounts[harness] ?? 0)")
+                    } icon: {
+                        ToolBrandIconView(tool: harness.brandTool, size: 12)
+                    }
                 }
             }
-            .padding(.horizontal, 9)
-            .frame(minHeight: 28)
+        } label: {
+            menuLabel(
+                systemImage: "terminal",
+                title: "Harness",
+                detail: selectedHarnessSummary
+            )
         }
-        .buttonStyle(.plain)
-        .background(chipBackground(tint: Theme.providerAccent(for: harness.brandTool), selected: selected))
-        .opacity(selected ? 1 : 0.70)
-        .saturation(selected ? 1 : 0.50)
-        .help("\(harness.displayName)\nClick to toggle · ⌥-click to solo")
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    private func isSelected(_ group: Harness.ChipGroup) -> Bool {
+        guard let filter = model.harnessFilter else { return true }
+        return group.harnesses.allSatisfy(filter.contains)
+    }
+
+    private var selectedCompanySummary: String {
+        let selected = availableCompanyGroups.count(where: isSelected)
+        return selected == availableCompanyGroups.count ? "All" : "\(selected)/\(availableCompanyGroups.count)"
+    }
+
+    private var selectedHarnessSummary: String {
+        guard let filter = model.harnessFilter else { return "All" }
+        let count = availableHarnesses.count(where: filter.contains)
+        return count == availableHarnesses.count ? "All" : "\(count)/\(availableHarnesses.count)"
     }
 
     private func chipBackground(tint: Color, selected: Bool) -> some View {

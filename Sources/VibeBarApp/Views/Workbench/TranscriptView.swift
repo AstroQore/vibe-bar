@@ -305,13 +305,6 @@ struct TranscriptView: View {
                 itemCount: document.messages.count,
                 start: messagePageStart
             )
-        expanded = Set(expanded.filter { seq in
-            guard let index = document.messages.firstIndex(where: { $0.seq == seq }) else { return false }
-            return TranscriptPageWindow.range(
-                itemCount: document.messages.count,
-                start: messagePageStart
-            ).contains(index)
-        })
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(30))
             proxy.scrollTo(Self.pageAnchorID, anchor: .top)

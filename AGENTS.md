@@ -729,8 +729,8 @@ Consequences worth stating out loud:
   company / SubProvider / group. Usage and cost surfaces (Workbench
   Harness Mix, harness filter, cost cards) speak harnesses, grouped or
   filtered by company. **The Sessions page is a usage surface**: its rows
-  are labelled with the harness, its source menu lists harnesses, and only
-  its company chips speak L1.
+  are labelled with the harness, its Harness menu lists individual sources,
+  and its separate Company menu is the only L1 batch control.
 - "Gemini Web" is a quota SubProvider with **no** local usage; the
   deprecated CLI's historical tokens are always labelled "Gemini CLI".
 - The ledger stores the harness per detail row *and* per daily rollup.
