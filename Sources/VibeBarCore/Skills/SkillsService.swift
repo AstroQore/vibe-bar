@@ -58,9 +58,11 @@ public actor SkillsService {
     }
 
     public func installedSkills() async -> [Skill] {
-        let snapshots = await store.all()
+        let storeSnapshot = await store.snapshot()
+        let snapshots = storeSnapshot.skills
         var result: [Skill] = []
         var liveCopyKeys: Set<String> = []
+        var reconciledApps: [SkillID: [SkillAppTarget: SkillMaterialization]] = [:]
         result.reserveCapacity(snapshots.count)
         for snapshot in snapshots {
             var reconciled = snapshot
@@ -90,22 +92,20 @@ public actor SkillsService {
                 result.append(snapshot)
                 continue
             }
-            do {
-                // One store-actor call owns read + compare + write. Splitting
-                // those into a `skill` await and an `upsert` await reopens the
-                // exact lost-update race this reconciliation is preventing.
-                guard let merged = try await store.mergeReconciledApps(
-                    snapshot: snapshot,
-                    reconciled: reconciled
-                ) else { continue }
-                result.append(merged)
-            } catch {
-                SafeLog.warn("Persisting reconciled skill state failed.")
-                result.append(reconciled)
-            }
+            reconciledApps[snapshot.id] = reconciled.apps
+            result.append(reconciled)
         }
         copyVerificationCache = copyVerificationCache.filter { liveCopyKeys.contains($0.key) }
-        return result
+        guard !reconciledApps.isEmpty else { return result }
+        do {
+            return try await store.applyReconciliation(
+                expectedRevision: storeSnapshot.revision,
+                appsBySkill: reconciledApps
+            )
+        } catch {
+            SafeLog.warn("Persisting reconciled skill state failed.")
+            return result
+        }
     }
 
     private func verifiedCopyHash(at directory: URL, key: String) -> String? {

@@ -112,7 +112,7 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(home.contents(of: destination.appendingPathComponent("owner.txt")), "user")
     }
 
-    func testAtomicStoreReconciliationPreservesConcurrentAppChanges() async throws {
+    func testStoreRevisionRejectsConcurrentAndSameValueABAReconciliation() async throws {
         let home = try SkillTestHome()
         let store = SkillsStore(homeDirectory: home.path)
         let original = SkillMaterialization(method: .symlink)
@@ -129,23 +129,37 @@ final class SkillsServiceTests: XCTestCase {
         reconciled.apps[.claude] = nil
         var current = snapshot
         current.apps[.cursor] = cursor
-        try await store.upsert(current)
-
-        let merged = try await store.mergeReconciledApps(
-            snapshot: snapshot,
-            reconciled: reconciled
+        try await store.upsert(snapshot)
+        let stale = await store.snapshot()
+        // Same-value write: semantically a reinstall even though the mapping
+        // compares equal to the old snapshot.
+        try await store.upsert(snapshot)
+        let afterABA = try await store.applyReconciliation(
+            expectedRevision: stale.revision,
+            appsBySkill: [snapshot.id: reconciled.apps]
         )
-        XCTAssertNil(merged?.apps[.claude])
-        XCTAssertEqual(merged?.apps[.cursor], cursor)
+        XCTAssertEqual(afterABA.first?.apps[.claude], original)
+
+        let fresh = await store.snapshot()
+        try await store.upsert(current)
+        let afterConcurrent = try await store.applyReconciliation(
+            expectedRevision: fresh.revision,
+            appsBySkill: [snapshot.id: reconciled.apps]
+        )
+        XCTAssertEqual(afterConcurrent.first?.apps[.claude], original)
+        XCTAssertEqual(afterConcurrent.first?.apps[.cursor], cursor)
 
         current.apps[.claude] = replacement
         try await store.upsert(current)
-        let changed = try await store.mergeReconciledApps(
-            snapshot: snapshot,
-            reconciled: reconciled
+        let changed = await store.snapshot()
+        var removeClaude = current.apps
+        removeClaude[.claude] = nil
+        let applied = try await store.applyReconciliation(
+            expectedRevision: changed.revision,
+            appsBySkill: [snapshot.id: removeClaude]
         )
-        XCTAssertEqual(changed?.apps[.claude], replacement)
-        XCTAssertEqual(changed?.apps[.cursor], cursor)
+        XCTAssertNil(applied.first?.apps[.claude])
+        XCTAssertEqual(applied.first?.apps[.cursor], cursor)
     }
 
     func testFailedMaterializeLeavesTheStoreUntouched() async throws {
