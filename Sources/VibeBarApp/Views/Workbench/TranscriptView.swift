@@ -652,18 +652,20 @@ struct TranscriptMessageCard: View {
         }
     }
 
-    /// `SelectableTextView` rather than `Text(...).textSelection(.enabled)`:
-    /// SwiftUI's selection overlay re-lays out every bubble on each graph
-    /// update and pinned the main thread at ~99 % with a transcript open.
+    /// Plain `Text`, deliberately without `.textSelection(.enabled)` and
+    /// without an `NSTextView` bridge. Both were tried and both pinned the
+    /// main thread at ~99 % with a transcript open: SwiftUI's selection
+    /// overlay re-lays out every bubble on each graph update, and an
+    /// `NSViewRepresentable` gets `sizeThatFits` / `updateNSView` probed
+    /// repeatedly per layout pass, which with dozens of bubbles in a lazy
+    /// stack becomes a layout storm. Copy lives on the header button and the
+    /// context menu; search hits are still highlighted.
     private func body(text: String) -> some View {
-        SelectableTextView(
-            text: TranscriptFormatting.highlighted(text, query: query, accent: accent),
-            font: isMonospaced
-                ? .monospacedSystemFont(ofSize: density.subtitleFontSize, weight: .regular)
-                : .systemFont(ofSize: density.subtitleFontSize),
-            textColor: message.role == .system ? .secondaryLabelColor : .labelColor
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
+        Text(TranscriptFormatting.highlighted(text, query: query, accent: accent))
+            .font(.system(size: density.subtitleFontSize, design: isMonospaced ? .monospaced : .default))
+            .foregroundStyle(message.role == .system ? .secondary : .primary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var displayedText: String {
