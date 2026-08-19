@@ -70,32 +70,21 @@ public actor SkillsService {
                 result.append(snapshot)
                 continue
             }
-            // `await store.all()` above makes this actor reentrant. Re-read
-            // before writing and apply only app entries that still equal the
-            // snapshot we inspected, preserving a concurrent enable/install
-            // and every newer metadata field.
-            guard let current = await store.skill(with: snapshot.id) else { continue }
-            let merged = Self.mergeReconciledApps(
-                snapshot: snapshot,
-                reconciled: reconciled,
-                current: current
-            )
             do {
-                try await store.upsert(merged)
+                // One store-actor call owns read + compare + write. Splitting
+                // those into a `skill` await and an `upsert` await reopens the
+                // exact lost-update race this reconciliation is preventing.
+                guard let merged = try await store.mergeReconciledApps(
+                    snapshot: snapshot,
+                    reconciled: reconciled
+                ) else { continue }
+                result.append(merged)
             } catch {
                 SafeLog.warn("Persisting reconciled skill state failed.")
+                result.append(reconciled)
             }
-            result.append(merged)
         }
         return result
-    }
-
-    static func mergeReconciledApps(snapshot: Skill, reconciled: Skill, current: Skill) -> Skill {
-        var merged = current
-        for (app, recorded) in snapshot.apps where current.apps[app] == recorded {
-            merged.apps[app] = reconciled.apps[app]
-        }
-        return merged
     }
 
     public func skill(with id: SkillID) async -> Skill? {

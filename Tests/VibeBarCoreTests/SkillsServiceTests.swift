@@ -112,7 +112,9 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(home.contents(of: destination.appendingPathComponent("owner.txt")), "user")
     }
 
-    func testReconciliationPreservesConcurrentAppChanges() {
+    func testAtomicStoreReconciliationPreservesConcurrentAppChanges() async throws {
+        let home = try SkillTestHome()
+        let store = SkillsStore(homeDirectory: home.path)
         let original = SkillMaterialization(method: .symlink)
         let replacement = SkillMaterialization(method: .copy, contentHashAtCopy: "new")
         let cursor = SkillMaterialization(method: .symlink)
@@ -127,23 +129,23 @@ final class SkillsServiceTests: XCTestCase {
         reconciled.apps[.claude] = nil
         var current = snapshot
         current.apps[.cursor] = cursor
+        try await store.upsert(current)
 
-        let merged = SkillsService.mergeReconciledApps(
+        let merged = try await store.mergeReconciledApps(
             snapshot: snapshot,
-            reconciled: reconciled,
-            current: current
+            reconciled: reconciled
         )
-        XCTAssertNil(merged.apps[.claude])
-        XCTAssertEqual(merged.apps[.cursor], cursor)
+        XCTAssertNil(merged?.apps[.claude])
+        XCTAssertEqual(merged?.apps[.cursor], cursor)
 
         current.apps[.claude] = replacement
-        let changed = SkillsService.mergeReconciledApps(
+        try await store.upsert(current)
+        let changed = try await store.mergeReconciledApps(
             snapshot: snapshot,
-            reconciled: reconciled,
-            current: current
+            reconciled: reconciled
         )
-        XCTAssertEqual(changed.apps[.claude], replacement)
-        XCTAssertEqual(changed.apps[.cursor], cursor)
+        XCTAssertEqual(changed?.apps[.claude], replacement)
+        XCTAssertEqual(changed?.apps[.cursor], cursor)
     }
 
     func testFailedMaterializeLeavesTheStoreUntouched() async throws {

@@ -145,6 +145,24 @@ public actor SkillsStore {
         try save(storage)
     }
 
+    /// Atomically applies a disk reconciliation to the app mappings that have
+    /// not changed since `snapshot`. Keeping the read, compare, and write in
+    /// this actor prevents a concurrent enable/install from landing between a
+    /// service-side re-read and upsert.
+    public func mergeReconciledApps(snapshot: Skill, reconciled: Skill) throws -> Skill? {
+        var storage = loaded()
+        guard let index = storage.skills.firstIndex(where: { $0.id == snapshot.id }) else {
+            return nil
+        }
+        var merged = storage.skills[index]
+        for (app, recorded) in snapshot.apps where merged.apps[app] == recorded {
+            merged.apps[app] = reconciled.apps[app]
+        }
+        storage.skills[index] = merged
+        try save(storage)
+        return merged
+    }
+
     @discardableResult
     public func remove(id: SkillID) throws -> Bool {
         var storage = loaded()
