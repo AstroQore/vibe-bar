@@ -4,10 +4,35 @@ import Combine
 @MainActor
 public final class SettingsStore: ObservableObject {
     @Published public var settings: AppSettings {
-        didSet { persist() }
+        didSet { schedulePersist() }
     }
 
     private let defaultsKey = "VibeBar.settings.v1"
+
+    /// Settings edits arrive one keystroke / one toggle at a time, and every
+    /// one used to encode and atomically rewrite the file on the main thread
+    /// before the view could redraw. Coalesce: one write per burst, off the
+    /// main actor. `flush()` writes synchronously and is what quit calls.
+    private var pendingPersist: Task<Void, Never>?
+    private static let persistCoalesceNanoseconds: UInt64 = 250_000_000
+
+    private func schedulePersist() {
+        pendingPersist?.cancel()
+        let snapshot = settings
+        pendingPersist = Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: Self.persistCoalesceNanoseconds)
+            guard !Task.isCancelled else { return }
+            Self.write(snapshot)
+        }
+    }
+
+    /// Write whatever is pending right now. Cheap when nothing is pending.
+    public func flush() {
+        guard let pending = pendingPersist else { return }
+        pending.cancel()
+        pendingPersist = nil
+        Self.write(settings)
+    }
 
     public init(userDefaults: UserDefaults = .standard) {
         if
@@ -31,6 +56,10 @@ public final class SettingsStore: ObservableObject {
     }
 
     private func persist() {
+        Self.write(settings)
+    }
+
+    private nonisolated static func write(_ settings: AppSettings) {
         do {
             try VibeBarLocalStore.writeJSON(settings, to: VibeBarLocalStore.settingsURL)
         } catch {
