@@ -78,6 +78,8 @@ final class SessionManagerModel: ObservableObject {
         let summary: SessionSummary
         let snippet: String?
         let matchedSeq: Int?
+        let matchedRelated: SessionSummary?
+        let reviewCount: Int
 
         var id: String { summary.id }
     }
@@ -115,6 +117,19 @@ final class SessionManagerModel: ObservableObject {
             scheduleSearch()
             refreshRows()
         }
+    }
+    @Published var searchScopes = SessionSearchScope.defaultScopes {
+        didSet {
+            guard oldValue != searchScopes else { return }
+            rerunSearch()
+            refreshRows()
+        }
+    }
+    @Published var directoryIncludeText = "" {
+        didSet { scheduleDirectoryFilter() }
+    }
+    @Published var directoryExcludeText = "" {
+        didSet { scheduleDirectoryFilter() }
     }
 
     /// Which harnesses the list is narrowed to: `nil` for all of them, `[]`
@@ -183,6 +198,7 @@ final class SessionManagerModel: ObservableObject {
     private let bodyIndexing: BodyIndexingFlag
 
     private var searchTask: Task<Void, Never>?
+    private var directoryFilterTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var transcriptGeneration: UInt64 = 0
@@ -190,6 +206,8 @@ final class SessionManagerModel: ObservableObject {
     private var summaryGeneration: UInt64 = 0
     private var hasActivated = false
     private var lastScanFinishedAt: Date?
+    private var reviewSummariesByParent: [String: [SessionSummary]] = [:]
+    private var relatedHitByParent: [String: SessionSummary] = [:]
 
     /// Floor between two automatic sweeps. A manual refresh ignores it.
     private static let rescanMinimumInterval: TimeInterval = 30
@@ -254,9 +272,11 @@ final class SessionManagerModel: ObservableObject {
 
     func stop() {
         searchTask?.cancel()
+        directoryFilterTask?.cancel()
         refreshTask?.cancel()
         toastTask?.cancel()
         searchTask = nil
+        directoryFilterTask = nil
         refreshTask = nil
         toastTask = nil
     }
@@ -337,11 +357,18 @@ final class SessionManagerModel: ObservableObject {
             let page = try? await service.summaryPage(
                 harnesses: harnesses,
                 since: since,
+                projectIncludes: self?.directoryIncludes ?? [],
+                projectExcludes: self?.directoryExcludes ?? [],
+                excludingProviderVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix,
                 order: order,
                 offset: offset,
                 limit: Self.summaryPageSize
             )
             let counts = reset ? (try? await service.harnessCounts()) : nil
+            let reviews = reset ? (try? await service.summaries(
+                provider: .codex,
+                providerVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix
+            )) : nil
             guard let self, generation == self.summaryGeneration else { return }
             self.isLoadingSummaries = false
             guard let page else { return }
@@ -352,7 +379,20 @@ final class SessionManagerModel: ObservableObject {
                 self.summaries.append(contentsOf: page.summaries.filter { !existing.contains($0.id) })
             }
             self.totalSessionCount = page.totalCount
-            if let counts { self.harnessCounts = counts }
+            if var counts {
+                for review in reviews ?? [] {
+                    let harness = review.effectiveHarness
+                    counts[harness] = max(0, (counts[harness] ?? 0) - 1)
+                }
+                self.harnessCounts = counts
+            }
+            if let reviews {
+                self.reviewSummariesByParent = Dictionary(grouping: reviews) {
+                    CodexSessionAdapter.autoReviewParentSessionID(providerVariant: $0.providerVariant) ?? ""
+                }
+                self.reviewSummariesByParent.removeValue(forKey: "")
+                self.refreshRows()
+            }
             self.reconcileSelection()
         }
     }
@@ -371,6 +411,7 @@ final class SessionManagerModel: ObservableObject {
         searchTask?.cancel()
         let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else {
+            relatedHitByParent = [:]
             hits = []
             return
         }
@@ -395,9 +436,55 @@ final class SessionManagerModel: ObservableObject {
             return
         }
         let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
-        let found = (try? await service.search(needle, harnesses: harnesses, limit: 200)) ?? []
+        let found = (try? await service.search(
+            needle,
+            harnesses: harnesses,
+            scopes: searchScopes,
+            projectIncludes: directoryIncludes,
+            projectExcludes: directoryExcludes,
+            limit: 200
+        )) ?? []
+        var resolved: [SessionSearchHit] = []
+        var seen: Set<String> = []
+        var relatedHits: [String: SessionSummary] = [:]
+        for hit in found {
+            if let parentID = CodexSessionAdapter.autoReviewParentSessionID(
+                providerVariant: hit.summary.providerVariant
+            ), let parent = try? await service.summary(provider: .codex, sessionID: parentID) {
+                guard seen.insert(parent.id).inserted else { continue }
+                relatedHits[parent.id] = hit.summary
+                resolved.append(SessionSearchHit(
+                    summary: parent,
+                    snippet: hit.snippet,
+                    matchedSeq: hit.matchedSeq
+                ))
+            } else {
+                guard seen.insert(hit.summary.id).inserted else { continue }
+                resolved.append(hit)
+            }
+        }
         guard generation == searchGeneration else { return }
-        hits = found
+        relatedHitByParent = relatedHits
+        hits = resolved
+    }
+
+    private func scheduleDirectoryFilter() {
+        directoryFilterTask?.cancel()
+        directoryFilterTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.searchDebounce)
+            guard let self, !Task.isCancelled else { return }
+            self.reloadSummaryPage(reset: true)
+            self.rerunSearch()
+        }
+    }
+
+    private var directoryIncludes: [String] { Self.pathTerms(directoryIncludeText) }
+    private var directoryExcludes: [String] { Self.pathTerms(directoryExcludeText) }
+
+    private static func pathTerms(_ text: String) -> [String] {
+        text.split { $0 == "," || $0 == ";" || $0.isNewline }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     // MARK: - Rows
@@ -413,10 +500,24 @@ final class SessionManagerModel: ObservableObject {
         let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let base: [Row]
         if !needle.isEmpty, !hits.isEmpty {
-            base = hits.map { Row(summary: $0.summary, snippet: $0.snippet, matchedSeq: $0.matchedSeq) }
+            base = hits.map {
+                Row(
+                    summary: $0.summary,
+                    snippet: $0.snippet,
+                    matchedSeq: $0.matchedSeq,
+                    matchedRelated: relatedHitByParent[$0.summary.id],
+                    reviewCount: reviewSummariesByParent[$0.summary.sessionID]?.count ?? 0
+                )
+            }
         } else {
             base = filteredSummaries(matching: needle).map {
-                Row(summary: $0, snippet: nil, matchedSeq: nil)
+                Row(
+                    summary: $0,
+                    snippet: nil,
+                    matchedSeq: nil,
+                    matchedRelated: nil,
+                    reviewCount: reviewSummariesByParent[$0.sessionID]?.count ?? 0
+                )
             }
         }
         rows = needle.isEmpty ? base : sorted(base.filter(passesFilters))
@@ -427,7 +528,7 @@ final class SessionManagerModel: ObservableObject {
         var order: [String] = []
         var buckets: [String: [Row]] = [:]
         for row in rows {
-            let key = projectTitle(row.summary.projectDir)
+            let key = projectTitle(for: row.summary)
             if buckets[key] == nil {
                 buckets[key] = []
                 order.append(key)
@@ -442,16 +543,39 @@ final class SessionManagerModel: ObservableObject {
         return URL(fileURLWithPath: projectDir).lastPathComponent
     }
 
+    static func projectTitle(for summary: SessionSummary) -> String {
+        if summary.provider == .codex, isGeneratedProjectlessPath(summary.projectDir) {
+            return "Projectless"
+        }
+        return projectTitle(summary.projectDir)
+    }
+
+    /// Codex Desktop creates a dated scratch cwd for a projectless task. The
+    /// state database has no `project_id` column, so this stable path shape is
+    /// the only on-disk distinction; the real cwd remains available in Details
+    /// and resume commands.
+    static func isGeneratedProjectlessPath(_ path: String?) -> Bool {
+        guard let path else { return false }
+        let components = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+        guard let codex = components.lastIndex(of: "Codex"), components.count == codex + 3 else {
+            return false
+        }
+        let date = components[codex + 1].split(separator: "-", omittingEmptySubsequences: false)
+        return date.count == 3 && date[0].count == 4 && date[1].count == 2 && date[2].count == 2
+            && date.allSatisfy { Int($0) != nil }
+    }
+
     private func filteredSummaries(matching needle: String) -> [SessionSummary] {
         guard !needle.isEmpty else { return summaries }
+        guard searchScopes.contains(.title) else { return [] }
         return summaries.filter { Self.matches($0, needle: needle) }
     }
 
-    /// Case- and diacritic-insensitive substring match across everything a
-    /// row shows plus the session id, which is what someone pasting an id
-    /// from a CLI log is searching for.
+    /// Immediate metadata preview while the debounced SQLite query is in
+    /// flight. It obeys the title scope exactly; project paths have their own
+    /// include/exclude controls and transcript roles are answered by FTS.
     static func matches(_ summary: SessionSummary, needle: String) -> Bool {
-        let fields = [summary.title, summary.summary, summary.projectDir, summary.sessionID]
+        let fields = [summary.title, summary.sessionID]
         for field in fields {
             guard let field else { continue }
             if field.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil {
@@ -479,7 +603,7 @@ final class SessionManagerModel: ObservableObject {
             // Key first, compare second: a localized comparison inside the
             // predicate would re-derive both project names on every swap.
             return rows
-                .map { (key: Self.projectTitle($0.summary.projectDir), row: $0) }
+                .map { (key: Self.projectTitle(for: $0.summary), row: $0) }
                 .sorted {
                     if $0.key != $1.key {
                         return $0.key.localizedStandardCompare($1.key) == .orderedAscending
@@ -528,16 +652,37 @@ final class SessionManagerModel: ObservableObject {
         harnessFilter = harnesses
     }
 
+    func toggleSearchScope(_ scope: SessionSearchScope) {
+        if searchScopes.contains(scope) {
+            searchScopes.remove(scope)
+        } else {
+            searchScopes.insert(scope)
+        }
+    }
+
+    func clearDirectoryFilters() {
+        directoryIncludeText = ""
+        directoryExcludeText = ""
+    }
+
     // MARK: - Selection
 
     /// Selecting a full-text hit carries the matched message with it, so the
     /// transcript opens on the line that produced the snippet instead of at
     /// the top of a session the user then has to search again by hand.
     func select(_ row: Row) {
-        select(row.summary, focusSeq: row.matchedSeq)
+        select(
+            row.summary,
+            focusSeq: row.matchedSeq,
+            focusedRelatedID: row.matchedRelated?.id
+        )
     }
 
-    func select(_ summary: SessionSummary?, focusSeq: Int? = nil) {
+    func select(
+        _ summary: SessionSummary?,
+        focusSeq: Int? = nil,
+        focusedRelatedID: String? = nil
+    ) {
         selection = summary
         self.focusSeq = focusSeq
         transcript = nil
@@ -554,11 +699,19 @@ final class SessionManagerModel: ObservableObject {
         }
         let generation = transcriptGeneration
         let url = URL(fileURLWithPath: summary.sourcePath)
+        let related = reviewSummariesByParent[summary.sessionID] ?? []
         isLoadingTranscript = true
         Task { [weak self] in
-            let parsed = await Self.parse(adapter: adapter, url: url)
+            let parsed = await Self.parse(
+                adapter: adapter,
+                url: url,
+                related: related,
+                requestedFocusSeq: focusSeq,
+                focusedRelatedID: focusedRelatedID
+            )
             guard let self, generation == self.transcriptGeneration else { return }
             self.isLoadingTranscript = false
+            self.focusSeq = parsed.focusSeq
             self.transcript = parsed.document
             self.transcriptError = parsed.errorMessage
         }
@@ -571,21 +724,68 @@ final class SessionManagerModel: ObservableObject {
     private struct ParsedTranscript: Sendable {
         let document: TranscriptDocument?
         let errorMessage: String?
+        let focusSeq: Int?
     }
 
     /// `nonisolated` so the parse runs off the main actor — a long rollout is
     /// megabytes of JSONL and the window has to stay interactive through it.
     private nonisolated static func parse(
         adapter: any SessionProviderAdapter,
-        url: URL
+        url: URL,
+        related: [SessionSummary],
+        requestedFocusSeq: Int?,
+        focusedRelatedID: String?
     ) async -> ParsedTranscript {
         do {
-            return ParsedTranscript(document: try adapter.parseTranscript(fileURL: url), errorMessage: nil)
+            let root = try adapter.parseTranscript(fileURL: url)
+            guard !related.isEmpty else {
+                return ParsedTranscript(document: root, errorMessage: nil, focusSeq: requestedFocusSeq)
+            }
+            var messages = root.messages
+            var translatedFocus = focusedRelatedID == nil ? requestedFocusSeq : nil
+            for review in related.sorted(by: {
+                ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast)
+            }) {
+                guard let document = try? adapter.parseTranscript(
+                    fileURL: URL(fileURLWithPath: review.sourcePath)
+                ) else { continue }
+                messages.append(SessionMessage(
+                    seq: messages.count,
+                    role: .system,
+                    text: "Auto Review",
+                    timestamp: review.createdAt
+                ))
+                let childStart = messages.count
+                messages.append(contentsOf: document.messages)
+                if review.id == focusedRelatedID,
+                   let requestedFocusSeq,
+                   let childIndex = document.messages.firstIndex(where: { $0.seq == requestedFocusSeq }) {
+                    translatedFocus = childStart + childIndex
+                }
+            }
+            let resequenced = messages.enumerated().map { index, message in
+                SessionMessage(
+                    seq: index,
+                    role: message.role,
+                    text: message.text,
+                    timestamp: message.timestamp
+                )
+            }
+            return ParsedTranscript(
+                document: TranscriptDocument(
+                    messages: resequenced,
+                    totalMessageCount: resequenced.count,
+                    truncated: false
+                ),
+                errorMessage: nil,
+                focusSeq: translatedFocus
+            )
         } catch {
             return ParsedTranscript(
                 document: nil,
                 errorMessage: (error as? LocalizedError)?.errorDescription
-                    ?? "This session's log could not be read."
+                    ?? "This session's log could not be read.",
+                focusSeq: nil
             )
         }
     }

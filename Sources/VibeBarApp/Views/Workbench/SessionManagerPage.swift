@@ -116,14 +116,15 @@ struct SessionManagerPage: View {
 /// The filter unit is the **harness**, not the company: a row is labelled
 /// with the harness that produced it, and two harnesses can share one adapter
 /// (a Codex rollout is Codex or ChatGPT Work depending on its `originator`).
-/// So each company contributes a muted section-head chip that toggles all of
-/// its harnesses at once, followed by one chip per harness. Chips carry the
-/// brand accent for the same reason the usage filters do — colour is how this
-/// app says "provider" — and the rest is glass menus so a rarely-used control
-/// never outweighs the list. See AGENTS.md § 7.1.
+/// Company names are intentionally separated from harnesses: they are parents
+/// in the billing hierarchy, not another peer filter beside Codex or Claude
+/// Code. Two compact menus provide company-wide and exact-harness controls
+/// without turning the toolbar into a long strip of mixed-level chips. See
+/// AGENTS.md § 7.1.
 struct SessionFiltersBar: View {
     let density: Theme.Density
     @ObservedObject var model: SessionManagerModel
+    @State private var showsDirectoryFilters = false
 
     var body: some View {
         Group {
@@ -134,20 +135,16 @@ struct SessionFiltersBar: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 7) {
                     searchField
+                    searchScopeMenu
+                    directoryFilterButton
                     indexStatus
                     SectionRefreshButton(isRefreshing: model.indexProgress != nil) {
                         model.refreshIndex()
                     }
                     .help("Rescan the session logs on disk")
                     allProvidersChip
-                    ForEach(chipGroups) { group in
-                        HStack(spacing: 4) {
-                            companyChip(group)
-                            ForEach(group.harnesses, id: \.self) { harness in
-                                harnessChip(harness, in: group)
-                            }
-                        }
-                    }
+                    companyFilterMenu
+                    harnessFilterMenu
                     rangeMenu
                     sortMenu
                     optionsMenu
@@ -169,7 +166,7 @@ struct SessionFiltersBar: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: density.segmentedFontSize - 1))
                 .foregroundStyle(.secondary)
-            TextField("Search titles, projects, and message text", text: $model.searchText)
+            TextField("Search sessions", text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: max(12, density.segmentedFontSize)))
             if !model.searchText.isEmpty {
@@ -182,6 +179,83 @@ struct SessionFiltersBar: View {
         .frame(width: 270)
         .frame(minHeight: 30)
         .workbenchFieldSurface(cornerRadius: 15)
+    }
+
+    private var searchScopeMenu: some View {
+        Menu {
+            ForEach(SessionSearchScope.allCases, id: \.self) { scope in
+                Toggle(scopeTitle(scope), isOn: Binding(
+                    get: { model.searchScopes.contains(scope) },
+                    set: { _ in model.toggleSearchScope(scope) }
+                ))
+            }
+            Divider()
+            Text(model.isBodyIndexingEnabled
+                ? "Message text is indexed locally."
+                : "Enable message indexing in Options to search transcript content.")
+        } label: {
+            menuLabel(
+                systemImage: "text.magnifyingglass",
+                title: "Scope",
+                detail: "\(model.searchScopes.count)"
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    private var directoryFilterButton: some View {
+        let active = !model.directoryIncludeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !model.directoryExcludeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return Button {
+            showsDirectoryFilters.toggle()
+        } label: {
+            menuLabel(systemImage: "folder.badge.gearshape", title: "Folders", detail: active ? "Filtered" : "All")
+        }
+        .buttonStyle(WorkbenchPillButtonStyle(prominent: active))
+        .popover(isPresented: $showsDirectoryFilters, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Directory filters")
+                    .font(.headline)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Include paths containing")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("/project/a, /project/b", text: $model.directoryIncludeText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Exclude paths containing")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("/archive, /vendor", text: $model.directoryExcludeText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                Text("Separate multiple paths with commas, semicolons, or new lines.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                HStack {
+                    Spacer()
+                    Button("Clear") { model.clearDirectoryFilters() }
+                    Button("Done") { showsDirectoryFilters = false }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(16)
+            .frame(width: 360)
+        }
+    }
+
+    private func scopeTitle(_ scope: SessionSearchScope) -> String {
+        switch scope {
+        case .title: "Titles and session IDs"
+        case .user: "User prompts"
+        case .assistant: "Assistant replies"
+        case .system: "System prompts"
+        case .tool: "Tool and file operations"
+        }
     }
 
     @ViewBuilder
@@ -218,18 +292,20 @@ struct SessionFiltersBar: View {
 
     // MARK: - Harnesses
 
-    /// A company disappears from the row once the index proves it has no
-    /// sessions at all — but only once there *are* counts. Before the first
-    /// page lands, and whenever the index is unavailable, every company shows:
-    /// an empty filter row the user cannot recover from is worse than four
-    /// chips that turn out to be empty.
-    private var chipGroups: [Harness.ChipGroup] {
-        let groups = Harness.chipGroups(companies: ToolType.coreProviderRepresentatives)
+    /// Companies are hierarchy labels, not peers of harnesses. The filter row
+    /// therefore contains only the thing it actually filters: one chip per
+    /// harness, in catalog order. Empty harnesses disappear after counts load.
+    private var availableHarnesses: [Harness] {
         let counts = model.harnessCounts
-        guard counts.values.contains(where: { $0 > 0 }) else { return groups }
-        return groups.filter { group in
-            group.harnesses.contains { (counts[$0] ?? 0) > 0 }
-        }
+        guard counts.values.contains(where: { $0 > 0 }) else { return Harness.allCases }
+        return Harness.allCases.filter { (counts[$0] ?? 0) > 0 }
+    }
+
+    private var availableCompanyGroups: [Harness.ChipGroup] {
+        Harness.chipGroups(
+            companies: ToolType.coreProviderRepresentatives,
+            harnesses: availableHarnesses
+        )
     }
 
     /// The All chip is a switch, not a shortcut: lit means every harness is
@@ -253,73 +329,55 @@ struct SessionFiltersBar: View {
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    /// The company section head. Deliberately quieter than the harness chips
-    /// beside it — smaller, no count, barely any fill — because it is not one
-    /// more thing to filter by, it is a shortcut for the harnesses it covers.
-    private func companyChip(_ group: Harness.ChipGroup) -> some View {
-        let accent = Theme.providerAccent(for: group.company)
-        let selected = isSelected(group)
-        return Button {
-            model.toggleHarnesses(group.harnessSet)
-        } label: {
-            HStack(spacing: 4) {
-                ToolBrandIconView(tool: group.company, size: max(9, density.segmentedFontSize - 1))
-                Text(group.company.vendorName)
-                    .font(.system(size: max(9, density.segmentedFontSize - 2), weight: .semibold))
-                    .tracking(0.3)
-                    .lineLimit(1)
+    /// L1 companies and harnesses are separate compact menus: the company
+    /// remains a batch control, while the row no longer pretends OpenAI and
+    /// Codex are peers or consumes the entire toolbar with nine chips.
+    private var companyFilterMenu: some View {
+        Menu {
+            ForEach(availableCompanyGroups) { group in
+                Toggle(group.company.vendorName, isOn: Binding(
+                    get: { isSelected(group) },
+                    set: { _ in model.toggleHarnesses(group.harnessSet) }
+                ))
             }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 7)
-            .frame(minHeight: 28)
+        } label: {
+            menuLabel(
+                systemImage: "building.2",
+                title: "Company",
+                detail: selectedCompanySummary
+            )
         }
-        .buttonStyle(.plain)
-        .background(Capsule().fill(accent.opacity(selected ? 0.10 : 0.035)))
-        .opacity(selected ? 1 : 0.65)
-        .saturation(selected ? 1 : 0.50)
-        .help(companyHelp(group))
-        .accessibilityLabel("\(group.company.vendorName), every harness")
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 
-    /// One chip per harness — the unit a session row is actually labelled
-    /// with. The icon is the harness's own brand (Cursor's mark, not Grok's,
-    /// matching the badge in the list); the accent is the company's, so a
-    /// group still reads as one block of colour.
-    ///
-    /// ⌥-click solos, which is the one-click way to ask "just this harness"
-    /// without turning eight other chips off by hand.
-    private func harnessChip(_ harness: Harness, in group: Harness.ChipGroup) -> some View {
-        let selected = model.harnessFilter?.contains(harness) ?? true
-        let count = model.harnessCounts[harness] ?? 0
-        return Button {
-            if NSEvent.modifierFlags.contains(.option) {
-                model.soloHarness(harness)
-            } else {
-                model.toggleHarness(harness)
-            }
-        } label: {
-            HStack(spacing: 5) {
-                ToolBrandIconView(tool: harness.brandTool, size: density.segmentedFontSize + 1)
-                Text(harness.displayName)
-                    .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                    .lineLimit(1)
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: max(8, density.segmentedFontSize - 3), design: .rounded)
-                            .monospacedDigit())
-                        .foregroundStyle(.secondary)
+    private var harnessFilterMenu: some View {
+        Menu {
+            ForEach(availableHarnesses, id: \.self) { harness in
+                Toggle(isOn: Binding(
+                    get: { model.harnessFilter?.contains(harness) ?? true },
+                    set: { _ in model.toggleHarness(harness) }
+                )) {
+                    Label {
+                        Text("\(harness.displayName)  \(model.harnessCounts[harness] ?? 0)")
+                    } icon: {
+                        ToolBrandIconView(tool: harness.brandTool, size: 12)
+                    }
                 }
             }
-            .padding(.horizontal, 9)
-            .frame(minHeight: 28)
+        } label: {
+            menuLabel(
+                systemImage: "terminal",
+                title: "Harness",
+                detail: selectedHarnessSummary
+            )
         }
-        .buttonStyle(.plain)
-        .background(chipBackground(tint: Theme.providerAccent(for: group.company), selected: selected))
-        .opacity(selected ? 1 : 0.70)
-        .saturation(selected ? 1 : 0.50)
-        .help("\(group.company.vendorName) · \(harness.displayName)\nClick to toggle · ⌥-click to solo")
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 
     private func isSelected(_ group: Harness.ChipGroup) -> Bool {
@@ -327,9 +385,15 @@ struct SessionFiltersBar: View {
         return group.harnesses.allSatisfy(filter.contains)
     }
 
-    private func companyHelp(_ group: Harness.ChipGroup) -> String {
-        let names = group.harnesses.map(\.displayName).joined(separator: " + ")
-        return "\(group.company.vendorName) · \(names)"
+    private var selectedCompanySummary: String {
+        let selected = availableCompanyGroups.count(where: isSelected)
+        return selected == availableCompanyGroups.count ? "All" : "\(selected)/\(availableCompanyGroups.count)"
+    }
+
+    private var selectedHarnessSummary: String {
+        guard let filter = model.harnessFilter else { return "All" }
+        let count = availableHarnesses.count(where: filter.contains)
+        return count == availableHarnesses.count ? "All" : "\(count)/\(availableHarnesses.count)"
     }
 
     private func chipBackground(tint: Color, selected: Bool) -> some View {

@@ -80,7 +80,9 @@ struct MiniQuotaWindowView: View {
                     let field = MenuBarFieldCatalog.field(id: fieldId),
                     field.tool == tool
                 else { continue }
-                let liveBucket = environment.quota(for: tool)?.bucket(id: field.bucketId)
+                guard let liveBucket = environment.quota(for: tool)?.bucket(id: field.bucketId) else {
+                    continue
+                }
                 if Self.hasQuotaGroup(liveBucket, tool: tool, bucketId: field.bucketId)
                     || isBranchField(field) {
                     continue
@@ -370,48 +372,7 @@ private struct MiniBranchCell: Identifiable {
     }
 
     var groupKey: String {
-        switch bucket.id {
-        case "gpt_5_3_codex_spark_five_hour", "gpt_5_3_codex_spark_weekly":
-            return "codex.spark"
-        case "weekly_sonnet":
-            return "claude.sonnet"
-        case "weekly_design":
-            return "claude.design"
-        case "daily_routines":
-            return "claude.routine"
-        case "weekly_opus":
-            return "claude.opus"
-        case "weekly_fable":
-            return "claude.fable"
-        case "weekly_oauth_apps":
-            return "claude.oauth"
-        case "models" where tool == .cursor:
-            return "cursor.models"
-        case "other_models" where tool == .cursor:
-            return "cursor.other-models"
-        case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
-            return "antigravity.gemini-models"
-        case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
-            return "antigravity.claude-gpt-models"
-        case let id where tool == .gemini && id.contains("flash-lite"):
-            return "gemini.flash-lite"
-        case let id where tool == .gemini && id.contains("flash"):
-            return "gemini.flash"
-        case let id where tool == .gemini && id.contains("pro"):
-            return "gemini.pro"
-        case let id where tool == .antigravity && id.contains("gpt-oss"):
-            return "antigravity.gpt-oss"
-        case let id where tool == .antigravity && id.contains("claude"):
-            return "antigravity.claude"
-        case let id where tool == .antigravity && id.contains("flash-lite"):
-            return "antigravity.gemini-flash-lite"
-        case let id where tool == .antigravity && id.contains("flash"):
-            return "antigravity.gemini-flash"
-        case let id where tool == .antigravity && id.contains("gemini") && id.contains("pro"):
-            return "antigravity.gemini-pro"
-        default:
-            return "\(tool.rawValue).\(field.bucketId)"
-        }
+        MiniWindowGroupLabelCatalog.groupKey(tool: tool, bucketId: bucket.id)
     }
 
     var defaultGroupTitle: String {
@@ -619,6 +580,15 @@ private func miniGroupTitle(for cell: MiniBranchCell, settings: MiniWindowSettin
     return cell.defaultGroupTitle
 }
 
+private func miniSubProviderTitle(for member: MiniL2Member, settings: MiniWindowSettings) -> String {
+    let key = MiniWindowGroupLabelCatalog.subProviderKey(
+        tool: member.tool,
+        name: member.subProviderName
+    )
+    let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return custom.flatMap { $0.isEmpty ? nil : $0 } ?? member.subProviderName
+}
+
 /// Heading for a SubProvider's primary (flat, ungrouped) buckets. Every
 /// entry resolves to a quota-group name — the SubProvider itself is printed
 /// one tier up by `MiniMemberStack`, so nothing here may name a product.
@@ -711,7 +681,7 @@ private struct MiniMemberStack: View {
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniRingMetrics.subProviderLabelGap) {
-            Text(member.subProviderName.uppercased())
+            Text(miniSubProviderTitle(for: member, settings: settings).uppercased())
                 .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.2)
@@ -1176,7 +1146,7 @@ private struct MiniCompactMemberStack: View {
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniCompactMetrics.subProviderLabelGap) {
-            Text(member.subProviderName.uppercased())
+            Text(miniSubProviderTitle(for: member, settings: settings).uppercased())
                 .font(.system(size: 7.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.2)

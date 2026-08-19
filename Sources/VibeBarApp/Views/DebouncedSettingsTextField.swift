@@ -10,9 +10,12 @@ import SwiftUI
 /// Disk writes are already coalesced in `SettingsStore`; this coalesces the
 /// render fan-out the same way.
 ///
-/// The draft is committed on submit, on focus loss, after `idleDelay` of no
-/// typing, and on disappear — so closing the window or switching Settings
-/// section immediately after typing still keeps what was typed.
+/// The draft is committed on submit, after `idleDelay` of no typing, and on
+/// disappear — so closing the window or switching Settings section
+/// immediately after typing still keeps what was typed. Focus loss is
+/// deliberately *not* a synchronous commit: clicking from one of the many
+/// label fields into another must not publish global settings in the middle
+/// of AppKit's first-responder hand-off.
 ///
 /// Value semantics stay entirely with the binding: "" still means "remove the
 /// override", trimming still happens where it happened before. This view only
@@ -50,9 +53,6 @@ struct DebouncedSettingsTextField: View {
                 try? await Task.sleep(for: idleDelay)
                 guard !Task.isCancelled else { return }
                 commit()
-            }
-            .onChange(of: isFocused) { _, focused in
-                if !focused { commit() }
             }
             // An external write — a reset, a migration, another window — may
             // only replace text the user is not currently editing.
