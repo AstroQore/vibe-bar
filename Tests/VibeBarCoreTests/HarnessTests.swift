@@ -13,7 +13,8 @@ final class HarnessTests: XCTestCase {
                 "Gemini CLI",
                 "AntiGravity",
                 "Grok Build",
-                "Cursor"
+                "Cursor",
+                "Grok Bot"
             ]
         )
     }
@@ -35,7 +36,10 @@ final class HarnessTests: XCTestCase {
             .geminiCLI:    (.gemini, .gemini),
             .antigravity:  (.antigravity, .gemini),
             .grokBuild:    (.grok, .grok),
-            .cursor:       (.cursor, .grok)
+            .cursor:       (.cursor, .grok),
+            // Grok Bot has no tool of its own — its weekly bucket arrives on
+            // Cursor's adapter, so that is also where its company comes from.
+            .grokBot:      (.cursor, .grok)
         ]
         XCTAssertEqual(expected.count, Harness.allCases.count)
         for harness in Harness.allCases {
@@ -46,6 +50,7 @@ final class HarnessTests: XCTestCase {
             XCTAssertEqual(harness.company, pair.1, "\(harness) company")
         }
         XCTAssertEqual(Harness.chatgptWork.companyName, "OpenAI")
+        XCTAssertEqual(Harness.grokBot.companyName, "SpaceXAI")
         XCTAssertEqual(Harness.antigravity.companyName, "Google AI")
         XCTAssertEqual(Harness.cursor.companyName, "SpaceXAI")
     }
@@ -74,7 +79,7 @@ final class HarnessTests: XCTestCase {
         XCTAssertEqual(Harness.harnesses(forCompany: .codex), [.codex, .chatgptWork])
         XCTAssertEqual(Harness.harnesses(forCompany: .claude), [.claudeCode, .claudeCowork])
         XCTAssertEqual(Harness.harnesses(forCompany: .gemini), [.geminiCLI, .antigravity])
-        XCTAssertEqual(Harness.harnesses(forCompany: .grok), [.grokBuild, .cursor])
+        XCTAssertEqual(Harness.harnesses(forCompany: .grok), [.grokBuild, .cursor, .grokBot])
         // A non-representative member resolves to the same company list.
         XCTAssertEqual(
             Harness.harnesses(forCompany: .cursor),
@@ -95,7 +100,7 @@ final class HarnessTests: XCTestCase {
                 [.codex, .chatgptWork],
                 [.claudeCode, .claudeCowork],
                 [.geminiCLI, .antigravity],
-                [.grokBuild, .cursor]
+                [.grokBuild, .cursor, .grokBot]
             ]
         )
         XCTAssertEqual(groups.flatMap(\.harnesses), Harness.allCases)
@@ -121,8 +126,8 @@ final class HarnessTests: XCTestCase {
     func testChipGroupsNormalizeCompaniesAndDropEmptyOnes() {
         let groups = Harness.chipGroups(companies: [.cursor, .grok, .warp])
         XCTAssertEqual(groups.map(\.company), [.grok])
-        XCTAssertEqual(groups.first?.harnesses, [.grokBuild, .cursor])
-        XCTAssertEqual(groups.first?.harnessSet, Set([Harness.grokBuild, .cursor]))
+        XCTAssertEqual(groups.first?.harnesses, [.grokBuild, .cursor, .grokBot])
+        XCTAssertEqual(groups.first?.harnessSet, Set([Harness.grokBuild, .cursor, .grokBot]))
     }
 
     func testRawValuesAreStableStorageKeys() {
@@ -132,7 +137,7 @@ final class HarnessTests: XCTestCase {
             Harness.allCases.map(\.rawValue),
             [
                 "codex", "chatgptWork", "claudeCode", "claudeCowork",
-                "geminiCLI", "antigravity", "grokBuild", "cursor"
+                "geminiCLI", "antigravity", "grokBuild", "cursor", "grokBot"
             ]
         )
     }

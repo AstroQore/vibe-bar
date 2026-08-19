@@ -85,9 +85,9 @@ public struct SessionProviderRegistry: Sendable {
 
     /// The adapters shipped today, one per `SessionProvider`.
     ///
-    /// AntiGravity, Claude Cowork, and Cursor list and read like the rest but
-    /// refuse to plan a delete, because another running app owns those stores
-    /// — see `SessionProvider.supportsDeletion`.
+    /// AntiGravity, Claude Cowork, Cursor, and Grok Bot list and read like the
+    /// rest but refuse to plan a delete, because another running app owns
+    /// those stores — see `SessionProvider.supportsDeletion`.
     public static func standard(homeDirectory: String = RealHomeDirectory.path) -> SessionProviderRegistry {
         SessionProviderRegistry(adapters: [
             ClaudeSessionAdapter(),
@@ -96,7 +96,8 @@ public struct SessionProviderRegistry: Sendable {
             GrokSessionAdapter(),
             CursorSessionAdapter(),
             GeminiSessionAdapter(),
-            AntigravitySessionAdapter()
+            AntigravitySessionAdapter(),
+            GrokBotSessionAdapter()
         ])
     }
 

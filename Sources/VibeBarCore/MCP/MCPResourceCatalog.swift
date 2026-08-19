@@ -96,7 +96,9 @@ public enum MCPResourceCatalog {
         }
         lines.append("")
         lines.append("Grok Bot is a cloud-only SubProvider that shares Cursor's adapter: it appears")
-        lines.append("as the `grok_bot_weekly` bucket under the `cursor` tool.")
+        lines.append("as the `grok_bot_weekly` bucket under the `cursor` tool. Its conversations")
+        lines.append("are listed as sessions from the app's own local cache, but its runs happen")
+        lines.append("server-side, so they never carry a model, tokens, or cost.")
         lines.append("")
         lines.append("L3 is the bucket: `id`, `title` and `groupTitle` on each entry of")
         lines.append("`quota.get` → `accounts[].buckets[]`. Examples are \"5 Hours\", \"Weekly\",")
@@ -156,6 +158,8 @@ public enum MCPResourceCatalog {
         case .antigravity:  return "`~/.gemini/antigravity{,-cli,-ide}/conversations`"
         case .grokBuild:    return "`~/.grok/sessions/**/updates.jsonl`"
         case .cursor:       return "`~/.cursor/chats/**/store.db`; cost from the dashboard"
+        case .grokBot:      return "`~/Library/Application Support/Grok Bot/"
+            + "sand-client-persistence`; sessions only, no tokens"
         }
     }
 

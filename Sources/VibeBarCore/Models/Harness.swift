@@ -23,6 +23,7 @@ import Foundation
 /// | AntiGravity    | Google AI  | `~/.gemini/antigravity{,-cli,-ide}/conversations`            |
 /// | Grok Build     | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                          |
 /// | Cursor         | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard remote events for cost (no local token counters) |
+/// | Grok Bot       | SpaceXAI   | `~/Library/Application Support/Grok Bot/sand-client-persistence` — a cloud cache: sessions only, no model, no local tokens |
 ///
 /// Renaming a harness is one edit here, not a hunt across the UI.
 /// `AGENTS.md` § 7.1 carries the coverage matrix — which of model, cost,
@@ -39,6 +40,9 @@ public enum HarnessCatalog {
     public static let antigravity = "AntiGravity"
     public static let grokBuild = "Grok Build"
     public static let cursor = "Cursor"
+    /// xAI's standalone cloud-bot app, not Grok Build. Its runs happen
+    /// server-side, so it contributes sessions and quota but never tokens.
+    public static let grokBot = "Grok Bot"
 }
 
 /// The local harness a usage event came from — the unit every usage and cost
@@ -56,6 +60,7 @@ public enum Harness: String, CaseIterable, Codable, Sendable, Hashable {
     case antigravity
     case grokBuild
     case cursor
+    case grokBot
 
     public var displayName: String {
         switch self {
@@ -67,6 +72,7 @@ public enum Harness: String, CaseIterable, Codable, Sendable, Hashable {
         case .antigravity:  HarnessCatalog.antigravity
         case .grokBuild:    HarnessCatalog.grokBuild
         case .cursor:       HarnessCatalog.cursor
+        case .grokBot:      HarnessCatalog.grokBot
         }
     }
 
@@ -81,6 +87,11 @@ public enum Harness: String, CaseIterable, Codable, Sendable, Hashable {
         case .antigravity:              .antigravity
         case .grokBuild:                .grok
         case .cursor:                   .cursor
+        // Grok Bot has no tool of its own: its quota arrives as Cursor's
+        // `grok_bot_weekly` bucket, which is also where the L1 company comes
+        // from. The Sessions badge deliberately draws the Grok mark instead
+        // — see `Harness.brandTool`.
+        case .grokBot:                  .cursor
         }
     }
 

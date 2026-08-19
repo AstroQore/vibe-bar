@@ -8,7 +8,7 @@ import Foundation
 /// ChatGPT Work depending on its `originator`), which is why every summary
 /// also carries a `harness`. See `AGENTS.md` § 7.1.
 ///
-/// Three providers are listed and readable but never deletable, because
+/// Four providers are listed and readable but never deletable, because
 /// another running app owns the store — see `supportsDeletion`.
 public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
     case claude
@@ -18,6 +18,7 @@ public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
     case cursor
     case gemini
     case antigravity
+    case grokBot
 
     public var displayName: String {
         switch self {
@@ -28,6 +29,7 @@ public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
         case .cursor: return HarnessCatalog.cursor
         case .gemini: return HarnessCatalog.geminiCLI
         case .antigravity: return HarnessCatalog.antigravity
+        case .grokBot: return HarnessCatalog.grokBot
         }
     }
 
@@ -43,6 +45,7 @@ public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
         case .cursor: return .cursor
         case .gemini: return .geminiCLI
         case .antigravity: return .antigravity
+        case .grokBot: return .grokBot
         }
     }
 
@@ -50,15 +53,16 @@ public enum SessionProvider: String, Codable, Sendable, CaseIterable, Hashable {
     ///
     /// `false` means another running app owns the store and removing from
     /// underneath it is how a store gets corrupted rather than emptied —
-    /// AntiGravity's live WAL handles, Cursor's open agent database, and
-    /// Cowork's transcripts inside Claude.app's own container (AGENTS.md
-    /// § 5). The adapters fail closed with
+    /// AntiGravity's live WAL handles, Cursor's open agent database,
+    /// Cowork's transcripts inside Claude.app's own container, and Grok
+    /// Bot's replica of conversations that actually live in the cloud
+    /// (AGENTS.md § 5). The adapters fail closed with
     /// `SessionDeleteError.providerIsReadOnly`; this is the same fact
     /// stated where a UI can ask it before offering the action.
     public var supportsDeletion: Bool {
         switch self {
         case .claude, .codex, .grok, .gemini: return true
-        case .claudeCowork, .cursor, .antigravity: return false
+        case .claudeCowork, .cursor, .antigravity, .grokBot: return false
         }
     }
 }
@@ -277,6 +281,8 @@ public enum SessionDeleteError: Error, Hashable, Codable, Sendable {
                 return "Cowork sessions live inside Claude.app's container and are never removed by Vibe Bar."
             case .cursor:
                 return "Cursor keeps its session store open; delete from Cursor itself."
+            case .grokBot:
+                return "Grok Bot sessions are the app's own cloud cache; manage them in Grok Bot."
             case .claude, .codex, .grok, .gemini:
                 return "Deleting sessions is not supported for this provider."
             }

@@ -466,7 +466,7 @@ struct SettingsView: View {
                         coreProviderPlanBadgeRows(for: [.grok, .cursor])
                         Divider()
                             .padding(.vertical, 2)
-                        Text("The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota only — its cloud runs do not add token/cost rows.")
+                        Text("The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota, plus read-only sessions from its local cache — its cloud runs still add no token/cost rows.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 

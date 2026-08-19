@@ -35,9 +35,10 @@ final class SessionResumeCommandBuilderTests: XCTestCase {
 
     /// Neither Cowork nor Cursor publishes a "reopen this conversation"
     /// command; inventing one would hand the user a line that quietly starts
-    /// a *new* session in the wrong app.
-    func testCoworkAndCursorHaveNoResumeCommandOnAnyVariant() {
-        for provider in [SessionProvider.claudeCowork, .cursor] {
+    /// a *new* session in the wrong app. Grok Bot has no CLI at all — the
+    /// conversation only exists on xAI's servers.
+    func testCoworkCursorAndGrokBotHaveNoResumeCommandOnAnyVariant() {
+        for provider in [SessionProvider.claudeCowork, .cursor, .grokBot] {
             for variant in [nil, "cli", "default"] {
                 assertThrows(.resumeUnavailable) {
                     try SessionResumeCommandBuilder.command(

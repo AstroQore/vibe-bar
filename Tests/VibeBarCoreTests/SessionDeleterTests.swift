@@ -166,15 +166,16 @@ final class SessionDeleterTests: XCTestCase {
         XCTAssertTrue(exists(url))
     }
 
-    /// The three providers whose stores belong to another running app never
-    /// reach the containment fence at all — their adapters refuse first, and
-    /// each says which app to delete from instead.
+    /// The four providers whose stores belong to another running app — or, for
+    /// Grok Bot, to a server — never reach the containment fence at all: their
+    /// adapters refuse first, and each says which app to delete from instead.
     func testProvidersWhoseStoreAnotherAppOwnsAreRefused() {
         let paths: [SessionProvider: String] = [
             .antigravity: ".gemini/antigravity/conversations/\(sessionID).db",
             .cursor: ".cursor/chats/workspace/\(sessionID)/store.db",
             .claudeCowork: "Library/Application Support/Claude/local-agent-mode-sessions/"
-                + "space/x/local_\(sessionID)/.claude/projects/-Users-example-proj/\(sessionID).jsonl"
+                + "space/x/local_\(sessionID)/.claude/projects/-Users-example-proj/\(sessionID).jsonl",
+            .grokBot: "Library/Application Support/Grok Bot/sand-client-persistence/\(sessionID).blob"
         ]
         for (provider, path) in paths {
             XCTAssertFalse(provider.supportsDeletion, "\(provider) must not be deletable")
@@ -198,7 +199,7 @@ final class SessionDeleterTests: XCTestCase {
         }
         XCTAssertEqual(
             Set(SessionProvider.allCases.filter { !$0.supportsDeletion }),
-            [.antigravity, .cursor, .claudeCowork]
+            [.antigravity, .cursor, .claudeCowork, .grokBot]
         )
     }
 
