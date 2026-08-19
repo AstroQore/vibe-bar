@@ -1287,7 +1287,12 @@ private struct AgentSessionKitComponentRow: View {
         guard !isChecking else { return }
         isChecking = true
         Task {
-            let result = await checker.checkAgentSessionKit(force: true)
+            // Not forced: a second press inside the six-hour window reuses
+            // the answer already in memory rather than asking GitHub again.
+            // Six hours is far shorter than the interval at which a kit
+            // release could matter here — it cannot arrive without a new
+            // build of this app anyway.
+            let result = await checker.checkAgentSessionKit()
             await MainActor.run {
                 status = result
                 isChecking = false
