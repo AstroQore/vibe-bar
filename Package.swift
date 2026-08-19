@@ -17,8 +17,11 @@ let package = Package(
         // from this repository, so the types are the ones Vibe Bar used to
         // declare itself; `Compat/AgentSessionKitReexport.swift` re-exports
         // them and keeps the host-shaped defaults.
-        // TODO: switch to .package(url: "https://github.com/AstroQore/agent-session-kit.git", from: "0.1.0") once published
-        .package(path: "../agent-session-kit"),
+        // Pinned to an exact tag on purpose: a release build resolves this
+        // from a clean checkout with no Package.resolved (it is gitignored),
+        // so the pin is the only thing that makes two builds of the same
+        // Vibe Bar commit contain the same package. Bump it deliberately.
+        .package(url: "https://github.com/AstroQore/agent-session-kit.git", exact: "0.1.0"),
         // SweetCookieKit encapsulates the Chromium SQLite parsing, "Chrome
         // Safe Storage" Keychain decryption, and Safari binarycookies /
         // Firefox SQLite reads that the misc-providers feature needs.

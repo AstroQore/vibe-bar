@@ -144,27 +144,26 @@ host: `~/.vibebar/mcp.sock`, the `--mcp-stdio` flag, `VIBEBAR_MCP_SOCKET`
 and the "Vibe Bar is not running" message. Add host-shaped defaults
 there, not in the package.
 
-**Checking it out.** `Package.swift` uses `.package(path:)` until the
-package is published, so the two repositories must be siblings:
+**Where it comes from.** `Package.swift` pins the package to an exact
+tag on GitHub (`.package(url: "https://github.com/AstroQore/agent-session-kit.git",
+exact: "0.1.0")`), so a plain clone builds and a release build resolves the
+same package the developer built against — `Package.resolved` is
+gitignored here, and the exact pin is what stands in for it. Bumping the
+kit is a one-line change to that pin plus a `THIRD_PARTY_NOTICES.md`
+check, done deliberately and reviewed like any other dependency bump.
+
+**Working on both at once.** To build Vibe Bar against a local checkout of
+the package (say, to try a kit change before it is tagged), use SwiftPM's
+edit mode rather than editing `Package.swift`:
 
 ```sh
-cd ..                       # the directory that holds vibe-bar
-git clone https://github.com/AstroQore/agent-session-kit.git
+swift package edit agent-session-kit --path ../agent-session-kit
+# … build, test …
+swift package unedit agent-session-kit
 ```
 
-A sibling worktree (§ 9.1's `../vibe-bar-<topic>`) resolves
-`../agent-session-kit` on its own. A worktree nested inside the
-repository does not — it is two levels down — so give it a sibling of
-its own:
-
-```sh
-git worktree add .agents/worktrees/<topic> -b <prefix>/<topic> main
-ln -s ../../../agent-session-kit .agents/worktrees/agent-session-kit
-```
-
-The link target is relative to `.agents/worktrees/`, so it points back
-out to the repository's own sibling. `.agents/` is gitignored, which
-keeps both the worktree and the link out of `git status`.
+`swift package edit` records the override in `.swiftpm/` (gitignored), so
+it never reaches a commit, and `unedit` returns to the pinned tag.
 
 ## 3. Toolchain Prerequisites
 
