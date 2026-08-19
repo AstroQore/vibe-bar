@@ -190,6 +190,10 @@ final class AppEnvironment: ObservableObject {
                     && $0.miscProviderInstances == $1.miscProviderInstances
             }
             .sink { [weak self] settings in
+                // Adapters resolve usage modes and misc-provider plans from
+                // settings.json on disk; make sure the edit is there before
+                // the refresh this sink triggers reads it.
+                self?.settingsStore.flush()
                 self?.accountStore.reload(
                     codexUsageMode: settings.codexUsageMode,
                     claudeUsageMode: settings.claudeUsageMode,

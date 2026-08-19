@@ -15,6 +15,12 @@ public final class SettingsStore: ObservableObject {
     /// main actor. `flush()` writes synchronously and is what quit calls.
     private var pendingPersist: Task<Void, Never>?
     private static let persistCoalesceNanoseconds: UInt64 = 250_000_000
+    /// All file writes go through one serial queue so a coalesced write that
+    /// already started can never race a later `flush()`: the flush is queued
+    /// behind it and, being newer, wins.
+    private static let writeQueue = DispatchQueue(
+        label: "com.astroqore.VibeBar.settings.persist", qos: .utility
+    )
 
     private func schedulePersist() {
         pendingPersist?.cancel()
@@ -22,16 +28,19 @@ public final class SettingsStore: ObservableObject {
         pendingPersist = Task.detached(priority: .utility) {
             try? await Task.sleep(nanoseconds: Self.persistCoalesceNanoseconds)
             guard !Task.isCancelled else { return }
-            Self.write(snapshot)
+            Self.writeQueue.async { Self.write(snapshot) }
         }
     }
 
-    /// Write whatever is pending right now. Cheap when nothing is pending.
+    /// Write the current settings now, ordered after any write already in
+    /// flight. Callers that hand the settings to something reading
+    /// `settings.json` from disk (adapters resolving usage modes, quit) use
+    /// this; ordinary edits stay coalesced.
     public func flush() {
-        guard let pending = pendingPersist else { return }
-        pending.cancel()
+        pendingPersist?.cancel()
         pendingPersist = nil
-        Self.write(settings)
+        let snapshot = settings
+        Self.writeQueue.sync { Self.write(snapshot) }
     }
 
     public init(userDefaults: UserDefaults = .standard) {
