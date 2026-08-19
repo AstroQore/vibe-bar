@@ -264,7 +264,7 @@ private struct SessionRow: View {
     private var footer: some View {
         HStack(spacing: 6) {
             if let project = summary.projectDir {
-                Label(SessionManagerModel.projectTitle(project), systemImage: "folder")
+                Label(SessionManagerModel.projectTitle(for: summary), systemImage: "folder")
                     .labelStyle(.titleAndIcon)
                     .lineLimit(1)
                     .help(project)
@@ -281,6 +281,10 @@ private struct SessionRow: View {
                     .frame(minHeight: 14)
                     .background(Capsule().fill(Color.primary.opacity(0.07)))
                     .help("\(summary.messageCount) messages")
+            }
+            if row.reviewCount > 0 {
+                Label("\(row.reviewCount)", systemImage: "checkmark.bubble")
+                    .help(row.reviewCount == 1 ? "1 Auto Review merged" : "\(row.reviewCount) Auto Reviews merged")
             }
         }
         .font(.system(size: max(10, density.resetCountdownFontSize - 1)))

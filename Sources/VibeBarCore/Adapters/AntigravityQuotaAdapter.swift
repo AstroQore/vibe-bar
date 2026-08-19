@@ -147,11 +147,20 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
     static func fetchLocalSnapshot(
         request: (_ path: String, _ body: Data) async throws -> Data
     ) async throws -> AntigravityResponseParser.Snapshot {
-        let quotaData = try await request(
-            Self.quotaSummaryPath,
-            Data(#"{"forceRefresh":true}"#.utf8)
-        )
-        let quotaSnapshot = try AntigravityResponseParser.parseQuotaSummary(data: quotaData)
+        var quotaSnapshot: AntigravityResponseParser.Snapshot?
+        var quotaError: Error?
+        do {
+            let quotaData = try await request(
+                Self.quotaSummaryPath,
+                Data(#"{"forceRefresh":true}"#.utf8)
+            )
+            quotaSnapshot = try AntigravityResponseParser.parseQuotaSummary(data: quotaData)
+        } catch {
+            // When a weekly pool is exhausted some server builds omit the
+            // entire summary group. GetUserStatus can still expose the live
+            // per-model five-hour lane, so do not return before asking it.
+            quotaError = error
+        }
 
         let identitySnapshot: AntigravityResponseParser.Snapshot?
         do {
@@ -161,7 +170,9 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
             // Quotas remain useful when this older endpoint is unavailable.
             identitySnapshot = nil
         }
-        return quotaSnapshot.merging(identitySnapshot)
+        if let quotaSnapshot { return quotaSnapshot.merging(identitySnapshot) }
+        if let identitySnapshot, !identitySnapshot.buckets.isEmpty { return identitySnapshot }
+        throw quotaError ?? QuotaError.parseFailure("Antigravity returned no usable quota lanes.")
     }
 
     /// Reads the persisted `antigravityUsageMode` setting from disk.

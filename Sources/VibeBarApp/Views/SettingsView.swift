@@ -109,6 +109,7 @@ struct SettingsView: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var quotaService: QuotaService
 
     private let intervalOptions = AppSettings.refreshIntervalOptions
     private let popoverRefreshCooldownOptions: [Int] = [60, 120, 300, 600]
@@ -236,11 +237,19 @@ struct SettingsView: View {
                         }
                         Divider()
                             .padding(.vertical, 2)
-                        Text("Branch group names:")
+                        Text("SubProvider names:")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(MiniWindowGroupLabelCatalog.all) { option in
+                            ForEach(MiniWindowGroupLabelCatalog.subProviderOptions) { option in
+                                miniGroupLabelRow(option)
+                            }
+                        }
+                        Text("Model group names:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(miniGroupLabelOptions) { option in
                                 miniGroupLabelRow(option)
                             }
                         }
@@ -825,49 +834,36 @@ struct SettingsView: View {
     }
 
     private func miniFieldRow(_ field: MenuBarFieldOption) -> some View {
-        ViewThatFits(in: .horizontal) {
-            fieldRowHorizontal(
-                isOn: miniFieldSelectedBinding(field.id),
-                field: field,
-                label: miniFieldLabelBinding(field)
-            )
-            fieldRowWrapped(
-                isOn: miniFieldSelectedBinding(field.id),
-                field: field,
-                label: miniFieldLabelBinding(field)
-            )
-        }
+        fieldRowHorizontal(
+            isOn: miniFieldSelectedBinding(field.id),
+            field: field,
+            label: miniFieldLabelBinding(field)
+        )
     }
 
     private func miniGroupLabelRow(_ option: MiniWindowGroupLabelOption) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                groupLabelText(option)
-                Spacer(minLength: 8)
-                groupLabelTextField(option)
-                    .frame(width: 130)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                groupLabelText(option)
-                groupLabelTextField(option)
-                    .frame(maxWidth: 180, alignment: .leading)
-            }
+        HStack(spacing: 10) {
+            groupLabelText(option)
+            Spacer(minLength: 8)
+            groupLabelTextField(option)
+                .frame(width: 130)
         }
     }
 
-    private func menuFieldRow(kind: MenuBarItemKind, field: MenuBarFieldOption) -> some View {
-        ViewThatFits(in: .horizontal) {
-            fieldRowHorizontal(
-                isOn: menuFieldSelectedBinding(kind, field.id),
-                field: field,
-                label: menuFieldLabelBinding(kind, field)
-            )
-            fieldRowWrapped(
-                isOn: menuFieldSelectedBinding(kind, field.id),
-                field: field,
-                label: menuFieldLabelBinding(kind, field)
-            )
+    private var miniGroupLabelOptions: [MiniWindowGroupLabelOption] {
+        var quotas: [ToolType: AccountQuota] = [:]
+        for tool in ToolType.dedicatedCardProviders {
+            if let quota = environment.quota(for: tool) { quotas[tool] = quota }
         }
+        return MiniWindowGroupLabelCatalog.options(liveQuotas: quotas)
+    }
+
+    private func menuFieldRow(kind: MenuBarItemKind, field: MenuBarFieldOption) -> some View {
+        fieldRowHorizontal(
+            isOn: menuFieldSelectedBinding(kind, field.id),
+            field: field,
+            label: menuFieldLabelBinding(kind, field)
+        )
     }
 
     /// Field-picker layout for a `MenuBarItemKind`. Overview lists
@@ -943,18 +939,6 @@ struct SettingsView: View {
             fieldToggle(isOn: isOn, field: field)
             Spacer(minLength: 8)
             fieldLabelTextField(field: field, label: label)
-        }
-    }
-
-    private func fieldRowWrapped(
-        isOn: Binding<Bool>,
-        field: MenuBarFieldOption,
-        label: Binding<String>
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            fieldToggle(isOn: isOn, field: field)
-            fieldLabelTextField(field: field, label: label)
-                .frame(maxWidth: 180, alignment: .leading)
         }
     }
 

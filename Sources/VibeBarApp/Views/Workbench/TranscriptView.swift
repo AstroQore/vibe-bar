@@ -17,6 +17,9 @@ struct TranscriptView: View {
     @State private var expanded: Set<Int> = []
     @State private var highlighted: Int?
     @State private var showsOutline = false
+    @State private var messagePageStart = 0
+
+    private static let pageAnchorID = "transcript-page-anchor"
 
     var body: some View {
         Group {
@@ -62,7 +65,13 @@ struct TranscriptView: View {
                         if document.messages.isEmpty {
                             message("This session's log has no readable messages.", systemImage: "text.alignleft")
                         } else {
-                            ForEach(document.messages) { entry in
+                            transcriptPager(document: document, proxy: proxy)
+                                .id(Self.pageAnchorID)
+                            let range = TranscriptPageWindow.range(
+                                itemCount: document.messages.count,
+                                start: messagePageStart
+                            )
+                            ForEach(document.messages[range]) { entry in
                                 TranscriptMessageCard(
                                     density: density,
                                     message: entry,
@@ -97,12 +106,7 @@ struct TranscriptView: View {
         guard let seq = model.focusSeq, model.transcript != nil else { return }
         model.clearFocus()
         expanded.insert(seq)
-        // One turn of the run loop: the stack is lazy, and scrolling to an id
-        // in the same pass that introduced it lands on nothing.
-        Task {
-            try? await Task.sleep(for: .milliseconds(60))
-            scroll(to: seq, proxy: proxy)
-        }
+        scroll(to: seq, proxy: proxy)
     }
 
     private var placeholder: some View {
@@ -213,12 +217,30 @@ struct TranscriptView: View {
     }
 
     private func scroll(to seq: Int, proxy: ScrollViewProxy) {
-        if reduceMotion {
-            proxy.scrollTo(seq, anchor: .top)
-        } else {
-            withAnimation(.easeOut(duration: 0.2)) {
+        guard let document = model.transcript,
+              let index = document.messages.firstIndex(where: { $0.seq == seq })
+        else { return }
+        let start = TranscriptPageWindow.start(
+            containingItemAt: index,
+            itemCount: document.messages.count
+        )
+        let performScroll = {
+            if reduceMotion {
                 proxy.scrollTo(seq, anchor: .top)
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(seq, anchor: .top)
+                }
             }
+        }
+        if start != messagePageStart {
+            messagePageStart = start
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(60))
+                performScroll()
+            }
+        } else {
+            performScroll()
         }
         flash(seq)
     }
@@ -245,6 +267,48 @@ struct TranscriptView: View {
         expanded = []
         highlighted = nil
         showsOutline = false
+        messagePageStart = 0
+    }
+
+    private func transcriptPager(document: TranscriptDocument, proxy: ScrollViewProxy) -> some View {
+        let range = TranscriptPageWindow.range(
+            itemCount: document.messages.count,
+            start: messagePageStart
+        )
+        return HStack(spacing: 8) {
+            Text("Messages \(range.lowerBound + 1)–\(range.upperBound) of \(document.messages.count)")
+                .font(.system(size: max(10, density.resetCountdownFontSize), design: .rounded)
+                    .monospacedDigit())
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 8)
+            Button("Previous") {
+                movePage(direction: -1, document: document, proxy: proxy)
+            }
+            .disabled(range.lowerBound == 0)
+            Button("Next") {
+                movePage(direction: 1, document: document, proxy: proxy)
+            }
+            .disabled(range.upperBound == document.messages.count)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .padding(.bottom, 2)
+    }
+
+    private func movePage(direction: Int, document: TranscriptDocument, proxy: ScrollViewProxy) {
+        messagePageStart = direction < 0
+            ? TranscriptPageWindow.previousStart(
+                itemCount: document.messages.count,
+                start: messagePageStart
+            )
+            : TranscriptPageWindow.nextStart(
+                itemCount: document.messages.count,
+                start: messagePageStart
+            )
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(30))
+            proxy.scrollTo(Self.pageAnchorID, anchor: .top)
+        }
     }
 
     // MARK: - Outline
@@ -304,7 +368,7 @@ struct SessionMetadataHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: max(7, density.cardSpacing)) {
             HStack(alignment: .center, spacing: 10) {
-                ToolBrandBadge(tool: summary.provider.tool, iconSize: 20, containerSize: 26)
+                ToolBrandBadge(tool: summary.effectiveHarness.brandTool, iconSize: 20, containerSize: 26)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.system(size: density.titleFontSize, weight: .semibold))
@@ -335,7 +399,7 @@ struct SessionMetadataHeader: View {
                 .frame(minHeight: 18)
                 .background(Capsule().fill(summary.provider.accent.opacity(0.16)))
             if let project = summary.projectDir {
-                Label(SessionManagerModel.projectTitle(project), systemImage: "folder")
+                Label(SessionManagerModel.projectTitle(for: summary), systemImage: "folder")
                     .lineLimit(1)
                     .help(project)
             }
@@ -421,9 +485,9 @@ struct SessionMetadataHeader: View {
 
     private var providerLabel: String {
         guard let variant = summary.providerVariant, !variant.isEmpty else {
-            return summary.provider.displayName
+            return summary.effectiveHarness.displayName
         }
-        return "\(summary.provider.displayName) · \(variant)"
+        return "\(summary.effectiveHarness.displayName) · \(variant)"
     }
 
     // MARK: - Facts
@@ -434,7 +498,11 @@ struct SessionMetadataHeader: View {
                 model.copyToClipboard(summary.sessionID, note: "Session ID copied.")
             }
             if let project = summary.projectDir {
-                factRow(label: "CWD", monospaced: true, value: project) {
+                factRow(
+                    label: "CWD",
+                    monospaced: !SessionManagerModel.isGeneratedProjectlessPath(project),
+                    value: SessionManagerModel.isGeneratedProjectlessPath(project) ? "Projectless" : project
+                ) {
                     model.copyToClipboard(project, note: "Working directory copied.")
                 }
             }
@@ -661,10 +729,13 @@ struct TranscriptMessageCard: View {
     /// stack becomes a layout storm. Copy lives on the header button and the
     /// context menu; search hits are still highlighted.
     private func body(text: String) -> some View {
-        Text(TranscriptFormatting.highlighted(text, query: query, accent: accent))
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rendered = needle.isEmpty
+            ? Text(text)
+            : Text(TranscriptFormatting.highlighted(text, query: needle, accent: accent))
+        return rendered
             .font(.system(size: density.subtitleFontSize, design: isMonospaced ? .monospaced : .default))
             .foregroundStyle(message.role == .system ? .secondary : .primary)
-            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 

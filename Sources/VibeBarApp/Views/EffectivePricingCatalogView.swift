@@ -52,18 +52,22 @@ struct EffectivePricingCatalogView: View {
                     .fixedSize()
             }
 
-            ScrollView([.horizontal, .vertical]) {
-                LazyVStack(spacing: 0) {
-                    pricingHeader
-                    ForEach(rows) { row in
-                        EffectivePricingRowView(
-                            row: row,
-                            isLocalOverride: localOverrideKeys.contains(row.normalizedKey)
-                        )
-                        Divider().opacity(0.45)
+            GeometryReader { proxy in
+                let columns = PricingColumns(tableWidth: proxy.size.width)
+                ScrollView([.horizontal, .vertical]) {
+                    LazyVStack(spacing: 0) {
+                        pricingHeader(columns: columns)
+                        ForEach(rows) { row in
+                            EffectivePricingRowView(
+                                row: row,
+                                isLocalOverride: localOverrideKeys.contains(row.normalizedKey),
+                                columns: columns
+                            )
+                            Divider().opacity(0.45)
+                        }
                     }
+                    .frame(width: columns.tableWidth, alignment: .topLeading)
                 }
-                .frame(minWidth: PricingColumns.minimumWidth, alignment: .topLeading)
             }
             .frame(height: 420)
             .background(Color.primary.opacity(0.018))
@@ -120,20 +124,25 @@ struct EffectivePricingCatalogView: View {
 
     /// Rendered straight from the column spec the rows use, so a width or an
     /// alignment cannot drift between the header and the table under it.
-    private var pricingHeader: some View {
+    private func pricingHeader(columns: PricingColumns) -> some View {
         HStack(spacing: PricingColumns.spacing) {
-            ForEach(PricingColumns.all) { column in
+            ForEach(columns.all) { column in
                 Text(column.title.uppercased())
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
-                    .tracking(0.45)
+                    .tracking(0.55)
                     .lineLimit(1)
                     .frame(width: column.width, alignment: column.frameAlignment)
             }
         }
         .padding(.horizontal, PricingColumns.horizontalInset)
         .frame(minHeight: 30)
-        .background(Color.primary.opacity(0.035))
+        .background(Color.primary.opacity(0.05))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.11))
+                .frame(height: 0.7)
+        }
     }
 }
 
@@ -163,34 +172,54 @@ private struct PricingColumn: Identifiable {
     }
 }
 
-private enum PricingColumns {
+private struct PricingColumns {
     static let spacing: CGFloat = 8
     static let horizontalInset: CGFloat = 10
 
-    static let provider = PricingColumn("Provider / SubProvider", 154)
-    static let model = PricingColumn("Model", 242)
-    static let input = PricingColumn("Input / 1M", 84, .trailing)
-    static let output = PricingColumn("Output / 1M", 84, .trailing)
-    static let cacheRead = PricingColumn("Cache read", 84, .trailing)
-    static let cacheWrite = PricingColumn("Cache write", 84, .trailing)
+    static let minimumProviderWidth: CGFloat = 210
+    static let minimumModelWidth: CGFloat = 300
+    static let priceWidth: CGFloat = 96
 
-    static let all: [PricingColumn] = [provider, model, input, output, cacheRead, cacheWrite]
+    let provider: PricingColumn
+    let model: PricingColumn
+    let input = PricingColumn("Input / 1M", Self.priceWidth, .trailing)
+    let output = PricingColumn("Output / 1M", Self.priceWidth, .trailing)
+    let cacheRead = PricingColumn("Cache read", Self.priceWidth, .trailing)
+    let cacheWrite = PricingColumn("Cache write", Self.priceWidth, .trailing)
+
+    init(tableWidth: CGFloat) {
+        let contentWidth = max(
+            Self.minimumContentWidth,
+            tableWidth - Self.horizontalInset * 2 - Self.spacing * 5
+        )
+        let extra = contentWidth - Self.minimumContentWidth
+        provider = PricingColumn(
+            "Provider / SubProvider",
+            Self.minimumProviderWidth + extra * 0.42
+        )
+        model = PricingColumn("Model", Self.minimumModelWidth + extra * 0.58)
+    }
+
+    var all: [PricingColumn] { [provider, model, input, output, cacheRead, cacheWrite] }
 
     /// Where the MODEL column starts. The threshold / override footnote under
     /// a row hangs off this rather than a hand-tuned inset, so it stays on the
     /// grid when a column width changes.
-    static let detailInset: CGFloat = provider.width + spacing
+    var detailInset: CGFloat { provider.width + Self.spacing }
 
     /// Narrower than this and the trailing price column clips, so the scroll
     /// surface never proposes less.
-    static let minimumWidth: CGFloat = all.reduce(
-        horizontalInset * 2 + spacing * CGFloat(all.count - 1)
-    ) { $0 + $1.width }
+    static let minimumContentWidth = minimumProviderWidth + minimumModelWidth + priceWidth * 4
+
+    var tableWidth: CGFloat {
+        all.reduce(Self.horizontalInset * 2 + Self.spacing * 5) { $0 + $1.width }
+    }
 }
 
 private struct EffectivePricingRowView: View {
     let row: EffectiveModelPricingRow
     let isLocalOverride: Bool
+    let columns: PricingColumns
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -210,8 +239,8 @@ private struct EffectivePricingRowView: View {
                     }
                 }
                 .frame(
-                    width: PricingColumns.provider.width,
-                    alignment: PricingColumns.provider.frameAlignment
+                    width: columns.provider.width,
+                    alignment: columns.provider.frameAlignment
                 )
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -226,14 +255,14 @@ private struct EffectivePricingRowView: View {
                     }
                 }
                 .frame(
-                    width: PricingColumns.model.width,
-                    alignment: PricingColumns.model.frameAlignment
+                    width: columns.model.width,
+                    alignment: columns.model.frameAlignment
                 )
 
-                price(row.inputPerMillion, PricingColumns.input)
-                price(row.outputPerMillion, PricingColumns.output)
-                price(row.cacheReadPerMillion, PricingColumns.cacheRead)
-                price(row.cacheWritePerMillion, PricingColumns.cacheWrite)
+                price(row.inputPerMillion, columns.input)
+                price(row.outputPerMillion, columns.output)
+                price(row.cacheReadPerMillion, columns.cacheRead)
+                price(row.cacheWritePerMillion, columns.cacheWrite)
             }
 
             if let detail = advancedDetail {
@@ -248,12 +277,12 @@ private struct EffectivePricingRowView: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
-                .padding(.leading, PricingColumns.detailInset)
+                .padding(.leading, columns.detailInset)
             } else if isLocalOverride {
                 Text("LOCAL OVERRIDE")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.blue)
-                    .padding(.leading, PricingColumns.detailInset)
+                    .padding(.leading, columns.detailInset)
             }
         }
         .padding(.horizontal, PricingColumns.horizontalInset)
