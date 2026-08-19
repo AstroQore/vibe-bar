@@ -99,7 +99,7 @@ public enum SkillImportScanner {
         var unmanagedSample: [String: URL] = [:]
         var conflicts: [SkillImportConflict] = []
 
-        for app in SkillAppTarget.allCases {
+        for app in SkillAppTarget.managedHarnesses {
             let appDirectory = SkillAppCatalog.skillsDirectory(for: app, homeDirectory: homeDirectory)
             for name in directoryEntries(at: appDirectory) {
                 let entry = appDirectory.appendingPathComponent(name, isDirectory: true)

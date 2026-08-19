@@ -163,6 +163,23 @@ final class SkillsManagerModel: ObservableObject {
         Task { await reloadSkills() }
     }
 
+    /// Keeps the visible toggles tied to the filesystem rather than the last
+    /// registry write. SwiftUI cancels the page task when Skills is no longer
+    /// visible, so this inexpensive lstat-only pass runs only while it can
+    /// change something the user sees.
+    func monitorFilesystem() async {
+        await reloadSkills()
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await reloadSkills()
+        }
+    }
+
     // MARK: - Per-skill actions
 
     func toggle(skill: Skill, app: SkillAppTarget) {
@@ -187,7 +204,7 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.skill(id)) { [self] in
             let result = try await service.uninstall(id)
             updateStates[id] = nil
-            let kept = SkillAppTarget.allCases
+            let kept = SkillAppTarget.managedHarnesses
                 .filter { skill.isEnabled(for: $0) && result.removedByApp[$0] == false }
             toast = kept.isEmpty
                 ? "Uninstalled \(skill.name). A backup was saved."
@@ -503,7 +520,8 @@ final class SkillsManagerModel: ObservableObject {
     }
 
     private func reloadSkills() async {
-        skills = await service.installedSkills()
+        let latest = await service.installedSkills()
+        if latest != skills { skills = latest }
     }
 
     /// `scanForImport` and `listBackups` are `nonisolated` on the service —

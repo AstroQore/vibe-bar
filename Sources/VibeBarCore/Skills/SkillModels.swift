@@ -91,16 +91,34 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     case hermes
     case opencode
     case antigravity
+    case cursor
+
+    /// Harnesses Vibe Bar can actually project a local skill directory into.
+    ///
+    /// ChatGPT Work, Claude Cowork, and Grok Bot do not expose an independent,
+    /// stable local skills root that this filesystem feature can safely write.
+    /// They therefore stay out of the toggle row instead of pretending a link
+    /// can enable them. Gemini CLI, Hermes, and OpenCode remain decodable for
+    /// old `skills.json` files and safe uninstall cleanup, but new management
+    /// is intentionally limited to AQ's core harnesses below.
+    public static let managedHarnesses: [SkillAppTarget] = [
+        .codex,
+        .claude,
+        .antigravity,
+        .grok,
+        .cursor,
+    ]
 
     public var displayName: String {
         switch self {
         case .claude: return "Claude Code"
         case .codex: return "Codex"
         case .gemini: return "Gemini CLI"
-        case .grok: return "Grok"
+        case .grok: return "Grok Build"
         case .hermes: return "Hermes"
         case .opencode: return "OpenCode"
         case .antigravity: return "AntiGravity"
+        case .cursor: return "Cursor"
         }
     }
 }

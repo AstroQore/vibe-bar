@@ -175,13 +175,13 @@ final class SkillSyncEngineTests: XCTestCase {
 
     func testWriteRootsCoverTheSSOTAndEveryAppDirectoryOnly() throws {
         let home = try SkillTestHome()
-        XCTAssertEqual(SkillAppCatalog.allowedWriteRoots(homeDirectory: home.path).count, 8)
+        XCTAssertEqual(SkillAppCatalog.allowedWriteRoots(homeDirectory: home.path).count, 9)
         XCTAssertTrue(SkillAppCatalog.isWriteAllowed(
             home.ssot.appendingPathComponent("alpha"),
             homeDirectory: home.path
         ))
         XCTAssertTrue(SkillAppCatalog.isWriteAllowed(
-            home.appDirectory(.opencode).appendingPathComponent("alpha"),
+            home.appDirectory(.cursor).appendingPathComponent("alpha"),
             homeDirectory: home.path
         ))
         XCTAssertFalse(SkillAppCatalog.isWriteAllowed(
@@ -192,6 +192,17 @@ final class SkillSyncEngineTests: XCTestCase {
             home.url.appendingPathComponent(".claude/settings.json"),
             homeDirectory: home.path
         ))
+    }
+
+    func testManagedHarnessTargetsExcludeUnmanageableAndLegacySurfaces() {
+        XCTAssertEqual(
+            SkillAppTarget.managedHarnesses,
+            [.codex, .claude, .antigravity, .grok, .cursor]
+        )
+        XCTAssertEqual(SkillAppCatalog.relativePath(for: .cursor), ".cursor/skills")
+        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.gemini))
+        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.hermes))
+        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.opencode))
     }
 
     func testUnmaterializeRemovesAnSSOTSymlinkAndIsIdempotent() throws {

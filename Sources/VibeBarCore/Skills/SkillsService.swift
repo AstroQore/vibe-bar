@@ -49,7 +49,30 @@ public actor SkillsService {
     }
 
     public func installedSkills() async -> [Skill] {
-        await store.all()
+        var skills = await store.all()
+        for index in skills.indices {
+            var skill = skills[index]
+            let recordedApps = skill.apps
+            for (app, recorded) in recordedApps {
+                if let live = engine.liveMaterialization(
+                    skillDirectoryName: skill.directory,
+                    app: app,
+                    recorded: recorded
+                ) {
+                    skill.apps[app] = live
+                } else {
+                    skill.apps[app] = nil
+                }
+            }
+            guard skill.apps != recordedApps else { continue }
+            do {
+                try await store.upsert(skill)
+            } catch {
+                SafeLog.warn("Persisting reconciled skill state failed.")
+            }
+            skills[index] = skill
+        }
+        return skills
     }
 
     public func skill(with id: SkillID) async -> Skill? {
@@ -119,7 +142,7 @@ public actor SkillsService {
     @discardableResult
     public func importAdopted(
         _ report: SkillImportReport,
-        apps: [SkillAppTarget] = SkillAppTarget.allCases
+        apps: [SkillAppTarget] = SkillAppTarget.managedHarnesses
     ) async throws -> [Skill] {
         let allowed = Set(apps)
         var imported: [Skill] = []
