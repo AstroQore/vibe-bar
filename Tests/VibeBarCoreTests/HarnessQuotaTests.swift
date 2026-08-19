@@ -1,24 +1,11 @@
 import XCTest
 @testable import VibeBarCore
 
-final class HarnessTests: XCTestCase {
-    func testDisplayNamesMatchTheCatalogTable() {
-        XCTAssertEqual(
-            Harness.allCases.map(\.displayName),
-            [
-                "Codex",
-                "ChatGPT Work",
-                "Claude Code",
-                "Claude Cowork",
-                "Gemini CLI",
-                "AntiGravity",
-                "Grok Build",
-                "Cursor",
-                "Grok Bot"
-            ]
-        )
-    }
-
+/// The billing half of `Harness`. Naming, ordering and the raw-value
+/// storage keys are `AgentSessionKit`'s and are covered by its own
+/// `HarnessNamingTests`; what is Vibe Bar's — and tested here — is the
+/// mapping onto `ToolType`, the company grouping, and the filter chips.
+final class HarnessQuotaTests: XCTestCase {
     /// Gemini Web is a quota SubProvider with no local usage at all. The
     /// deprecated CLI owns the historical tokens under `~/.gemini/tmp`, and
     /// labelling those "Gemini Web" would put a quota name on a usage row.
@@ -130,15 +117,12 @@ final class HarnessTests: XCTestCase {
         XCTAssertEqual(groups.first?.harnessSet, Set([Harness.grokBuild, .cursor, .grokBot]))
     }
 
-    func testRawValuesAreStableStorageKeys() {
-        // These land in SQLite and in the scan cache; renaming one silently
-        // orphans every stored row.
-        XCTAssertEqual(
-            Harness.allCases.map(\.rawValue),
-            [
-                "codex", "chatgptWork", "claudeCode", "claudeCowork",
-                "geminiCLI", "antigravity", "grokBuild", "cursor", "grokBot"
-            ]
-        )
+    /// Grok Bot's runs happen on xAI's servers, so it has no local tokens at
+    /// all and must never become the harness a cost row is attributed to —
+    /// not even for Cursor, whose adapter carries its quota bucket.
+    func testGrokBotIsNeverADefaultCostHarness() {
+        for tool in ToolType.allCases {
+            XCTAssertNotEqual(Harness.defaultHarness(for: tool), .grokBot, "\(tool)")
+        }
     }
 }

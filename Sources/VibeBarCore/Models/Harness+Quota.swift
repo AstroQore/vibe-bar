@@ -1,81 +1,19 @@
 import Foundation
 
-/// Canonical display names for every local harness Vibe Bar scans.
+/// The billing half of the harness story.
 ///
-/// Vibe Bar identifies a provider along **two orthogonal axes**, and a
-/// surface must never mix them inside one list:
+/// `Harness` and `HarnessCatalog` themselves come from `AgentSessionKit`,
+/// which knows only the **usage axis** — which CLI or app produced the
+/// sessions on disk. Vibe Bar additionally models a **quota axis** (L1
+/// company → L2 SubProvider → L3 quota / model group, rooted in
+/// `ProviderHierarchyCatalog` and `ToolType`), and the mapping between the
+/// two is this file. A surface picks one axis and stays on it; `AGENTS.md`
+/// § 7.1 carries the coverage matrix.
 ///
-/// - **Quota axis** — L1 company → L2 SubProvider → L3 quota / model group.
-///   Lives in `ProviderHierarchyCatalog` + `ToolType.quotaSubProviderName`.
-/// - **Usage / cost axis** — the *harness*: the CLI or app that actually
-///   produced the sessions we scanned. That is neither the company nor the
-///   quota SubProvider. Two harnesses can draw on one SubProvider's quota
-///   (Claude Code and Claude Cowork both spend Claude's), and one company can
-///   own several harnesses that bill against different quotas.
-///
-/// | Harness        | L1 company | Local evidence                                              |
-/// | -------------- | ---------- | ----------------------------------------------------------- |
-/// | Codex          | OpenAI     | `~/.codex/sessions` rollouts, every other `originator` (`Codex Desktop`, `codex-tui`, `codex_cli_rs`, `codex_exec`, `codex_vscode`) |
-/// | ChatGPT Work   | OpenAI     | same tree, `originator` == "codex_work_desktop"              |
-/// | Claude Code    | Anthropic  | `~/.claude/projects`, `~/.config/claude/projects`            |
-/// | Claude Cowork  | Anthropic  | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/.claude/projects` |
-/// | Gemini CLI     | Google AI  | `~/.gemini/tmp/*/chats/session-*.jsonl` (+ telemetry log)    |
-/// | AntiGravity    | Google AI  | `~/.gemini/antigravity{,-cli,-ide}/conversations`            |
-/// | Grok Build     | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                          |
-/// | Cursor         | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard remote events for cost (no local token counters) |
-/// | Grok Bot       | SpaceXAI   | `~/Library/Application Support/Grok Bot/sand-client-persistence` — a cloud cache: sessions only, no model, no local tokens |
-///
-/// Renaming a harness is one edit here, not a hunt across the UI.
-/// `AGENTS.md` § 7.1 carries the coverage matrix — which of model, cost,
-/// sessions, and delete each harness actually supports.
-public enum HarnessCatalog {
-    public static let codex = "Codex"
-    public static let chatgptWork = "ChatGPT Work"
-    public static let claudeCode = "Claude Code"
-    public static let claudeCowork = "Claude Cowork"
-    /// Deliberately *not* "Gemini Web": Gemini Web is a quota SubProvider
-    /// with no local usage at all, and this deprecated CLI still owns real
-    /// historical token counts under `~/.gemini/tmp`.
-    public static let geminiCLI = "Gemini CLI"
-    public static let antigravity = "AntiGravity"
-    public static let grokBuild = "Grok Build"
-    public static let cursor = "Cursor"
-    /// xAI's standalone cloud-bot app, not Grok Build. Its runs happen
-    /// server-side, so it contributes sessions and quota but never tokens.
-    public static let grokBot = "Grok Bot"
-}
-
-/// The local harness a usage event came from — the unit every usage and cost
-/// surface groups by. See `HarnessCatalog` for the full table and for why
-/// this is a different axis from the quota hierarchy.
-///
-/// Declaration order is the display order: harnesses grouped by their L1
-/// company, in the same company order the quota surfaces use.
-public enum Harness: String, CaseIterable, Codable, Sendable, Hashable {
-    case codex
-    case chatgptWork
-    case claudeCode
-    case claudeCowork
-    case geminiCLI
-    case antigravity
-    case grokBuild
-    case cursor
-    case grokBot
-
-    public var displayName: String {
-        switch self {
-        case .codex:        HarnessCatalog.codex
-        case .chatgptWork:  HarnessCatalog.chatgptWork
-        case .claudeCode:   HarnessCatalog.claudeCode
-        case .claudeCowork: HarnessCatalog.claudeCowork
-        case .geminiCLI:    HarnessCatalog.geminiCLI
-        case .antigravity:  HarnessCatalog.antigravity
-        case .grokBuild:    HarnessCatalog.grokBuild
-        case .cursor:       HarnessCatalog.cursor
-        case .grokBot:      HarnessCatalog.grokBot
-        }
-    }
-
+/// Keeping the mapping here rather than in the package is deliberate: a
+/// library that reads session stores has no business knowing what anything
+/// costs, and `ToolType` is Vibe Bar's own vocabulary.
+extension Harness {
     /// The `ToolType` whose quota this harness consumes. Usage rows are still
     /// stored under this tool, so the harness dimension refines the existing
     /// per-tool ledger rather than replacing it.

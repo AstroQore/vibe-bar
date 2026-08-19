@@ -7,7 +7,7 @@ import VibeBarCore
 // aborted with SIGABRT when NSApplication came up) — and all it has to do is
 // pump stdin/stdout to the running app's socket. Decide that here, before
 // SwiftUI's `App.main()` brings up NSApplication, the Dock, or any window.
-if CommandLine.arguments.dropFirst().contains(MCPStdioBridge.commandLineFlag) {
+if MCPStdioBridge.isRequested() {
     exit(MCPStdioBridge.run(socketPath: MCPStdioBridge.socketPath()))
 }
 

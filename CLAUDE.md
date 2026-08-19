@@ -43,8 +43,8 @@ ignored. The full reasoning and grep recipes live in `AGENTS.md`.
 
 1. **Real-home routing.** Any path under the user's real home
    (`~/.codex/`, `~/.claude/`, `~/.config/claude/`, `~/.vibebar/`,
-   `~/.gemini/`) must resolve through
-   `Sources/VibeBarCore/Utilities/RealHomeDirectory.swift`. The
+   `~/.gemini/`) must resolve through `RealHomeDirectory`
+   (agent-session-kit, re-exported by `VibeBarCore`). The
    sandbox is gone, so the rewrite trap is gone too — but keeping
    every call site routed through one helper means re-enabling the
    sandbox later (or auditing on a sandboxed fork) doesn't require
