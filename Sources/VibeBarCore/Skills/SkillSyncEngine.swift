@@ -284,9 +284,9 @@ public struct SkillSyncEngine: Sendable {
         case .directory:
             guard
                 recorded.method == .copy,
-                FileManager.default.fileExists(
-                    atPath: destination.appendingPathComponent("SKILL.md").path
-                )
+                let recordedHash = recorded.contentHashAtCopy,
+                let currentHash = try? SkillDirectoryHasher.hash(directory: destination),
+                currentHash == recordedHash
             else { return nil }
             return recorded
         case .missing, .regularFile, .other:

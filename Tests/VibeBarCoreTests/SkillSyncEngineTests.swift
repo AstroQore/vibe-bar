@@ -75,6 +75,42 @@ final class SkillSyncEngineTests: XCTestCase {
         XCTAssertEqual(target, home.ssot.appendingPathComponent("alpha").path)
     }
 
+    func testLiveMaterializationRejectsAnEditedOrReplacedCopy() throws {
+        let home = try SkillTestHome()
+        try home.makeSSOTSkill("alpha", extraFiles: ["ref.md": "original"])
+        let engine = SkillSyncEngine(homeDirectory: home.path)
+        let recorded = try engine.materialize(
+            skillDirectoryName: "alpha",
+            into: .claude,
+            method: .copy
+        )
+
+        XCTAssertEqual(
+            engine.liveMaterialization(
+                skillDirectoryName: "alpha",
+                app: .claude,
+                recorded: recorded
+            ),
+            recorded
+        )
+
+        let destination = home.appDirectory(.claude).appendingPathComponent("alpha")
+        try home.write("edited", to: destination.appendingPathComponent("ref.md"))
+        XCTAssertNil(engine.liveMaterialization(
+            skillDirectoryName: "alpha",
+            app: .claude,
+            recorded: recorded
+        ))
+
+        try FileManager.default.removeItem(at: destination)
+        try home.makeSkillDirectory(at: destination, extraFiles: ["ref.md": "replacement"])
+        XCTAssertNil(engine.liveMaterialization(
+            skillDirectoryName: "alpha",
+            app: .claude,
+            recorded: recorded
+        ))
+    }
+
     func testSymlinkMethodRefusesAForeignDirectoryButReplacesAFaithfulCopy() throws {
         let home = try SkillTestHome()
         try home.makeSSOTSkill("alpha", extraFiles: ["ref.md": "fresh"])
