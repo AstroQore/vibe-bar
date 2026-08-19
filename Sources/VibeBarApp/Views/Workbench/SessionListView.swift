@@ -85,11 +85,12 @@ struct SessionListView: View {
 
     private var emptyState: some View {
         CardShell(density: density, alignment: .center) {
-            Image(systemName: model.isIndexAvailable ? "bubble.left.and.text.bubble.right" : "externaldrive.badge.exclamationmark")
+            Image(systemName: emptySymbol)
                 .font(.system(size: 26, weight: .light))
                 .foregroundStyle(.secondary)
-            Text(model.isIndexAvailable ? "No sessions match" : "Session index unavailable")
+            Text(emptyTitle)
                 .font(.system(size: density.titleFontSize, weight: .semibold))
+                .multilineTextAlignment(.center)
             Text(emptyDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
@@ -100,9 +101,30 @@ struct SessionListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
+    private var hasNoHarnessSelected: Bool {
+        HarnessSelection.isNothing(model.harnessFilter)
+    }
+
+    private var emptySymbol: String {
+        guard model.isIndexAvailable else { return "externaldrive.badge.exclamationmark" }
+        return hasNoHarnessSelected
+            ? "line.3.horizontal.decrease.circle"
+            : "bubble.left.and.text.bubble.right"
+    }
+
+    /// The explicit empty selection the All chip can reach is its own state:
+    /// "no sessions match" would blame the data for a filter the user set.
+    private var emptyTitle: String {
+        guard model.isIndexAvailable else { return "Session index unavailable" }
+        return hasNoHarnessSelected ? "No harness selected — pick one above" : "No sessions match"
+    }
+
     private var emptyDetail: String {
         guard model.isIndexAvailable else {
             return "The index under ~/.vibebar could not be opened, so sessions cannot be listed this session."
+        }
+        if hasNoHarnessSelected {
+            return "The All chip is a switch: click it again to list every harness."
         }
         if model.indexProgress != nil { return "Still scanning the session logs on disk." }
         if !model.searchText.isEmpty { return "Nothing in the indexed sessions matches that search." }

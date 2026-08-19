@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VibeBarCore
 
@@ -231,20 +232,25 @@ struct SessionFiltersBar: View {
         }
     }
 
+    /// The All chip is a switch, not a shortcut: lit means every harness is
+    /// listed and clicking it clears the selection outright; anything else
+    /// and it puts every harness back.
     private var allProvidersChip: some View {
-        Button {
-            model.setHarnessFilter(nil)
+        let selected = model.harnessFilter == nil
+        return Button {
+            model.toggleAllHarnesses()
         } label: {
             Text("All")
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                .foregroundStyle(model.harnessFilter == nil ? .primary : .secondary)
+                .foregroundStyle(selected ? .primary : .secondary)
                 .padding(.horizontal, 10)
                 .frame(minHeight: 28)
         }
         .buttonStyle(.plain)
-        .background(chipBackground(tint: .accentColor, selected: model.harnessFilter == nil))
-        .help("Show sessions from every harness")
-        .accessibilityLabel("Show every session source")
+        .background(chipBackground(tint: .accentColor, selected: selected))
+        .help(selected ? "Click to select no harness" : "Click to show sessions from every harness")
+        .accessibilityLabel(selected ? "Select no harness" : "Show every session source")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     /// The company section head. Deliberately quieter than the harness chips
@@ -280,11 +286,18 @@ struct SessionFiltersBar: View {
     /// with. The icon is the harness's own brand (Cursor's mark, not Grok's,
     /// matching the badge in the list); the accent is the company's, so a
     /// group still reads as one block of colour.
+    ///
+    /// ⌥-click solos, which is the one-click way to ask "just this harness"
+    /// without turning eight other chips off by hand.
     private func harnessChip(_ harness: Harness, in group: Harness.ChipGroup) -> some View {
         let selected = model.harnessFilter?.contains(harness) ?? true
         let count = model.harnessCounts[harness] ?? 0
         return Button {
-            model.toggleHarness(harness)
+            if NSEvent.modifierFlags.contains(.option) {
+                model.soloHarness(harness)
+            } else {
+                model.toggleHarness(harness)
+            }
         } label: {
             HStack(spacing: 5) {
                 ToolBrandIconView(tool: harness.brandTool, size: density.segmentedFontSize + 1)
@@ -305,7 +318,7 @@ struct SessionFiltersBar: View {
         .background(chipBackground(tint: Theme.providerAccent(for: group.company), selected: selected))
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help("\(group.company.vendorName) · \(harness.displayName)")
+        .help("\(group.company.vendorName) · \(harness.displayName)\nClick to toggle · ⌥-click to solo")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 

@@ -117,7 +117,8 @@ final class SessionManagerModel: ObservableObject {
         }
     }
 
-    /// Which harnesses the list is narrowed to, or `nil` for all of them.
+    /// Which harnesses the list is narrowed to: `nil` for all of them, `[]`
+    /// for none — see `HarnessSelection`, which owns the chip arithmetic.
     ///
     /// The filter axis is the harness rather than the `SessionProvider`,
     /// because a Codex rollout tree holds both Codex and ChatGPT Work
@@ -313,6 +314,15 @@ final class SessionManagerModel: ObservableObject {
         guard let service else { return }
         summaryGeneration &+= 1
         let generation = summaryGeneration
+        // No harness selected queries nothing. Asking the index for an empty
+        // harness list would be reading its "no filter" convention as the
+        // opposite of what the user just said.
+        if HarnessSelection.isNothing(harnessFilter) {
+            summaries = []
+            isLoadingSummaries = false
+            reconcileSelection()
+            return
+        }
         let offset = reset ? 0 : summaries.count
         let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
         let since = dateRange.start()
@@ -380,6 +390,10 @@ final class SessionManagerModel: ObservableObject {
 
     private func runSearch(_ needle: String, generation: UInt64) async {
         guard let service else { return }
+        guard !HarnessSelection.isNothing(harnessFilter) else {
+            if generation == searchGeneration { hits = [] }
+            return
+        }
         let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
         let found = (try? await service.search(needle, harnesses: harnesses, limit: 200)) ?? []
         guard generation == searchGeneration else { return }
@@ -486,21 +500,32 @@ final class SessionManagerModel: ObservableObject {
         toggleHarnesses([harness])
     }
 
-    func toggleHarnesses(_ harnesses: Set<Harness>) {
-        guard !harnesses.isEmpty else { return }
-        var next = harnessFilter ?? Set(Harness.allCases)
-        if harnesses.allSatisfy(next.contains) {
-            next.subtract(harnesses)
-        } else {
-            next.formUnion(harnesses)
-        }
-        // Everything selected is the same statement as no filter, and saying
-        // it that way keeps the chip row and the FTS query in agreement.
-        setHarnessFilter(next.count == Harness.allCases.count ? nil : next)
+    /// ⌥-click on a harness chip: narrow the list to that harness alone.
+    func soloHarness(_ harness: Harness) {
+        setHarnessFilter(HarnessSelection.solo(harness, options: Harness.allCases))
     }
 
+    /// What the "All" chip does: everything lit turns everything off,
+    /// anything else turns everything back on.
+    func toggleAllHarnesses() {
+        setHarnessFilter(
+            HarnessSelection.toggleAll(harnessFilter, options: Harness.allCases)
+        )
+    }
+
+    func toggleHarnesses(_ harnesses: Set<Harness>) {
+        setHarnessFilter(
+            HarnessSelection.toggle(
+                harnesses, in: harnessFilter, options: Harness.allCases
+            )
+        )
+    }
+
+    /// `nil` lists every harness; `[]` lists none. Both are real states — the
+    /// All chip toggles between them — so an empty set is no longer folded
+    /// back into "unfiltered".
     func setHarnessFilter(_ harnesses: Set<Harness>?) {
-        harnessFilter = (harnesses?.isEmpty ?? true) ? nil : harnesses
+        harnessFilter = harnesses
     }
 
     // MARK: - Selection
