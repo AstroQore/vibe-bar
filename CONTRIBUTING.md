@@ -46,6 +46,17 @@ Vibe Bar is a Swift package with two main targets:
 - `VibeBarCore`: parsers, storage, privacy helpers, adapters, and usage logic.
 - `VibeBarApp`: AppKit/SwiftUI menu-bar app, windows, and UI glue.
 
+Session reading — discovery, per-harness parsing, the FTS5 session index,
+deletion planning, harness naming, and the MCP transport — lives in
+[`agent-session-kit`](https://github.com/AstroQore/agent-session-kit), a
+separate repository with its own releases, pinned here to an exact tag in
+`Package.swift` and linked statically. A change there is a change over
+there: cut a kit release, then bump the pin. `AGENTS.md` § 2.1 has the
+table of what lives where, the bump procedure (by hand and by the daily
+`bump-agent-session-kit` workflow), and `swift package edit` for working on
+both at once. A kit tag is not a Vibe Bar release — it reaches users only
+in a Vibe Bar build.
+
 Before opening a pull request, run:
 
 ```sh

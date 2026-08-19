@@ -183,6 +183,11 @@ struct SettingsView: View {
                         UpdateSettingsRow(updateController: environment.updateController)
                     }
                     .id("updates")
+
+                    settingsSection("Components") {
+                        AgentSessionKitComponentRow()
+                    }
+                    .id("components")
                     }
 
                     if selectedSection == .menuBar {
@@ -1173,6 +1178,120 @@ struct SettingsView: View {
         case 365: return "1 year"
         case 365 * 3: return "3 years"
         default: return "\(days) days"
+        }
+    }
+}
+
+/// What is *inside* this build, as opposed to what build it is.
+///
+/// `agent-session-kit` is a separate public repository with its own tags and
+/// its own release notes, pinned to an exact version in `Package.swift` and
+/// compiled — statically — into this binary. So the version below is a fact
+/// about the app you are running, and a newer kit release is not something
+/// this pane can install. The wording says "ships with the next Vibe Bar
+/// build" for that reason; anything that sounds like an available download
+/// would be a lie.
+///
+/// The check is manual. Nothing here fires on launch, on a timer, or when
+/// this pane appears — the button is the only thing that opens a connection,
+/// and `ComponentUpdateChecker` remembers the answer for six hours so a
+/// second press costs nothing.
+private struct AgentSessionKitComponentRow: View {
+    @State private var status: ComponentUpdateStatus?
+    @State private var isChecking = false
+
+    private let checker = ComponentUpdateChecker.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("agent-session-kit")
+                    .font(.callout)
+                Text(AgentSessionKitInfo.version)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                bundledBadge
+                Spacer(minLength: 12)
+                Button {
+                    check()
+                } label: {
+                    Label("Check for kit updates", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(isChecking)
+            }
+
+            Text("Session discovery, harness naming, and the MCP transport. A separate repository, pinned to an exact tag and compiled into this build.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            statusLine
+
+            HStack(spacing: 12) {
+                Link("Release notes", destination: AgentSessionKitInfo.bundledReleaseNotesURL)
+                Link("Repository", destination: AgentSessionKitInfo.repositoryURL)
+            }
+            .font(.caption2)
+        }
+        .task {
+            // Only ever reads what a previous button press already learned;
+            // never opens a connection of its own.
+            status = await checker.cachedAgentSessionKitStatus()
+        }
+    }
+
+    private var bundledBadge: some View {
+        Text("bundled")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.secondary.opacity(0.12)))
+    }
+
+    @ViewBuilder
+    private var statusLine: some View {
+        if isChecking {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Checking github.com for the newest release…")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        } else if let status {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(status.message)
+                    .font(.caption2)
+                    .foregroundStyle(statusColor(status))
+                if let url = status.releaseNotesURL {
+                    Link("What changed in \(url.lastPathComponent)", destination: url)
+                        .font(.caption2)
+                }
+            }
+        } else {
+            Text("Not checked. Nothing is fetched until you ask.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func statusColor(_ status: ComponentUpdateStatus) -> Color {
+        switch status {
+        case .upToDate: return .secondary
+        case .updateAvailable: return .accentColor
+        case .aheadOfLatestRelease: return .secondary
+        case .failed: return .orange
+        }
+    }
+
+    private func check() {
+        guard !isChecking else { return }
+        isChecking = true
+        Task {
+            let result = await checker.checkAgentSessionKit(force: true)
+            await MainActor.run {
+                status = result
+                isChecking = false
+            }
         }
     }
 }

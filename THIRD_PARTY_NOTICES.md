@@ -21,17 +21,28 @@ interoperability references.
 The complete copyright and permission notice covering the adapted CodexBar
 portions is included in this repository at the local license link above.
 
-## Direct dependencies
+## In-house packages
 
 ### agent-session-kit
 
 - Project:
   [AstroQore/agent-session-kit](https://github.com/AstroQore/agent-session-kit)
+- Relationship: maintained by AstroQore, the same organization that
+  maintains Vibe Bar. Extracted from this repository, and developed as a
+  standalone public package with its own changelog, semver tags, and
+  releases.
 - Use in Vibe Bar: local coding-agent session discovery, parsing, the
-  full-text session index, session deletion planning, and the local MCP
-  Unix-socket / stdio transport. Extracted from this repository.
+  full-text session index, session deletion planning, harness naming, and
+  the local MCP Unix-socket / stdio transport.
+- How it is consumed: pinned to an exact tag in `Package.swift` and linked
+  statically into `Vibe Bar.app`'s executable — there is no separate
+  framework or dylib in the bundle. The version compiled into a build is
+  `AgentSessionKitInfo.version`, shown in Settings › System › Components.
 - License: AGPL-3.0-only — the same license as Vibe Bar, so no separate
   notice file is bundled.
+- Third-party code: none. The package has no dependencies of its own.
+
+## Direct dependencies
 
 ### SweetCookieKit 0.4.0 or later compatible releases
 

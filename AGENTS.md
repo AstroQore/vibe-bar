@@ -144,13 +144,68 @@ host: `~/.vibebar/mcp.sock`, the `--mcp-stdio` flag, `VIBEBAR_MCP_SOCKET`
 and the "Vibe Bar is not running" message. Add host-shaped defaults
 there, not in the package.
 
+**Who owns which side of the line.**
+
+| Concern | Lives in | Why |
+| ------- | -------- | --- |
+| Session discovery, per-harness adapters, transcript parsing | kit | Provider-agnostic, testable without a network, useful to any host. |
+| `SessionIndexStore` / `SessionIndexService` (SQLite + FTS5) | kit | Same. The index location is a parameter, never a constant. |
+| `SessionDeleter`, deletion planning, `LiveSQLiteReader` | kit | The containment and symlink rules belong next to the adapters that define the roots. |
+| `Harness`, `HarnessCatalog` — the **usage** axis | kit | Naming a CLI is not naming a billing plan. |
+| MCP transports + JSON-RPC primitives | kit | A socket and a byte pump have no opinions about Vibe Bar. |
+| `RealHomeDirectory`, `JSONLLineScanner`, `JSONLHeadTail`, `Base32` | kit | Shared primitives with the same invariants on both sides. |
+| `MCPServer`, its tool catalog, DTOs, resource catalog | here | Vibe Bar's own dispatch, over the kit's transport. |
+| `Harness+Quota.swift`, `CostUsageScanner`, everything quota-shaped | here | The **billing** axis — plans, prices, companies, windows. |
+| The `~/.vibebar/mcp.sock` default, `--mcp-stdio`, the "not running" message | here | Host-shaped defaults the package refuses to invent. |
+
 **Where it comes from.** `Package.swift` pins the package to an exact
 tag on GitHub (`.package(url: "https://github.com/AstroQore/agent-session-kit.git",
-exact: "0.2.0")`), so a plain clone builds and a release build resolves the
+exact: "0.3.0")`), so a plain clone builds and a release build resolves the
 same package the developer built against — `Package.resolved` is
-gitignored here, and the exact pin is what stands in for it. Bumping the
-kit is a one-line change to that pin plus a `THIRD_PARTY_NOTICES.md`
-check, done deliberately and reviewed like any other dependency bump.
+gitignored here, and the exact pin is what stands in for it.
+
+**It is linked statically.** The kit is compiled into `Vibe Bar.app`'s
+executable. There is no framework in `Contents/Frameworks/`, no dylib, and
+nothing on disk to swap. Two consequences that matter more than they look:
+
+- The only way to know which kit is inside a build is
+  `AgentSessionKitInfo.version`, a constant the package pins to its own
+  changelog with a test.
+- **A kit tag is not a Vibe Bar release.** Tagging `0.4.0` over there
+  changes nothing for a single user until this repository bumps the pin
+  *and* ships a build. After merging a bump, cut a dev build (§ 12) —
+  otherwise the newest kit exists only in `main`.
+
+**Bumping the pin.**
+
+- *By hand:* edit the one line in `Package.swift`, edit the version named
+  in this section, read the kit's release notes for anything that needs a
+  call-site change, check `THIRD_PARTY_NOTICES.md` still describes it
+  correctly, then run the full § 9.3 check list. Commit subject
+  `Bump agent-session-kit to X.Y.Z`.
+- *By workflow:* `.github/workflows/bump-agent-session-kit.yml` runs daily
+  and on demand. It reads the current pin, asks GitHub for the kit's newest
+  release, and — when that release is newer — opens
+  `chore/bump-agent-session-kit-X.Y.Z` with both edits and the release
+  notes linked in the body. It never merges anything.
+
+  With the default `GITHUB_TOKEN`, GitHub **will not run CI on a
+  bot-opened PR** (a deliberate loop-prevention rule). Close and reopen the
+  PR, or push an empty commit to it, to get the checks. Adding a
+  `VIBEBAR_BOT_TOKEN` repository secret — a PAT with `contents:write` and
+  `pull_requests:write` — removes that step; the workflow prefers it when
+  present.
+
+**Where a user sees it.** Settings › System › **Components** shows
+`agent-session-kit` with the bundled `AgentSessionKitInfo.version`, a
+"bundled" badge, links to that release's notes and the repository, and a
+**Check for kit updates** button. The button is the only thing that opens a
+connection — no launch check, no timer, no check-when-the-pane-appears —
+and `ComponentUpdateChecker` caches the answer in memory for six hours.
+When a newer kit exists the row reads *"Newer kit X.Y.Z available — ships
+with the next Vibe Bar build"*. Keep that phrasing, or an equivalent one
+that is equally clear: the app cannot install a kit release, and a row that
+sounds like it can is a bug in the copy.
 
 **Working on both at once.** To build Vibe Bar against a local checkout of
 the package (say, to try a kit change before it is tagged), use SwiftPM's
@@ -163,7 +218,14 @@ swift package unedit agent-session-kit
 ```
 
 `swift package edit` records the override in `.swiftpm/` (gitignored), so
-it never reaches a commit, and `unedit` returns to the pinned tag.
+it never reaches a commit, and `unedit` returns to the pinned tag. Never
+commit a `Package.swift` that points at a local path or an untagged branch:
+a release build resolves from a clean checkout and would fail, or worse,
+silently resolve something else.
+
+The kit's own conventions — conventional-commit subjects, Keep a Changelog,
+bare `X.Y.Z` tags, and `RELEASING.md` — are that repository's, not this
+one's. Use them when working there.
 
 ## 3. Toolchain Prerequisites
 
