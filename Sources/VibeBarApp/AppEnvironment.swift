@@ -192,8 +192,9 @@ final class AppEnvironment: ObservableObject {
             .sink { [weak self] settings in
                 // Adapters resolve usage modes and misc-provider plans from
                 // settings.json on disk; make sure the edit is there before
-                // the refresh this sink triggers reads it.
-                self?.settingsStore.flush()
+                // the refresh this sink triggers reads it. `@Published` emits
+                // during willSet, so flush the emitted value, not the store's.
+                self?.settingsStore.flush(settings)
                 self?.accountStore.reload(
                     codexUsageMode: settings.codexUsageMode,
                     claudeUsageMode: settings.claudeUsageMode,
