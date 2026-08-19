@@ -839,14 +839,12 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 groupLabelText(option)
                 Spacer(minLength: 8)
-                TextField(option.defaultLabel, text: miniGroupLabelBinding(option))
-                    .textFieldStyle(.roundedBorder)
+                groupLabelTextField(option)
                     .frame(width: 130)
             }
             VStack(alignment: .leading, spacing: 6) {
                 groupLabelText(option)
-                TextField(option.defaultLabel, text: miniGroupLabelBinding(option))
-                    .textFieldStyle(.roundedBorder)
+                groupLabelTextField(option)
                     .frame(maxWidth: 180, alignment: .leading)
             }
         }
@@ -919,9 +917,11 @@ struct SettingsView: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 8)
-            TextField("Auto", text: providerPlanLabelBinding(tool))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 130)
+            DebouncedSettingsTextField(
+                prompt: "Auto",
+                value: providerPlanLabelBinding(tool)
+            )
+            .frame(width: 130)
         }
     }
 
@@ -964,10 +964,19 @@ struct SettingsView: View {
         .help(field.id)
     }
 
+    /// Label editors never write per keystroke. See
+    /// `DebouncedSettingsTextField`: a settings mutation fans out to every
+    /// open surface, and this page alone shows two dozen of these fields.
     private func fieldLabelTextField(field: MenuBarFieldOption, label: Binding<String>) -> some View {
-        TextField(field.defaultLabel, text: label)
-            .textFieldStyle(.roundedBorder)
+        DebouncedSettingsTextField(prompt: field.defaultLabel, value: label)
             .frame(width: 110)
+    }
+
+    private func groupLabelTextField(_ option: MiniWindowGroupLabelOption) -> some View {
+        DebouncedSettingsTextField(
+            prompt: option.defaultLabel,
+            value: miniGroupLabelBinding(option)
+        )
     }
 
     private func groupLabelText(_ option: MiniWindowGroupLabelOption) -> some View {
