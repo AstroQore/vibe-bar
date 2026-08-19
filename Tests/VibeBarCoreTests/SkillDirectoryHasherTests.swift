@@ -91,4 +91,14 @@ final class SkillDirectoryHasherTests: XCTestCase {
             try SkillDirectoryHasher.hash(directory: directory)
         )
     }
+
+    func testMetadataStampIsStableAndMovesWhenTheTreeChanges() throws {
+        let home = try SkillTestHome()
+        let directory = try home.makeSSOTSkill("stamped", extraFiles: ["a.md": "one"])
+        let before = try SkillDirectoryHasher.metadataStamp(directory: directory)
+        XCTAssertEqual(before, try SkillDirectoryHasher.metadataStamp(directory: directory))
+
+        try home.write("second", to: directory.appendingPathComponent("nested/b.md"))
+        XCTAssertNotEqual(before, try SkillDirectoryHasher.metadataStamp(directory: directory))
+    }
 }

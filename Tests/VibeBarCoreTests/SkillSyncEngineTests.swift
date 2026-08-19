@@ -111,6 +111,28 @@ final class SkillSyncEngineTests: XCTestCase {
         ))
     }
 
+    func testLiveMaterializationRejectsADanglingSSOTLink() throws {
+        let home = try SkillTestHome()
+        let source = try home.makeSSOTSkill("alpha")
+        let engine = SkillSyncEngine(homeDirectory: home.path)
+        let recorded = try engine.materialize(
+            skillDirectoryName: "alpha",
+            into: .claude,
+            method: .symlink
+        )
+        try FileManager.default.removeItem(at: source)
+
+        XCTAssertNil(engine.liveMaterialization(
+            skillDirectoryName: "alpha",
+            app: .claude,
+            recorded: recorded
+        ))
+        XCTAssertEqual(
+            SkillFileSystem.kind(of: home.appDirectory(.claude).appendingPathComponent("alpha")),
+            .symlink
+        )
+    }
+
     func testSymlinkMethodRefusesAForeignDirectoryButReplacesAFaithfulCopy() throws {
         let home = try SkillTestHome()
         try home.makeSSOTSkill("alpha", extraFiles: ["ref.md": "fresh"])

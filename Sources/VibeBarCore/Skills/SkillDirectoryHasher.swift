@@ -39,6 +39,31 @@ public enum SkillDirectoryHasher {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Cheap tree-change stamp for polling. It walks names and metadata but
+    /// never reads file payloads; callers can reuse a previously verified
+    /// content hash while this stamp is unchanged.
+    public static func metadataStamp(directory: URL) throws -> String {
+        var entries: [(path: String, url: URL, isSymlink: Bool)] = []
+        try collect(directory: directory, relativePath: "", into: &entries)
+        entries.sort { $0.path.utf8.lexicographicallyPrecedes($1.path.utf8) }
+
+        var hasher = SHA256()
+        let separator = Data([0])
+        for entry in entries {
+            let attributes = try FileManager.default.attributesOfItem(atPath: entry.url.path)
+            let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+            let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+            let target = entry.isSymlink
+                ? (try? FileManager.default.destinationOfSymbolicLink(atPath: entry.url.path)) ?? ""
+                : ""
+            let record = "\(entry.path)\0\(size)\0\(modified.bitPattern)\0\(inode)\0\(target)"
+            hasher.update(data: Data(record.utf8))
+            hasher.update(data: separator)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     private static func collect(
         directory: URL,
         relativePath: String,

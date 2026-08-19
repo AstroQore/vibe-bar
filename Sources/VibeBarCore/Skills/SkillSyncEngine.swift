@@ -270,22 +270,27 @@ public struct SkillSyncEngine: Sendable {
     public func liveMaterialization(
         skillDirectoryName: String,
         app: SkillAppTarget,
-        recorded: SkillMaterialization
+        recorded: SkillMaterialization,
+        currentCopyHash: String? = nil
     ) -> SkillMaterialization? {
         guard SkillPathValidator.isValid(skillDirectoryName) else { return nil }
         let destination = destination(for: skillDirectoryName, app: app)
         switch SkillFileSystem.kind(of: destination) {
         case .symlink:
+            let source = sourceDirectory(for: skillDirectoryName).standardizedFileURL
             guard
                 let resolved = SkillFileSystem.lexicalSymlinkTarget(of: destination),
-                resolved.path == sourceDirectory(for: skillDirectoryName).standardizedFileURL.path
+                resolved.path == source.path,
+                SkillFileSystem.kind(of: source) == .directory,
+                FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path)
             else { return nil }
             return SkillMaterialization(method: .symlink, adopted: recorded.adopted)
         case .directory:
             guard
                 recorded.method == .copy,
                 let recordedHash = recorded.contentHashAtCopy,
-                let currentHash = try? SkillDirectoryHasher.hash(directory: destination),
+                let currentHash = currentCopyHash
+                    ?? (try? SkillDirectoryHasher.hash(directory: destination)),
                 currentHash == recordedHash
             else { return nil }
             return recorded

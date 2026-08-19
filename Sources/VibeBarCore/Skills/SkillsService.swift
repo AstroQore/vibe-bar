@@ -32,6 +32,11 @@ public actor SkillsService {
     /// call that produced it; it is replaced on the next discovery pass and can
     /// be dropped explicitly once the user closes the browser.
     var discoveryStaging: URL?
+    private struct CopyVerification: Sendable {
+        let metadataStamp: String
+        let contentHash: String
+    }
+    private var copyVerificationCache: [String: CopyVerification] = [:]
 
     public init(
         homeDirectory: String = RealHomeDirectory.path,
@@ -51,15 +56,26 @@ public actor SkillsService {
     public func installedSkills() async -> [Skill] {
         let snapshots = await store.all()
         var result: [Skill] = []
+        var liveCopyKeys: Set<String> = []
         result.reserveCapacity(snapshots.count)
         for snapshot in snapshots {
             var reconciled = snapshot
             let recordedApps = snapshot.apps
             for (app, recorded) in recordedApps {
+                let currentCopyHash: String?
+                if recorded.method == .copy {
+                    let destination = engine.destination(for: snapshot.directory, app: app)
+                    let key = destination.standardizedFileURL.path
+                    liveCopyKeys.insert(key)
+                    currentCopyHash = verifiedCopyHash(at: destination, key: key)
+                } else {
+                    currentCopyHash = nil
+                }
                 if let live = engine.liveMaterialization(
                     skillDirectoryName: snapshot.directory,
                     app: app,
-                    recorded: recorded
+                    recorded: recorded,
+                    currentCopyHash: currentCopyHash
                 ) {
                     reconciled.apps[app] = live
                 } else {
@@ -84,7 +100,24 @@ public actor SkillsService {
                 result.append(reconciled)
             }
         }
+        copyVerificationCache = copyVerificationCache.filter { liveCopyKeys.contains($0.key) }
         return result
+    }
+
+    private func verifiedCopyHash(at directory: URL, key: String) -> String? {
+        guard let stamp = try? SkillDirectoryHasher.metadataStamp(directory: directory) else {
+            copyVerificationCache[key] = nil
+            return nil
+        }
+        if let cached = copyVerificationCache[key], cached.metadataStamp == stamp {
+            return cached.contentHash
+        }
+        guard let hash = try? SkillDirectoryHasher.hash(directory: directory) else {
+            copyVerificationCache[key] = nil
+            return nil
+        }
+        copyVerificationCache[key] = CopyVerification(metadataStamp: stamp, contentHash: hash)
+        return hash
     }
 
     public func skill(with id: SkillID) async -> Skill? {
