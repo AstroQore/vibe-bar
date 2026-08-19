@@ -48,7 +48,7 @@ struct UsageBreakdownTables: View {
                             .font(.system(size: 10.5, weight: .semibold))
                             .foregroundStyle(selected ? Color.primary : Color.secondary)
                             .padding(.horizontal, 11)
-                            .frame(minHeight: 27)
+                            .frame(minWidth: 72, minHeight: 28)
                             .background(
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(selected
@@ -64,8 +64,10 @@ struct UsageBreakdownTables: View {
                                         lineWidth: Theme.Card.hairlineWidth
                                     )
                             )
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     .accessibilityLabel(value.title)
                     .accessibilityAddTraits(selected ? [.isSelected] : [])
                 }
@@ -187,42 +189,44 @@ struct UsageBreakdownTables: View {
     /// realized more rows, which fired again. Paging is an explicit button
     /// now; nothing chains.
     private var requestsTable: some View {
-        let columns = RequestColumns()
-        return ScrollView([.horizontal, .vertical], showsIndicators: true) {
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    ForEach(model.requestRows) { row in
-                        let time = timestamp(row.date)
-                        let modelName = UsageModelNaming.canonicalDisplayName(row.model)
-                        PorcelainUsageRow(
-                            accessibilityLabel: requestAccessibilityLabel(
-                                row, time: time, model: modelName
-                            )
-                        ) {
-                            valueCell(time, columns.time, secondary: true)
-                            harnessCell(row.harness, columns.harness)
-                            valueCell(modelName, columns.model, tooltip: row.model)
-                            inputCell(row, columns.input)
-                            numericCell(row.output, columns.output)
-                            optionalMoneyCell(row.costMicros, columns.cost)
-                            valueCell(row.serviceTier ?? "—", columns.tier, secondary: true)
+        GeometryReader { proxy in
+            let columns = RequestColumns(tableWidth: proxy.size.width)
+            ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    Section {
+                        ForEach(model.requestRows) { row in
+                            let time = timestamp(row.date)
+                            let modelName = UsageModelNaming.canonicalDisplayName(row.model)
+                            PorcelainUsageRow(
+                                accessibilityLabel: requestAccessibilityLabel(
+                                    row, time: time, model: modelName
+                                )
+                            ) {
+                                valueCell(time, columns.time, secondary: true)
+                                harnessCell(row.harness, columns.harness)
+                                valueCell(modelName, columns.model, tooltip: row.model)
+                                inputCell(row, columns.input)
+                                numericCell(row.output, columns.output)
+                                optionalMoneyCell(row.costMicros, columns.cost)
+                                valueCell(row.serviceTier ?? "—", columns.tier, secondary: true)
+                            }
                         }
+                        if model.hasMoreRequests { loadMoreRow }
+                    } header: {
+                        // Same column spec and the same `UsageTableMetrics`
+                        // inset as the rows: a pinned header sits in its own
+                        // layout pass, so nothing else keeps the two in step.
+                        tableHeader(columns.all)
+                            // Opaque: a pinned header floats over the rows it
+                            // labels, and flat surfaces cast no shadow to
+                            // separate them.
+                            .background(WorkbenchPorcelain.overlayFill(for: colorScheme))
                     }
-                    if model.hasMoreRequests { loadMoreRow }
-                } header: {
-                    // Same column spec and the same `UsageTableMetrics`
-                    // inset as the rows: a pinned header sits in its own
-                    // layout pass, so nothing else keeps the two in step.
-                    tableHeader(columns.all)
-                        // Opaque: a pinned header floats over the rows it
-                        // labels, and flat surfaces cast no shadow to
-                        // separate them.
-                        .background(WorkbenchPorcelain.overlayFill(for: colorScheme))
                 }
+                .frame(width: columns.tableWidth, alignment: .leading)
             }
-            .frame(minWidth: columns.minimumWidth, alignment: .leading)
+            .accessibilityLabel("Request usage table")
         }
-        .accessibilityLabel("Request usage table")
         .frame(height: requestsViewportHeight)
     }
 
@@ -706,19 +710,34 @@ private struct ModelColumns {
     var all: [UsageTableColumn] { [model, requests, tokens, cost, average] }
 }
 
-/// Requests is the one fixed-width table — a request carries seven useful
-/// fields and compressing it would erase the model or the tier — so it scrolls
-/// horizontally instead of flexing.
+/// Requests fills the Workbench at ordinary widths and falls back to a
+/// horizontal scroller only when the viewport is narrower than its honest
+/// seven-column minimum. Descriptive columns absorb the extra room; numeric
+/// columns stay stable.
 private struct RequestColumns {
-    let time = UsageTableColumn("Time", 138)
-    let harness = UsageTableColumn("Harness", 138)
-    let model = UsageTableColumn("Model", 220)
+    static let minimumContentWidth: CGFloat = 138 + 138 + 220 + 114 + 88 + 96 + 86
+
+    let time: UsageTableColumn
+    let harness: UsageTableColumn
+    let model: UsageTableColumn
     let input = UsageTableColumn("Input", 114, .trailing)
     let output = UsageTableColumn("Output", 88, .trailing)
     let cost = UsageTableColumn("Cost", 96, .trailing)
-    let tier = UsageTableColumn("Tier", 86)
+    let tier: UsageTableColumn
+
+    init(tableWidth: CGFloat) {
+        let contentWidth = max(
+            Self.minimumContentWidth,
+            tableWidth - UsageTableMetrics.horizontalInset * 2
+        )
+        let extra = contentWidth - Self.minimumContentWidth
+        time = UsageTableColumn("Time", 138 + extra * 0.12)
+        harness = UsageTableColumn("Harness", 138 + extra * 0.20)
+        model = UsageTableColumn("Model", 220 + extra * 0.50)
+        tier = UsageTableColumn("Tier", 86 + extra * 0.18)
+    }
 
     var all: [UsageTableColumn] { [time, harness, model, input, output, cost, tier] }
 
-    var minimumWidth: CGFloat { all.totalWidth }
+    var tableWidth: CGFloat { all.totalWidth }
 }

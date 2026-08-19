@@ -253,6 +253,32 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertEqual(snapshot.buckets.last?.usedPercent, 100)
     }
 
+    func testFetchLocalSnapshotKeepsFiveHourWhenExhaustedWeeklySummaryVanishes() async throws {
+        let identity = """
+        {
+          "code": 0,
+          "userStatus": {
+            "cascadeModelConfigData": {
+              "clientModelConfigs": [{
+                "label": "Claude Sonnet 4.6",
+                "modelOrAlias": {"model": "MODEL_PLACEHOLDER_M35"},
+                "quotaInfo": {"remainingFraction": 0.61, "resetTime": "1800018000"}
+              }]
+            }
+          }
+        }
+        """
+        let snapshot = try await AntigravityQuotaAdapter.fetchLocalSnapshot { path, _ in
+            if path.contains("RetrieveUserQuotaSummary") {
+                return Data(#"{"groups":[]}"#.utf8)
+            }
+            return Data(identity.utf8)
+        }
+
+        XCTAssertEqual(snapshot.buckets.map(\.id), ["claude_gpt_five_hour"])
+        XCTAssertEqual(snapshot.buckets.first?.remainingPercent ?? -1, 61, accuracy: 0.001)
+    }
+
     func testUserStatusProvidesIdentityLabelsAndFiveHourFallback() throws {
         let json = """
         {

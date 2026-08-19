@@ -32,6 +32,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     /// model in Settings left the window the same physical size with
     /// a lot of empty real estate on the right.
     private var settingsCancellable: AnyCancellable?
+    private var quotaCancellable: AnyCancellable?
     /// Last fingerprint we applied content size for, so we can skip
     /// the resize work when an unrelated settings field changes.
     private var lastSizingFingerprint: String?
@@ -64,8 +65,8 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         let panel = panel ?? makePanel(environment: environment)
         self.panel = panel
         let settings = environment.settingsStore.settings
-        applyStableContentSize(to: panel, settings: settings, preserveTopRight: false)
-        lastSizingFingerprint = Self.sizingFingerprint(for: settings)
+        applyStableContentSize(to: panel, settings: settings, environment: environment, preserveTopRight: false)
+        lastSizingFingerprint = Self.sizingFingerprint(for: settings, environment: environment)
         applySavedPositionOrDefault(to: panel, settings: settings)
         panel.orderFrontRegardless()
         markWasOpen(true)
@@ -84,20 +85,46 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] settings in
                 guard let self, let panel = self.panel, panel.isVisible else { return }
-                let fp = Self.sizingFingerprint(for: settings)
+                let fp = Self.sizingFingerprint(for: settings, environment: environment)
                 guard fp != self.lastSizingFingerprint else { return }
                 self.lastSizingFingerprint = fp
-                self.applyStableContentSize(to: panel, settings: settings, preserveTopRight: true)
+                self.applyStableContentSize(
+                    to: panel,
+                    settings: settings,
+                    environment: environment,
+                    preserveTopRight: true
+                )
+            }
+        quotaCancellable = environment.quotaService.$lastSuccessByAccount
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak environment] _ in
+                guard let self, let environment else { return }
+                // `@Published` emits before the property assignment. Defer one
+                // main-loop turn so `environment.quota(for:)` reads the new map.
+                DispatchQueue.main.async { [weak self, weak environment] in
+                    guard let self, let environment, let panel = self.panel, panel.isVisible else { return }
+                    let settings = environment.settingsStore.settings
+                    let fp = Self.sizingFingerprint(for: settings, environment: environment)
+                    guard fp != self.lastSizingFingerprint else { return }
+                    self.lastSizingFingerprint = fp
+                    self.applyStableContentSize(
+                        to: panel,
+                        settings: settings,
+                        environment: environment,
+                        preserveTopRight: true
+                    )
+                }
             }
     }
 
     /// Stable identifier for everything `stableContentSize` reads.
     /// When this string changes we know we need to re-apply the
     /// content size; otherwise the re-render is a no-op.
-    static func sizingFingerprint(for settings: AppSettings) -> String {
+    static func sizingFingerprint(for settings: AppSettings, environment: AppEnvironment? = nil) -> String {
         let mini = settings.miniWindow
         let mode = mini.displayMode.rawValue
-        let ids = mini.fieldIds(for: mini.displayMode).joined(separator: ",")
+        let ids = visibleSelectedFieldIDs(settings: settings, environment: environment)
+            .sorted().joined(separator: ",")
         return "\(mode)|\(ids)"
     }
 
@@ -116,6 +143,8 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         }
         settingsCancellable?.cancel()
         settingsCancellable = nil
+        quotaCancellable?.cancel()
+        quotaCancellable = nil
         lastSizingFingerprint = nil
         panel = nil
     }
@@ -130,7 +159,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makePanel(environment: AppEnvironment) -> NSPanel {
-        let contentSize = Self.stableContentSize(for: environment.settingsStore.settings)
+        let contentSize = Self.stableContentSize(
+            for: environment.settingsStore.settings,
+            environment: environment
+        )
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: contentSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -173,8 +205,13 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         return panel
     }
 
-    private func applyStableContentSize(to panel: NSPanel, settings: AppSettings, preserveTopRight: Bool) {
-        let contentSize = Self.stableContentSize(for: settings)
+    private func applyStableContentSize(
+        to panel: NSPanel,
+        settings: AppSettings,
+        environment: AppEnvironment,
+        preserveTopRight: Bool
+    ) {
+        let contentSize = Self.stableContentSize(for: settings, environment: environment)
         let current = panel.contentView?.bounds.size ?? panel.frame.size
         guard abs(current.width - contentSize.width) > 0.5 || abs(current.height - contentSize.height) > 0.5 else {
             return
@@ -256,7 +293,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         return "antigravity.\(bucketId)"
     }
 
-    private static func stableContentSize(for settings: AppSettings) -> NSSize {
+    private static func stableContentSize(
+        for settings: AppSettings,
+        environment: AppEnvironment? = nil
+    ) -> NSSize {
         let mini = settings.miniWindow
         let displayMode = mini.displayMode
         let cellWidth: CGFloat
@@ -307,7 +347,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         // subtracted rather than one.
         let companies = MenuBarFieldCatalog.subProviderGroups(
             for: ToolType.dedicatedCardProviders,
-            selectedFieldIds: Set(mini.fieldIds(for: displayMode))
+            selectedFieldIds: visibleSelectedFieldIDs(settings: settings, environment: environment)
         )
         var width: CGFloat = 0
         for company in companies {
@@ -334,6 +374,19 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             width: max(minWidth, min(width, max(screenMaxWidth, minWidth))),
             height: height
         )
+    }
+
+    private static func visibleSelectedFieldIDs(
+        settings: AppSettings,
+        environment: AppEnvironment?
+    ) -> Set<String> {
+        let mini = settings.miniWindow
+        let selected = mini.fieldIds(for: mini.displayMode)
+        guard let environment else { return Set(selected) }
+        return Set(selected.filter { fieldID in
+            guard let field = MenuBarFieldCatalog.field(id: fieldID) else { return false }
+            return environment.quota(for: field.tool)?.bucket(id: field.bucketId) != nil
+        })
     }
 
     private static func clampedFrame(_ frame: NSRect, preferredScreen: NSScreen?) -> NSRect {
@@ -424,7 +477,12 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         settings.miniWindow.toggleDisplayMode()
         environment.settingsStore.settings = settings
         if let panel {
-            applyStableContentSize(to: panel, settings: settings, preserveTopRight: true)
+            applyStableContentSize(
+                to: panel,
+                settings: settings,
+                environment: environment,
+                preserveTopRight: true
+            )
             persistOrigin()
         }
     }
