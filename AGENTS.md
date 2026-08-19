@@ -131,7 +131,7 @@ and is a package dependency now:
 - `Harness` / `HarnessCatalog` — the *usage* axis naming only,
 - the MCP transports (`MCPSocketServer`, `MCPStdioBridge`) and the
   JSON-RPC primitives (`MCPJSON`, `MCPTool`, `MCPArguments`, …),
-- `RealHomeDirectory`, `JSONLHeadTail`, `JSONLLineScanner`.
+- `RealHomeDirectory`, `JSONLHeadTail`, `JSONLLineScanner`, `Base32`.
 
 What stayed here is what needs Vibe Bar's *billing* vocabulary or its
 app: `MCPServer` and its tool catalog, DTOs and resource catalog;
@@ -146,7 +146,7 @@ there, not in the package.
 
 **Where it comes from.** `Package.swift` pins the package to an exact
 tag on GitHub (`.package(url: "https://github.com/AstroQore/agent-session-kit.git",
-exact: "0.1.0")`), so a plain clone builds and a release build resolves the
+exact: "0.2.0")`), so a plain clone builds and a release build resolves the
 same package the developer built against — `Package.resolved` is
 gitignored here, and the exact pin is what stands in for it. Bumping the
 kit is a one-line change to that pin plus a `THIRD_PARTY_NOTICES.md`
@@ -387,15 +387,16 @@ summary cannot delete a different session. Vibe Bar never edits the
 *contents* of a session file, never deletes a credential file at all, and
 no other code path may remove anything outside `~/.vibebar/`.
 
-**Three providers are listed and readable but never deletable**, because
-another running app owns the store and removing from underneath it
-corrupts rather than cleans:
+**Four providers are listed and readable but never deletable**, because
+another app owns the store and removing from underneath it corrupts
+rather than cleans:
 
 | Provider        | Store                                              | Why it is refused                               |
 | --------------- | -------------------------------------------------- | ----------------------------------------------- |
 | `antigravity`   | `~/.gemini/antigravity{,-cli,-ide}/conversations`   | The CLI and IDE hold live WAL handles.          |
 | `cursor`        | `~/.cursor/chats/**/store.db`                       | Cursor keeps the agent store open.              |
 | `claudeCowork`  | `…/Application Support/Claude/local-agent-mode-sessions` | The files are inside Claude.app's own container. |
+| `grokBot`       | `…/Application Support/Grok Bot/sand-client-persistence` | It is Grok Bot's own cache of conversations that live on xAI's servers. |
 
 `SessionProvider.supportsDeletion` is the single source of truth: those
 adapters throw `SessionDeleteError.providerIsReadOnly(provider)` — which
@@ -658,6 +659,7 @@ display names). The mapping from a harness onto the quota axis —
 | AntiGravity   | Google AI  | `~/.gemini/antigravity{,-cli,-ide}/conversations`    |
 | Grok Build    | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                  |
 | Cursor        | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard events for cost |
+| Grok Bot      | SpaceXAI   | `~/Library/Application Support/Grok Bot/sand-client-persistence` — sessions only; quota rides in on Cursor's `grok_bot_weekly` bucket |
 
 Consequences worth stating out loud:
 
@@ -691,6 +693,7 @@ Sessions page; "Delete" is § 5's read-only rule.
 | AntiGravity   | ✅ `gen_metadata` turn             | ✅ conversation databases | ✅ `AntigravitySessionAdapter` | ❌ live WAL handles |
 | Grok Build    | ✅ `current_model_id`              | ✅ local session state    | ✅ `GrokSessionAdapter`      | ✅ |
 | Cursor        | ⚠️ when a turn recorded one        | ☁️ dashboard events only  | ✅ `CursorSessionAdapter`    | ❌ store stays open |
+| Grok Bot      | ❌ never recorded locally          | ❌ cloud-only             | ✅ `GrokBotSessionAdapter`, read-only | ❌ the app's own cloud cache |
 
 Where a ⚠️ appears the log genuinely does not carry the value — an aborted
 Cursor conversation records no `modelName` at all, and old Gemini CLI
@@ -703,6 +706,21 @@ its blobs is context-window bookkeeping, not billable usage, so the
 Sessions page lists Cursor conversations while the cost cards keep
 sourcing Cursor from the dashboard — do not "fix" that by inventing local
 counters.
+
+Grok Bot is a **cloud cache**, and the coverage matrix means it
+literally. The conversations run on xAI's servers; the directory is only
+what the client happened to replicate, so history may be partial, may be
+pruned, and may change underneath a scan. One `<base32>.blob` per key:
+the `roster.last-roster` slice holds the bot names (its `title` field is
+always empty and its `path` is a directory inside the *remote* sandbox),
+and one `transcript.replicas.<uuid>` slice per bot is the session.
+Entries carry no model, no token counts and no cost, so the provider
+touches neither the ledger nor the cost scan — Grok Bot's contribution to
+the quota axis stays exactly where it was, as Cursor's `grok_bot_weekly`
+bucket. Roles are read from the transcript owner's point of view; the
+mapping, including why an agent-to-agent turn stays `.user` / `.assistant`
+rather than `.other`, is documented on `GrokBotSessionAdapter.message`
+(agent-session-kit — see § 2.1).
 
 **Model names.** Display always uses the canonical vendor id —
 `gemini-3.5-flash-high`, not "Gemini 3.5 Flash (High)". Route every

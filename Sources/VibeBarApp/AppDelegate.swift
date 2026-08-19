@@ -157,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // an agent connecting during shutdown gets a clean "not running"
         // rather than a connection to a half-stopped environment.
         environment?.mcp?.stop()
+        environment?.settingsStore.flush()
         environment?.scheduler.stop()
         environment?.serviceStatus.stop()
         environment?.remoteProbeService.stop()

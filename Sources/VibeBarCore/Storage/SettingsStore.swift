@@ -4,10 +4,53 @@ import Combine
 @MainActor
 public final class SettingsStore: ObservableObject {
     @Published public var settings: AppSettings {
-        didSet { persist() }
+        didSet { schedulePersist() }
     }
 
     private let defaultsKey = "VibeBar.settings.v1"
+
+    /// Settings edits arrive one keystroke / one toggle at a time, and every
+    /// one used to encode and atomically rewrite the file on the main thread
+    /// before the view could redraw. Coalesce: one write per burst, off the
+    /// main actor; `flush()` writes synchronously (quit, refresh triggers).
+    ///
+    /// Every snapshot carries a sequence number and the writer only applies a
+    /// snapshot newer than the last one it wrote, so a coalesced task that
+    /// resumes late can never overwrite a `flush()` that beat it.
+    private var pendingPersist: Task<Void, Never>?
+    private var persistSequence: UInt64 = 0
+    private static let persistCoalesceNanoseconds: UInt64 = 250_000_000
+    private static let writeQueue = DispatchQueue(
+        label: "com.astroqore.VibeBar.settings.persist", qos: .utility
+    )
+    /// Only ever touched on `writeQueue`.
+    private nonisolated(unsafe) static var lastWrittenSequence: UInt64 = 0
+
+    private func schedulePersist() {
+        pendingPersist?.cancel()
+        persistSequence += 1
+        let sequence = persistSequence
+        let snapshot = settings
+        pendingPersist = Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: Self.persistCoalesceNanoseconds)
+            guard !Task.isCancelled else { return }
+            Self.writeQueue.async { Self.write(snapshot, sequence: sequence) }
+        }
+    }
+
+    /// Write `snapshot` (default: the current settings) now, ordered after
+    /// any write already in flight and ahead of any stale coalesced task.
+    /// Callers that hand settings to something reading `settings.json` from
+    /// disk pass the value they were just given — `@Published` emits during
+    /// `willSet`, so `self.settings` may still be the previous value there.
+    public func flush(_ snapshot: AppSettings? = nil) {
+        pendingPersist?.cancel()
+        pendingPersist = nil
+        persistSequence += 1
+        let sequence = persistSequence
+        let value = snapshot ?? settings
+        Self.writeQueue.sync { Self.write(value, sequence: sequence) }
+    }
 
     public init(userDefaults: UserDefaults = .standard) {
         if
@@ -31,6 +74,15 @@ public final class SettingsStore: ObservableObject {
     }
 
     private func persist() {
+        Self.write(settings, sequence: nil)
+    }
+
+    /// `sequence == nil` (load-time migration writes) always applies.
+    private nonisolated static func write(_ settings: AppSettings, sequence: UInt64?) {
+        if let sequence {
+            guard sequence > lastWrittenSequence else { return }
+            lastWrittenSequence = sequence
+        }
         do {
             try VibeBarLocalStore.writeJSON(settings, to: VibeBarLocalStore.settingsURL)
         } catch {

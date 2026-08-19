@@ -25,6 +25,11 @@ extension Harness {
         case .antigravity:              .antigravity
         case .grokBuild:                .grok
         case .cursor:                   .cursor
+        // Grok Bot has no tool of its own: its quota arrives as Cursor's
+        // `grok_bot_weekly` bucket, which is also where the L1 company comes
+        // from. The Sessions badge deliberately draws the Grok mark instead
+        // — see `Harness.brandTool`.
+        case .grokBot:                  .cursor
         }
     }
 
