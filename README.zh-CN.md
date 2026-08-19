@@ -159,6 +159,32 @@ claude mcp add --scope user vibebar -- "/Applications/Vibe Bar.app/Contents/MacO
 服务商的私有接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功
 快照，并避免把陈旧数据伪装成一次成功更新。
 
+## 架构
+
+Vibe Bar 是一个 App，由两个 SwiftPM target 加一个独立仓库的自有 package 组成。
+
+| 组成 | 职责 | 所在仓库 |
+| --- | --- | --- |
+| `VibeBarApp` | 菜单栏图标、Popover、迷你浮窗、Workbench、设置界面。AppKit + SwiftUI。 | 本仓库 |
+| `VibeBarCore` | 配额、用量、成本、价格、预测、Provider 适配器、远端同步——所有不需要窗口就能测试的部分。 | 本仓库 |
+| [`agent-session-kit`](https://github.com/AstroQore/agent-session-kit) | 读取各家 Coding Agent 留在磁盘上的会话：按 harness 的会话发现与解析、全文会话索引、删除计划、harness 命名，以及本地 MCP Unix socket / stdio 传输。 | 独立公开仓库 |
+
+这个 kit 是从本仓库拆出去的，目的是让“我的 agent 到底做了什么”这一半可以被单独
+使用、也被单独审计。它不认识配额、套餐和价格，这套词汇留在 `VibeBarCore` 里。它
+自身没有任何第三方依赖，许可证同样是 AGPL-3.0-only。
+
+**一个 kit release 怎么到你手上。** `Package.swift` 把 kit 钉在一个确切的 tag 上，
+SwiftPM 采用**静态链接**——它被编译进 App 的可执行文件，而不是作为一个可以替换的
+framework 分发。所以 kit 发布新版本，在 Vibe Bar 更新这个 pin 并发出新构建之前，
+对你的 Mac 没有任何影响。这里不存在可以单独升级的组件，Vibe Bar 也永远不会提示你
+去升级它。
+
+**在哪里看到当前版本。** 设置 › System › **Components** 会显示当前这个构建里编译
+进去的 `agent-session-kit` 版本，附带该版本的 Release Notes 与仓库链接，以及一个
+*Check for kit updates* 按钮。只有这个按钮会去访问 GitHub——启动时不查，也没有定时
+任务。当存在更新的 kit 时，这一行会写明它「ships with the next Vibe Bar build」
+（随下一个 Vibe Bar 构建一起到达），因为那是它唯一的到达方式。
+
 ## 隐私与本地数据
 
 Vibe Bar 没有遥测管线或托管明文分析后端。本地与远端 Probe 用量分析都留在当前

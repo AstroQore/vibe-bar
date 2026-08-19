@@ -170,6 +170,38 @@ Provider contracts can change without notice. Vibe Bar keeps refresh errors
 visible, preserves the last known good snapshot, and avoids presenting stale
 data as a successful update.
 
+## Architecture
+
+Vibe Bar is one app built from two SwiftPM targets plus one package of its
+own that lives in a separate repository.
+
+| Piece | What it is | Where it lives |
+| --- | --- | --- |
+| `VibeBarApp` | The menu-bar item, the popover, the Mini Window, the Workbench, Settings. AppKit + SwiftUI. | This repository |
+| `VibeBarCore` | Quota, usage, cost, pricing, forecasting, provider adapters, remote sync — everything testable without a window. | This repository |
+| [`agent-session-kit`](https://github.com/AstroQore/agent-session-kit) | Reading what the coding agents left on disk: session discovery and parsing per harness, the full-text session index, deletion planning, harness naming, and the local MCP Unix-socket / stdio transport. | Separate public repository |
+
+The kit was extracted from this repository so that the "what did my agents
+actually do" half is usable — and auditable — on its own. It knows nothing
+about quotas, plans, or prices; that vocabulary stays in `VibeBarCore`. It
+has no third-party dependencies of its own, and it is AGPL-3.0-only, same as
+Vibe Bar.
+
+**How a kit release reaches you.** `Package.swift` pins the kit to an exact
+tag, and SwiftPM links it **statically** — it is compiled into the app's
+executable, not shipped as a framework you could swap. So a new kit release
+changes nothing on your Mac until Vibe Bar bumps that pin and ships a build.
+There is no separate component to update, and Vibe Bar will never offer to
+update one.
+
+**Seeing which one you have.** Settings › System › **Components** shows the
+`agent-session-kit` version compiled into the build you are running, with
+links to that release's notes and the repository, and a *Check for kit
+updates* button. The button is the only thing that contacts GitHub — there is
+no check at launch and none on a timer — and when a newer kit exists the row
+says it *ships with the next Vibe Bar build*, because that is the only way
+it can arrive.
+
 ## Privacy and Local Data
 
 Vibe Bar has no telemetry pipeline or hosted plaintext analytics backend.
