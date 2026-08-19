@@ -49,30 +49,53 @@ public actor SkillsService {
     }
 
     public func installedSkills() async -> [Skill] {
-        var skills = await store.all()
-        for index in skills.indices {
-            var skill = skills[index]
-            let recordedApps = skill.apps
+        let snapshots = await store.all()
+        var result: [Skill] = []
+        result.reserveCapacity(snapshots.count)
+        for snapshot in snapshots {
+            var reconciled = snapshot
+            let recordedApps = snapshot.apps
             for (app, recorded) in recordedApps {
                 if let live = engine.liveMaterialization(
-                    skillDirectoryName: skill.directory,
+                    skillDirectoryName: snapshot.directory,
                     app: app,
                     recorded: recorded
                 ) {
-                    skill.apps[app] = live
+                    reconciled.apps[app] = live
                 } else {
-                    skill.apps[app] = nil
+                    reconciled.apps[app] = nil
                 }
             }
-            guard skill.apps != recordedApps else { continue }
+            guard reconciled.apps != recordedApps else {
+                result.append(snapshot)
+                continue
+            }
+            // `await store.all()` above makes this actor reentrant. Re-read
+            // before writing and apply only app entries that still equal the
+            // snapshot we inspected, preserving a concurrent enable/install
+            // and every newer metadata field.
+            guard let current = await store.skill(with: snapshot.id) else { continue }
+            let merged = Self.mergeReconciledApps(
+                snapshot: snapshot,
+                reconciled: reconciled,
+                current: current
+            )
             do {
-                try await store.upsert(skill)
+                try await store.upsert(merged)
             } catch {
                 SafeLog.warn("Persisting reconciled skill state failed.")
             }
-            skills[index] = skill
+            result.append(merged)
         }
-        return skills
+        return result
+    }
+
+    static func mergeReconciledApps(snapshot: Skill, reconciled: Skill, current: Skill) -> Skill {
+        var merged = current
+        for (app, recorded) in snapshot.apps where current.apps[app] == recorded {
+            merged.apps[app] = reconciled.apps[app]
+        }
+        return merged
     }
 
     public func skill(with id: SkillID) async -> Skill? {

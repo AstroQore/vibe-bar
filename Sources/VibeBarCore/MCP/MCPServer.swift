@@ -422,6 +422,17 @@ public final class MCPServer: @unchecked Sendable {
             throw MCPRPCError.invalidParams("skills.install: \(error.localizedDescription)")
         }
         let apps = try arguments.optionalEnumList("apps", SkillAppTarget.self) ?? []
+        let managed = Set(SkillAppTarget.managedHarnesses)
+        let unsupported = apps.filter { !managed.contains($0) }
+        guard unsupported.isEmpty else {
+            throw MCPRPCError.invalidParams(
+                "skills.install: unsupported app(s): "
+                    + unsupported.map(\.rawValue).joined(separator: ", ")
+                    + ". Managed apps: "
+                    + SkillAppTarget.managedHarnesses.map(\.rawValue).joined(separator: ", ")
+                    + "."
+            )
+        }
         var method = SkillSyncMethod.auto
         if let requested = try arguments.optionalEnum("method", SkillSyncMethod.self) {
             guard requested != .auto else {

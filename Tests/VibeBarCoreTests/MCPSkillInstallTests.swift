@@ -216,6 +216,19 @@ final class MCPSkillInstallTests: XCTestCase {
         )
     }
 
+    func testRejectsLegacyAppsAtExecutionTime() async throws {
+        for app in [SkillAppTarget.gemini, .hermes, .opencode] {
+            let response = try await raw([
+                "source": .string("AstroQore/vibe-bar"),
+                "apps": .array([.string(app.rawValue)])
+            ])
+            let message = response["error"]?["message"]?.stringValue ?? ""
+            XCTAssertTrue(message.contains("unsupported app"), message)
+            XCTAssertNil(source.lastSkillSource)
+            XCTAssertFalse(home.exists(home.ssot.appendingPathComponent("vibe-bar")))
+        }
+    }
+
     // MARK: - Source parsing
 
     func testSourceParsingCoversTheSpellingsAgentsUse() throws {

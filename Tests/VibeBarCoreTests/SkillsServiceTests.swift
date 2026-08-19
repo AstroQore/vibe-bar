@@ -112,6 +112,40 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(home.contents(of: destination.appendingPathComponent("owner.txt")), "user")
     }
 
+    func testReconciliationPreservesConcurrentAppChanges() {
+        let original = SkillMaterialization(method: .symlink)
+        let replacement = SkillMaterialization(method: .copy, contentHashAtCopy: "new")
+        let cursor = SkillMaterialization(method: .symlink)
+        let snapshot = Skill(
+            id: .local(directory: "alpha"),
+            name: "Alpha",
+            directory: "alpha",
+            installedAt: Date(timeIntervalSince1970: 1),
+            apps: [.claude: original]
+        )
+        var reconciled = snapshot
+        reconciled.apps[.claude] = nil
+        var current = snapshot
+        current.apps[.cursor] = cursor
+
+        let merged = SkillsService.mergeReconciledApps(
+            snapshot: snapshot,
+            reconciled: reconciled,
+            current: current
+        )
+        XCTAssertNil(merged.apps[.claude])
+        XCTAssertEqual(merged.apps[.cursor], cursor)
+
+        current.apps[.claude] = replacement
+        let changed = SkillsService.mergeReconciledApps(
+            snapshot: snapshot,
+            reconciled: reconciled,
+            current: current
+        )
+        XCTAssertEqual(changed.apps[.claude], replacement)
+        XCTAssertEqual(changed.apps[.cursor], cursor)
+    }
+
     func testFailedMaterializeLeavesTheStoreUntouched() async throws {
         let home = try SkillTestHome()
         let staging = try home.makeSkillDirectory(at: home.url.appendingPathComponent("Downloads/alpha"))

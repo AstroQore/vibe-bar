@@ -204,7 +204,7 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.skill(id)) { [self] in
             let result = try await service.uninstall(id)
             updateStates[id] = nil
-            let kept = SkillAppTarget.managedHarnesses
+            let kept = skill.enabledApps
                 .filter { skill.isEnabled(for: $0) && result.removedByApp[$0] == false }
             toast = kept.isEmpty
                 ? "Uninstalled \(skill.name). A backup was saved."
