@@ -47,11 +47,12 @@ public enum SessionResumeCommandBuilder {
             // sessions have no documented command-line entry point.
             guard variant == antigravityCLIVariant else { throw SessionResumeError.resumeUnavailable }
             return "agy --conversation \(id)"
-        case .claudeCowork, .cursor:
+        case .claudeCowork, .cursor, .grokBot:
             // Cowork runs inside Claude.app and Cursor's agents inside
             // Cursor; neither publishes a "reopen this conversation"
             // command, and inventing one would hand the user a line that
-            // silently starts a *new* session.
+            // silently starts a *new* session. Grok Bot goes further: the
+            // conversation runs on xAI's servers and there is no CLI at all.
             throw SessionResumeError.resumeUnavailable
         }
     }
@@ -78,7 +79,7 @@ public enum SessionResumeCommandBuilder {
     static func isValid(_ id: String, for provider: SessionProvider) -> Bool {
         guard !id.isEmpty, id.count <= maxSessionIDLength else { return false }
         switch provider {
-        case .claude, .claudeCowork, .codex, .cursor, .antigravity:
+        case .claude, .claudeCowork, .codex, .cursor, .antigravity, .grokBot:
             return id.unicodeScalars.allSatisfy { uuidCharacters.contains($0) }
         case .grok, .gemini:
             return id.unicodeScalars.allSatisfy { looseCharacters.contains($0) }
