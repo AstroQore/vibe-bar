@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VibeBarCore
 
@@ -54,10 +55,13 @@ struct UsageFiltersBar: View {
         .scrollIndicators(.never)
     }
 
+    /// The All chip is a switch, not a shortcut: lit means every harness is
+    /// in the query and clicking it clears the selection outright; anything
+    /// else and it puts every harness back.
     private var allHarnessesChip: some View {
         let selected = model.selectedHarnesses == nil
         return Button {
-            model.setSelectedHarnesses(nil)
+            model.toggleAllHarnesses()
         } label: {
             Text("All harnesses")
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
@@ -67,8 +71,9 @@ struct UsageFiltersBar: View {
         }
         .buttonStyle(.plain)
         .background(chipBackground(tint: .accentColor, selected: selected))
-        .help("Include every harness")
-        .accessibilityLabel("Show every harness")
+        .help(selected ? "Click to select no harness" : "Click to include every harness")
+        .accessibilityLabel(selected ? "Select no harness" : "Show every harness")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     /// The company section head. Quieter than the harness chips beside it —
@@ -103,10 +108,17 @@ struct UsageFiltersBar: View {
     /// One chip per harness — the axis this page actually groups by. The icon
     /// is the harness's own brand (Cursor's mark, not Grok's); the accent is
     /// the company's, so a group still reads as one block of colour.
+    ///
+    /// ⌥-click solos, which is the one-click way to ask "just this harness"
+    /// without turning eight other chips off by hand.
     private func harnessChip(_ harness: Harness, in group: Harness.ChipGroup) -> some View {
         let selected = model.selectedHarnesses?.contains(harness) ?? true
         return Button {
-            model.toggleHarness(harness)
+            if NSEvent.modifierFlags.contains(.option) {
+                model.soloHarness(harness)
+            } else {
+                model.toggleHarness(harness)
+            }
         } label: {
             HStack(spacing: 5) {
                 ToolBrandIconView(tool: harness.brandTool, size: density.segmentedFontSize + 1)
@@ -123,7 +135,7 @@ struct UsageFiltersBar: View {
         // that a harness is in the query, so an off chip must not wear it.
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help("\(group.company.vendorName) · \(harness.displayName)")
+        .help("\(group.company.vendorName) · \(harness.displayName)\nClick to toggle · ⌥-click to solo")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 

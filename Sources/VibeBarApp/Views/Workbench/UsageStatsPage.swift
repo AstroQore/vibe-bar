@@ -21,12 +21,14 @@ struct UsageStatsPage: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                    if model.isLedgerAvailable {
+                    if !model.isLedgerAvailable {
+                        unavailableCard
+                    } else if HarnessSelection.isNothing(model.selectedHarnesses) {
+                        noHarnessCard
+                    } else {
                         UsageHeroCards(density: density, summary: model.summary)
                         trendAndProviderMix
                         UsageBreakdownTables(density: density, model: model)
-                    } else {
-                        unavailableCard
                     }
                 }
                 .padding(.horizontal, density.popoverPaddingH)
@@ -63,6 +65,27 @@ struct UsageStatsPage: View {
                 )
             }
         }
+    }
+
+    /// The explicit empty selection the All chip can reach. Every number on
+    /// this page would be a zero, and a page of zeroes reads as "you used
+    /// nothing" rather than "you asked for nothing".
+    private var noHarnessCard: some View {
+        CardShell(density: density, alignment: .center) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(.secondary)
+            Text("No harness selected — pick one above")
+                .font(.system(size: density.titleFontSize, weight: .semibold))
+                .multilineTextAlignment(.center)
+            Text("The All harnesses chip is a switch: click it again to put "
+                + "every harness back in the query.")
+                .font(.system(size: density.subtitleFontSize))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var unavailableCard: some View {

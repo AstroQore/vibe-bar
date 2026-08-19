@@ -149,9 +149,10 @@ final class UsageStatsViewModel: ObservableObject {
     /// lit should read as unfiltered, not as an empty page. Only whole
     /// companies are ever selected here; the chips are the only writer.
     @Published private(set) var selectedTools: Set<ToolType>?
-    /// `nil` means "every harness". Orthogonal to `selectedTools`: the chips
-    /// pick companies on the quota axis, this picks the CLI / app the usage
-    /// actually came from.
+    /// `nil` means "every harness", `[]` means **none** — see
+    /// `HarnessSelection`, which owns the chip arithmetic. Orthogonal to
+    /// `selectedTools`: the chips pick companies on the quota axis, this
+    /// picks the CLI / app the usage actually came from.
     @Published private(set) var selectedHarnesses: Set<Harness>?
     @Published private(set) var selectedModels: Set<String>?
     @Published private(set) var activeBreakdown: Breakdown = .periods
@@ -429,8 +430,10 @@ final class UsageStatsViewModel: ObservableObject {
         if rangePreset == .all { allTimeStart = nil }
         // A company chip going dark can strand a harness selection whose
         // company is no longer in the query; drop those so the harness menu
-        // and the results describe the same thing.
-        if let selectedHarnesses {
+        // and the results describe the same thing. An explicit empty
+        // selection is left alone — the user asked for nothing, and pruning
+        // nothing must not silently mean everything.
+        if let selectedHarnesses, !selectedHarnesses.isEmpty {
             let kept = selectedHarnesses.filter { harness in
                 normalized?.contains(harness.quotaTool) ?? true
             }
@@ -455,10 +458,13 @@ final class UsageStatsViewModel: ObservableObject {
         setSelectedTools(next.count == knownTools.count ? nil : next)
     }
 
+    /// `nil` selects every harness; `[]` selects none. Both are real states —
+    /// the All chip toggles between them — so an empty set is no longer
+    /// folded back into "unfiltered". The ledger already reads an empty
+    /// filter list as "match nothing".
     func setSelectedHarnesses(_ harnesses: Set<Harness>?) {
-        let normalized = (harnesses?.isEmpty ?? true) ? nil : harnesses
-        guard normalized != selectedHarnesses else { return }
-        selectedHarnesses = normalized
+        guard harnesses != selectedHarnesses else { return }
+        selectedHarnesses = harnesses
         if rangePreset == .all { allTimeStart = nil }
         reload(cascadeModels: true)
     }
@@ -467,20 +473,27 @@ final class UsageStatsViewModel: ObservableObject {
         toggleHarnesses([harness])
     }
 
+    /// ⌥-click on a harness chip: narrow to that harness alone.
+    func soloHarness(_ harness: Harness) {
+        setSelectedHarnesses(HarnessSelection.solo(harness, options: harnessOptions))
+    }
+
+    /// What the "All harnesses" chip does: everything lit turns everything
+    /// off, anything else turns everything back on.
+    func toggleAllHarnesses() {
+        setSelectedHarnesses(
+            HarnessSelection.toggleAll(selectedHarnesses, options: harnessOptions)
+        )
+    }
+
     /// Toggles a whole company's harnesses in one click — what the muted
-    /// company chip at the head of each chip group does. Turning them all on
-    /// is the same statement as "no harness filter", and saying it that way
-    /// keeps the query unrestricted.
+    /// company chip at the head of each chip group does.
     func toggleHarnesses(_ harnesses: Set<Harness>) {
-        guard !harnesses.isEmpty else { return }
-        let options = harnessOptions
-        var next = selectedHarnesses ?? Set(options)
-        if harnesses.allSatisfy(next.contains) {
-            next.subtract(harnesses)
-        } else {
-            next.formUnion(harnesses)
-        }
-        setSelectedHarnesses(next.count == options.count ? nil : next)
+        setSelectedHarnesses(
+            HarnessSelection.toggle(
+                harnesses, in: selectedHarnesses, options: harnessOptions
+            )
+        )
     }
 
     func setSelectedModels(_ models: Set<String>?) {
@@ -669,8 +682,11 @@ final class UsageStatsViewModel: ObservableObject {
             guard !Task.isCancelled, generation == self.generation else { return }
             // Models first: a narrowed provider set can strand a model that no
             // longer exists in the picker, and querying with it would report
-            // an empty page the user has no control to clear.
-            if cascadeModels {
+            // an empty page the user has no control to clear. An empty harness
+            // selection is exempt: it says nothing about which models exist,
+            // so pruning against its empty list would quietly discard a model
+            // filter the user still wants when the harnesses come back.
+            if cascadeModels, !HarnessSelection.isNothing(self.selectedHarnesses) {
                 self.pruneSelectedModels(to: models)
             }
             let resolved = self.filter

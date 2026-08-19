@@ -149,29 +149,24 @@ struct UsageBreakdownTables: View {
     /// ordinary Workbench width; only their descriptive leading column flexes.
     private var periodsTable: some View {
         GeometryReader { proxy in
-            let contentWidth = proxy.size.width - UsageTableMetrics.horizontalInset * 2
-            let periodWidth = max(170, contentWidth - 5 * 108)
+            let columns = PeriodColumns(
+                title: periodColumnTitle,
+                contentWidth: proxy.size.width - UsageTableMetrics.horizontalInset * 2
+            )
             VStack(spacing: 0) {
-                tableHeader {
-                    headerCell(periodColumnTitle, width: periodWidth)
-                    headerCell("Input", width: 108, alignment: .trailing)
-                    headerCell("Output", width: 108, alignment: .trailing)
-                    headerCell("Cache", width: 108, alignment: .trailing)
-                    headerCell("Tokens", width: 108, alignment: .trailing)
-                    headerCell("Cost", width: 108, alignment: .trailing)
-                }
+                tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
                     ForEach(populatedPeriods, id: \.bucketStart) { point in
                         let label = period(point.bucketStart)
                         PorcelainUsageRow(
                             accessibilityLabel: periodAccessibilityLabel(point, label: label)
                         ) {
-                            valueCell(label, width: periodWidth, tooltip: label)
-                            numericCell(point.freshInput, width: 108)
-                            numericCell(point.output, width: 108)
-                            numericCell(point.cacheRead + point.cacheCreation, width: 108)
-                            numericCell(point.totalTokens, width: 108, emphasis: true)
-                            moneyCell(point.costMicros, width: 108, emphasis: true)
+                            valueCell(label, columns.period, tooltip: label)
+                            numericCell(point.freshInput, columns.input)
+                            numericCell(point.output, columns.output)
+                            numericCell(point.cacheRead + point.cacheCreation, columns.cache)
+                            numericCell(point.totalTokens, columns.tokens, emphasis: true)
+                            moneyCell(point.costMicros, columns.cost, emphasis: true)
                         }
                     }
                 }
@@ -192,7 +187,8 @@ struct UsageBreakdownTables: View {
     /// realized more rows, which fired again. Paging is an explicit button
     /// now; nothing chains.
     private var requestsTable: some View {
-        ScrollView([.horizontal, .vertical], showsIndicators: true) {
+        let columns = RequestColumns()
+        return ScrollView([.horizontal, .vertical], showsIndicators: true) {
             LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                 Section {
                     ForEach(model.requestRows) { row in
@@ -203,32 +199,28 @@ struct UsageBreakdownTables: View {
                                 row, time: time, model: modelName
                             )
                         ) {
-                            valueCell(time, width: 138, secondary: true)
-                            harnessCell(row.harness, width: 138)
-                            valueCell(modelName, width: 220, tooltip: row.model)
-                            inputCell(row, width: 114)
-                            numericCell(row.output, width: 88)
-                            optionalMoneyCell(row.costMicros, width: 96)
-                            valueCell(row.serviceTier ?? "—", width: 86, secondary: true)
+                            valueCell(time, columns.time, secondary: true)
+                            harnessCell(row.harness, columns.harness)
+                            valueCell(modelName, columns.model, tooltip: row.model)
+                            inputCell(row, columns.input)
+                            numericCell(row.output, columns.output)
+                            optionalMoneyCell(row.costMicros, columns.cost)
+                            valueCell(row.serviceTier ?? "—", columns.tier, secondary: true)
                         }
                     }
                     if model.hasMoreRequests { loadMoreRow }
                 } header: {
-                    tableHeader {
-                        headerCell("Time", width: 138)
-                        headerCell("Harness", width: 138)
-                        headerCell("Model", width: 220)
-                        headerCell("Input", width: 114, alignment: .trailing)
-                        headerCell("Output", width: 88, alignment: .trailing)
-                        headerCell("Cost", width: 96, alignment: .trailing)
-                        headerCell("Tier", width: 86)
-                    }
-                    // Opaque: a pinned header floats over the rows it labels,
-                    // and flat surfaces cast no shadow to separate them.
-                    .background(WorkbenchPorcelain.overlayFill(for: colorScheme))
+                    // Same column spec and the same `UsageTableMetrics`
+                    // inset as the rows: a pinned header sits in its own
+                    // layout pass, so nothing else keeps the two in step.
+                    tableHeader(columns.all)
+                        // Opaque: a pinned header floats over the rows it
+                        // labels, and flat surfaces cast no shadow to
+                        // separate them.
+                        .background(WorkbenchPorcelain.overlayFill(for: colorScheme))
                 }
             }
-            .frame(minWidth: 898, alignment: .leading)
+            .frame(minWidth: columns.minimumWidth, alignment: .leading)
         }
         .accessibilityLabel("Request usage table")
         .frame(height: requestsViewportHeight)
@@ -273,25 +265,21 @@ struct UsageBreakdownTables: View {
 
     private var providersTable: some View {
         GeometryReader { proxy in
-            let contentWidth = proxy.size.width - UsageTableMetrics.horizontalInset * 2
-            let providerWidth = max(180, contentWidth - 112 - 132 - 120)
+            let columns = ProviderColumns(
+                contentWidth: proxy.size.width - UsageTableMetrics.horizontalInset * 2
+            )
             VStack(spacing: 0) {
-                tableHeader {
-                    headerCell("Provider", width: providerWidth)
-                    headerCell("Requests", width: 112, alignment: .trailing)
-                    headerCell("Tokens", width: 132, alignment: .trailing)
-                    headerCell("Cost", width: 120, alignment: .trailing)
-                }
+                tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
                     ForEach(sortedProviders) { stat in
                         let vendor = stat.tool.vendorName
                         PorcelainUsageRow(
                             accessibilityLabel: providerAccessibilityLabel(stat, vendor: vendor)
                         ) {
-                            companyCell(stat.tool, name: vendor, width: providerWidth)
-                            countCell(stat.requests, width: 112)
-                            numericCell(stat.totalTokens, width: 132, emphasis: true)
-                            moneyCell(stat.costMicros, width: 120, emphasis: true)
+                            companyCell(stat.tool, name: vendor, columns.provider)
+                            countCell(stat.requests, columns.requests)
+                            numericCell(stat.totalTokens, columns.tokens, emphasis: true)
+                            moneyCell(stat.costMicros, columns.cost, emphasis: true)
                         }
                     }
                 }
@@ -302,27 +290,22 @@ struct UsageBreakdownTables: View {
 
     private var modelsTable: some View {
         GeometryReader { proxy in
-            let contentWidth = proxy.size.width - UsageTableMetrics.horizontalInset * 2
-            let modelWidth = max(200, contentWidth - 112 - 132 - 120 - 128)
+            let columns = ModelColumns(
+                contentWidth: proxy.size.width - UsageTableMetrics.horizontalInset * 2
+            )
             VStack(spacing: 0) {
-                tableHeader {
-                    headerCell("Model", width: modelWidth)
-                    headerCell("Requests", width: 112, alignment: .trailing)
-                    headerCell("Tokens", width: 132, alignment: .trailing)
-                    headerCell("Cost", width: 120, alignment: .trailing)
-                    headerCell("Avg/req", width: 128, alignment: .trailing)
-                }
+                tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
                     ForEach(sortedModels) { stat in
                         let name = UsageModelNaming.canonicalDisplayName(stat.model)
                         PorcelainUsageRow(
                             accessibilityLabel: modelAccessibilityLabel(stat, name: name)
                         ) {
-                            valueCell(name, width: modelWidth, tooltip: stat.model)
-                            countCell(stat.requests, width: 112)
-                            numericCell(stat.totalTokens, width: 132, emphasis: true)
-                            moneyCell(stat.costMicros, width: 120, emphasis: true)
-                            moneyCell(stat.avgCostMicrosPerRequest, width: 128, secondary: true)
+                            valueCell(name, columns.model, tooltip: stat.model)
+                            countCell(stat.requests, columns.requests)
+                            numericCell(stat.totalTokens, columns.tokens, emphasis: true)
+                            moneyCell(stat.costMicros, columns.cost, emphasis: true)
+                            moneyCell(stat.avgCostMicrosPerRequest, columns.average, secondary: true)
                         }
                     }
                 }
@@ -333,9 +316,18 @@ struct UsageBreakdownTables: View {
 
     // MARK: - Cells
 
-    private func tableHeader<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    /// The header renders straight from the column spec the rows beneath it
+    /// use, so a width or an alignment cannot drift between the two.
+    private func tableHeader(_ columns: [UsageTableColumn]) -> some View {
         HStack(spacing: 0) {
-            content()
+            ForEach(columns) { column in
+                Text(column.title.uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .kerning(0.65)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .frame(width: column.width, alignment: column.frameAlignment)
+            }
         }
         .frame(minHeight: 27)
         .padding(.horizontal, UsageTableMetrics.horizontalInset)
@@ -347,26 +339,13 @@ struct UsageBreakdownTables: View {
         .accessibilityHidden(true)
     }
 
-    private func headerCell(
-        _ text: String,
-        width: CGFloat,
-        alignment: Alignment = .leading
-    ) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 10, weight: .semibold))
-            .kerning(0.65)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
-            .frame(width: width, alignment: alignment)
-    }
-
     /// `.help` installs a tracking area, so seven per row across fifty rows
     /// is three hundred and fifty of them for one table. It is opt-in here
     /// and reserved for cells that can truncate — passing the cell's own
     /// visible text back as its tooltip bought nothing.
     private func valueCell(
         _ value: String,
-        width: CGFloat,
+        _ column: UsageTableColumn,
         secondary: Bool = false,
         tooltip: String? = nil
     ) -> some View {
@@ -375,36 +354,44 @@ struct UsageBreakdownTables: View {
             .foregroundStyle(secondary ? Color.secondary : Color.primary)
             .lineLimit(1)
             .truncationMode(.middle)
-            .frame(width: width, alignment: .leading)
+            .frame(width: column.width, alignment: column.frameAlignment)
             .modifier(OptionalHelp(tooltip))
     }
 
     /// A request row is usage, so it names the harness that produced it, not
     /// the quota SubProvider it bills against (AGENTS.md § 7.1). The badge
     /// still follows the L1 company, matching the Harness Mix card.
-    private func harnessCell(_ harness: Harness, width: CGFloat) -> some View {
+    private func harnessCell(_ harness: Harness, _ column: UsageTableColumn) -> some View {
         HStack(spacing: 7) {
             ToolBrandBadge(tool: harness.company, iconSize: 13, containerSize: 16)
             Text(harness.displayName)
                 .font(bodyFont)
                 .lineLimit(1)
         }
-        .frame(width: width, alignment: .leading)
+        .frame(width: column.width, alignment: column.frameAlignment)
         .help("\(harness.companyName) · \(harness.displayName)")
     }
 
-    private func companyCell(_ tool: ToolType, name: String, width: CGFloat) -> some View {
+    private func companyCell(
+        _ tool: ToolType,
+        name: String,
+        _ column: UsageTableColumn
+    ) -> some View {
         HStack(spacing: 7) {
             ToolBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
             Text(name)
                 .font(bodyFont)
                 .lineLimit(1)
         }
-        .frame(width: width, alignment: .leading)
+        .frame(width: column.width, alignment: column.frameAlignment)
     }
 
-    private func inputCell(_ row: UsageRequestRow, width: CGFloat) -> some View {
-        VStack(alignment: .trailing, spacing: 1) {
+    /// The one two-line cell in the four tables. Its first line carries the
+    /// column's number, which is why the row aligns on `.firstTextBaseline`:
+    /// otherwise every single-line cell in the row floats to the midpoint of
+    /// this one and nothing lines up with the header above it.
+    private func inputCell(_ row: UsageRequestRow, _ column: UsageTableColumn) -> some View {
+        VStack(alignment: column.alignment, spacing: 1) {
             Text(UsageFormatting.compactTokens(row.freshInput))
                 .font(numericFont)
             if row.cacheRead > 0 || row.cacheCreation > 0 {
@@ -414,31 +401,31 @@ struct UsageBreakdownTables: View {
                     .lineLimit(1)
             }
         }
-        .frame(width: width, alignment: .trailing)
+        .frame(width: column.width, alignment: column.frameAlignment)
         .help("Fresh input: \(UsageFormatting.formatTokens(row.freshInput))\nCache read: \(UsageFormatting.formatTokens(row.cacheRead))\nCache write: \(UsageFormatting.formatTokens(row.cacheCreation))")
     }
 
     private func numericCell(
         _ value: Int64,
-        width: CGFloat,
+        _ column: UsageTableColumn,
         emphasis: Bool = false
     ) -> some View {
         Text(UsageFormatting.compactTokens(value))
             .font(numericFont)
             .fontWeight(emphasis ? .semibold : .regular)
-            .frame(width: width, alignment: .trailing)
+            .frame(width: column.width, alignment: column.frameAlignment)
             .help(UsageFormatting.formatTokens(value))
     }
 
-    private func countCell(_ value: Int, width: CGFloat) -> some View {
+    private func countCell(_ value: Int, _ column: UsageTableColumn) -> some View {
         Text(value.formatted(.number.grouping(.automatic)))
             .font(numericFont)
-            .frame(width: width, alignment: .trailing)
+            .frame(width: column.width, alignment: column.frameAlignment)
     }
 
     private func moneyCell(
         _ micros: Int64,
-        width: CGFloat,
+        _ column: UsageTableColumn,
         emphasis: Bool = false,
         secondary: Bool = false
     ) -> some View {
@@ -446,19 +433,19 @@ struct UsageBreakdownTables: View {
             .font(numericFont)
             .fontWeight(emphasis ? .semibold : .regular)
             .foregroundStyle(secondary ? Color.secondary : Color.primary)
-            .frame(width: width, alignment: .trailing)
+            .frame(width: column.width, alignment: column.frameAlignment)
             .help(UsageFormatting.formatMicroUSD(micros, precision: 6))
     }
 
-    private func optionalMoneyCell(_ micros: Int64?, width: CGFloat) -> some View {
+    private func optionalMoneyCell(_ micros: Int64?, _ column: UsageTableColumn) -> some View {
         Group {
             if let micros {
-                moneyCell(micros, width: width)
+                moneyCell(micros, column)
             } else {
                 Text("unpriced")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.tertiary)
-                    .frame(width: width, alignment: .trailing)
+                    .frame(width: column.width, alignment: column.frameAlignment)
                     .help("No price was available for this request")
             }
         }
@@ -592,7 +579,12 @@ private struct PorcelainUsageRow<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
+            // `.firstTextBaseline`, not the default centre: the Requests
+            // table's INPUT cell is two lines, and centring made every
+            // single-line cell in that row sit between them instead of on
+            // the line the header labels. Single-line rows are unaffected —
+            // one shared baseline is the same placement as one shared centre.
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
                 content()
             }
             .frame(minHeight: 33)
@@ -631,4 +623,102 @@ private struct OptionalHelp: ViewModifier {
 
 private enum UsageTableMetrics {
     static let horizontalInset: CGFloat = 9
+}
+
+// MARK: - Column specs
+
+/// One column of a usage table.
+///
+/// The header cell and every row cell beneath it read their width and their
+/// horizontal alignment from the same value. Seven hand-repeated
+/// `.frame(width:alignment:)` pairs per table is how a header and its rows
+/// drift apart; one spec consumed twice cannot.
+private struct UsageTableColumn: Identifiable {
+    let title: String
+    let width: CGFloat
+    let alignment: HorizontalAlignment
+
+    init(_ title: String, _ width: CGFloat, _ alignment: HorizontalAlignment = .leading) {
+        self.title = title
+        self.width = width
+        self.alignment = alignment
+    }
+
+    var id: String { title }
+
+    /// Vertical placement belongs to the row (`.firstTextBaseline`), so a
+    /// cell's own frame only carries the horizontal axis.
+    var frameAlignment: Alignment {
+        Alignment(horizontal: alignment, vertical: .center)
+    }
+}
+
+private extension Array where Element == UsageTableColumn {
+    /// Header and rows are laid out inside the same inset, so a fixed-width
+    /// table's scroll surface has to be at least this wide.
+    var totalWidth: CGFloat {
+        reduce(UsageTableMetrics.horizontalInset * 2) { $0 + $1.width }
+    }
+}
+
+/// Period, Provider and Model borrow the card's available width: their
+/// trailing values keep a width that never hides behind a scroller at the
+/// ordinary Workbench width, and only the descriptive leading column flexes.
+private struct PeriodColumns {
+    let period: UsageTableColumn
+    let input = UsageTableColumn("Input", 108, .trailing)
+    let output = UsageTableColumn("Output", 108, .trailing)
+    let cache = UsageTableColumn("Cache", 108, .trailing)
+    let tokens = UsageTableColumn("Tokens", 108, .trailing)
+    let cost = UsageTableColumn("Cost", 108, .trailing)
+
+    init(title: String, contentWidth: CGFloat) {
+        period = UsageTableColumn(title, Swift.max(170, contentWidth - 5 * 108))
+    }
+
+    var all: [UsageTableColumn] { [period, input, output, cache, tokens, cost] }
+}
+
+private struct ProviderColumns {
+    let provider: UsageTableColumn
+    let requests = UsageTableColumn("Requests", 112, .trailing)
+    let tokens = UsageTableColumn("Tokens", 132, .trailing)
+    let cost = UsageTableColumn("Cost", 120, .trailing)
+
+    init(contentWidth: CGFloat) {
+        provider = UsageTableColumn("Provider", Swift.max(180, contentWidth - 112 - 132 - 120))
+    }
+
+    var all: [UsageTableColumn] { [provider, requests, tokens, cost] }
+}
+
+private struct ModelColumns {
+    let model: UsageTableColumn
+    let requests = UsageTableColumn("Requests", 112, .trailing)
+    let tokens = UsageTableColumn("Tokens", 132, .trailing)
+    let cost = UsageTableColumn("Cost", 120, .trailing)
+    let average = UsageTableColumn("Avg/req", 128, .trailing)
+
+    init(contentWidth: CGFloat) {
+        model = UsageTableColumn("Model", Swift.max(200, contentWidth - 112 - 132 - 120 - 128))
+    }
+
+    var all: [UsageTableColumn] { [model, requests, tokens, cost, average] }
+}
+
+/// Requests is the one fixed-width table — a request carries seven useful
+/// fields and compressing it would erase the model or the tier — so it scrolls
+/// horizontally instead of flexing.
+private struct RequestColumns {
+    let time = UsageTableColumn("Time", 138)
+    let harness = UsageTableColumn("Harness", 138)
+    let model = UsageTableColumn("Model", 220)
+    let input = UsageTableColumn("Input", 114, .trailing)
+    let output = UsageTableColumn("Output", 88, .trailing)
+    let cost = UsageTableColumn("Cost", 96, .trailing)
+    let tier = UsageTableColumn("Tier", 86)
+
+    var all: [UsageTableColumn] { [time, harness, model, input, output, cost, tier] }
+
+    var minimumWidth: CGFloat { all.totalWidth }
 }
