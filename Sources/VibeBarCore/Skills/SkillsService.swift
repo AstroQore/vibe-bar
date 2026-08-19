@@ -18,6 +18,10 @@ public actor SkillsService {
         /// Per app: whether the app-side entry was actually removed. `false`
         /// means something the user could have authored was left in place.
         public let removedByApp: [SkillAppTarget: Bool]
+
+        public var retainedApps: [SkillAppTarget] {
+            SkillAppTarget.allCases.filter { removedByApp[$0] == false }
+        }
     }
 
     // Internal rather than private: the repository-facing half of this actor

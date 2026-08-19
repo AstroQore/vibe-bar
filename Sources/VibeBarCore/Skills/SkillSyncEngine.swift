@@ -171,6 +171,9 @@ public struct SkillSyncEngine: Sendable {
                 try fm.removeItem(at: destination)
                 return try link(source: source, destination: destination)
             case .directory:
+                guard try isVibeBarCopy(destination: destination, source: source, recorded: recorded) else {
+                    throw SkillError.directoryConflict(skillDirectoryName)
+                }
                 return try copy(source: source, destination: destination)
             default:
                 throw SkillError.directoryConflict(skillDirectoryName)
@@ -194,8 +197,12 @@ public struct SkillSyncEngine: Sendable {
 
         case .copy:
             switch existing {
-            case .missing, .directory:
+            case .missing:
                 break
+            case .directory:
+                guard try isVibeBarCopy(destination: destination, source: source, recorded: recorded) else {
+                    throw SkillError.directoryConflict(skillDirectoryName)
+                }
             case .symlink:
                 try fm.removeItem(at: destination)
             default:

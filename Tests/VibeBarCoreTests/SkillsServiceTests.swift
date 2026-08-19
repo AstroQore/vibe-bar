@@ -248,6 +248,7 @@ final class SkillsServiceTests: XCTestCase {
         let result = try await service.uninstall(skill.id)
 
         XCTAssertEqual(result.removedByApp[.hermes], false)
+        XCTAssertEqual(result.retainedApps, [.hermes])
         XCTAssertEqual(home.contents(of: foreign.appendingPathComponent("ref.md")), "hand written")
         XCTAssertFalse(home.exists(home.ssot.appendingPathComponent("alpha")))
     }
