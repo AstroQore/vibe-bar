@@ -4,22 +4,22 @@
         <title>Vibe Bar</title>
         <item>
             <title>1.3.0</title>
-            <pubDate>Wed, 19 Aug 2026 21:21:46 +0000</pubDate>
-            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.3.0-dev.38</link>
+            <pubDate>Thu, 20 Aug 2026 06:29:57 +0000</pubDate>
+            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.3.0-dev.39</link>
             <sparkle:channel>dev</sparkle:channel>
-            <sparkle:version>38</sparkle:version>
+            <sparkle:version>39</sparkle:version>
             <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.3.0 (dev)
 
-See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.3.0-dev.38).
+See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.3.0-dev.39).
 ]]></description>
-            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.3.0-dev.38/Vibe-Bar-1.3.0-dev.38-macOS-arm64.zip" length="10840625" type="application/octet-stream" sparkle:edSignature="DHzHRoJl4Lx1foLHY/a31MKjNrvHkPEN5uel7VhkeT0jKSSTV6XS3gSQIKf5l9Yi1mkrK7IqIFVxqm3T/DBSBQ=="/>
+            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.3.0-dev.39/Vibe-Bar-1.3.0-dev.39-macOS-arm64.zip" length="10846550" type="application/octet-stream" sparkle:edSignature="kLwH50MFJk05anurUWcf5vH6fwsFI/LpwqwWvS7DwJCMPh1UPuGXTSB1oheBS7T5AmwaVqKqbaRSFZ9E64kbBQ=="/>
         </item>
         <item>
             <title>1.3.0</title>
-            <pubDate>Wed, 19 Aug 2026 21:21:46 +0000</pubDate>
+            <pubDate>Thu, 20 Aug 2026 06:29:56 +0000</pubDate>
             <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.3.0</link>
             <sparkle:version>37</sparkle:version>
             <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
