@@ -44,7 +44,8 @@ ignored. The full reasoning and grep recipes live in `AGENTS.md`.
 1. **Real-home routing.** Any path under the user's real home
    (`~/.codex/`, `~/.claude/`, `~/.config/claude/`, `~/.vibebar/`,
    `~/.gemini/`) must resolve through `RealHomeDirectory`
-   (agent-session-kit, re-exported by `VibeBarCore`). The
+   (`VibeBarCore`'s shadow of agent-session-kit's helper — it adds the
+   demo-mode override, see `AGENTS.md` § 6.5). The
    sandbox is gone, so the rewrite trap is gone too — but keeping
    every call site routed through one helper means re-enabling the
    sandbox later (or auditing on a sandboxed fork) doesn't require

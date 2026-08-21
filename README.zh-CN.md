@@ -1,163 +1,239 @@
-# Vibe Bar
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="Vibe Bar" width="128">
+</p>
+
+<h1 align="center">Vibe Bar</h1>
 
 <p align="center">
-  <img src="Resources/AppIcon.png" alt="Vibe Bar 图标" width="104">
+  <strong>这份 AI 订阅能不能撑到重置——又有多少是白白浪费掉的？</strong>
 </p>
 
 <p align="center">
-  <strong>不只告诉你还剩多少，还告诉你够不够用、会不会浪费。</strong>
-</p>
-
-<p align="center">
-  一款原生 macOS 菜单栏仪表盘，统一查看订阅配额、重置预测、<br>
-  本地 Token 成本、模型用量与服务状态。
-</p>
-
-<p align="center">
+  <a href="https://github.com/AstroQore/vibe-bar/actions/workflows/ci.yml"><img src="https://github.com/AstroQore/vibe-bar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><img src="https://img.shields.io/github/v/release/AstroQore/vibe-bar?display_name=tag&sort=semver" alt="最新版本"></a>
   <img src="https://img.shields.io/badge/macOS-26%2B-000000?logo=apple" alt="macOS 26+">
   <img src="https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white" alt="Swift 6.2">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/AstroQore/vibe-bar" alt="AGPL-3.0 许可证"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="AGPL-3.0-only"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><strong>下载最新版本</strong></a>
+  <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><strong>下载</strong></a>
   · <a href="#从源码构建">从源码构建</a>
+  · <a href="#agent-接入mcp">Agent 接入（MCP）</a>
+  · <a href="#致谢">致谢</a>
   · <a href="README.md">English</a>
 </p>
 
-<p align="center">
-  <img src="Resources/README/overview-dashboard.png" alt="Vibe Bar 总览仪表盘" width="860">
-</p>
+Vibe Bar 是一款原生 macOS 菜单栏应用，给整天靠订阅套餐跑编程 Agent 的人用。
+它把 ChatGPT/Codex、Claude Code、Gemini、AntiGravity、Grok、Cursor 和十来家
+Coding Plan 服务商收进一个安静的入口，并回答单纯百分比回答不了的两个问题：
 
-Vibe Bar 把 ChatGPT/Codex、Claude Code、Gemini Web、AntiGravity、Grok
-以及不断增加的 Coding Plan 服务商收进一个安静的桌面入口。它要回答的是
-单纯百分比回答不了的两个问题：
+- **这份额度能撑到下一次重置吗？** 个性化预测综合纯时间节奏、近期消耗、历史重置
+  周期和你的工作时段习惯——给出的是带置信区间的判断，而不是一个孤零零的数字。
+- **我是不是一直在为用不完的额度付钱？** 重置周期历史会记下每个窗口关闭时还剩
+  多少，让重置前的浪费在窗口消失之前就看得见。
 
-- **这份额度能不能撑到下一次重置？** 个性化预测会综合纯时间节奏、近期消耗、
-  历史重置周期、工作日/小时习惯以及置信区间。
-- **我是不是一直在浪费没有用完的订阅？** Reset History 会在当前周期结束前，
-  直观显示过去每次重置前还剩多少。
+菜单栏之下还有一个 Workbench：覆盖所有 harness 的逐请求用量账本、可全文搜索并
+一键恢复的本地 Agent 会话索引，以及一个把同一份 Skill 库同步到五个 Agent CLI 的
+Skills 管理器。所有这些都只读取你 Mac 上已有的文件；还有一个 MCP 服务，让你的
+Agent 也能来问同样的问题。
 
-## 一眼能看到什么
+![Overview：顶部是成本与服务状态，下方每个服务商一张额度卡，每条进度条都带着自己的预测](docs/screenshots/popover-overview.png)
 
-- **面向重置的额度预测** —— `Learning`、`Enough`、`Watch`、`At risk`、
-  `Surplus`，预计用完时间、纯时间 Pace 与预测置信区间。
-- **本地成本分析** —— Today、Yesterday、7 天、30 天和 All-time 的成本、
-  Token 以及模型排行。
-- **使用历史** —— 按日/周/月查看成本，按重置周期查看利用率，再配合年度热力图
-  和一周 168 小时使用分布。
-- **服务状态** —— OpenAI、Anthropic、Google AI、SpaceXAI、Cursor 的事故信息、组件状态与
-  Uptime 和额度放在同一个界面。
-- **两种迷你浮窗** —— 真正不同的信息密度，可固定在第二块屏幕或全屏工作区上方。
-- **端到端加密远端机器** —— 只出站的 Linux Probe 可按选择并入成本/Token，
-  Relay 与 Control 不会得到明文。
-- **用量本地优先** —— 没有遥测或托管明文分析后端；可选账号/控制服务只保存
-  Workspace 与设备元数据。
+<details>
+<summary>浅色外观下的同一个 Overview</summary>
 
-## 一个 Overview，而不是四个网页
+![浅色外观下的 Overview](docs/screenshots/popover-overview-light.png)
 
-额度、成本、Provider 状态、模型排行、年度用量与工作时段使用同一套坐标和
-时间范围；不用再分别打开多个厂商 Dashboard 对数字。
+</details>
 
-<p align="center">
-  <img src="Resources/README/overview-analytics.png" alt="Vibe Bar 全局成本与活动分析" width="860">
-</p>
+## 是预测，不是百分比
 
-## 迷你浮窗
-
-把全部有效额度固定在第二块屏幕，或悬浮在全屏工作区上方。Regular 与 Compact
-使用同一份额度模型，但针对两种场景做了真正不同的排版。
-
-<p align="center">
-  <img src="Resources/README/mini-window-regular.png" alt="Vibe Bar Regular 迷你浮窗" width="800">
-</p>
-
-<p align="center">
-  <img src="Resources/README/mini-window-compact.png" alt="Vibe Bar Compact 迷你浮窗" width="520">
-</p>
-
-## 四大 Provider 深度页面
-
-四个核心 Provider 共用同一套页面框架：左侧是额度、预测和重置历史；右侧是
-成本、模型、服务状态、年度活动和工作时段。
+每条额度进度条都带着一个判断——`Learning`、`Enough`、`Watch`、`At risk` 或
+`Surplus`——以及预计用完时间和预测的置信度。服务商页面展示这个判断是怎么来的：
+左侧是按周期一根柱的重置历史、对照纯时间 Pace 线的消耗曲线；右侧是本地成本、
+模型排行、年度活动和工作时段分布。四个核心服务商共用同一套版式。
 
 <table>
   <tr>
-    <td width="50%"><img src="Resources/README/openai-detail.png" alt="OpenAI 详情页"><br><sub><strong>OpenAI</strong> —— ChatGPT Agentic 额度、成本、模型排行、重置历史与服务状态。</sub></td>
-    <td width="50%"><img src="Resources/README/claude-detail.png" alt="Claude Code 详情页"><br><sub><strong>Claude Code</strong> —— 5 Hours、Weekly、Fable、成本分析、重置历史和 Anthropic 状态。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-openai.png" alt="OpenAI 页面：ChatGPT Agentic 与 Codex Spark 额度、重置历史与消耗曲线，右侧是成本、模型与活动"><br><sub><strong>OpenAI</strong> —— ChatGPT Agentic 与 GPT-5.3 Codex Spark 窗口、重置历史、额度历史、成本、模型排行和一整年的活动。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-anthropic.png" alt="Anthropic 页面：5 Hours、Weekly 与 Fable 窗口及各自的预测"><br><sub><strong>Anthropic</strong> —— 5 Hours、Weekly 和按模型的周窗口，各有各的预测与周期历史。</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="Resources/README/gemini-detail.png" alt="Google AI 详情页"><br><sub><strong>Google AI</strong> —— Gemini Web 与 AntiGravity 额度，并列展示本地用量分析。</sub></td>
-    <td width="50%"><img src="Resources/README/grok-detail.png" alt="Grok 详情页"><br><sub><strong>SpaceXAI</strong> —— Grok 额度、模型成本、Cursor 状态、重置历史与使用习惯。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-google.png" alt="Google AI 页面：Gemini Web 与 AntiGravity 额度"><br><sub><strong>Google AI</strong> —— Gemini Web 额度，以及 AntiGravity Language Server 下 Gemini 与 Claude/GPT 模型的额度，并排展示。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-spacexai.png" alt="SpaceXAI 页面：Grok、Cursor 与 Grok Bot 额度"><br><sub><strong>SpaceXAI</strong> —— Grok Build、Cursor 与 Grok Bot 额度，Cursor 的账户用量并入成本侧。</sub></td>
   </tr>
 </table>
 
-## 远端机器
+判断的可靠性取决于历史：新接入的服务商在积累到足够的重置周期之前会一直显示
+`Learning`；预测不会假装拥有它并不具备的置信度。
 
-独立的 [VibeBar Probe](https://github.com/AstroQore/vibebar-probe) 可以观察带
-systemd 的 Linux 机器上的受支持 CLI Log，无需开放入站端口。Probe 在本地缓冲事实，
-加密给当前活跃 Core，再通过不透明 Relay 路由。每台远端机器默认不加入总计；只有
-明确打开 **Include in totals** 后，所选用量才会与这台 Mac 的本地 Snapshot 合并，
-显示在 Overview 与四个核心成本页面。
+## 迷你浮窗
 
-二进制安装、纳管、更新、回滚以及 Web/iOS E2EE 新鲜度模型见
-[远端探针指南](https://vibebar.aqor.io/docs/zh/guide/remote-probes)。
+把所有有效额度做成仪表盘，悬在工作之上——第二块屏幕、全屏终端旁边、任何你放它
+的地方。同一份模型、两种信息密度，在浮窗里直接切换；表面是 Liquid Glass，会随
+背后的内容变化。
+
+![Regular 迷你浮窗：每个额度窗口一个仪表盘，按服务商分组](docs/screenshots/mini-regular.png)
+
+![Compact 迷你浮窗：同样的额度，换成细长的竖条](docs/screenshots/mini-compact.png)
+
+<details>
+<summary>浅色外观下的 Regular 迷你浮窗</summary>
+
+![浅色外观下的 Regular 迷你浮窗](docs/screenshots/mini-regular-light.png)
+
+</details>
 
 ## 更多 Coding Plan
 
 Misc 页面保留各服务商原本的额度语义，同时统一成容易扫读的卡片。现有集成包括
-OpenCode Go、Ollama Cloud、智谱 GLM、小米 MiMo、Kimi、MiniMax、阿里百炼、
-火山引擎 Coding/Agent Plan 和腾讯混元。
+Copilot、OpenCode Go、Ollama Cloud、OpenRouter、Kilo、Kiro、智谱 GLM、小米 MiMo、
+Kimi、MiniMax、讯飞星火、阿里百炼、火山引擎 Coding/Agent Plan、腾讯混元、百度千帆
+和 Warp。在应用自带的 WebView 里登录、导入浏览器 Cookie，或者粘贴一个 Key——
+服务商控制台提供什么就用什么。
 
-<p align="center">
-  <img src="Resources/README/misc-providers.png" alt="Vibe Bar 杂项 Coding Plan 服务商" width="860">
-</p>
+![Misc 页面：OpenCode Go、Ollama、智谱 GLM 与 MiniMax 的套餐窗口](docs/screenshots/popover-misc.png)
+
+## Workbench
+
+Popover 是用来扫一眼的。Workbench 是一扇你会一直开着的窗口。
+
+### Usage Stats
+
+覆盖这台 Mac 上所有 harness 的逐请求账本——Claude Code、Claude Cowork、Codex、
+ChatGPT Work、Cursor、Grok Build、AntiGravity、Gemini CLI——真实的 Token 数拆成
+输入、输出、缓存写入和缓存读取，用和 Popover 同一份价格目录计价。按 harness、
+模型和时间范围过滤；拖动导航条聚焦图表，而表格仍保持完整窗口。
+
+![Usage Stats：30 天逐日 Token、harness 构成，以及下方的分期表](docs/screenshots/workbench-usage.png)
+
+<details>
+<summary>浅色外观下的 Usage Stats</summary>
+
+![浅色外观下的 Usage Stats](docs/screenshots/workbench-usage-light.png)
+
+</details>
+
+### Sessions
+
+每一个本地 Agent 会话都被建入索引，可对提示词、回复和工具调用做全文搜索，按项目
+分组，按公司、harness 或时间过滤。打开一条，transcript 就在旁边，带查找栏和分页
+控制，面对上万行的 transcript 依然流畅；**Open** 把会话交还给它自己的 CLI
+（`claude --resume`、`codex resume`、`grok --resume`、`agy --conversation`）。
+
+![Sessions：左侧是会话列表，右侧是一条带工具调用的 transcript](docs/screenshots/workbench-sessions.png)
+
+<details>
+<summary>浅色外观下的 Sessions</summary>
+
+![浅色外观下的 Sessions](docs/screenshots/workbench-sessions-light.png)
+
+</details>
+
+从这里删除会话，是 Vibe Bar 对 harness 会话文件做的唯一一种改动，而且只在你明确
+要求时发生——见[隐私与本地数据](#隐私与本地数据)。
+
+### Skills
+
+一份共享库放在 `~/.agents/skills/`，投射到 Codex、Claude Code、AntiGravity、
+Grok Build 和 Cursor 各自的 skills 目录里。每一行是一个 Skill，每一个圆点是一个
+harness，开或关。从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓库发现更多，替换前
+先备份。
+
+![Skills：每个 Skill 一行，每个 harness 一个开关，以及安装、导入和发现操作](docs/screenshots/workbench-skills.png)
+
+<details>
+<summary>浅色外观下的 Skills</summary>
+
+![浅色外观下的 Skills](docs/screenshots/workbench-skills-light.png)
+
+</details>
+
+## 不打扰工作的设置
+
+所有设置都在一个左右分栏的窗口里。有三页值得放一张图：
+
+**Layout** 编排 Popover 每一页的卡片——放哪些卡、放哪一列、什么顺序——带预设和
+实时预览，所以 Overview 可以只剩你真正盯着的那四条额度。
+
+![Layout 编辑器：Overview 页的三段卡片，右侧是预览](docs/screenshots/settings-layout.png)
+
+<details>
+<summary>浅色外观下的 Layout 编辑器</summary>
+
+![浅色外观下的 Layout 编辑器](docs/screenshots/settings-layout-light.png)
+
+</details>
+
+**Menu Bar** 决定菜单栏项目本身显示什么——只有图标、单行、双行或紧凑——显示
+哪些额度窗口，以及颜色跟随预测还是跟随原始百分比。
+
+![Menu Bar 设置：版式与密度选择，以及按服务商列出的额度窗口勾选表](docs/screenshots/settings-menubar.png)
+
+**MCP Server** 是这个应用面向 Agent 的一面，下一节讲。
 
 ## Agent 接入（MCP）
 
 Vibe Bar 可以让你的编程 Agent 直接查询你自己的用量。应用运行时，它会在你的 home
 目录下开一个只读的 MCP 服务，走 Unix domain socket——不开网络端口，也没有 API
-Key——Claude Code、Codex CLI、Cursor 以及任何 stdio MCP 客户端都能问「我的 Claude
-还剩多少」「这个月谁烧的 token 最多」「找一下我那个改 parser 的会话」。
+Key——Claude Code、Codex CLI、Cursor 或任何 stdio MCP 客户端都可以来问「我的
+Claude 还剩多少」「这个月谁烧的 Token 最多」或者「找一下我那个关于 parser 的会话」。
 
-把下面这一行粘贴给任意一个能抓取 URL 的 Agent，它会自己完成配置：
+把这一行粘贴进任何能抓取 URL 的 Agent，就能完成接入：
 
 ```
 Fetch and execute the appropriate instructions to set me up for Vibe Bar from https://raw.githubusercontent.com/AstroQore/vibe-bar/main/docs/agent-setup/prompt.md
 ```
 
-也可以手动配置，所有客户端跑的都是同一条命令：
+也可以手动配置——每个客户端跑的都是同一条命令：
 
 ```sh
 claude mcp add --scope user vibebar -- "/Applications/Vibe Bar.app/Contents/MacOS/VibeBar" --mcp-stdio
 ```
 
-设置 → MCP Server 里有开关、socket 路径，以及各客户端配置的一键复制。除了一个可
-关闭的「刷新配额」工具外，Agent 能访问的全部是只读数据；凭据不会暴露，邮箱会被
-脱敏。
+![MCP Server 设置：开关、socket 路径与已连接客户端，下方是每个客户端可一键复制的片段](docs/screenshots/settings-mcp.png)
 
-## 不打扰工作的设置
+Agent 能碰到的一切都是只读的，只有一个可选开启的「刷新我的额度」工具和一个可选
+开启的 Skill 安装器例外；凭据从不暴露，邮箱会做掩码。socket 以 `0600` 权限创建
+在 `0700` 的 `~/.vibebar/` 里，从不绑定网络接口，Vibe Bar 退出时随之删除。
 
-在同一个左右分栏窗口中切换 Remaining/Used、定时刷新或打开 Popover 时刷新、
-设置 Open-refresh 冷却、启用开机启动，并控制 Provider 的显隐与排序。
+## 远端机器
 
-<p align="center">
-  <img src="Resources/README/settings.png" alt="Vibe Bar 设置窗口" width="760">
-</p>
+独立的 [VibeBar Probe](https://github.com/AstroQore/vibebar-probe) 可以观察带
+systemd 的 Linux 机器上受支持的 CLI 日志，无需开放入站端口。事实先在本地缓冲，
+加密给这台 Mac 上的 Core，再经由一个看不到明文的 Relay 路由。每台机器默认不计入
+你的总数，打开 **Include in totals** 之后，它的用量才会并入 Overview 和各成本页。
+
+![Machines 页面：两个 Probe 的今日、7 天、30 天 Token 与成本，以及 Include in totals 开关](docs/screenshots/popover-machines.png)
+
+![Remote Probes 设置：Workspace、Relay 与同步状态、配对，以及按机器的成本聚合](docs/screenshots/settings-remote.png)
+
+安装、纳管、更新、回滚和端到端加密模型见
+[远端探针指南](https://vibebar.aqor.io/docs/zh/guide/remote-probes)。
 
 ## Vibe Bar 会读取什么
 
-| 页面 | 配额与状态 | 成本与活动来源 |
+| 页面 | 配额与状态 | 成本与活动 |
 | --- | --- | --- |
 | ChatGPT / Codex | Codex 订阅窗口、Spark、OpenAI 状态 | `~/.codex/sessions/**/*.jsonl` |
-| Claude Code | 5 Hours、Weekly、Fable、Anthropic 状态 | `~/.claude/projects/**/*.jsonl` |
-| Gemini + AntiGravity | Gemini Web 配额与本地 AntiGravity Language Server 配额 | 本地 Gemini/AntiGravity 用量记录 |
-| Grok + Cursor | Grok 配额、Cursor Models、Other Models、Grok Bot 周配额、SpaceXAI + Cursor 状态 | 本地 Grok 记录 + Cursor 账户用量事件；Grok Bot 仅显示配额 |
+| Claude Code / Cowork | 5 Hours、Weekly、按模型的周窗口、Anthropic 状态 | `~/.claude/projects/**/*.jsonl`，以及 Claude.app 的 Cowork transcript |
+| Gemini + AntiGravity | Gemini Web 配额、本地 AntiGravity Language Server 配额 | 本地 Gemini / AntiGravity 用量记录 |
+| Grok + Cursor | Grok 配额、Cursor Models 与 Other Models、Grok Bot 周配额、SpaceXAI + Cursor 状态 | 本地 Grok 记录、Cursor 账户用量事件；Grok Bot 仅显示配额 |
 | Misc Providers | 各服务商自己的 Coding/Token Plan 接口 | 除非 Adapter 能取得本地用量，否则仅显示额度 |
 
-服务商的私有接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功
-快照，并避免把陈旧数据伪装成一次成功更新。
+服务商的接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功的快照，
+绝不把陈旧数据伪装成一次成功更新。
+
+## 关于截图
+
+这一页上的每张图都是真实的应用，以它的 **demo 模式**启动：同一个二进制，指向
+一个由 [`Scripts/demo_home.py`](Scripts/demo_home.py) 生成的 home 目录。额度、
+预测、成本和账本的数字是一位维护者的真实用量，原样复制；所有会指向某个人的东西
+——账号 ID、机器名、路径、会话、Cookie、Keychain 条目——都被替换或重新编造，
+所有会离开那个目录的刷新都被关掉。Agent 会话和 Skill 是专为截图写的。
+[`Scripts/capture_demo_screenshots.sh`](Scripts/capture_demo_screenshots.sh)
+在两种外观下逐个打开每个界面，在纯色背景上抓图；`DemoMode.swift` 是那个开关。
 
 ## 架构
 
@@ -169,26 +245,20 @@ Vibe Bar 是一个 App，由两个 SwiftPM target 加一个独立仓库的自有
 | `VibeBarCore` | 配额、用量、成本、价格、预测、Provider 适配器、远端同步——所有不需要窗口就能测试的部分。 | 本仓库 |
 | [`agent-session-kit`](https://github.com/AstroQore/agent-session-kit) | 读取各家 Coding Agent 留在磁盘上的会话：按 harness 的会话发现与解析、全文会话索引、删除计划、harness 命名，以及本地 MCP Unix socket / stdio 传输。 | 独立公开仓库 |
 
-这个 kit 是从本仓库拆出去的，目的是让“我的 agent 到底做了什么”这一半可以被单独
+这个 kit 是从本仓库拆出去的，目的是让「我的 agent 到底做了什么」这一半可以被单独
 使用、也被单独审计。它不认识配额、套餐和价格，这套词汇留在 `VibeBarCore` 里。它
 自身没有任何第三方依赖，许可证同样是 AGPL-3.0-only。
 
 **一个 kit release 怎么到你手上。** `Package.swift` 把 kit 钉在一个确切的 tag 上，
-SwiftPM 采用**静态链接**——它被编译进 App 的可执行文件，而不是作为一个可以替换的
-framework 分发。所以 kit 发布新版本，在 Vibe Bar 更新这个 pin 并发出新构建之前，
-对你的 Mac 没有任何影响。这里不存在可以单独升级的组件，Vibe Bar 也永远不会提示你
-去升级它。
-
-**在哪里看到当前版本。** 设置 › System › **Components** 会显示当前这个构建里编译
-进去的 `agent-session-kit` 版本，附带该版本的 Release Notes 与仓库链接，以及一个
-*Check for kit updates* 按钮。只有这个按钮会去访问 GitHub——启动时不查，也没有定时
-任务。当存在更新的 kit 时，这一行会写明它「ships with the next Vibe Bar build」
-（随下一个 Vibe Bar 构建一起到达），因为那是它唯一的到达方式。
+SwiftPM 采用静态链接——它被编译进可执行文件，而不是作为一个可以替换的 framework
+分发。kit 发布新版本，在 Vibe Bar 更新这个 pin 并发出新构建之前，对你的 Mac 没有
+任何影响。**设置 › System › Components** 会显示当前构建里编译进去的 kit 版本，
+以及一个 *Check for kit updates* 按钮；启动时不查，也没有定时任务。
 
 ## 隐私与本地数据
 
-Vibe Bar 没有遥测管线或托管明文分析后端。本地与远端 Probe 用量分析都留在当前
-活跃 Core 上；可选托管账号/控制服务只保存 Workspace、纳管、Relay 目录与审计
+Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与远端 Probe 的用量分析都
+留在这台 Mac 上；可选的托管账号/控制服务只保存 Workspace、纳管、Relay 目录与审计
 元数据。衍生数据保存在：
 
 ```text
@@ -199,26 +269,28 @@ Vibe Bar 没有遥测管线或托管明文分析后端。本地与远端 Probe �
 ├── scan_cache/
 ├── pricing_sources/
 ├── pricing_cache.json
-├── pricing_refresh_status.json
 ├── service_status.json
+├── usage_events.sqlite3
+├── session_index.sqlite3
 ├── remote_core.json
 ├── remote_usage.sqlite3
 ├── cost_history.json
-└── mcp.sock            （仅在应用运行期间存在，权限 0600）
+└── mcp.sock            （仅在应用运行时存在，权限 0600）
 ```
 
-- MCP socket 位于权限 0700 的 `~/.vibebar/` 内，自身权限 0600，从不绑定网络
-  接口，Vibe Bar 退出时会一并删除。
-- CLI 凭据和 Session 文件只读，不会被 Vibe Bar 修改。
-- Vibe Bar 自己持有的 Cookie 与 Provider Secret 统一放在一个版本化 Keychain
-  Vault 中，不再为每个 Secret 建一个反复弹窗的 Keychain Item。
-- Privacy Mode 会清理衍生成本数据，并在启用期间停止把成本历史写入磁盘。
-- 保留期限可配置，也可以在 Cost Data 中手动清除全部成本数据。
+- CLI 的凭据与会话文件都是只读输入。唯一的例外是从 Workbench 的 Sessions 页
+  整条删除会话——只在你明确要求时发生，并且从不编辑会话文件的内容。
+- Skills 管理器只写 `~/.agents/skills/` 和它所投射的五个 harness 的受管 skills
+  目录，别处一概不碰。
+- Vibe Bar 自己的 Cookie 与服务商密钥保存在一个带版本的 Keychain Vault 里，而不是
+  每个密钥一条、各自弹窗的 Keychain 条目。
+- Privacy Mode 会清除衍生的成本数据，并在开启期间不把成本历史落盘。保留期可配置，
+  Cost Data 也可以手动清除。
 
-Vibe Bar **有意不启用 App Sandbox**。浏览器 Cookie 导入和本地 AntiGravity
-Language Server 探测需要沙箱会阻止的能力。应用完全开源，只读取 Provider
-集成所需的输入，并且仅向 `~/.vibebar/` 与自己的 Keychain Vault 写入状态。
-完整取舍见 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox)。
+Vibe Bar 有意**不启用 App Sandbox**：浏览器 Cookie 导入和本地 AntiGravity Language
+Server 探测需要沙盒禁止的能力。应用开源，只读取需要的服务商输入，应用状态只写在
+`~/.vibebar/` 和它的 Keychain Vault 下。完整取舍见
+[AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox)。
 
 ## 安装
 
@@ -229,15 +301,13 @@ Language Server 探测需要沙箱会阻止的能力。应用完全开源，只�
 2. 把 `Vibe Bar.app` 移到 `/Applications`。
 3. 从「应用程序」或 Spotlight 启动。
 
-当前 Release 使用 ad-hoc 签名，尚未做 Apple Notarization。如果 Gatekeeper
-拦截首次启动，请右键应用并选择**打开**。在本机构建和运行 Vibe Bar 不需要
-Apple Developer 账号。
+Release 使用 ad-hoc 签名，没有做 Apple Notarization。如果 Gatekeeper 拦截首次
+启动，请右键应用并选择**打开**。在本机构建和运行 Vibe Bar 不需要 Apple Developer
+账号。
 
-从首个集成 Sparkle 的版本开始，Vibe Bar 每天检查一次带签名的更新源。
-可以在**设置 → 系统**中选择稳定的 **Main** 通道或预览版 **Dev** 通道；
-Dev 同时也会收到所有 Main 正式版。也可以在菜单栏项目的右键菜单或设置中
-选择**检查更新…**。安装更新前始终会询问；首个集成 Sparkle 的版本仍需
-手动安装一次，之后的版本才可以应用内更新。
+已安装的构建每天检查一次带签名的更新源，安装前始终会询问。**设置 › System**
+可以在稳定的 **Main** 通道和预览版 **Dev** 通道之间选择；Dev 也会收到所有 Main
+正式版。**检查更新…** 在菜单栏项目的右键菜单和设置里都有。
 
 ### 从源码构建
 
@@ -263,8 +333,7 @@ ad-hoc 签名。
 - [AGENT-DEPLOY.md](AGENT-DEPLOY.md) —— 构建、打包、验证，以及可选的本机安装。
 - [SECURITY.md](SECURITY.md) —— 在不暴露 Secret 的前提下报告安全问题。
 
-Vibe Bar 仍处于早期公开版本。Provider API 和配额协议变化很快，欢迎提交聚焦的
-Adapter、Fixture 与界面优化。
+Provider API 和配额协议变化很快，欢迎提交聚焦的 Adapter、Fixture 与界面优化。
 
 ## 致谢
 
@@ -298,7 +367,8 @@ App Bundle 一并提供。上述项目均与 Vibe Bar 相互独立；本致谢�
 
 ## 许可证
 
-Vibe Bar 采用 [GNU Affero General Public License v3.0 only](LICENSE)。
+Vibe Bar 采用
+[GNU Affero General Public License v3.0 only](LICENSE) 许可。
 
 ## Star 历史
 

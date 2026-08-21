@@ -75,6 +75,11 @@ public enum KeychainStore {
         account: String?,
         useDataProtectionKeychain: Bool
     ) throws -> Data {
+        // Demo mode owns no Keychain item and must never raise the login
+        // keychain's password prompt, so every read reports "nothing here".
+        // Gated at the three primitives below rather than per caller: a
+        // missed caller would otherwise block the capture run on a dialog.
+        if DemoMode.isEnabled { throw KeychainError.itemNotFound }
         if !useDataProtectionKeychain {
             let state = try existingLoginKeychainItemState(
                 service: service,
@@ -204,6 +209,7 @@ public enum KeychainStore {
         data: Data,
         useDataProtectionKeychain: Bool
     ) throws {
+        if DemoMode.isEnabled { return }
         let existingLoginItemState = try existingLoginKeychainItemState(
             service: service,
             account: account,
@@ -306,6 +312,7 @@ public enum KeychainStore {
         account: String,
         useDataProtectionKeychain: Bool
     ) throws {
+        if DemoMode.isEnabled { return }
         if !useDataProtectionKeychain {
             try preflightLoginKeychainAccess(service: service, account: account)
         }

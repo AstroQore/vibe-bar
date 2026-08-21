@@ -162,6 +162,10 @@ public final class CostUsageService: ObservableObject {
             await eraseLocalCostData()
             return
         }
+        // A demo home carries its cost snapshots and ledger ready-made, and
+        // has no session logs worth scanning; a rescan would replace the
+        // snapshot it shipped with by an empty one.
+        guard !DemoMode.isEnabled else { return }
         let retentionDays = costData.retentionDays
         if mockProvider() {
             var results: [ToolType: CostSnapshot] = [:]

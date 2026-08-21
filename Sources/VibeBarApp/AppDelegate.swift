@@ -6,9 +6,15 @@ import VibeBarCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var environment: AppEnvironment?
     private var statusItem: StatusItemController?
+    private var demoPresenter: DemoPresenter?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if handleRemoteCommandLine() { return }
+        if let appearance = DemoMode.configuration?.appearance {
+            // Before any window exists, so every surface — popover, mini
+            // window, Workbench — inherits the pinned appearance.
+            NSApp.appearance = NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)
+        }
         // Belt-and-braces: Info.plist already sets LSUIElement, but if we are
         // launched from `swift run` (no bundle), force accessory policy here.
         if Bundle.main.bundleIdentifier == nil
@@ -20,6 +26,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let env = AppEnvironment()
         self.environment = env
+        if let demo = DemoMode.configuration {
+            // A demo launch registers nothing with the system and refreshes
+            // nothing; it builds the status item like any launch and then
+            // opens the one surface it was asked to show.
+            let statusItem = StatusItemController(environment: env)
+            self.statusItem = statusItem
+            let presenter = DemoPresenter(configuration: demo, environment: env, statusItem: statusItem)
+            self.demoPresenter = presenter
+            presenter.present()
+            SafeLog.info("Vibe Bar started in demo mode")
+            return
+        }
         do {
             try LoginItemController.reconcileDesiredState(env.settingsStore.settings.launchAtLogin)
         } catch {

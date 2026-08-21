@@ -48,7 +48,16 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     /// Restore the window's previous open/position state on app launch. No-op
     /// when `miniWindow.wasOpen` is false.
     func restoreIfNeeded(environment: AppEnvironment) {
+        // A demo launch shows exactly the surface it was asked for; a mini
+        // window left open by the previous demo launch must not come back.
+        guard !DemoMode.isEnabled else { return }
         guard environment.settingsStore.settings.miniWindow.wasOpen else { return }
+        show(environment: environment)
+    }
+
+    /// Demo mode only: open the window regardless of `wasOpen`.
+    func presentForDemo(environment: AppEnvironment) {
+        guard DemoMode.isEnabled else { return }
         show(environment: environment)
     }
 
@@ -369,7 +378,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         width += CGFloat(max(0, companies.count - 1)) * companySpacing
         width += horizontalPadding + closeButtonReserve
 
-        let screenMaxWidth = (NSScreen.main?.visibleFrame.width ?? 900) - 48
+        let screenMaxWidth = (NSScreen.vibeBarPresentationScreen?.visibleFrame.width ?? 900) - 48
         return NSSize(
             width: max(minWidth, min(width, max(screenMaxWidth, minWidth))),
             height: height
@@ -429,7 +438,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             panel.setFrameOrigin(NSPoint(x: x, y: y))
             return
         }
-        guard let visibleFrame = NSScreen.main?.visibleFrame else { return }
+        guard let visibleFrame = NSScreen.vibeBarPresentationScreen?.visibleFrame else { return }
         panel.setFrameOrigin(
             NSPoint(
                 x: visibleFrame.maxX - size.width - 24,

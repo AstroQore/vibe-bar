@@ -11,4 +11,13 @@ if MCPStdioBridge.isRequested() {
     exit(MCPStdioBridge.run(socketPath: MCPStdioBridge.socketPath()))
 }
 
+// Demo mode redirects the home directory for the whole process, so it has to
+// be decided before the first store is opened — which is before AppKit.
+do {
+    try DemoMode.bootstrap()
+} catch {
+    FileHandle.standardError.write(Data("vibebar: \(error)\n".utf8))
+    exit(2)
+}
+
 VibeBarApp.main()

@@ -24,6 +24,15 @@ final class MCPController: ObservableObject, MCPDataSource {
 
     let socketPath: String
 
+    /// `~/.vibebar/mcp.sock` rather than the user's absolute home — the
+    /// Settings pane is the one place the path is shown, and it is the form
+    /// people recognise (and the one that can appear in a screenshot).
+    var displaySocketPath: String {
+        let home = RealHomeDirectory.path
+        guard socketPath.hasPrefix(home + "/") else { return socketPath }
+        return "~" + socketPath.dropFirst(home.count)
+    }
+
     private weak var environment: AppEnvironment?
     private var server: MCPServer?
     private var socketServer: MCPSocketServer?
@@ -378,9 +387,13 @@ final class MCPController: ObservableObject, MCPDataSource {
         }
         do {
             let store = try SessionIndexStore(url: VibeBarLocalStore.sessionIndexURL)
+            // Explicit home on both: the kit's own defaults resolve the real
+            // home, not the one `RealHomeDirectory` may be redirected to.
+            let home = RealHomeDirectory.path
             let service = SessionIndexService(
+                homeDirectory: home,
                 store: store,
-                registry: SessionProviderRegistry.standard(),
+                registry: SessionProviderRegistry.standard(homeDirectory: home),
                 bodyIndexing: { [bodyIndexing] in bodyIndexing.current }
             )
             sessionIndex = service

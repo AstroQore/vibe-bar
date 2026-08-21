@@ -86,6 +86,10 @@ public final class RemoteProbeService: ObservableObject {
 
     private func loadConfiguration() {
         configurationGeneration += 1
+        if DemoMode.isEnabled {
+            loadDemoConfiguration()
+            return
+        }
         do {
             let config = try RemoteCoreConfigStore.load()
             let identity = try RemoteCoreIdentityStore.loadOrCreate()
@@ -99,6 +103,39 @@ public final class RemoteProbeService: ObservableObject {
             self.ledger = ledger
             self.isConfigured = true
             self.lastErrorCode = nil
+        } catch {
+            self.config = nil
+            self.identity = nil
+            self.client = nil
+            self.ledger = nil
+            self.isConfigured = false
+            self.machines = []
+            self.lastUpdated = nil
+            self.lastErrorCode = (error as? RemoteSyncError)?.code
+        }
+    }
+
+    /// Demo mode reads the demo home's `remote_core.json` and ledger and
+    /// nothing else: no Keychain identity, no bearer token, no Relay client.
+    /// `performRefresh` then has nothing to sync with and returns at its
+    /// guard, so the machines shown are exactly the ledger's last import.
+    private func loadDemoConfiguration() {
+        let generation = configurationGeneration
+        do {
+            let config = try RemoteCoreConfigStore.load()
+            let ledger = try RemoteUsageLedger()
+            self.config = config
+            self.identity = nil
+            self.client = nil
+            self.ledger = ledger
+            self.isConfigured = true
+            self.lastErrorCode = nil
+            Task { @MainActor [weak self] in
+                let summaries = try? await ledger.machineSummaries(workspaceID: config.workspaceID)
+                guard let self, generation == self.configurationGeneration else { return }
+                self.machines = summaries ?? []
+                self.lastUpdated = summaries?.map(\.lastSeenAt).max()
+            }
         } catch {
             self.config = nil
             self.identity = nil

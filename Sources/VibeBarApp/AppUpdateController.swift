@@ -20,12 +20,15 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate 
         userDriverDelegate: nil
     )
 
-    init(bundle: Bundle = .main, updateChannel: UpdateChannel = .main) {
+    /// `isEnabled: false` leaves Sparkle entirely unstarted — no updater, no
+    /// scheduled check, no read of its defaults. Demo mode uses it; an
+    /// unconfigured bundle (no feed URL) ends up in the same state on its own.
+    init(bundle: Bundle = .main, updateChannel: UpdateChannel = .main, isEnabled: Bool = true) {
         self.bundle = bundle
         self.updateChannel = updateChannel
         let hasExpectedBundleIdentifier = bundle.bundleIdentifier == "com.astroqore.VibeBar"
         let hasFeedURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil
-        self.isConfigured = hasExpectedBundleIdentifier && hasFeedURL
+        self.isConfigured = isEnabled && hasExpectedBundleIdentifier && hasFeedURL
         super.init()
 
         guard isConfigured else { return }

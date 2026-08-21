@@ -43,6 +43,15 @@ public final class AccountStore: ObservableObject {
     ) {
         var detected: [AccountIdentity] = []
 
+        // A demo home has no credentials to probe; it declares its accounts.
+        // Misc instances still come from settings below, as in production.
+        if DemoMode.isEnabled {
+            detected.append(contentsOf: DemoAccountsStore.load())
+            detected.append(contentsOf: Self.miscAccounts(for: miscProviderInstances))
+            self.accounts = detected
+            return
+        }
+
         if let codex = autoDetectCodex(mode: codexUsageMode) {
             detected.append(codex)
         }

@@ -148,6 +148,13 @@ public final class QuotaService: ObservableObject {
             return quota
         }
 
+        // Demo mode never reaches a provider: the cache the demo home shipped
+        // with is the answer, and a missing cache stays visibly empty.
+        if DemoMode.isEnabled {
+            return lastSuccessByAccount[account.id]
+                ?? AccountQuota(accountId: account.id, tool: account.tool, buckets: [], queriedAt: Date(), error: nil)
+        }
+
         guard let adapter = adapters[account.tool] else {
             let err = QuotaError.notImplemented
             store(error: err, for: account)

@@ -99,7 +99,9 @@ final class UsageStatsViewModel: ObservableObject {
 
     // MARK: - Filter state
 
-    @Published var rangePreset: RangePreset = .day7 {
+    // A month shows the shape of a ledger; a week shows five bars. Demo mode
+    // opens on the month so the capture shows what the page is for.
+    @Published var rangePreset: RangePreset = DemoMode.isEnabled ? .day30 : .day7 {
         didSet {
             guard oldValue != rangePreset else { return }
             windowStart = nil

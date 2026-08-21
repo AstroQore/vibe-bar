@@ -7,6 +7,9 @@ struct PopoverRoot: View {
     let width: CGFloat
     let onContentHeightChange: (CGFloat) -> Void
     let onToggleMiniWindow: () -> Void
+    /// The tab the popover opens on. Production always starts on Overview;
+    /// demo mode builds one popover per captured page.
+    var initialPage: OverviewPage = .overview
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -14,6 +17,7 @@ struct PopoverRoot: View {
     @EnvironmentObject var remoteProbeService: RemoteProbeService
     @State private var overviewPage: OverviewPage = .overview
     @State private var staleCacheCheckedPage: OverviewPage?
+    @State private var hasAppliedInitialPage = false
 
     var body: some View {
         let shellDensity = shellDensity
@@ -61,7 +65,13 @@ struct PopoverRoot: View {
         .frame(width: width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .readHeight(onContentHeightChange)
-        .onAppear { refreshStaleCacheForCurrentPage() }
+        .onAppear {
+            if !hasAppliedInitialPage {
+                hasAppliedInitialPage = true
+                overviewPage = initialPage
+            }
+            refreshStaleCacheForCurrentPage()
+        }
         .onChange(of: overviewPage) { _, _ in
             refreshStaleCacheForCurrentPage()
         }
@@ -91,7 +101,7 @@ struct PopoverRoot: View {
     }
 
     private var maxScrollHeight: CGFloat {
-        let visible = NSScreen.main?.visibleFrame.height ?? 900
+        let visible = NSScreen.vibeBarPresentationScreen?.visibleFrame.height ?? 900
         return max(360, visible - 150)
     }
 
