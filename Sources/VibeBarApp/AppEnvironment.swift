@@ -72,8 +72,12 @@ final class AppEnvironment: ObservableObject {
 
     init() {
         let settings = SettingsStore()
+        let isDemo = DemoMode.isEnabled
         self.updateController = AppUpdateController(
-            updateChannel: settings.settings.updateChannel
+            updateChannel: settings.settings.updateChannel,
+            // Sparkle would otherwise read its own defaults and may decide a
+            // daily check is due the moment the updater starts.
+            isEnabled: !isDemo
         )
         let accounts = AccountStore(
             codexUsageMode: settings.codexUsageMode,
@@ -133,10 +137,22 @@ final class AppEnvironment: ObservableObject {
             )
         }
 
-        self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
-        self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
-        self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
-        self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+        if isDemo {
+            // No Keychain in demo mode. A web-sourced demo account stands in
+            // for "cookies are present", which is all these flags gate.
+            func declaresWebAccount(_ tool: ToolType) -> Bool {
+                accounts.accounts(for: tool).contains { $0.source == .webCookie }
+            }
+            self.hasClaudeWebCookies = declaresWebAccount(.claude)
+            self.hasOpenAIWebCookies = declaresWebAccount(.codex)
+            self.hasGeminiWebCookies = declaresWebAccount(.gemini)
+            self.hasGrokWebCookies = declaresWebAccount(.grok)
+        } else {
+            self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+            self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+        }
         // Filled in by the async probe at the end of `init`. Checking all
         // twelve routes synchronously here meant launch blocked on a dozen
         // Keychain round trips plus a `/bin/ps` spawn before the menu bar item
@@ -298,16 +314,24 @@ final class AppEnvironment: ObservableObject {
             }
             .store(in: &cancellables)
 
-        scheduler.start()
-        serviceStatus.start()
-        remoteProbeService.start()
-
         // Last, and after every service it reads from is live: an agent that
         // connects the instant the socket appears must not race a half-built
-        // environment.
+        // environment. Demo mode keeps the server: its socket lives inside
+        // the demo home and answers from the demo store, and the Settings
+        // pane that documents it is one of the screenshots.
         let mcp = MCPController(environment: self)
         self.mcp = mcp
         mcp.start(settingsStore: settings)
+
+        // Demo mode stops here. Everything below either leaves the demo home
+        // (provider, status, pricing and Relay refreshes; Keychain and browser
+        // cookie imports) or would overwrite the snapshot the home shipped
+        // with (the cost rescan). See `DemoMode`.
+        guard !isDemo else { return }
+
+        scheduler.start()
+        serviceStatus.start()
+        remoteProbeService.start()
 
         // Kick off an initial cost scan in the background. Cost data updates
         // slowly compared to live quota, so we re-scan only on app relaunch,
@@ -349,6 +373,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func refreshPricingNow() {
+        guard !DemoMode.isEnabled else { return }
         Task { @MainActor [weak self] in
             await self?.refreshPricing()
         }
@@ -426,6 +451,10 @@ final class AppEnvironment: ObservableObject {
     }
 
     func reloadProviderCredentialsAndRefresh() {
+        // The Refresh button reaches here too. Demo mode has nothing to
+        // reload — no cookies, no credentials, no routes — and the importers
+        // below read browser stores outside the demo home.
+        guard !DemoMode.isEnabled else { return }
         // Forced: this is the path a login, a sign-out, or an explicit "reload
         // credentials" takes, so a cached presence reading would be exactly the
         // wrong answer.
@@ -574,6 +603,10 @@ final class AppEnvironment: ObservableObject {
 
     func showWorkbench(page: WorkbenchPage? = nil) {
         workbenchWindowController.show(environment: self, page: page)
+    }
+
+    func showSettings(_ destination: SettingsDestination) {
+        workbenchWindowController.show(environment: self, page: .settings, settingsDestination: destination)
     }
 
     /// Built on the first Workbench open and kept for the process lifetime, so

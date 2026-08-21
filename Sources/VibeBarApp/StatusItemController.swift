@@ -47,6 +47,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// `MenuBarBlockWatchdog` — the failure is invisible from inside the app
     /// otherwise, and looks exactly like "the app didn't launch".
     private var blockWatchdog: MenuBarBlockWatchdog?
+    /// Tab the next popover is built on. Overview outside demo mode.
+    private var popoverInitialPage: OverviewPage = .overview
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -105,7 +107,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             rootView: PopoverRoot(
                 width: width,
                 onContentHeightChange: { [weak controller] height in controller?.resizePopover(kind: kind, toContentHeight: height) },
-                onToggleMiniWindow: { [weak controller] in controller?.toggleMiniWindow() }
+                onToggleMiniWindow: { [weak controller] in controller?.toggleMiniWindow() },
+                initialPage: controller.popoverInitialPage
             )
                 .environmentObject(environment)
                 .environmentObject(environment.accountStore)
@@ -313,7 +316,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func maxPopoverHeight(for popover: NSPopover) -> CGFloat {
-        let screen = popover.contentViewController?.view.window?.screen ?? NSScreen.main
+        let screen = popover.contentViewController?.view.window?.screen ?? NSScreen.vibeBarPresentationScreen
         let visibleHeight = screen?.visibleFrame.height ?? 900
         return max(Self.minimumPopoverHeight, visibleHeight - 80)
     }
@@ -324,6 +327,54 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private func toggleMiniWindow() {
         miniWindowController.toggle(environment: environment)
+    }
+
+    // MARK: - Demo mode
+
+    /// Open the popover on `page` without a click. Demo mode only: it skips
+    /// the refresh a real open triggers, and rebuilds the cached popover so
+    /// the requested tab is the one it starts on.
+    ///
+    /// The status item's button sits in the menu bar of whichever display
+    /// the pointer last touched, which is not something a capture run can
+    /// control. An `anchor` — a rect in a view on the display the presenter
+    /// chose — pins the popover there instead; it is the same `NSPopover`
+    /// with the same arrow, pointing at the top of the backdrop exactly
+    /// where the menu bar item would be.
+    func presentPopoverForDemo(page: OverviewPage, anchor: (view: NSView, rect: NSRect)? = nil) {
+        guard DemoMode.isEnabled else { return }
+        let target: (view: NSView, rect: NSRect)
+        if let anchor {
+            target = anchor
+        } else if let button = compactStatusItem.button {
+            target = (button, button.bounds)
+        } else {
+            return
+        }
+        popoverInitialPage = page
+        if let existing = popovers.removeValue(forKey: .compact) {
+            existing.performClose(nil)
+        }
+        let popover = popover(for: .compact)
+        // A transient popover closes the moment another app activates, and a
+        // capture run cannot promise nothing else on the Mac will. This one
+        // stays until the process exits.
+        popover.behavior = .applicationDefined
+        environment.setPopoverVisible(true)
+        popover.show(relativeTo: target.rect, of: target.view, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+        // Key status hands keyboard focus to the first button, which draws
+        // a focus ring nobody clicked for.
+        popover.contentViewController?.view.window?.makeFirstResponder(nil)
+    }
+
+    /// Show the mini window in `mode`. Demo mode only.
+    func presentMiniWindowForDemo(mode: MiniWindowDisplayMode) {
+        guard DemoMode.isEnabled else { return }
+        if environment.settingsStore.settings.miniWindow.displayMode != mode {
+            environment.settingsStore.settings.miniWindow.displayMode = mode
+        }
+        miniWindowController.presentForDemo(environment: environment)
     }
 
     private func shouldShowContextMenu(for event: NSEvent?) -> Bool {

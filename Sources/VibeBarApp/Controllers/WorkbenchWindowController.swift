@@ -16,9 +16,11 @@ final class WorkbenchWindowController: NSObject {
     private weak var environment: AppEnvironment?
     private let navigation = WorkbenchNavigation()
 
-    func show(environment: AppEnvironment, page: WorkbenchPage? = nil) {
+    func show(environment: AppEnvironment, page: WorkbenchPage? = nil, settingsDestination: SettingsDestination? = nil) {
         self.environment = environment
-        if let page {
+        if let settingsDestination {
+            navigation.selectSettings(settingsDestination)
+        } else if let page {
             navigation.select(page)
         }
         // Before the window exists: switching activation policy reorders the
@@ -62,7 +64,25 @@ final class WorkbenchWindowController: NSObject {
         win.setContentSize(initialSize)
         win.center()
         win.minSize = NSSize(width: 1040, height: 680)
-        win.setFrameAutosaveName(Self.frameAutosaveName)
+        if DemoMode.isEnabled {
+            // Autosave lives in the real account's defaults, not the demo
+            // home; a capture run must neither read nor move the user's
+            // Workbench. A fixed, centred frame also keeps every screenshot
+            // the same size.
+            win.setContentSize(NSSize(width: 1440, height: 900))
+            if let screen = DemoPresenter.targetScreen {
+                let visible = screen.visibleFrame
+                let size = win.frame.size
+                win.setFrameOrigin(NSPoint(
+                    x: visible.midX - size.width / 2,
+                    y: visible.midY - size.height / 2
+                ))
+            } else {
+                win.center()
+            }
+        } else {
+            win.setFrameAutosaveName(Self.frameAutosaveName)
+        }
         win.delegate = self
         self.window = win
 

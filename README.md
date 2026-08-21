@@ -1,134 +1,203 @@
-# Vibe Bar
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="Vibe Bar" width="128">
+</p>
+
+<h1 align="center">Vibe Bar</h1>
 
 <p align="center">
-  <img src="Resources/AppIcon.png" alt="Vibe Bar icon" width="104">
+  <strong>Will this AI subscription last until it resets — and how much of it are you leaving unused?</strong>
 </p>
 
 <p align="center">
-  <strong>Know whether your AI subscription will last — and how much you are leaving unused.</strong>
-</p>
-
-<p align="center">
-  A native macOS menu-bar dashboard for subscription quotas, reset forecasts,<br>
-  local token costs, model usage, and provider status.
-</p>
-
-<p align="center">
+  <a href="https://github.com/AstroQore/vibe-bar/actions/workflows/ci.yml"><img src="https://github.com/AstroQore/vibe-bar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><img src="https://img.shields.io/github/v/release/AstroQore/vibe-bar?display_name=tag&sort=semver" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/macOS-26%2B-000000?logo=apple" alt="macOS 26+">
   <img src="https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white" alt="Swift 6.2">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/AstroQore/vibe-bar" alt="AGPL-3.0 license"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="AGPL-3.0-only"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><strong>Download the latest release</strong></a>
+  <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><strong>Download</strong></a>
   · <a href="#build-from-source">Build from source</a>
+  · <a href="#agents-mcp">Agents (MCP)</a>
+  · <a href="#acknowledgements">Acknowledgements</a>
   · <a href="README.zh-CN.md">中文</a>
 </p>
 
-<p align="center">
-  <img src="Resources/README/overview-dashboard.png" alt="Vibe Bar overview dashboard" width="860">
-</p>
+Vibe Bar is a native macOS menu-bar app for people who run coding agents
+all day on subscription plans. It puts ChatGPT/Codex, Claude Code, Gemini,
+AntiGravity, Grok, Cursor and a dozen coding-plan providers on one quiet
+surface, and answers the two questions a raw percentage does not:
 
-Vibe Bar brings ChatGPT/Codex, Claude Code, Gemini Web, AntiGravity, Grok,
-and a growing set of coding-plan providers into one quiet desktop surface.
-It answers two questions that raw quota percentages do not:
+- **Will this quota last until its next reset?** A personal forecast built
+  from wall-clock pace, recent burn, the history of previous reset cycles and
+  your working-hour patterns — with a confidence band, not a single number.
+- **Am I paying for quota I never use?** Reset-cycle history shows what was
+  still left every time a window closed, so pre-reset waste is visible before
+  the window disappears.
 
-- **Will this quota last until its next reset?** A personal forecast combines
-  wall-clock pace, recent burn, reset history, workday/hour patterns, and
-  confidence bounds.
-- **Am I paying for quota I never use?** Reset-cycle history makes likely
-  pre-reset waste visible before the window disappears.
+Under the menu bar sits a Workbench: a per-request usage ledger across every
+harness, a searchable index of every local agent session with one-click
+resume, and a skills manager that keeps one library in sync across five
+agent CLIs. All of it is read from files already on your Mac, and an MCP
+server lets your agents ask the same questions.
 
-## At a Glance
+![The Overview: cost and status at the top, one quota card per provider below, each bar carrying its forecast](docs/screenshots/popover-overview.png)
 
-- **Reset-aware quota forecasts** — `Learning`, `Enough`, `Watch`, `At risk`,
-  `Surplus`, projected run-out time, time-only pace, and forecast confidence.
-- **Local cost analytics** — today, yesterday, 7-day, 30-day, and all-time
-  spend and tokens, plus per-model ranking.
-- **Usage history** — daily/weekly/monthly cost charts, reset-cycle fill
-  history, yearly heatmaps, and hour-of-week activity maps.
-- **Live provider status** — OpenAI, Anthropic, Google AI, SpaceXAI, and Cursor incidents and
-  component uptime in the same place as quota data.
-- **Two floating layouts** — a spacious gauge view and a compact view that
-  can stay pinned above your work.
-- **End-to-end encrypted remote machines** — outbound-only Linux Probes can
-  join selected cost/token totals without giving Relay or Control plaintext.
-- **Local-first usage** — no telemetry or hosted plaintext analytics backend;
-  the optional account/control service stores workspace/device metadata only.
+<details>
+<summary>The same Overview in the light appearance</summary>
 
-## One Overview, Not Four Dashboards
+![The Overview in the light appearance](docs/screenshots/popover-overview-light.png)
 
-Quota, cost, provider status, model ranking, yearly activity, and working-hour
-patterns share one set of time ranges instead of living in separate provider
-dashboards.
+</details>
 
-<p align="center">
-  <img src="Resources/README/overview-analytics.png" alt="Vibe Bar global cost and activity analytics" width="860">
-</p>
+## Forecasts, not percentages
 
-## Mini Window
-
-Keep every active quota visible on a second display or above a full-screen
-workspace. The same quota model is available in two genuinely different
-densities.
-
-<p align="center">
-  <img src="Resources/README/mini-window-regular.png" alt="Vibe Bar regular mini window" width="800">
-</p>
-
-<p align="center">
-  <img src="Resources/README/mini-window-compact.png" alt="Vibe Bar compact mini window" width="520">
-</p>
-
-## Provider Deep Dives
-
-Each core provider gets the same layout framework: quota and reset-cycle
-history on the left; cost, models, status, yearly activity, and working-hour
-patterns on the right.
+Every quota bar carries a verdict — `Learning`, `Enough`, `Watch`,
+`At risk` or `Surplus` — plus a projected run-out time and the forecast's
+confidence. The provider pages show how it was reached: the reset history
+as one bar per cycle, the fill curve against a time-only pace line, and the
+local cost, model ranking, yearly activity and working-hour pattern on the
+right, in the same layout for every core provider.
 
 <table>
   <tr>
-    <td width="50%"><img src="Resources/README/openai-detail.png" alt="OpenAI detail page"><br><sub><strong>OpenAI</strong> — ChatGPT Agentic quota, cost, model ranking, reset history, and service status.</sub></td>
-    <td width="50%"><img src="Resources/README/claude-detail.png" alt="Claude Code detail page"><br><sub><strong>Claude Code</strong> — 5 Hours, Weekly, Fable, cost analytics, reset history, and Anthropic status.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-openai.png" alt="The OpenAI page: ChatGPT Agentic and Codex Spark quotas with reset history and fill curves beside cost, models and activity"><br><sub><strong>OpenAI</strong> — ChatGPT Agentic and GPT-5.3 Codex Spark windows, reset history, quota history, cost, model ranking, and a year of activity.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-anthropic.png" alt="The Anthropic page: 5 Hours, Weekly and Fable windows with their forecasts"><br><sub><strong>Anthropic</strong> — 5 Hours, Weekly and per-model weekly windows, each with its own forecast and cycle history.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="Resources/README/gemini-detail.png" alt="Google AI detail page"><br><sub><strong>Google AI</strong> — Gemini Web and AntiGravity quotas alongside local usage analytics.</sub></td>
-    <td width="50%"><img src="Resources/README/grok-detail.png" alt="Grok detail page"><br><sub><strong>SpaceXAI</strong> — Grok quota, model cost, Cursor status, reset history, and activity patterns.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-google.png" alt="The Google AI page: Gemini Web and AntiGravity quotas"><br><sub><strong>Google AI</strong> — Gemini Web quotas and the AntiGravity language-server quotas for Gemini and Claude/GPT models, side by side.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-spacexai.png" alt="The SpaceXAI page: Grok, Cursor and Grok Bot quotas"><br><sub><strong>SpaceXAI</strong> — Grok Build, Cursor and Grok Bot quotas, with Cursor's account usage folded into the cost side.</sub></td>
   </tr>
 </table>
 
-## Remote Machines
+The verdict is only as good as its history, so a freshly added provider says
+`Learning` until enough reset cycles have been observed to trust a
+projection; the forecast never claims a confidence it does not have.
 
-The separate [VibeBar Probe](https://github.com/AstroQore/vibebar-probe) can
-observe supported CLI logs on a systemd Linux machine without opening an
-inbound port. Probe facts are buffered locally, encrypted to the active Core,
-and routed through an opaque Relay. Each remote machine is excluded from totals
-until you explicitly enable **Include in totals**; selected usage then joins
-this Mac's local snapshots across Overview and the four core cost pages.
+## Mini window
 
-See the [Remote Probe guide](https://vibebar.aqor.io/docs/guide/remote-probes)
-for binary installation, enrollment, updates, rollback, and the Web/iOS E2EE
-freshness model.
+Every active quota as a gauge that stays above your work — on a second
+display, beside a full-screen terminal, wherever you put it. Two densities
+of the same model, switched from the window itself; the surface is Liquid
+Glass and follows whatever is behind it.
 
-## More Coding Plans
+![The regular mini window: one gauge per quota window, grouped by provider](docs/screenshots/mini-regular.png)
 
-The Misc page keeps provider-specific quota semantics intentionally simple and
-scannable. Supported integrations include OpenCode Go, Ollama Cloud, Zhipu
-GLM, Xiaomi MiMo, Kimi, MiniMax, Alibaba Bailian, Volcengine Coding/Agent
-Plans, and Tencent Hunyuan.
+![The compact mini window: the same quotas as slim vertical bars](docs/screenshots/mini-compact.png)
 
-<p align="center">
-  <img src="Resources/README/misc-providers.png" alt="Vibe Bar miscellaneous coding plan providers" width="860">
-</p>
+<details>
+<summary>The regular mini window in the light appearance</summary>
+
+![The regular mini window in the light appearance](docs/screenshots/mini-regular-light.png)
+
+</details>
+
+## More coding plans
+
+The Misc page keeps provider-specific quota semantics simple and scannable.
+Supported integrations include Copilot, OpenCode Go, Ollama Cloud, OpenRouter,
+Kilo, Kiro, Zhipu GLM, Xiaomi MiMo, Kimi, MiniMax, iFlytek Spark, Alibaba
+Bailian, Volcengine Coding and Agent Plans, Tencent Hunyuan, Baidu Qianfan and
+Warp. Sign in through the app's own WebView, import a browser cookie, or paste
+a key — whatever the provider's console offers.
+
+![The Misc page: OpenCode Go, Ollama, Zhipu GLM and MiniMax plan windows](docs/screenshots/popover-misc.png)
+
+## The Workbench
+
+The popover is for a glance. The Workbench is a window you leave open.
+
+### Usage Stats
+
+A per-request ledger across every harness on the Mac — Claude Code, Claude
+Cowork, Codex, ChatGPT Work, Cursor, Grok Build, AntiGravity, Gemini CLI —
+with real token counts split into input, output, cache write and cache read,
+priced from the same catalog the popover uses. Filter by harness, model and
+range; drag the navigator to focus the chart while the tables keep the full
+window.
+
+![Usage Stats: 30 days of tokens by day, the harness mix, and the period table below](docs/screenshots/workbench-usage.png)
+
+<details>
+<summary>Usage Stats in the light appearance</summary>
+
+![Usage Stats in the light appearance](docs/screenshots/workbench-usage-light.png)
+
+</details>
+
+### Sessions
+
+Every local agent session, indexed with full-text search over prompts,
+replies and tool calls, grouped by project, filtered by company, harness or
+time. Open one and the transcript is beside it, with a find bar and page
+controls that stay fast on transcripts with tens of thousands of lines;
+**Open** hands the session back to its own CLI (`claude --resume`,
+`codex resume`, `grok --resume`, `agy --conversation`).
+
+![Sessions: the session list on the left, an open transcript with tool calls on the right](docs/screenshots/workbench-sessions.png)
+
+<details>
+<summary>Sessions in the light appearance</summary>
+
+![Sessions in the light appearance](docs/screenshots/workbench-sessions-light.png)
+
+</details>
+
+Deleting a session from here is the one change Vibe Bar ever makes to a
+harness's session files, and only at your explicit request — see
+[Privacy and local data](#privacy-and-local-data).
+
+### Skills
+
+One shared library at `~/.agents/skills/`, projected into the skills
+directories of Codex, Claude Code, AntiGravity, Grok Build and Cursor. Each
+row is a skill; each dot is a harness, on or off. Install from a ZIP, adopt
+skills a CLI already has, discover more from a repository, and back up before
+anything is replaced.
+
+![Skills: one row per skill, a toggle per harness, and the install, import and discover actions](docs/screenshots/workbench-skills.png)
+
+<details>
+<summary>Skills in the light appearance</summary>
+
+![Skills in the light appearance](docs/screenshots/workbench-skills-light.png)
+
+</details>
+
+## Settings that stay out of the way
+
+Everything is one two-column window. Three panes are worth a picture:
+
+**Layout** arranges the cards of every popover page — which cards, which
+column, which order — with presets and a live preview, so the Overview can
+be the four quotas you watch and nothing else.
+
+![The Layout editor: three segments of cards for the Overview page with a preview on the right](docs/screenshots/settings-layout.png)
+
+<details>
+<summary>The Layout editor in the light appearance</summary>
+
+![The Layout editor in the light appearance](docs/screenshots/settings-layout-light.png)
+
+</details>
+
+**Menu Bar** chooses what the menu bar item itself says — icon only, one
+line, two rows or compact — which quota windows it shows, and whether the
+colour follows the forecast or the raw percentage.
+
+![Menu Bar settings: layout and density pickers, and a checklist of quota windows per provider](docs/screenshots/settings-menubar.png)
+
+**MCP Server** is the agent side of the app, covered next.
 
 ## Agents (MCP)
 
 Vibe Bar can answer your coding agent's questions about your own usage. While
-the app is running it exposes a read-only MCP server on a Unix domain socket in
-your home directory — no network port, no API key — so Claude Code, Codex CLI,
-Cursor or any other stdio MCP client can ask "how much Claude do I have left?",
-"who burned the most tokens this month?" or "find my session about the parser".
+the app runs it exposes a read-only MCP server on a Unix domain socket in your
+home directory — no network port, no API key — so Claude Code, Codex CLI,
+Cursor or any stdio MCP client can ask "how much Claude do I have left?",
+"who burned the most tokens this month?" or "find my session about the
+parser".
 
 Set it up by pasting this into any agent that can fetch a URL:
 
@@ -142,33 +211,56 @@ Or configure it by hand — every client runs the same command:
 claude mcp add --scope user vibebar -- "/Applications/Vibe Bar.app/Contents/MacOS/VibeBar" --mcp-stdio
 ```
 
-Settings → MCP Server has the switch, the socket path, and a copy button for
-each client. Everything agents can reach is read-only except an opt-in "refresh
-my quota" tool; credentials are never exposed and emails are masked.
+![MCP Server settings: the switch, socket path and connected clients, then a copyable snippet per client](docs/screenshots/settings-mcp.png)
 
-## Settings That Stay Out of the Way
+Everything agents can reach is read-only except an opt-in "refresh my quota"
+tool and an opt-in skill installer; credentials are never exposed and emails
+are masked. The socket is created `0600` inside the `0700` `~/.vibebar/`,
+is never bound to a network interface, and is removed when Vibe Bar quits.
 
-Choose Remaining or Used percentages, refresh on a timer or when the popover
-opens, set an open-refresh cooldown, launch at login, and control provider
-visibility and ordering from one two-column settings window.
+## Remote machines
 
-<p align="center">
-  <img src="Resources/README/settings.png" alt="Vibe Bar settings window" width="760">
-</p>
+The separate [VibeBar Probe](https://github.com/AstroQore/vibebar-probe)
+watches supported CLI logs on a systemd Linux machine without opening an
+inbound port. Facts are buffered locally, encrypted to this Mac's Core, and
+routed through an opaque Relay that never sees plaintext. Each machine stays
+out of your totals until you switch **Include in totals** on; then its usage
+joins this Mac's in the Overview and the cost pages.
 
-## What Vibe Bar Reads
+![The Machines page: two probes with today's, 7-day and 30-day tokens and cost, and an Include in totals switch](docs/screenshots/popover-machines.png)
 
-| Surface | Quota and status | Cost and activity sources |
+![Remote Probes settings: the workspace, relay and sync state, provisioning, and per-machine cost aggregation](docs/screenshots/settings-remote.png)
+
+See the [Remote Probe guide](https://vibebar.aqor.io/docs/guide/remote-probes)
+for installation, enrollment, updates, rollback and the end-to-end encryption
+model.
+
+## What Vibe Bar reads
+
+| Surface | Quota and status | Cost and activity |
 | --- | --- | --- |
 | ChatGPT / Codex | Codex subscription windows, Spark, OpenAI status | `~/.codex/sessions/**/*.jsonl` |
-| Claude Code | 5 Hours, Weekly, Fable, Anthropic status | `~/.claude/projects/**/*.jsonl` |
-| Gemini + AntiGravity | Gemini Web quotas and local AntiGravity language-server quotas | Local Gemini/AntiGravity usage records |
-| Grok + Cursor | Grok quota, Cursor Models, Other Models, Grok Bot weekly quota, SpaceXAI + Cursor status | Local Grok records + Cursor account usage events; Grok Bot is quota-only |
-| Misc providers | Provider-specific coding/token plan endpoints | Quota-only unless an adapter exposes local usage |
+| Claude Code / Cowork | 5 Hours, Weekly, per-model weekly, Anthropic status | `~/.claude/projects/**/*.jsonl`, Claude.app's Cowork transcripts |
+| Gemini + AntiGravity | Gemini Web quotas, local AntiGravity language-server quotas | Local Gemini / AntiGravity usage records |
+| Grok + Cursor | Grok quota, Cursor Models and Other Models, Grok Bot weekly, SpaceXAI + Cursor status | Local Grok records, Cursor account usage events; Grok Bot is quota-only |
+| Misc providers | Each provider's own coding- or token-plan endpoint | Quota-only unless an adapter exposes local usage |
 
-Provider contracts can change without notice. Vibe Bar keeps refresh errors
-visible, preserves the last known good snapshot, and avoids presenting stale
-data as a successful update.
+Provider contracts change without notice. Vibe Bar keeps refresh errors
+visible, keeps the last known good snapshot, and never presents stale data as
+a successful update.
+
+## About the screenshots
+
+Every picture on this page is the real app, launched in its **demo mode**:
+the same binary, pointed at a home directory built by
+[`Scripts/demo_home.py`](Scripts/demo_home.py). The quota, forecast, cost and
+ledger numbers are one maintainer's real usage, copied; everything that would
+identify a person — account ids, machine names, paths, sessions, cookies,
+Keychain items — is replaced or fabricated, and every refresh that would
+leave that directory is switched off. The agent sessions and skills are
+written for the occasion. [`Scripts/capture_demo_screenshots.sh`](Scripts/capture_demo_screenshots.sh)
+opens each surface in both appearances and captures it over a flat backdrop;
+`DemoMode.swift` is the switch.
 
 ## Architecture
 
@@ -183,31 +275,23 @@ own that lives in a separate repository.
 
 The kit was extracted from this repository so that the "what did my agents
 actually do" half is usable — and auditable — on its own. It knows nothing
-about quotas, plans, or prices; that vocabulary stays in `VibeBarCore`. It
-has no third-party dependencies of its own, and it is AGPL-3.0-only, same as
-Vibe Bar.
+about quotas, plans or prices; that vocabulary stays in `VibeBarCore`. It has
+no third-party dependencies and is AGPL-3.0-only, same as Vibe Bar.
 
 **How a kit release reaches you.** `Package.swift` pins the kit to an exact
-tag, and SwiftPM links it **statically** — it is compiled into the app's
-executable, not shipped as a framework you could swap. So a new kit release
-changes nothing on your Mac until Vibe Bar bumps that pin and ships a build.
-There is no separate component to update, and Vibe Bar will never offer to
-update one.
+tag and SwiftPM links it statically — it is compiled into the executable, not
+shipped as a framework you could swap. A new kit release changes nothing on
+your Mac until Vibe Bar bumps that pin and ships a build. **Settings › System
+› Components** shows the kit version compiled into the build you are running,
+with a *Check for kit updates* button; nothing checks at launch or on a
+timer.
 
-**Seeing which one you have.** Settings › System › **Components** shows the
-`agent-session-kit` version compiled into the build you are running, with
-links to that release's notes and the repository, and a *Check for kit
-updates* button. The button is the only thing that contacts GitHub — there is
-no check at launch and none on a timer — and when a newer kit exists the row
-says it *ships with the next Vibe Bar build*, because that is the only way
-it can arrive.
+## Privacy and local data
 
-## Privacy and Local Data
-
-Vibe Bar has no telemetry pipeline or hosted plaintext analytics backend.
-Local and remote-Probe usage analysis stays on the active Core. The optional
-hosted account/control service stores workspace, enrollment, Relay directory,
-and audit metadata only. Derived state stays under:
+Vibe Bar has no telemetry pipeline and no hosted plaintext analytics backend.
+Local and remote-Probe usage analysis stays on this Mac. The optional hosted
+account/control service stores workspace, enrollment, Relay directory and
+audit metadata only. Derived state stays under:
 
 ```text
 ~/.vibebar/
@@ -217,31 +301,32 @@ and audit metadata only. Derived state stays under:
 ├── scan_cache/
 ├── pricing_sources/
 ├── pricing_cache.json
-├── pricing_refresh_status.json
 ├── service_status.json
+├── usage_events.sqlite3
+├── session_index.sqlite3
 ├── remote_core.json
 ├── remote_usage.sqlite3
 ├── cost_history.json
 └── mcp.sock            (only while the app runs, mode 0600)
 ```
 
-- The MCP socket is created 0600 inside the 0700 `~/.vibebar/`, is never bound
-  to a network interface, and is removed when Vibe Bar quits.
 - CLI credential and session files are read-only inputs. The one exception
   is whole-session deletion from the Workbench's Sessions page, performed
   only at your explicit request and never editing a session file's contents.
+- The Skills manager writes to `~/.agents/skills/` and the managed skills
+  directories of the five harnesses it projects into, and nowhere else.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
 - Privacy Mode clears derived cost data and keeps cost history off disk while
-  enabled.
-- Retention is configurable, and Cost Data can be cleared manually.
+  enabled. Retention is configurable, and Cost Data can be cleared manually.
 
-Vibe Bar intentionally runs **without the App Sandbox**. Browser-cookie import
-and the local AntiGravity language-server probe require capabilities that the
-sandbox blocks. The app is open source, reads only the provider inputs it
-needs, and writes application state only under `~/.vibebar/` and its Keychain
-Vault. See [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox)
-for the full trade-off.
+Vibe Bar intentionally runs **without the App Sandbox**: browser-cookie
+import and the local AntiGravity language-server probe require capabilities
+the sandbox blocks. The app is open source, reads only the provider inputs it
+needs, and writes application state only under `~/.vibebar/` and its
+Keychain Vault. See
+[AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox) for the
+full trade-off.
 
 ## Install
 
@@ -252,20 +337,19 @@ for the full trade-off.
 2. Move `Vibe Bar.app` to `/Applications`.
 3. Launch it from Applications or Spotlight.
 
-Release builds are ad-hoc signed and currently not notarized. If Gatekeeper
-blocks the first launch, right-click the app and choose **Open**. No Apple
-Developer account is required to build or run Vibe Bar locally.
+Release builds are ad-hoc signed and not notarized. If Gatekeeper blocks the
+first launch, right-click the app and choose **Open**. No Apple Developer
+account is required to build or run Vibe Bar locally.
 
-Starting with the first Sparkle-enabled release, Vibe Bar checks the signed
-update feed once a day. **Settings → System** lets you choose the stable
-**Main** channel or the preview **Dev** channel; Dev also receives all Main
-releases. You can also choose **Check for Updates…** from a menu-bar item's
-context menu or Settings. Vibe Bar always asks before installing an update;
-the first Sparkle-enabled release still needs to be installed manually once.
+Installed builds check the signed update feed once a day and always ask
+before installing. **Settings › System** chooses between the stable **Main**
+channel and the preview **Dev** channel; Dev also receives every Main
+release. **Check for Updates…** is in the menu-bar item's context menu and in
+Settings.
 
 ### Build from source
 
-Requirements: macOS 26+, Xcode 26, and Swift 6.2+.
+Requirements: macOS 26+, Xcode 26, Swift 6.2+.
 
 ```bash
 git clone https://github.com/AstroQore/vibe-bar.git
@@ -277,7 +361,7 @@ open ".build/Vibe Bar.app"
 
 The package contains the `VibeBar` executable and the testable `VibeBarCore`
 library. The packaging script assembles `.build/Vibe Bar.app`, copies its
-resources and Sparkle framework, and ad-hoc signs the bundle.
+resources and the Sparkle framework, and ad-hoc signs the bundle.
 
 ## Contributing
 
@@ -288,8 +372,8 @@ resources and Sparkle framework, and ad-hoc signs the bundle.
   install on a Mac.
 - [SECURITY.md](SECURITY.md) — report vulnerabilities without exposing secrets.
 
-Vibe Bar is early public-release software. Provider APIs and quota contracts
-move quickly; focused adapters, fixtures, and UI refinements are welcome.
+Provider APIs and quota contracts move quickly; focused adapters, fixtures
+and UI refinements are welcome.
 
 ## Acknowledgements
 

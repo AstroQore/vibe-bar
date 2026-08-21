@@ -86,13 +86,16 @@ Single SwiftPM package, two product targets and one test target:
 ├── Resources/
 │   ├── Info.plist                 # Bundle ID, version, LSUIElement
 │   ├── VibeBar.entitlements       # Empty plist — vibe-bar runs unsandboxed (see § 6)
-│   ├── AppIcon.icns / AppIcon.png
-│   └── README/                    # Screenshots used by README.md
+│   └── AppIcon.icns / AppIcon.png
 ├── Scripts/
 │   ├── build_app.sh               # App packaging + nested codesign
-│   └── release_app.sh             # ZIP, checksum, signed Sparkle appcast
+│   ├── release_app.sh             # ZIP, checksum, signed Sparkle appcast
+│   ├── demo_home.py               # Builds the demo home README screenshots run on (§ 6.5)
+│   ├── capture_demo_screenshots.sh# Captures every README surface from demo mode (§ 6.5)
+│   └── optimize_screenshots.py    # Palette-quantises the captures (optional, Pillow)
 ├── docs/
 │   ├── DESIGN.md
+│   ├── screenshots/               # README images; regenerated, never hand-edited (§ 6.5)
 │   └── agent-setup/               # One-line MCP setup an agent runs on itself
 │       ├── prompt.md              # Addressed to the agent, not to a human
 │       └── skill/vibe-bar/SKILL.md
@@ -571,14 +574,32 @@ plist. The trade-offs:
 
 ### 6.2 Why `RealHomeDirectory` still exists
 
-`RealHomeDirectory` — agent-session-kit's, re-exported through
-`Compat/AgentSessionKitReexport.swift` — is the canonical entry point
-for any path under the real user home —
-`~/.codex/`, `~/.claude/`, `~/.config/claude/`, `~/.vibebar/`,
-`~/.gemini/`. Without the sandbox it is functionally equivalent to
-`NSHomeDirectory()`, but keeping every call site routed through one
-helper means re-enabling the sandbox later (or porting to a sandboxed
-fork) does not require auditing every credential read again.
+`RealHomeDirectory` is the canonical entry point for any path under the
+real user home — `~/.codex/`, `~/.claude/`, `~/.config/claude/`,
+`~/.vibebar/`, `~/.gemini/`. Without the sandbox it is functionally
+equivalent to `NSHomeDirectory()`, but keeping every call site routed
+through one helper means re-enabling the sandbox later (or porting to a
+sandboxed fork) does not require auditing every credential read again.
+
+There are two of them, on purpose. agent-session-kit declares one and
+`Sources/VibeBarCore/Utilities/RealHomeDirectory.swift` declares another
+with the same name that **shadows** it: inside `VibeBarCore` the
+module-local type wins, and `VibeBarApp` sees the `VibeBarCore` one
+through the `@_exported import` in `Compat/AgentSessionKitReexport.swift`.
+The shadow adds exactly one thing — a process-wide override that demo mode
+(§ 6.5) sets once at launch — and otherwise returns the kit's answer byte
+for byte. Two consequences:
+
+- A file that imports `AgentSessionKit` directly *as well as*
+  `VibeBarCore` sees both and must qualify (`VibeBarCore.RealHomeDirectory`);
+  `Tests/VibeBarCoreTests/RealHomeDirectoryShadowTests.swift` is the
+  example. Product code never needs the direct import.
+- Kit APIs that default a `homeDirectory:` parameter to *the kit's*
+  helper are not redirected by the override. Vibe Bar already passes
+  `homeDirectory:` explicitly wherever it calls into the kit
+  (`SessionProviderRegistry.standard(homeDirectory:)`,
+  `SessionIndexService(homeDirectory:…)`, `SessionDeleter(homeDirectory:)`);
+  keep doing that for any new kit call.
 
 The empirical probe table that justified the helper originally is
 preserved in case the sandbox returns:
@@ -629,6 +650,53 @@ These exist for **test isolation only** — tests pass a synthetic
 temp directory so fixtures land somewhere disposable. The default
 value should still be the real-home helper, not `NSHomeDirectory()`.
 Tests keep working because they pass an explicit value.
+
+### 6.5 Demo mode and the README screenshots
+
+Every image under `docs/screenshots/` is the real app launched in **demo
+mode**: `VIBEBAR_DEMO_HOME=<dir>` (or `--demo-home <dir>`) redirects
+`RealHomeDirectory` for the whole process to a synthetic home, and
+`DemoMode.swift` (`Sources/VibeBarCore/Utilities/`) is the one switch every
+gate reads. With it on:
+
+- `AccountStore` takes its primary accounts from
+  `<home>/.vibebar/demo_accounts.json` instead of probing credentials;
+  misc instances still come from `settings.json`.
+- `QuotaService.refresh` returns the cached snapshot and never calls an
+  adapter; `CostUsageService.refreshAll` returns before scanning;
+  `RemoteProbeService` reads `remote_core.json` and the ledger but builds
+  no Relay client. `AppEnvironment` starts neither the quota scheduler,
+  status polling, pricing loop, route-health probes nor any cookie import,
+  and `AppUpdateController` leaves Sparkle unstarted. The MCP socket *is*
+  created — inside the demo home.
+- `KeychainStore` reports every item missing and swallows writes at its
+  three primitives, so no surface can raise the login-keychain prompt.
+- `DemoPresenter` (`Sources/VibeBarApp/Controllers/`) opens one surface
+  (`VIBEBAR_DEMO_SURFACE=popover:<page>|mini:<mode>|workbench:<page>|settings:<section>`)
+  on the sharpest display, behind it a flat full-screen backdrop, pinned to
+  `VIBEBAR_DEMO_APPEARANCE=light|dark`, and prints the window frames on
+  stdout for the capture script. The popover is anchored to the backdrop
+  rather than the status item — the status item lives in the menu bar of
+  whichever display the pointer last touched.
+
+`DemoMode.bootstrap` refuses a demo home that resolves to the real home,
+so the live store can never be put into a mode that stops refreshing it.
+
+To regenerate the screenshots:
+
+```sh
+./Scripts/build_app.sh release
+./Scripts/demo_home.py                 # ~ → /tmp/vibebar-demo-home, redacted
+./Scripts/capture_demo_screenshots.sh  # → docs/screenshots/, both appearances
+```
+
+`demo_home.py` copies one maintainer's live quota, forecast, cost and ledger
+state and rewrites every identifier (the Codex account id becomes
+`demo-codex`, machine aliases and workspace ids are replaced); it copies no
+credential, cookie, transcript or `/Users/<name>` path, and fabricates the
+sessions and skills. The output path is short on purpose: the MCP socket
+inside it is bound by the 104-byte `sun_path` limit. Review every new
+capture against § 8 before committing it — a screenshot is source content.
 
 ## 7. Code Conventions
 

@@ -45,9 +45,23 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
 @MainActor
 final class WorkbenchNavigation: ObservableObject {
     @Published private(set) var selectedPage: WorkbenchPage?
+    /// A Settings section requested from outside the window (demo mode's
+    /// `settings:<section>` surface). Consumed once by the root view, which
+    /// owns the live selection.
+    @Published private(set) var requestedSettingsDestination: SettingsDestination?
 
     func select(_ page: WorkbenchPage?) {
         selectedPage = page
+    }
+
+    func selectSettings(_ destination: SettingsDestination) {
+        requestedSettingsDestination = destination
+        selectedPage = .settings
+    }
+
+    func consumeRequestedSettingsDestination() -> SettingsDestination? {
+        defer { requestedSettingsDestination = nil }
+        return requestedSettingsDestination
     }
 }
 
@@ -117,6 +131,13 @@ struct WorkbenchRootView: View {
                 let stored = WorkbenchPage(rawValue: storedPage)
                 navigation.select(initialPage ?? (stored?.isPrimary == true ? stored : nil) ?? .usageStats)
             }
+            if let requested = navigation.consumeRequestedSettingsDestination() {
+                settingsDestination = requested
+            }
+        }
+        .onChange(of: navigation.requestedSettingsDestination) { _, requested in
+            guard requested != nil, let requested = navigation.consumeRequestedSettingsDestination() else { return }
+            settingsDestination = requested
         }
         .onChange(of: navigation.selectedPage) { _, newValue in
             guard let newValue, newValue.isPrimary else { return }

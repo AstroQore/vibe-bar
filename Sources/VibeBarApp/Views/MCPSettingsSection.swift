@@ -38,7 +38,7 @@ struct MCPSettingsSection: View {
 
             if settingsStore.settings.mcpServer.enabled {
                 infoRow("Status", controller.isRunning ? "Listening" : "Not listening")
-                infoRow("Socket", controller.socketPath)
+                infoRow("Socket", controller.displaySocketPath)
                 infoRow("Connected clients", "\(controller.connectionCount)")
                 infoRow("Last client activity", lastActivityText)
                 if let error = controller.startupError {
@@ -117,7 +117,9 @@ struct MCPSettingsSection: View {
     /// a config copied from a development build points at that build; fall
     /// back to the canonical install location when there is no bundle at all.
     private var executablePath: String {
-        Bundle.main.executableURL?.path ?? MCPClientConfig.canonicalExecutablePath
+        // Demo mode documents the installed app, not the build it runs from.
+        if DemoMode.isEnabled { return MCPClientConfig.canonicalExecutablePath }
+        return Bundle.main.executableURL?.path ?? MCPClientConfig.canonicalExecutablePath
     }
 
     private var isInstalledInApplications: Bool {

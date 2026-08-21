@@ -379,6 +379,12 @@ final class SessionManagerModel: ObservableObject {
                 self.summaries.append(contentsOf: page.summaries.filter { !existing.contains($0.id) })
             }
             self.totalSessionCount = page.totalCount
+            // A demo launch opens the newest session so the transcript pane
+            // is populated in a capture; a real launch leaves the choice to
+            // the user.
+            if DemoMode.isEnabled, self.selection == nil, let first = page.summaries.first {
+                self.select(first)
+            }
             if var counts {
                 for review in reviews ?? [] {
                     let harness = review.effectiveHarness
