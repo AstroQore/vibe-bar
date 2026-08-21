@@ -373,6 +373,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func refreshPricingNow() {
+        guard !DemoMode.isEnabled else { return }
         Task { @MainActor [weak self] in
             await self?.refreshPricing()
         }
@@ -450,6 +451,10 @@ final class AppEnvironment: ObservableObject {
     }
 
     func reloadProviderCredentialsAndRefresh() {
+        // The Refresh button reaches here too. Demo mode has nothing to
+        // reload — no cookies, no credentials, no routes — and the importers
+        // below read browser stores outside the demo home.
+        guard !DemoMode.isEnabled else { return }
         // Forced: this is the path a login, a sign-out, or an explicit "reload
         // credentials" takes, so a cached presence reading would be exactly the
         // wrong answer.

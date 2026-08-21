@@ -43,6 +43,8 @@ final class ServiceStatusController: ObservableObject {
     }
 
     func refreshAll() {
+        // Demo mode shows the cached status pages and never polls.
+        guard !DemoMode.isEnabled else { return }
         if let last = lastRefreshStartedAt,
            Date().timeIntervalSince(last) < Self.coalesceInterval,
            refreshTask != nil {

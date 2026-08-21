@@ -69,6 +69,7 @@ capture_one() {
   VIBEBAR_DEMO_SURFACE="$surface" \
     "$APP" >"$log" 2>&1 &
   local pid=$!
+  STARTED_PIDS+=("$pid")
 
   local report="" waited=0
   while (( waited < 60 )); do
@@ -137,8 +138,16 @@ PY
   echo "capture: $name$suffix.png  region=$region  px=$size $(du -k "$file" | cut -f1)KB"
 }
 
-# Never leave a demo instance behind, whatever stops the run.
-cleanup() { pkill -f "$APP" 2>/dev/null || true; }
+# Never leave a demo instance behind, whatever stops the run — and never
+# touch an instance this script did not start: with VIBEBAR_APP pointing at
+# /Applications, a pattern kill would take the user's own Vibe Bar with it.
+STARTED_PIDS=()
+cleanup() {
+  local pid
+  for pid in "${STARTED_PIDS[@]}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+}
 trap cleanup EXIT INT TERM
 
 failures=0
