@@ -21,7 +21,7 @@ let package = Package(
         // from a clean checkout with no Package.resolved (it is gitignored),
         // so the pin is the only thing that makes two builds of the same
         // Vibe Bar commit contain the same package. Bump it deliberately.
-        .package(url: "https://github.com/AstroQore/agent-session-kit.git", exact: "0.4.2"),
+        .package(url: "https://github.com/AstroQore/agent-session-kit.git", exact: "0.6.1"),
         // SweetCookieKit encapsulates the Chromium SQLite parsing, "Chrome
         // Safe Storage" Keychain decryption, and Safari binarycookies /
         // Firefox SQLite reads that the misc-providers feature needs.
