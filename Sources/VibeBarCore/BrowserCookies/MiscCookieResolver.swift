@@ -34,19 +34,25 @@ public enum MiscCookieResolver {
         /// Default browser-import order if the user hasn't picked
         /// `MiscProviderSettings.preferredBrowser`.
         public let importOrder: BrowserCookieImportOrder
+        /// Whether the live credential still exists in browser cookie stores.
+        /// Kimi now uses localStorage and must go through its explicit Web
+        /// login instead of reporting a stale cookie as a successful import.
+        public let supportsSystemBrowserImport: Bool
 
         public init(
             tool: ToolType,
             domains: [String],
             requiredNames: Set<String>,
             credentialNames: Set<String> = [],
-            importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder
+            importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder,
+            supportsSystemBrowserImport: Bool = true
         ) {
             self.tool = tool
             self.domains = domains
             self.requiredNames = requiredNames
             self.credentialNames = credentialNames
             self.importOrder = importOrder
+            self.supportsSystemBrowserImport = supportsSystemBrowserImport
         }
 
         public func minimizedHeader(from raw: String?) -> String? {
@@ -113,8 +119,11 @@ public enum MiscCookieResolver {
             case .all:
                 return true
             case .browserOnly:
-                return slot.origin != .manual
+                return slot.origin != .manual || slot.captureKind == .webLogin
             case .manualOnly:
+                // A WebView login is an explicit user action rather than a
+                // passive system-browser import, so keep it usable even when
+                // the user selected the manual credential lane.
                 return slot.origin == .manual
             case .none:
                 return false
@@ -173,6 +182,7 @@ public enum MiscCookieResolver {
     }
 
     public static func appendBrowserImport(for spec: Spec, instanceID: String) -> Resolution? {
+        guard spec.supportsSystemBrowserImport else { return nil }
         let settings = currentSettings(for: spec.tool, instanceID: instanceID)
         guard SlotFilter(settings: settings) != .none else { return nil }
         guard let imported = importFromBrowsers(
@@ -235,6 +245,9 @@ public enum MiscCookieResolver {
             case cookiesDisabled
             /// A session was found but the Keychain write failed.
             case saveFailed
+            /// The provider's live credential is not stored as a browser
+            /// cookie and must use its provider-specific setup flow.
+            case browserImportUnsupported
         }
 
         public let tool: ToolType
@@ -275,6 +288,13 @@ public enum MiscCookieResolver {
     ) -> [BatchImportOutcome] {
         let context = BrowserImportContext()
         return targets.map { target in
+            guard target.spec.supportsSystemBrowserImport else {
+                return BatchImportOutcome(
+                    tool: target.tool,
+                    instanceID: target.instanceID,
+                    result: .browserImportUnsupported
+                )
+            }
             let settings = currentSettings(for: target.tool, instanceID: target.instanceID)
             guard SlotFilter(settings: settings) != .none else {
                 return BatchImportOutcome(
@@ -327,9 +347,9 @@ public enum MiscCookieResolver {
     ///
     /// Used by `MiscCookieAutoImporter` when a fetch came back
     /// `needsLogin`. Slots are replaced **in place** with origin
-    /// `.autoRefresh`; `origin == .manual` slots are left alone, the
-    /// same policy `HiddenCookieRefresher` follows — a cookie the user
-    /// pasted by hand is theirs to manage.
+    /// `.autoRefresh`; manual and WebView-login slots are left alone.
+    /// Those credentials came from an explicit user action and must not be
+    /// overwritten by a stale cookie from the system browser.
     ///
     /// Returns `true` when at least one slot's header actually changed,
     /// which is the caller's signal that a retry is worth a round-trip.
@@ -350,7 +370,7 @@ public enum MiscCookieResolver {
 
         let refreshable = MiscCookieSlotStore
             .slots(for: spec.tool, instanceID: instanceID)
-            .filter { $0.origin != .manual }
+            .filter(\.isSystemBrowserRefreshable)
         guard !refreshable.isEmpty else { return false }
 
         let sessions = browserSessions(

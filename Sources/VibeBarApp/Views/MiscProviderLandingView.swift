@@ -27,6 +27,10 @@ struct MiscProviderLandingView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
 
+            Text("Kimi is configured from its provider page: current quota auth lives in browser local storage, not Chrome's cookie database.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
             if cookieTargets.isEmpty {
                 Text("No cookie-based providers are configured.")
                     .font(.caption)
@@ -35,7 +39,7 @@ struct MiscProviderLandingView: View {
                 HStack(spacing: 8) {
                     Button(action: importAll) {
                         Label(
-                            "Import Browser Cookies for All Providers",
+                            "Import Browser Cookies for Supported Providers",
                             systemImage: "safari"
                         )
                     }
@@ -48,7 +52,6 @@ struct MiscProviderLandingView: View {
                 Text("Reads your browsers once for all \(cookieTargets.count) cookie-based providers and adds a slot to each. Existing cookies stay; quotas are averaged across slots. macOS may ask for your login-keychain password once per Chromium-family browser involved.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-
                 if isImporting {
                     Text("Importing…")
                         .font(.caption)
@@ -89,6 +92,7 @@ struct MiscProviderLandingView: View {
     private var cookieTargets: [MiscCookieResolver.BatchImportTarget] {
         settingsStore.settings.miscProviderInstances.compactMap { instance in
             guard let spec = MiscCookieSpecCatalog.spec(for: instance.tool) else { return nil }
+            guard spec.supportsSystemBrowserImport else { return nil }
             return MiscCookieResolver.BatchImportTarget(spec: spec, instanceID: instance.id)
         }
     }
@@ -147,6 +151,7 @@ private struct OutcomeRow: View {
         case .noSessionFound:  return "minus.circle"
         case .cookiesDisabled: return "slash.circle"
         case .saveFailed:      return "exclamationmark.triangle"
+        case .browserImportUnsupported: return "info.circle"
         }
     }
 
@@ -154,6 +159,7 @@ private struct OutcomeRow: View {
         switch outcome {
         case .imported:                        return .green
         case .noSessionFound, .cookiesDisabled: return .secondary
+        case .browserImportUnsupported:         return .secondary
         case .saveFailed:                      return .orange
         }
     }
@@ -168,6 +174,8 @@ private struct OutcomeRow: View {
             return "Cookies disabled for this provider"
         case .saveFailed:
             return "Could not save to Keychain"
+        case .browserImportUnsupported:
+            return "Use this provider's setup page"
         }
     }
 }
