@@ -2,18 +2,16 @@ import AppKit
 import WebKit
 import VibeBarCore
 
-/// In-app WebView login flow for browser-cookie misc providers whose
-/// cookies can't be lifted out of the user's main browser (typically
-/// because Chrome on macOS encrypted them with `v11` / app-bound
-/// encryption, which our SweetCookieKit dependency can't read).
+/// In-app WebView login flow for misc providers whose live credential cannot
+/// be lifted out of the user's main browser (typically Chrome `v11` cookies,
+/// or a bearer token kept in first-party localStorage).
 ///
 /// Pattern mirrors `ClaudeWebLoginController`:
 /// 1. Open a window with a `WKWebView` pointed at the provider's
 ///    login URL.
 /// 2. Let the user sign in (handles password + SSO + popup flows).
-/// 3. Watch the cookie store; once the spec's required cookies are
-///    present, minimise them to `name=value; …` form and append a new
-///    slot to `MiscCookieSlotStore`.
+/// 3. Capture either the spec's required cookies or an explicitly configured
+///    first-party localStorage token, and append a Keychain-backed slot.
 /// 4. Fire the `onSaved` callback so the caller can kick a refresh.
 ///
 /// Generic on `ToolType` via `Config` — one instance per tool. Use
@@ -21,6 +19,13 @@ import VibeBarCore
 /// across SwiftUI re-renders.
 @MainActor
 final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
+    struct LocalStorageTokenCapture {
+        let storageKey: String
+        let cookieName: String
+        let allowedHostSuffixes: [String]
+        let sourceLabel: String
+    }
+
     struct Config {
         let tool: ToolType
         let loginURL: URL
@@ -37,6 +42,16 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         let windowTitle: String
         let savedConfirmation: String
         let setupHint: String
+        /// Some current web apps authenticate API calls from a bearer token
+        /// in localStorage instead of an HTTP cookie. When configured, the
+        /// login flow captures that token only from a trusted first-party
+        /// page and stores it as a cookie-shaped Keychain slot so the existing
+        /// adapter/resolver boundary remains unchanged.
+        var localStorageTokenCapture: LocalStorageTokenCapture? = nil
+        /// Password capture/autofill is useful for cookie login flows, but a
+        /// bearer-token-only flow such as Kimi neither needs nor should expose
+        /// that bridge.
+        var enablesFormAutofill = true
     }
 
     private let config: Config
@@ -47,7 +62,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
     private var popupWebView: WKWebView?
     private var statusLabel: NSTextField?
     private var onSaved: (() -> Void)?
-    private var didSaveCookiesForCurrentWindow = false
+    private var didSaveCredentialForCurrentWindow = false
     private let websiteDataStore = WKWebsiteDataStore.default()
     private var autofillBridges: [MiscWebLoginAutofillBridge] = []
 
@@ -80,7 +95,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         browserButton.bezelStyle = .rounded
 
         let saveButton = NSButton(
-            title: "Save Cookies",
+            title: config.localStorageTokenCapture == nil ? "Save Cookies" : "Save Session",
             target: self,
             action: #selector(saveCookies(_:))
         )
@@ -98,7 +113,14 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         self.statusLabel = statusLabel
 
-        let buttonRow = NSStackView(views: [statusLabel, NSView(), browserButton, reloadButton, saveButton])
+        var buttonViews: [NSView] = [statusLabel, NSView()]
+        // A system browser has a different localStorage partition from this
+        // WKWebView, so that escape hatch cannot complete a token-capture flow.
+        if config.localStorageTokenCapture == nil {
+            buttonViews.append(browserButton)
+        }
+        buttonViews.append(contentsOf: [reloadButton, saveButton])
+        let buttonRow = NSStackView(views: buttonViews)
         buttonRow.orientation = .horizontal
         buttonRow.alignment = .centerY
         buttonRow.spacing = 10
@@ -147,10 +169,74 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
     }
 
     @objc private func saveCookies(_ sender: Any?) {
-        guard webView != nil else { return }
+        persistAvailableCredential(manual: true)
+    }
+
+    private func persistAvailableCredential(manual: Bool) {
+        guard let webView else { return }
+        if let capture = config.localStorageTokenCapture {
+            persistLocalStorageToken(from: webView, capture: capture, manual: manual)
+            return
+        }
         websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
             Task { @MainActor in
-                self?.persistCookies(cookies, manual: true)
+                self?.persistCookies(cookies, manual: manual)
+            }
+        }
+    }
+
+    private func persistLocalStorageToken(
+        from webView: WKWebView,
+        capture: LocalStorageTokenCapture,
+        manual: Bool
+    ) {
+        guard HostSuffixMatcher.matches(
+            webView.url?.host,
+            allowedSuffixes: capture.allowedHostSuffixes
+        ) else {
+            if manual {
+                showAlert(message: "Open the \(config.tool.menuTitle) page in this window before saving.")
+            }
+            return
+        }
+        guard let keyData = try? JSONEncoder().encode(capture.storageKey),
+              let keyLiteral = String(data: keyData, encoding: .utf8) else {
+            return
+        }
+        let script = """
+        (function() {
+            try { return window.localStorage.getItem(\(keyLiteral)); }
+            catch (_) { return null; }
+        })();
+        """
+        webView.evaluateJavaScript(script) { [weak self] value, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                let token = (value as? String) ?? ""
+                let header: String? = switch self.config.tool {
+                case .kimi:
+                    KimiQuotaAdapter.cookieHeader(fromAccessToken: token)
+                default:
+                    nil
+                }
+                guard let header,
+                      CookieHeaderNormalizer.pairs(from: header).contains(where: {
+                          $0.name == capture.cookieName && !$0.value.isEmpty
+                      }) else {
+                    if manual {
+                        self.showAlert(
+                            message: "No active \(self.config.tool.menuTitle) session found yet. Finish login in this window, then try again."
+                        )
+                    }
+                    return
+                }
+                self.persistHeader(
+                    header,
+                    sourceLabel: capture.sourceLabel,
+                    origin: .manual,
+                    captureKind: .webLogin,
+                    manual: manual
+                )
             }
         }
     }
@@ -162,20 +248,37 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
             }
             return
         }
+        persistHeader(
+            header,
+            sourceLabel: "WebView login",
+            origin: .browserImport,
+            captureKind: nil,
+            manual: manual
+        )
+    }
+
+    private func persistHeader(
+        _ header: String,
+        sourceLabel: String,
+        origin: MiscCookieSlot.Origin,
+        captureKind: MiscCookieSlot.CaptureKind?,
+        manual: Bool
+    ) {
         let slot = MiscCookieSlot(
             cookieHeader: header,
-            sourceLabel: "WebView login",
+            sourceLabel: sourceLabel,
             importedAt: Date(),
-            origin: .browserImport
+            origin: origin,
+            captureKind: captureKind
         )
         let stored = MiscCookieSlotStore.append(slot, for: config.tool, instanceID: instanceID)
         guard stored else {
             if manual {
-                showAlert(message: "Could not save \(config.tool.menuTitle) cookies to Keychain.")
+                showAlert(message: "Could not save the \(config.tool.menuTitle) credential to Keychain.")
             }
             return
         }
-        didSaveCookiesForCurrentWindow = true
+        didSaveCredentialForCurrentWindow = true
         statusLabel?.stringValue = config.savedConfirmation
         if manual {
             showAlert(message: config.savedConfirmation)
@@ -183,11 +286,17 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         onSaved?()
     }
 
-    private func persistCookiesSilentlyIfAvailable() {
-        guard !didSaveCookiesForCurrentWindow else { return }
+    private func persistCredentialSilentlyIfAvailable() {
+        guard !didSaveCredentialForCurrentWindow else { return }
+        // Bearer tokens are more sensitive and WebKit may retain an expired
+        // localStorage value from an earlier login. Capture only on the user's
+        // explicit Save Session click after they can see the signed-in page.
+        if config.localStorageTokenCapture != nil {
+            return
+        }
         websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
             Task { @MainActor in
-                guard let self, !self.didSaveCookiesForCurrentWindow else { return }
+                guard let self, !self.didSaveCredentialForCurrentWindow else { return }
                 self.persistCookies(cookies, manual: false)
             }
         }
@@ -254,15 +363,17 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let userContent = WKUserContentController()
-        userContent.addUserScript(WKUserScript(
-            source: MiscWebLoginController.formAutofillScript,
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: false
-        ))
-        let bridge = MiscWebLoginAutofillBridge(controller: self)
-        userContent.add(bridge, name: MiscWebLoginController.formAutofillMessageName)
+        if config.enablesFormAutofill {
+            userContent.addUserScript(WKUserScript(
+                source: MiscWebLoginController.formAutofillScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: false
+            ))
+            let bridge = MiscWebLoginAutofillBridge(controller: self)
+            userContent.add(bridge, name: MiscWebLoginController.formAutofillMessageName)
+            autofillBridges.append(bridge)
+        }
         configuration.userContentController = userContent
-        autofillBridges.append(bridge)
         return configuration
     }
 
@@ -438,12 +549,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
     }
 
     private func isTrustedAuthHost(_ host: String?) -> Bool {
-        guard let host = host?.lowercased(), !host.isEmpty else { return false }
-        return config.trustedAuthHostSuffixes.contains { rawSuffix in
-            let suffix = rawSuffix.lowercased()
-            let normalized = suffix.hasPrefix(".") ? String(suffix.dropFirst()) : suffix
-            return host == normalized || host.hasSuffix("." + normalized)
-        }
+        HostSuffixMatcher.matches(host, allowedSuffixes: config.trustedAuthHostSuffixes)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -464,7 +570,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
         statusLabel = nil
         window = nil
         onSaved = nil
-        didSaveCookiesForCurrentWindow = false
+        didSaveCredentialForCurrentWindow = false
         for bridge in autofillBridges {
             bridge.detach()
         }
@@ -477,7 +583,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         statusLabel?.stringValue = config.setupHint
-        persistCookiesSilentlyIfAvailable()
+        persistCredentialSilentlyIfAvailable()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -567,7 +673,7 @@ final class MiscWebLoginController: NSObject, NSWindowDelegate, WKNavigationDele
 extension MiscWebLoginController: WKHTTPCookieStoreObserver {
     nonisolated func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
         Task { @MainActor in
-            self.persistCookiesSilentlyIfAvailable()
+            self.persistCredentialSilentlyIfAvailable()
         }
     }
 }
@@ -637,6 +743,24 @@ final class MiscWebLoginRegistry {
 
     private static func config(for tool: ToolType) -> MiscWebLoginController.Config? {
         switch tool {
+        case .kimi:
+            return MiscWebLoginController.Config(
+                tool: .kimi,
+                loginURL: URL(string: "https://www.kimi.com/membership/subscription?tab=quota")!,
+                cookieDomainSuffixes: ["kimi.com"],
+                requiredCookieNames: KimiQuotaAdapter.cookieSpec.requiredNames,
+                trustedAuthHostSuffixes: ["kimi.com"],
+                windowTitle: "Kimi Login",
+                savedConfirmation: "Kimi session saved.",
+                setupHint: "Sign in to Kimi and open My Quota, then click Save Session.",
+                localStorageTokenCapture: MiscWebLoginController.LocalStorageTokenCapture(
+                    storageKey: "access_token",
+                    cookieName: "kimi-auth",
+                    allowedHostSuffixes: ["kimi.com"],
+                    sourceLabel: "Kimi Web login"
+                ),
+                enablesFormAutofill: false
+            )
         case .mimo:
             return MiscWebLoginController.Config(
                 tool: .mimo,

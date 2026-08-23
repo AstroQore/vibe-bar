@@ -97,6 +97,68 @@ final class QuotaServiceFreshnessTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(attempted, queriedAt)
     }
 
+    func testErrorBearingQuotaPreservesTheLastSuccessfulCache() async throws {
+        let account = AccountIdentity(id: "embedded-error-cache", tool: .kimi, source: .browserCookie)
+        let queriedAt = Date().addingTimeInterval(-8 * 3_600)
+        let cachedBucket = QuotaBucket(
+            id: "kimi.weekly",
+            title: "Weekly",
+            shortLabel: "Wk",
+            usedPercent: 25
+        )
+        let service = QuotaService(
+            adapters: [.kimi: FreshnessSequenceAdapter(tool: .kimi, results: [
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .kimi,
+                    buckets: [cachedBucket],
+                    queriedAt: queriedAt
+                )),
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .kimi,
+                    buckets: [],
+                    queriedAt: Date(),
+                    error: .network("upstream")
+                ))
+            ])],
+            mockProvider: { false }
+        )
+
+        _ = await service.refresh(account)
+        let returned = await service.refresh(account)
+
+        XCTAssertEqual(returned.buckets, [cachedBucket])
+        XCTAssertEqual(returned.error, .network("upstream"))
+        XCTAssertEqual(service.cachedQuota(for: account.id)?.buckets, [cachedBucket])
+        XCTAssertEqual(service.lastUpdatedByAccount[account.id], queriedAt)
+        XCTAssertEqual(service.lastErrorByAccount[account.id], .network("upstream"))
+    }
+
+    func testErrorBearingQuotaWithoutCacheDoesNotBecomeASuccess() async {
+        let account = AccountIdentity(id: "embedded-error-empty", tool: .kimi, source: .browserCookie)
+        let service = QuotaService(
+            adapters: [.kimi: FreshnessSequenceAdapter(tool: .kimi, results: [
+                .success(AccountQuota(
+                    accountId: account.id,
+                    tool: .kimi,
+                    buckets: [],
+                    queriedAt: Date(),
+                    error: .needsLogin
+                ))
+            ])],
+            mockProvider: { false }
+        )
+
+        let returned = await service.refresh(account)
+
+        XCTAssertTrue(returned.buckets.isEmpty)
+        XCTAssertEqual(returned.error, .needsLogin)
+        XCTAssertNil(service.cachedQuota(for: account.id))
+        XCTAssertNil(service.lastUpdatedByAccount[account.id])
+        XCTAssertEqual(service.lastErrorByAccount[account.id], .needsLogin)
+    }
+
     func testClearingAnAccountDropsBothTimestamps() async {
         let account = AccountIdentity(id: "freshness-clear", tool: .gemini, source: .webCookie)
         let service = QuotaService(

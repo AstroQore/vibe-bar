@@ -38,6 +38,29 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(slot.cookieHeader, "foo=bar")
     }
 
+    func testWebLoginCaptureKindRoundTripsWithLegacyOrigin() throws {
+        let slot = MiscCookieSlot(
+            cookieHeader: "kimi-auth=synthetic.header.signature",
+            sourceLabel: "Kimi Web login",
+            importedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            origin: .manual,
+            captureKind: .webLogin
+        )
+
+        XCTAssertEqual(try JSONDecoder().decode(MiscCookieSlot.self, from: JSONEncoder().encode(slot)), slot)
+    }
+
+    func testDev40DecoderCanReadWebLoginSlotWithoutDroppingTheArray() throws {
+        let slot = webLoginSlot()
+        let data = try JSONEncoder().encode([slot])
+
+        let legacy = try JSONDecoder().decode([Dev40MiscCookieSlot].self, from: data)
+
+        XCTAssertEqual(legacy.count, 1)
+        XCTAssertEqual(legacy[0].cookieHeader, slot.cookieHeader)
+        XCTAssertEqual(legacy[0].origin, .manual)
+    }
+
     func testSlotFilterFromSettings() {
         // Auto mode: all origins pass.
         let auto = MiscCookieResolver.SlotFilter(
@@ -46,6 +69,7 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(auto, .all)
         XCTAssertTrue(auto.allows(slot(origin: .manual)))
         XCTAssertTrue(auto.allows(slot(origin: .browserImport)))
+        XCTAssertTrue(auto.allows(webLoginSlot()))
         XCTAssertTrue(auto.allows(slot(origin: .autoRefresh)))
 
         // Auto with cookieSource = manual collapses to manualOnly.
@@ -54,6 +78,7 @@ final class MiscCookieSlotTests: XCTestCase {
         )
         XCTAssertEqual(manualViaCookieSource, .manualOnly)
         XCTAssertTrue(manualViaCookieSource.allows(slot(origin: .manual)))
+        XCTAssertTrue(manualViaCookieSource.allows(webLoginSlot()))
         XCTAssertFalse(manualViaCookieSource.allows(slot(origin: .browserImport)))
 
         // Explicit browserOnly source mode.
@@ -63,6 +88,7 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(browser, .browserOnly)
         XCTAssertFalse(browser.allows(slot(origin: .manual)))
         XCTAssertTrue(browser.allows(slot(origin: .browserImport)))
+        XCTAssertTrue(browser.allows(webLoginSlot()))
         XCTAssertTrue(browser.allows(slot(origin: .autoRefresh)))
 
         // apiOnly / off shut every slot out.
@@ -78,6 +104,13 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(off, .none)
     }
 
+    func testOnlySystemBrowserOriginsCanBeSilentlyReimported() {
+        XCTAssertFalse(slot(origin: .manual).isSystemBrowserRefreshable)
+        XCTAssertTrue(slot(origin: .browserImport).isSystemBrowserRefreshable)
+        XCTAssertTrue(slot(origin: .autoRefresh).isSystemBrowserRefreshable)
+        XCTAssertFalse(webLoginSlot().isSystemBrowserRefreshable)
+    }
+
     private func slot(origin: MiscCookieSlot.Origin) -> MiscCookieSlot {
         MiscCookieSlot(
             cookieHeader: "name=value",
@@ -86,4 +119,30 @@ final class MiscCookieSlotTests: XCTestCase {
             origin: origin
         )
     }
+
+    private func webLoginSlot() -> MiscCookieSlot {
+        MiscCookieSlot(
+            cookieHeader: "kimi-auth=synthetic.header.signature",
+            sourceLabel: "Kimi Web login",
+            importedAt: Date(),
+            origin: .manual,
+            captureKind: .webLogin
+        )
+    }
+}
+
+/// Exact wire shape shipped in Dev 40. Unknown additive object fields are
+/// ignored by synthesized Decodable, but unknown enum raw values are not.
+private struct Dev40MiscCookieSlot: Decodable {
+    enum Origin: String, Decodable {
+        case manual
+        case browserImport
+        case autoRefresh
+    }
+
+    let id: UUID
+    let cookieHeader: String
+    let sourceLabel: String
+    let importedAt: Date
+    let origin: Origin
 }

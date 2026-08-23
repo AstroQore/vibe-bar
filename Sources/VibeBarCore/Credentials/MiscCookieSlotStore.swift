@@ -12,11 +12,19 @@ public struct MiscCookieSlot: Codable, Equatable, Sendable, Identifiable {
         /// Pasted by the user via the Settings cookie field.
         case manual
         /// Snapshotted from a browser's cookie store (SweetCookieKit) or
-        /// captured by the in-app `MiscWebLoginController` web view.
+        /// a cookie-based in-app `MiscWebLoginController` web view.
         case browserImport
         /// Replaced in place by `HiddenCookieRefresher` after a silent
         /// console keepalive load.
         case autoRefresh
+    }
+
+    /// Additive metadata intentionally separate from `Origin`. Older builds
+    /// ignore this unknown optional JSON field while still decoding the slot's
+    /// wire-compatible `.manual` origin, so downgrading cannot make the whole
+    /// Keychain array unreadable and overwrite it on the next append.
+    public enum CaptureKind: String, Codable, Sendable, Equatable {
+        case webLogin
     }
 
     public let id: UUID
@@ -24,19 +32,27 @@ public struct MiscCookieSlot: Codable, Equatable, Sendable, Identifiable {
     public var sourceLabel: String
     public var importedAt: Date
     public var origin: Origin
+    public var captureKind: CaptureKind?
 
     public init(
         id: UUID = UUID(),
         cookieHeader: String,
         sourceLabel: String,
         importedAt: Date = Date(),
-        origin: Origin
+        origin: Origin,
+        captureKind: CaptureKind? = nil
     ) {
         self.id = id
         self.cookieHeader = cookieHeader
         self.sourceLabel = sourceLabel
         self.importedAt = importedAt
         self.origin = origin
+        self.captureKind = captureKind
+    }
+
+    public var isSystemBrowserRefreshable: Bool {
+        guard captureKind != .webLogin else { return false }
+        return origin == .browserImport || origin == .autoRefresh
     }
 }
 
@@ -110,6 +126,7 @@ public enum MiscCookieSlotStore {
             list[existing].importedAt = slot.importedAt
             list[existing].sourceLabel = slot.sourceLabel
             list[existing].origin = slot.origin
+            list[existing].captureKind = slot.captureKind
         } else {
             list.append(slot)
         }

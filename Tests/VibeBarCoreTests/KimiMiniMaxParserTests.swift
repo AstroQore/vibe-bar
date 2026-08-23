@@ -4,6 +4,27 @@ import XCTest
 final class KimiParserTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_715_000_000)
 
+    func testKimiAccessTokenBecomesCookieShapedHeader() {
+        let token = "synthetic-header.synthetic_payload.synthetic-signature"
+        XCTAssertEqual(
+            KimiQuotaAdapter.cookieHeader(fromAccessToken: "  \(token)\n"),
+            "kimi-auth=\(token)"
+        )
+    }
+
+    func testKimiAccessTokenRejectsMalformedOrInjectableValues() {
+        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "not-a-jwt"))
+        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "a..c"))
+        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "aaa.bbb.ccc;other=value"))
+        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "aaa.bbb.ccc\r\nInjected: value"))
+        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "aaa.bébé.ccc"))
+        XCTAssertNil(
+            KimiQuotaAdapter.cookieHeader(
+                fromAccessToken: "aaa.\(String(repeating: "b", count: 4_100)).ccc"
+            )
+        )
+    }
+
     func testParsesWeeklyAndRateLimit() throws {
         let json = """
         {
@@ -141,6 +162,252 @@ final class KimiParserTests: XCTestCase {
         )
     }
 
+    func testParsesMembershipStatsInStableBucketOrder() throws {
+        let snap = try KimiResponseParser.parseMembership(data: membershipStatsJSON)
+
+        XCTAssertEqual(snap.buckets.map(\.id), ["kimi.weekly", "kimi.rate", "kimi.monthly"])
+        XCTAssertEqual(snap.buckets[0].usedPercent, 34, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets[1].usedPercent, 12, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets[2].usedPercent, 56, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets.map(\.rawWindowSeconds), [7 * 86_400, 5 * 3_600, 30 * 86_400])
+    }
+
+    func testMembershipPrimaryDoesNotCallLegacy() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .success(membershipStatsJSON)
+        ])
+
+        let snap = try await KimiQuotaAdapter.fetchSnapshot(
+            authToken: "synthetic.header.signature",
+            queriedAt: now,
+            request: { request in try await recorder.data(for: request) }
+        )
+
+        XCTAssertEqual(snap.buckets.map(\.id), ["kimi.weekly", "kimi.rate", "kimi.monthly"])
+        let requestedPaths = await recorder.requestedPaths()
+        XCTAssertEqual(requestedPaths, [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+        ])
+    }
+
+    func testPartialMembershipUsesLegacyToFillMissingFiveHourWindow() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .success(partialMembershipStatsJSON),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .success(legacyUsageJSON)
+        ])
+
+        let snap = try await KimiQuotaAdapter.fetchSnapshot(
+            authToken: "synthetic.header.signature",
+            queriedAt: now,
+            request: { request in try await recorder.data(for: request) }
+        )
+
+        XCTAssertEqual(snap.buckets.map(\.id), ["kimi.weekly", "kimi.rate", "kimi.monthly"])
+        XCTAssertEqual(snap.buckets[0].usedPercent, 34, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets[1].usedPercent, 12, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets[2].usedPercent, 56, accuracy: 0.001)
+        let requestedPaths = await recorder.requestedPaths()
+        XCTAssertEqual(requestedPaths, [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats",
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+        ])
+    }
+
+    func testPartialMembershipSurvivesFailedLegacySupplement() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .success(partialMembershipStatsJSON),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .failure(.needsLogin)
+        ])
+
+        let snap = try await KimiQuotaAdapter.fetchSnapshot(
+            authToken: "synthetic.header.signature",
+            queriedAt: now,
+            request: { request in try await recorder.data(for: request) }
+        )
+
+        XCTAssertEqual(snap.buckets.map(\.id), ["kimi.weekly", "kimi.monthly"])
+        XCTAssertEqual(snap.buckets[0].usedPercent, 34, accuracy: 0.001)
+        XCTAssertEqual(snap.buckets[1].usedPercent, 56, accuracy: 0.001)
+    }
+
+    func testPartialMembershipSupplementCancellationPropagates() async throws {
+        let membershipPath = "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+        let legacyPath = "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+        let recorder = KimiRequestRecorder(
+            responses: [membershipPath: .success(partialMembershipStatsJSON)],
+            cancelledPaths: [legacyPath]
+        )
+
+        do {
+            _ = try await KimiQuotaAdapter.fetchSnapshot(
+                authToken: "synthetic.header.signature",
+                queriedAt: now,
+                request: { request in try await recorder.data(for: request) }
+            )
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Expected CancellationError, got \(error)")
+        }
+    }
+
+    func testMembershipParseFailureFallsBackToLegacyUsage() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .success(Data("{}".utf8)),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .success(legacyUsageJSON)
+        ])
+
+        let snap = try await KimiQuotaAdapter.fetchSnapshot(
+            authToken: "synthetic.header.signature",
+            queriedAt: now,
+            request: { request in try await recorder.data(for: request) }
+        )
+
+        XCTAssertEqual(snap.buckets.map(\.id), ["kimi.weekly", "kimi.rate"])
+        let requestedPaths = await recorder.requestedPaths()
+        XCTAssertEqual(requestedPaths, [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats",
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+        ])
+    }
+
+    func testMembershipCredentialFailureFallsBackToLegacyUsage() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .failure(.needsLogin),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .success(legacyUsageJSON)
+        ])
+
+        let snap = try await KimiQuotaAdapter.fetchSnapshot(
+            authToken: "synthetic.header.signature",
+            queriedAt: now,
+            request: { request in try await recorder.data(for: request) }
+        )
+
+        XCTAssertEqual(snap.buckets.map(\.id), ["kimi.weekly", "kimi.rate"])
+        let requestedPaths = await recorder.requestedPaths()
+        XCTAssertEqual(requestedPaths, [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats",
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+        ])
+    }
+
+    func testBothKimiEndpointsRejectCredentialAsNeedsLogin() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .failure(.needsLogin),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .failure(.needsLogin)
+        ])
+
+        do {
+            _ = try await KimiQuotaAdapter.fetchSnapshot(
+                authToken: "synthetic.header.signature",
+                queriedAt: now,
+                request: { request in try await recorder.data(for: request) }
+            )
+            XCTFail("Expected needsLogin")
+        } catch let error as QuotaError {
+            XCTAssertEqual(error, .needsLogin)
+        }
+    }
+
+    func testMembershipCredentialErrorDoesNotMaskLegacyNetworkError() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .failure(.needsLogin),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .failure(.network("legacy unavailable"))
+        ])
+
+        do {
+            _ = try await KimiQuotaAdapter.fetchSnapshot(
+                authToken: "synthetic.header.signature",
+                queriedAt: now,
+                request: { request in try await recorder.data(for: request) }
+            )
+            XCTFail("Expected network error")
+        } catch let error as QuotaError {
+            XCTAssertEqual(error, .network("legacy unavailable"))
+        }
+    }
+
+    func testLegacyCredentialErrorDoesNotMaskMembershipParseError() async throws {
+        let parseError = QuotaError.parseFailure("membership changed")
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .failure(parseError),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .failure(.needsLogin)
+        ])
+
+        do {
+            _ = try await KimiQuotaAdapter.fetchSnapshot(
+                authToken: "synthetic.header.signature",
+                queriedAt: now,
+                request: { request in try await recorder.data(for: request) }
+            )
+            XCTFail("Expected parse error")
+        } catch let error as QuotaError {
+            XCTAssertEqual(error, parseError)
+        }
+    }
+
+    func testMembershipRateLimitStillFallsBackToLegacyUsage() async throws {
+        let recorder = KimiRequestRecorder(responses: [
+            "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .failure(.rateLimited),
+            "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages": .success(legacyUsageJSON)
+        ])
+
+        let snap = try await KimiQuotaAdapter.fetchSnapshot(
+            authToken: "synthetic.header.signature",
+            queriedAt: now,
+            request: { request in try await recorder.data(for: request) }
+        )
+
+        XCTAssertEqual(snap.buckets.map(\.id), ["kimi.weekly", "kimi.rate"])
+    }
+
+    func testMembershipTimeoutPreservesPrimaryErrorWhenLegacyAlsoFails() async throws {
+        let membershipPath = "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+        let legacyPath = "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+        let recorder = KimiRequestRecorder(
+            responses: [
+                membershipPath: .success(membershipStatsJSON),
+                legacyPath: .failure(.network("legacy unavailable"))
+            ],
+            delayNanoseconds: [membershipPath: 50_000_000]
+        )
+
+        do {
+            _ = try await KimiQuotaAdapter.fetchSnapshot(
+                authToken: "synthetic.header.signature",
+                queriedAt: now,
+                membershipTimeoutSeconds: 0.001,
+                request: { request in try await recorder.data(for: request) }
+            )
+            XCTFail("Expected timeout")
+        } catch let error as QuotaError {
+            XCTAssertEqual(error, .network("timeout"))
+        }
+        let requestedPaths = await recorder.requestedPaths()
+        XCTAssertEqual(requestedPaths, [membershipPath, legacyPath])
+    }
+
+    func testMembershipCancellationDoesNotCallLegacy() async throws {
+        let membershipPath = "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+        let legacyPath = "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+        let recorder = KimiRequestRecorder(
+            responses: [legacyPath: .success(legacyUsageJSON)],
+            cancelledPaths: [membershipPath]
+        )
+
+        do {
+            _ = try await KimiQuotaAdapter.fetchSnapshot(
+                authToken: "synthetic.header.signature",
+                queriedAt: now,
+                request: { request in try await recorder.data(for: request) }
+            )
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Expected CancellationError, got \(error)")
+        }
+        let requestedPaths = await recorder.requestedPaths()
+        XCTAssertEqual(requestedPaths, [membershipPath])
+    }
+
     func testMonthlyIgnoresNonSubscriptionBalance() throws {
         let json = """
         {
@@ -206,6 +473,97 @@ final class KimiParserTests: XCTestCase {
         XCTAssertEqual(KimiSessionInfo.fromJWT("garbage").deviceId, nil)
         XCTAssertEqual(KimiSessionInfo.fromJWT("a.b").sessionId, nil)
     }
+
+    private var membershipStatsJSON: Data {
+        Data("""
+        {
+          "ratelimitCode5h": {
+            "ratio": 0.12,
+            "enabled": true,
+            "resetTime": "2026-08-24T01:47:00Z"
+          },
+          "ratelimitCode7d": {
+            "ratio": 0.34,
+            "enabled": true,
+            "resetTime": "2026-08-30T00:46:59Z"
+          },
+          "subscriptionBalance": {
+            "feature": "FEATURE_OMNI",
+            "type": "SUBSCRIPTION",
+            "amountUsedRatio": 0.56,
+            "kimiCodeUsedRatio": 0.20,
+            "expireTime": "2026-09-02T00:00:00Z"
+          }
+        }
+        """.utf8)
+    }
+
+    private var partialMembershipStatsJSON: Data {
+        Data("""
+        {
+          "ratelimitCode7d": {
+            "ratio": 0.34,
+            "enabled": true,
+            "resetTime": "2026-08-30T00:46:59Z"
+          },
+          "subscriptionBalance": {
+            "feature": "FEATURE_OMNI",
+            "type": "SUBSCRIPTION",
+            "amountUsedRatio": 0.56,
+            "expireTime": "2026-09-02T00:00:00Z"
+          }
+        }
+        """.utf8)
+    }
+
+    private var legacyUsageJSON: Data {
+        Data("""
+        {
+          "usages": [{
+            "scope": "FEATURE_CODING",
+            "detail": {"limit":"1000","used":"234","remaining":"766"},
+            "limits": [{
+              "window": {"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},
+              "detail": {"limit":"100","used":"12","remaining":"88"}
+            }]
+          }]
+        }
+        """.utf8)
+    }
+}
+
+private actor KimiRequestRecorder {
+    private let responses: [String: Result<Data, QuotaError>]
+    private let cancelledPaths: Set<String>
+    private let delayNanoseconds: [String: UInt64]
+    private var paths: [String] = []
+
+    init(
+        responses: [String: Result<Data, QuotaError>],
+        cancelledPaths: Set<String> = [],
+        delayNanoseconds: [String: UInt64] = [:]
+    ) {
+        self.responses = responses
+        self.cancelledPaths = cancelledPaths
+        self.delayNanoseconds = delayNanoseconds
+    }
+
+    func data(for request: URLRequest) async throws -> Data {
+        let path = request.url?.path ?? ""
+        paths.append(path)
+        if let delay = delayNanoseconds[path] {
+            try await Task.sleep(nanoseconds: delay)
+        }
+        if cancelledPaths.contains(path) {
+            throw CancellationError()
+        }
+        guard let response = responses[path] else {
+            throw QuotaError.unknown("unexpected Kimi request")
+        }
+        return try response.get()
+    }
+
+    func requestedPaths() -> [String] { paths }
 }
 
 final class MiniMaxParserTests: XCTestCase {

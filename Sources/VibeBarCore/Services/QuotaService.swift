@@ -177,7 +177,11 @@ public final class QuotaService: ObservableObject {
         let outcome = await AsyncTimeout.run(seconds: refreshTimeoutSeconds) {
             defer { completion.finish() }
             do {
-                return QuotaAdapterFetchResult.success(try await adapter.fetch(for: account))
+                let quota = try await adapter.fetch(for: account)
+                if let error = quota.error {
+                    return QuotaAdapterFetchResult.failure(error)
+                }
+                return QuotaAdapterFetchResult.success(quota)
             } catch let qe as QuotaError {
                 return QuotaAdapterFetchResult.failure(qe)
             } catch {

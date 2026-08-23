@@ -2,23 +2,21 @@ import Foundation
 
 /// Moonshot / Kimi (kimi.com) usage adapter.
 ///
-/// Auth: the `kimi-auth` JWT cookie. Source resolution flows through
-/// `MiscCookieResolver` so the user can choose between auto-import
-/// from Chrome/Edge/Brave/Arc/Safari/Firefox, manual paste, or
-/// fully off.
-///
-/// Endpoints:
-/// `POST https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`
-/// with body `{"scope":["FEATURE_CODING"]}`. Headers reproduce the
-/// web app — Bearer token, kimi-auth cookie, browser User-Agent,
-/// connect-protocol-version, plus session / device / traffic IDs
-/// extracted from the JWT payload.
+/// Auth: a Kimi bearer JWT. Current Kimi Web keeps it in
+/// `localStorage.access_token`; Vibe Bar's explicit Web login stores it as a
+/// synthetic `kimi-auth=<token>` Keychain slot. Legacy browser cookies and
+/// manual headers use that same slot shape, so source resolution continues to
+/// flow through `MiscCookieResolver`.
 ///
 /// `POST https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`
-/// with body `{}` adds the shared monthly subscription balance shown on
-/// Kimi's Membership → My Quota page. That request is best-effort so a
-/// membership rollout or transient failure cannot erase the established
-/// weekly / five-hour quota.
+/// with body `{}` is the primary source for the weekly, five-hour and
+/// shared monthly balances shown on Kimi's Membership → My Quota page.
+/// Older deployments fall back to
+/// `POST https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`
+/// with body `{"scope":["FEATURE_CODING"]}` for weekly / five-hour data.
+/// Headers reproduce the web app — Bearer token, kimi-auth cookie, browser
+/// User-Agent, connect-protocol-version, plus session / device / traffic IDs
+/// extracted from the JWT payload.
 ///
 /// Output: weekly bucket (primary) + 5-hour rate-limit bucket + monthly
 /// subscription bucket (when present).
@@ -31,8 +29,31 @@ public struct KimiQuotaAdapter: QuotaAdapter {
     public static let cookieSpec = MiscCookieResolver.Spec(
         tool: .kimi,
         domains: ["www.kimi.com", "kimi.com"],
-        requiredNames: ["kimi-auth"]
+        requiredNames: ["kimi-auth"],
+        supportsSystemBrowserImport: false
     )
+
+    /// Convert the current Kimi Web `localStorage.access_token` JWT into the
+    /// cookie-shaped Keychain slot already consumed by this adapter. Keeping
+    /// the validation in Core prevents a WebView value containing separators
+    /// or control characters from being persisted as a malformed header.
+    public static func cookieHeader(fromAccessToken raw: String) -> String? {
+        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard token.count >= 16, token.count <= 4_096 else { return nil }
+        let segments = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count == 3, segments.allSatisfy({ !$0.isEmpty }) else { return nil }
+        guard segments.allSatisfy({ segment in
+            segment.utf8.allSatisfy { byte in
+                (48...57).contains(byte) ||
+                    (65...90).contains(byte) ||
+                    (97...122).contains(byte) ||
+                    byte == 45 || byte == 95
+            }
+        }) else {
+            return nil
+        }
+        return "kimi-auth=\(token)"
+    }
 
     private static let usageEndpoint = URL(string:
         "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
@@ -62,12 +83,14 @@ public struct KimiQuotaAdapter: QuotaAdapter {
         ) { resolution in
             try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
         }
-        return MiscQuotaAggregator.aggregate(
+        var aggregated = MiscQuotaAggregator.aggregate(
             tool: .kimi,
             account: account,
             results: results,
             queriedAt: queriedAt
         )
+        aggregated.buckets = KimiResponseParser.canonicalBucketOrder(aggregated.buckets)
+        return aggregated
     }
 
     private func fetchOneSlot(
@@ -82,34 +105,145 @@ public struct KimiQuotaAdapter: QuotaAdapter {
             throw QuotaError.noCredential
         }
 
-        let usageRequest = Self.usageRequest(authToken: authToken)
-        let (data, _) = try await data(for: usageRequest)
-        let snapshot = try KimiResponseParser.parse(data: data, now: queriedAt)
-
-        var buckets = snapshot.buckets
-        let membershipOutcome = await AsyncTimeout.run(seconds: Self.membershipStatsWallTimeSeconds) {
-            do {
-                let request = Self.membershipStatsRequest(authToken: authToken)
-                let (data, _) = try await self.data(for: request)
-                return KimiMembershipFetchOutcome.data(data)
-            } catch {
-                return KimiMembershipFetchOutcome.failed
-            }
-        }
-        if case let .completed(.data(membershipData)) = membershipOutcome,
-           let monthly = try? KimiResponseParser.parseMonthly(data: membershipData) {
-            buckets.append(monthly)
+        let snapshot = try await Self.fetchSnapshot(
+            authToken: authToken,
+            queriedAt: queriedAt
+        ) { request in
+            let (data, _) = try await self.data(for: request)
+            return data
         }
 
         return AccountQuota(
             accountId: account.id,
             tool: .kimi,
-            buckets: buckets,
+            buckets: snapshot.buckets,
             plan: nil,
             email: account.email,
             queriedAt: queriedAt,
             error: nil
         )
+    }
+
+    static func fetchSnapshot(
+        authToken: String,
+        queriedAt: Date,
+        membershipTimeoutSeconds: Double = Self.membershipStatsWallTimeSeconds,
+        request: @escaping @Sendable (URLRequest) async throws -> Data
+    ) async throws -> KimiResponseParser.Snapshot {
+        let membershipOutcome = await AsyncTimeout.run(seconds: membershipTimeoutSeconds) {
+            do {
+                let data = try await request(Self.membershipStatsRequest(authToken: authToken))
+                return KimiMembershipFetchOutcome.snapshot(
+                    try KimiResponseParser.parseMembership(data: data)
+                )
+            } catch is CancellationError {
+                return KimiMembershipFetchOutcome.cancelled
+            } catch let error as URLError where error.code == .cancelled {
+                return KimiMembershipFetchOutcome.cancelled
+            } catch let error as QuotaError {
+                return KimiMembershipFetchOutcome.failed(error)
+            } catch {
+                return KimiMembershipFetchOutcome.failed(mapURLError(error))
+            }
+        }
+        try Task.checkCancellation()
+
+        switch membershipOutcome {
+        case let .completed(.snapshot(membership)):
+            return try await supplementMembershipIfNeeded(
+                membership,
+                authToken: authToken,
+                queriedAt: queriedAt,
+                request: request
+            )
+        case .completed(.cancelled):
+            throw CancellationError()
+        case let .completed(.failed(primaryError)):
+            // Older Kimi deployments expose only BillingService/GetUsages.
+            // Keep that as a compatibility fallback, but never make the old
+            // endpoint a prerequisite for the current Membership page data.
+            // Membership non-200 responses are not authoritative credential
+            // failures: Kimi's current web client can reject this optional
+            // surface while the same token still works for BillingService.
+            return try await legacySnapshot(
+                authToken: authToken,
+                queriedAt: queriedAt,
+                primaryError: primaryError,
+                request: request
+            )
+        case .timedOut:
+            return try await legacySnapshot(
+                authToken: authToken,
+                queriedAt: queriedAt,
+                primaryError: .network("timeout"),
+                request: request
+            )
+        }
+    }
+
+    /// Membership is authoritative for every bucket it returns, but rollouts
+    /// can temporarily omit one coding window. Fill only missing weekly/5h
+    /// lanes from Billing; a failed supplement must not erase valid monthly or
+    /// weekly Membership data.
+    private static func supplementMembershipIfNeeded(
+        _ membership: KimiResponseParser.Snapshot,
+        authToken: String,
+        queriedAt: Date,
+        request: @escaping @Sendable (URLRequest) async throws -> Data
+    ) async throws -> KimiResponseParser.Snapshot {
+        let ids = Set(membership.buckets.map(\.id))
+        guard !ids.contains("kimi.weekly") || !ids.contains("kimi.rate") else {
+            return membership
+        }
+        try Task.checkCancellation()
+        do {
+            let data = try await request(Self.usageRequest(authToken: authToken))
+            let legacy = try KimiResponseParser.parse(data: data, now: queriedAt)
+            return KimiResponseParser.merging(preferred: membership, fallback: legacy)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch {
+            try Task.checkCancellation()
+            return membership
+        }
+    }
+
+    private static func legacySnapshot(
+        authToken: String,
+        queriedAt: Date,
+        primaryError: QuotaError,
+        request: @escaping @Sendable (URLRequest) async throws -> Data
+    ) async throws -> KimiResponseParser.Snapshot {
+        try Task.checkCancellation()
+        do {
+            let data = try await request(Self.usageRequest(authToken: authToken))
+            return try KimiResponseParser.parse(data: data, now: queriedAt)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch let fallbackError as QuotaError {
+            throw mergedFailure(primary: primaryError, fallback: fallbackError)
+        } catch {
+            throw primaryError
+        }
+    }
+
+    /// The Membership endpoint is optional and can reject a token that the
+    /// Billing endpoint still accepts, so one credential-shaped error is not
+    /// enough to tell the user to log in again. The same rule keeps a single
+    /// endpoint's rate limit from hiding a more useful error from the other.
+    private static func mergedFailure(primary: QuotaError, fallback: QuotaError) -> QuotaError {
+        if primary.isCredentialState, fallback.isCredentialState {
+            return .needsLogin
+        }
+        if primary.isCredentialState { return fallback }
+        if fallback.isCredentialState { return primary }
+        if primary == .rateLimited, fallback != .rateLimited { return fallback }
+        if fallback == .rateLimited, primary != .rateLimited { return primary }
+        return primary
     }
 
     static func usageRequest(authToken: String) -> URLRequest {
@@ -166,6 +300,10 @@ public struct KimiQuotaAdapter: QuotaAdapter {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await self.session.data(for: request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw error
         } catch {
             throw QuotaError.network("Kimi network error: \(error.localizedDescription)")
         }
@@ -187,8 +325,9 @@ public struct KimiQuotaAdapter: QuotaAdapter {
 }
 
 private enum KimiMembershipFetchOutcome: Sendable {
-    case data(Data)
-    case failed
+    case snapshot(KimiResponseParser.Snapshot)
+    case failed(QuotaError)
+    case cancelled
 }
 
 // MARK: - JWT session info
@@ -221,7 +360,7 @@ struct KimiSessionInfo {
 // MARK: - Response parsing
 
 enum KimiResponseParser {
-    struct Snapshot {
+    struct Snapshot: Sendable {
         var buckets: [QuotaBucket]
     }
 
@@ -267,13 +406,74 @@ enum KimiResponseParser {
     }
 
     static func parseMonthly(data: Data) throws -> QuotaBucket? {
+        makeMonthlyBucket(from: try decodeMembership(data: data).subscriptionBalance)
+    }
+
+    static func parseMembership(data: Data) throws -> Snapshot {
+        let response = try decodeMembership(data: data)
+        var buckets: [QuotaBucket] = []
+
+        if let weekly = makeRateBucket(
+            id: "kimi.weekly",
+            title: "Weekly",
+            shortLabel: "Wk",
+            from: response.ratelimitCode7d,
+            windowSeconds: 7 * 86_400
+        ) {
+            buckets.append(weekly)
+        }
+        if let fiveHour = makeRateBucket(
+            id: "kimi.rate",
+            title: "5 Hours",
+            shortLabel: "5h",
+            from: response.ratelimitCode5h,
+            windowSeconds: 5 * 3600
+        ) {
+            buckets.append(fiveHour)
+        }
+        if let monthly = makeMonthlyBucket(from: response.subscriptionBalance) {
+            buckets.append(monthly)
+        }
+
+        guard !buckets.isEmpty else {
+            throw QuotaError.parseFailure("Kimi membership response had no usable usage windows.")
+        }
+        return Snapshot(buckets: buckets)
+    }
+
+    static func canonicalBucketOrder(_ buckets: [QuotaBucket]) -> [QuotaBucket] {
+        let rank = ["kimi.weekly", "kimi.rate", "kimi.monthly"]
+        return buckets.sorted { lhs, rhs in
+            let left = rank.firstIndex(of: lhs.id) ?? rank.count
+            let right = rank.firstIndex(of: rhs.id) ?? rank.count
+            return left == right ? lhs.id < rhs.id : left < right
+        }
+    }
+
+    static func merging(preferred: Snapshot, fallback: Snapshot) -> Snapshot {
+        var buckets = fallback.buckets
+        for bucket in preferred.buckets {
+            if let index = buckets.firstIndex(where: { $0.id == bucket.id }) {
+                buckets[index] = bucket
+            } else {
+                buckets.append(bucket)
+            }
+        }
+        return Snapshot(buckets: canonicalBucketOrder(buckets))
+    }
+
+    private static func decodeMembership(data: Data) throws -> KimiMembershipStatsResponse {
         let response: KimiMembershipStatsResponse
         do {
             response = try JSONDecoder().decode(KimiMembershipStatsResponse.self, from: data)
         } catch {
             throw QuotaError.parseFailure("Kimi membership response not parseable: \(error.localizedDescription)")
         }
-        guard let balance = response.subscriptionBalance,
+        return response
+    }
+
+    private static func makeMonthlyBucket(from balance: KimiSubscriptionBalance?) -> QuotaBucket? {
+        guard let balance,
               balance.feature == "FEATURE_OMNI",
               balance.type == "SUBSCRIPTION",
               let ratio = balance.amountUsedRatio,
@@ -287,6 +487,29 @@ enum KimiResponseParser {
             usedPercent: max(0, min(100, ratio * 100)),
             resetAt: parseResetTime(balance.expireTime),
             rawWindowSeconds: 30 * 86_400
+        )
+    }
+
+    private static func makeRateBucket(
+        id: String,
+        title: String,
+        shortLabel: String,
+        from limit: KimiMembershipRateLimit?,
+        windowSeconds: Int
+    ) -> QuotaBucket? {
+        guard let limit,
+              limit.enabled != false,
+              let ratio = limit.ratio,
+              ratio.isFinite else {
+            return nil
+        }
+        return QuotaBucket(
+            id: id,
+            title: title,
+            shortLabel: shortLabel,
+            usedPercent: max(0, min(100, ratio * 100)),
+            resetAt: parseResetTime(limit.resetTime),
+            rawWindowSeconds: windowSeconds
         )
     }
 
@@ -392,7 +615,15 @@ struct KimiAPIDetail: Decodable {
 }
 
 private struct KimiMembershipStatsResponse: Decodable {
+    let ratelimitCode5h: KimiMembershipRateLimit?
+    let ratelimitCode7d: KimiMembershipRateLimit?
     let subscriptionBalance: KimiSubscriptionBalance?
+}
+
+private struct KimiMembershipRateLimit: Decodable {
+    let ratio: Double?
+    let enabled: Bool?
+    let resetTime: String?
 }
 
 private struct KimiSubscriptionBalance: Decodable {

@@ -645,11 +645,11 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
-    /// Open the in-app WebView login flow for a misc provider whose
-    /// cookies can't be auto-imported from the user's main browser
-    /// (typically because of Chrome v11/app-bound cookie encryption,
-    /// which SweetCookieKit doesn't read). After save, kicks a one-shot
-    /// quota refresh so the misc card flips out of "Set up" state.
+    /// Open the in-app WebView login flow for a misc provider whose current
+    /// credential cannot be imported from the user's main browser (for
+    /// example Chrome v11 cookies or Kimi's localStorage bearer token). After
+    /// save, kicks a one-shot quota refresh so the misc card leaves its setup
+    /// or re-login state.
     func openMiscWebLogin(for tool: ToolType) {
         openMiscWebLogin(for: tool, instanceID: tool.rawValue)
     }

@@ -143,10 +143,9 @@ final class HiddenCookieRefresher {
     private var pinnedDataStores: [ObjectIdentifier: WKWebsiteDataStore] = [:]
 
     /// Trigger a silent refresh for `tool`. Iterates the user's
-    /// browser-origin cookie slots and refreshes each one. Manual
-    /// slots are skipped — auto-refresh only re-runs a session the
-    /// user originally captured via browser import or the in-app web
-    /// login. Returns true if at least one slot's header changed.
+    /// system-browser-origin cookie slots and refreshes each one. Manual and
+    /// bearer-token WebView slots are skipped — they require an explicit user
+    /// action. Returns true if at least one slot's header changed.
     /// Concurrent refreshes for the same tool are coalesced.
     @discardableResult
     func refresh(_ tool: ToolType) async -> Bool {
@@ -171,7 +170,7 @@ final class HiddenCookieRefresher {
             .filter { $0.tool == config.tool }
             .flatMap { instance in
                 MiscCookieSlotStore.slots(for: config.tool, instanceID: instance.id)
-                    .filter { $0.origin != .manual }
+                    .filter(\.isSystemBrowserRefreshable)
                     .map { RefreshTarget(instanceID: instance.id, slot: $0) }
             }
         guard !targets.isEmpty else {
