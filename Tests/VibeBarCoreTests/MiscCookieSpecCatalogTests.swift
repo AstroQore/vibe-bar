@@ -89,29 +89,28 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
                 "\(tool.rawValue) credentialNames"
             )
             XCTAssertEqual(
-                catalogSpec.supportsSystemBrowserImport,
-                adapterSpec.supportsSystemBrowserImport,
-                "\(tool.rawValue) browser-import capability"
+                catalogSpec.browserCredentialSource,
+                adapterSpec.browserCredentialSource,
+                "\(tool.rawValue) browser credential source"
             )
         }
     }
 
-    func testOnlyKimiRequiresProviderSpecificWebLogin() {
+    func testKimiUsesTheGenericChromiumLocalStorageSource() {
+        let expected = BrowserCredentialSource.chromiumLocalStorage(
+            ChromiumLocalStorageCredential(
+                origin: "https://www.kimi.com",
+                key: "access_token",
+                syntheticCookieName: "kimi-auth",
+                valueFormat: .jwt(segments: 3, minLength: 16, maxLength: 4_096)
+            )
+        )
+        XCTAssertEqual(KimiQuotaAdapter.cookieSpec.browserCredentialSource, expected)
+
         for spec in MiscCookieSpecCatalog.allSpecs {
-            XCTAssertEqual(
-                spec.supportsSystemBrowserImport,
-                spec.tool != .kimi,
-                "\(spec.tool.rawValue) browser-import capability"
-            )
+            guard spec.tool != .kimi else { continue }
+            XCTAssertEqual(spec.browserCredentialSource, .cookieJar, spec.tool.rawValue)
         }
-    }
-
-    func testKimiBrowserImportIsRejectedBeforeBrowserOrKeychainAccess() {
-        XCTAssertNil(MiscCookieResolver.appendBrowserImport(for: KimiQuotaAdapter.cookieSpec))
-        let outcomes = MiscCookieResolver.appendBrowserImports(for: [
-            .init(spec: KimiQuotaAdapter.cookieSpec, instanceID: "kimi")
-        ])
-        XCTAssertEqual(outcomes.map(\.result), [.browserImportUnsupported])
     }
 
     func testNonCookieProvidersHaveNoSpec() {

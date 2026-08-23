@@ -44,12 +44,13 @@ portions is included in this repository at the local license link above.
 
 ## Direct dependencies
 
-### SweetCookieKit 0.4.0 or later compatible releases
+### SweetCookieKit 0.5.2
 
 - Project: [steipete/SweetCookieKit](https://github.com/steipete/SweetCookieKit)
-- Use in Vibe Bar: local Safari, Chromium, and Firefox cookie access.
+- Use in Vibe Bar: local Safari, Chromium, and Firefox cookie access, plus
+  exact-field Chromium localStorage reads for browser-backed credentials.
 - License: [MIT](Resources/ThirdPartyLicenses/SweetCookieKit.txt)
-  ([upstream](https://github.com/steipete/SweetCookieKit/blob/0.4.0/LICENSE))
+  ([upstream](https://github.com/steipete/SweetCookieKit/blob/v0.5.2/LICENSE))
 
 ### Sparkle 2.9.4
 

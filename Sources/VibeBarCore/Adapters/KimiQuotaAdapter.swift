@@ -2,11 +2,10 @@ import Foundation
 
 /// Moonshot / Kimi (kimi.com) usage adapter.
 ///
-/// Auth: a Kimi bearer JWT. Current Kimi Web keeps it in
-/// `localStorage.access_token`; Vibe Bar's explicit Web login stores it as a
-/// synthetic `kimi-auth=<token>` Keychain slot. Legacy browser cookies and
-/// manual headers use that same slot shape, so source resolution continues to
-/// flow through `MiscCookieResolver`.
+/// Auth: a Kimi bearer JWT. The shared Browser Cookies importer reads the
+/// current `localStorage.access_token` from Chromium profiles and stores it as
+/// the same synthetic `kimi-auth=<token>` Keychain slot used by legacy browser
+/// cookies and manual headers.
 ///
 /// `POST https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`
 /// with body `{}` is the primary source for the weekly, five-hour and
@@ -26,34 +25,19 @@ public struct KimiQuotaAdapter: QuotaAdapter {
     private let session: URLSession
     private let now: @Sendable () -> Date
 
+    private static let accessTokenCredential = ChromiumLocalStorageCredential(
+        origin: "https://www.kimi.com",
+        key: "access_token",
+        syntheticCookieName: "kimi-auth",
+        valueFormat: .jwt(segments: 3, minLength: 16, maxLength: 4_096)
+    )
+
     public static let cookieSpec = MiscCookieResolver.Spec(
         tool: .kimi,
         domains: ["www.kimi.com", "kimi.com"],
         requiredNames: ["kimi-auth"],
-        supportsSystemBrowserImport: false
+        browserCredentialSource: .chromiumLocalStorage(accessTokenCredential)
     )
-
-    /// Convert the current Kimi Web `localStorage.access_token` JWT into the
-    /// cookie-shaped Keychain slot already consumed by this adapter. Keeping
-    /// the validation in Core prevents a WebView value containing separators
-    /// or control characters from being persisted as a malformed header.
-    public static func cookieHeader(fromAccessToken raw: String) -> String? {
-        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard token.count >= 16, token.count <= 4_096 else { return nil }
-        let segments = token.split(separator: ".", omittingEmptySubsequences: false)
-        guard segments.count == 3, segments.allSatisfy({ !$0.isEmpty }) else { return nil }
-        guard segments.allSatisfy({ segment in
-            segment.utf8.allSatisfy { byte in
-                (48...57).contains(byte) ||
-                    (65...90).contains(byte) ||
-                    (97...122).contains(byte) ||
-                    byte == 45 || byte == 95
-            }
-        }) else {
-            return nil
-        }
-        return "kimi-auth=\(token)"
-    }
 
     private static let usageEndpoint = URL(string:
         "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
