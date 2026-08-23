@@ -91,8 +91,11 @@ struct SettingsSidebarView: View {
                         }
                     }
 
-                    if searchText.isEmpty || !filteredMiscProviders.isEmpty {
+                    if miscLandingMatchesSearch || !filteredMiscProviders.isEmpty {
                         sidebarGroup("Misc Providers") {
+                            if miscLandingMatchesSearch {
+                                miscLandingRow
+                            }
                             ForEach(filteredMiscProviders) { instance in
                                 miscProviderRow(instance)
                                     .onDrag {
@@ -150,6 +153,12 @@ struct SettingsSidebarView: View {
                 || title.localizedCaseInsensitiveContains(searchText)
                 || instance.tool.vendorName.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    private var miscLandingMatchesSearch: Bool {
+        searchText.isEmpty
+            || "Browser Cookies".localizedCaseInsensitiveContains(searchText)
+            || "Misc Providers".localizedCaseInsensitiveContains(searchText)
     }
 
     private func sidebarGroup<Content: View>(
@@ -215,6 +224,21 @@ struct SettingsSidebarView: View {
                 settingsStore.settings.setMiscProviderInstanceVisible(!enabled, forID: instance.id)
             }
         }
+    }
+
+    private var miscLandingRow: some View {
+        sidebarRow(
+            destination: .page(.miscProviders),
+            title: "Browser Cookies",
+            icon: AnyView(
+                Image(systemName: "safari")
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 20, height: 20)
+            ),
+            enabled: true,
+            showsStatusDot: false,
+            showsDragHandle: false
+        )
     }
 
     private func sidebarRow(

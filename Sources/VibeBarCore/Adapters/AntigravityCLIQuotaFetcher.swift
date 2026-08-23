@@ -28,16 +28,22 @@ enum AntigravityCLIQuotaFetcher {
             throw lastError ?? QuotaError.noCredential
         }
         let process = try AntigravityCLIQuotaProcess.launch(binary: binary)
-        defer { process.stop() }
 
         // Start the readiness window only once the launched process exists, so
         // probing stale user-owned `agy` processes above never eats into it.
-        return try await fetch(
-            pid: process.pid,
-            deadline: Date().addingTimeInterval(readinessTimeout),
-            isRunning: { process.isRunning },
-            drainOutput: { process.drainOutput() }
-        )
+        do {
+            let snapshot = try await fetch(
+                pid: process.pid,
+                deadline: Date().addingTimeInterval(readinessTimeout),
+                isRunning: { process.isRunning },
+                drainOutput: { process.drainOutput() }
+            )
+            await process.stop()
+            return snapshot
+        } catch {
+            await process.stop()
+            throw error
+        }
     }
 
     static func parseAgyPIDs(_ output: String) -> [Int] {
@@ -195,21 +201,43 @@ private final class AntigravityCLIQuotaProcess: @unchecked Sendable {
         }
     }
 
-    func stop() {
-        lock.lock()
-        guard !stopped else {
-            lock.unlock()
-            return
+    func stop() async {
+        guard claimStop() else { return }
+        // `stop()` is normally reached from a cancelled quota task. Run the
+        // grace / kill / reap sequence in an unstructured task so inherited
+        // cancellation cannot turn every sleep into an immediate no-op, then
+        // await that cleanup before releasing the account's single-flight gate.
+        let cleanup = Task.detached(priority: .utility) { [self] in
+            await performStop()
         }
-        stopped = true
-        lock.unlock()
-
-        if process.isRunning {
-            process.terminate()
-        }
-        try? primaryHandle.close()
-        try? secondaryHandle.close()
+        await cleanup.value
     }
 
-    deinit { stop() }
+    private func performStop() async {
+        try? primaryHandle.close()
+        try? secondaryHandle.close()
+        if process.isRunning { process.terminate() }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+        for _ in 0..<10 where process.isRunning {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
+    private func claimStop() -> Bool {
+        lock.withLock {
+            guard !stopped else { return false }
+            stopped = true
+            return true
+        }
+    }
+
+    private func forceStop() {
+        guard claimStop() else { return }
+        try? primaryHandle.close()
+        try? secondaryHandle.close()
+        if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+    }
+
+    deinit { forceStop() }
 }
