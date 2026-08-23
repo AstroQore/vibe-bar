@@ -106,6 +106,76 @@ final class KimiParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[1].rawWindowSeconds, 5 * 3600)
     }
 
+    func testPrefixedMinuteWindowResolvesToFiveHours() {
+        let window = KimiAPIWindow(duration: 300, timeUnit: "TIME_UNIT_MINUTE")
+
+        XCTAssertEqual(window.windowSeconds, 5 * 3600)
+        XCTAssertEqual(window.title, "5 Hours")
+        XCTAssertEqual(window.shortLabel, "5h")
+    }
+
+    func testParsesSharedMonthlySubscriptionBalance() throws {
+        let json = """
+        {
+          "subscriptionBalance": {
+            "feature": "FEATURE_OMNI",
+            "type": "SUBSCRIPTION",
+            "amountUsedRatio": 0.42,
+            "kimiCodeUsedRatio": 0.91,
+            "expireTime": "2026-09-02T00:00:00Z"
+          }
+        }
+        """
+
+        let bucket = try XCTUnwrap(
+            KimiResponseParser.parseMonthly(data: Data(json.utf8))
+        )
+        XCTAssertEqual(bucket.id, "kimi.monthly")
+        XCTAssertEqual(bucket.title, "Monthly")
+        XCTAssertEqual(bucket.shortLabel, "Mo")
+        XCTAssertEqual(bucket.usedPercent, 42, accuracy: 0.001)
+        XCTAssertEqual(bucket.rawWindowSeconds, 30 * 86_400)
+        XCTAssertEqual(
+            bucket.resetAt,
+            ISO8601DateFormatter().date(from: "2026-09-02T00:00:00Z")
+        )
+    }
+
+    func testMonthlyIgnoresNonSubscriptionBalance() throws {
+        let json = """
+        {
+          "subscriptionBalance": {
+            "feature": "FEATURE_OMNI",
+            "type": "GIFT",
+            "amountUsedRatio": 0.42,
+            "expireTime": "2026-09-02T00:00:00Z"
+          }
+        }
+        """
+
+        XCTAssertNil(try KimiResponseParser.parseMonthly(data: Data(json.utf8)))
+    }
+
+    func testMembershipStatsRequestUsesQuotaPageContract() throws {
+        let token = "synthetic.header.signature"
+        let request = KimiQuotaAdapter.membershipStatsRequest(authToken: token)
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+        )
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "Referer"),
+            "https://www.kimi.com/membership/subscription?tab=quota"
+        )
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(token)")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "kimi-auth=\(token)")
+        let body = try XCTUnwrap(request.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertTrue(object.isEmpty)
+    }
+
     func testNoCodingScopeThrowsParseFailure() {
         let json = """
         {

@@ -104,7 +104,6 @@ struct PlanBadgeView: View {
                 .background(Capsule().fill(Color.accentColor.opacity(0.18)))
                 .foregroundStyle(Color.accentColor)
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
                 .fixedSize(horizontal: true, vertical: false)
         }
     }

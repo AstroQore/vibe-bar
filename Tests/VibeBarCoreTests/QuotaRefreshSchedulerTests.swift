@@ -301,6 +301,53 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
 
         XCTAssertEqual(counter.fetchCount, 2)
     }
+
+    func testTimedOutAccountDoesNotBlockFollowingAccount() async {
+        let blocking = AccountIdentity(id: "blocking-antigravity", tool: .antigravity, source: .localProbe)
+        let following = AccountIdentity(id: "following-claude", tool: .claude, source: .oauthCLI)
+        let gate = QuotaRefreshGate()
+        let blockingAdapter = GatedQuotaAdapter(tool: .antigravity, gate: gate)
+        let counter = CountingQuotaAdapter(tool: .claude)
+        let service = QuotaService(
+            adapters: [
+                .antigravity: blockingAdapter,
+                .claude: counter,
+            ],
+            mockProvider: { false },
+            refreshTimeoutSeconds: 0.05
+        )
+        let scheduler = QuotaRefreshScheduler(
+            service: service,
+            accountsProvider: { [blocking, following] },
+            intervalProvider: { 600 }
+        )
+
+        scheduler.triggerRefresh()
+        await gate.waitUntilStarted()
+        for _ in 0..<100 {
+            if counter.fetchCount == 1 { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(counter.fetchCount, 1)
+        XCTAssertEqual(service.lastErrorByAccount[blocking.id], .network("timeout"))
+        XCTAssertFalse(service.inFlightAccountIds.contains(blocking.id))
+        XCTAssertNotNil(service.cachedQuota(for: following.id))
+        XCTAssertNil(service.cachedQuota(for: blocking.id))
+
+        _ = await service.refresh(blocking)
+        XCTAssertEqual(
+            blockingAdapter.fetchCount,
+            1,
+            "A timed-out, non-cooperative fetch must stay single-flight until it really finishes."
+        )
+
+        // Let the abandoned adapter finish. Its late success must not overwrite
+        // the timeout state because only the winning parent path may store.
+        await gate.release()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertNil(service.cachedQuota(for: blocking.id))
+    }
 }
 
 private final class SequenceAdapter: QuotaAdapter, @unchecked Sendable {
@@ -369,13 +416,20 @@ private actor QuotaRefreshGate {
 private final class GatedQuotaAdapter: QuotaAdapter, @unchecked Sendable {
     let tool: ToolType
     private let gate: QuotaRefreshGate
+    private let lock = NSLock()
+    private var count = 0
 
     init(tool: ToolType, gate: QuotaRefreshGate) {
         self.tool = tool
         self.gate = gate
     }
 
+    var fetchCount: Int {
+        lock.withLock { count }
+    }
+
     func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        lock.withLock { count += 1 }
         await gate.block()
         return AccountQuota(accountId: account.id, tool: tool, buckets: [], queriedAt: Date())
     }

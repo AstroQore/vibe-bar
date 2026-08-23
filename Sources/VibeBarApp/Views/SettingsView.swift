@@ -568,7 +568,7 @@ struct SettingsView: View {
                             MiscProviderSettingsSection(instance: instance)
                         }
                     } else {
-                        settingsSection("Misc Provider") {
+                        settingsSection("Browser Cookies") {
                             MiscProviderLandingView()
                         }
                     }

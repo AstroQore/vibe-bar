@@ -26,6 +26,7 @@ public struct QuotaActivityContext: Sendable {
 @MainActor
 public final class QuotaService: ObservableObject {
     public static let credentialFallbackMaxAge: TimeInterval = 30 * 60
+    nonisolated public static let defaultRefreshTimeoutSeconds: Double = 60
     @Published public private(set) var lastSuccessByAccount: [String: AccountQuota] = [:]
     @Published public private(set) var lastErrorByAccount: [String: QuotaError] = [:]
     /// When the *data* currently on screen was fetched. Only a success writes
@@ -55,16 +56,24 @@ public final class QuotaService: ObservableObject {
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
     private let retentionProvider: () -> Int
+    private let refreshTimeoutSeconds: Double
+    /// A timed-out adapter may ignore cancellation and keep running. Do not
+    /// start another fetch for that account until the abandoned operation
+    /// actually returns; otherwise each scheduler tick can leak another task
+    /// or provider subprocess.
+    private var timedOutAccountIds: Set<String> = []
 
     public init(
         adapters: [ToolType: any QuotaAdapter],
         mockProvider: @escaping () -> Bool,
         retentionProvider: @escaping () -> Int = { CostDataSettings.defaultRetentionDays },
-        initialAccountIds: [String] = []
+        initialAccountIds: [String] = [],
+        refreshTimeoutSeconds: Double = QuotaService.defaultRefreshTimeoutSeconds
     ) {
         self.adapters = adapters
         self.mockProvider = mockProvider
         self.retentionProvider = retentionProvider
+        self.refreshTimeoutSeconds = max(0.01, refreshTimeoutSeconds)
         let cached = QuotaCacheStore.loadAll(accountIds: initialAccountIds)
         self.lastSuccessByAccount = cached
         self.lastUpdatedByAccount = cached.mapValues(\.queriedAt)
@@ -139,6 +148,9 @@ public final class QuotaService: ObservableObject {
             return lastSuccessByAccount[account.id]
                 ?? AccountQuota(accountId: account.id, tool: account.tool, buckets: [], queriedAt: Date(), error: nil)
         }
+        if timedOutAccountIds.contains(account.id) {
+            return cachedOrEmpty(for: account, error: .network("timeout"))
+        }
         inFlightAccountIds.insert(account.id)
         defer { inFlightAccountIds.remove(account.id) }
 
@@ -161,18 +173,34 @@ public final class QuotaService: ObservableObject {
             return cachedOrEmpty(for: account, error: err)
         }
 
-        do {
-            let quota = try await adapter.fetch(for: account)
+        let completion = QuotaFetchCompletion()
+        let outcome = await AsyncTimeout.run(seconds: refreshTimeoutSeconds) {
+            defer { completion.finish() }
+            do {
+                return QuotaAdapterFetchResult.success(try await adapter.fetch(for: account))
+            } catch let qe as QuotaError {
+                return QuotaAdapterFetchResult.failure(qe)
+            } catch {
+                return QuotaAdapterFetchResult.failure(mapURLError(error))
+            }
+        }
+        switch outcome {
+        case let .completed(.success(quota)):
             store(success: quota)
             return quota
-        } catch let qe as QuotaError {
+        case let .completed(.failure(qe)):
             SafeLog.net("\(account.tool.rawValue) refresh failed: \(qe.userFacingMessage)")
             store(error: qe, for: account)
             return cachedOrEmpty(for: account, error: qe)
-        } catch {
-            let qe = mapURLError(error)
-            SafeLog.net("\(account.tool.rawValue) refresh exception: \(qe.userFacingMessage)")
+        case .timedOut:
+            let qe = QuotaError.network("timeout")
+            SafeLog.net("\(account.tool.rawValue) refresh timed out")
             store(error: qe, for: account)
+            timedOutAccountIds.insert(account.id)
+            Task { @MainActor [weak self] in
+                await completion.wait()
+                self?.timedOutAccountIds.remove(account.id)
+            }
             return cachedOrEmpty(for: account, error: qe)
         }
     }
@@ -424,5 +452,38 @@ public final class QuotaService: ObservableObject {
             queriedAt: Date(),
             error: error
         )
+    }
+}
+
+private enum QuotaAdapterFetchResult: Sendable {
+    case success(AccountQuota)
+    case failure(QuotaError)
+}
+
+private final class QuotaFetchCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            let resumeImmediately = lock.withLock { () -> Bool in
+                if finished { return true }
+                waiters.append(continuation)
+                return false
+            }
+            if resumeImmediately { continuation.resume() }
+        }
+    }
+
+    func finish() {
+        let pending = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            guard !finished else { return [] }
+            finished = true
+            let pending = waiters
+            waiters = []
+            return pending
+        }
+        for waiter in pending { waiter.resume() }
     }
 }

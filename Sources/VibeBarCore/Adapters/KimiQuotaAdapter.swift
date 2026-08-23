@@ -7,15 +7,21 @@ import Foundation
 /// from Chrome/Edge/Brave/Arc/Safari/Firefox, manual paste, or
 /// fully off.
 ///
-/// Endpoint:
+/// Endpoints:
 /// `POST https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`
 /// with body `{"scope":["FEATURE_CODING"]}`. Headers reproduce the
 /// web app — Bearer token, kimi-auth cookie, browser User-Agent,
 /// connect-protocol-version, plus session / device / traffic IDs
 /// extracted from the JWT payload.
 ///
-/// Output: weekly bucket (primary) + 5-hour rate-limit bucket
-/// (secondary, when present).
+/// `POST https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`
+/// with body `{}` adds the shared monthly subscription balance shown on
+/// Kimi's Membership → My Quota page. That request is best-effort so a
+/// membership rollout or transient failure cannot erase the established
+/// weekly / five-hour quota.
+///
+/// Output: weekly bucket (primary) + 5-hour rate-limit bucket + monthly
+/// subscription bucket (when present).
 public struct KimiQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .kimi
 
@@ -28,9 +34,13 @@ public struct KimiQuotaAdapter: QuotaAdapter {
         requiredNames: ["kimi-auth"]
     )
 
-    private static let endpoint = URL(string:
+    private static let usageEndpoint = URL(string:
         "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
     )!
+    private static let membershipStatsEndpoint = URL(string:
+        "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+    )!
+    private static let membershipStatsWallTimeSeconds: Double = 10
 
     public init(
         session: URLSession = .shared,
@@ -72,15 +82,68 @@ public struct KimiQuotaAdapter: QuotaAdapter {
             throw QuotaError.noCredential
         }
 
-        let session = KimiSessionInfo.fromJWT(authToken)
+        let usageRequest = Self.usageRequest(authToken: authToken)
+        let (data, _) = try await data(for: usageRequest)
+        let snapshot = try KimiResponseParser.parse(data: data, now: queriedAt)
 
-        var request = URLRequest(url: KimiQuotaAdapter.endpoint)
+        var buckets = snapshot.buckets
+        let membershipOutcome = await AsyncTimeout.run(seconds: Self.membershipStatsWallTimeSeconds) {
+            do {
+                let request = Self.membershipStatsRequest(authToken: authToken)
+                let (data, _) = try await self.data(for: request)
+                return KimiMembershipFetchOutcome.data(data)
+            } catch {
+                return KimiMembershipFetchOutcome.failed
+            }
+        }
+        if case let .completed(.data(membershipData)) = membershipOutcome,
+           let monthly = try? KimiResponseParser.parseMonthly(data: membershipData) {
+            buckets.append(monthly)
+        }
+
+        return AccountQuota(
+            accountId: account.id,
+            tool: .kimi,
+            buckets: buckets,
+            plan: nil,
+            email: account.email,
+            queriedAt: queriedAt,
+            error: nil
+        )
+    }
+
+    static func usageRequest(authToken: String) -> URLRequest {
+        makeRequest(
+            url: usageEndpoint,
+            authToken: authToken,
+            referer: "https://www.kimi.com/code/console",
+            body: ["scope": ["FEATURE_CODING"]]
+        )
+    }
+
+    static func membershipStatsRequest(authToken: String) -> URLRequest {
+        makeRequest(
+            url: membershipStatsEndpoint,
+            authToken: authToken,
+            referer: "https://www.kimi.com/membership/subscription?tab=quota",
+            body: [:]
+        )
+    }
+
+    private static func makeRequest(
+        url: URL,
+        authToken: String,
+        referer: String,
+        body: [String: Any]
+    ) -> URLRequest {
+        let session = KimiSessionInfo.fromJWT(authToken)
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         request.setValue("kimi-auth=\(authToken)", forHTTPHeaderField: "Cookie")
         request.setValue("https://www.kimi.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://www.kimi.com/code/console", forHTTPHeaderField: "Referer")
+        request.setValue(referer, forHTTPHeaderField: "Referer")
         request.setValue("*/*", forHTTPHeaderField: "Accept")
         request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
         request.setValue(
@@ -95,10 +158,11 @@ public struct KimiQuotaAdapter: QuotaAdapter {
         if let sessionId = session.sessionId { request.setValue(sessionId, forHTTPHeaderField: "x-msh-session-id") }
         if let trafficId = session.trafficId { request.setValue(trafficId, forHTTPHeaderField: "x-traffic-id") }
 
-        request.httpBody = try? JSONSerialization.data(
-            withJSONObject: ["scope": ["FEATURE_CODING"]]
-        )
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
 
+    private func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await self.session.data(for: request)
@@ -118,18 +182,13 @@ public struct KimiQuotaAdapter: QuotaAdapter {
             }
             throw QuotaError.network("Kimi returned HTTP \(http.statusCode).")
         }
-
-        let snapshot = try KimiResponseParser.parse(data: data, now: queriedAt)
-        return AccountQuota(
-            accountId: account.id,
-            tool: .kimi,
-            buckets: snapshot.buckets,
-            plan: nil,
-            email: account.email,
-            queriedAt: queriedAt,
-            error: nil
-        )
+        return (data, http)
     }
+}
+
+private enum KimiMembershipFetchOutcome: Sendable {
+    case data(Data)
+    case failed
 }
 
 // MARK: - JWT session info
@@ -207,6 +266,30 @@ enum KimiResponseParser {
         return Snapshot(buckets: buckets)
     }
 
+    static func parseMonthly(data: Data) throws -> QuotaBucket? {
+        let response: KimiMembershipStatsResponse
+        do {
+            response = try JSONDecoder().decode(KimiMembershipStatsResponse.self, from: data)
+        } catch {
+            throw QuotaError.parseFailure("Kimi membership response not parseable: \(error.localizedDescription)")
+        }
+        guard let balance = response.subscriptionBalance,
+              balance.feature == "FEATURE_OMNI",
+              balance.type == "SUBSCRIPTION",
+              let ratio = balance.amountUsedRatio,
+              ratio.isFinite else {
+            return nil
+        }
+        return QuotaBucket(
+            id: "kimi.monthly",
+            title: "Monthly",
+            shortLabel: "Mo",
+            usedPercent: max(0, min(100, ratio * 100)),
+            resetAt: parseResetTime(balance.expireTime),
+            rawWindowSeconds: 30 * 86_400
+        )
+    }
+
     private static func makeBucket(
         id: String,
         title: String,
@@ -266,7 +349,9 @@ struct KimiAPIWindow: Decodable {
     let timeUnit: String
 
     var windowSeconds: Int? {
-        switch timeUnit.uppercased() {
+        let normalized = timeUnit.uppercased()
+            .replacingOccurrences(of: "TIME_UNIT_", with: "")
+        switch normalized {
         case "SECOND", "SECONDS": return duration
         case "MINUTE", "MINUTES": return duration * 60
         case "HOUR", "HOURS":     return duration * 3600
@@ -304,4 +389,15 @@ struct KimiAPIDetail: Decodable {
     let used: String?
     let remaining: String?
     let resetTime: String?
+}
+
+private struct KimiMembershipStatsResponse: Decodable {
+    let subscriptionBalance: KimiSubscriptionBalance?
+}
+
+private struct KimiSubscriptionBalance: Decodable {
+    let feature: String?
+    let type: String?
+    let amountUsedRatio: Double?
+    let expireTime: String?
 }
