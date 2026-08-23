@@ -165,18 +165,11 @@ struct MiscProviderSettingsSection: View {
                 MiniMaxRegionPicker(instanceID: instanceID)
             }
         case .kimi:
-            VStack(alignment: .leading, spacing: 4) {
-                MiscWebLoginRow(
-                    tool: .kimi,
-                    instanceID: instanceID,
-                    helpText: "Kimi's current quota API uses a browser-local access token; Chrome cookie import can be stale. Sign in here once to save it securely."
-                )
-                CookieSourceControls(
-                    tool: .kimi,
-                    instanceID: instanceID,
-                    manualPrompt: "Paste the current Kimi access token as kimi-auth=eyJ..."
-                )
-            }
+            CookieSourceControls(
+                tool: .kimi,
+                instanceID: instanceID,
+                manualPrompt: "Paste www.kimi.com Cookie header (kimi-auth=eyJ...)"
+            )
         case .cursor:
             CookieSourceControls(
                 tool: .cursor,
@@ -744,8 +737,8 @@ struct KiroStatusRow: View {
 ///
 /// Each provider can stack multiple cookie sessions — one per account.
 /// The section shows the current list of imported slots (with source
-/// label, import time, and a delete button) plus a manual paste field and,
-/// when the provider supports it, "Import from browser". Quota
+/// label, import time, and a delete button) plus two additive entry
+/// points: "Import from browser" and a manual paste field. Quota
 /// queries fan out across every slot and the bucket percentages are
 /// averaged; see `MiscQuotaAggregator`.
 struct CookieSourceControls: View {
@@ -769,10 +762,6 @@ struct CookieSourceControls: View {
         MiscCookieSpecCatalog.spec(for: tool)
     }
 
-    private var allowsBrowserImport: Bool {
-        spec?.supportsSystemBrowserImport ?? false
-    }
-
     var body: some View {
         if spec == nil {
             Text("No cookie spec is registered for \(tool.menuTitle).")
@@ -786,11 +775,7 @@ struct CookieSourceControls: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
             if slots.isEmpty {
-                Text(
-                    allowsBrowserImport
-                        ? "No cookies imported yet — import from your browser or paste below."
-                        : "No saved session yet — use Sign in via Web or paste the current token below."
-                )
+                Text("No cookies imported yet — import from your browser or paste below.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
@@ -800,15 +785,13 @@ struct CookieSourceControls: View {
                     }
                 }
             }
-            if allowsBrowserImport {
-                HStack(spacing: 6) {
-                    Button("Import from browser", action: importNow)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    Text("Adds a new slot. Existing cookies stay; quotas are averaged across all slots.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
+            HStack(spacing: 6) {
+                Button("Import from browser", action: importNow)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Text("Adds or refreshes the first signed-in browser profile found. Existing profiles stay stacked.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
@@ -974,9 +957,6 @@ private struct CookieSlotRow: View {
     }
 
     private var icon: String {
-        if slot.captureKind == .webLogin {
-            return "person.crop.circle.badge.key"
-        }
         switch slot.origin {
         case .manual:         return "doc.on.clipboard"
         case .browserImport:  return "safari"

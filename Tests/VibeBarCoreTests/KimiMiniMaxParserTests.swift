@@ -4,27 +4,6 @@ import XCTest
 final class KimiParserTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_715_000_000)
 
-    func testKimiAccessTokenBecomesCookieShapedHeader() {
-        let token = "synthetic-header.synthetic_payload.synthetic-signature"
-        XCTAssertEqual(
-            KimiQuotaAdapter.cookieHeader(fromAccessToken: "  \(token)\n"),
-            "kimi-auth=\(token)"
-        )
-    }
-
-    func testKimiAccessTokenRejectsMalformedOrInjectableValues() {
-        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "not-a-jwt"))
-        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "a..c"))
-        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "aaa.bbb.ccc;other=value"))
-        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "aaa.bbb.ccc\r\nInjected: value"))
-        XCTAssertNil(KimiQuotaAdapter.cookieHeader(fromAccessToken: "aaa.bébé.ccc"))
-        XCTAssertNil(
-            KimiQuotaAdapter.cookieHeader(
-                fromAccessToken: "aaa.\(String(repeating: "b", count: 4_100)).ccc"
-            )
-        )
-    }
-
     func testParsesWeeklyAndRateLimit() throws {
         let json = """
         {

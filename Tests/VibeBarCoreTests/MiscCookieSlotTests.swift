@@ -38,27 +38,64 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(slot.cookieHeader, "foo=bar")
     }
 
-    func testWebLoginCaptureKindRoundTripsWithLegacyOrigin() throws {
-        let slot = MiscCookieSlot(
-            cookieHeader: "kimi-auth=synthetic.header.signature",
-            sourceLabel: "Kimi Web login",
-            importedAt: Date(timeIntervalSince1970: 1_700_000_000),
-            origin: .manual,
-            captureKind: .webLogin
-        )
+    func testLegacyWebLoginManualSlotDecodesAsBrowserImport() throws {
+        let raw = """
+        {
+          "id": "22222222-2222-2222-2222-222222222222",
+          "cookieHeader": "session=synthetic",
+          "sourceLabel": "Web login",
+          "importedAt": "2026-08-23T10:00:00Z",
+          "origin": "manual",
+          "captureKind": "webLogin"
+        }
+        """
 
-        XCTAssertEqual(try JSONDecoder().decode(MiscCookieSlot.self, from: JSONEncoder().encode(slot)), slot)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let slot = try decoder.decode(MiscCookieSlot.self, from: Data(raw.utf8))
+
+        XCTAssertEqual(slot.origin, .browserImport)
+        XCTAssertEqual(slot.sourceLabel, "Web login")
     }
 
-    func testDev40DecoderCanReadWebLoginSlotWithoutDroppingTheArray() throws {
-        let slot = webLoginSlot()
-        let data = try JSONEncoder().encode([slot])
+    func testLegacyCaptureKindIsNotReencoded() throws {
+        let raw = """
+        {
+          "id": "33333333-3333-3333-3333-333333333333",
+          "cookieHeader": "session=synthetic",
+          "sourceLabel": "Web login",
+          "importedAt": "2026-08-23T10:00:00Z",
+          "origin": "manual",
+          "captureKind": "webLogin"
+        }
+        """
 
-        let legacy = try JSONDecoder().decode([Dev40MiscCookieSlot].self, from: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let slot = try decoder.decode(MiscCookieSlot.self, from: Data(raw.utf8))
 
-        XCTAssertEqual(legacy.count, 1)
-        XCTAssertEqual(legacy[0].cookieHeader, slot.cookieHeader)
-        XCTAssertEqual(legacy[0].origin, .manual)
+        let encoded = try JSONEncoder().encode(slot)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(object["captureKind"])
+        XCTAssertEqual(object["origin"] as? String, "browserImport")
+    }
+
+    func testOrdinaryManualSlotStaysManual() throws {
+        let raw = """
+        {
+          "id": "44444444-4444-4444-4444-444444444444",
+          "cookieHeader": "session=synthetic",
+          "sourceLabel": "Manual paste",
+          "importedAt": "2026-08-23T10:00:00Z",
+          "origin": "manual"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let slot = try decoder.decode(MiscCookieSlot.self, from: Data(raw.utf8))
+
+        XCTAssertEqual(slot.origin, .manual)
     }
 
     func testSlotFilterFromSettings() {
@@ -69,7 +106,6 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(auto, .all)
         XCTAssertTrue(auto.allows(slot(origin: .manual)))
         XCTAssertTrue(auto.allows(slot(origin: .browserImport)))
-        XCTAssertTrue(auto.allows(webLoginSlot()))
         XCTAssertTrue(auto.allows(slot(origin: .autoRefresh)))
 
         // Auto with cookieSource = manual collapses to manualOnly.
@@ -78,7 +114,6 @@ final class MiscCookieSlotTests: XCTestCase {
         )
         XCTAssertEqual(manualViaCookieSource, .manualOnly)
         XCTAssertTrue(manualViaCookieSource.allows(slot(origin: .manual)))
-        XCTAssertTrue(manualViaCookieSource.allows(webLoginSlot()))
         XCTAssertFalse(manualViaCookieSource.allows(slot(origin: .browserImport)))
 
         // Explicit browserOnly source mode.
@@ -88,7 +123,6 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(browser, .browserOnly)
         XCTAssertFalse(browser.allows(slot(origin: .manual)))
         XCTAssertTrue(browser.allows(slot(origin: .browserImport)))
-        XCTAssertTrue(browser.allows(webLoginSlot()))
         XCTAssertTrue(browser.allows(slot(origin: .autoRefresh)))
 
         // apiOnly / off shut every slot out.
@@ -104,11 +138,101 @@ final class MiscCookieSlotTests: XCTestCase {
         XCTAssertEqual(off, .none)
     }
 
-    func testOnlySystemBrowserOriginsCanBeSilentlyReimported() {
-        XCTAssertFalse(slot(origin: .manual).isSystemBrowserRefreshable)
-        XCTAssertTrue(slot(origin: .browserImport).isSystemBrowserRefreshable)
-        XCTAssertTrue(slot(origin: .autoRefresh).isSystemBrowserRefreshable)
-        XCTAssertFalse(webLoginSlot().isSystemBrowserRefreshable)
+    func testBrowserImportRefreshesTheSameProfileInPlace() {
+        let id = UUID()
+        let old = MiscCookieSlot(
+            id: id,
+            cookieHeader: "session=stale",
+            sourceLabel: "Chrome Default",
+            importedAt: Date(timeIntervalSince1970: 100),
+            origin: .autoRefresh
+        )
+        let fresh = MiscCookieSlot(
+            cookieHeader: "session=fresh",
+            sourceLabel: "Chrome Default",
+            importedAt: Date(timeIntervalSince1970: 200),
+            origin: .browserImport
+        )
+
+        let merged = MiscCookieSlotStore.mergingBrowserImport(fresh, into: [old])
+
+        XCTAssertEqual(merged.slots.count, 1)
+        XCTAssertEqual(merged.stored.id, id)
+        XCTAssertEqual(merged.stored.cookieHeader, "session=fresh")
+        XCTAssertEqual(merged.stored.origin, .browserImport)
+        XCTAssertEqual(merged.stored.importedAt, fresh.importedAt)
+    }
+
+    func testBrowserImportKeepsDifferentProfilesStacked() {
+        let existing = MiscCookieSlot(
+            cookieHeader: "session=shared",
+            sourceLabel: "Chrome Profile 1",
+            origin: .browserImport
+        )
+        let incoming = MiscCookieSlot(
+            cookieHeader: "session=shared",
+            sourceLabel: "Chrome Default",
+            origin: .browserImport
+        )
+
+        let merged = MiscCookieSlotStore.mergingBrowserImport(incoming, into: [existing])
+
+        XCTAssertEqual(merged.slots.map(\.sourceLabel), ["Chrome Profile 1", "Chrome Default"])
+        XCTAssertEqual(merged.stored.id, incoming.id)
+    }
+
+    func testBrowserImportReclaimsSingleLegacyAutoRefreshSlot() {
+        let manual = MiscCookieSlot(
+            cookieHeader: "session=manual",
+            sourceLabel: "Manual paste",
+            origin: .manual
+        )
+        let legacyID = UUID()
+        let legacy = MiscCookieSlot(
+            id: legacyID,
+            cookieHeader: "session=stale",
+            sourceLabel: "Auto-refresh",
+            importedAt: Date(timeIntervalSince1970: 100),
+            origin: .autoRefresh
+        )
+        let incoming = MiscCookieSlot(
+            cookieHeader: "session=fresh",
+            sourceLabel: "Chrome Default",
+            importedAt: Date(timeIntervalSince1970: 200),
+            origin: .browserImport
+        )
+
+        let merged = MiscCookieSlotStore.mergingBrowserImport(
+            incoming,
+            into: [manual, legacy]
+        )
+
+        XCTAssertEqual(merged.slots.count, 2)
+        XCTAssertEqual(merged.slots[0], manual)
+        XCTAssertEqual(merged.stored.id, legacyID)
+        XCTAssertEqual(merged.stored.cookieHeader, "session=fresh")
+        XCTAssertEqual(merged.stored.sourceLabel, "Chrome Default")
+        XCTAssertEqual(merged.stored.origin, .browserImport)
+        XCTAssertEqual(merged.stored.importedAt, incoming.importedAt)
+    }
+
+    func testBrowserImportNeverOverwritesManualSlot() {
+        let manual = MiscCookieSlot(
+            cookieHeader: "session=same",
+            sourceLabel: "Chrome Default",
+            origin: .manual
+        )
+        let incoming = MiscCookieSlot(
+            cookieHeader: "session=same",
+            sourceLabel: "Chrome Default",
+            origin: .browserImport
+        )
+
+        let merged = MiscCookieSlotStore.mergingBrowserImport(incoming, into: [manual])
+
+        XCTAssertEqual(merged.slots.count, 2)
+        XCTAssertEqual(merged.slots.first, manual)
+        XCTAssertEqual(merged.stored.id, incoming.id)
     }
 
     private func slot(origin: MiscCookieSlot.Origin) -> MiscCookieSlot {
@@ -119,30 +243,4 @@ final class MiscCookieSlotTests: XCTestCase {
             origin: origin
         )
     }
-
-    private func webLoginSlot() -> MiscCookieSlot {
-        MiscCookieSlot(
-            cookieHeader: "kimi-auth=synthetic.header.signature",
-            sourceLabel: "Kimi Web login",
-            importedAt: Date(),
-            origin: .manual,
-            captureKind: .webLogin
-        )
-    }
-}
-
-/// Exact wire shape shipped in Dev 40. Unknown additive object fields are
-/// ignored by synthesized Decodable, but unknown enum raw values are not.
-private struct Dev40MiscCookieSlot: Decodable {
-    enum Origin: String, Decodable {
-        case manual
-        case browserImport
-        case autoRefresh
-    }
-
-    let id: UUID
-    let cookieHeader: String
-    let sourceLabel: String
-    let importedAt: Date
-    let origin: Origin
 }

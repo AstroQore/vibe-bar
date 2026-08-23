@@ -34,10 +34,10 @@ public enum MiscCookieResolver {
         /// Default browser-import order if the user hasn't picked
         /// `MiscProviderSettings.preferredBrowser`.
         public let importOrder: BrowserCookieImportOrder
-        /// Whether the live credential still exists in browser cookie stores.
-        /// Kimi now uses localStorage and must go through its explicit Web
-        /// login instead of reporting a stale cookie as a successful import.
-        public let supportsSystemBrowserImport: Bool
+        /// Browser persistence surface holding the live credential. Cookie
+        /// jars remain the default; providers can declaratively map one exact
+        /// Chromium localStorage field into the same cookie-shaped slot.
+        public let browserCredentialSource: BrowserCredentialSource
 
         public init(
             tool: ToolType,
@@ -45,14 +45,14 @@ public enum MiscCookieResolver {
             requiredNames: Set<String>,
             credentialNames: Set<String> = [],
             importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder,
-            supportsSystemBrowserImport: Bool = true
+            browserCredentialSource: BrowserCredentialSource = .cookieJar
         ) {
             self.tool = tool
             self.domains = domains
             self.requiredNames = requiredNames
             self.credentialNames = credentialNames
             self.importOrder = importOrder
-            self.supportsSystemBrowserImport = supportsSystemBrowserImport
+            self.browserCredentialSource = browserCredentialSource
         }
 
         public func minimizedHeader(from raw: String?) -> String? {
@@ -119,11 +119,8 @@ public enum MiscCookieResolver {
             case .all:
                 return true
             case .browserOnly:
-                return slot.origin != .manual || slot.captureKind == .webLogin
+                return slot.origin != .manual
             case .manualOnly:
-                // A WebView login is an explicit user action rather than a
-                // passive system-browser import, so keep it usable even when
-                // the user selected the manual credential lane.
                 return slot.origin == .manual
             case .none:
                 return false
@@ -173,8 +170,8 @@ public enum MiscCookieResolver {
         resolveAll(for: spec, account: account).first
     }
 
-    /// Run the SweetCookieKit browser-import dance and append the
-    /// captured header as a new slot. Returns the appended slot's
+    /// Run the SweetCookieKit browser-import dance and add or refresh the
+    /// captured browser-profile slot. Returns the stored slot's
     /// Resolution on success, or `nil` if no browser session was
     /// found (or the source mode bans cookies).
     public static func appendBrowserImport(for spec: Spec) -> Resolution? {
@@ -182,7 +179,6 @@ public enum MiscCookieResolver {
     }
 
     public static func appendBrowserImport(for spec: Spec, instanceID: String) -> Resolution? {
-        guard spec.supportsSystemBrowserImport else { return nil }
         let settings = currentSettings(for: spec.tool, instanceID: instanceID)
         guard SlotFilter(settings: settings) != .none else { return nil }
         guard let imported = importFromBrowsers(
@@ -198,17 +194,20 @@ public enum MiscCookieResolver {
             importedAt: Date(),
             origin: .browserImport
         )
-        guard MiscCookieSlotStore.append(slot, for: spec.tool, instanceID: instanceID) else { return nil }
+        guard let stored = MiscCookieSlotStore.upsertBrowserImport(
+            slot,
+            for: spec.tool,
+            instanceID: instanceID
+        ) else { return nil }
         return Resolution(
-            slotID: slot.id,
+            slotID: stored.id,
             header: imported.header,
             sourceLabel: imported.sourceLabel
         )
     }
 
     /// Legacy alias for callers that haven't migrated to
-    /// `appendBrowserImport`. Slot semantics are identical — every
-    /// invocation appends a new slot rather than replacing one.
+    /// `appendBrowserImport`. Slot semantics are identical.
     public static func forceBrowserImport(for spec: Spec) -> Resolution? {
         appendBrowserImport(for: spec)
     }
@@ -245,9 +244,6 @@ public enum MiscCookieResolver {
             case cookiesDisabled
             /// A session was found but the Keychain write failed.
             case saveFailed
-            /// The provider's live credential is not stored as a browser
-            /// cookie and must use its provider-specific setup flow.
-            case browserImportUnsupported
         }
 
         public let tool: ToolType
@@ -288,13 +284,6 @@ public enum MiscCookieResolver {
     ) -> [BatchImportOutcome] {
         let context = BrowserImportContext()
         return targets.map { target in
-            guard target.spec.supportsSystemBrowserImport else {
-                return BatchImportOutcome(
-                    tool: target.tool,
-                    instanceID: target.instanceID,
-                    result: .browserImportUnsupported
-                )
-            }
             let settings = currentSettings(for: target.tool, instanceID: target.instanceID)
             guard SlotFilter(settings: settings) != .none else {
                 return BatchImportOutcome(
@@ -321,11 +310,11 @@ public enum MiscCookieResolver {
                 importedAt: Date(),
                 origin: .browserImport
             )
-            guard MiscCookieSlotStore.append(
+            guard MiscCookieSlotStore.upsertBrowserImport(
                 slot,
                 for: target.tool,
                 instanceID: target.instanceID
-            ) else {
+            ) != nil else {
                 return BatchImportOutcome(
                     tool: target.tool,
                     instanceID: target.instanceID,
@@ -347,9 +336,9 @@ public enum MiscCookieResolver {
     ///
     /// Used by `MiscCookieAutoImporter` when a fetch came back
     /// `needsLogin`. Slots are replaced **in place** with origin
-    /// `.autoRefresh`; manual and WebView-login slots are left alone.
-    /// Those credentials came from an explicit user action and must not be
-    /// overwritten by a stale cookie from the system browser.
+    /// `.autoRefresh`; `origin == .manual` slots are left alone, the
+    /// same policy `HiddenCookieRefresher` follows — a cookie the user
+    /// pasted by hand is theirs to manage.
     ///
     /// Returns `true` when at least one slot's header actually changed,
     /// which is the caller's signal that a retry is worth a round-trip.
@@ -370,7 +359,7 @@ public enum MiscCookieResolver {
 
         let refreshable = MiscCookieSlotStore
             .slots(for: spec.tool, instanceID: instanceID)
-            .filter(\.isSystemBrowserRefreshable)
+            .filter { $0.origin != .manual }
         guard !refreshable.isEmpty else { return false }
 
         let sessions = browserSessions(
@@ -467,17 +456,24 @@ public enum MiscCookieResolver {
 
     /// Shared browser-access objects. Building one per import is the
     /// wrong shape for a batch: `BrowserDetection`'s probe cache and
-    /// SweetCookieKit's decrypted-key state both live on the instance.
+    /// SweetCookieKit's decrypted-key state both live on the instance, while
+    /// the localStorage cache prevents duplicate full-profile scans for clones.
     struct BrowserImportContext {
         let detection: BrowserDetection
         let client: BrowserCookieClient
+        let localStorageCache: ChromiumLocalStorageCredentialImporter.Cache
+        let homeDirectory: URL
 
         init(
             detection: BrowserDetection = BrowserDetection(),
-            client: BrowserCookieClient = BrowserCookieClient()
+            client: BrowserCookieClient = BrowserCookieClient(),
+            localStorageCache: ChromiumLocalStorageCredentialImporter.Cache = .init(),
+            homeDirectory: URL = RealHomeDirectory.url
         ) {
             self.detection = detection
             self.client = client
+            self.localStorageCache = localStorageCache
+            self.homeDirectory = homeDirectory
         }
     }
 
@@ -509,7 +505,7 @@ public enum MiscCookieResolver {
     /// didn't need to. Pass `nil` only when the caller genuinely needs
     /// the full list (the silent re-import matches sessions to slots by
     /// label).
-    private static func browserSessions(
+    static func browserSessions(
         spec: Spec,
         settings: MiscProviderSettings,
         allowKeychainPrompt: Bool,
@@ -522,6 +518,45 @@ public enum MiscCookieResolver {
         } else {
             preferred = spec.importOrder
         }
+
+        switch spec.browserCredentialSource {
+        case .cookieJar:
+            return cookieBrowserSessions(
+                spec: spec,
+                preferred: preferred,
+                allowKeychainPrompt: allowKeychainPrompt,
+                context: context,
+                maxSessions: maxSessions
+            )
+        case let .chromiumLocalStorage(credential):
+            let candidates = preferred
+                .filter(\.usesChromiumProfileStore)
+                .browsersWithProfileData(using: context.detection)
+            guard !candidates.isEmpty else { return [] }
+            let roots = ChromiumProfileLocator.roots(
+                for: candidates,
+                homeDirectories: [context.homeDirectory]
+            )
+            let sessions = ChromiumLocalStorageCredentialImporter.sessions(
+                credential: credential,
+                roots: roots,
+                cache: context.localStorageCache,
+                maxSessions: maxSessions
+            )
+            return sessions.compactMap {
+                guard let header = spec.minimizedHeader(from: $0.header) else { return nil }
+                return BrowserImportResult(header: header, sourceLabel: $0.sourceLabel)
+            }
+        }
+    }
+
+    private static func cookieBrowserSessions(
+        spec: Spec,
+        preferred: [Browser],
+        allowKeychainPrompt: Bool,
+        context: BrowserImportContext,
+        maxSessions: Int?
+    ) -> [BrowserImportResult] {
         let warm = allowKeychainPrompt ? [] : warmKeychainBrowserIDs
         let candidates = preferred.cookieImportCandidates(
             using: context.detection,

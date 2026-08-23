@@ -12,19 +12,11 @@ public struct MiscCookieSlot: Codable, Equatable, Sendable, Identifiable {
         /// Pasted by the user via the Settings cookie field.
         case manual
         /// Snapshotted from a browser's cookie store (SweetCookieKit) or
-        /// a cookie-based in-app `MiscWebLoginController` web view.
+        /// captured by the in-app `MiscWebLoginController` web view.
         case browserImport
         /// Replaced in place by `HiddenCookieRefresher` after a silent
         /// console keepalive load.
         case autoRefresh
-    }
-
-    /// Additive metadata intentionally separate from `Origin`. Older builds
-    /// ignore this unknown optional JSON field while still decoding the slot's
-    /// wire-compatible `.manual` origin, so downgrading cannot make the whole
-    /// Keychain array unreadable and overwrite it on the next append.
-    public enum CaptureKind: String, Codable, Sendable, Equatable {
-        case webLogin
     }
 
     public let id: UUID
@@ -32,27 +24,57 @@ public struct MiscCookieSlot: Codable, Equatable, Sendable, Identifiable {
     public var sourceLabel: String
     public var importedAt: Date
     public var origin: Origin
-    public var captureKind: CaptureKind?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case cookieHeader
+        case sourceLabel
+        case importedAt
+        case origin
+        /// A short-lived older build wrote Web login captures as
+        /// `origin = manual` plus this additive marker. Keep the key only at
+        /// the decoding boundary so those browser-owned sessions rejoin the
+        /// normal browser refresh path; new data never writes it again.
+        case captureKind
+    }
 
     public init(
         id: UUID = UUID(),
         cookieHeader: String,
         sourceLabel: String,
         importedAt: Date = Date(),
-        origin: Origin,
-        captureKind: CaptureKind? = nil
+        origin: Origin
     ) {
         self.id = id
         self.cookieHeader = cookieHeader
         self.sourceLabel = sourceLabel
         self.importedAt = importedAt
         self.origin = origin
-        self.captureKind = captureKind
     }
 
-    public var isSystemBrowserRefreshable: Bool {
-        guard captureKind != .webLogin else { return false }
-        return origin == .browserImport || origin == .autoRefresh
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.cookieHeader = try container.decode(String.self, forKey: .cookieHeader)
+        self.sourceLabel = try container.decode(String.self, forKey: .sourceLabel)
+        self.importedAt = try container.decode(Date.self, forKey: .importedAt)
+
+        let decodedOrigin = try container.decode(Origin.self, forKey: .origin)
+        let legacyCaptureKind = try container.decodeIfPresent(String.self, forKey: .captureKind)
+        if decodedOrigin == .manual, legacyCaptureKind == "webLogin" {
+            self.origin = .browserImport
+        } else {
+            self.origin = decodedOrigin
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(cookieHeader, forKey: .cookieHeader)
+        try container.encode(sourceLabel, forKey: .sourceLabel)
+        try container.encode(importedAt, forKey: .importedAt)
+        try container.encode(origin, forKey: .origin)
     }
 }
 
@@ -126,11 +148,60 @@ public enum MiscCookieSlotStore {
             list[existing].importedAt = slot.importedAt
             list[existing].sourceLabel = slot.sourceLabel
             list[existing].origin = slot.origin
-            list[existing].captureKind = slot.captureKind
         } else {
             list.append(slot)
         }
         return writeRaw(list, for: tool, instanceID: instanceID)
+    }
+
+    /// Insert a system-browser session, replacing the prior snapshot from the
+    /// same browser profile in place. Different profile labels still stack,
+    /// while manual and WebView-labelled slots are never overwritten.
+    @discardableResult
+    public static func upsertBrowserImport(
+        _ slot: MiscCookieSlot,
+        for tool: ToolType,
+        instanceID: String
+    ) -> MiscCookieSlot? {
+        guard tool.isMisc else { return nil }
+        let merged = mergingBrowserImport(slot, into: slots(for: tool, instanceID: instanceID))
+        guard writeRaw(merged.slots, for: tool, instanceID: instanceID) else { return nil }
+        return merged.stored
+    }
+
+    static func mergingBrowserImport(
+        _ incoming: MiscCookieSlot,
+        into existing: [MiscCookieSlot]
+    ) -> (slots: [MiscCookieSlot], stored: MiscCookieSlot) {
+        var slots = existing
+        if let index = slots.firstIndex(where: {
+            $0.origin != .manual && $0.sourceLabel == incoming.sourceLabel
+        }) {
+            slots[index].cookieHeader = incoming.cookieHeader
+            slots[index].sourceLabel = incoming.sourceLabel
+            slots[index].importedAt = incoming.importedAt
+            slots[index].origin = .browserImport
+            return (slots, slots[index])
+        }
+        // Older HiddenCookieRefresher builds replaced the browser profile
+        // label with the generic "Auto-refresh" marker. Reclaim that slot
+        // only when it is the sole non-manual candidate; with two or more
+        // browser slots there is no safe way to know which profile it came
+        // from, so the incoming profile must stay stacked instead.
+        let browserSlotIndices = slots.indices.filter { slots[$0].origin != .manual }
+        if browserSlotIndices.count == 1,
+           let index = browserSlotIndices.first,
+           slots[index].origin == .autoRefresh,
+           slots[index].sourceLabel == "Auto-refresh"
+        {
+            slots[index].cookieHeader = incoming.cookieHeader
+            slots[index].sourceLabel = incoming.sourceLabel
+            slots[index].importedAt = incoming.importedAt
+            slots[index].origin = .browserImport
+            return (slots, slots[index])
+        }
+        slots.append(incoming)
+        return (slots, incoming)
     }
 
     @discardableResult

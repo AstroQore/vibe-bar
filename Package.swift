@@ -22,10 +22,10 @@ let package = Package(
         // so the pin is the only thing that makes two builds of the same
         // Vibe Bar commit contain the same package. Bump it deliberately.
         .package(url: "https://github.com/AstroQore/agent-session-kit.git", exact: "0.4.2"),
-        // SweetCookieKit encapsulates the Chromium SQLite parsing, "Chrome
-        // Safe Storage" Keychain decryption, and Safari binarycookies /
-        // Firefox SQLite reads that the misc-providers feature needs.
-        .package(url: "https://github.com/steipete/SweetCookieKit", from: "0.4.0"),
+        // SweetCookieKit encapsulates Chromium cookie + localStorage parsing,
+        // "Chrome Safe Storage" Keychain decryption, and Safari
+        // binarycookies / Firefox SQLite reads used by misc providers.
+        .package(url: "https://github.com/steipete/SweetCookieKit", exact: "0.5.2"),
         // Sparkle is the standard update framework for independently
         // distributed macOS applications. Pin the exact reviewed release:
         // update verification and installation are security-sensitive.
