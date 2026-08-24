@@ -8,6 +8,31 @@ public enum BrowserCredentialSource: Sendable, Hashable {
     case cookieJar
     /// One exact first-party localStorage field in Chromium profiles.
     case chromiumLocalStorage(ChromiumLocalStorageCredential)
+    /// Multiple exact first-party localStorage fields that must come from the
+    /// same Chromium profile. Each field becomes one synthetic cookie pair in
+    /// the existing Keychain slot, so provider adapters can keep consuming the
+    /// shared cookie-shaped credential boundary.
+    case chromiumLocalStorageFields([ChromiumLocalStorageCredential])
+
+    var chromiumLocalStorageCredentials: [ChromiumLocalStorageCredential]? {
+        switch self {
+        case .cookieJar:
+            nil
+        case let .chromiumLocalStorage(credential):
+            [credential]
+        case let .chromiumLocalStorageFields(credentials):
+            credentials
+        }
+    }
+
+    func hasCompleteBrowserCredential(in header: String) -> Bool {
+        guard let credentials = chromiumLocalStorageCredentials,
+              !credentials.isEmpty else {
+            return true
+        }
+        let names = Set(CookieHeaderNormalizer.pairs(from: header).map(\.name))
+        return credentials.allSatisfy { names.contains($0.syntheticCookieName) }
+    }
 }
 
 /// Declarative mapping from one Chromium localStorage value to the synthetic

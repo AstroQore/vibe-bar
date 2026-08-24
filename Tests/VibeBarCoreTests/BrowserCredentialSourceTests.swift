@@ -50,4 +50,23 @@ final class BrowserCredentialSourceTests: XCTestCase {
         )
         XCTAssertNil(invalid.cookieHeader(from: "value"))
     }
+
+    func testCompositeSourceDetectsAnOlderIncompleteHeader() {
+        let source = BrowserCredentialSource.chromiumLocalStorageFields([
+            credential,
+            ChromiumLocalStorageCredential(
+                origin: "https://example.com",
+                key: "refresh_token",
+                syntheticCookieName: "refresh-token",
+                valueFormat: .jwt(segments: 3, minLength: 16, maxLength: 4_096)
+            )
+        ])
+
+        XCTAssertFalse(source.hasCompleteBrowserCredential(
+            in: "session-token=synthetic.header.signature"
+        ))
+        XCTAssertTrue(source.hasCompleteBrowserCredential(
+            in: "session-token=synthetic.header.signature; refresh-token=refresh.header.signature"
+        ))
+    }
 }

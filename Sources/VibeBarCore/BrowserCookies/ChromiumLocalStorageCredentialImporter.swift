@@ -17,7 +17,7 @@ enum ChromiumLocalStorageCredentialImporter {
 
     final class Cache: @unchecked Sendable {
         private struct Key: Hashable {
-            let credential: ChromiumLocalStorageCredential
+            let credentials: [ChromiumLocalStorageCredential]
             let rootPaths: [String]
             let maxSessions: Int?
         }
@@ -27,13 +27,13 @@ enum ChromiumLocalStorageCredentialImporter {
         )
 
         func sessions(
-            credential: ChromiumLocalStorageCredential,
+            credentials: [ChromiumLocalStorageCredential],
             roots: [ChromiumProfileRoot],
             maxSessions: Int?,
             load: () -> [ChromiumLocalStorageBrowserSession]
         ) -> [ChromiumLocalStorageBrowserSession] {
             let key = Key(
-                credential: credential,
+                credentials: credentials,
                 rootPaths: roots.map { $0.url.standardizedFileURL.path },
                 maxSessions: maxSessions
             )
@@ -55,9 +55,33 @@ enum ChromiumLocalStorageCredentialImporter {
         readEntries: @escaping EntryReader = Self.liveReadEntries,
         readTextEntries: @escaping TextEntryReader = Self.liveReadTextEntries
     ) -> [ChromiumLocalStorageBrowserSession] {
-        cache.sessions(credential: credential, roots: roots, maxSessions: maxSessions) {
+        sessions(
+            credentials: [credential],
+            roots: roots,
+            cache: cache,
+            maxSessions: maxSessions,
+            directoryContents: directoryContents,
+            readEntries: readEntries,
+            readTextEntries: readTextEntries
+        )
+    }
+
+    static func sessions(
+        credentials: [ChromiumLocalStorageCredential],
+        roots: [ChromiumProfileRoot],
+        cache: Cache,
+        maxSessions: Int? = nil,
+        directoryContents: @escaping DirectoryContents = Self.liveDirectoryContents,
+        readEntries: @escaping EntryReader = Self.liveReadEntries,
+        readTextEntries: @escaping TextEntryReader = Self.liveReadTextEntries
+    ) -> [ChromiumLocalStorageBrowserSession] {
+        guard !credentials.isEmpty,
+              Set(credentials.map(\.syntheticCookieName)).count == credentials.count else {
+            return []
+        }
+        return cache.sessions(credentials: credentials, roots: roots, maxSessions: maxSessions) {
             loadSessions(
-                credential: credential,
+                credentials: credentials,
                 roots: roots,
                 maxSessions: maxSessions,
                 directoryContents: directoryContents,
@@ -68,7 +92,7 @@ enum ChromiumLocalStorageCredentialImporter {
     }
 
     private static func loadSessions(
-        credential: ChromiumLocalStorageCredential,
+        credentials: [ChromiumLocalStorageCredential],
         roots: [ChromiumProfileRoot],
         maxSessions: Int?,
         directoryContents: DirectoryContents,
@@ -90,23 +114,44 @@ enum ChromiumLocalStorageCredentialImporter {
                     continue
                 }
 
-                let candidates = readEntries(credential.origin, levelDB)
-                guard hasOnlyRealLevelDBFiles(levelDB) else { continue }
                 let textEntries = readTextEntries(levelDB)
-                guard hasOnlyRealLevelDBFiles(levelDB),
-                      let entry = candidates.first(where: {
-                          $0.key == credential.key
-                              && hasExactProvenance(
-                                  candidate: $0,
-                                  credential: credential,
-                                  textEntries: textEntries
-                              )
-                      }),
-                      let header = credential.cookieHeader(from: entry.value) else {
+                guard hasOnlyRealLevelDBFiles(levelDB) else { continue }
+
+                var candidatesByOrigin: [String: [ChromiumLocalStorageEntry]] = [:]
+                var headerPairs: [String] = []
+                var complete = true
+                for credential in credentials {
+                    let candidates: [ChromiumLocalStorageEntry]
+                    if let cached = candidatesByOrigin[credential.origin] {
+                        candidates = cached
+                    } else {
+                        let loaded = readEntries(credential.origin, levelDB)
+                        guard hasOnlyRealLevelDBFiles(levelDB) else {
+                            complete = false
+                            break
+                        }
+                        candidatesByOrigin[credential.origin] = loaded
+                        candidates = loaded
+                    }
+                    guard let entry = candidates.first(where: {
+                        $0.key == credential.key
+                            && hasExactProvenance(
+                                candidate: $0,
+                                credential: credential,
+                                textEntries: textEntries
+                            )
+                    }),
+                    let pair = credential.cookieHeader(from: entry.value) else {
+                        complete = false
+                        break
+                    }
+                    headerPairs.append(pair)
+                }
+                guard complete, headerPairs.count == credentials.count else {
                     continue
                 }
                 sessions.append(ChromiumLocalStorageBrowserSession(
-                    header: header,
+                    header: headerPairs.joined(separator: "; "),
                     sourceLabel: "\(root.labelPrefix) \(profile.lastPathComponent)"
                 ))
                 if let maxSessions, sessions.count >= maxSessions {

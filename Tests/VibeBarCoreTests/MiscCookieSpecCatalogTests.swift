@@ -97,14 +97,20 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
     }
 
     func testKimiUsesTheGenericChromiumLocalStorageSource() {
-        let expected = BrowserCredentialSource.chromiumLocalStorage(
+        let expected = BrowserCredentialSource.chromiumLocalStorageFields([
             ChromiumLocalStorageCredential(
                 origin: "https://www.kimi.com",
                 key: "access_token",
                 syntheticCookieName: "kimi-auth",
                 valueFormat: .jwt(segments: 3, minLength: 16, maxLength: 4_096)
+            ),
+            ChromiumLocalStorageCredential(
+                origin: "https://www.kimi.com",
+                key: "refresh_token",
+                syntheticCookieName: "kimi-refresh",
+                valueFormat: .jwt(segments: 3, minLength: 16, maxLength: 4_096)
             )
-        )
+        ])
         XCTAssertEqual(KimiQuotaAdapter.cookieSpec.browserCredentialSource, expected)
 
         for spec in MiscCookieSpecCatalog.allSpecs {
