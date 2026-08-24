@@ -42,7 +42,7 @@ run, explain the last one and recover its context.
 | --- | --- |
 | **Will this quota survive the reset window?** | A personal forecast blends provider quota observations, recent burn, completed reset cycles and your real weekday/hour pattern. It reports `Learning`, `Enough`, `Watch`, `At risk` or `Surplus`, with a confidence band instead of false precision. |
 | **Who actually used it?** | Billing capacity and execution are separate axes: Claude Code and Claude Cowork may share one Claude quota, while the per-request ledger still attributes their tokens and cost to the harness that produced them. |
-| **Where did the work go?** | Usage totals lead to the underlying requests, models, projects and full-text session transcripts, then back to the owning CLI with one-click resume. |
+| **Where did the work go?** | The Workbench pairs a per-request ledger of harnesses, models, tokens and cost with a separate full-text session index that opens transcripts and hands a selected session back to its owning CLI. |
 | **Can my agents use this context?** | The same quota, forecast, usage, cost, session, status and pricing data is available through a typed MCP server over a local Unix socket — no TCP port and no credential projection. |
 
 Remote Linux probes can join the same cost and activity model without opening
