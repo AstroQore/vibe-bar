@@ -614,9 +614,11 @@ final class AppEnvironment: ObservableObject {
     func repairMenuBarAllowList() async -> MenuBarAllowListRepair.Outcome {
         let outcome = await MenuBarAllowListRepair.apply()
         guard outcome.succeeded else { return outcome }
-        if outcome.changed {
-            menuBarReregisterHandler?()
-        }
+        // A clean allow-list can still leave this process holding the stale
+        // NSStatusItem that the script tells shell users to recreate by
+        // relaunching. The in-app path can do that narrower re-registration
+        // for both successful outcomes without stopping MCP or the app.
+        menuBarReregisterHandler?()
         for _ in 0..<6 {
             try? await Task.sleep(for: .milliseconds(500))
             menuBarWatchdog?.checkNow()

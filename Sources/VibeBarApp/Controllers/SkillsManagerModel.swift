@@ -376,7 +376,7 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.install(discovered.id)) { [self] in
             let installed = try await service.install(discovered, enableFor: apps, method: method)
             toast = apps.isEmpty
-                ? "Installed \(installed.name)."
+                ? "Installed \(installed.name) in the shared library. Check effective harness state in Skills."
                 : "Installed \(installed.name) for \(apps.map(\.displayName).joined(separator: ", "))."
         }
     }
@@ -399,7 +399,7 @@ final class SkillsManagerModel: ObservableObject {
             }
             let installed = try await service.install(match, enableFor: apps, method: method)
             toast = apps.isEmpty
-                ? "Installed \(installed.name)."
+                ? "Installed \(installed.name) in the shared library. Check effective harness state in Skills."
                 : "Installed \(installed.name) for \(apps.map(\.displayName).joined(separator: ", "))."
         }
     }
@@ -414,7 +414,7 @@ final class SkillsManagerModel: ObservableObject {
             }
             let count = "\(installed.count) skill\(installed.count == 1 ? "" : "s")"
             toast = apps.isEmpty
-                ? "Installed \(count) from the archive. Switch each one on for the apps you want."
+                ? "Installed \(count) in the shared library. Check effective harness state in Skills."
                 : "Installed \(count) from the archive for \(apps.map(\.displayName).joined(separator: ", "))."
         }
     }

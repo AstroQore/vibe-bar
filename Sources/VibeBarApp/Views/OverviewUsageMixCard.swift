@@ -14,6 +14,7 @@ struct OverviewUsageMixCard: View {
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var costService: CostUsageService
+    @EnvironmentObject private var settingsStore: SettingsStore
     @State private var dimension: Dimension = .projects
     @State private var snapshot = Snapshot.empty
     @State private var isLoading = false
@@ -70,9 +71,18 @@ struct OverviewUsageMixCard: View {
             dimensionPicker
             content
         }
-        .task(id: costService.lastRefreshedAt) {
+        .task(id: loadTaskID) {
             await load()
         }
+    }
+
+    private var visibleCostProviders: [ToolType] {
+        ToolType.costAwareProviders.filter { settingsStore.settings.isCoreProviderVisible($0) }
+    }
+
+    private var loadTaskID: String {
+        "\(costService.lastRefreshedAt?.timeIntervalSince1970 ?? 0)|"
+            + visibleCostProviders.map(\.rawValue).joined(separator: ",")
     }
 
     private var header: some View {
@@ -312,7 +322,10 @@ struct OverviewUsageMixCard: View {
         let startOfToday = Calendar.current.startOfDay(for: now)
         let start = Calendar.current.date(byAdding: .day, value: -29, to: startOfToday)
             ?? now.addingTimeInterval(-29 * 86_400)
-        let filter = UsageQueryFilter(range: DateInterval(start: start, end: now.addingTimeInterval(1)))
+        let filter = UsageQueryFilter(
+            range: DateInterval(start: start, end: now.addingTimeInterval(1)),
+            tools: visibleCostProviders
+        )
         do {
             let summary = try await ledger.summary(filter)
             let harnesses = try await ledger.harnessStats(filter)

@@ -266,6 +266,7 @@ extension SkillsService {
         method: SkillSyncMethod = .auto
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: discovered.directory)
+        try validateNativeInstallationSelection(apps)
 
         if let existing = await store.skill(directory: discovered.directory) {
             guard existing.id == discovered.id else {
@@ -280,6 +281,11 @@ extension SkillsService {
                     recorded: skill.apps[app]
                 )
             }
+            try applyNativeInstallationSelection(
+                to: skill,
+                selectedApps: apps,
+                disableUnselected: false
+            )
             try await store.upsert(skill)
             return skill
         }
@@ -309,6 +315,11 @@ extension SkillsService {
                 method: method
             )
         }
+        try applyNativeInstallationSelection(
+            to: skill,
+            selectedApps: apps,
+            disableUnselected: true
+        )
         try await store.upsert(skill)
         return skill
     }
@@ -523,6 +534,7 @@ extension SkillsService {
         method: SkillSyncMethod
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: directoryName)
+        try validateNativeInstallationSelection(apps)
         guard SkillTreeScanner.isSkillDirectory(source) else {
             throw SkillError.missingSkillMD(directoryName)
         }
@@ -547,6 +559,11 @@ extension SkillsService {
                 method: method
             )
         }
+        try applyNativeInstallationSelection(
+            to: skill,
+            selectedApps: apps,
+            disableUnselected: true
+        )
         try await store.upsert(skill)
         return skill
     }

@@ -119,6 +119,23 @@ struct SkillHarnessConfigManager: Sendable {
         }
     }
 
+    /// Fail before an install copies or projects anything when a selected
+    /// harness cannot accept a per-skill enable. Gemini's user-level global
+    /// switch is the only current case: silently turning it on would enable
+    /// every other skill too, so the narrower operation explains the blocker.
+    func validateCanEnable(_ app: SkillAppTarget) throws {
+        guard app == .gemini else { return }
+        let target = resolvedConfigTarget(geminiSettingsURL)
+        guard FileManager.default.fileExists(atPath: target.path) else { return }
+        guard let data = try? Data(contentsOf: target),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw SkillError.nativeConfigUnreadable(.gemini) }
+        let section = root["skills"] as? [String: Any] ?? [:]
+        if (section["enabled"] as? Bool) == false {
+            throw SkillError.nativeSkillsGloballyDisabled(.gemini)
+        }
+    }
+
     private func jsonNameStates(
         skills: [Skill],
         url: URL,
@@ -139,6 +156,9 @@ struct SkillHarnessConfigManager: Sendable {
     }
 
     private func setClaudeEnabled(_ enabled: Bool, name: String) throws {
+        if enabled, !FileManager.default.fileExists(atPath: resolvedConfigTarget(claudeSettingsURL).path) {
+            return
+        }
         try patchJSONSettings(url: claudeSettingsURL, app: .claude) { root in
             var overrides = root["skillOverrides"] as? [String: Any] ?? [:]
             if enabled {
@@ -154,6 +174,9 @@ struct SkillHarnessConfigManager: Sendable {
     }
 
     private func setGeminiEnabled(_ enabled: Bool, name: String) throws {
+        if enabled, !FileManager.default.fileExists(atPath: resolvedConfigTarget(geminiSettingsURL).path) {
+            return
+        }
         try patchJSONSettings(url: geminiSettingsURL, app: .gemini) { root in
             var section = root["skills"] as? [String: Any] ?? [:]
             if enabled, (section["enabled"] as? Bool) == false {
@@ -200,6 +223,7 @@ struct SkillHarnessConfigManager: Sendable {
     private func setGrokEnabled(_ enabled: Bool, name: String) throws {
         let target = resolvedConfigTarget(grokConfigURL)
         let existed = FileManager.default.fileExists(atPath: target.path)
+        if enabled, !existed { return }
         let originalData = existed ? (try? Data(contentsOf: target)) : Data()
         guard let originalData,
               let original = String(data: originalData, encoding: .utf8)

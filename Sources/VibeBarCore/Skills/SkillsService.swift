@@ -142,6 +142,46 @@ public actor SkillsService {
         return hash
     }
 
+    /// Applies the native half of a pending install selection.
+    ///
+    /// Codex, Gemini CLI, and Grok Build discover the shared SSOT even when
+    /// their app-specific projection is absent. A brand-new install must
+    /// therefore write a native disable for every unchecked direct-discovery
+    /// harness; selected native harnesses are explicitly returned to their
+    /// enabled state. Re-installing an existing skill passes
+    /// `disableUnselected: false` because that operation only adds targets and
+    /// must not clear choices made earlier.
+    func applyNativeInstallationSelection(
+        to skill: Skill,
+        selectedApps: [SkillAppTarget],
+        disableUnselected: Bool
+    ) throws {
+        let selected = Set(selectedApps)
+        for app in SkillAppTarget.managedHarnesses where app.supportsNativeSkillActivation {
+            if selected.contains(app) {
+                try harnessConfig.setNativeEnabled(
+                    true,
+                    directoryName: skill.directory,
+                    skillName: skill.name,
+                    app: app
+                )
+            } else if disableUnselected, app.discoversSharedSkillRoot {
+                try harnessConfig.setNativeEnabled(
+                    false,
+                    directoryName: skill.directory,
+                    skillName: skill.name,
+                    app: app
+                )
+            }
+        }
+    }
+
+    func validateNativeInstallationSelection(_ selectedApps: [SkillAppTarget]) throws {
+        for app in selectedApps where app.supportsNativeSkillActivation {
+            try harnessConfig.validateCanEnable(app)
+        }
+    }
+
     public func skill(with id: SkillID) async -> Skill? {
         await store.skill(with: id)
     }
@@ -336,6 +376,11 @@ public actor SkillsService {
                 method: method
             )
         }
+        try applyNativeInstallationSelection(
+            to: skill,
+            selectedApps: apps,
+            disableUnselected: true
+        )
         try await store.upsert(skill)
         return skill
     }
@@ -353,6 +398,11 @@ public actor SkillsService {
         }
         try copyIntoSSOT(from: sourceDir, directoryName: name)
         let skill = try makeLocalSkill(directoryName: name)
+        try applyNativeInstallationSelection(
+            to: skill,
+            selectedApps: [],
+            disableUnselected: true
+        )
         try await store.upsert(skill)
         return skill
     }
