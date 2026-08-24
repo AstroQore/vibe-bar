@@ -71,13 +71,13 @@ final class SkillsServiceTests: XCTestCase {
         let afterEnable = await service.skill(with: skill.id)
         XCTAssertEqual(afterEnable?.apps[.claude]?.method, .symlink)
         let persisted = await SkillsStore(homeDirectory: home.path).all()
-        XCTAssertEqual(persisted.first?.enabledApps, [.claude])
+        XCTAssertEqual(persisted.first?.projectedApps, [.claude])
 
         let disabled = try await service.setEnabled(skill.id, app: .claude, enabled: false)
         XCTAssertTrue(disabled)
         XCTAssertFalse(home.exists(home.appDirectory(.claude).appendingPathComponent("alpha")))
         let afterDisable = await SkillsStore(homeDirectory: home.path).all()
-        XCTAssertEqual(afterDisable.first?.enabledApps, [])
+        XCTAssertEqual(afterDisable.first?.projectedApps, [])
     }
 
     func testInstalledSkillsClearsARecordedSymlinkRemovedOutsideVibeBar() async throws {
@@ -203,7 +203,7 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(SkillFileSystem.kind(of: destination), .directory)
         XCTAssertEqual(home.contents(of: destination.appendingPathComponent("ref.md")), "edited by the user")
         let stored = await service.skill(with: skill.id)
-        XCTAssertEqual(stored?.enabledApps, [])
+        XCTAssertEqual(stored?.projectedApps, [])
     }
 
     func testSetEnabledRejectsAnUnknownSkill() async throws {
@@ -282,7 +282,7 @@ final class SkillsServiceTests: XCTestCase {
         let persisted = await SkillsStore(homeDirectory: home.path).all()
         XCTAssertEqual(persisted.count, 2)
         // Only the requested app is recorded, and it is marked as adopted.
-        XCTAssertEqual(persisted.first?.enabledApps, [.claude])
+        XCTAssertEqual(persisted.first?.projectedApps, [.claude])
         XCTAssertEqual(persisted.first?.apps[.claude]?.adopted, true)
         // Import changed nothing on disk.
         XCTAssertEqual(
@@ -293,7 +293,7 @@ final class SkillsServiceTests: XCTestCase {
         // A second import with another app selected keeps what was known.
         _ = try await service.importAdopted(report, apps: [.cursor])
         let merged = await SkillsStore(homeDirectory: home.path).all()
-        XCTAssertEqual(merged.first?.enabledApps, [.claude, .cursor])
+        XCTAssertEqual(merged.first?.projectedApps, [.claude, .cursor])
     }
 
     func testAdoptUnmanagedCopiesIntoTheSSOTThenMaterializes() async throws {
@@ -323,7 +323,7 @@ final class SkillsServiceTests: XCTestCase {
             home.contents(of: home.ssot.appendingPathComponent("legacy-helper/ref.md")),
             "payload"
         )
-        XCTAssertEqual(adopted.enabledApps, [.claude, .codex])
+        XCTAssertEqual(adopted.projectedApps, [.claude, .codex])
         XCTAssertEqual(SkillFileSystem.kind(of: foreign), .symlink)
         XCTAssertEqual(
             try FileManager.default.destinationOfSymbolicLink(atPath: foreign.path),

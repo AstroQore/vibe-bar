@@ -27,7 +27,7 @@ final class SkillsServiceNetworkTests: XCTestCase {
         XCTAssertEqual(skill.name, "PDF Tools")
         XCTAssertEqual(skill.description, "Reads PDFs")
         XCTAssertEqual(skill.repoBranch, "master")
-        XCTAssertEqual(Set(skill.enabledApps), [.claude, .codex])
+        XCTAssertEqual(Set(skill.projectedApps), [.claude, .codex])
         XCTAssertEqual(
             home.contents(of: home.ssot.appendingPathComponent("pdf/reference/notes.md")),
             "deep"
@@ -76,7 +76,7 @@ final class SkillsServiceNetworkTests: XCTestCase {
 
         let again = try await service.install(discovered, enableFor: [.gemini])
 
-        XCTAssertEqual(Set(again.enabledApps), [.claude, .gemini])
+        XCTAssertEqual(Set(again.projectedApps), [.claude, .gemini])
         XCTAssertEqual(home.contents(of: home.ssot.appendingPathComponent("pdf/local.md")), "edited")
     }
 

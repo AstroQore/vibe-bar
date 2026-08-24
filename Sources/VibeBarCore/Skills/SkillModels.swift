@@ -237,6 +237,15 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         SkillAppTarget.allCases.filter { activationState(for: $0) == .enabled }
     }
 
+    /// Harness-specific link/copy entries that Vibe Bar has recorded.
+    ///
+    /// This is deliberately separate from `enabledApps`: Codex, Gemini CLI,
+    /// Grok Build, and Cursor discover the shared SSOT directly, so a skill
+    /// can be effectively enabled without a redundant app-side projection.
+    public var projectedApps: [SkillAppTarget] {
+        SkillAppTarget.allCases.filter { apps[$0] != nil }
+    }
+
     public func isEnabled(for app: SkillAppTarget) -> Bool {
         activationState(for: app) == .enabled
     }

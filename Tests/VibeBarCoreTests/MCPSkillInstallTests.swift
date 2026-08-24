@@ -217,7 +217,7 @@ final class MCPSkillInstallTests: XCTestCase {
     }
 
     func testRejectsLegacyAppsAtExecutionTime() async throws {
-        for app in [SkillAppTarget.gemini, .hermes, .opencode] {
+        for app in [SkillAppTarget.hermes, .opencode] {
             let response = try await raw([
                 "source": .string("AstroQore/vibe-bar"),
                 "apps": .array([.string(app.rawValue)])

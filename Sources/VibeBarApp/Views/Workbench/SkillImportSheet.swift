@@ -132,7 +132,7 @@ struct SkillImportSheet: View {
                                     .lineLimit(1)
                                 Spacer(minLength: 8)
                                 HStack(spacing: 3) {
-                                    ForEach(skill.enabledApps, id: \.self) { app in
+                                    ForEach(skill.projectedApps, id: \.self) { app in
                                         SkillAppGlyph(app: app, size: 11)
                                             .help(app.displayName)
                                     }
@@ -265,7 +265,7 @@ struct SkillImportSheet: View {
     /// user says "stop treating that link as mine".
     private func seedSelection() {
         guard let report else { return }
-        adoptedApps = Set(report.adopted.flatMap(\.enabledApps))
+        adoptedApps = Set(report.adopted.flatMap(\.projectedApps))
         adopting = [:]
     }
 }

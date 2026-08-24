@@ -145,7 +145,7 @@ extension SkillsService {
 
     private func record(_ skill: Skill) -> SkillInstallOutcome.Installed {
         var projected: [SkillAppTarget: String] = [:]
-        for app in skill.enabledApps {
+        for app in skill.projectedApps {
             projected[app] = SkillAppCatalog
                 .skillsDirectory(for: app, homeDirectory: homeDirectory)
                 .appendingPathComponent(skill.directory, isDirectory: true)

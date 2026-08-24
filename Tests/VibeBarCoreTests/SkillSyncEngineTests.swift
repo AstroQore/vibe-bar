@@ -268,12 +268,30 @@ final class SkillSyncEngineTests: XCTestCase {
     func testManagedHarnessTargetsExcludeUnmanageableAndLegacySurfaces() {
         XCTAssertEqual(
             SkillAppTarget.managedHarnesses,
-            [.codex, .claude, .antigravity, .grok, .cursor]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
         XCTAssertEqual(SkillAppCatalog.relativePath(for: .cursor), ".cursor/skills")
-        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.gemini))
+        XCTAssertTrue(SkillAppTarget.managedHarnesses.contains(.gemini))
         XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.hermes))
         XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.opencode))
+    }
+
+    func testEffectiveStateIsIndependentFromRecordedProjections() {
+        var skill = Skill(
+            id: .local(directory: "alpha"),
+            name: "Alpha",
+            directory: "alpha",
+            installedAt: .distantPast
+        )
+
+        XCTAssertEqual(skill.projectedApps, [])
+        XCTAssertEqual(skill.enabledApps, [.codex, .gemini, .grok])
+        XCTAssertEqual(skill.activationState(for: .cursor), .coupled)
+
+        skill.nativeDisabledApps.insert(.codex)
+        XCTAssertEqual(skill.activationState(for: .codex), .disabledInHarness)
+        XCTAssertFalse(skill.enabledApps.contains(.codex))
+        XCTAssertEqual(skill.projectedApps, [])
     }
 
     func testUnmaterializeRemovesAnSSOTSymlinkAndIsIdempotent() throws {

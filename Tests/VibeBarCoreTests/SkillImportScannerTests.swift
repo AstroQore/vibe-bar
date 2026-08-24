@@ -75,18 +75,18 @@ final class SkillImportScannerTests: XCTestCase {
 
         // Absolute links in three different app dirs, including AntiGravity's
         // ~/.gemini/config/skills and Cursor's ~/.cursor/skills.
-        XCTAssertEqual(byDirectory["alpha"]?.enabledApps, [.claude, .antigravity, .cursor])
+        XCTAssertEqual(byDirectory["alpha"]?.projectedApps, [.claude, .antigravity, .cursor])
         XCTAssertEqual(byDirectory["alpha"]?.apps[.claude], SkillMaterialization(method: .symlink, adopted: true))
         XCTAssertEqual(byDirectory["alpha"]?.name, "alpha-skill")
         XCTAssertEqual(byDirectory["alpha"]?.description, "Alpha does things")
         XCTAssertNotNil(byDirectory["alpha"]?.contentHash)
 
         // A relative link resolves the same way an absolute one does.
-        XCTAssertEqual(byDirectory["gamma"]?.enabledApps, [.claude])
+        XCTAssertEqual(byDirectory["gamma"]?.projectedApps, [.claude])
         // The Cursor side of beta is a real directory: a conflict, not evidence.
-        XCTAssertEqual(byDirectory["beta"]?.enabledApps, [.claude])
+        XCTAssertEqual(byDirectory["beta"]?.projectedApps, [.claude])
         // Never linked anywhere.
-        XCTAssertEqual(byDirectory["delta"]?.enabledApps, [])
+        XCTAssertEqual(byDirectory["delta"]?.projectedApps, [])
     }
 
     func testRecoversProvenanceFromTheLockFile() throws {
