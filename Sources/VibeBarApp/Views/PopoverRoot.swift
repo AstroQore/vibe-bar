@@ -1043,6 +1043,12 @@ private struct OverviewCostSummaryCard: View {
         // two peak scans over the combined daily history — all of it derived
         // once per cost refresh in Core rather than once per render pass here.
         let totals = costService.totals(of: visibleCostProviders)
+        let remoteTotals = costService.remoteTotals(of: visibleCostProviders)
+        let headlineTokens = UsageTokenHeadlineTotals.merging(
+            localLedger: ledgerTokens,
+            selectedRemote: remoteTotals,
+            mergedSnapshot: totals
+        )
         let tokenTaskID = visibleCostProviders.map(\.rawValue).joined(separator: ",")
             + "|\(costService.lastRefreshedAt?.timeIntervalSince1970 ?? 0)"
         VStack(alignment: .leading, spacing: 8) {
@@ -1073,11 +1079,11 @@ private struct OverviewCostSummaryCard: View {
                 HStack(alignment: .top, spacing: 0) {
                     metric(label: "TOTAL COST", value: formatCost(totals.allTimeCostUSD), highlight: true)
                     divider
-                    metric(label: "TOTAL TOK", value: formatTokens(ledgerTokens?.allTimeTokens ?? Int64(totals.allTimeTokens)), highlight: true)
+                    metric(label: "TOTAL TOK", value: formatTokens(headlineTokens.allTimeTokens), highlight: true)
                     divider
                     metric(label: "PEAK DAY", value: formatCost(totals.peakDayCostUSD))
                     divider
-                    metric(label: "PEAK TOK DAY", value: formatTokens(ledgerTokens?.peakDayTokens ?? Int64(totals.peakDayTokens)))
+                    metric(label: "PEAK TOK DAY", value: formatTokens(headlineTokens.peakDayTokens))
                 }
                 Spacer(minLength: 8)
                 HStack(alignment: .top, spacing: 0) {
@@ -1091,13 +1097,13 @@ private struct OverviewCostSummaryCard: View {
                 }
                 Spacer(minLength: 8)
                 HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TODAY TOK", value: formatTokens(ledgerTokens?.todayTokens ?? Int64(totals.todayTokens)))
+                    metric(label: "TODAY TOK", value: formatTokens(headlineTokens.todayTokens))
                     divider
-                    metric(label: "YESTERDAY TOK", value: formatTokens(ledgerTokens?.yesterdayTokens ?? Int64(totals.yesterdayTokens)))
+                    metric(label: "YESTERDAY TOK", value: formatTokens(headlineTokens.yesterdayTokens))
                     divider
-                    metric(label: "7-DAY TOK", value: formatTokens(ledgerTokens?.last7DaysTokens ?? Int64(totals.last7DaysTokens)))
+                    metric(label: "7-DAY TOK", value: formatTokens(headlineTokens.last7DaysTokens))
                     divider
-                    metric(label: "30-DAY TOK", value: formatTokens(ledgerTokens?.last30DaysTokens ?? Int64(totals.last30DaysTokens)))
+                    metric(label: "30-DAY TOK", value: formatTokens(headlineTokens.last30DaysTokens))
                 }
             }
             .frame(maxHeight: .infinity)

@@ -62,7 +62,7 @@ struct UsageDistributionDashboard: View {
             DistributionDonutCard(
                 density: density,
                 title: "Project Mix",
-                subtitle: "Codex + Claude cwd",
+                subtitle: "Codex + Claude cwd · up to 30 d detail",
                 emptyMessage: "Project attribution appears after a Codex or Claude rescan",
                 slices: collapsed(projectSlices)
             )

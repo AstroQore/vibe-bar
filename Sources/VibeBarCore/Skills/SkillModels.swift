@@ -325,6 +325,7 @@ public enum SkillError: Error, Equatable, Sendable {
     case updateSourceMissing(String)
     case nativeActivationUnsupported(SkillAppTarget)
     case nativeConfigUnreadable(SkillAppTarget)
+    case nativeSkillsGloballyDisabled(SkillAppTarget)
 }
 
 extension SkillError: LocalizedError {
@@ -358,6 +359,8 @@ extension SkillError: LocalizedError {
             return "\(app.displayName) does not expose a native per-skill enable switch."
         case let .nativeConfigUnreadable(app):
             return "\(app.displayName)'s skill configuration could not be read safely."
+        case let .nativeSkillsGloballyDisabled(app):
+            return "\(app.displayName) has Skills disabled globally. Enable its global Skills switch before enabling an individual skill."
         }
     }
 }

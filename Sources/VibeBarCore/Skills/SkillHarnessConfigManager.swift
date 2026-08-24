@@ -8,7 +8,7 @@ import Foundation
 /// up, and atomically replaces that one file; no other Codex setting is
 /// interpreted or rewritten.
 struct SkillHarnessConfigManager: Sendable {
-    enum NativeState: Sendable {
+    enum NativeState: Sendable, Equatable {
         case enabled
         case disabled
         case unknown
@@ -156,6 +156,9 @@ struct SkillHarnessConfigManager: Sendable {
     private func setGeminiEnabled(_ enabled: Bool, name: String) throws {
         try patchJSONSettings(url: geminiSettingsURL, app: .gemini) { root in
             var section = root["skills"] as? [String: Any] ?? [:]
+            if enabled, (section["enabled"] as? Bool) == false {
+                throw SkillError.nativeSkillsGloballyDisabled(.gemini)
+            }
             var disabled = section["disabled"] as? [String] ?? []
             disabled.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
             if !enabled { disabled.append(name) }
@@ -168,7 +171,7 @@ struct SkillHarnessConfigManager: Sendable {
     private func patchJSONSettings(
         url: URL,
         app: SkillAppTarget,
-        mutation: (inout [String: Any]) -> Void
+        mutation: (inout [String: Any]) throws -> Void
     ) throws {
         let target = resolvedConfigTarget(url)
         let existed = FileManager.default.fileExists(atPath: target.path)
@@ -183,7 +186,7 @@ struct SkillHarnessConfigManager: Sendable {
             }
             root = decoded
         }
-        mutation(&root)
+        try mutation(&root)
         guard JSONSerialization.isValidJSONObject(root),
               let rewritten = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
         else { throw SkillError.nativeConfigUnreadable(app) }
@@ -269,7 +272,8 @@ struct SkillHarnessConfigManager: Sendable {
             if lines.last == "" { lines.removeLast() }
             if !lines.isEmpty { lines.append("") }
             lines.append("[[skills.config]]")
-            lines.append("path = \"\(canonicalSkillMD(directoryName: directoryName).path)\"")
+            let path = Self.escapeTOML(canonicalSkillMD(directoryName: directoryName).path)
+            lines.append("path = \"\(path)\"")
             lines.append("enabled = false")
             lines.append("")
         } else {
@@ -338,8 +342,32 @@ struct SkillHarnessConfigManager: Sendable {
         guard lhs == key else { return nil }
         let rhs = line[line.index(after: equal)...].trimmingCharacters(in: .whitespaces)
         guard rhs.count >= 2, let quote = rhs.first, quote == "\"" || quote == "'" else { return nil }
-        guard let end = rhs.dropFirst().firstIndex(of: quote) else { return nil }
-        return String(rhs[rhs.index(after: rhs.startIndex)..<end])
+        if quote == "'" {
+            guard let end = rhs.dropFirst().firstIndex(of: quote) else { return nil }
+            return String(rhs[rhs.index(after: rhs.startIndex)..<end])
+        }
+        var value = ""
+        var escaped = false
+        for character in rhs.dropFirst() {
+            if escaped {
+                switch character {
+                case "n": value.append("\n")
+                case "r": value.append("\r")
+                case "t": value.append("\t")
+                case "\"": value.append("\"")
+                case "\\": value.append("\\")
+                default: value.append(character)
+                }
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else if character == "\"" {
+                return value
+            } else {
+                value.append(character)
+            }
+        }
+        return nil
     }
 
     private static func booleanValue(in line: String, key: String) -> Bool? {

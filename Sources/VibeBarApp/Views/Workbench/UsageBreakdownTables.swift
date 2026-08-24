@@ -114,7 +114,7 @@ struct UsageBreakdownTables: View {
         case .providers:
             return "\(model.companyProviderStats.count) compan\(model.companyProviderStats.count == 1 ? "y" : "ies")"
         case .projects:
-            return "\(model.projectStats.count) project\(model.projectStats.count == 1 ? "" : "s")"
+            return "\(model.projectStats.count) project\(model.projectStats.count == 1 ? "" : "s") · up to 30 d detail"
         case .models:
             return "\(model.modelStats.count) model\(model.modelStats.count == 1 ? "" : "s")"
         }

@@ -159,6 +159,37 @@ public struct UsageTokenHeadlineTotals: Sendable, Equatable {
         self.peakDayTokens = peakDayTokens
         self.peakDay = peakDay
     }
+
+    /// Combines the local request ledger with selected Probe snapshots.
+    /// `mergedSnapshot` supplies a date-aware peak across both lanes; taking
+    /// the max preserves a longer-lived ledger peak when snapshot retention is
+    /// shorter than ledger rollups.
+    public static func merging(
+        localLedger: UsageTokenHeadlineTotals?,
+        selectedRemote: CostTotals,
+        mergedSnapshot: CostTotals
+    ) -> UsageTokenHeadlineTotals {
+        guard let localLedger else {
+            return UsageTokenHeadlineTotals(
+                allTimeTokens: Int64(mergedSnapshot.allTimeTokens),
+                todayTokens: Int64(mergedSnapshot.todayTokens),
+                yesterdayTokens: Int64(mergedSnapshot.yesterdayTokens),
+                last7DaysTokens: Int64(mergedSnapshot.last7DaysTokens),
+                last30DaysTokens: Int64(mergedSnapshot.last30DaysTokens),
+                peakDayTokens: Int64(mergedSnapshot.peakDayTokens),
+                peakDay: nil
+            )
+        }
+        return UsageTokenHeadlineTotals(
+            allTimeTokens: localLedger.allTimeTokens + Int64(selectedRemote.allTimeTokens),
+            todayTokens: localLedger.todayTokens + Int64(selectedRemote.todayTokens),
+            yesterdayTokens: localLedger.yesterdayTokens + Int64(selectedRemote.yesterdayTokens),
+            last7DaysTokens: localLedger.last7DaysTokens + Int64(selectedRemote.last7DaysTokens),
+            last30DaysTokens: localLedger.last30DaysTokens + Int64(selectedRemote.last30DaysTokens),
+            peakDayTokens: max(localLedger.peakDayTokens, Int64(mergedSnapshot.peakDayTokens)),
+            peakDay: localLedger.peakDay
+        )
+    }
 }
 
 // MARK: - Trend series
