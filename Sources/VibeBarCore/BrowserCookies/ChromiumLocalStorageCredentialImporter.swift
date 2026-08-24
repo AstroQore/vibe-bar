@@ -220,7 +220,7 @@ enum ChromiumLocalStorageCredentialImporter {
         guard let separator = rawKey.firstIndex(of: "\0") else { return nil }
         var serializedOrigin = String(rawKey[..<separator])
         let keyStart = rawKey.index(after: separator)
-        let key = String(rawKey[keyStart...])
+        guard let key = decodeLocalStorageKeyName(rawKey[keyStart...]) else { return nil }
         guard !serializedOrigin.isEmpty, !key.isEmpty, !key.contains("\0") else { return nil }
 
         if serializedOrigin.first == "_" {
@@ -235,6 +235,26 @@ enum ChromiumLocalStorageCredentialImporter {
         }
         guard !serializedOrigin.isEmpty else { return nil }
         return (serializedOrigin, key)
+    }
+
+    /// Chromium stores the key name as its own prefixed string after the
+    /// origin/key NUL separator: `0x01` for Latin-1 or `0x00` for UTF-16LE.
+    /// `readTextEntries` preserves that control marker in the raw-key string,
+    /// so mirror SweetCookieKit's key decoder before exact-key comparison.
+    private static func decodeLocalStorageKeyName(_ rawName: Substring) -> String? {
+        let bytes = Data(rawName.utf8)
+        guard let prefix = bytes.first else { return nil }
+        switch prefix {
+        case 0:
+            return String(data: bytes.dropFirst(), encoding: .utf16LittleEndian)
+        case 1:
+            return String(data: bytes.dropFirst(), encoding: .isoLatin1)
+        default:
+            // Older fixtures and best-effort stores can expose an unprefixed
+            // UTF-8 key. Preserve that compatibility without weakening the
+            // exact origin/key/value provenance gate.
+            return String(rawName)
+        }
     }
 
     private struct ExactOrigin: Equatable {
