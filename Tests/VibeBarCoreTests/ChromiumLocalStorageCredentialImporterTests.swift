@@ -11,7 +11,7 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         valueFormat: .jwt(segments: 3, minLength: 16, maxLength: 4_096)
     )
 
-    func testReadsExactOriginAndKeyFromAChromiumProfile() throws {
+    func testReadsExactOriginAndLatin1PrefixedKeyFromAChromiumProfile() throws {
         let root = try makeTemporaryDirectory()
         let defaultProfile = root.appendingPathComponent("Default", isDirectory: true)
         let ignoredProfile = root.appendingPathComponent("System Profile", isDirectory: true)
@@ -41,7 +41,7 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         ])
     }
 
-    func testReadsExactPartitionedOriginWithoutPrefix() throws {
+    func testReadsExactPartitionedOriginWithoutStorageKeyUnderscore() throws {
         let root = try makeTemporaryDirectory()
         let profile = root.appendingPathComponent("Default", isDirectory: true)
         let token = "synthetic-header.synthetic_payload.synthetic-signature"
@@ -51,6 +51,27 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
             value: token,
             profile: profile,
             includePrefix: false
+        )
+
+        let sessions = ChromiumLocalStorageCredentialImporter.sessions(
+            credential: credential,
+            roots: [.init(browser: .chrome, url: root)],
+            cache: .init()
+        )
+
+        XCTAssertEqual(sessions.map(\.header), ["session-token=\(token)"])
+    }
+
+    func testReadsUnprefixedKeyNameForCompatibility() throws {
+        let root = try makeTemporaryDirectory()
+        let profile = root.appendingPathComponent("Default", isDirectory: true)
+        let token = "synthetic-header.synthetic_payload.synthetic-signature"
+        try writeLocalStorageLog(
+            origin: credential.origin,
+            key: credential.key,
+            value: token,
+            profile: profile,
+            keyEncodingPrefix: nil
         )
 
         let sessions = ChromiumLocalStorageCredentialImporter.sessions(
@@ -230,7 +251,7 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         let roots = [ChromiumProfileRoot(browser: .chrome, url: root)]
         let cache = ChromiumLocalStorageCredentialImporter.Cache()
         let textEntry = ChromiumLevelDBTextEntry(
-            key: "_\(credential.origin)\0\(credential.key)",
+            key: "_\(credential.origin)\0\u{1}\(credential.key)",
             value: token
         )
         let reader: ChromiumLocalStorageCredentialImporter.EntryReader = { origin, _ in
@@ -272,7 +293,7 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         let counter = LockedCounter()
         let token = "synthetic-header.synthetic_payload.synthetic-signature"
         let textEntry = ChromiumLevelDBTextEntry(
-            key: "_\(credential.origin)\0\(credential.key)",
+            key: "_\(credential.origin)\0\u{1}\(credential.key)",
             value: token
         )
         let reader: ChromiumLocalStorageCredentialImporter.EntryReader = { origin, _ in
@@ -380,7 +401,8 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         key: String,
         value: String,
         profile: URL,
-        includePrefix: Bool = true
+        includePrefix: Bool = true,
+        keyEncodingPrefix: UInt8? = 1
     ) throws {
         let levelDB = try makeEmptyLevelDB(profile: profile)
 
@@ -390,7 +412,14 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         }
         localStorageKey.append(contentsOf: origin.utf8)
         localStorageKey.append(0x00)
-        localStorageKey.append(contentsOf: key.utf8)
+        if let keyEncodingPrefix {
+            localStorageKey.append(keyEncodingPrefix)
+        }
+        if keyEncodingPrefix == 0 {
+            localStorageKey.append(key.data(using: .utf16LittleEndian)!)
+        } else {
+            localStorageKey.append(contentsOf: key.utf8)
+        }
         var localStorageValue = Data([0x01])
         localStorageValue.append(contentsOf: value.utf8)
 
