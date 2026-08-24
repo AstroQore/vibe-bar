@@ -5,7 +5,8 @@
 <h1 align="center">Vibe Bar</h1>
 
 <p align="center">
-  <strong>Will this AI subscription last until it resets — and how much of it are you leaving unused?</strong>
+  <strong>The local capacity control plane for people who run coding agents all day.</strong><br>
+  <sub>Know whether each subscription will last until reset — and how much paid capacity will be left unused.</sub>
 </p>
 
 <p align="center">
@@ -18,29 +19,35 @@
 
 <p align="center">
   <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><strong>Download</strong></a>
+  · <a href="#why-vibe-bar-is-different">Why Vibe Bar</a>
   · <a href="#build-from-source">Build from source</a>
   · <a href="#agents-mcp">Agents (MCP)</a>
   · <a href="#acknowledgements">Acknowledgements</a>
   · <a href="README.zh-CN.md">中文</a>
 </p>
 
-Vibe Bar is a native macOS menu-bar app for people who run coding agents
-all day on subscription plans. It puts ChatGPT/Codex, Claude Code, Gemini,
-AntiGravity, Grok, Cursor and a dozen coding-plan providers on one quiet
-surface, and answers the two questions a raw percentage does not:
+Vibe Bar is a native macOS menu-bar app for subscription-powered coding
+agents. It connects provider-reported quota with the evidence already on your
+Mac: per-request tokens and cost, completed reset cycles, local sessions,
+models, working hours and remote-machine activity.
 
-- **Will this quota last until its next reset?** A personal forecast built
-  from wall-clock pace, recent burn, the history of previous reset cycles and
-  your working-hour patterns — with a confidence band, not a single number.
-- **Am I paying for quota I never use?** Reset-cycle history shows what was
-  still left every time a window closed, so pre-reset waste is visible before
-  the window disappears.
+A quota monitor tells you what is left. A token dashboard tells you what
+happened. A session browser finds an old conversation. Vibe Bar keeps that
+chain intact, so the same local source of truth can help you plan the next
+run, explain the last one and recover its context.
 
-Under the menu bar sits a Workbench: a per-request usage ledger across every
-harness, a searchable index of every local agent session with one-click
-resume, and a skills manager that keeps one library in sync across five
-agent CLIs. All of it is read from files already on your Mac, and an MCP
-server lets your agents ask the same questions.
+## Why Vibe Bar is different
+
+| The question | Vibe Bar's connected answer |
+| --- | --- |
+| **Will this quota survive the reset window?** | A personal forecast blends provider quota observations, recent burn, completed reset cycles and your real weekday/hour pattern. It reports `Learning`, `Enough`, `Watch`, `At risk` or `Surplus`, with a confidence band instead of false precision. |
+| **Who actually used it?** | Billing capacity and execution are separate axes: Claude Code and Claude Cowork may share one Claude quota, while the per-request ledger still attributes their tokens and cost to the harness that produced them. |
+| **Where did the work go?** | The Workbench pairs a per-request ledger of harnesses, models, tokens and cost with a separate full-text session index that opens transcripts and hands a selected session back to its owning CLI. |
+| **Can my agents use this context?** | The same quota, forecast, usage, cost, session, status and pricing data is available through a typed MCP server over a local Unix socket — no TCP port and no credential projection. |
+
+Remote Linux probes can join the same cost and activity model without opening
+an inbound port; facts are encrypted to this Mac before they pass through the
+Relay.
 
 ![The Overview: cost and status at the top, one quota card per provider below, each bar carrying its forecast](docs/screenshots/popover-overview.png)
 
@@ -55,10 +62,18 @@ server lets your agents ask the same questions.
 
 Every quota bar carries a verdict — `Learning`, `Enough`, `Watch`,
 `At risk` or `Surplus` — plus a projected run-out time and the forecast's
-confidence. The provider pages show how it was reached: the reset history
-as one bar per cycle, the fill curve against a time-only pace line, and the
-local cost, model ranking, yearly activity and working-hour pattern on the
-right, in the same layout for every core provider.
+confidence. Consumption is inferred only from provider quota observations;
+token history shapes the calendar of when you tend to work, never a made-up
+token-to-quota conversion. Recent slope, comparable completed cycles and the
+working-hour profile are blended, while observation coverage and freshness
+decide how confident the result may be.
+
+The forecast shown at each refresh is retained as history. Provider pages can
+therefore compare what Vibe Bar predicted *then* with what actually happened,
+instead of recomputing the past with today's knowledge. They also show reset
+history as one bar per cycle, the fill curve against a time-only pace line,
+and local cost, model ranking, yearly activity and working-hour pattern in the
+same layout for every core provider.
 
 <table>
   <tr>
@@ -107,6 +122,10 @@ a key — whatever the provider's console offers.
 ## The Workbench
 
 The popover is for a glance. The Workbench is a window you leave open.
+It also keeps two questions deliberately separate: **which subscription owns
+the quota** and **which harness produced the request**. That distinction is
+why shared billing pools stay readable without flattening Claude Code, Claude
+Cowork, Codex, ChatGPT Work and the other clients into one misleading total.
 
 ### Usage Stats
 
@@ -197,7 +216,9 @@ the app runs it exposes a read-only MCP server on a Unix domain socket in your
 home directory — no network port, no API key — so Claude Code, Codex CLI,
 Cursor or any stdio MCP client can ask "how much Claude do I have left?",
 "who burned the most tokens this month?" or "find my session about the
-parser".
+parser". The tool surface covers live cached quota and forecasts, usage
+summary/trend/request rows, cost history, session search, provider status and
+effective model pricing.
 
 Set it up by pasting this into any agent that can fetch a URL:
 
