@@ -5,7 +5,8 @@
 <h1 align="center">Vibe Bar</h1>
 
 <p align="center">
-  <strong>这份 AI 订阅能不能撑到重置——又有多少是白白浪费掉的？</strong>
+  <strong>给整天运行编程 Agent 的人准备的本地 AI 容量控制面。</strong><br>
+  <sub>提前知道每份订阅能不能撑到重置，以及会有多少付费容量用不完。</sub>
 </p>
 
 <p align="center">
@@ -18,25 +19,32 @@
 
 <p align="center">
   <a href="https://github.com/AstroQore/vibe-bar/releases/latest"><strong>下载</strong></a>
+  · <a href="#vibe-bar-的不同之处">为什么是 Vibe Bar</a>
   · <a href="#从源码构建">从源码构建</a>
   · <a href="#agent-接入mcp">Agent 接入（MCP）</a>
   · <a href="#致谢">致谢</a>
   · <a href="README.md">English</a>
 </p>
 
-Vibe Bar 是一款原生 macOS 菜单栏应用，给整天靠订阅套餐跑编程 Agent 的人用。
-它把 ChatGPT/Codex、Claude Code、Gemini、AntiGravity、Grok、Cursor 和十来家
-Coding Plan 服务商收进一个安静的入口，并回答单纯百分比回答不了的两个问题：
+Vibe Bar 是一款面向订阅制编程 Agent 的原生 macOS 菜单栏应用。它把服务商报告的
+quota，和你 Mac 上已经存在的证据连起来：逐请求 Token 与成本、已完成的重置周期、
+本地会话、模型、工作时段，以及远端机器活动。
 
-- **这份额度能撑到下一次重置吗？** 个性化预测综合纯时间节奏、近期消耗、历史重置
-  周期和你的工作时段习惯——给出的是带置信区间的判断，而不是一个孤零零的数字。
-- **我是不是一直在为用不完的额度付钱？** 重置周期历史会记下每个窗口关闭时还剩
-  多少，让重置前的浪费在窗口消失之前就看得见。
+Quota Monitor 告诉你还剩多少；Token Dashboard 告诉你发生了什么；Session Browser
+帮你找到旧会话。Vibe Bar 保留了这整条链，所以同一份本地数据既能规划下一次运行，
+也能解释上一次消耗，还能把当时的上下文找回来。
 
-菜单栏之下还有一个 Workbench：覆盖所有 harness 的逐请求用量账本、可全文搜索并
-一键恢复的本地 Agent 会话索引，以及一个把同一份 Skill 库同步到五个 Agent CLI 的
-Skills 管理器。所有这些都只读取你 Mac 上已有的文件；还有一个 MCP 服务，让你的
-Agent 也能来问同样的问题。
+## Vibe Bar 的不同之处
+
+| 你真正想问的 | Vibe Bar 连起来的答案 |
+| --- | --- |
+| **这份额度能撑过当前重置窗口吗？** | 个性化预测综合服务商 quota 观测、近期消耗、已完成重置周期和你真实的星期/小时工作模式，给出 `Learning`、`Enough`、`Watch`、`At risk` 或 `Surplus`，并带置信区间，不制造虚假的精确。 |
+| **到底是谁消耗了它？** | 订阅容量与执行入口是两条独立轴：Claude Code 和 Claude Cowork 可以共用同一份 Claude quota，但逐请求账本仍把 Token 与成本归给真正发出请求的 harness。 |
+| **这些工作后来去了哪里？** | 用量汇总可以一路下钻到请求、模型、项目和全文会话，再一键交还给原本的 CLI 恢复运行。 |
+| **我的 Agent 能直接使用这些信息吗？** | 同一份 quota、预测、用量、成本、会话、状态和价格数据通过带类型约束的 MCP 服务提供，走本地 Unix socket——不开 TCP 端口，也不投射凭据。 |
+
+远端 Linux Probe 也能加入同一套成本与活动模型，不需要开放入站端口；事实在经过
+Relay 之前就已经加密给这台 Mac。
 
 ![Overview：顶部是成本与服务状态，下方每个服务商一张额度卡，每条进度条都带着自己的预测](docs/screenshots/popover-overview.png)
 
@@ -50,9 +58,15 @@ Agent 也能来问同样的问题。
 ## 是预测，不是百分比
 
 每条额度进度条都带着一个判断——`Learning`、`Enough`、`Watch`、`At risk` 或
-`Surplus`——以及预计用完时间和预测的置信度。服务商页面展示这个判断是怎么来的：
-左侧是按周期一根柱的重置历史、对照纯时间 Pace 线的消耗曲线；右侧是本地成本、
-模型排行、年度活动和工作时段分布。四个核心服务商共用同一套版式。
+`Surplus`——以及预计用完时间和预测的置信度。消耗速度只从服务商的 quota 观测里
+推断；Token 历史只负责描述你通常在什么时间工作，绝不会编造 Token 到 quota 的
+换算。近期斜率、可比较的已完成周期和工作时段模式共同参与预测，观测覆盖率与新鲜度
+则决定它最多能有多自信。
+
+每次刷新时真正展示过的预测也会被保留下来。服务商页面因此可以比较「当时预测了
+什么」和「后来实际发生了什么」，而不是拿今天已经知道的结果重新计算历史。页面还会
+展示按周期一根柱的重置历史、对照纯时间 Pace 线的消耗曲线，以及本地成本、模型排行、
+年度活动和工作时段分布；四个核心服务商共用同一套版式。
 
 <table>
   <tr>
@@ -98,6 +112,9 @@ Kimi、MiniMax、讯飞星火、阿里百炼、火山引擎 Coding/Agent Plan、
 ## Workbench
 
 Popover 是用来扫一眼的。Workbench 是一扇你会一直开着的窗口。
+它还刻意把两个问题分开：**哪份订阅拥有这条 quota**，以及**哪个 harness 发出了
+请求**。因此共享的计费池仍然容易理解，又不会把 Claude Code、Claude Cowork、
+Codex、ChatGPT Work 和其他客户端压成一个误导性的总数。
 
 ### Usage Stats
 
@@ -179,6 +196,8 @@ Vibe Bar 可以让你的编程 Agent 直接查询你自己的用量。应用运�
 目录下开一个只读的 MCP 服务，走 Unix domain socket——不开网络端口，也没有 API
 Key——Claude Code、Codex CLI、Cursor 或任何 stdio MCP 客户端都可以来问「我的
 Claude 还剩多少」「这个月谁烧的 Token 最多」或者「找一下我那个关于 parser 的会话」。
+工具面覆盖缓存中的实时 quota 与预测、用量汇总/趋势/逐请求记录、成本历史、会话搜索、
+服务商状态和实际生效的模型价格。
 
 把这一行粘贴进任何能抓取 URL 的 Agent，就能完成接入：
 
