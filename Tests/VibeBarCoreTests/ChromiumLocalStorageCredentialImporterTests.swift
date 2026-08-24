@@ -325,10 +325,17 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
             .appendingPathComponent("Library/Application Support/Google/Chrome", isDirectory: true)
             .appendingPathComponent("Default", isDirectory: true)
         let token = "synthetic-header.synthetic_payload.synthetic-signature"
+        let refreshToken = "refresh-header.refresh_payload.refresh-signature"
         try writeLocalStorageLog(
             origin: "https://www.kimi.com",
             key: "access_token",
             value: token,
+            profile: profile
+        )
+        try writeLocalStorageLog(
+            origin: "https://www.kimi.com",
+            key: "refresh_token",
+            value: refreshToken,
             profile: profile
         )
         let context = MiscCookieResolver.BrowserImportContext(
@@ -347,7 +354,10 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
 
         XCTAssertEqual(sessions.count, 1)
         XCTAssertEqual(sessions[0].sourceLabel, "Chrome Default")
-        XCTAssertEqual(sessions[0].header, "kimi-auth=\(token)")
+        XCTAssertEqual(
+            sessions[0].header,
+            "kimi-auth=\(token); kimi-refresh=\(refreshToken)"
+        )
     }
 
     func testMiscBrowserSessionsRejectsHeaderThatDoesNotMatchTheSpec() throws {
@@ -435,7 +445,10 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         record.append(contentsOf: littleEndianBytes(UInt16(batch.count)))
         record.append(0x01)
         record.append(batch)
-        try record.write(to: levelDB.appendingPathComponent("000003.log"))
+        let log = levelDB.appendingPathComponent("000003.log")
+        var existing = (try? Data(contentsOf: log)) ?? Data()
+        existing.append(record)
+        try existing.write(to: log)
     }
 
     @discardableResult

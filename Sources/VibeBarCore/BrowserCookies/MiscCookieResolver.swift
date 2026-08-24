@@ -16,6 +16,12 @@ import SweetCookieKit
 /// cache. The legacy single-cookie state is migrated into slots on
 /// first read; see `LegacyCookieMigration`.
 public enum MiscCookieResolver {
+    /// Browser-credential schema completion is attempted once per slot per app
+    /// run. A signed-out or unavailable profile must not turn every scheduled
+    /// quota refresh into another full localStorage scan.
+    private static let browserCredentialCompletionAttempts =
+        OSAllocatedUnfairLock<Set<UUID>>(initialState: [])
+
     /// Per-provider description of which cookies matter and where
     /// to look for them. Adapters declare this as a constant.
     public struct Spec {
@@ -148,7 +154,31 @@ public enum MiscCookieResolver {
         let filter = SlotFilter(settings: settings)
         guard filter != .none else { return [] }
 
-        return MiscCookieSlotStore.slots(for: spec.tool, instanceID: instanceID).compactMap { slot in
+        var slots = MiscCookieSlotStore.slots(for: spec.tool, instanceID: instanceID)
+        // A browser-owned slot imported by an older build can be missing a
+        // newly declared localStorage field. Complete that one-time schema
+        // migration from the same profile without a Keychain prompt. Manual
+        // headers remain fully user-owned and are never touched here.
+        let incompleteSlotIDs = Set(slots.compactMap { slot -> UUID? in
+            guard slot.origin != .manual,
+                  !spec.browserCredentialSource.hasCompleteBrowserCredential(
+                      in: slot.cookieHeader
+                  ) else {
+                return nil
+            }
+            return slot.id
+        })
+        let shouldAttemptCompletion = browserCredentialCompletionAttempts.withLock { attempted in
+            let unseen = incompleteSlotIDs.subtracting(attempted)
+            attempted.formUnion(incompleteSlotIDs)
+            return !unseen.isEmpty
+        }
+        if shouldAttemptCompletion {
+            _ = silentReimport(spec: spec, instanceID: instanceID)
+            slots = MiscCookieSlotStore.slots(for: spec.tool, instanceID: instanceID)
+        }
+
+        return slots.compactMap { slot in
             guard filter.allows(slot) else { return nil }
             guard let header = spec.minimizedHeader(from: slot.cookieHeader),
                   !header.isEmpty else { return nil }
@@ -529,24 +559,48 @@ public enum MiscCookieResolver {
                 maxSessions: maxSessions
             )
         case let .chromiumLocalStorage(credential):
-            let candidates = preferred
-                .filter(\.usesChromiumProfileStore)
-                .browsersWithProfileData(using: context.detection)
-            guard !candidates.isEmpty else { return [] }
-            let roots = ChromiumProfileLocator.roots(
-                for: candidates,
-                homeDirectories: [context.homeDirectory]
-            )
-            let sessions = ChromiumLocalStorageCredentialImporter.sessions(
-                credential: credential,
-                roots: roots,
-                cache: context.localStorageCache,
+            return chromiumLocalStorageBrowserSessions(
+                credentials: [credential],
+                spec: spec,
+                preferred: preferred,
+                context: context,
                 maxSessions: maxSessions
             )
-            return sessions.compactMap {
-                guard let header = spec.minimizedHeader(from: $0.header) else { return nil }
-                return BrowserImportResult(header: header, sourceLabel: $0.sourceLabel)
-            }
+        case let .chromiumLocalStorageFields(credentials):
+            return chromiumLocalStorageBrowserSessions(
+                credentials: credentials,
+                spec: spec,
+                preferred: preferred,
+                context: context,
+                maxSessions: maxSessions
+            )
+        }
+    }
+
+    private static func chromiumLocalStorageBrowserSessions(
+        credentials: [ChromiumLocalStorageCredential],
+        spec: Spec,
+        preferred: [Browser],
+        context: BrowserImportContext,
+        maxSessions: Int?
+    ) -> [BrowserImportResult] {
+        let candidates = preferred
+            .filter(\.usesChromiumProfileStore)
+            .browsersWithProfileData(using: context.detection)
+        guard !candidates.isEmpty else { return [] }
+        let roots = ChromiumProfileLocator.roots(
+            for: candidates,
+            homeDirectories: [context.homeDirectory]
+        )
+        let sessions = ChromiumLocalStorageCredentialImporter.sessions(
+            credentials: credentials,
+            roots: roots,
+            cache: context.localStorageCache,
+            maxSessions: maxSessions
+        )
+        return sessions.compactMap {
+            guard let header = spec.minimizedHeader(from: $0.header) else { return nil }
+            return BrowserImportResult(header: header, sourceLabel: $0.sourceLabel)
         }
     }
 

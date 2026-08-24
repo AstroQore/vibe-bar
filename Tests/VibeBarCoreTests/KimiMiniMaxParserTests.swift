@@ -169,6 +169,69 @@ final class KimiParserTests: XCTestCase {
         ])
     }
 
+    func testRefreshRequestMatchesTheWebClientProtocol() throws {
+        let request = KimiQuotaAdapter.refreshRequest(
+            accessToken: "synthetic.header.signature",
+            refreshToken: "refresh.header.signature"
+        )
+
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://auth.kimi.com/api/account.gateway.v1.AuthService/RefreshToken"
+        )
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "connect-protocol-version"), "1")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-msh-platform"), "web")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        let body = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String]
+        )
+        XCTAssertEqual(body, ["refresh_token": "refresh.header.signature"])
+    }
+
+    func testCredentialFailureRefreshesOnceAndRetriesQuota() async throws {
+        let membershipPath = "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+        let legacyPath = "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+        let refreshPath = "/api/account.gateway.v1.AuthService/RefreshToken"
+        let refreshedAccess = "refreshed.header.signature"
+        let refreshedToken = "renewed.header.signature"
+        let refreshJSON = Data("""
+        {"accessToken":"\(refreshedAccess)","refreshToken":"\(refreshedToken)"}
+        """.utf8)
+        let queue = KimiRequestQueue([
+            (membershipPath, .failure(.needsLogin)),
+            (legacyPath, .failure(.needsLogin)),
+            (refreshPath, .success(refreshJSON)),
+            (membershipPath, .success(membershipStatsJSON))
+        ])
+        let credential = try XCTUnwrap(KimiCredential(
+            accessToken: "expired.header.signature",
+            refreshToken: "refresh.header.signature"
+        ))
+
+        let result = try await KimiQuotaAdapter.fetchSnapshotRefreshingCredential(
+            credential: credential,
+            queriedAt: now,
+            request: { request in try await queue.data(for: request) }
+        )
+
+        XCTAssertTrue(result.didRefresh)
+        XCTAssertEqual(result.credential.accessToken, refreshedAccess)
+        XCTAssertEqual(result.credential.refreshToken, refreshedToken)
+        XCTAssertEqual(
+            result.snapshot.buckets.map(\.id),
+            ["kimi.weekly", "kimi.rate", "kimi.monthly"]
+        )
+        let requestedPaths = await queue.requestedPaths()
+        XCTAssertEqual(requestedPaths, [
+            membershipPath,
+            legacyPath,
+            refreshPath,
+            membershipPath
+        ])
+    }
+
     func testPartialMembershipUsesLegacyToFillMissingFiveHourWindow() async throws {
         let recorder = KimiRequestRecorder(responses: [
             "/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats": .success(partialMembershipStatsJSON),
@@ -540,6 +603,30 @@ private actor KimiRequestRecorder {
             throw QuotaError.unknown("unexpected Kimi request")
         }
         return try response.get()
+    }
+
+    func requestedPaths() -> [String] { paths }
+}
+
+private actor KimiRequestQueue {
+    private var responses: [(String, Result<Data, QuotaError>)]
+    private var paths: [String] = []
+
+    init(_ responses: [(String, Result<Data, QuotaError>)]) {
+        self.responses = responses
+    }
+
+    func data(for request: URLRequest) throws -> Data {
+        let path = request.url?.path ?? ""
+        paths.append(path)
+        guard !responses.isEmpty else {
+            throw QuotaError.unknown("unexpected Kimi request")
+        }
+        let next = responses.removeFirst()
+        guard next.0 == path else {
+            throw QuotaError.unknown("expected \(next.0), got \(path)")
+        }
+        return try next.1.get()
     }
 
     func requestedPaths() -> [String] { paths }
