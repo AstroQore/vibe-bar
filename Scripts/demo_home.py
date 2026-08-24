@@ -13,7 +13,8 @@ builds that directory from a maintainer's live ``~/.vibebar`` store:
   account id that keys the Codex quota becomes ``demo-codex``; remote
   machine aliases, workspace and device ids are rewritten; no credential,
   cookie, Keychain item, session transcript or ``/Users/<name>`` path is
-  copied. Paths inside the ledger are already privacy hashes.
+  copied. Request ids are rehashed and project paths are replaced with
+  fabricated ``/Users/example/Code`` directories.
 * Agent sessions and a library of skills are **fabricated**: a dozen
   sessions across Claude Code, Claude Cowork, Codex, ChatGPT Work and Grok
   Build under ``/Users/example/Code``, and two dozen public skills linked
@@ -288,11 +289,32 @@ class Builder:
                 # Keys of files the demo home does not have; a rescan never
                 # runs in demo mode, so the table is dead weight.
                 demo.execute("DELETE FROM ingested_files")
+            columns = {row[1] for row in demo.execute("PRAGMA table_info(usage_events)")}
+            if "project" not in columns:
+                # A demo may be generated before the maintainer has launched a
+                # schema-v4 build. Upgrade the copied, throwaway ledger here so
+                # the new app does not drop it on open, and assign synthetic
+                # projects to make the Overview chart reviewable immediately.
+                demo.execute("ALTER TABLE usage_events ADD COLUMN project TEXT")
+                replacements = list(PROJECTS.values())
+                for index, project in enumerate(replacements):
+                    demo.execute(
+                        "UPDATE usage_events SET project = ? WHERE ABS(id) % ? = ?",
+                        (project, len(replacements), index),
+                    )
+                if "ledger_meta" in tables:
+                    demo.execute(
+                        "INSERT INTO ledger_meta(key, value) VALUES('schema_version', '4') "
+                        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+                    )
             # Request-level identifiers are the maintainer's real session,
             # message and request ids. The ledger only ever compares them, so
             # a keyed hash keeps every join and uniqueness constraint intact
             # while saying nothing about the originals. `source_key` is
-            # already a privacy hash.
+            # already a privacy hash. Project paths are user-visible local
+            # directories in schema v4+, so replace those with the same
+            # fabricated `/Users/example/Code/...` roots the Sessions fixture
+            # uses before the database can reach a screenshot.
             self._scrub_ledger_identifiers(demo)
             demo.commit()
             after = demo.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0]
@@ -326,6 +348,24 @@ class Builder:
                 for row_id, session_id, message_id, request_id, dedupe_key in rows
             ],
         )
+
+        columns = {row[1] for row in demo.execute("PRAGMA table_info(usage_events)")}
+        if "project" in columns:
+            projects = [
+                row[0]
+                for row in demo.execute(
+                    "SELECT DISTINCT project FROM usage_events "
+                    "WHERE project IS NOT NULL AND TRIM(project) <> '' ORDER BY project"
+                )
+            ]
+            replacements = list(PROJECTS.values())
+            demo.executemany(
+                "UPDATE usage_events SET project = ? WHERE project = ?",
+                [
+                    (replacements[index % len(replacements)], project)
+                    for index, project in enumerate(projects)
+                ],
+            )
 
     def build_remote(self) -> None:
         config_src = self.source / "remote_core.json"
@@ -383,7 +423,8 @@ class Builder:
         settings["mockEnabled"] = False
         settings["updateChannel"] = "main"
         settings["sessionBodyIndexingEnabled"] = True
-        settings["menuBarBlockAlertSuppressed"] = True
+        settings["menuBarBlockAlertSuppressed"] = False
+        settings["menuBarAutoRepairEnabled"] = True
         settings.setdefault("mcpServer", {})["enabled"] = True
         settings.setdefault("costData", {})["privacyModeEnabled"] = False
 
@@ -483,6 +524,7 @@ class Builder:
         app_dirs = {
             "codex": self.output_home / ".codex" / "skills",
             "claude": self.output_home / ".claude" / "skills",
+            "gemini": self.output_home / ".gemini" / "skills",
             "antigravity": self.output_home / ".gemini" / "config" / "skills",
             "grok": self.output_home / ".grok" / "skills",
             "cursor": self.output_home / ".cursor" / "skills",
@@ -527,6 +569,25 @@ class Builder:
                 "discoverRepos": ["anthropics/skills", "AstroQore/vibe-bar", "cloudflare/skills"],
                 "skills": registry,
             },
+        )
+        # Exercise the distinction between a projection and the harness's
+        # native effective state in the Skills screenshot.
+        codex_config = self.output_home / ".codex" / "config.toml"
+        codex_config.write_text(
+            "[[skills.config]]\n"
+            f'path = "{ssot / "release-notes" / "SKILL.md"}"\n'
+            "enabled = false\n"
+        )
+        write_json(
+            self.output_home / ".claude" / "settings.json",
+            {"skillOverrides": {"sandbox-sdk": "off"}},
+        )
+        write_json(
+            self.output_home / ".gemini" / "settings.json",
+            {"skills": {"enabled": True, "disabled": ["docx"]}},
+        )
+        (self.output_home / ".grok" / "config.toml").write_text(
+            '[skills]\ndisabled = ["wrangler"]\n'
         )
         self.report.append(f"skills: {len(registry)} across {len(app_dirs)} harness dirs")
 
@@ -1004,7 +1065,7 @@ SESSION_WRITERS = {
 # Fabricated skills
 # ---------------------------------------------------------------------------
 
-ALL_APPS = ["codex", "claude", "antigravity", "grok", "cursor"]
+ALL_APPS = ["codex", "claude", "gemini", "antigravity", "grok", "cursor"]
 
 DEMO_SKILLS = [
     {"name": "agents-sdk", "description": "Build AI agents on Cloudflare Workers using the Agents SDK. Load when creating stateful agents, durable workflows, real-time WebSocket apps, scheduled tasks, MCP servers, chat applications, voice agents, or browser automation.", "apps": ALL_APPS},

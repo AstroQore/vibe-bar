@@ -30,7 +30,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// item would close-then-reopen instead of just closing.
     private static let popoverReopenSuppressionWindow: TimeInterval = 0.2
 
-    private let compactStatusItem: NSStatusItem
+    /// Demo mode anchors its popover to a private backdrop view and must not
+    /// register a second system status item under the production bundle id —
+    /// doing so makes Control Center rebuild the very cross-app mapping this
+    /// app has to repair. Production always has one.
+    private var compactStatusItem: NSStatusItem?
     private var popovers: [MenuBarItemKind: NSPopover] = [:]
     private let environment: AppEnvironment
     private let miniWindowController: MiniQuotaWindowController
@@ -54,10 +58,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         self.environment = environment
         self.miniWindowController = MiniQuotaWindowController()
         self.lastObservedDensities = Self.snapshotDensities(environment.settingsStore.settings)
-        self.compactStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.compactStatusItem = DemoMode.isEnabled
+            ? nil
+            : NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
-        configureButton(for: .compact, item: compactStatusItem)
+        if let compactStatusItem {
+            configureButton(for: .compact, item: compactStatusItem)
+        }
         observeChanges()
         renderMenuBar()
         // Restore mini window if the user had it open last session.
@@ -67,15 +75,45 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         DispatchQueue.main.async { [weak self] in
             _ = self?.popover(for: .compact)
         }
-        let watchdog = MenuBarBlockWatchdog(
-            statusItem: compactStatusItem,
-            settingsStore: environment.settingsStore
-        )
-        watchdog.onBlockConfirmed = { [weak watchdog] in
-            MenuBarBlockAlert.present { watchdog?.suppress() }
+        if let compactStatusItem {
+            let watchdog = MenuBarBlockWatchdog(
+                statusItem: compactStatusItem,
+                settingsStore: environment.settingsStore
+            )
+            watchdog.onBlockConfirmed = { [weak watchdog, weak environment] in
+                guard let environment else { return }
+                if environment.settingsStore.settings.menuBarAutoRepairEnabled {
+                    Task { @MainActor in
+                        let outcome = await environment.repairMenuBarAllowList()
+                        if outcome.succeeded {
+                            SafeLog.info("Menu bar allow-list auto-repair completed")
+                        } else {
+                            SafeLog.warn("Menu bar allow-list auto-repair failed")
+                            MenuBarBlockAlert.present { watchdog?.suppress() }
+                        }
+                    }
+                } else {
+                    MenuBarBlockAlert.present { watchdog?.suppress() }
+                }
+            }
+            watchdog.start()
+            blockWatchdog = watchdog
+            environment.registerMenuBarHealth(
+                watchdog: watchdog,
+                reregister: { [weak self] in self?.reregisterMenuBarItem() }
+            )
+        } else if DemoMode.isEnabled {
+            // A synthetic, non-system probe keeps the Menu Bar Health demo
+            // page fully representative without creating the duplicate
+            // NSStatusItem that used to corrupt the live allow-list.
+            let watchdog = MenuBarBlockWatchdog(
+                statusItem: nil,
+                settingsStore: environment.settingsStore
+            )
+            watchdog.checkNow()
+            blockWatchdog = watchdog
+            environment.registerMenuBarHealth(watchdog: watchdog, reregister: {})
         }
-        watchdog.start()
-        blockWatchdog = watchdog
     }
 
     private func currentPopoverWidth(for kind: MenuBarItemKind) -> CGFloat {
@@ -346,7 +384,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let target: (view: NSView, rect: NSRect)
         if let anchor {
             target = anchor
-        } else if let button = compactStatusItem.button {
+        } else if let button = compactStatusItem?.button {
             target = (button, button.bounds)
         } else {
             return
@@ -537,13 +575,33 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         blockWatchdog?.stop()
     }
 
+    /// Recreate only the AppKit status item after Control Center's allow-list
+    /// has been repaired. The app process, MCP socket, and every stdio bridge
+    /// stay alive; this is the in-process equivalent of the old quit/reopen
+    /// instruction.
+    private func reregisterMenuBarItem() {
+        guard !DemoMode.isEnabled else { return }
+        for popover in popovers.values where popover.isShown {
+            popover.performClose(nil)
+        }
+        popovers.removeAll()
+        if let compactStatusItem {
+            NSStatusBar.system.removeStatusItem(compactStatusItem)
+        }
+        let replacement = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        compactStatusItem = replacement
+        configureButton(for: .compact, item: replacement)
+        renderMenuBar()
+        blockWatchdog?.replaceStatusItem(replacement)
+    }
+
     // MARK: - Menu bar text
 
     private func renderMenuBar() {
         let settings = environment.settingsStore.settings
         let allHidden = MenuBarItemKind.allCases.allSatisfy { !settings.menuBarItem($0).isVisible }
         for kind in MenuBarItemKind.allCases {
-            let item = statusItem(for: kind)
+            guard let item = statusItem(for: kind) else { continue }
             let itemSettings = settings.menuBarItem(kind)
             item.isVisible = allHidden ? kind == .compact : itemSettings.isVisible
             guard let button = item.button else { continue }
@@ -897,7 +955,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         1
     }
 
-    private func statusItem(for kind: MenuBarItemKind) -> NSStatusItem {
+    private func statusItem(for kind: MenuBarItemKind) -> NSStatusItem? {
         compactStatusItem
     }
 

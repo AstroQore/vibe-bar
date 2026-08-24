@@ -34,7 +34,7 @@ enum MenuBarBlockAlert {
             """
         // The copy button is only offered when the script is actually locatable,
         // so it can never be a button that does nothing when clicked.
-        let script = scriptURL()
+        let script = MenuBarAllowListRepair.scriptURL()
         var actions: [Action] = []
         if script != nil {
             alert.addButton(withTitle: "Copy Repair Command")
@@ -88,28 +88,4 @@ enum MenuBarBlockAlert {
         pasteboard.setString("python3 \"\(script.path)\" --apply", forType: .string)
     }
 
-    /// Always an absolute path: the command is pasted into a fresh Terminal,
-    /// which starts in the user's home directory, so anything relative to the
-    /// checkout would simply not resolve.
-    private static func scriptURL() -> URL? {
-        if let bundled = Bundle.main.url(
-            forResource: "fix_menu_bar_allowlist",
-            withExtension: "py"
-        ) {
-            return bundled
-        }
-        // Source builds (`swift run`, or the raw binary under .build) have no
-        // bundled resources. Walk up from the executable to the checkout root.
-        var directory = Bundle.main.bundleURL.resolvingSymlinksInPath()
-        for _ in 0..<6 {
-            let candidate = directory
-                .appendingPathComponent("Scripts", isDirectory: true)
-                .appendingPathComponent("fix_menu_bar_allowlist.py")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate
-            }
-            directory.deleteLastPathComponent()
-        }
-        return nil
-    }
 }

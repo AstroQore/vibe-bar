@@ -6,11 +6,12 @@ import Foundation
 /// adding a `SkillAppTarget` case and a row here — nothing else in the sync
 /// engine is app-aware.
 ///
-/// AntiGravity is the odd one out: its global customization root is
-/// `~/.gemini/config/`, *not* `~/.gemini/`, so it does not share the Gemini
-/// CLI's `~/.gemini/skills`. That directory frequently does not exist yet, so
-/// it is created lazily on the first materialize — one component at a time, so
-/// no sibling of `config/` or `skills/` is ever touched.
+/// AntiGravity has its own customization root under `~/.gemini/config/`, but
+/// also discovers the Gemini CLI's `~/.gemini/skills`. The table still keeps
+/// the roots separate because a direct AntiGravity projection and a Gemini
+/// compatibility projection are different provenance; effective-state logic
+/// reports the latter as coupled. Missing roots are created lazily, one
+/// component at a time.
 public enum SkillAppCatalog {
     /// Single source of truth every app dir is projected from.
     public static let ssotRelativePath = ".agents/skills"

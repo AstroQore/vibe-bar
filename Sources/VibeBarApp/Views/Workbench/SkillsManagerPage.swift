@@ -192,6 +192,8 @@ struct SkillsManagerPage: View {
         HStack(spacing: 6) {
             ForEach(SkillAppTarget.managedHarnesses, id: \.self) { app in
                 let count = model.installedCount(for: app)
+                let nativeDisabled = model.nativeDisabledCount(for: app)
+                let coupled = model.coupledCount(for: app)
                 HStack(spacing: 4) {
                     SkillAppGlyph(app: app, size: density.segmentedFontSize)
                     Text("\(count)")
@@ -204,7 +206,11 @@ struct SkillsManagerPage: View {
                 .overlay(Capsule().stroke(app.accent.opacity(count == 0 ? 0.16 : 0.45), lineWidth: 0.8))
                 .opacity(count == 0 ? 0.5 : 1)
                 .saturation(count == 0 ? 0.2 : 1)
-                .help("\(app.displayName): \(count) skill\(count == 1 ? "" : "s")")
+                .help(
+                    "\(app.displayName): \(count) enabled skill\(count == 1 ? "" : "s")"
+                        + (nativeDisabled > 0 ? " · \(nativeDisabled) projected but disabled" : "")
+                        + (coupled > 0 ? " · \(coupled) visible through another root" : "")
+                )
                 .accessibilityLabel("\(app.displayName), \(count) skills")
             }
             Spacer(minLength: 8)
@@ -245,7 +251,9 @@ struct SkillsManagerPage: View {
                             skill: skill,
                             updateState: model.updateState(for: skill),
                             isBusy: model.isBusy(skill: skill),
-                            onToggle: { model.toggle(skill: skill, app: $0) },
+                            onSetActivation: {
+                                model.setActivation(skill: skill, app: $0, action: $1)
+                            },
                             onUpdate: { model.updateSkill(skill) },
                             onUninstall: { model.uninstall(skill) }
                         )

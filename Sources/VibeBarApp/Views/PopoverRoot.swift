@@ -618,6 +618,8 @@ private struct OverviewWaterfall: View {
             } else {
                 OverviewCostCard(tool: tool, density: density)
             }
+        case .overviewUsageMix:
+            OverviewUsageMixCard(density: density)
         case .overviewModelRanking:
             ModelRankingList(
                 breakdowns: context.models,
@@ -1027,6 +1029,7 @@ private struct OverviewCostSummaryCard: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var costService: CostUsageService
     @EnvironmentObject var settingsStore: SettingsStore
+    @State private var ledgerTokens: UsageTokenHeadlineTotals?
 
     var body: some View {
         // Headline totals span every cost-aware provider, including
@@ -1040,6 +1043,8 @@ private struct OverviewCostSummaryCard: View {
         // two peak scans over the combined daily history — all of it derived
         // once per cost refresh in Core rather than once per render pass here.
         let totals = costService.totals(of: visibleCostProviders)
+        let tokenTaskID = visibleCostProviders.map(\.rawValue).joined(separator: ",")
+            + "|\(costService.lastRefreshedAt?.timeIntervalSince1970 ?? 0)"
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Cost")
@@ -1068,11 +1073,11 @@ private struct OverviewCostSummaryCard: View {
                 HStack(alignment: .top, spacing: 0) {
                     metric(label: "TOTAL COST", value: formatCost(totals.allTimeCostUSD), highlight: true)
                     divider
-                    metric(label: "TOTAL TOK", value: formatTokens(totals.allTimeTokens), highlight: true)
+                    metric(label: "TOTAL TOK", value: formatTokens(ledgerTokens?.allTimeTokens ?? Int64(totals.allTimeTokens)), highlight: true)
                     divider
                     metric(label: "PEAK DAY", value: formatCost(totals.peakDayCostUSD))
                     divider
-                    metric(label: "PEAK TOK DAY", value: formatTokens(totals.peakDayTokens))
+                    metric(label: "PEAK TOK DAY", value: formatTokens(ledgerTokens?.peakDayTokens ?? Int64(totals.peakDayTokens)))
                 }
                 Spacer(minLength: 8)
                 HStack(alignment: .top, spacing: 0) {
@@ -1086,13 +1091,13 @@ private struct OverviewCostSummaryCard: View {
                 }
                 Spacer(minLength: 8)
                 HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TODAY TOK", value: formatTokens(totals.todayTokens))
+                    metric(label: "TODAY TOK", value: formatTokens(ledgerTokens?.todayTokens ?? Int64(totals.todayTokens)))
                     divider
-                    metric(label: "YESTERDAY TOK", value: formatTokens(totals.yesterdayTokens))
+                    metric(label: "YESTERDAY TOK", value: formatTokens(ledgerTokens?.yesterdayTokens ?? Int64(totals.yesterdayTokens)))
                     divider
-                    metric(label: "7-DAY TOK", value: formatTokens(totals.last7DaysTokens))
+                    metric(label: "7-DAY TOK", value: formatTokens(ledgerTokens?.last7DaysTokens ?? Int64(totals.last7DaysTokens)))
                     divider
-                    metric(label: "30-DAY TOK", value: formatTokens(totals.last30DaysTokens))
+                    metric(label: "30-DAY TOK", value: formatTokens(ledgerTokens?.last30DaysTokens ?? Int64(totals.last30DaysTokens)))
                 }
             }
             .frame(maxHeight: .infinity)
@@ -1113,6 +1118,10 @@ private struct OverviewCostSummaryCard: View {
             RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
                 .stroke(.separator.opacity(0.4), lineWidth: 0.5)
         )
+        .task(id: tokenTaskID) {
+            guard let ledger = environment.usageLedger else { return }
+            ledgerTokens = try? await ledger.tokenHeadlineTotals(tools: visibleCostProviders)
+        }
     }
 
     private var divider: some View {
@@ -1148,7 +1157,7 @@ private struct OverviewCostSummaryCard: View {
         return String(format: "$%.0f", value)
     }
 
-    private func formatTokens(_ tokens: Int) -> String {
+    private func formatTokens(_ tokens: Int64) -> String {
         if tokens >= 1_000_000_000 { return String(format: "%.2fB", Double(tokens) / 1_000_000_000) }
         if tokens >= 1_000_000 { return String(format: "%.2fM", Double(tokens) / 1_000_000) }
         if tokens >= 1_000 { return String(format: "%.1fk", Double(tokens) / 1_000) }
@@ -1768,7 +1777,8 @@ private struct ProviderPageModule: View {
             }
         case .overviewCostSummary, .overviewStatusSummary, .overviewQuota,
              .overviewQuotaHistoryAll, .overviewCostAll, .overviewCost,
-             .overviewModelRanking, .overviewYearHeatmap, .overviewActivityHeatmap:
+             .overviewUsageMix, .overviewModelRanking,
+             .overviewYearHeatmap, .overviewActivityHeatmap:
             // Overview families. `PageModuleCatalog` never puts them on a
             // provider page, and a stale identifier is dropped before it gets
             // here, so this is unreachable rather than a fallback.

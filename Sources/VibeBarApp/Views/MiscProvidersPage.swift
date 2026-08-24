@@ -13,6 +13,9 @@ struct MiscProvidersPage: View {
 
     var body: some View {
         ColumnMasonryLayout(columns: density.miscColumnCount, spacing: density.interSectionSpacing) {
+            if CodexBarProviderBridge.isInstalled {
+                CodexBarProviderBridgeCard(density: density)
+            }
             ForEach(providerGroups) { group in
                 if group.instances.count == 1, let instance = group.instances.first {
                     MiscProviderCard(instance: instance, density: density)
@@ -294,7 +297,7 @@ private struct MiscProviderInstanceStatusRow: View {
     }
 }
 
-private struct MiscProviderCardShell<Content: View>: View {
+struct MiscProviderCardShell<Content: View>: View {
     let density: Theme.Density
     @ViewBuilder var content: () -> Content
 

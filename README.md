@@ -38,7 +38,7 @@ surface, and answers the two questions a raw percentage does not:
 
 Under the menu bar sits a Workbench: a per-request usage ledger across every
 harness, a searchable index of every local agent session with one-click
-resume, and a skills manager that keeps one library in sync across five
+resume, and a skills manager that reconciles one library across six
 agent CLIs. All of it is read from files already on your Mac, and an MCP
 server lets your agents ask the same questions.
 
@@ -114,8 +114,9 @@ A per-request ledger across every harness on the Mac — Claude Code, Claude
 Cowork, Codex, ChatGPT Work, Cursor, Grok Build, AntiGravity, Gemini CLI —
 with real token counts split into input, output, cache write and cache read,
 priced from the same catalog the popover uses. Filter by harness, model and
-range; drag the navigator to focus the chart while the tables keep the full
-window.
+range; drag the navigator to focus the chart while five simultaneous donut
+cards explain Token Flow, Harness, Provider, Project and Model distribution.
+The tables keep the full window and include a project ranking.
 
 ![Usage Stats: 30 days of tokens by day, the harness mix, and the period table below](docs/screenshots/workbench-usage.png)
 
@@ -150,9 +151,12 @@ harness's session files, and only at your explicit request — see
 
 ### Skills
 
-One shared library at `~/.agents/skills/`, projected into the skills
-directories of Codex, Claude Code, AntiGravity, Grok Build and Cursor. Each
-row is a skill; each dot is a harness, on or off. Install from a ZIP, adopt
+One shared library at `~/.agents/skills/`, reconciled across Codex, Claude
+Code, Gemini CLI, AntiGravity, Grok Build and Cursor. Each row separates the
+harness's effective state from Vibe Bar's symlink/copy: native-disabled skills
+show a pause badge, while a skill still visible through another compatibility
+root shows a link badge instead of a false “off”. Right-click a harness dot to
+choose native enable/disable or projection removal. Install from a ZIP, adopt
 skills a CLI already has, discover more from a repository, and back up before
 anything is replaced.
 
@@ -169,9 +173,10 @@ anything is replaced.
 
 Everything is one two-column window. Three panes are worth a picture:
 
-**Layout** arranges the cards of every popover page — which cards, which
-column, which order — with presets and a live preview, so the Overview can
-be the four quotas you watch and nothing else.
+**Layout** arranges the cards of every popover page — which cards are shown,
+which column, which order — with an explicit Visibility menu, per-card eyes,
+presets and a live preview, so the Overview can be the four quotas you watch
+and nothing else.
 
 ![The Layout editor: three segments of cards for the Overview page with a preview on the right](docs/screenshots/settings-layout.png)
 
@@ -187,6 +192,22 @@ line, two rows or compact — which quota windows it shows, and whether the
 colour follows the forecast or the raw percentage.
 
 ![Menu Bar settings: layout and density pickers, and a checklist of quota windows per provider](docs/screenshots/settings-menubar.png)
+
+**Menu Bar Health** shows what AppKit requested versus what macOS actually
+placed, the status-item/window/menu-bar heights, the Control Center allow-list
+audit, and whether alerts were suppressed. It can re-enable monitoring, copy
+the narrow repair command, or repair and re-register the status item without
+terminating the app's MCP connections. An explicit opt-in can run that same
+narrow repair automatically after three consecutive blocked probes.
+
+![Menu Bar Health: live AppKit probe, Control Center audit, alert state, and one-click repair](docs/screenshots/settings-menuBarHealth.png)
+
+<details>
+<summary>Menu Bar Health in the light appearance</summary>
+
+![Menu Bar Health in the light appearance](docs/screenshots/settings-menuBarHealth-light.png)
+
+</details>
 
 **MCP Server** is the agent side of the app, covered next.
 
@@ -313,8 +334,9 @@ audit metadata only. Derived state stays under:
 - CLI credential and session files are read-only inputs. The one exception
   is whole-session deletion from the Workbench's Sessions page, performed
   only at your explicit request and never editing a session file's contents.
-- The Skills manager writes to `~/.agents/skills/` and the managed skills
-  directories of the five harnesses it projects into, and nowhere else.
+- The Skills manager writes to `~/.agents/skills/`, six managed harness skill
+  roots, and the narrow native skill fields in Codex/Claude/Gemini/Grok user
+  config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
 - Privacy Mode clears derived cost data and keeps cost history off disk while
@@ -322,9 +344,9 @@ audit metadata only. Derived state stays under:
 
 Vibe Bar intentionally runs **without the App Sandbox**: browser-cookie
 import and the local AntiGravity language-server probe require capabilities
-the sandbox blocks. The app is open source, reads only the provider inputs it
-needs, and writes application state only under `~/.vibebar/` and its
-Keychain Vault. See
+the sandbox blocks. The app is open source and reads only the provider inputs
+it needs; writes stay under `~/.vibebar/`, the Keychain Vault, and the explicit
+Skills allowlist above. See
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox) for the
 full trade-off.
 
@@ -387,6 +409,8 @@ coding-agent community:
 - [CC Switch](https://github.com/farion1231/cc-switch) informed the unified
   Skills workflow and remains an interoperability reference for existing
   cross-agent skill layouts.
+- [CodexBar compatibility notes](docs/CODEXBAR-COMPATIBILITY.md) record the
+  provider migration boundary, the read-only bridge, and what its CLI does.
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) and its ecosystem
   informed our understanding of multi-provider CLI account and quota
   workflows. Vibe Bar does not embed, launch, or require CLIProxyAPI.

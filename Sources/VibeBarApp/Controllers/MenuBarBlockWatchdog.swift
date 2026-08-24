@@ -1,5 +1,22 @@
 import AppKit
+import Combine
 import VibeBarCore
+
+enum MenuBarHealthState: String {
+    case checking
+    case healthy
+    case blocked
+    case inconclusive
+    case unavailable
+}
+
+struct MenuBarHealthReport {
+    let state: MenuBarHealthState
+    let checkedAt: Date?
+    let probe: MenuBarItemProbe?
+
+    static let checking = MenuBarHealthReport(state: .checking, checkedAt: nil, probe: nil)
+}
 
 /// Watches our own status item and speaks up when macOS is silently refusing to
 /// show it.
@@ -17,7 +34,7 @@ import VibeBarCore
 /// We only diagnose. Fixing means editing a TCC-protected system plist, which
 /// is not something an app should reach into behind the user's back.
 @MainActor
-final class MenuBarBlockWatchdog {
+final class MenuBarBlockWatchdog: ObservableObject {
     /// Grace period before the first probe. AppKit needs a moment to place a
     /// freshly created item, and logging in with displays still settling can
     /// look blocked for a few seconds.
@@ -29,19 +46,20 @@ final class MenuBarBlockWatchdog {
 
     private weak var statusItem: NSStatusItem?
     private let settingsStore: SettingsStore
+    private let detector = MenuBarBlockDetector()
     private var evaluator = MenuBarBlockEvaluator()
     private var timer: Timer?
+    @Published private(set) var report: MenuBarHealthReport = .checking
     /// Set after init so the handler can capture the watchdog itself — ticking
     /// "Don't check again" on the alert has to call back into `suppress()`.
     var onBlockConfirmed: (() -> Void)?
 
-    init(statusItem: NSStatusItem, settingsStore: SettingsStore) {
+    init(statusItem: NSStatusItem?, settingsStore: SettingsStore) {
         self.statusItem = statusItem
         self.settingsStore = settingsStore
     }
 
     func start() {
-        guard !isSuppressed else { return }
         stop()
         let timer = Timer(
             timeInterval: Self.probeInterval,
@@ -67,9 +85,24 @@ final class MenuBarBlockWatchdog {
     }
 
     func suppress() {
-        guard !settingsStore.settings.menuBarBlockAlertSuppressed else { return }
-        settingsStore.settings.menuBarBlockAlertSuppressed = true
-        stop()
+        setAlertsEnabled(false)
+    }
+
+    func setAlertsEnabled(_ enabled: Bool) {
+        settingsStore.settings.menuBarBlockAlertSuppressed = !enabled
+        evaluator = MenuBarBlockEvaluator()
+        if timer == nil { start() }
+        checkNow()
+    }
+
+    func replaceStatusItem(_ statusItem: NSStatusItem) {
+        self.statusItem = statusItem
+        evaluator = MenuBarBlockEvaluator()
+        checkNow()
+    }
+
+    func checkNow() {
+        probeOnce()
     }
 
     @objc private func probeFromTimer() {
@@ -78,16 +111,28 @@ final class MenuBarBlockWatchdog {
 
     /// Exposed for a manual re-check; `start` drives the periodic case.
     func probeOnce() {
-        // Re-read the flag on every probe rather than only when the timer was
-        // created: the user can suppress from the alert itself, and the
-        // evaluator re-arms after any recovery, so a still-running timer would
-        // otherwise nag again on the next relapse.
-        guard !isSuppressed else {
-            stop()
+        let sampled = statusItem.flatMap(Self.sample)
+        let demoProbe = DemoMode.isEnabled ? MenuBarItemProbe(
+            isVisible: true,
+            hasButton: true,
+            hasWindow: true,
+            occlusionVisible: true,
+            windowHeight: 30,
+            statusBarThickness: NSStatusBar.system.thickness,
+            menuBarHeights: [30]
+        ) : nil
+        guard let probe = sampled ?? demoProbe else {
+            report = MenuBarHealthReport(state: .unavailable, checkedAt: Date(), probe: nil)
             return
         }
-        guard let statusItem, let probe = Self.sample(statusItem) else { return }
-        guard evaluator.record(probe) else { return }
+        let verdict = detector.verdict(for: probe)
+        let state: MenuBarHealthState = switch verdict {
+        case .healthy: .healthy
+        case .blocked: .blocked
+        case .inconclusive: .inconclusive
+        }
+        report = MenuBarHealthReport(state: state, checkedAt: Date(), probe: probe)
+        guard !isSuppressed, evaluator.record(probe) else { return }
         SafeLog.warn(
             "Menu bar item appears blocked by the system "
                 + "(height \(Int(probe.windowHeight)) vs bar \(Int(probe.menuBarHeights.min() ?? 0)), "

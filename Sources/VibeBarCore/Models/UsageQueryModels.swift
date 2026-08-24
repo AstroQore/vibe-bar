@@ -131,6 +131,36 @@ public struct UsageSummaryMetrics: Sendable, Equatable {
     }
 }
 
+/// Token-only headline windows for the Overview, derived from the canonical
+/// request ledger rather than the cost snapshot cache.
+public struct UsageTokenHeadlineTotals: Sendable, Equatable {
+    public let allTimeTokens: Int64
+    public let todayTokens: Int64
+    public let yesterdayTokens: Int64
+    public let last7DaysTokens: Int64
+    public let last30DaysTokens: Int64
+    public let peakDayTokens: Int64
+    public let peakDay: Date?
+
+    public init(
+        allTimeTokens: Int64,
+        todayTokens: Int64,
+        yesterdayTokens: Int64,
+        last7DaysTokens: Int64,
+        last30DaysTokens: Int64,
+        peakDayTokens: Int64,
+        peakDay: Date?
+    ) {
+        self.allTimeTokens = allTimeTokens
+        self.todayTokens = todayTokens
+        self.yesterdayTokens = yesterdayTokens
+        self.last7DaysTokens = last7DaysTokens
+        self.last30DaysTokens = last30DaysTokens
+        self.peakDayTokens = peakDayTokens
+        self.peakDay = peakDay
+    }
+}
+
 // MARK: - Trend series
 
 public struct UsageTrendPoint: Sendable, Equatable, Identifiable {
@@ -426,5 +456,27 @@ public struct UsageModelStat: Sendable, Equatable, Identifiable {
         let count = Int64(requests)
         if total >= 0 { return (total + count / 2) / count }
         return -((-total + count / 2) / count)
+    }
+}
+
+/// Request-level usage attributed to one local project directory.
+///
+/// This dimension is intentionally path-backed: `name` is presentation only,
+/// while `id` remains the normalized absolute path so two repositories with
+/// the same last component never collapse into one row.
+public struct UsageProjectStat: Sendable, Equatable, Identifiable {
+    public let path: String
+    public let requests: Int
+    public let totalTokens: Int64
+    public let costMicros: Int64
+
+    public var id: String { path }
+    public var name: String { UsageProjectIdentity.displayName(for: path) }
+
+    public init(path: String, requests: Int, totalTokens: Int64, costMicros: Int64) {
+        self.path = path
+        self.requests = requests
+        self.totalTokens = totalTokens
+        self.costMicros = costMicros
     }
 }

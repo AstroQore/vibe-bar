@@ -12,6 +12,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// status item. Lives here rather than in `UserDefaults` so it is covered
     /// by the `~/.vibebar/` persistence rule and a reset of that directory.
     public var menuBarBlockAlertSuppressed: Bool
+    /// Opt-in: after the watchdog's three-probe confirmation, run the same
+    /// narrow allow-list repair exposed in Menu Bar Health.
+    public var menuBarAutoRepairEnabled: Bool
     public var mockEnabled: Bool
     public var codexUsageMode: CodexUsageMode
     public var claudeUsageMode: ClaudeUsageMode
@@ -169,6 +172,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         updateChannel: .main,
         menuBarTextEnabled: true,
         menuBarBlockAlertSuppressed: false,
+        menuBarAutoRepairEnabled: false,
         mockEnabled: false,
         codexUsageMode: .auto,
         claudeUsageMode: .auto,
@@ -275,6 +279,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         updateChannel: UpdateChannel = .main,
         menuBarTextEnabled: Bool,
         menuBarBlockAlertSuppressed: Bool = false,
+        menuBarAutoRepairEnabled: Bool = false,
         mockEnabled: Bool,
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
@@ -312,6 +317,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.updateChannel = updateChannel
         self.menuBarTextEnabled = menuBarTextEnabled
         self.menuBarBlockAlertSuppressed = menuBarBlockAlertSuppressed
+        self.menuBarAutoRepairEnabled = menuBarAutoRepairEnabled
         self.mockEnabled = false
         self.codexUsageMode = codexUsageMode
         self.claudeUsageMode = claudeUsageMode
@@ -382,6 +388,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case updateChannel
         case menuBarTextEnabled
         case menuBarBlockAlertSuppressed
+        case menuBarAutoRepairEnabled
         case mockEnabled
         case codexUsageMode
         case claudeUsageMode
@@ -430,6 +437,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.menuBarTextEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarTextEnabled) ?? Self.default.menuBarTextEnabled
         self.menuBarBlockAlertSuppressed = try c.decodeIfPresent(Bool.self, forKey: .menuBarBlockAlertSuppressed)
             ?? Self.default.menuBarBlockAlertSuppressed
+        self.menuBarAutoRepairEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarAutoRepairEnabled)
+            ?? Self.default.menuBarAutoRepairEnabled
         self.mockEnabled = false
         self.codexUsageMode = try c.decodeIfPresent(CodexUsageMode.self, forKey: .codexUsageMode) ?? Self.default.codexUsageMode
         self.claudeUsageMode = try c.decodeIfPresent(ClaudeUsageMode.self, forKey: .claudeUsageMode) ?? Self.default.claudeUsageMode
@@ -609,6 +618,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(updateChannel, forKey: .updateChannel)
         try c.encode(menuBarTextEnabled, forKey: .menuBarTextEnabled)
         try c.encode(menuBarBlockAlertSuppressed, forKey: .menuBarBlockAlertSuppressed)
+        try c.encode(menuBarAutoRepairEnabled, forKey: .menuBarAutoRepairEnabled)
         try c.encode(mockEnabled, forKey: .mockEnabled)
         try c.encode(codexUsageMode, forKey: .codexUsageMode)
         try c.encode(claudeUsageMode, forKey: .claudeUsageMode)

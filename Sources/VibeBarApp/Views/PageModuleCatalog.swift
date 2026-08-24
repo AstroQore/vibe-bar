@@ -37,6 +37,7 @@ enum PageModuleKind: Hashable {
     case overviewQuotaHistoryAll
     case overviewCostAll
     case overviewCost(ToolType)
+    case overviewUsageMix
     case overviewModelRanking
     case overviewYearHeatmap
     case overviewActivityHeatmap
@@ -84,6 +85,7 @@ enum PageModuleCatalog {
         static let quotaHistory: Double = 300
         static let cost: Double = 320
         static let analytics: Double = 200
+        static let usageMix: Double = 300
         static let status: Double = 150
         static let placeholder: Double = 90
         /// The summary cards are pinned to `Theme.Density.overviewSummaryHeight`
@@ -156,6 +158,23 @@ enum PageModuleCatalog {
                 fallbackHeight: FallbackHeight.summary
             )
         )
+        let hasCostData = self.hasCostData(environment: environment, settings: settings)
+        if hasCostData {
+            // The composition explorer is a headline usage answer, so it
+            // starts the first post-summary band instead of disappearing
+            // below every provider's long cost history.
+            result.append(
+                PageModuleDescriptor(
+                    id: .custom("overview-usage-mix"),
+                    kind: .overviewUsageMix,
+                    displayName: "Usage Mix",
+                    defaultColumn: 1,
+                    accent: .cost,
+                    masonryPhase: .quota,
+                    fallbackHeight: FallbackHeight.usageMix
+                )
+            )
+        }
         for tool in settings.visibleCoreProviderList {
             result.append(
                 PageModuleDescriptor(
@@ -180,7 +199,6 @@ enum PageModuleCatalog {
                 fallbackHeight: FallbackHeight.quotaHistory
             )
         )
-        let hasCostData = self.hasCostData(environment: environment, settings: settings)
         if hasCostData {
             result.append(
                 PageModuleDescriptor(

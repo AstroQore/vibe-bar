@@ -29,6 +29,7 @@ struct SettingsSidebarView: View {
         .remote,
         .privacy,
         .menuBar,
+        .menuBarHealth,
         .miniWindow,
         .layout,
     ]

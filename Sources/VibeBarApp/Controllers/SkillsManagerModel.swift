@@ -103,6 +103,14 @@ final class SkillsManagerModel: ObservableObject {
         }
     }
 
+    func nativeDisabledCount(for app: SkillAppTarget) -> Int {
+        skills.count { $0.activationState(for: app) == .disabledInHarness }
+    }
+
+    func coupledCount(for app: SkillAppTarget) -> Int {
+        skills.count { $0.activationState(for: app) == .coupled }
+    }
+
     func updateState(for skill: Skill) -> SkillUpdateState? {
         updateStates[skill.id]
     }
@@ -183,18 +191,38 @@ final class SkillsManagerModel: ObservableObject {
     // MARK: - Per-skill actions
 
     func toggle(skill: Skill, app: SkillAppTarget) {
-        let enable = !skill.isEnabled(for: app)
+        let action: SkillActivationAction = switch skill.activationState(for: app) {
+        case .notProjected:
+            .enable
+        case .enabled:
+            app.supportsNativeSkillActivation ? .disableInHarness : .removeProjection
+        case .coupled:
+            app.supportsNativeSkillActivation ? .disableInHarness : .enable
+        case .disabledInHarness, .unknown:
+            .enable
+        }
+        setActivation(skill: skill, app: app, action: action)
+    }
+
+    func setActivation(
+        skill: Skill,
+        app: SkillAppTarget,
+        action: SkillActivationAction
+    ) {
         let method = settingsStore.settings.skillsSyncMethod
         let id = skill.id
         perform(BusyKey.skill(id)) { [self] in
-            let changed = try await service.setEnabled(id, app: app, enabled: enable, method: method)
-            // Disabling reports `false` when the app-side entry was a foreign
-            // directory or an edited copy: the enable bit still cleared, but
-            // the user's files were left where they are and they should hear
-            // about it rather than discover the skill still loading.
-            if !enable, !changed {
-                toast = "\(skill.name) is no longer managed for \(app.displayName), "
+            let changed = try await service.setActivation(
+                id,
+                app: app,
+                action: action,
+                method: method
+            )
+            if action == .removeProjection, !changed {
+                toast = "\(skill.name)'s Vibe Bar projection was cleared for \(app.displayName), "
                     + "but the existing folder was left in place."
+            } else if action == .disableInHarness {
+                toast = "Disabled \(skill.name) in \(app.displayName) and kept its projection."
             }
         }
     }
