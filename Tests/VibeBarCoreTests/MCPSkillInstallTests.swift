@@ -80,10 +80,8 @@ final class MCPSkillInstallTests: XCTestCase {
 
         let installed = try XCTUnwrap(result["installed"]?.arrayValue)
         XCTAssertEqual(installed[0]["projectedTo"]?.objectValue?.isEmpty, true)
-        XCTAssertTrue(
-            result["message"]?.stringValue?.contains("No agent has it switched on yet") ?? false,
-            result["message"]?.stringValue ?? ""
-        )
+        XCTAssertTrue(result["message"]?.stringValue?.contains("no app-specific projection") ?? false)
+        XCTAssertTrue(result["message"]?.stringValue?.contains("effective and native state") ?? false)
         for app in SkillAppTarget.allCases {
             XCTAssertFalse(home.exists(home.appDirectory(app).appendingPathComponent("vibe-bar")))
         }
@@ -217,7 +215,7 @@ final class MCPSkillInstallTests: XCTestCase {
     }
 
     func testRejectsLegacyAppsAtExecutionTime() async throws {
-        for app in [SkillAppTarget.gemini, .hermes, .opencode] {
+        for app in [SkillAppTarget.hermes, .opencode] {
             let response = try await raw([
                 "source": .string("AstroQore/vibe-bar"),
                 "apps": .array([.string(app.rawValue)])

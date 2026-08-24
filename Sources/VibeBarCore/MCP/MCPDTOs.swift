@@ -709,9 +709,8 @@ public struct MCPInstalledSkillDTO: Codable, Equatable, Sendable {
     public let branch: String?
     /// Where the payload lives: `~/.agents/skills/<directory>`.
     public let path: String
-    /// App key → the directory the skill was projected into. Empty when the
-    /// caller installed without naming any app, which is a valid outcome:
-    /// the skill is on the machine, switched on for nobody.
+    /// App key → the app-specific directory the skill was projected into.
+    /// Empty does not imply invisible: some harnesses scan the shared SSOT.
     public let projectedTo: [String: String]
 
     public init(installed: SkillInstallOutcome.Installed) {
@@ -759,8 +758,9 @@ public struct MCPSkillInstallDTO: Codable, Equatable, Sendable {
         let names = outcome.installed.map(\.skill.name).joined(separator: ", ")
         let apps = first.projectedTo.keys.map(\.displayName).sorted()
         if apps.isEmpty {
-            return "Installed \(names) into \(first.path). No agent has it switched on yet — "
-                + "pass 'apps' to project it into an agent's skills directory."
+            return "Installed \(names) into \(first.path) with no app-specific projection. "
+                + "Harnesses that scan ~/.agents/skills may still discover it; use the Skills manager "
+                + "to inspect effective and native state."
         }
         return "Installed \(names) into \(first.path) and projected it into "
             + "\(apps.joined(separator: ", "))."

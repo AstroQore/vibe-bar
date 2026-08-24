@@ -3,6 +3,7 @@ import VibeBarCore
 
 enum SettingsSectionID: String {
     case menuBar
+    case menuBarHealth
     case miniWindow
     case layout
     case openAI
@@ -22,6 +23,7 @@ enum SettingsSectionID: String {
     var title: String {
         switch self {
         case .menuBar: "Menu Bar"
+        case .menuBarHealth: "Menu Bar Health"
         case .miniWindow: "Mini Window"
         case .layout: "Layout"
         case .openAI: "OpenAI"
@@ -41,6 +43,7 @@ enum SettingsSectionID: String {
     var systemImage: String {
         switch self {
         case .menuBar: "menubar.rectangle"
+        case .menuBarHealth: "stethoscope"
         case .miniWindow: "rectangle.on.rectangle"
         case .layout: "rectangle.split.2x1"
         case .openAI: "brain.head.profile"
@@ -196,6 +199,19 @@ struct SettingsView: View {
                         menuBarOverviewEditor()
                     }
                     .id(SettingsSectionID.menuBar.rawValue)
+                    }
+
+                    if selectedSection == .menuBarHealth {
+                    settingsSection("Menu Bar Health") {
+                        if let watchdog = environment.menuBarWatchdog {
+                            MenuBarHealthSettingsSection(watchdog: watchdog)
+                        } else {
+                            Text("The menu bar health monitor is not attached in this process.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .id(SettingsSectionID.menuBarHealth.rawValue)
                     }
 
                     if selectedSection == .miniWindow {

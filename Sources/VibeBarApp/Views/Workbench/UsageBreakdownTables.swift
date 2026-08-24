@@ -21,6 +21,10 @@ struct UsageBreakdownTables: View {
         model.modelStats.sorted { $0.costMicros > $1.costMicros }
     }
 
+    private var sortedProjects: [UsageProjectStat] {
+        model.projectStats.sorted { $0.totalTokens > $1.totalTokens }
+    }
+
     private var populatedPeriods: [UsageTrendPoint] {
         Array(model.trend.points.filter { $0.totalTokens > 0 || $0.costMicros != 0 }.reversed())
     }
@@ -109,6 +113,8 @@ struct UsageBreakdownTables: View {
                 : "\(total) request\(total == 1 ? "" : "s")"
         case .providers:
             return "\(model.companyProviderStats.count) compan\(model.companyProviderStats.count == 1 ? "y" : "ies")"
+        case .projects:
+            return "\(model.projectStats.count) project\(model.projectStats.count == 1 ? "" : "s") · up to 30 d detail"
         case .models:
             return "\(model.modelStats.count) model\(model.modelStats.count == 1 ? "" : "s")"
         }
@@ -136,6 +142,12 @@ struct UsageBreakdownTables: View {
                 empty("No provider totals in this range")
             } else {
                 providersTable
+            }
+        case .projects:
+            if sortedProjects.isEmpty {
+                empty("No project-attributed Codex or Claude usage in this range")
+            } else {
+                projectsTable
             }
         case .models:
             if sortedModels.isEmpty {
@@ -316,6 +328,32 @@ struct UsageBreakdownTables: View {
             }
         }
         .frame(height: tableHeight(for: sortedModels.count))
+    }
+
+    private var projectsTable: some View {
+        GeometryReader { proxy in
+            let columns = ProviderColumns(
+                contentWidth: proxy.size.width - UsageTableMetrics.horizontalInset * 2
+            )
+            VStack(spacing: 0) {
+                tableHeader(columns.all)
+                LazyVStack(spacing: 0) {
+                    ForEach(sortedProjects) { stat in
+                        PorcelainUsageRow(
+                            accessibilityLabel: "\(stat.name), \(stat.requests) requests, "
+                                + "\(UsageFormatting.formatTokens(stat.totalTokens)), "
+                                + UsageFormatting.formatMicroUSD(stat.costMicros)
+                        ) {
+                            valueCell(stat.name, columns.provider, tooltip: stat.path)
+                            countCell(stat.requests, columns.requests)
+                            numericCell(stat.totalTokens, columns.tokens, emphasis: true)
+                            moneyCell(stat.costMicros, columns.cost, emphasis: true)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(height: tableHeight(for: sortedProjects.count))
     }
 
     // MARK: - Cells

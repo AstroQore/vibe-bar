@@ -116,7 +116,7 @@ struct LayoutEditorView: View {
         VStack(alignment: .leading, spacing: 12) {
             pagePicker(pages: pages, selected: page)
             modeRow(page: page, mode: mode, arrangement: arrangement, descriptors: descriptors)
-            controlRow(page: page, config: config)
+            controlRow(page: page, config: config, descriptors: descriptors)
             if descriptors.isEmpty {
                 Text("This page has no arrangeable cards yet. Open it in the popover once so Vibe Bar can measure them.")
                     .font(.caption)
@@ -408,12 +408,17 @@ struct LayoutEditorView: View {
 
     // MARK: - Ratio + status
 
-    private func controlRow(page: PageLayoutPageID, config: PageLayoutConfig) -> some View {
+    private func controlRow(
+        page: PageLayoutPageID,
+        config: PageLayoutConfig,
+        descriptors: [PageModuleDescriptor]
+    ) -> some View {
         HStack(spacing: 10) {
             ForEach(PageColumnRatio.allCases, id: \.self) { ratio in
                 ratioButton(ratio, page: page, config: config)
             }
             Spacer(minLength: 8)
+            visibilityMenu(page: page, descriptors: descriptors)
             if layoutModel.hasSavedIntent(page) {
                 Text("Customized")
                     .font(.system(size: 10, weight: .semibold))
@@ -424,6 +429,43 @@ struct LayoutEditorView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private func visibilityMenu(
+        page: PageLayoutPageID,
+        descriptors: [PageModuleDescriptor]
+    ) -> some View {
+        let visibleCount = descriptors.count { !layoutModel.isHidden($0.id, on: page) }
+        return Menu {
+            Button("Show All") {
+                for descriptor in descriptors {
+                    layoutModel.setHidden(false, for: descriptor.id, page: page)
+                }
+            }
+            .disabled(visibleCount == descriptors.count)
+            Button("Hide All") {
+                for descriptor in descriptors {
+                    layoutModel.setHidden(true, for: descriptor.id, page: page)
+                }
+            }
+            .disabled(visibleCount == 0)
+            Divider()
+            ForEach(descriptors) { descriptor in
+                Toggle(
+                    descriptor.displayName,
+                    isOn: Binding(
+                        get: { !layoutModel.isHidden(descriptor.id, on: page) },
+                        set: { layoutModel.setHidden(!$0, for: descriptor.id, page: page) }
+                    )
+                )
+            }
+        } label: {
+            Label("Visibility \(visibleCount)/\(descriptors.count)", systemImage: "eye")
+                .font(.system(size: 11, weight: .medium))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Show or hide every card on this page. The eye on each card provides the same control.")
     }
 
     private func ratioButton(

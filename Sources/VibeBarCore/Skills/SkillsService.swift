@@ -29,6 +29,7 @@ public actor SkillsService {
     let homeDirectory: String
     let store: SkillsStore
     let engine: SkillSyncEngine
+    let harnessConfig: SkillHarnessConfigManager
     let backups: SkillBackupManager
     let fetcher: SkillRepoFetching
     /// Where the trees behind the current `[DiscoveredSkill]` live. Discovery
@@ -49,6 +50,7 @@ public actor SkillsService {
         self.homeDirectory = homeDirectory
         self.store = SkillsStore(homeDirectory: homeDirectory)
         self.engine = SkillSyncEngine(homeDirectory: homeDirectory)
+        self.harnessConfig = SkillHarnessConfigManager(homeDirectory: homeDirectory)
         self.backups = SkillBackupManager(homeDirectory: homeDirectory)
         self.fetcher = fetcher
     }
@@ -60,6 +62,12 @@ public actor SkillsService {
     public func installedSkills() async -> [Skill] {
         let storeSnapshot = await store.snapshot()
         let snapshots = storeSnapshot.skills
+        let nativeStates: [SkillAppTarget: [String: SkillHarnessConfigManager.NativeState]] = [
+            .codex: harnessConfig.codexStates(for: snapshots),
+            .claude: harnessConfig.claudeStates(for: snapshots),
+            .gemini: harnessConfig.geminiStates(for: snapshots),
+            .grok: harnessConfig.grokStates(for: snapshots),
+        ]
         var result: [Skill] = []
         var liveCopyKeys: Set<String> = []
         var reconciledApps: [SkillID: [SkillAppTarget: SkillMaterialization]] = [:]
@@ -88,8 +96,18 @@ public actor SkillsService {
                     reconciled.apps[app] = nil
                 }
             }
+            for app in SkillAppTarget.managedHarnesses where app.supportsNativeSkillActivation {
+                switch nativeStates[app]?[snapshot.directory] ?? .unknown {
+                case .enabled: break
+                case .disabled: reconciled.nativeDisabledApps.insert(app)
+                case .unknown: reconciled.nativeStateUnknownApps.insert(app)
+                }
+            }
             guard reconciled.apps != recordedApps else {
-                result.append(snapshot)
+                // Native state is intentionally transient and does not make
+                // `apps` differ. Return the enriched value even when no
+                // registry reconciliation needs to be persisted.
+                result.append(reconciled)
                 continue
             }
             reconciledApps[snapshot.id] = reconciled.apps
@@ -122,6 +140,46 @@ public actor SkillsService {
         }
         copyVerificationCache[key] = CopyVerification(metadataStamp: stamp, contentHash: hash)
         return hash
+    }
+
+    /// Applies the native half of a pending install selection.
+    ///
+    /// Codex, Gemini CLI, and Grok Build discover the shared SSOT even when
+    /// their app-specific projection is absent. A brand-new install must
+    /// therefore write a native disable for every unchecked direct-discovery
+    /// harness; selected native harnesses are explicitly returned to their
+    /// enabled state. Re-installing an existing skill passes
+    /// `disableUnselected: false` because that operation only adds targets and
+    /// must not clear choices made earlier.
+    func applyNativeInstallationSelection(
+        to skill: Skill,
+        selectedApps: [SkillAppTarget],
+        disableUnselected: Bool
+    ) throws {
+        let selected = Set(selectedApps)
+        for app in SkillAppTarget.managedHarnesses where app.supportsNativeSkillActivation {
+            if selected.contains(app) {
+                try harnessConfig.setNativeEnabled(
+                    true,
+                    directoryName: skill.directory,
+                    skillName: skill.name,
+                    app: app
+                )
+            } else if disableUnselected, app.discoversSharedSkillRoot {
+                try harnessConfig.setNativeEnabled(
+                    false,
+                    directoryName: skill.directory,
+                    skillName: skill.name,
+                    app: app
+                )
+            }
+        }
+    }
+
+    func validateNativeInstallationSelection(_ selectedApps: [SkillAppTarget]) throws {
+        for app in selectedApps where app.supportsNativeSkillActivation {
+            try harnessConfig.validateCanEnable(app)
+        }
     }
 
     public func skill(with id: SkillID) async -> Skill? {
@@ -159,6 +217,79 @@ public actor SkillsService {
         skill.apps[app] = nil
         try await store.upsert(skill)
         return removed
+    }
+
+    /// Applies the user's explicit projection/runtime choice for one harness.
+    ///
+    /// Codex has two layers: the symlink/copy and `[[skills.config]]`. Other
+    /// harnesses currently have only the first. The legacy `setEnabled`
+    /// remains the filesystem-only API used by existing callers; the Skills
+    /// page uses this richer operation so native-disabled links never read as
+    /// enabled.
+    @discardableResult
+    public func setActivation(
+        _ id: SkillID,
+        app: SkillAppTarget,
+        action: SkillActivationAction,
+        method: SkillSyncMethod = .auto
+    ) async throws -> Bool {
+        guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        switch action {
+        case .removeProjection:
+            let removed = try engine.unmaterialize(
+                skillDirectoryName: skill.directory,
+                from: app,
+                recorded: skill.apps[app]
+            )
+            skill.apps[app] = nil
+            try await store.upsert(skill)
+            return removed
+
+        case .enable, .disableInHarness:
+            if action == .disableInHarness, !app.supportsNativeSkillActivation {
+                throw SkillError.nativeActivationUnsupported(app)
+            }
+            let prior = skill.apps[app]
+            let materialization: SkillMaterialization?
+            if app.discoversSharedSkillRoot {
+                // The SSOT is already a native discovery root. Creating a
+                // second link is redundant and, in Gemini, surfaces as a
+                // conflict warning. Native state alone controls these apps.
+                materialization = prior
+            } else {
+                materialization = try engine.materialize(
+                    skillDirectoryName: skill.directory,
+                    into: app,
+                    method: method,
+                    recorded: prior
+                )
+            }
+            do {
+                if app.supportsNativeSkillActivation {
+                    try harnessConfig.setNativeEnabled(
+                        action == .enable,
+                        directoryName: skill.directory,
+                        skillName: skill.name,
+                        app: app
+                    )
+                }
+            } catch {
+                // A newly-created projection without its matching native
+                // state is misleading. Roll back only what this call created;
+                // an existing projection belongs to the prior state.
+                if prior == nil, let materialization {
+                    _ = try? engine.unmaterialize(
+                        skillDirectoryName: skill.directory,
+                        from: app,
+                        recorded: materialization
+                    )
+                }
+                throw error
+            }
+            if let materialization { skill.apps[app] = materialization }
+            try await store.upsert(skill)
+            return true
+        }
     }
 
     /// Backs the skill up, unmaterializes it from every app, deletes the SSOT
@@ -245,6 +376,11 @@ public actor SkillsService {
                 method: method
             )
         }
+        try applyNativeInstallationSelection(
+            to: skill,
+            selectedApps: apps,
+            disableUnselected: true
+        )
         try await store.upsert(skill)
         return skill
     }
@@ -262,6 +398,11 @@ public actor SkillsService {
         }
         try copyIntoSSOT(from: sourceDir, directoryName: name)
         let skill = try makeLocalSkill(directoryName: name)
+        try applyNativeInstallationSelection(
+            to: skill,
+            selectedApps: [],
+            disableUnselected: true
+        )
         try await store.upsert(skill)
         return skill
     }

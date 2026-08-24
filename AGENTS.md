@@ -716,18 +716,16 @@ capture against § 8 before committing it — a screenshot is source content.
   config files you actually need, never write outside `~/.vibebar/`,
   and never log raw secrets.
 - **The Skills manager is a narrow, documented exception to that write
-  scope.** It writes to exactly two things: `~/.agents/skills/` — the
-  single source of truth every agent CLI is projected from — and the
-  allowlisted app skills directories. New management is shown only for the
-  locally controllable core harnesses: Codex (`~/.codex/skills`), Claude Code
-  (`~/.claude/skills`), AntiGravity (`~/.gemini/config/skills`), Grok Build
-  (`~/.grok/skills`), and Cursor (`~/.cursor/skills`). The older Gemini CLI,
-  Hermes, and OpenCode roots remain in the allowlist only so an existing
-  `skills.json` can be decoded and safely cleaned up; they are not offered for
-  new scans, installs, or toggles. ChatGPT Work, Claude Cowork, and Grok Bot do
-  not expose an independent, stable local skill directory that this feature
-  can safely write, so Vibe Bar does not display fake filesystem toggles for
-  them. Nothing else is touched, and never directly: every
+  scope.** It writes to `~/.agents/skills/`, the allowlisted app skills
+  directories, and only the native per-skill user-config fields below. The
+  managed harnesses are Codex (`~/.codex/skills`), Claude Code
+  (`~/.claude/skills`), Gemini CLI (`~/.gemini/skills`), AntiGravity
+  (`~/.gemini/config/skills`), Grok Build (`~/.grok/skills`), and Cursor
+  (`~/.cursor/skills`). Hermes and OpenCode roots remain in the allowlist only
+  so old `skills.json` files can be decoded and safely cleaned up. ChatGPT
+  Work, Claude Cowork, and Grok Bot do not expose an independent, stable local
+  skill directory this feature can safely write, so no fake toggles are shown.
+  Nothing else is touched, and never directly: every
   create, link, copy, and delete goes through `SkillSyncEngine` /
   `SkillsService`, which validate each directory name as a single safe
   path segment, refuse any resolved path outside those roots, require a
@@ -737,13 +735,23 @@ capture against § 8 before committing it — a screenshot is source content.
   content hash still matches — so a folder the user authored or edited
   is left in place. Vibe Bar reads `~/.agents/.skill-lock.json` for
   provenance and never writes it, and pre-uninstall snapshots stay under
-  `~/.vibebar/skill_backups/`. `~/.gemini/config/skills` is
-  AntiGravity's customization root, not the Gemini CLI's — nothing else
-  under `~/.gemini/config/` may be touched. New code that needs a skills
-  path goes through those two types; do not add a second write path.
-  The visible Skills page also re-reads recorded app projections while it is
-  open; a missing or replaced symlink must clear the enabled state instead of
-  trusting stale registry metadata.
+  `~/.vibebar/skill_backups/`.
+
+  Projection is not activation. Codex, Gemini CLI, Grok Build, and Cursor all
+  discover `~/.agents/skills` directly; AntiGravity also discovers the Gemini
+  CLI root. The visible page therefore derives separate projection, native,
+  and effective states. It re-reads projections and these native user settings
+  while open: Codex `~/.codex/config.toml` `[[skills.config]]`, Claude
+  `~/.claude/settings.json.skillOverrides`, Gemini
+  `~/.gemini/settings.json.skills`, and Grok `~/.grok/config.toml [skills]`.
+  Native config patches must be UTF-8/JSON/TOML-safe, preserve unknown fields,
+  back up the original under `~/.vibebar/skill_backups/harness-config/`, and
+  fail closed on parse errors. Cursor and standalone AntiGravity expose no
+  stable full-off field: removing one projection while another discovery root
+  still reaches the skill must show `coupled`, never disabled. New code that
+  needs a skills path or harness setting goes through `SkillSyncEngine`,
+  `SkillHarnessConfigManager`, or `SkillsService`; do not add another write
+  path.
   That includes the MCP surface: `skills.install` (§ 5.1) resolves its
   `source` to a repository ref or a local directory and then calls
   `SkillsService.install(from:enableFor:method:)`, which reuses the same
@@ -1085,8 +1093,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   Confirm before chasing our code: build a throwaway `.app` with a
   different `CFBundleIdentifier` and the same status-item code. If the
   copy appears and `com.astroqore.VibeBar` does not, the block is
-  external. `MenuBarBlockWatchdog` detects this at runtime and tells the
-  user; `window.screen` is **not** the signal to key on (a blocked
+  external. `MenuBarBlockWatchdog` keeps probing even when alert presentation
+  was suppressed; Settings › Menu Bar Health exposes the live probe, the
+  Control Center dry-run, alert toggle, and repair/re-registration path.
+  `window.screen` is **not** the signal to key on (a blocked
   window still reports a screen) — the signature is a window left at
   `NSStatusBar.thickness` (22) while every screen's bar is taller,
   with occlusion missing `.visible`. It relapses whenever Control
@@ -1102,7 +1112,8 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 - **New persistent state** goes through `VibeBarLocalStore` and lives
   under `~/.vibebar/`. Do not write to `~/` directly from new code. The
   only exception is the skills write allow-list in § 7, and it is
-  reached exclusively through `SkillSyncEngine` / `SkillsService`.
+  reached exclusively through `SkillSyncEngine`,
+  `SkillHarnessConfigManager`, and `SkillsService`.
 - **Every user-facing Settings control must round-trip through
   `AppSettings`.** Add its Codable key, a backward-compatible decode default,
   and a round-trip test. Migrations must be one-time and evidence-based; never

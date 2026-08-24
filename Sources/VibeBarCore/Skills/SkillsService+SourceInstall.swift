@@ -100,6 +100,7 @@ extension SkillsService {
         method: SkillSyncMethod
     ) async throws -> SkillInstallOutcome {
         let source = url.standardizedFileURL
+        try validateNativeInstallationSelection(apps)
         guard SkillFileSystem.kind(of: source) == .directory else {
             throw SkillError.sourceNotADirectory(source.path)
         }
@@ -124,6 +125,11 @@ extension SkillsService {
                     recorded: skill.apps[app]
                 )
             }
+            try applyNativeInstallationSelection(
+                to: skill,
+                selectedApps: apps,
+                disableUnselected: false
+            )
             try await store.upsert(skill)
             return SkillInstallOutcome(
                 source: source.path,
@@ -145,7 +151,7 @@ extension SkillsService {
 
     private func record(_ skill: Skill) -> SkillInstallOutcome.Installed {
         var projected: [SkillAppTarget: String] = [:]
-        for app in skill.enabledApps {
+        for app in skill.projectedApps {
             projected[app] = SkillAppCatalog
                 .skillsDirectory(for: app, homeDirectory: homeDirectory)
                 .appendingPathComponent(skill.directory, isDirectory: true)

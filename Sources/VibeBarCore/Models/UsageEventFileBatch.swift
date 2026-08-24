@@ -41,6 +41,7 @@ public struct PricedUsageEvent: Sendable, Equatable {
             && lhs.event.cacheCreation == rhs.event.cacheCreation
             && lhs.event.messageId == rhs.event.messageId
             && lhs.event.requestId == rhs.event.requestId
+            && lhs.event.projectPath == rhs.event.projectPath
     }
 }
 

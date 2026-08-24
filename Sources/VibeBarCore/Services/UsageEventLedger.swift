@@ -77,7 +77,10 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Bumping this drops and rebuilds every table on the next open. Cursor's
     /// L2 migration is intentionally in-place below so retained rollups are
     /// never discarded merely to change request-source attribution.
-    static let schemaVersion = 3
+    /// v4 adds the nullable request-level `project` dimension. The ledger is
+    /// reconstructible, so opening an older database rebuilds it and the next
+    /// cost scan replays the source logs with their harness-reported cwd.
+    static let schemaVersion = 4
     private static let schemaVersionKey = "schema_version"
     private static let cursorToolMigrationKey = "cursor_tool_v1"
     /// Written by an earlier revision of the Cursor migration. Only read now,
@@ -167,17 +170,24 @@ public actor UsageEventLedger: CostUsageEventSink {
             throw UsageLedgerError.open
         }
         if let stored = storedSchemaVersion(database), stored != schemaVersion {
-            // Every row here is reconstructible from the on-disk scan cache,
-            // so a migration is never worth writing: drop, recreate, and let
-            // the next refresh re-ingest.
-            let reset = """
-                DROP TABLE IF EXISTS usage_events;
-                DROP TABLE IF EXISTS usage_daily_rollups;
-                DROP TABLE IF EXISTS ingested_files;
-                DELETE FROM ledger_meta;
-                """
-            guard sqlite3_exec(database, reset, nil, nil, nil) == SQLITE_OK else {
-                throw UsageLedgerError.open
+            if stored == 3 {
+                // Project attribution is a nullable detail-only dimension.
+                // Preserve daily rollups: their source logs may already have
+                // aged out, and dropping them would erase all-time totals and
+                // historical token peaks permanently.
+                guard migrateProjectColumn(database) else { throw UsageLedgerError.open }
+            } else {
+                // Unknown historical shapes remain reconstructible from the
+                // on-disk scan cache; only those take the full reset path.
+                let reset = """
+                    DROP TABLE IF EXISTS usage_events;
+                    DROP TABLE IF EXISTS usage_daily_rollups;
+                    DROP TABLE IF EXISTS ingested_files;
+                    DELETE FROM ledger_meta;
+                    """
+                guard sqlite3_exec(database, reset, nil, nil, nil) == SQLITE_OK else {
+                    throw UsageLedgerError.open
+                }
             }
         }
         let schema = """
@@ -188,6 +198,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 day TEXT NOT NULL,
                 model TEXT NOT NULL,
                 harness TEXT,
+                project TEXT,
                 fresh_input INTEGER NOT NULL DEFAULT 0,
                 output INTEGER NOT NULL DEFAULT 0,
                 cache_read INTEGER NOT NULL DEFAULT 0,
@@ -206,6 +217,7 @@ public actor UsageEventLedger: CostUsageEventSink {
             CREATE INDEX IF NOT EXISTS usage_events_ts_id_idx ON usage_events(ts DESC, id DESC);
             CREATE INDEX IF NOT EXISTS usage_events_day_idx ON usage_events(day);
             CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
+            CREATE INDEX IF NOT EXISTS usage_events_project_idx ON usage_events(project);
             CREATE TABLE IF NOT EXISTS usage_daily_rollups (
                 day TEXT NOT NULL,
                 tool TEXT NOT NULL,
@@ -281,6 +293,35 @@ public actor UsageEventLedger: CostUsageEventSink {
             if String(cString: raw) == column { return true }
         }
         return false
+    }
+
+    @discardableResult
+    private static func migrateProjectColumn(_ database: OpaquePointer) -> Bool {
+        guard let hasProject = hasColumn(database, table: "usage_events", column: "project") else {
+            return false
+        }
+        guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+            return false
+        }
+        func rollback() -> Bool {
+            sqlite3_exec(database, "ROLLBACK", nil, nil, nil)
+            return false
+        }
+        if !hasProject {
+            guard sqlite3_exec(
+                database,
+                "ALTER TABLE usage_events ADD COLUMN project TEXT",
+                nil, nil, nil
+            ) == SQLITE_OK else { return rollback() }
+        }
+        let sql = """
+            CREATE INDEX IF NOT EXISTS usage_events_project_idx ON usage_events(project);
+            DELETE FROM ingested_files WHERE tool IN ('codex', 'claude');
+            """
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK,
+              sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
+        else { return rollback() }
+        return true
     }
 
     /// Add the `harness` dimension to an existing ledger without discarding a
@@ -696,6 +737,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                     .text(day),
                     .text(event.model),
                     harness.map { Binding.text($0.rawValue) } ?? .null,
+                    event.projectPath.map(Binding.text) ?? .null,
                     .integer(freshInput),
                     .integer(output),
                     .integer(cacheRead),
@@ -765,16 +807,17 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// order below must stay the only thing that decides between them.
     private static let insertEventSQL = """
         INSERT INTO usage_events(
-               tool, ts, day, model, harness, fresh_input, output, cache_read, cache_creation,
+               tool, ts, day, model, harness, project, fresh_input, output, cache_read, cache_creation,
                cost_micros, session_id, message_id, request_id, service_tier,
                is_sidechain, path_role, source_key, dedupe_key
-           ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(dedupe_key) DO UPDATE SET
                tool = excluded.tool,
                ts = excluded.ts,
                day = excluded.day,
                model = excluded.model,
                harness = excluded.harness,
+               project = excluded.project,
                fresh_input = excluded.fresh_input,
                output = excluded.output,
                cache_read = excluded.cache_read,
@@ -796,6 +839,10 @@ public actor UsageEventLedger: CostUsageEventSink {
             OR (
                    excluded.dedupe_key LIKE 'f:%'
                    AND excluded.harness IS NOT usage_events.harness
+               )
+            OR (
+                   excluded.project IS NOT usage_events.project
+                   AND COALESCE(excluded.source_key, '') = COALESCE(usage_events.source_key, '')
                )
             OR (CASE WHEN COALESCE(excluded.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
              < (CASE WHEN COALESCE(usage_events.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
@@ -1297,6 +1344,79 @@ public actor UsageEventLedger: CostUsageEventSink {
         )
     }
 
+    /// All token headline windows in one pass over per-day aggregates.
+    ///
+    /// CostSnapshot remains the authority for USD because it preserves
+    /// provider corrections and pricing semantics. Token headlines use the
+    /// request ledger: it is the source the Workbench and Overview Usage Mix
+    /// already expose, and it keeps `PEAK TOK DAY` independent from both the
+    /// cost peak and the cost snapshot's source-replacement lifecycle.
+    public func tokenHeadlineTotals(
+        tools: [ToolType]? = nil,
+        now: Date = Date()
+    ) throws -> UsageTokenHeadlineTotals {
+        if tools?.isEmpty == true {
+            return UsageTokenHeadlineTotals(
+                allTimeTokens: 0, todayTokens: 0, yesterdayTokens: 0,
+                last7DaysTokens: 0, last30DaysTokens: 0,
+                peakDayTokens: 0, peakDay: nil
+            )
+        }
+        var byDay: [Date: Int64] = [:]
+        let clause = tools.map { " WHERE tool IN (\(placeholders($0.count)))" } ?? ""
+        let bindings = tools?.map { Binding.text($0.rawValue) } ?? []
+
+        func consume(_ statement: OpaquePointer) {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let raw = columnText(statement, 0),
+                      let day = dayFormatter.date(from: raw)
+                else { continue }
+                byDay[day, default: 0] += sqlite3_column_int64(statement, 1)
+            }
+        }
+
+        let detail = try prepare(
+            """
+            SELECT day, COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0)
+              FROM usage_events\(clause) GROUP BY day
+            """
+        )
+        defer { sqlite3_finalize(detail) }
+        bindAll(bindings, to: detail)
+        consume(detail)
+
+        let rollups = try prepare(
+            """
+            SELECT day, COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0)
+              FROM usage_daily_rollups\(clause) GROUP BY day
+            """
+        )
+        defer { sqlite3_finalize(rollups) }
+        bindAll(bindings, to: rollups)
+        consume(rollups)
+
+        let today = calendar.startOfDay(for: now)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let weekStart = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        let monthStart = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        let peak = byDay.max { lhs, rhs in
+            lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value < rhs.value
+        }
+        return UsageTokenHeadlineTotals(
+            allTimeTokens: byDay.values.reduce(0, +),
+            todayTokens: byDay[today] ?? 0,
+            yesterdayTokens: byDay[yesterday] ?? 0,
+            last7DaysTokens: byDay.reduce(0) { total, entry in
+                entry.key >= weekStart && entry.key <= today ? total + entry.value : total
+            },
+            last30DaysTokens: byDay.reduce(0) { total, entry in
+                entry.key >= monthStart && entry.key <= today ? total + entry.value : total
+            },
+            peakDayTokens: peak?.value ?? 0,
+            peakDay: peak?.key
+        )
+    }
+
     /// Zero-filled series across the filter's range.
     ///
     /// Hourly buckets read request-level rows only — daily rollups have no
@@ -1671,6 +1791,45 @@ public actor UsageEventLedger: CostUsageEventSink {
                     ? $0.model < $1.model
                     : $0.totalTokens > $1.totalTokens
             }
+    }
+
+    /// Per-project totals from request-level evidence, heaviest first.
+    ///
+    /// Daily rollups intentionally do not carry a project dimension: project
+    /// paths are local session metadata and are only promised for the ledger's
+    /// detail window (currently 30 days). Callers should label that boundary
+    /// instead of presenting a partial all-time ranking.
+    public func projectStats(_ filter: UsageQueryFilter) throws -> [UsageProjectStat] {
+        let detail = detailPredicate(filter)
+        let statement = try prepare(
+            """
+            SELECT project, COUNT(*),
+                   COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
+                   COALESCE(SUM(cost_micros), 0)
+              FROM usage_events
+             WHERE \(detail.sql) AND project IS NOT NULL AND TRIM(project) <> ''
+             GROUP BY project
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bindAll(detail.bindings, to: statement)
+        var rows: [UsageProjectStat] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let path = columnText(statement, 0) else { continue }
+            rows.append(
+                UsageProjectStat(
+                    path: path,
+                    requests: Int(sqlite3_column_int64(statement, 1)),
+                    totalTokens: sqlite3_column_int64(statement, 2),
+                    costMicros: sqlite3_column_int64(statement, 3)
+                )
+            )
+        }
+        return rows.sorted {
+            $0.totalTokens == $1.totalTokens
+                ? $0.path.localizedStandardCompare($1.path) == .orderedAscending
+                : $0.totalTokens > $1.totalTokens
+        }
     }
 
     /// Every model name the ledger knows about, detail ∪ rollups, sorted.

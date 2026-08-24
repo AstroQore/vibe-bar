@@ -44,6 +44,7 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var routeHealth: [PrimaryProviderRoute: PrimaryProviderRouteHealth]
     @Published private(set) var pricingRefreshStatus = MultiSourcePricingRefresher.loadStatus()
     @Published private(set) var isRefreshingPricing = false
+    @Published private(set) var menuBarWatchdog: MenuBarBlockWatchdog?
 
     private let openAIWebLoginController = OpenAIWebLoginController()
     private let claudeWebLoginController = ClaudeWebLoginController()
@@ -65,6 +66,7 @@ final class AppEnvironment: ObservableObject {
     private var routeHealthProbeGeneration: UInt64 = 0
     private var routeHealthWriteGeneration: [PrimaryProviderRoute: UInt64] = [:]
     private var remoteCostAggregationGeneration: UInt64 = 0
+    private var menuBarReregisterHandler: (() -> Void)?
     /// Long enough to fold the probes of one refresh burst — the Gemini card
     /// refreshes two providers back to back — and short enough that a cookie
     /// change made outside Vibe Bar still shows up on the next manual refresh.
@@ -599,6 +601,35 @@ final class AppEnvironment: ObservableObject {
 
     func showSettingsWindow() {
         showWorkbench(page: .settings)
+    }
+
+    func registerMenuBarHealth(
+        watchdog: MenuBarBlockWatchdog,
+        reregister: @escaping () -> Void
+    ) {
+        menuBarWatchdog = watchdog
+        menuBarReregisterHandler = reregister
+    }
+
+    func repairMenuBarAllowList() async -> MenuBarAllowListRepair.Outcome {
+        let outcome = await MenuBarAllowListRepair.apply()
+        guard outcome.succeeded else { return outcome }
+        // A clean allow-list can still leave this process holding the stale
+        // NSStatusItem that the script tells shell users to recreate by
+        // relaunching. The in-app path can do that narrower re-registration
+        // for both successful outcomes without stopping MCP or the app.
+        menuBarReregisterHandler?()
+        for _ in 0..<6 {
+            try? await Task.sleep(for: .milliseconds(500))
+            menuBarWatchdog?.checkNow()
+            if menuBarWatchdog?.report.state == .healthy { return outcome }
+        }
+        return MenuBarAllowListRepair.Outcome(
+            status: .failed,
+            message: outcome.changed
+                ? "The allow-list was repaired, but the status item has not become visible yet."
+                : "The allow-list is clean, but the status item is still not visible."
+        )
     }
 
     func showWorkbench(page: WorkbenchPage? = nil) {

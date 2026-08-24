@@ -27,7 +27,7 @@ final class SkillsServiceNetworkTests: XCTestCase {
         XCTAssertEqual(skill.name, "PDF Tools")
         XCTAssertEqual(skill.description, "Reads PDFs")
         XCTAssertEqual(skill.repoBranch, "master")
-        XCTAssertEqual(Set(skill.enabledApps), [.claude, .codex])
+        XCTAssertEqual(Set(skill.projectedApps), [.claude, .codex])
         XCTAssertEqual(
             home.contents(of: home.ssot.appendingPathComponent("pdf/reference/notes.md")),
             "deep"
@@ -44,6 +44,46 @@ final class SkillsServiceNetworkTests: XCTestCase {
         }
         let installed = await service.installedSkills()
         XCTAssertEqual(installed.map(\.directory), ["pdf"])
+    }
+
+    func testNewInstallNativeDisablesUncheckedSharedHarnesses() async throws {
+        let home = try SkillTestHome()
+        let staging = try home.makeSkillDirectory(at: home.url.appendingPathComponent("staging/pdf"))
+        let service = SkillsService(homeDirectory: home.path)
+
+        _ = try await service.install(
+            Self.discovered(directory: "pdf", sourceRoot: staging),
+            enableFor: [.claude]
+        )
+        let installed = await service.installedSkills()
+        let live = try XCTUnwrap(installed.first)
+
+        XCTAssertEqual(live.activationState(for: .claude), .enabled)
+        XCTAssertEqual(live.activationState(for: .codex), .disabledInHarness)
+        XCTAssertEqual(live.activationState(for: .gemini), .disabledInHarness)
+        XCTAssertEqual(live.activationState(for: .grok), .disabledInHarness)
+        XCTAssertEqual(live.activationState(for: .cursor), .coupled)
+    }
+
+    func testGeminiGlobalOffFailsBeforeARepositoryInstallCopiesAnything() async throws {
+        let home = try SkillTestHome()
+        let staging = try home.makeSkillDirectory(at: home.url.appendingPathComponent("staging/pdf"))
+        try home.write(
+            #"{"skills":{"enabled":false}}"#,
+            to: home.url.appendingPathComponent(".gemini/settings.json")
+        )
+        let service = SkillsService(homeDirectory: home.path)
+
+        do {
+            _ = try await service.install(
+                Self.discovered(directory: "pdf", sourceRoot: staging),
+                enableFor: [.gemini]
+            )
+            XCTFail("Expected Gemini's global switch to block the install selection")
+        } catch {
+            XCTAssertEqual(error as? SkillError, .nativeSkillsGloballyDisabled(.gemini))
+        }
+        XCTAssertFalse(home.exists(home.ssot.appendingPathComponent("pdf")))
     }
 
     func testInstallRefusesADirectoryHeldByADifferentSkill() async throws {
@@ -76,7 +116,7 @@ final class SkillsServiceNetworkTests: XCTestCase {
 
         let again = try await service.install(discovered, enableFor: [.gemini])
 
-        XCTAssertEqual(Set(again.enabledApps), [.claude, .gemini])
+        XCTAssertEqual(Set(again.projectedApps), [.claude, .gemini])
         XCTAssertEqual(home.contents(of: home.ssot.appendingPathComponent("pdf/local.md")), "edited")
     }
 

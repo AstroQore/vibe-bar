@@ -91,7 +91,7 @@ public enum CostUsageScanner {
                 continue
             }
 
-            let (raw, originator) = parseCodexFile(file: file)
+            let (raw, originator, projectPath) = parseCodexFile(file: file)
             let harness = codexHarness(originator: originator)
             // Delta from one snapshot to the next is what was used in that interval.
             var previous: CodexEvent.Totals? = nil
@@ -125,7 +125,8 @@ public enum CostUsageScanner {
                     input: max(0, delta.input - delta.cached),
                     output: delta.output,
                     cache: delta.cached,
-                    harness: harness
+                    harness: harness,
+                    projectPath: projectPath
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
                 parsed.append(parsedEvent)
@@ -156,12 +157,14 @@ public enum CostUsageScanner {
         let totals: Totals
     }
 
-    /// Returns the file's token events plus its `session_meta` originator.
+    /// Returns the file's token events plus its `session_meta` originator and
+    /// project cwd.
     /// Both come out of the *same* single pass — the header is the first
     /// line, so reading it costs nothing and keeps the scan O(n).
-    private static func parseCodexFile(file: URL) -> ([CodexEvent], String?) {
+    private static func parseCodexFile(file: URL) -> ([CodexEvent], String?, String?) {
         var events: [CodexEvent] = []
         var originator: String?
+        var projectPath: String?
         var currentModel = "gpt-5"
         var runningTotals = CodexEvent.Totals(input: 0, cached: 0, output: 0)
         let didRead = forEachJSONLLine(in: file) { lineData in
@@ -175,6 +178,7 @@ public enum CostUsageScanner {
                obj["type"] as? String == "session_meta",
                let payload = obj["payload"] as? [String: Any] {
                 originator = normalizedNonEmpty(payload["originator"] as? String)
+                projectPath = UsageProjectIdentity.normalizedPath(payload["cwd"] as? String)
             }
             if let payload = obj["payload"] as? [String: Any] {
                 if let m = payload["model"] as? String { currentModel = m }
@@ -211,7 +215,7 @@ public enum CostUsageScanner {
             let timestamp = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
             events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals))
         }
-        return didRead ? (events, originator) : ([], originator)
+        return didRead ? (events, originator, projectPath) : ([], originator, projectPath)
     }
 
     // MARK: - Claude
@@ -293,7 +297,8 @@ public enum CostUsageScanner {
                     pathRole: pathRole,
                     sourceKey: sourceKey,
                     serviceTier: serviceTier,
-                    harness: harness
+                    harness: harness,
+                    projectPath: UsageProjectIdentity.normalizedPath(obj["cwd"] as? String)
                 )
                 guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
                 if let messageId, let requestId {
@@ -1293,7 +1298,8 @@ public enum CostUsageScanner {
                 cacheCreation: event.cacheCreation,
                 sessionId: event.sessionId,
                 messageId: event.messageId,
-                harness: event.harness ?? .antigravity
+                harness: event.harness ?? .antigravity,
+                projectPath: event.projectPath
             )
             let optionalCost = costUSDIfPriceable(tool: .antigravity, event: resolved)
             if collecting {

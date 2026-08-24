@@ -84,7 +84,10 @@ public struct SkillBackupManager: Sendable {
             return []
         }
         let backups: [Backup] = names.compactMap { name in
-            guard !name.hasPrefix(".") else { return nil }
+            // Native harness config snapshots share the parent backup root,
+            // but are not restorable Skill payloads and must never appear in
+            // the Skills backup browser.
+            guard !name.hasPrefix("."), name != "harness-config" else { return nil }
             let url = root.appendingPathComponent(name, isDirectory: true)
             guard SkillFileSystem.kind(of: url) == .directory else { return nil }
             let metadata = self.metadata(at: url)

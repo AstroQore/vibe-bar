@@ -99,6 +99,23 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(decoded.menuBarBlockAlertSuppressed)
     }
 
+    func testMenuBarAutoRepairDefaultsToOffAndRoundTrips() throws {
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertFalse(legacy.menuBarAutoRepairEnabled)
+        XCTAssertFalse(AppSettings.default.menuBarAutoRepairEnabled)
+
+        var settings = AppSettings.default
+        settings.menuBarAutoRepairEnabled = true
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertTrue(decoded.menuBarAutoRepairEnabled)
+    }
+
     func testMenuBarColorBasisDefaultsToForecastAndRoundTrips() throws {
         // Deliberately the opposite of the usual "absent key keeps the old
         // behavior" rule: forecast coloring is the intended menu-bar reading,

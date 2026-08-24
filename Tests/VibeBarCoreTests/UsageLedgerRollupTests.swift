@@ -190,4 +190,55 @@ final class UsageLedgerRollupTests: XCTestCase {
         let claudeTokens = try await ledger.summary(claudeOnly).realTotalTokens
         XCTAssertEqual(claudeTokens, 10)
     }
+
+    func testHeadlineTotalsAddSelectedProbeWindowsAndPreserveTheLargestPeak() {
+        let local = UsageTokenHeadlineTotals(
+            allTimeTokens: 3_000,
+            todayTokens: 300,
+            yesterdayTokens: 200,
+            last7DaysTokens: 1_000,
+            last30DaysTokens: 2_000,
+            peakDayTokens: 900,
+            peakDay: now
+        )
+        let remote = tokenTotals(all: 700, today: 70, yesterday: 60, week: 300, month: 500, peak: 250)
+        let merged = tokenTotals(all: 3_700, today: 370, yesterday: 260, week: 1_300, month: 2_500, peak: 1_050)
+
+        let result = UsageTokenHeadlineTotals.merging(
+            localLedger: local,
+            selectedRemote: remote,
+            mergedSnapshot: merged
+        )
+
+        XCTAssertEqual(result.allTimeTokens, 3_700)
+        XCTAssertEqual(result.todayTokens, 370)
+        XCTAssertEqual(result.yesterdayTokens, 260)
+        XCTAssertEqual(result.last7DaysTokens, 1_300)
+        XCTAssertEqual(result.last30DaysTokens, 2_500)
+        XCTAssertEqual(result.peakDayTokens, 1_050)
+    }
+
+    private func tokenTotals(
+        all: Int,
+        today: Int,
+        yesterday: Int,
+        week: Int,
+        month: Int,
+        peak: Int
+    ) -> CostTotals {
+        CostTotals(
+            allTimeCostUSD: 0,
+            todayCostUSD: 0,
+            yesterdayCostUSD: 0,
+            last7DaysCostUSD: 0,
+            last30DaysCostUSD: 0,
+            allTimeTokens: all,
+            todayTokens: today,
+            yesterdayTokens: yesterday,
+            last7DaysTokens: week,
+            last30DaysTokens: month,
+            peakDayCostUSD: 0,
+            peakDayTokens: peak
+        )
+    }
 }

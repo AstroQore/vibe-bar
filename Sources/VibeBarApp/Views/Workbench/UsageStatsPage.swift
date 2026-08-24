@@ -27,7 +27,15 @@ struct UsageStatsPage: View {
                         noHarnessCard
                     } else {
                         UsageHeroCards(density: density, summary: model.summary)
-                        trendAndProviderMix
+                        UsageTrendChartView(density: density, model: model)
+                        UsageDistributionDashboard(
+                            density: density,
+                            summary: model.summary,
+                            harnesses: model.harnessStats,
+                            providers: model.companyProviderStats,
+                            models: model.modelStats,
+                            projects: model.projectStats
+                        )
                         UsageBreakdownTables(density: density, model: model)
                     }
                 }
@@ -38,33 +46,6 @@ struct UsageStatsPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { model.activate() }
-    }
-
-    /// The chart and harness mix are intentionally peers: the first answers
-    /// "when", the second answers "who". `ViewThatFits` keeps that reading
-    /// order when the Workbench narrows instead of compressing either surface
-    /// into an unreadable card.
-    private var trendAndProviderMix: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: density.interSectionSpacing) {
-                UsageTrendChartView(density: density, model: model)
-                    .frame(minWidth: 480, maxWidth: .infinity)
-                UsageCompositionCards(
-                    density: density,
-                    summary: model.summary,
-                    harnesses: model.harnessStats
-                )
-                .frame(minWidth: 300, maxWidth: .infinity)
-            }
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                UsageTrendChartView(density: density, model: model)
-                UsageCompositionCards(
-                    density: density,
-                    summary: model.summary,
-                    harnesses: model.harnessStats
-                )
-            }
-        }
     }
 
     /// The explicit empty selection the All chip can reach. Every number on

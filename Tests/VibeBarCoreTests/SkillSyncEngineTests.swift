@@ -268,12 +268,71 @@ final class SkillSyncEngineTests: XCTestCase {
     func testManagedHarnessTargetsExcludeUnmanageableAndLegacySurfaces() {
         XCTAssertEqual(
             SkillAppTarget.managedHarnesses,
-            [.codex, .claude, .antigravity, .grok, .cursor]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
         XCTAssertEqual(SkillAppCatalog.relativePath(for: .cursor), ".cursor/skills")
-        XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.gemini))
+        XCTAssertTrue(SkillAppTarget.managedHarnesses.contains(.gemini))
         XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.hermes))
         XCTAssertFalse(SkillAppTarget.managedHarnesses.contains(.opencode))
+    }
+
+    func testEffectiveStateIsIndependentFromRecordedProjections() {
+        var skill = Skill(
+            id: .local(directory: "alpha"),
+            name: "Alpha",
+            directory: "alpha",
+            installedAt: .distantPast
+        )
+
+        XCTAssertEqual(skill.projectedApps, [])
+        XCTAssertEqual(skill.enabledApps, [.codex, .gemini, .grok])
+        XCTAssertEqual(skill.activationState(for: .cursor), .coupled)
+
+        skill.nativeDisabledApps.insert(.codex)
+        XCTAssertEqual(skill.activationState(for: .codex), .disabledInHarness)
+        XCTAssertFalse(skill.enabledApps.contains(.codex))
+        XCTAssertEqual(skill.projectedApps, [])
+    }
+
+    func testCodexNativeRuleEscapesQuotedDirectoryAndReadsItBack() throws {
+        let home = try SkillTestHome()
+        try home.makeSSOTSkill("alpha\"quoted")
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+        let skill = Skill(
+            id: .local(directory: "alpha\"quoted"),
+            name: "Alpha Quoted",
+            directory: "alpha\"quoted",
+            installedAt: .distantPast
+        )
+
+        try manager.setNativeEnabled(
+            false,
+            directoryName: skill.directory,
+            skillName: skill.name,
+            app: .codex
+        )
+
+        let config = home.url.appendingPathComponent(".codex/config.toml")
+        XCTAssertTrue(try XCTUnwrap(home.contents(of: config)).contains("alpha\\\"quoted"))
+        XCTAssertEqual(manager.codexStates(for: [skill])[skill.directory], .disabled)
+    }
+
+    func testGeminiIndividualEnableRefusesWhileGlobalSkillsAreOff() throws {
+        let home = try SkillTestHome()
+        let settings = home.url.appendingPathComponent(".gemini/settings.json")
+        try home.write(#"{"skills":{"enabled":false,"disabled":["alpha"]}}"#, to: settings)
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+
+        XCTAssertThrowsError(
+            try manager.setNativeEnabled(
+                true,
+                directoryName: "alpha",
+                skillName: "Alpha",
+                app: .gemini
+            )
+        ) { error in
+            XCTAssertEqual(error as? SkillError, .nativeSkillsGloballyDisabled(.gemini))
+        }
     }
 
     func testUnmaterializeRemovesAnSSOTSymlinkAndIsIdempotent() throws {

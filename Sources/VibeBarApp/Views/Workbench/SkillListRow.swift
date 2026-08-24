@@ -77,14 +77,57 @@ struct SkillAppGlyph: View {
 /// selection (which apps a pending install should be enabled for) — the two
 /// read identically on purpose, because they mean the same thing.
 struct SkillAppToggleRow: View {
-    let isOn: (SkillAppTarget) -> Bool
-    let toggle: (SkillAppTarget) -> Void
-    var diameter: CGFloat = 25
-    var glyphSize: CGFloat = 13
-    var spacing: CGFloat = 4
+    let state: (SkillAppTarget) -> SkillActivationState
+    let isProjected: (SkillAppTarget) -> Bool
+    let action: (SkillAppTarget, SkillActivationAction) -> Void
+    let showsNativeActions: Bool
+    var diameter: CGFloat
+    var glyphSize: CGFloat
+    var spacing: CGFloat
     var helpSuffix: String?
 
     @State private var hoveredApp: SkillAppTarget?
+
+    /// Selection-only form used before installation. It remains a binary
+    /// choice and does not offer native runtime actions.
+    init(
+        isOn: @escaping (SkillAppTarget) -> Bool,
+        toggle: @escaping (SkillAppTarget) -> Void,
+        diameter: CGFloat = 25,
+        glyphSize: CGFloat = 13,
+        spacing: CGFloat = 4,
+        helpSuffix: String? = nil
+    ) {
+        self.state = { isOn($0) ? .enabled : .notProjected }
+        self.isProjected = isOn
+        self.action = { app, _ in toggle(app) }
+        self.showsNativeActions = false
+        self.diameter = diameter
+        self.glyphSize = glyphSize
+        self.spacing = spacing
+        self.helpSuffix = helpSuffix
+    }
+
+    /// Installed-skill form. It exposes projection and native harness state
+    /// as separate choices.
+    init(
+        state: @escaping (SkillAppTarget) -> SkillActivationState,
+        isProjected: @escaping (SkillAppTarget) -> Bool,
+        action: @escaping (SkillAppTarget, SkillActivationAction) -> Void,
+        diameter: CGFloat = 25,
+        glyphSize: CGFloat = 13,
+        spacing: CGFloat = 4,
+        helpSuffix: String? = nil
+    ) {
+        self.state = state
+        self.isProjected = isProjected
+        self.action = action
+        self.showsNativeActions = true
+        self.diameter = diameter
+        self.glyphSize = glyphSize
+        self.spacing = spacing
+        self.helpSuffix = helpSuffix
+    }
 
     var body: some View {
         HStack(spacing: spacing) {
@@ -95,10 +138,11 @@ struct SkillAppToggleRow: View {
     }
 
     private func button(for app: SkillAppTarget) -> some View {
-        let on = isOn(app)
+        let activation = state(app)
+        let on = activation == .enabled
         let accent = app.accent
         return Button {
-            toggle(app)
+            action(app, defaultAction(for: app, state: activation))
         } label: {
             SkillAppGlyph(app: app, size: glyphSize)
                 .frame(width: diameter, height: diameter)
@@ -108,18 +152,108 @@ struct SkillAppToggleRow: View {
                 .overlay(
                     Circle().stroke(accent.opacity(on ? 0.6 : hoveredApp == app ? 0.42 : 0.20), lineWidth: 0.8)
                 )
+                .overlay(alignment: .topTrailing) {
+                    stateBadge(activation)
+                        .offset(x: 2, y: -2)
+                }
         }
         .buttonStyle(.plain)
         // An off app has to stay readable — the user is picking from these —
         // but must not wear the accent, which is the only signal that says
         // "this skill is live here".
-        .opacity(on ? 1 : 0.62)
-        .saturation(on ? 1 : 0.45)
+        .opacity(on ? 1 : activation == .notProjected ? 0.62 : 0.82)
+        .saturation(on ? 1 : activation == .notProjected ? 0.45 : 0.65)
         .onHover { hovering in hoveredApp = hovering ? app : nil }
-        .help(helpSuffix.map { "\(app.displayName) — \($0)" } ?? app.displayName)
+        .help(helpText(app: app, state: activation))
+        .contextMenu {
+            if showsNativeActions {
+                Button("Enable in \(app.displayName)") {
+                    action(app, .enable)
+                }
+                if app.supportsNativeSkillActivation {
+                    Button("Disable in \(app.displayName) · Keep Projection") {
+                        action(app, .disableInHarness)
+                    }
+                }
+                Divider()
+                Button("Remove \(app.displayName) Projection") {
+                    action(app, .removeProjection)
+                }
+                .disabled(!isProjected(app))
+            }
+        }
         .accessibilityLabel(app.displayName)
-        .accessibilityValue(on ? "Enabled" : "Disabled")
+        .accessibilityValue(accessibilityValue(activation))
         .accessibilityAddTraits(on ? [.isSelected] : [])
+    }
+
+    private func defaultAction(
+        for app: SkillAppTarget,
+        state: SkillActivationState
+    ) -> SkillActivationAction {
+        switch state {
+        case .notProjected: return .enable
+        case .enabled:
+            return app.supportsNativeSkillActivation && showsNativeActions
+                ? .disableInHarness
+                : .removeProjection
+        case .coupled:
+            return app.supportsNativeSkillActivation && showsNativeActions
+                ? .disableInHarness
+                : .enable
+        case .disabledInHarness, .unknown: return .enable
+        }
+    }
+
+    @ViewBuilder
+    private func stateBadge(_ state: SkillActivationState) -> some View {
+        switch state {
+        case .disabledInHarness:
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.orange)
+                .background(Circle().fill(.background))
+        case .unknown:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.orange)
+                .background(Circle().fill(.background))
+        case .coupled:
+            Image(systemName: "link.circle.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.orange)
+                .background(Circle().fill(.background))
+        case .enabled, .notProjected:
+            EmptyView()
+        }
+    }
+
+    private func accessibilityValue(_ state: SkillActivationState) -> String {
+        switch state {
+        case .notProjected: "Not projected"
+        case .enabled: "Enabled"
+        case .disabledInHarness: "Projected, disabled in harness"
+        case .coupled: "Enabled through a shared or compatibility root"
+        case .unknown: "Projected, native state unknown"
+        }
+    }
+
+    private func helpText(app: SkillAppTarget, state: SkillActivationState) -> String {
+        if let helpSuffix { return "\(app.displayName) — \(helpSuffix)" }
+        switch state {
+        case .notProjected:
+            return "\(app.displayName) — not projected. Click to enable."
+        case .enabled where app.supportsNativeSkillActivation:
+            return "\(app.displayName) — projected and enabled. Click to disable in the harness; right-click for projection options."
+        case .enabled:
+            return "\(app.displayName) — enabled by projection. Click to remove it."
+        case .disabledInHarness:
+            return "\(app.displayName) — projected, but disabled by its native config. Click to enable."
+        case .coupled:
+            return "\(app.displayName) — still enabled through a shared or compatibility root. Right-click for the available controls."
+        case .unknown:
+            return "\(app.displayName) — projected, but native config could not be parsed. Click to repair as enabled."
+        }
     }
 }
 
@@ -130,7 +264,7 @@ struct SkillListRow: View {
     let skill: Skill
     let updateState: SkillUpdateState?
     let isBusy: Bool
-    let onToggle: (SkillAppTarget) -> Void
+    let onSetActivation: (SkillAppTarget, SkillActivationAction) -> Void
     let onUpdate: () -> Void
     let onUninstall: () -> Void
 
@@ -142,8 +276,9 @@ struct SkillListRow: View {
             details
             Spacer(minLength: 8)
             SkillAppToggleRow(
-                isOn: { skill.isEnabled(for: $0) },
-                toggle: onToggle,
+                state: { skill.activationState(for: $0) },
+                isProjected: { skill.isProjected(for: $0) },
+                action: onSetActivation,
                 helpSuffix: nil
             )
             .disabled(isBusy)
@@ -195,6 +330,7 @@ struct SkillListRow: View {
                     .font(.system(size: max(12, density.bucketTitleFontSize), weight: .semibold))
                     .lineLimit(1)
                 sourceBadge
+                nativeStateBadge
                 if updateState?.updateAvailable == true {
                     updateBadge
                 }
@@ -206,6 +342,44 @@ struct SkillListRow: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var nativeStateBadge: some View {
+        let disabled = SkillAppTarget.managedHarnesses.filter {
+            skill.activationState(for: $0) == .disabledInHarness
+        }
+        let unknown = SkillAppTarget.managedHarnesses.filter {
+            skill.activationState(for: $0) == .unknown
+        }
+        let coupled = SkillAppTarget.managedHarnesses.filter {
+            skill.activationState(for: $0) == .coupled
+        }
+        if !disabled.isEmpty {
+            Text(disabled.map { "\($0.displayName) OFF" }.joined(separator: " · "))
+                .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.orange.opacity(0.12)))
+                .help("Projected, but disabled by the harness's own configuration")
+        } else if !unknown.isEmpty {
+            Text("NATIVE STATE ?")
+                .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.orange.opacity(0.12)))
+                .help("The harness configuration could not be parsed safely")
+        } else if !coupled.isEmpty {
+            Text(coupled.map { "\($0.displayName) LINKED" }.joined(separator: " · "))
+                .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.orange.opacity(0.12)))
+                .help("Still discovered through a shared or compatibility root")
         }
     }
 

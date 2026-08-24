@@ -69,6 +69,7 @@ final class UsageStatsViewModel: ObservableObject {
         case periods
         case requests
         case providers
+        case projects
         case models
 
         var id: String { rawValue }
@@ -78,6 +79,7 @@ final class UsageStatsViewModel: ObservableObject {
             case .periods: "Periods"
             case .requests: "Requests"
             case .providers: "Providers"
+            case .projects: "Projects"
             case .models: "Models"
             }
         }
@@ -173,6 +175,7 @@ final class UsageStatsViewModel: ObservableObject {
     }
     var harnessStats: [UsageHarnessStat] { results.harnessStats }
     var modelStats: [UsageModelStat] { results.modelStats }
+    var projectStats: [UsageProjectStat] { results.projectStats }
     var requestRows: [UsageRequestRow] { results.requestRows }
     var requestTotalCount: Int { results.requestTotalCount }
     /// Both of these used to be their own `@Published`, written mid-reload
@@ -514,14 +517,12 @@ final class UsageStatsViewModel: ObservableObject {
     func setActiveBreakdown(_ breakdown: Breakdown) {
         guard activeBreakdown != breakdown else { return }
         activeBreakdown = breakdown
-        // Periods and Providers are already backed by the chart/provider
-        // queries. Models and Requests are intentionally loaded only when the
-        // user opens those tabs, avoiding two full 30-day scans on every range
-        // change.
+        // Every distribution is already loaded for the visual dashboard;
+        // request rows remain deferred because they are paginated detail.
         switch breakdown {
-        case .periods, .providers:
+        case .periods, .providers, .projects, .models:
             break
-        case .models, .requests:
+        case .requests:
             guard !loadedBreakdowns.contains(breakdown) else { break }
             loadDeferredBreakdown(breakdown)
         }
@@ -546,9 +547,7 @@ final class UsageStatsViewModel: ObservableObject {
         let generation = self.generation
         isLoadingMore = true
         breakdownTask = Task { [weak self] in
-            let models: [UsageModelStat] = breakdown == .models
-                ? ((try? await ledger.modelStats(filter)) ?? [])
-                : []
+            let models: [UsageModelStat] = []
             let requests: UsageRequestPage? = breakdown == .requests
                 ? (try? await ledger.requestPage(
                     filter, pageSize: UsageStatsViewModel.requestPageSize
@@ -568,7 +567,7 @@ final class UsageStatsViewModel: ObservableObject {
         guard activeBreakdown == breakdown else { return }
         var updated = results
         switch breakdown {
-        case .periods, .providers:
+        case .periods, .providers, .projects:
             return
         case .models:
             updated.modelStats = models
@@ -736,6 +735,7 @@ final class UsageStatsViewModel: ObservableObject {
             providerStats: snapshot.providers,
             harnessStats: snapshot.harnesses,
             modelStats: snapshot.models,
+            projectStats: snapshot.projects,
             requestRows: snapshot.requests.rows,
             requestTotalCount: snapshot.requests.totalCount ?? 0,
             nextRequestCursor: snapshot.requests.nextCursor,
@@ -745,7 +745,7 @@ final class UsageStatsViewModel: ObservableObject {
         // Key off the breakdown the snapshot was *queried* for: the user can
         // open a different tab while the query is in flight, and claiming that
         // tab is loaded would leave it permanently empty.
-        loadedBreakdowns = snapshot.breakdown == .models || snapshot.breakdown == .requests
+        loadedBreakdowns = snapshot.breakdown == .requests
             ? [snapshot.breakdown]
             : []
         observedTools.formUnion(snapshot.providers.map(\.tool))
@@ -771,6 +771,7 @@ final class UsageStatsViewModel: ObservableObject {
             providerStats: [],
             harnessStats: [],
             modelStats: [],
+            projectStats: [],
             requestRows: [],
             requestTotalCount: 0,
             nextRequestCursor: nil,
@@ -830,6 +831,7 @@ final class UsageStatsViewModel: ObservableObject {
         let providers: [UsageProviderStat]
         let harnesses: [UsageHarnessStat]
         let models: [UsageModelStat]
+        let projects: [UsageProjectStat]
         let requests: UsageRequestPage
         /// Which deferred tab this snapshot actually answered for.
         let breakdown: Breakdown
@@ -841,6 +843,7 @@ final class UsageStatsViewModel: ObservableObject {
         var providerStats: [UsageProviderStat]
         var harnessStats: [UsageHarnessStat]
         var modelStats: [UsageModelStat]
+        var projectStats: [UsageProjectStat]
         var requestRows: [UsageRequestRow]
         var requestTotalCount: Int
         /// Where the loaded run stops. `nil` means the range holds nothing
@@ -855,6 +858,7 @@ final class UsageStatsViewModel: ObservableObject {
             providerStats: [],
             harnessStats: [],
             modelStats: [],
+            projectStats: [],
             requestRows: [],
             requestTotalCount: 0,
             nextRequestCursor: nil,
@@ -875,9 +879,8 @@ final class UsageStatsViewModel: ObservableObject {
             ?? UsageTrendSeries(bucket: bucket, points: [])
         let providers = (try? await ledger.providerStats(filter)) ?? []
         let harnesses = (try? await ledger.harnessStats(filter)) ?? []
-        let models = breakdown == .models
-            ? ((try? await ledger.modelStats(filter)) ?? [])
-            : []
+        let models = (try? await ledger.modelStats(filter)) ?? []
+        let projects = (try? await ledger.projectStats(filter)) ?? []
         let requests = breakdown == .requests
             ? ((try? await ledger.requestPage(filter, pageSize: requestPageSize))
                 ?? UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize))
@@ -888,6 +891,7 @@ final class UsageStatsViewModel: ObservableObject {
             providers: providers,
             harnesses: harnesses,
             models: models,
+            projects: projects,
             requests: requests,
             breakdown: breakdown
         )

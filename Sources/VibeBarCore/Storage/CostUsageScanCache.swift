@@ -50,6 +50,11 @@ public struct CostUsageScanCache: Codable, Sendable {
         /// cached before the harness dimension existed; consumers fall back
         /// to `Harness.defaultHarness(for:)`.
         public let harness: Harness?
+        /// Canonical local project directory for this request when the
+        /// harness records one. Kept as a path (rather than a display label)
+        /// so worktree aliases can be folded into the owning repository and
+        /// same-named projects in different directories remain distinct.
+        public let projectPath: String?
 
         public init(
             date: Date,
@@ -66,7 +71,8 @@ public struct CostUsageScanCache: Codable, Sendable {
             pathRole: PathRole? = nil,
             sourceKey: String? = nil,
             serviceTier: String? = nil,
-            harness: Harness? = nil
+            harness: Harness? = nil,
+            projectPath: String? = nil
         ) {
             self.date = date
             self.model = model
@@ -83,6 +89,7 @@ public struct CostUsageScanCache: Codable, Sendable {
             self.sourceKey = sourceKey
             self.serviceTier = serviceTier
             self.harness = harness
+            self.projectPath = projectPath
         }
     }
 
@@ -195,7 +202,10 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// path replays them without re-reading `originator`, so the ledger's
     /// `harness_v2` fixup would be undone on the next scan unless the cache
     /// is invalidated with it.
-    public static let currentSchemaVersion = 6
+    /// v7 adds `ParsedEvent.projectPath`. Codex and Claude both stamp their
+    /// cwd in the transcript, but a warm v6 cache never re-opens that header;
+    /// invalidate once so the project dashboard is populated immediately.
+    public static let currentSchemaVersion = 7
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)

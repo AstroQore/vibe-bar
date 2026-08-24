@@ -102,7 +102,7 @@ final class SkillsStoreTests: XCTestCase {
 
         let skills = await SkillsStore(homeDirectory: home.path).all()
         XCTAssertEqual(skills.map(\.directory), ["alpha", "beta"])
-        XCTAssertEqual(skills.first?.enabledApps, [.claude])
+        XCTAssertEqual(skills.first?.projectedApps, [.claude])
         XCTAssertEqual(skills.first?.id, .repo(owner: "acme", repo: "skills", directory: "alpha"))
     }
 

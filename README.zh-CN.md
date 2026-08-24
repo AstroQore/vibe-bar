@@ -46,6 +46,11 @@ Quota Monitor 告诉你还剩多少；Token Dashboard 告诉你发生了什么�
 远端 Linux Probe 也能加入同一套成本与活动模型，不需要开放入站端口；事实在经过
 Relay 之前就已经加密给这台 Mac。
 
+菜单栏之下还有一个 Workbench：覆盖所有 harness 的逐请求用量账本、可全文搜索并
+一键恢复的本地 Agent 会话索引，以及一个把同一份 Skill 库对账到六个 Agent CLI 的
+Skills 管理器。所有这些都只读取你 Mac 上已有的文件；还有一个 MCP 服务，让你的
+Agent 也能来问同样的问题。
+
 ![Overview：顶部是成本与服务状态，下方每个服务商一张额度卡，每条进度条都带着自己的预测](docs/screenshots/popover-overview.png)
 
 <details>
@@ -121,7 +126,8 @@ Codex、ChatGPT Work 和其他客户端压成一个误导性的总数。
 覆盖这台 Mac 上所有 harness 的逐请求账本——Claude Code、Claude Cowork、Codex、
 ChatGPT Work、Cursor、Grok Build、AntiGravity、Gemini CLI——真实的 Token 数拆成
 输入、输出、缓存写入和缓存读取，用和 Popover 同一份价格目录计价。按 harness、
-模型和时间范围过滤；拖动导航条聚焦图表，而表格仍保持完整窗口。
+模型和时间范围过滤；拖动导航条聚焦图表，同时看到 Token Flow、Harness、Provider、
+Project、Model 五张分布环形图；表格仍保持完整窗口，并增加项目排行。
 
 ![Usage Stats：30 天逐日 Token、harness 构成，以及下方的分期表](docs/screenshots/workbench-usage.png)
 
@@ -153,10 +159,11 @@ ChatGPT Work、Cursor、Grok Build、AntiGravity、Gemini CLI——真实的 Tok
 
 ### Skills
 
-一份共享库放在 `~/.agents/skills/`，投射到 Codex、Claude Code、AntiGravity、
-Grok Build 和 Cursor 各自的 skills 目录里。每一行是一个 Skill，每一个圆点是一个
-harness，开或关。从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓库发现更多，替换前
-先备份。
+一份共享库放在 `~/.agents/skills/`，对账 Codex、Claude Code、Gemini CLI、
+AntiGravity、Grok Build 和 Cursor。每一行会把 harness 的真实有效状态和 Vibe Bar
+管理的软链/副本分开：原生配置禁用显示暂停标记；被其它兼容目录继续暴露的 Skill
+显示链环，而不会假装成“已关闭”。右键 harness 圆点可以选择原生启停或移除投影。
+从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓库发现更多，替换前先备份。
 
 ![Skills：每个 Skill 一行，每个 harness 一个开关，以及安装、导入和发现操作](docs/screenshots/workbench-skills.png)
 
@@ -171,8 +178,9 @@ harness，开或关。从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓
 
 所有设置都在一个左右分栏的窗口里。有三页值得放一张图：
 
-**Layout** 编排 Popover 每一页的卡片——放哪些卡、放哪一列、什么顺序——带预设和
-实时预览，所以 Overview 可以只剩你真正盯着的那四条额度。
+**Layout** 编排 Popover 每一页的卡片——显示哪些卡、放哪一列、什么顺序——有显式
+Visibility 菜单、每张卡的眼睛开关、预设和实时预览，所以 Overview 可以只剩你真正
+盯着的那几块。
 
 ![Layout 编辑器：Overview 页的三段卡片，右侧是预览](docs/screenshots/settings-layout.png)
 
@@ -187,6 +195,20 @@ harness，开或关。从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓
 哪些额度窗口，以及颜色跟随预测还是跟随原始百分比。
 
 ![Menu Bar 设置：版式与密度选择，以及按服务商列出的额度窗口勾选表](docs/screenshots/settings-menubar.png)
+
+**Menu Bar Health** 同时显示 AppKit 请求状态、macOS 实际可见性、status item/window/
+菜单栏高度、Control Center allow-list 审计和提醒是否被关闭。这里可以重新开启监控、
+复制窄范围修复命令，或直接修复并重新注册状态项，不终止应用的 MCP 连接。
+用户也可以显式开启自动修复：连续三次 probe 确认被阻挡后，执行同一条窄范围修复。
+
+![Menu Bar Health：实时 AppKit probe、Control Center 审计、提醒状态和一键修复](docs/screenshots/settings-menuBarHealth.png)
+
+<details>
+<summary>浅色外观下的 Menu Bar Health</summary>
+
+![浅色外观下的 Menu Bar Health](docs/screenshots/settings-menuBarHealth-light.png)
+
+</details>
 
 **MCP Server** 是这个应用面向 Agent 的一面，下一节讲。
 
@@ -299,16 +321,17 @@ Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与�
 
 - CLI 的凭据与会话文件都是只读输入。唯一的例外是从 Workbench 的 Sessions 页
   整条删除会话——只在你明确要求时发生，并且从不编辑会话文件的内容。
-- Skills 管理器只写 `~/.agents/skills/` 和它所投射的五个 harness 的受管 skills
-  目录，别处一概不碰。
+- Skills 管理器只写 `~/.agents/skills/`、六个受管 harness 的 skills 根目录，以及
+  Codex/Claude/Gemini/Grok 用户配置里明确的 Skill 启停字段；每次配置 patch 都先备份到
+  `~/.vibebar/skill_backups/`。
 - Vibe Bar 自己的 Cookie 与服务商密钥保存在一个带版本的 Keychain Vault 里，而不是
   每个密钥一条、各自弹窗的 Keychain 条目。
 - Privacy Mode 会清除衍生的成本数据，并在开启期间不把成本历史落盘。保留期可配置，
   Cost Data 也可以手动清除。
 
 Vibe Bar 有意**不启用 App Sandbox**：浏览器 Cookie 导入和本地 AntiGravity Language
-Server 探测需要沙盒禁止的能力。应用开源，只读取需要的服务商输入，应用状态只写在
-`~/.vibebar/` 和它的 Keychain Vault 下。完整取舍见
+Server 探测需要沙盒禁止的能力。应用开源，只读取需要的服务商输入；写入范围限定在
+`~/.vibebar/`、Keychain Vault 和上面明确列出的 Skills allowlist。完整取舍见
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox)。
 
 ## 安装
@@ -363,6 +386,8 @@ Vibe Bar 是一个独立项目，也得益于 Coding Agent 开源社区分享的
   AntiGravity 本地探测流程，是在参考其实现后移植、简化或重新实现的。
 - [CC Switch](https://github.com/farion1231/cc-switch) 为统一 Skills 工作流
   提供了参考，也是 Vibe Bar 识别现有跨 Agent Skill 布局时的互操作对象。
+- [CodexBar 兼容性说明](docs/CODEXBAR-COMPATIBILITY.md) 记录了 provider 迁移边界、
+  只读 bridge，以及它的 CLI 到底负责什么。
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 及其生态帮助我们
   理解多 Provider CLI 账号与配额工作流。Vibe Bar 不内置、不启动，也不依赖
   CLIProxyAPI 运行。

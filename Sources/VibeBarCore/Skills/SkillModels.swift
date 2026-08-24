@@ -98,12 +98,13 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     /// ChatGPT Work, Claude Cowork, and Grok Bot do not expose an independent,
     /// stable local skills root that this filesystem feature can safely write.
     /// They therefore stay out of the toggle row instead of pretending a link
-    /// can enable them. Gemini CLI, Hermes, and OpenCode remain decodable for
-    /// old `skills.json` files and safe uninstall cleanup, but new management
-    /// is intentionally limited to AQ's core harnesses below.
+    /// can enable them. Hermes and OpenCode remain decodable for old
+    /// `skills.json` files and safe uninstall cleanup; the managed core
+    /// harnesses are listed below.
     public static let managedHarnesses: [SkillAppTarget] = [
         .codex,
         .claude,
+        .gemini,
         .antigravity,
         .grok,
         .cursor,
@@ -121,6 +122,41 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .cursor: return "Cursor"
         }
     }
+
+    /// Whether the harness has a real per-skill runtime switch in addition to
+    /// its filesystem discovery root.
+    public var supportsNativeSkillActivation: Bool {
+        switch self {
+        case .codex, .claude, .gemini, .grok: true
+        case .hermes, .opencode, .antigravity, .cursor: false
+        }
+    }
+
+    /// Harnesses that discover the shared `~/.agents/skills` root directly.
+    public var discoversSharedSkillRoot: Bool {
+        switch self {
+        case .codex, .gemini, .grok, .cursor: true
+        case .claude, .hermes, .opencode, .antigravity: false
+        }
+    }
+}
+
+/// Effective state of one skill in one harness.
+public enum SkillActivationState: String, Hashable, Sendable {
+    case notProjected
+    case enabled
+    case disabledInHarness
+    /// Still discovered through the shared or a compatibility root after the
+    /// harness-specific projection is removed.
+    case coupled
+    case unknown
+}
+
+/// Explicit user choices shown by the Skills manager.
+public enum SkillActivationAction: Hashable, Sendable {
+    case enable
+    case disableInHarness
+    case removeProjection
 }
 
 /// How a skill should be projected from the SSOT into an app's skills dir.
@@ -166,6 +202,10 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
     public var contentHash: String?
     public var updatedAt: Date?
     public var apps: [SkillAppTarget: SkillMaterialization]
+    /// Live native-harness state, derived on reload and omitted from
+    /// `skills.json`.
+    public var nativeDisabledApps: Set<SkillAppTarget>
+    public var nativeStateUnknownApps: Set<SkillAppTarget>
 
     public init(
         id: SkillID,
@@ -176,7 +216,9 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         installedAt: Date,
         contentHash: String? = nil,
         updatedAt: Date? = nil,
-        apps: [SkillAppTarget: SkillMaterialization] = [:]
+        apps: [SkillAppTarget: SkillMaterialization] = [:],
+        nativeDisabledApps: Set<SkillAppTarget> = [],
+        nativeStateUnknownApps: Set<SkillAppTarget> = []
     ) {
         self.id = id
         self.name = name
@@ -187,14 +229,41 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         self.contentHash = contentHash
         self.updatedAt = updatedAt
         self.apps = apps
+        self.nativeDisabledApps = nativeDisabledApps
+        self.nativeStateUnknownApps = nativeStateUnknownApps
     }
 
     public var enabledApps: [SkillAppTarget] {
+        SkillAppTarget.allCases.filter { activationState(for: $0) == .enabled }
+    }
+
+    /// Harness-specific link/copy entries that Vibe Bar has recorded.
+    ///
+    /// This is deliberately separate from `enabledApps`: Codex, Gemini CLI,
+    /// Grok Build, and Cursor discover the shared SSOT directly, so a skill
+    /// can be effectively enabled without a redundant app-side projection.
+    public var projectedApps: [SkillAppTarget] {
         SkillAppTarget.allCases.filter { apps[$0] != nil }
     }
 
     public func isEnabled(for app: SkillAppTarget) -> Bool {
+        activationState(for: app) == .enabled
+    }
+
+    public func isProjected(for app: SkillAppTarget) -> Bool {
         apps[app] != nil
+    }
+
+    public func activationState(for app: SkillAppTarget) -> SkillActivationState {
+        let projected = isProjected(for: app)
+        let shared = app.discoversSharedSkillRoot
+        let antigravityCoupled = app == .antigravity && isProjected(for: .gemini)
+        guard projected || shared || antigravityCoupled else { return .notProjected }
+        if nativeStateUnknownApps.contains(app) { return .unknown }
+        if nativeDisabledApps.contains(app) { return .disabledInHarness }
+        if projected { return .enabled }
+        if shared, app.supportsNativeSkillActivation { return .enabled }
+        return .coupled
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -221,6 +290,8 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
             apps[app] = value
         }
         self.apps = apps
+        self.nativeDisabledApps = []
+        self.nativeStateUnknownApps = []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -252,6 +323,9 @@ public enum SkillError: Error, Equatable, Sendable {
     case backupCorrupted(String)
     case notRepositoryBacked(SkillID)
     case updateSourceMissing(String)
+    case nativeActivationUnsupported(SkillAppTarget)
+    case nativeConfigUnreadable(SkillAppTarget)
+    case nativeSkillsGloballyDisabled(SkillAppTarget)
 }
 
 extension SkillError: LocalizedError {
@@ -281,6 +355,12 @@ extension SkillError: LocalizedError {
             return "Skill \"\(id.directory)\" was not installed from a repository, so it cannot be updated."
         case let .updateSourceMissing(name):
             return "Skill \"\(name)\" is no longer in its source repository."
+        case let .nativeActivationUnsupported(app):
+            return "\(app.displayName) does not expose a native per-skill enable switch."
+        case let .nativeConfigUnreadable(app):
+            return "\(app.displayName)'s skill configuration could not be read safely."
+        case let .nativeSkillsGloballyDisabled(app):
+            return "\(app.displayName) has Skills disabled globally. Enable its global Skills switch before enabling an individual skill."
         }
     }
 }

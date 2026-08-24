@@ -66,6 +66,10 @@ public final class CostUsageService: ObservableObject {
     /// per refresh instead of once per read; it is dropped automatically by the
     /// `snapshots` observer above and on day rollover.
     private let aggregations = CostAggregationCache()
+    /// Selected Probe machines only. Keeping a second cache lets token
+    /// headlines add remote usage to the local request ledger without also
+    /// re-adding account-wide API snapshots such as Cursor's dashboard.
+    private let remoteAggregations = CostAggregationCache()
 
     public init(
         homeDirectory: String = RealHomeDirectory.path,
@@ -130,6 +134,13 @@ public final class CostUsageService: ObservableObject {
         aggregations.totals(of: tools)
     }
 
+    /// Token/cost contribution from selected Probe machines, excluding every
+    /// local and direct-remote source.
+    public func remoteTotals(of tools: [ToolType]) -> CostTotals {
+        guard !costDataSettingsProvider().privacyModeEnabled, !mockProvider() else { return .empty }
+        return remoteAggregations.totals(of: tools)
+    }
+
     /// Whether any of these providers has found session logs. Deliberately
     /// reads the raw file count instead of a rebased or combined snapshot:
     /// `jsonlFilesFound` survives both untouched, and this is asked on every
@@ -148,6 +159,7 @@ public final class CostUsageService: ObservableObject {
     /// Overview/provider surface through the existing aggregation cache.
     public func setRemoteSnapshots(_ snapshots: [ToolType: CostSnapshot]) {
         remoteSnapshots = snapshots
+        remoteAggregations.setSource(snapshots)
         publishMergedSnapshots()
     }
 
