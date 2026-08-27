@@ -220,6 +220,11 @@ struct OverviewUsageMixCard: View {
                                           design: .rounded).monospacedDigit())
                             .foregroundStyle(.tertiary)
                     }
+                    // Same rule as the Workbench distribution legend: the
+                    // value column never compresses or wraps — the label is
+                    // the side that truncates.
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 }
             }
         }
