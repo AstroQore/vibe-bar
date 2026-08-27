@@ -146,24 +146,47 @@ struct WorkbenchPillButtonStyle: ButtonStyle {
     var prominent = false
     var tint = WorkbenchPorcelain.accent
 
-    @Environment(\.colorScheme) private var colorScheme
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 10)
-            .frame(minHeight: 26)
-            .foregroundStyle(prominent ? Color.white : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(prominent ? tint : WorkbenchPorcelain.toolbarFill(for: colorScheme))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(
-                        prominent ? tint.opacity(0.72) : WorkbenchPorcelain.hairline(for: colorScheme),
-                        lineWidth: Theme.Card.hairlineWidth
-                    )
-            )
-            .opacity(configuration.isPressed ? 0.74 : 1)
+        Pill(
+            prominent: prominent,
+            tint: tint,
+            pressed: configuration.isPressed,
+            label: configuration.label
+        )
+    }
+
+    /// A view of its own for the same reason `VibeBarButtonStyle` has one:
+    /// `isFocused` is an environment value, and only a nested view can read
+    /// it about this button rather than about its container. The Workbench
+    /// root switches the system focus ring off, so the pill draws its own.
+    private struct Pill<Label: View>: View {
+        let prominent: Bool
+        let tint: Color
+        let pressed: Bool
+        let label: Label
+
+        @Environment(\.colorScheme) private var colorScheme
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            label
+                .padding(.horizontal, 10)
+                .frame(minHeight: 26)
+                .foregroundStyle(prominent ? Color.white : Color.primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(prominent ? tint : WorkbenchPorcelain.toolbarFill(for: colorScheme))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(
+                            isFocused
+                                ? Color.accentColor
+                                : prominent ? tint.opacity(0.72) : WorkbenchPorcelain.hairline(for: colorScheme),
+                            lineWidth: isFocused ? 1 : Theme.Card.hairlineWidth
+                        )
+                )
+                .opacity(pressed ? 0.74 : 1)
+        }
     }
 }

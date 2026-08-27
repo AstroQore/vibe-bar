@@ -310,7 +310,7 @@ struct RemoteMachinesPage: View {
                             .fill(Color.orange.opacity(0.12))
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .disabled(service.isRefreshing)
         }
         .font(.system(size: density.subtitleFontSize))

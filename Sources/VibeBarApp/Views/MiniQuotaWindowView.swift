@@ -42,7 +42,7 @@ struct MiniQuotaWindowView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .padding(.top, 6)
             .padding(.trailing, 8)
         }

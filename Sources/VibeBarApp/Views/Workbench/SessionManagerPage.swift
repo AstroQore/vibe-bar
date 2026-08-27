@@ -169,6 +169,9 @@ struct SessionFiltersBar: View {
             TextField("Search sessions", text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: max(12, density.segmentedFontSize)))
+                // A text field draws nothing of its own to say keyboard focus
+                // arrived; the system ring comes back for it alone.
+                .vibeBarSystemControlFocus()
             if !model.searchText.isEmpty {
                 BorderlessIconButton(systemImage: "xmark.circle.fill", help: "Clear the search") {
                     model.searchText = ""
@@ -326,7 +329,7 @@ struct SessionFiltersBar: View {
                 .padding(.horizontal, 10)
                 .frame(minHeight: 28)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         .background(chipBackground(tint: .accentColor, selected: selected))
         .help(selected ? "Click to select no harness" : "Click to show sessions from every harness")
         .accessibilityLabel(selected ? "Select no harness" : "Show every session source")

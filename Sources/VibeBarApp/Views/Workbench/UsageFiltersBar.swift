@@ -69,7 +69,7 @@ struct UsageFiltersBar: View {
                 .padding(.horizontal, 10)
                 .frame(minHeight: 28)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         .background(chipBackground(tint: .accentColor, selected: selected))
         .help(selected ? "Click to select no harness" : "Click to include every harness")
         .accessibilityLabel(selected ? "Select no harness" : "Show every harness")
@@ -96,7 +96,7 @@ struct UsageFiltersBar: View {
             .padding(.horizontal, 7)
             .frame(minHeight: 28)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         .background(Capsule().fill(accent.opacity(selected ? 0.10 : 0.035)))
         .opacity(selected ? 1 : 0.65)
         .saturation(selected ? 1 : 0.50)
@@ -129,7 +129,7 @@ struct UsageFiltersBar: View {
             .padding(.horizontal, 9)
             .frame(minHeight: 28)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         .background(chipBackground(tint: Theme.providerAccent(for: group.company), selected: selected))
         // Unselected chips stay legible but recede — the accent is the signal
         // that a harness is in the query, so an off chip must not wear it.

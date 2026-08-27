@@ -33,6 +33,9 @@ final class WorkbenchWindowController: NSObject {
                 window.deminiaturize(nil)
             }
             window.makeKeyAndOrderFront(nil)
+            // Reopening the retained window is a presentation the probe
+            // cannot see — no view appears, so its one-shot never re-arms.
+            InitialFocusPolicy.clearOnReopen(of: window)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
@@ -103,6 +106,7 @@ final class WorkbenchWindowController: NSObject {
         guard let window, window.isVisible else { return false }
         DockActivationController.shared.acquire(.workbench)
         window.makeKeyAndOrderFront(nil)
+        InitialFocusPolicy.clearOnReopen(of: window)
         NSApp.activate(ignoringOtherApps: true)
         return true
     }

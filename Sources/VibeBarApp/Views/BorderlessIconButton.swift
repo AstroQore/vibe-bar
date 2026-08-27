@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// A real `Button`, not a tap gesture: a gesture-based lookalike can never be
 /// activated from the key-view loop or by VoiceOver, however many traits it
-/// declares. Plain `Button { … }.buttonStyle(.plain)` on macOS can still
+/// declares. Plain `Button { … }.buttonStyle(.vibeBar)` on macOS can still
 /// render a rounded blue selection background after click, which is why the
 /// style here is ``VibeBarButtonStyle`` — it draws no background at all,
 /// only the app's own accent hairline when keyboard focus actually reaches

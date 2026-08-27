@@ -195,7 +195,7 @@ private struct SessionRow: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
         .accessibilityElement(children: .combine)

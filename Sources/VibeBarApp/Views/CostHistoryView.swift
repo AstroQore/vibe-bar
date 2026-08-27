@@ -751,7 +751,7 @@ struct CostHistoryView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.vibeBar)
                     .foregroundStyle(.secondary)
                     .help("Clear model selection")
                 }

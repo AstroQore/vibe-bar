@@ -10,6 +10,31 @@ import SwiftUI
 /// the first responder once removes that accidental selection without
 /// touching the key-view loop itself: Tab and arrow keys still enter
 /// keyboard navigation normally, and their focus feedback stays visible.
+/// The one entry point the policy has outside a SwiftUI presentation: a
+/// retained window being reordered front.
+enum InitialFocusPolicy {
+    /// Applies the neutral-focus pass to a window whose SwiftUI hierarchy
+    /// stays mounted across close/reopen. The Workbench window is retained
+    /// (`isReleasedWhenClosed = false`) and comes back via
+    /// `makeKeyAndOrderFront`, so no `onAppear` fires and the probe's
+    /// one-shot token was consumed on the first presentation — without this,
+    /// AppKit would restore or re-pick a first responder on every reopen.
+    /// Same two main-queue turns as the probe, then a single clear if a
+    /// control holds focus.
+    @MainActor
+    static func clearOnReopen(of window: NSWindow) {
+        DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak window] in
+                guard let window else { return }
+                if window.firstResponder === window || window.firstResponder == nil {
+                    return
+                }
+                window.makeFirstResponder(nil)
+            }
+        }
+    }
+}
+
 struct InitialFocusProbe: NSViewRepresentable {
     let presentationID: UUID
 
