@@ -206,6 +206,25 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(stored?.projectedApps, [])
     }
 
+    func testEnableIsAnHonestNoOpForASharedRootHarnessWithoutANativeSwitch() async throws {
+        let home = try SkillTestHome()
+        let staging = try home.makeSkillDirectory(at: home.url.appendingPathComponent("staging/pdf"))
+        let service = SkillsService(homeDirectory: home.path)
+        let skill = try await service.installLocal(from: staging, name: "pdf")
+
+        // Cursor scans the SSOT itself and has no per-skill config, so there
+        // is no layer for `.enable` to change — the call must say so instead
+        // of reporting success.
+        let changed = try await service.setActivation(skill.id, app: .cursor, action: .enable)
+
+        XCTAssertFalse(changed)
+        XCTAssertFalse(home.exists(home.appDirectory(.cursor).appendingPathComponent("pdf")))
+        let installed = await service.installedSkills()
+        let live = try XCTUnwrap(installed.first)
+        XCTAssertEqual(live.activationState(for: .cursor), .coupled)
+        XCTAssertNil(live.apps[.cursor])
+    }
+
     func testSetEnabledRejectsAnUnknownSkill() async throws {
         let home = try SkillTestHome()
         let service = SkillsService(homeDirectory: home.path)

@@ -249,6 +249,16 @@ public actor SkillsService {
             if action == .disableInHarness, !app.supportsNativeSkillActivation {
                 throw SkillError.nativeActivationUnsupported(app)
             }
+            // A shared-root harness without a native switch (Cursor) has
+            // nothing to change on either layer: discovery comes from the
+            // SSOT itself and there is no per-skill config to write. Report
+            // the no-op honestly so the UI can explain it instead of
+            // pretending the click landed.
+            if action == .enable,
+               app.discoversSharedSkillRoot,
+               !app.supportsNativeSkillActivation {
+                return false
+            }
             let prior = skill.apps[app]
             let materialization: SkillMaterialization?
             if app.discoversSharedSkillRoot {

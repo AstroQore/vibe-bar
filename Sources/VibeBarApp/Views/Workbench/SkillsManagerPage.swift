@@ -15,6 +15,7 @@ struct SkillsManagerPage: View {
 
     @State private var showsZipImporter = false
     @State private var toastDismissal: Task<Void, Never>?
+    @State private var showingSyncExplainer = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
@@ -185,13 +186,16 @@ struct SkillsManagerPage: View {
         .frame(minHeight: 28)
     }
 
-    /// How many skills each agent CLI currently sees. The single number that
-    /// answers "did that toggle actually land", and the reason the row sits
-    /// above the list rather than inside a menu.
+    /// How many skills each agent CLI can actually use right now — enabled
+    /// plus shared-root discoveries, the number that answers "what does this
+    /// harness see", with the enabled/coupled split spelled out in the
+    /// tooltip. The old pill counted only `.enabled`, so Cursor claimed three
+    /// skills while its shared-root scan saw nearly a hundred.
     private var appCountRow: some View {
         HStack(spacing: 6) {
             ForEach(SkillAppTarget.managedHarnesses, id: \.self) { app in
-                let count = model.installedCount(for: app)
+                let count = model.visibleCount(for: app)
+                let enabled = model.installedCount(for: app)
                 let nativeDisabled = model.nativeDisabledCount(for: app)
                 let coupled = model.coupledCount(for: app)
                 HStack(spacing: 4) {
@@ -207,11 +211,25 @@ struct SkillsManagerPage: View {
                 .opacity(count == 0 ? 0.5 : 1)
                 .saturation(count == 0 ? 0.2 : 1)
                 .help(
-                    "\(app.displayName): \(count) enabled skill\(count == 1 ? "" : "s")"
+                    "\(app.displayName) sees \(count) skill\(count == 1 ? "" : "s")"
+                        + (coupled > 0 ? " · \(enabled) enabled + \(coupled) via the shared skills root" : "")
                         + (nativeDisabled > 0 ? " · \(nativeDisabled) projected but disabled" : "")
-                        + (coupled > 0 ? " · \(coupled) visible through another root" : "")
                 )
-                .accessibilityLabel("\(app.displayName), \(count) skills")
+                .accessibilityLabel("\(app.displayName), sees \(count) skills")
+            }
+            Button {
+                showingSyncExplainer = true
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: max(10, density.segmentedFontSize), weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("How skill syncing works — roots, links, and native switches")
+            .popover(isPresented: $showingSyncExplainer, arrowEdge: .bottom) {
+                SkillSyncExplainerPopover(density: density)
             }
             Spacer(minLength: 8)
             Text(countSummary)
