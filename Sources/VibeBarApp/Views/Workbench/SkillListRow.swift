@@ -451,6 +451,7 @@ struct SkillListRow: View {
         .accessibilityLabel("More actions for \(skill.name)")
         .popover(isPresented: $showingWiring, arrowEdge: .trailing) {
             SkillWiringPopover(skill: skill, density: density)
+                .vibeBarNoInitialFocus()
         }
     }
 }

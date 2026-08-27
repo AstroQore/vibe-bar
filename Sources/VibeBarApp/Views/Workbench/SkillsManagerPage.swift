@@ -241,6 +241,7 @@ struct SkillsManagerPage: View {
             .help("How skill syncing works — roots, links, and native switches")
             .popover(isPresented: $showingSyncExplainer, arrowEdge: .bottom) {
                 SkillSyncExplainerPopover(density: density)
+                    .vibeBarNoInitialFocus()
             }
             Spacer(minLength: 8)
             Text(countSummary)

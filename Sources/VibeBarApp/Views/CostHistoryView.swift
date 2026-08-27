@@ -336,8 +336,7 @@ struct CostHistoryView: View {
                             }
                         }
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
+                .buttonStyle(.vibeBar(cornerRadius: 5))
                 .help(option.help)
                 .accessibilityLabel(option.help)
                 // The visual fill is the only sighted cue for which measure
