@@ -343,6 +343,12 @@ struct OverviewQuotaHistoryCard: View {
             }
             .chartLegend(.hidden)
             .chartXScale(domain: visible)
+            // Same clip as QuotaHistoryChartView: bridge marks deliberately
+            // carry endpoints outside the visible range, and unclipped they
+            // stroke across whatever sits left of the card.
+            .chartPlotStyle { plotArea in
+                plotArea.clipped()
+            }
             .chartYScale(domain: 0...100)
             .chartYAxis {
                 AxisMarks(position: .leading, values: [0, 25, 50, 75, 100]) { value in

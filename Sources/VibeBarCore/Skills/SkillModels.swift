@@ -139,6 +139,31 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .claude, .hermes, .opencode, .antigravity: false
         }
     }
+
+    /// Home-relative path of the file holding the harness's per-skill switch,
+    /// `nil` when the harness has none. Display metadata for the wiring UI —
+    /// the file is only ever read or patched through
+    /// `SkillHarnessConfigManager`.
+    public var nativeConfigRelativePath: String? {
+        switch self {
+        case .codex: ".codex/config.toml"
+        case .claude: ".claude/settings.json"
+        case .gemini: ".gemini/settings.json"
+        case .grok: ".grok/config.toml"
+        case .hermes, .opencode, .antigravity, .cursor: nil
+        }
+    }
+
+    /// The key inside that file, in the harness's own vocabulary.
+    public var nativeConfigKeyDescription: String? {
+        switch self {
+        case .codex: "[[skills.config]]"
+        case .claude: "skillOverrides"
+        case .gemini: "skills.disabled"
+        case .grok: "[skills] disabled"
+        case .hermes, .opencode, .antigravity, .cursor: nil
+        }
+    }
 }
 
 /// Effective state of one skill in one harness.

@@ -79,6 +79,25 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(decoded.miscCookieAutoImportEnabled)
     }
 
+    func testCostChartMetricDefaultsToCostAndRoundTrips() throws {
+        // A settings file written before the $/Tok switch existed must open
+        // on the dollar view every card has always shown.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(legacy.costChartMetric, "cost")
+        XCTAssertEqual(AppSettings.default.costChartMetric, "cost")
+
+        var settings = AppSettings.default
+        settings.costChartMetric = "tokens"
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertEqual(decoded.costChartMetric, "tokens")
+    }
+
     func testMenuBarBlockAlertSuppressionDefaultsToOffAndRoundTrips() throws {
         // A settings file written before the self-check existed must leave the
         // check armed — silence about a blocked menu bar item is the failure

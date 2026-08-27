@@ -9,6 +9,30 @@ private enum CostGranularityMode: Equatable {
     case manual(CostChartGranularity)
 }
 
+/// Which measure the chart plots. Stored app-wide so every cost history card —
+/// Overview, provider pages, detail popovers — flips together; a per-card
+/// choice would leave two visible cards disagreeing about what a bar means.
+private enum CostChartMetric: String, CaseIterable, Identifiable {
+    case cost
+    case tokens
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .cost: "$"
+        case .tokens: "Tok"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .cost: "Plot spend in dollars"
+        case .tokens: "Plot token volume"
+        }
+    }
+}
+
 /// One entry in the granularity segmented control.
 private struct CostGranularityOption: Identifiable, Equatable {
     let mode: CostGranularityMode
@@ -162,6 +186,19 @@ struct CostHistoryView: View {
     @State private var magnifyBase: ChartTimeWindow?
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    /// Persisted through `AppSettings` — the documented state under
+    /// `~/.vibebar/` — not `@AppStorage`, which would leak the choice into
+    /// `UserDefaults` where clearing Vibe Bar's state cannot reach it.
+    private var chartMetric: CostChartMetric {
+        CostChartMetric(rawValue: settingsStore.settings.costChartMetric) ?? .cost
+    }
+
+    private func setMetric(_ metric: CostChartMetric) {
+        guard settingsStore.settings.costChartMetric != metric.rawValue else { return }
+        settingsStore.settings.costChartMetric = metric.rawValue
+    }
 
     private static let dayInterval: TimeInterval = 86_400
     /// Zoom floor. Half a day still shows twelve hourly bars; anything tighter
@@ -227,6 +264,7 @@ struct CostHistoryView: View {
                 Text(titleOverride ?? "Cost History")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 8)
+                metricToggle
                 SectionRefreshButton(isRefreshing: false) {
                     environment.refreshCostUsage()
                 }
@@ -275,6 +313,45 @@ struct CostHistoryView: View {
         .fixedSize(horizontal: !compressible, vertical: false)
     }
 
+    /// Two-way $ / Tok switch. Lives on the title row rather than with the
+    /// presets: unlike them it changes what the whole card measures, not which
+    /// slice of it is shown.
+    private var metricToggle: some View {
+        HStack(spacing: 1) {
+            ForEach(CostChartMetric.allCases) { option in
+                Button {
+                    setMetric(option)
+                } label: {
+                    Text(option.label)
+                        .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
+                        .foregroundStyle(chartMetric == option ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .frame(minHeight: 18)
+                        .contentShape(Rectangle())
+                        .background {
+                            if chartMetric == option {
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Color.primary.opacity(0.12))
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .help(option.help)
+                .accessibilityLabel(option.help)
+                // The visual fill is the only sighted cue for which measure
+                // is active; VoiceOver needs the selection stated outright.
+                .accessibilityAddTraits(chartMetric == option ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
+    }
+
     private var emptyNote: some View {
         VStack(spacing: 4) {
             Text("Building history…")
@@ -296,10 +373,10 @@ struct CostHistoryView: View {
         let resolved = resolve(window: window)
         let points = visiblePoints(window: window, granularity: resolved.granularity)
         let rendered = ChartSeriesThinning.strided(points, limit: Self.visibleMarkLimit)
-        let total = points.reduce(0) { $0 + $1.costUSD }
+        let total = points.reduce(0) { $0 + metricValue($1) }
         let average = points.isEmpty ? 0 : total / Double(points.count)
-        let peakPoint = points.max { $0.costUSD < $1.costUSD }
-        let peak = peakPoint?.costUSD ?? 0
+        let peakPoint = points.max { metricValue($0) < metricValue($1) }
+        let peak = peakPoint.map(metricValue) ?? 0
 
         VStack(alignment: .leading, spacing: 6) {
             chart(
@@ -362,7 +439,9 @@ struct CostHistoryView: View {
         .frame(height: chartHeight)
         .overlay {
             if points.isEmpty {
-                Text("No cost recorded in this range.")
+                Text(chartMetric == .cost
+                    ? "No cost recorded in this range."
+                    : "No tokens recorded in this range.")
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                     .allowsHitTesting(false)
@@ -383,7 +462,7 @@ struct CostHistoryView: View {
                 ForEach(points) { point in
                     AreaMark(
                         x: .value("Hour", point.date, unit: .hour),
-                        y: .value("Cost", point.costUSD)
+                        y: .value(metricSeriesLabel, metricValue(point))
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(
@@ -395,19 +474,19 @@ struct CostHistoryView: View {
                     )
                     LineMark(
                         x: .value("Hour", point.date, unit: .hour),
-                        y: .value("Cost", point.costUSD)
+                        y: .value(metricSeriesLabel, metricValue(point))
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(Color.accentColor)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     .opacity(pointOpacity(point))
-                    if point.costUSD > 0 {
+                    if metricValue(point) > 0 {
                         PointMark(
                             x: .value("Hour", point.date, unit: .hour),
-                            y: .value("Cost", point.costUSD)
+                            y: .value(metricSeriesLabel, metricValue(point))
                         )
                         .symbolSize(24)
-                        .foregroundStyle(point.costUSD > average * 1.5 ? Color.orange : Color.accentColor)
+                        .foregroundStyle(metricValue(point) > average * 1.5 ? Color.orange : Color.accentColor)
                     }
                 }
             } else {
@@ -419,10 +498,10 @@ struct CostHistoryView: View {
                             unit: barUnit(granularity),
                             calendar: Self.barCalendar
                         ),
-                        y: .value("Cost", point.costUSD),
+                        y: .value(metricSeriesLabel, metricValue(point)),
                         width: barWidth
                     )
-                    .foregroundStyle(point.costUSD > average * 1.5 ? Color.orange : Color.accentColor)
+                    .foregroundStyle(metricValue(point) > average * 1.5 ? Color.orange : Color.accentColor)
                     .cornerRadius(2)
                     .opacity(pointOpacity(point))
                 }
@@ -448,7 +527,7 @@ struct CostHistoryView: View {
                 AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
                 AxisValueLabel {
                     if let raw = value.as(Double.self) {
-                        Text(formatAxisCost(raw))
+                        Text(formatAxisValue(raw))
                             .font(.system(size: 9, design: .rounded).monospacedDigit())
                             // Swift Charts insets the plot by whatever the
                             // widest label reports, so a floor here is a floor
@@ -532,7 +611,7 @@ struct CostHistoryView: View {
             snapshot?.dailyHistory ?? [],
             limit: Self.miniMarkLimit
         )
-        let peak = days.map(\.costUSD).max() ?? 0
+        let peak = days.map(dayMetricValue).max() ?? 0
         let width = max(1, min(3, geometry.size.width / CGFloat(max(days.count, 1)) - 0.5))
         return Path { path in
             guard peak > 0 else { return }
@@ -540,7 +619,7 @@ struct CostHistoryView: View {
             for day in days {
                 // Centre the bar on the day it represents, not on its midnight.
                 let x = geometry.x(for: day.date.addingTimeInterval(Self.dayInterval / 2))
-                let top = geometry.y(forFraction: day.costUSD / peak)
+                let top = geometry.y(forFraction: dayMetricValue(day) / peak)
                 path.addRect(
                     CGRect(x: x - width / 2, y: top, width: width, height: max(1, baseline - top))
                 )
@@ -634,13 +713,13 @@ struct CostHistoryView: View {
                 Text(tooltipDate(point.date, granularity: currentGranularity))
                     .font(.system(size: 10, weight: .semibold))
                 Spacer(minLength: 8)
-                Text(formatCost(point.costUSD))
+                Text(formatMetric(metricValue(point)))
                     .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
             }
-            Text(formatTokens(point.totalTokens))
+            Text(chartMetric == .cost ? formatTokens(point.totalTokens) : formatCost(point.costUSD))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
-            ForEach(point.models.prefix(3)) { model in
+            ForEach(sortedModels(point.models).prefix(3)) { model in
                 modelRow(model)
             }
             if point.models.count > 3 {
@@ -692,7 +771,7 @@ struct CostHistoryView: View {
                         alignment: .leading,
                         spacing: 4
                     ) {
-                        ForEach(point.models) { model in
+                        ForEach(sortedModels(point.models)) { model in
                             inspectedModelRow(model)
                         }
                     }
@@ -709,9 +788,9 @@ struct CostHistoryView: View {
                 .truncationMode(.middle)
                 .help(model.modelName)
             Spacer(minLength: 4)
-            Text(formatCost(model.costUSD))
+            Text(primaryModelValue(model))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
-            Text(formatTokens(model.totalTokens))
+            Text(secondaryModelValue(model))
                 .font(.system(size: 8, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -726,7 +805,7 @@ struct CostHistoryView: View {
                 .truncationMode(.middle)
                 .help(model.modelName)
             Spacer(minLength: 8)
-            Text(formatCost(model.costUSD))
+            Text(primaryModelValue(model))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
@@ -808,14 +887,14 @@ struct CostHistoryView: View {
         resolved: CostResolvedGranularity
     ) -> some View {
         HStack(alignment: .top, spacing: spacing) {
-            metric(label: "Total", value: formatCost(total))
+            metric(label: "Total", value: formatMetric(total))
             metric(
                 label: "Avg/\(resolved.granularity.displayName.lowercased())",
-                value: formatCost(average)
+                value: formatMetric(average)
             )
             metric(
                 label: "Peak",
-                value: formatCost(peak),
+                value: formatMetric(peak),
                 detail: peakDate.map { peakDetail($0, granularity: resolved.granularity) }
             )
         }
@@ -1370,6 +1449,62 @@ struct CostHistoryView: View {
         if tokens < 1_000_000 { return String(format: "%.1fk tok", Double(tokens) / 1_000) }
         if tokens < 1_000_000_000 { return String(format: "%.2fM tok", Double(tokens) / 1_000_000) }
         return String(format: "%.2fB tok", Double(tokens) / 1_000_000_000)
+    }
+
+    // MARK: - Metric plumbing
+
+    /// The plotted measure of one bucket under the current metric.
+    private func metricValue(_ point: CostChartPoint) -> Double {
+        chartMetric == .cost ? point.costUSD : Double(point.totalTokens)
+    }
+
+    private func dayMetricValue(_ day: DailyCostPoint) -> Double {
+        chartMetric == .cost ? day.costUSD : Double(day.totalTokens)
+    }
+
+    private var metricSeriesLabel: String {
+        chartMetric == .cost ? "Cost" : "Tokens"
+    }
+
+    private func formatMetric(_ value: Double) -> String {
+        chartMetric == .cost ? formatCost(value) : formatTokens(Int(value.rounded()))
+    }
+
+    private func formatAxisValue(_ value: Double) -> String {
+        chartMetric == .cost ? formatAxisCost(value) : formatAxisTokens(value)
+    }
+
+    /// Token axis labels stay as short as the dollar ones so the fixed gutter
+    /// keeps fitting: "500k", "1.2M", "3B".
+    private func formatAxisTokens(_ value: Double) -> String {
+        if value < 1_000 { return String(format: "%.0f", value) }
+        if value < 1_000_000 { return String(format: "%.0fk", value / 1_000) }
+        if value < 1_000_000_000 {
+            let millions = value / 1_000_000
+            return millions < 10
+                ? String(format: "%.1fM", millions)
+                : String(format: "%.0fM", millions)
+        }
+        let billions = value / 1_000_000_000
+        return billions < 10
+            ? String(format: "%.1fB", billions)
+            : String(format: "%.0fB", billions)
+    }
+
+    /// Models re-ranked by the plotted metric so the tooltip's top rows match
+    /// what the bar is showing.
+    private func sortedModels(_ models: [CostSnapshot.ModelBreakdown]) -> [CostSnapshot.ModelBreakdown] {
+        chartMetric == .cost
+            ? models.sorted { $0.costUSD > $1.costUSD }
+            : models.sorted { $0.totalTokens > $1.totalTokens }
+    }
+
+    private func primaryModelValue(_ model: CostSnapshot.ModelBreakdown) -> String {
+        chartMetric == .cost ? formatCost(model.costUSD) : formatTokens(model.totalTokens)
+    }
+
+    private func secondaryModelValue(_ model: CostSnapshot.ModelBreakdown) -> String {
+        chartMetric == .cost ? formatTokens(model.totalTokens) : formatCost(model.costUSD)
     }
 
     private func tooltipDate(_ date: Date, granularity: CostChartGranularity) -> String {

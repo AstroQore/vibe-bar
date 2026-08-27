@@ -103,6 +103,17 @@ final class SkillsManagerModel: ObservableObject {
         }
     }
 
+    /// How many skills the harness can actually use: enabled ones plus the
+    /// ones it discovers through a shared or compatibility root. This is the
+    /// header-pill number — counting only `.enabled` made Cursor claim three
+    /// skills while it could see nearly a hundred.
+    func visibleCount(for app: SkillAppTarget) -> Int {
+        skills.count {
+            let state = $0.activationState(for: app)
+            return state == .enabled || state == .coupled
+        }
+    }
+
     func nativeDisabledCount(for app: SkillAppTarget) -> Int {
         skills.count { $0.activationState(for: app) == .disabledInHarness }
     }
@@ -190,20 +201,6 @@ final class SkillsManagerModel: ObservableObject {
 
     // MARK: - Per-skill actions
 
-    func toggle(skill: Skill, app: SkillAppTarget) {
-        let action: SkillActivationAction = switch skill.activationState(for: app) {
-        case .notProjected:
-            .enable
-        case .enabled:
-            app.supportsNativeSkillActivation ? .disableInHarness : .removeProjection
-        case .coupled:
-            app.supportsNativeSkillActivation ? .disableInHarness : .enable
-        case .disabledInHarness, .unknown:
-            .enable
-        }
-        setActivation(skill: skill, app: app, action: action)
-    }
-
     func setActivation(
         skill: Skill,
         app: SkillAppTarget,
@@ -221,6 +218,15 @@ final class SkillsManagerModel: ObservableObject {
             if action == .removeProjection, !changed {
                 toast = "\(skill.name)'s Vibe Bar projection was cleared for \(app.displayName), "
                     + "but the existing folder was left in place."
+            } else if action == .removeProjection, changed, app.discoversSharedSkillRoot {
+                // Removing the link is not an off switch for these harnesses,
+                // and silently letting it look like one is how the old
+                // "click did nothing" confusion started.
+                toast = "Removed the \(app.displayName) link. \(skill.name) stays available "
+                    + "there through the shared skills root."
+            } else if action == .enable, !changed {
+                toast = "\(app.displayName) reads the shared skills root directly — "
+                    + "\(skill.name) is always available there and has no per-skill switch."
             } else if action == .disableInHarness {
                 toast = "Disabled \(skill.name) in \(app.displayName) and kept its projection."
             }

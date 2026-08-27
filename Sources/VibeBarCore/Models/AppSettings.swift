@@ -119,6 +119,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// own instead of being invisible until the user goes looking for it.
     public var overviewQuotaHistoryHiddenCurveIds: Set<String>
 
+    /// Which measure the cost history charts plot — `"cost"` or `"tokens"`.
+    ///
+    /// A raw string rather than an enum so the UI owns the vocabulary; an
+    /// unrecognized value falls back to cost at the read site. Stored here
+    /// (not `@AppStorage`) so it lives in `~/.vibebar/` with the rest of the
+    /// documented app state instead of leaking into `UserDefaults`.
+    public var costChartMetric: String
+
     /// Per-page card arrangement chosen in Settings → Layout, keyed by
     /// `PageLayoutPageID` raw value (`"overview"`, `"detail:claude"`, …).
     ///
@@ -300,6 +308,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         modelPricingOverrides: [ModelPricingOverride] = [],
         remoteCostIncludedMachineIDs: Set<String> = [],
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
+        costChartMetric: String = "cost",
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
         pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
         miscCookieAutoImportEnabled: Bool = false,
@@ -348,6 +357,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             remoteCostIncludedMachineIDs.map { $0.lowercased() }
         )
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
+        self.costChartMetric = costChartMetric
         self.pageLayouts = pageLayouts
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
         self.miscCookieAutoImportEnabled = miscCookieAutoImportEnabled
@@ -410,6 +420,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case modelPricingOverrides
         case remoteCostIncludedMachineIDs
         case overviewQuotaHistoryHiddenCurveIds
+        case costChartMetric
         case pageLayouts
         case pageLayoutPresets
         case miscCookieAutoImportEnabled
@@ -560,6 +571,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         )
         self.overviewQuotaHistoryHiddenCurveIds =
             try c.decodeIfPresent(Set<String>.self, forKey: .overviewQuotaHistoryHiddenCurveIds) ?? []
+        self.costChartMetric =
+            try c.decodeIfPresent(String.self, forKey: .costChartMetric) ?? "cost"
         // `try?` rather than `try`: a layout map mangled by hand should cost
         // the user their card arrangement, not every other setting in the file.
         self.pageLayouts =
@@ -651,6 +664,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             forKey: .remoteCostIncludedMachineIDs
         )
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
+        try c.encode(costChartMetric, forKey: .costChartMetric)
         try c.encode(pageLayouts, forKey: .pageLayouts)
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
         try c.encode(miscCookieAutoImportEnabled, forKey: .miscCookieAutoImportEnabled)
