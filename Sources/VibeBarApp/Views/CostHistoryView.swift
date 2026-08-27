@@ -340,6 +340,9 @@ struct CostHistoryView: View {
                 .focusable(false)
                 .help(option.help)
                 .accessibilityLabel(option.help)
+                // The visual fill is the only sighted cue for which measure
+                // is active; VoiceOver needs the selection stated outright.
+                .accessibilityAddTraits(chartMetric == option ? [.isSelected] : [])
             }
         }
         .padding(2)
