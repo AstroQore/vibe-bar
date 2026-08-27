@@ -214,7 +214,7 @@ struct UsageTrendChartView: View {
                         .padding(.horizontal, 9)
                         .frame(minHeight: 24)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.vibeBar)
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)
@@ -298,7 +298,7 @@ struct UsageTrendChartView: View {
                     .padding(.horizontal, 7)
                     .frame(minHeight: 20)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.vibeBar)
                 .background(
                     Capsule().fill(color.opacity(visible ? 0.14 : 0.04))
                 )

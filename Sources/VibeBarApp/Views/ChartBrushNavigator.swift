@@ -434,8 +434,7 @@ struct ChartRangePills: View {
                             .frame(minHeight: 20)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .focusable(false)
+                    .buttonStyle(.vibeBar)
                     .background {
                         if option.isSelected {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)

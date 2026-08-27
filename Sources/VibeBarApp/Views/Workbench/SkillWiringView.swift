@@ -29,7 +29,7 @@ struct SkillWiringPopover: View {
                     Label("Reveal", systemImage: "folder")
                         .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.vibeBar)
                 .foregroundStyle(.secondary)
                 .help("Show the skill's source directory in Finder")
             }

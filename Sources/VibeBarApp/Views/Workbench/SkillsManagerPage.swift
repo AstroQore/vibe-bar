@@ -55,14 +55,23 @@ struct SkillsManagerPage: View {
                 model.toast = error.localizedDescription
             }
         }
+        // The sheets are native forms: no initial selection, but the system
+        // focus ring the Workbench window switches off comes back for their
+        // fields, toggles, and default-styled buttons.
         .sheet(isPresented: $model.isDiscoverSheetPresented, onDismiss: model.discoverSheetDismissed) {
             SkillDiscoverSheet(density: density, model: model)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
         .sheet(isPresented: $model.isImportSheetPresented) {
             SkillImportSheet(density: density, model: model)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
         .sheet(isPresented: $model.isBackupsSheetPresented) {
             SkillBackupsSheet(density: density, model: model)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
     }
 
@@ -94,6 +103,9 @@ struct SkillsManagerPage: View {
             TextField("Filter installed skills", text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: max(12, density.segmentedFontSize)))
+                // A text field draws nothing of its own to say keyboard focus
+                // arrived; the system ring comes back for it alone.
+                .vibeBarSystemControlFocus()
             if !model.searchText.isEmpty {
                 Button {
                     model.searchText = ""
@@ -101,7 +113,7 @@ struct SkillsManagerPage: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.vibeBar)
                 .accessibilityLabel("Clear the filter")
             }
         }
@@ -124,7 +136,7 @@ struct SkillsManagerPage: View {
                     busy: model.isBusy(SkillsManagerModel.BusyKey.updates)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .porcelainToolbarButton()
             .disabled(model.isBusy(SkillsManagerModel.BusyKey.updates))
 
@@ -137,7 +149,7 @@ struct SkillsManagerPage: View {
                     busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .porcelainToolbarButton()
 
             Button {
@@ -149,7 +161,7 @@ struct SkillsManagerPage: View {
                     busy: model.isBusy(SkillsManagerModel.BusyKey.importing)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .porcelainToolbarButton()
 
             Button {
@@ -157,7 +169,7 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(systemImage: "clock.arrow.circlepath", title: "Backups", busy: false)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .porcelainToolbarButton()
 
             Button {
@@ -165,7 +177,7 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(systemImage: "sparkle.magnifyingglass", title: "Discover", busy: false)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .porcelainToolbarButton(prominent: true)
             .help("Browse configured repositories and the skills.sh index")
         }
@@ -228,10 +240,11 @@ struct SkillsManagerPage: View {
                     .frame(width: 24, height: 28)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .help("How skill syncing works — roots, links, and native switches")
             .popover(isPresented: $showingSyncExplainer, arrowEdge: .bottom) {
                 SkillSyncExplainerPopover(density: density)
+                    .vibeBarNoInitialFocus()
             }
             Spacer(minLength: 8)
             Text(countSummary)
@@ -351,7 +364,7 @@ struct SkillsManagerPage: View {
                     Image(systemName: "xmark")
                         .font(.system(size: density.subtitleFontSize - 2, weight: .semibold))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.vibeBar)
                 .accessibilityLabel("Dismiss")
             }
             .padding(.horizontal, 14)

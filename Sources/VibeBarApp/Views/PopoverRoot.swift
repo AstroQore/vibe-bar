@@ -64,6 +64,10 @@ struct PopoverRoot: View {
         .padding(.vertical, shellDensity.popoverPaddingV)
         .frame(width: width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
+        // Every control in the popover is hand-drawn; the system focus ring
+        // is switched off once here and `VibeBarButtonStyle` draws its own
+        // accent hairline where keyboard focus lands.
+        .vibeBarControlFocus()
         .readHeight(onContentHeightChange)
         .onAppear {
             if !hasAppliedInitialPage {
@@ -1479,8 +1483,7 @@ private struct OverviewCostCard: View {
                         Image(systemName: "rectangle.expand.vertical")
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .buttonStyle(.plain)
-                    .focusable(false)
+                    .buttonStyle(.vibeBar)
                     .foregroundStyle(.secondary)
                     .help("Open full charts")
                     .popover(isPresented: $detailPresented, arrowEdge: .trailing) {
@@ -1493,6 +1496,7 @@ private struct OverviewCostCard: View {
                             heatmapTitleOverride: heatmapTitleOverride
                         )
                             .frame(width: max(660, density.popoverWidth * 0.70), height: 660)
+                            .vibeBarNoInitialFocus()
                     }
                 }
             }

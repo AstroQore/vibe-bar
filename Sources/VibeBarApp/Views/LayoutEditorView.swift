@@ -148,6 +148,11 @@ struct LayoutEditorView: View {
             }
         }
         .coordinateSpace(.named(Self.space))
+        // The editor sits inside the Settings pane, which restores the
+        // system focus ring for its native controls — but everything in here
+        // is hand-drawn pills and icon buttons, so the ring goes off again
+        // and `VibeBarButtonStyle` marks keyboard focus instead.
+        .vibeBarControlFocus()
         .onChange(of: page) { _, newValue in
             // A provider hidden from the popover takes its page with it.
             if selectedPage != newValue { selectedPage = newValue }
@@ -200,8 +205,8 @@ struct LayoutEditorView: View {
                     }
                     .contentShape(Capsule(style: .continuous))
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
+                // The ring radius matches the 24 pt capsule the label draws.
+                .buttonStyle(.vibeBar(cornerRadius: 12))
                 .help(layoutModel.hasSavedIntent(entry.page) ? "\(entry.title) — customized" : entry.title)
             }
             Spacer(minLength: 0)
@@ -280,8 +285,7 @@ struct LayoutEditorView: View {
             }
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(.vibeBar(cornerRadius: 12))
         .help(modeHelp(mode, page: page))
     }
 
@@ -351,6 +355,10 @@ struct LayoutEditorView: View {
         )
         .popover(isPresented: $isNamingPreset, arrowEdge: .bottom) {
             presetNameForm(page: page, arrangement: arrangement, descriptors: descriptors)
+                // A native form: no initial selection, but the system focus
+                // ring comes back for its text field and buttons.
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
     }
 
@@ -503,8 +511,7 @@ struct LayoutEditorView: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(.vibeBar(cornerRadius: 7))
     }
 
     private func ratioIcon(_ ratio: PageColumnRatio) -> some View {
@@ -871,8 +878,7 @@ struct LayoutEditorView: View {
                 .font(.system(size: 9, weight: .semibold))
                 .frame(width: 16, height: 16)
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(.vibeBar)
         .foregroundStyle(.secondary)
         .help(help)
     }
@@ -930,8 +936,7 @@ struct LayoutEditorView: View {
                 .frame(width: 20, height: 20)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(.vibeBar)
         .help(
             isHidden
                 ? "Show “\(block.descriptor.displayName)” on this page"

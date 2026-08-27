@@ -336,8 +336,7 @@ struct CostHistoryView: View {
                             }
                         }
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
+                .buttonStyle(.vibeBar(cornerRadius: 5))
                 .help(option.help)
                 .accessibilityLabel(option.help)
                 // The visual fill is the only sighted cue for which measure
@@ -752,7 +751,7 @@ struct CostHistoryView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.vibeBar)
                     .foregroundStyle(.secondary)
                     .help("Clear model selection")
                 }
@@ -1086,8 +1085,7 @@ struct CostHistoryView: View {
                         enabled: enabled
                     )
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
+                .buttonStyle(.vibeBar)
                 .disabled(!enabled)
                 .help(
                     enabled
@@ -1566,8 +1564,7 @@ private struct CostRangePresetBar: View {
                         .frame(minHeight: 22)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
+                .buttonStyle(.vibeBar)
                 .background {
                     if active == preset {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)

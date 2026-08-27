@@ -70,7 +70,7 @@ struct UsageBreakdownTables: View {
                             )
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.vibeBar)
                     .contentShape(Rectangle())
                     .accessibilityLabel(value.title)
                     .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -266,7 +266,7 @@ struct UsageBreakdownTables: View {
             .frame(maxWidth: .infinity, minHeight: 33)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         .disabled(model.isLoadingMore)
     }
 

@@ -42,7 +42,7 @@ struct MiniQuotaWindowView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .padding(.top, 6)
             .padding(.trailing, 8)
         }
@@ -58,6 +58,10 @@ struct MiniQuotaWindowView: View {
             .regular.interactive(),
             in: .rect(cornerRadius: Theme.miniCornerRadius)
         )
+        // The panel is borderless and non-activating, so it never becomes
+        // key — but the close button would still draw a system focus ring
+        // after a click without this.
+        .vibeBarControlFocus()
     }
 
     /// The field ids selected for the current display mode. Also the input to

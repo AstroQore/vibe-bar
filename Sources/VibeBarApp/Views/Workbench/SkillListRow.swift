@@ -157,7 +157,7 @@ struct SkillAppToggleRow: View {
                         .offset(x: 2, y: -2)
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         // An off app has to stay readable — the user is picking from these —
         // but must not wear the accent, which is the only signal that says
         // "this skill is live here".
@@ -451,6 +451,7 @@ struct SkillListRow: View {
         .accessibilityLabel("More actions for \(skill.name)")
         .popover(isPresented: $showingWiring, arrowEdge: .trailing) {
             SkillWiringPopover(skill: skill, density: density)
+                .vibeBarNoInitialFocus()
         }
     }
 }

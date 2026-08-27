@@ -135,7 +135,7 @@ struct SkillDiscoverSheet: View {
                             Image(systemName: "minus.circle")
                                 .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.vibeBar)
                         .help("Stop scanning \(repo)")
                         .accessibilityLabel("Remove \(repo)")
                     }

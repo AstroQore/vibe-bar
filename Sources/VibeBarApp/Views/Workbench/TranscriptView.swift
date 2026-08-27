@@ -162,6 +162,9 @@ struct TranscriptView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: density.segmentedFontSize))
                 .onSubmit { step(by: 1, proxy: proxy) }
+                // A text field draws nothing of its own to say keyboard focus
+                // arrived; the system ring comes back for it alone.
+                .vibeBarSystemControlFocus()
             if !query.isEmpty {
                 Text(matches.isEmpty ? "none" : "\(matchIndex + 1)/\(matches.count)")
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded)
@@ -334,6 +337,7 @@ struct TranscriptView: View {
                     scroll(to: seq, proxy: proxy)
                 }
             )
+            .vibeBarNoInitialFocus()
         }
     }
 
@@ -435,7 +439,7 @@ struct SessionMetadataHeader: View {
                     .fill(Color.primary.opacity(0.05))
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.vibeBar)
         .help("Copy session ID")
         .accessibilityLabel("Session ID \(summary.sessionID). Copy")
     }
@@ -663,7 +667,7 @@ struct TranscriptMessageCard: View {
                     Button(isExpanded ? "Show less" : "Show more (\(message.text.count) chars)") {
                         onToggleExpanded()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.vibeBar)
                     .font(.system(size: max(9, density.resetCountdownFontSize), weight: .semibold))
                     .foregroundStyle(accent)
                 }
@@ -712,7 +716,7 @@ struct TranscriptMessageCard: View {
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(Color.primary.opacity(isHovering ? 0.09 : 0)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .foregroundStyle(isHovering ? .secondary : .tertiary)
             .opacity(isHovering ? 1 : 0.42)
             .help("Copy this message")

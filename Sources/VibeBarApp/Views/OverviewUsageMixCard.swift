@@ -125,7 +125,7 @@ struct OverviewUsageMixCard: View {
                             )
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.vibeBar)
             }
         }
     }

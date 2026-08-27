@@ -114,7 +114,7 @@ struct SkillBackupsSheet: View {
                 Image(systemName: "trash")
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .disabled(busy)
             .accessibilityLabel("Delete this backup")
         }

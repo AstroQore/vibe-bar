@@ -148,6 +148,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 onToggleMiniWindow: { [weak controller] in controller?.toggleMiniWindow() },
                 initialPage: controller.popoverInitialPage
             )
+                .vibeBarNoInitialFocus()
                 .environmentObject(environment)
                 .environmentObject(environment.accountStore)
                 .environmentObject(environment.settingsStore)
@@ -400,10 +401,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.behavior = .applicationDefined
         environment.setPopoverVisible(true)
         popover.show(relativeTo: target.rect, of: target.view, preferredEdge: .minY)
+        // Key status would hand keyboard focus to the first button;
+        // `vibeBarNoInitialFocus()` on the popover root clears that initial
+        // selection in demo and production alike.
         popover.contentViewController?.view.window?.makeKey()
-        // Key status hands keyboard focus to the first button, which draws
-        // a focus ring nobody clicked for.
-        popover.contentViewController?.view.window?.makeFirstResponder(nil)
     }
 
     /// Show the mini window in `mode`. Demo mode only.

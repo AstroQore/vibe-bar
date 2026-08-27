@@ -125,6 +125,12 @@ struct WorkbenchRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WorkbenchPorcelain.windowFill(for: colorScheme))
         .workbenchPorcelain()
+        // The whole window is hand-drawn controls; the system focus ring is
+        // switched off here, once, and every custom button style draws its
+        // own accent hairline instead. Regions made of native controls —
+        // Settings' toggles and fields, the form sheets and popovers — put
+        // the system effect back locally with `vibeBarSystemControlFocus()`.
+        .vibeBarControlFocus()
         .preferredColorScheme(appearanceOverride)
         .onAppear {
             if navigation.selectedPage == nil {
@@ -259,7 +265,6 @@ private struct WorkbenchSidebar: View {
         .onHover { hovering in
             hoveredPage = hovering ? page : (hoveredPage == page ? nil : hoveredPage)
         }
-        .focusEffectDisabled()
         .accessibilityAddTraits(selection == page ? [.isSelected] : [])
     }
 
@@ -282,28 +287,47 @@ private struct WorkbenchSidebarRowStyle: ButtonStyle {
     let isSelected: Bool
     let isHovered: Bool
 
-    @Environment(\.colorScheme) private var colorScheme
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(backgroundFill)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(
-                        isSelected ? WorkbenchPorcelain.hairline(for: colorScheme) : Color.clear,
-                        lineWidth: Theme.Card.hairlineWidth
-                    )
-            )
+        Row(isSelected: isSelected, isHovered: isHovered) { configuration.label }
             .opacity(configuration.isPressed ? 0.72 : 1)
     }
 
-    private var backgroundFill: Color {
-        if isSelected { return WorkbenchPorcelain.selectedNavigationFill(for: colorScheme) }
-        if isHovered { return WorkbenchPorcelain.hoverFill(for: colorScheme) }
-        return .clear
+    /// A nested view rather than the style itself, because `isFocused` is an
+    /// environment value and a `ButtonStyle` has no body to read it from.
+    /// The focused hairline replaces the system focus ring the window
+    /// switches off; it sits over the row's selected/hovered fill, and being
+    /// the app accent rather than the porcelain hairline it stays legible on
+    /// a selected row.
+    private struct Row<Label: View>: View {
+        let isSelected: Bool
+        let isHovered: Bool
+        @ViewBuilder let label: Label
+
+        @Environment(\.colorScheme) private var colorScheme
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            label
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(backgroundFill)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(
+                            isFocused
+                                ? Color.accentColor
+                                : (isSelected ? WorkbenchPorcelain.hairline(for: colorScheme) : Color.clear),
+                            lineWidth: isFocused ? 1 : Theme.Card.hairlineWidth
+                        )
+                )
+        }
+
+        private var backgroundFill: Color {
+            if isSelected { return WorkbenchPorcelain.selectedNavigationFill(for: colorScheme) }
+            if isHovered { return WorkbenchPorcelain.hoverFill(for: colorScheme) }
+            return .clear
+        }
     }
 }
 
@@ -379,8 +403,8 @@ private struct WorkbenchHeaderIconButton: View {
                     )
                 )
         }
-        .buttonStyle(.plain)
-        .focusEffectDisabled()
+        // 14 pt on the 28 pt circle keeps the focus hairline circular.
+        .buttonStyle(.vibeBar(cornerRadius: 14))
         .onHover { isHovering = $0 }
         .help(help)
         .accessibilityLabel(help)

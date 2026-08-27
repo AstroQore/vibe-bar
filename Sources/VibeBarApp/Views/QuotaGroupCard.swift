@@ -687,7 +687,7 @@ struct QuotaGroupCard: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.vibeBar)
             .accessibilityLabel(isExpanded ? "Hide forecast calculation" : "Show forecast calculation")
 
             if isExpanded {
