@@ -194,9 +194,14 @@ struct SkillAppToggleRow: View {
         switch state {
         case .notProjected: return .enable
         case .enabled:
-            return app.supportsNativeSkillActivation && showsNativeActions
-                ? .disableInHarness
-                : .removeProjection
+            if app.supportsNativeSkillActivation && showsNativeActions {
+                return .disableInHarness
+            }
+            // A shared-root harness's projection is redundant — deleting it
+            // from a plain click would look like an off switch that doesn't
+            // work (the skill stays discovered). Route the click to the
+            // explanatory no-op and keep removal in the context menu.
+            return app.discoversSharedSkillRoot ? .enable : .removeProjection
         case .coupled:
             return app.supportsNativeSkillActivation && showsNativeActions
                 ? .disableInHarness
@@ -219,9 +224,12 @@ struct SkillAppToggleRow: View {
                 .foregroundStyle(.orange)
                 .background(Circle().fill(.background))
         case .coupled:
+            // Informational, not a warning: the skill *is* available — the
+            // harness reads a root Vibe Bar doesn't gate. Orange is reserved
+            // for the two states that actually need attention.
             Image(systemName: "link.circle.fill")
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(.secondary)
                 .background(Circle().fill(.background))
         case .enabled, .notProjected:
             EmptyView()
@@ -233,7 +241,7 @@ struct SkillAppToggleRow: View {
         case .notProjected: "Not projected"
         case .enabled: "Enabled"
         case .disabledInHarness: "Projected, disabled in harness"
-        case .coupled: "Enabled through a shared or compatibility root"
+        case .coupled: "Available through a shared or compatibility root"
         case .unknown: "Projected, native state unknown"
         }
     }
@@ -245,12 +253,16 @@ struct SkillAppToggleRow: View {
             return "\(app.displayName) — not projected. Click to enable."
         case .enabled where app.supportsNativeSkillActivation:
             return "\(app.displayName) — projected and enabled. Click to disable in the harness; right-click for projection options."
+        case .enabled where app.discoversSharedSkillRoot:
+            return "\(app.displayName) — has its own link, and also reads the shared skills root directly. There is no per-skill switch; right-click to manage the redundant link."
         case .enabled:
             return "\(app.displayName) — enabled by projection. Click to remove it."
         case .disabledInHarness:
             return "\(app.displayName) — projected, but disabled by its native config. Click to enable."
+        case .coupled where app.discoversSharedSkillRoot:
+            return "\(app.displayName) reads the shared skills root directly, so this skill is always available there. There is no per-skill switch to flip."
         case .coupled:
-            return "\(app.displayName) — still enabled through a shared or compatibility root. Right-click for the available controls."
+            return "\(app.displayName) — visible through the Gemini CLI projection it also reads. Click to give it its own projection."
         case .unknown:
             return "\(app.displayName) — projected, but native config could not be parsed. Click to repair as enabled."
         }
@@ -270,6 +282,7 @@ struct SkillListRow: View {
 
     @State private var confirmingUninstall = false
     @State private var isHovering = false
+    @State private var showingWiring = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -353,9 +366,6 @@ struct SkillListRow: View {
         let unknown = SkillAppTarget.managedHarnesses.filter {
             skill.activationState(for: $0) == .unknown
         }
-        let coupled = SkillAppTarget.managedHarnesses.filter {
-            skill.activationState(for: $0) == .coupled
-        }
         if !disabled.isEmpty {
             Text(disabled.map { "\($0.displayName) OFF" }.joined(separator: " · "))
                 .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
@@ -372,15 +382,12 @@ struct SkillListRow: View {
                 .padding(.vertical, 2)
                 .background(Capsule().fill(Color.orange.opacity(0.12)))
                 .help("The harness configuration could not be parsed safely")
-        } else if !coupled.isEmpty {
-            Text(coupled.map { "\($0.displayName) LINKED" }.joined(separator: " · "))
-                .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
-                .foregroundStyle(.orange)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(Color.orange.opacity(0.12)))
-                .help("Still discovered through a shared or compatibility root")
         }
+        // `.coupled` deliberately gets no row capsule: it is the *normal*
+        // state for every skill Cursor sees, and a permanent orange
+        // "Cursor LINKED" on nearly every row read as a problem needing a
+        // click that then did nothing. The circle's small link badge and the
+        // wiring popover carry the information instead.
     }
 
     private var sourceBadge: some View {
@@ -414,6 +421,16 @@ struct SkillListRow: View {
 
     private var overflowMenu: some View {
         Menu {
+            Button("Wiring Details…", systemImage: "point.3.connected.trianglepath.dotted") {
+                showingWiring = true
+            }
+            Button("Reveal in Finder", systemImage: "folder") {
+                NSWorkspace.shared.activateFileViewerSelecting([
+                    SkillAppCatalog.ssotDirectory()
+                        .appendingPathComponent(skill.directory, isDirectory: true)
+                ])
+            }
+            Divider()
             Button("Update from repository", systemImage: "arrow.down.circle") { onUpdate() }
                 .disabled(!skill.id.isRepositoryBacked)
             Divider()
@@ -432,5 +449,8 @@ struct SkillListRow: View {
         .fixedSize()
         .disabled(isBusy)
         .accessibilityLabel("More actions for \(skill.name)")
+        .popover(isPresented: $showingWiring, arrowEdge: .trailing) {
+            SkillWiringPopover(skill: skill, density: density)
+        }
     }
 }
