@@ -21,6 +21,19 @@ final class UsageFormattingTests: XCTestCase {
         XCTAssertEqual(UsageFormatting.formatMicroUSD(5_000), "$0.01")
     }
 
+    func testCompactUSD() {
+        XCTAssertEqual(UsageFormatting.compactUSD(0), "$0.00")
+        XCTAssertEqual(UsageFormatting.compactUSD(1_000), "<$0.01")
+        XCTAssertEqual(UsageFormatting.compactUSD(890_000), "$0.89")
+        XCTAssertEqual(UsageFormatting.compactUSD(4_800_000), "$4.80")
+        XCTAssertEqual(UsageFormatting.compactUSD(47_590_000), "$47.6")
+        XCTAssertEqual(UsageFormatting.compactUSD(593_680_000), "$594")
+        XCTAssertEqual(UsageFormatting.compactUSD(11_588_990_000), "$11.6k")
+        XCTAssertEqual(UsageFormatting.compactUSD(593_680_000_000), "$594k")
+        XCTAssertEqual(UsageFormatting.compactUSD(1_234_000_000_000), "$1.2M")
+        XCTAssertEqual(UsageFormatting.compactUSD(-11_588_990_000), "-$11.6k")
+    }
+
     func testNegativeAmountsKeepTheSignOutsideTheCurrency() {
         XCTAssertEqual(UsageFormatting.formatMicroUSD(-1_500_000), "-$1.50")
     }

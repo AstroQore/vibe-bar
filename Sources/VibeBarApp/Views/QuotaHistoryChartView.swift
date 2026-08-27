@@ -494,6 +494,15 @@ struct QuotaHistoryChartView: View, Equatable {
                 }
             }
             .chartXScale(domain: visible)
+            // Marks are laid out against the scale, not the plot rect, and the
+            // bridge / clipped-segment marks keep points outside the visible
+            // range on purpose (a dash that spans the window has both ends off
+            // screen and still has to draw). Without the clip those strokes
+            // run past the plot — visibly across the neighbouring column when
+            // the card sits in a right-hand column.
+            .chartPlotStyle { plotArea in
+                plotArea.clipped()
+            }
             .chartYScale(domain: 0...100)
             .chartYAxis {
                 AxisMarks(position: .leading, values: [0, 25, 50, 75, 100]) { value in
@@ -796,13 +805,18 @@ struct QuotaHistoryChartView: View, Equatable {
                    let reading = hoverReading(at: hoverDate, buckets: buckets, primary: primary),
                    let x = proxy.position(forX: reading.time),
                    let plot {
+                    // The reading anchors to the nearest sample, which the
+                    // pointer slop can put just outside the visible range —
+                    // clamp so the crosshair stays inside the plot instead of
+                    // drawing into the axis gutter.
+                    let clampedX = min(max(x, 0), plot.width)
                     Rectangle()
                         .fill(Color.primary.opacity(0.22))
                         .frame(width: 1, height: plot.height)
-                        .offset(x: plotMinX + x, y: plot.minY)
+                        .offset(x: plotMinX + clampedX, y: plot.minY)
                         .allowsHitTesting(false)
                     tooltip(reading, showsBucketTitles: buckets.count > 1)
-                        .offset(x: tooltipX(plotMinX: plotMinX, x: x, width: geometry.size.width))
+                        .offset(x: tooltipX(plotMinX: plotMinX, x: clampedX, width: geometry.size.width))
                         .allowsHitTesting(false)
                 }
             }

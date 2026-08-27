@@ -34,7 +34,7 @@ struct UsageDistributionDashboard: View {
 
     var body: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 320, maximum: 480), spacing: density.interSectionSpacing)],
+            columns: [GridItem(.adaptive(minimum: 320, maximum: 480), spacing: density.interSectionSpacing, alignment: .top)],
             alignment: .leading,
             spacing: density.interSectionSpacing
         ) {
@@ -199,9 +199,17 @@ private struct DistributionDonutCard: View {
                     legend
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // Greedy tail: when the grid proposes the row's shared height,
+                // the card surface stretches to it instead of floating shorter
+                // than its neighbours.
+                Spacer(minLength: 0)
             }
         }
     }
+
+    /// Floor for the trailing value column. Shared by every card so "19.38B"
+    /// in one card and "53% $11.6k" in the next start at the same x.
+    private static let valueColumnWidth: CGFloat = 62
 
     private var total: Int64 { max(1, slices.reduce(0) { $0 + $1.tokens }) }
 
@@ -237,23 +245,27 @@ private struct DistributionDonutCard: View {
     private var legend: some View {
         VStack(alignment: .leading, spacing: 5) {
             ForEach(slices) { slice in
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     Circle().fill(slice.color).frame(width: 7, height: 7)
+                        .padding(.top, 3)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(slice.label)
                             .font(.system(size: density.subtitleFontSize, weight: .medium))
                             .lineLimit(1)
+                            .truncationMode(.tail)
+                        // Always laid out, blank when a dimension has no
+                        // detail, so every row is the same two-line height and
+                        // the five cards share one legend rhythm.
+                        Text(slice.detail ?? " ")
+                            .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                             .truncationMode(.middle)
-                        if let detail = slice.detail {
-                            Text(detail)
-                                .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
+                            .opacity(slice.detail == nil ? 0 : 1)
+                            .accessibilityHidden(slice.detail == nil)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .help(slice.detail ?? slice.label)
-                    Spacer(minLength: 4)
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(UsageFormatting.compactTokens(slice.tokens))
                             .font(.system(size: density.resetCountdownFontSize, weight: .semibold,
@@ -261,13 +273,20 @@ private struct DistributionDonutCard: View {
                         HStack(spacing: 4) {
                             Text(Double(slice.tokens) / Double(total), format: .percent.precision(.fractionLength(0)))
                             if let cost = slice.costMicros {
-                                Text(UsageFormatting.formatMicroUSD(cost))
+                                Text(UsageFormatting.compactUSD(cost))
                             }
                         }
                         .font(.system(size: max(8, density.resetCountdownFontSize - 1),
                                       design: .rounded).monospacedDigit())
                         .foregroundStyle(.tertiary)
                     }
+                    // The values never wrap or compress — the label column is
+                    // the one that truncates. Without this the layout engine
+                    // squeezed "$4803.98" onto two lines while the label kept
+                    // its width.
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: Self.valueColumnWidth, alignment: .trailing)
                 }
             }
         }

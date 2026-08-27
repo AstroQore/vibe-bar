@@ -28,6 +28,21 @@ public enum UsageFormatting {
         return String(format: "$%.\(digits)f", value)
     }
 
+    /// Money at legend width: `$4.80`, `$47.6`, `$594`, `$11.6k`, `$1.2M`.
+    /// Never wider than seven characters, so a trailing value column can pin
+    /// its width instead of wrapping a full-precision amount.
+    public static func compactUSD(_ micros: Int64) -> String {
+        let sign = micros < 0 ? "-" : ""
+        let value = Double(micros.magnitude) / 1_000_000
+        if micros != 0, value < 0.005 { return "\(sign)<$0.01" }
+        if value < 10 { return sign + String(format: "$%.2f", value) }
+        if value < 100 { return sign + String(format: "$%.1f", value) }
+        if value < 1_000 { return sign + String(format: "$%.0f", value) }
+        if value < 100_000 { return sign + String(format: "$%.1fk", value / 1_000) }
+        if value < 1_000_000 { return sign + String(format: "$%.0fk", value / 1_000) }
+        return sign + String(format: "$%.1fM", value / 1_000_000)
+    }
+
     /// `1_234` → `"1.2k"`, `3_400_000` → `"3.40M"`. No unit suffix — the
     /// caller decides whether to append `" tok"`.
     public static func compactTokens(_ tokens: Int64) -> String {
