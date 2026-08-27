@@ -334,6 +334,7 @@ struct TranscriptView: View {
                     scroll(to: seq, proxy: proxy)
                 }
             )
+            .vibeBarNoInitialFocus()
         }
     }
 

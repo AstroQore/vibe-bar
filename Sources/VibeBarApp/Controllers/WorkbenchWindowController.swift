@@ -39,6 +39,7 @@ final class WorkbenchWindowController: NSObject {
 
         let hosting = NSHostingController(
             rootView: WorkbenchRootView(initialPage: page, navigation: navigation)
+                .vibeBarNoInitialFocus()
                 .environmentObject(environment)
                 .environmentObject(environment.accountStore)
                 .environmentObject(environment.settingsStore)

@@ -665,6 +665,12 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The detail pane is native toggles, pickers, and text fields:
+            // their system focus ring is the only thing telling a keyboard
+            // user where they are, so the window-wide switch-off is undone
+            // here. Hand-drawn regions inside (the Layout editor) switch it
+            // off again for themselves.
+            .vibeBarSystemControlFocus()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: refreshLaunchAtLoginState)

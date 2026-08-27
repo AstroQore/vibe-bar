@@ -1007,8 +1007,7 @@ struct CostHistoryView: View {
                         enabled: enabled
                     )
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
+                .buttonStyle(.vibeBar)
                 .disabled(!enabled)
                 .help(
                     enabled
@@ -1431,8 +1430,7 @@ private struct CostRangePresetBar: View {
                         .frame(minHeight: 22)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
+                .buttonStyle(.vibeBar)
                 .background {
                     if active == preset {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)

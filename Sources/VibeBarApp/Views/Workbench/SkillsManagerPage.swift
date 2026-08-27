@@ -54,14 +54,23 @@ struct SkillsManagerPage: View {
                 model.toast = error.localizedDescription
             }
         }
+        // The sheets are native forms: no initial selection, but the system
+        // focus ring the Workbench window switches off comes back for their
+        // fields, toggles, and default-styled buttons.
         .sheet(isPresented: $model.isDiscoverSheetPresented, onDismiss: model.discoverSheetDismissed) {
             SkillDiscoverSheet(density: density, model: model)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
         .sheet(isPresented: $model.isImportSheetPresented) {
             SkillImportSheet(density: density, model: model)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
         .sheet(isPresented: $model.isBackupsSheetPresented) {
             SkillBackupsSheet(density: density, model: model)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
     }
 

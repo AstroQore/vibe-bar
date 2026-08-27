@@ -245,6 +245,10 @@ struct SessionFiltersBar: View {
             }
             .padding(16)
             .frame(width: 360)
+            // A native form: no initial selection, but the system focus ring
+            // comes back for its text fields and buttons.
+            .vibeBarNoInitialFocus()
+            .vibeBarSystemControlFocus()
         }
     }
 

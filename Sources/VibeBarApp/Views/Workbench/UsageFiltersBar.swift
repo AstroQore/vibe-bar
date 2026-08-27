@@ -205,6 +205,10 @@ struct UsageFiltersBar: View {
         .fixedSize()
         .popover(isPresented: $showsCustomRange, arrowEdge: .bottom) {
             customRangeEditor
+                // A native form: no initial selection, but the system focus
+                // ring comes back for its date pickers.
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
         }
         .accessibilityLabel("Choose the date range")
     }

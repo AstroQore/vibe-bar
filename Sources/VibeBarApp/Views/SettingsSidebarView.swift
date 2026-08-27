@@ -45,6 +45,9 @@ struct SettingsSidebarView: View {
             .padding(.horizontal, 10)
             .frame(height: 31)
             .workbenchFieldSurface(cornerRadius: 8)
+            // The search field is the sidebar's one native control; give it
+            // back the system focus ring the rail switches off.
+            .vibeBarSystemControlFocus()
             .padding(.horizontal, 14)
             .padding(.top, 16)
             .padding(.bottom, 12)
@@ -133,6 +136,9 @@ struct SettingsSidebarView: View {
             }
         }
         .frame(width: Self.width)
+        // A rail of hand-drawn rows: the system focus ring stays off and
+        // each row's `VibeBarButtonStyle` hairline marks keyboard focus.
+        .vibeBarControlFocus()
     }
 
     private var filteredBasicPages: [SettingsSectionID] {
@@ -290,8 +296,7 @@ struct SettingsSidebarView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(.vibeBar(cornerRadius: 7))
         .opacity(enabled || selected ? 1 : 0.62)
     }
 
