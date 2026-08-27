@@ -184,12 +184,20 @@ struct CostHistoryView: View {
     @State private var inspectedPoint: CostChartPoint?
     @State private var panBase: ChartTimeWindow?
     @State private var magnifyBase: ChartTimeWindow?
-    @AppStorage("costChart.metric") private var storedMetric: String = CostChartMetric.cost.rawValue
 
     @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject var settingsStore: SettingsStore
 
+    /// Persisted through `AppSettings` — the documented state under
+    /// `~/.vibebar/` — not `@AppStorage`, which would leak the choice into
+    /// `UserDefaults` where clearing Vibe Bar's state cannot reach it.
     private var chartMetric: CostChartMetric {
-        CostChartMetric(rawValue: storedMetric) ?? .cost
+        CostChartMetric(rawValue: settingsStore.settings.costChartMetric) ?? .cost
+    }
+
+    private func setMetric(_ metric: CostChartMetric) {
+        guard settingsStore.settings.costChartMetric != metric.rawValue else { return }
+        settingsStore.settings.costChartMetric = metric.rawValue
     }
 
     private static let dayInterval: TimeInterval = 86_400
@@ -312,7 +320,7 @@ struct CostHistoryView: View {
         HStack(spacing: 1) {
             ForEach(CostChartMetric.allCases) { option in
                 Button {
-                    storedMetric = option.rawValue
+                    setMetric(option)
                 } label: {
                     Text(option.label)
                         .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
