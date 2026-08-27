@@ -210,11 +210,13 @@ struct SkillsManagerPage: View {
                 .overlay(Capsule().stroke(app.accent.opacity(count == 0 ? 0.16 : 0.45), lineWidth: 0.8))
                 .opacity(count == 0 ? 0.5 : 1)
                 .saturation(count == 0 ? 0.2 : 1)
-                .help(
-                    "\(app.displayName) sees \(count) skill\(count == 1 ? "" : "s")"
-                        + (coupled > 0 ? " · \(enabled) enabled + \(coupled) via the shared skills root" : "")
-                        + (nativeDisabled > 0 ? " · \(nativeDisabled) projected but disabled" : "")
-                )
+                .help(appCountHelp(
+                    app: app,
+                    count: count,
+                    enabled: enabled,
+                    coupled: coupled,
+                    nativeDisabled: nativeDisabled
+                ))
                 .accessibilityLabel("\(app.displayName), sees \(count) skills")
             }
             Button {
@@ -238,6 +240,29 @@ struct SkillsManagerPage: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
+    }
+
+    private func appCountHelp(
+        app: SkillAppTarget,
+        count: Int,
+        enabled: Int,
+        coupled: Int,
+        nativeDisabled: Int
+    ) -> String {
+        var help = "\(app.displayName) sees \(count) skill\(count == 1 ? "" : "s")"
+        if coupled > 0 {
+            // AntiGravity's coupled skills arrive through the Gemini CLI
+            // compatibility root, not the shared root it never scans — name
+            // the mechanism the harness actually uses.
+            let root = app.discoversSharedSkillRoot
+                ? "the shared skills root"
+                : "the Gemini CLI compatibility root"
+            help += " · \(enabled) enabled + \(coupled) via \(root)"
+        }
+        if nativeDisabled > 0 {
+            help += " · \(nativeDisabled) projected but disabled"
+        }
+        return help
     }
 
     private var countSummary: String {
