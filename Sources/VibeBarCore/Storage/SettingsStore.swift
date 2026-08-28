@@ -122,6 +122,12 @@ public final class SettingsStore: ObservableObject {
                 migrated.miniWindow.customLabels[newId] = label
             }
         }
+        for index in migrated.miniWindow.windows.indices {
+            migrated.miniWindow.windows[index].fieldIds = renameOrDropFieldIds(
+                migrated.miniWindow.windows[index].fieldIds,
+                mapping: bucketIdMigrations
+            )
+        }
         let legacyMiniDefaults = [
             "codex.five_hour",
             "codex.weekly",
@@ -133,6 +139,10 @@ public final class SettingsStore: ObservableObject {
         }
         if migrated.miniWindow.compactSelectedFieldIds == legacyMiniDefaults {
             migrated.miniWindow.compactSelectedFieldIds = AppSettings.defaultMiniWindow.compactSelectedFieldIds
+        }
+        for index in migrated.miniWindow.windows.indices
+        where migrated.miniWindow.windows[index].fieldIds == legacyMiniDefaults {
+            migrated.miniWindow.windows[index].fieldIds = AppSettings.defaultMiniWindow.selectedFieldIds
         }
         return migrated
     }

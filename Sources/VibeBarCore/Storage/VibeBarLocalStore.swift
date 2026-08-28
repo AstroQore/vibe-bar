@@ -99,6 +99,14 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("mini_window_geometry.json")
     }
 
+    /// Catalog-external quota buckets the adapters have returned on this Mac
+    /// (`QuotaFieldRegistry`). Its own file for the same reason as the
+    /// geometry: discovery happens on quota refreshes, and rewriting the
+    /// settings blob from that path would fan out to every subscriber.
+    public static var quotaFieldRegistryURL: URL {
+        baseDirectory.appendingPathComponent("quota_field_registry.json")
+    }
+
     /// Non-secret workspace, Relay, and registered Probe metadata. Relay
     /// bearer credentials and Core private keys live in the credential Vault.
     public static var remoteCoreConfigURL: URL {

@@ -215,60 +215,8 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .miniWindow {
-                    settingsSection("Mini Window") {
-                        Picker("Display mode", selection: miniWindowDisplayModeBinding()) {
-                            ForEach(MiniWindowDisplayMode.allCases) { mode in
-                                Text(mode.label).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        Text("Pick which fields appear in the selected mini mode.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        // The flat `allFields` list had two "5 Hours" rows
-                        // and two "Weekly" rows (one for Codex, one for
-                        // Claude) with no provider context — easy to
-                        // mis-tick. Group by L2 product so each row sits
-                        // under the brand it belongs to.
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(MiniWindowFieldProviderSection.all) { section in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 6) {
-                                        ToolBrandIconView(tool: section.tool, size: 13)
-                                            .opacity(0.85)
-                                        Text(section.title)
-                                            .font(.caption)
-                                            .fontWeight(.semibold)
-                                            .foregroundStyle(.secondary)
-                                            .textCase(.uppercase)
-                                            .tracking(0.4)
-                                    }
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        ForEach(section.fields) { field in
-                                            miniFieldRow(field)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Divider()
-                            .padding(.vertical, 2)
-                        Text("SubProvider names:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(MiniWindowGroupLabelCatalog.subProviderOptions) { option in
-                                miniGroupLabelRow(option)
-                            }
-                        }
-                        Text("Model group names:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(miniGroupLabelOptions) { option in
-                                miniGroupLabelRow(option)
-                            }
-                        }
+                    settingsSection("Mini Windows") {
+                        MiniWindowsSettingsSection()
                     }
                     .id(SettingsSectionID.miniWindow.rawValue)
                     }
@@ -855,31 +803,6 @@ struct SettingsView: View {
         launchAtLoginStatusText = LoginItemController.statusText
     }
 
-    private func miniFieldRow(_ field: MenuBarFieldOption) -> some View {
-        fieldRowHorizontal(
-            isOn: miniFieldSelectedBinding(field.id),
-            field: field,
-            label: miniFieldLabelBinding(field)
-        )
-    }
-
-    private func miniGroupLabelRow(_ option: MiniWindowGroupLabelOption) -> some View {
-        HStack(spacing: 10) {
-            groupLabelText(option)
-            Spacer(minLength: 8)
-            groupLabelTextField(option)
-                .frame(width: 130)
-        }
-    }
-
-    private var miniGroupLabelOptions: [MiniWindowGroupLabelOption] {
-        var quotas: [ToolType: AccountQuota] = [:]
-        for tool in ToolType.dedicatedCardProviders {
-            if let quota = environment.quota(for: tool) { quotas[tool] = quota }
-        }
-        return MiniWindowGroupLabelCatalog.options(liveQuotas: quotas)
-    }
-
     private func menuFieldRow(kind: MenuBarItemKind, field: MenuBarFieldOption) -> some View {
         fieldRowHorizontal(
             isOn: menuFieldSelectedBinding(kind, field.id),
@@ -983,23 +906,6 @@ struct SettingsView: View {
             .frame(width: 110)
     }
 
-    private func groupLabelTextField(_ option: MiniWindowGroupLabelOption) -> some View {
-        DebouncedSettingsTextField(
-            prompt: option.defaultLabel,
-            value: miniGroupLabelBinding(option)
-        )
-    }
-
-    private func groupLabelText(_ option: MiniWindowGroupLabelOption) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(option.title)
-                .font(.system(size: 12, weight: .medium))
-            Text(option.id)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
     private func menuItemVisibleBinding(_ kind: MenuBarItemKind) -> Binding<Bool> {
         Binding(
             get: { settingsStore.settings.menuBarItem(kind).isVisible },
@@ -1060,71 +966,6 @@ struct SettingsView: View {
                     item.selectedFieldIds.removeAll { $0 == fieldId }
                 }
                 settingsStore.settings.setMenuBarItem(item)
-            }
-        )
-    }
-
-    private func miniFieldSelectedBinding(_ fieldId: String) -> Binding<Bool> {
-        Binding(
-            get: {
-                let mini = settingsStore.settings.miniWindow
-                return mini.fieldIds(for: mini.displayMode).contains(fieldId)
-            },
-            set: { value in
-                var mini = settingsStore.settings.miniWindow
-                var ids = mini.fieldIds(for: mini.displayMode)
-                if value {
-                    if !ids.contains(fieldId) {
-                        ids.append(fieldId)
-                    }
-                } else {
-                    ids.removeAll { $0 == fieldId }
-                }
-                mini.setFieldIds(ids, for: mini.displayMode)
-                settingsStore.settings.miniWindow = mini
-            }
-        )
-    }
-
-    private func miniWindowDisplayModeBinding() -> Binding<MiniWindowDisplayMode> {
-        Binding(
-            get: { settingsStore.settings.miniWindow.displayMode },
-            set: { value in
-                var mini = settingsStore.settings.miniWindow
-                mini.displayMode = value
-                settingsStore.settings.miniWindow = mini
-            }
-        )
-    }
-
-    private func miniFieldLabelBinding(_ field: MenuBarFieldOption) -> Binding<String> {
-        Binding(
-            get: { settingsStore.settings.miniWindow.customLabels[field.id] ?? "" },
-            set: { value in
-                var mini = settingsStore.settings.miniWindow
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    mini.customLabels.removeValue(forKey: field.id)
-                } else {
-                    mini.customLabels[field.id] = value
-                }
-                settingsStore.settings.miniWindow = mini
-            }
-        )
-    }
-
-    private func miniGroupLabelBinding(_ option: MiniWindowGroupLabelOption) -> Binding<String> {
-        Binding(
-            get: { settingsStore.settings.miniWindow.groupLabels[option.id] ?? "" },
-            set: { value in
-                var mini = settingsStore.settings.miniWindow
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    mini.groupLabels.removeValue(forKey: option.id)
-                } else {
-                    mini.groupLabels[option.id] = value
-                }
-                settingsStore.settings.miniWindow = mini
             }
         )
     }
@@ -1349,7 +1190,7 @@ private struct UpdateSettingsRow: View {
 /// + L2 product name above its rows so a flat 20-row checklist
 /// stops asking the user to remember which "5 Hours" belongs to
 /// Codex and which to Claude.
-private struct MiniWindowFieldProviderSection: Identifiable {
+struct MiniWindowFieldProviderSection: Identifiable {
     let tool: ToolType
     let title: String
     let fields: [MenuBarFieldOption]

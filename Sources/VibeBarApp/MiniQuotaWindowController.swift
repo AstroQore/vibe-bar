@@ -3,9 +3,9 @@ import Combine
 import SwiftUI
 import VibeBarCore
 
-/// On-disk representation of the mini-window's saved screen position. Stored
+/// On-disk representation of one mini window's saved screen position. Stored
 /// in its own JSON file (see `VibeBarLocalStore.miniWindowGeometryURL`) so
-/// dragging the panel doesn't touch the main `AppSettings` blob.
+/// dragging a panel doesn't touch the main `AppSettings` blob.
 private struct MiniWindowGeometry: Codable {
     var originX: Double
     var originY: Double
@@ -14,95 +14,152 @@ private struct MiniWindowGeometry: Codable {
     var screenScale: Double?
 }
 
+/// The geometry file: one entry per mini window, keyed by the window config's
+/// UUID string. Decodes the pre-multi-window flat format too — that single
+/// position belongs to whatever the first configured window is now.
+private struct MiniWindowGeometryFile: Codable {
+    var windows: [String: MiniWindowGeometry]
+
+    init(windows: [String: MiniWindowGeometry] = [:]) {
+        self.windows = windows
+    }
+
+    static func load(firstConfigID: UUID?) -> MiniWindowGeometryFile {
+        let url = VibeBarLocalStore.miniWindowGeometryURL
+        if let file = try? VibeBarLocalStore.readJSON(MiniWindowGeometryFile.self, from: url) {
+            return file
+        }
+        if let legacy = try? VibeBarLocalStore.readJSON(MiniWindowGeometry.self, from: url),
+           let firstConfigID {
+            return MiniWindowGeometryFile(windows: [firstConfigID.uuidString: legacy])
+        }
+        return MiniWindowGeometryFile()
+    }
+}
+
 @MainActor
 final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
-    private var panel: NSPanel?
+    private struct PanelState {
+        let panel: NSPanel
+        var frameObserver: NSObjectProtocol?
+        var lastSizingFingerprint: String?
+    }
+
+    private var panels: [UUID: PanelState] = [:]
     private weak var environment: AppEnvironment?
-    /// We watch `panel.frameAutosaveName` indirectly via this observer so we
-    /// can persist the user's drag-positioning back into the geometry file.
-    private var frameObserver: NSObjectProtocol?
     /// Debounce repeated didMove notifications so we don't write the JSON
     /// geometry file on every pixel during a drag.
     private var originPersistWorkItem: DispatchWorkItem?
     private var isApplicationTerminating = false
-    /// Combine subscription that re-runs the width calc when the user
-    /// toggles a field selection in Settings. Without this, the mini
-    /// window's SwiftUI body re-renders (fewer cells appear) but the
-    /// AppKit NSPanel keeps its old width — so unchecking a Gemini
-    /// model in Settings left the window the same physical size with
-    /// a lot of empty real estate on the right.
+    /// Re-runs the size calc for every visible panel when the user edits a
+    /// window in Settings, and closes panels whose config was deleted.
     private var settingsCancellable: AnyCancellable?
     private var quotaCancellable: AnyCancellable?
-    /// Last fingerprint we applied content size for, so we can skip
-    /// the resize work when an unrelated settings field changes.
-    private var lastSizingFingerprint: String?
 
-    func toggle(environment: AppEnvironment) {
-        if panel?.isVisible == true {
-            close()
+    // MARK: - Public surface
+
+    var anyVisible: Bool {
+        panels.values.contains { $0.panel.isVisible }
+    }
+
+    func isVisible(configID: UUID) -> Bool {
+        panels[configID]?.panel.isVisible == true
+    }
+
+    /// The menu-bar toggle: any window open → close all; none open → open all.
+    func toggleAll(environment: AppEnvironment) {
+        if anyVisible {
+            closeAll()
         } else {
-            show(environment: environment)
+            for config in environment.settingsStore.settings.miniWindow.windows {
+                show(configID: config.id, environment: environment)
+            }
         }
     }
 
-    /// Restore the window's previous open/position state on app launch. No-op
-    /// when `miniWindow.wasOpen` is false.
-    func restoreIfNeeded(environment: AppEnvironment) {
-        // A demo launch shows exactly the surface it was asked for; a mini
-        // window left open by the previous demo launch must not come back.
-        guard !DemoMode.isEnabled else { return }
-        guard environment.settingsStore.settings.miniWindow.wasOpen else { return }
-        show(environment: environment)
+    func toggle(configID: UUID, environment: AppEnvironment) {
+        if isVisible(configID: configID) {
+            close(configID: configID)
+        } else {
+            show(configID: configID, environment: environment)
+        }
     }
 
-    /// Demo mode only: open the window regardless of `wasOpen`.
+    /// Restore each window's previous open state on app launch.
+    func restoreIfNeeded(environment: AppEnvironment) {
+        // A demo launch shows exactly the surface it was asked for; windows
+        // left open by the previous demo launch must not come back.
+        guard !DemoMode.isEnabled else { return }
+        for config in environment.settingsStore.settings.miniWindow.windows where config.wasOpen {
+            show(configID: config.id, environment: environment)
+        }
+    }
+
+    /// Demo mode only: open the first window regardless of `wasOpen`.
     func presentForDemo(environment: AppEnvironment) {
         guard DemoMode.isEnabled else { return }
-        show(environment: environment)
+        guard let first = environment.settingsStore.settings.miniWindow.windows.first else { return }
+        show(configID: first.id, environment: environment)
     }
 
     func applicationWillTerminate() {
         isApplicationTerminating = true
-        persistOrigin()
-        if panel?.isVisible == true {
-            markWasOpen(true)
+        persistOrigins()
+        guard let environment else { return }
+        var settings = environment.settingsStore.settings
+        var changed = false
+        for (configID, state) in panels where state.panel.isVisible {
+            if let index = settings.miniWindow.windows.firstIndex(where: { $0.id == configID }),
+               !settings.miniWindow.windows[index].wasOpen {
+                settings.miniWindow.windows[index].wasOpen = true
+                changed = true
+            }
+        }
+        if changed {
+            environment.settingsStore.settings = settings
         }
     }
 
-    private func show(environment: AppEnvironment) {
+    // MARK: - Show / close
+
+    private func show(configID: UUID, environment: AppEnvironment) {
         self.environment = environment
-        let panel = panel ?? makePanel(environment: environment)
-        self.panel = panel
         let settings = environment.settingsStore.settings
-        applyStableContentSize(to: panel, settings: settings, environment: environment, preserveTopRight: false)
-        lastSizingFingerprint = Self.sizingFingerprint(for: settings, environment: environment)
-        applySavedPositionOrDefault(to: panel, settings: settings)
-        panel.orderFrontRegardless()
-        markWasOpen(true)
-        persistOrigin()
-        observeSettingsChanges(environment: environment)
+        guard let config = settings.miniWindow.config(id: configID) else { return }
+        let state = panels[configID] ?? makePanel(configID: configID, environment: environment)
+        panels[configID] = state
+        applyStableContentSize(to: state.panel, config: config, environment: environment, preserveTopRight: false)
+        panels[configID]?.lastSizingFingerprint = Self.sizingFingerprint(config: config, environment: environment)
+        applySavedPositionOrDefault(to: state.panel, configID: configID, settings: settings)
+        state.panel.orderFrontRegardless()
+        markWasOpen(configID: configID, true)
+        persistOrigins()
+        observeChanges(environment: environment)
     }
 
-    /// Subscribe to settingsStore so toggling a field in the Settings
-    /// page or pasting in a new MenuBarSettings JSON re-runs the
-    /// width calc and resizes the floating panel. The
-    /// `lastSizingFingerprint` guard skips the resize when the
-    /// settings change doesn't affect sizing (e.g. the user just
-    /// flipped popoverDensity for a different surface).
-    private func observeSettingsChanges(environment: AppEnvironment) {
+    private func close(configID: UUID) {
+        panels[configID]?.panel.orderOut(nil)
+        markWasOpen(configID: configID, false)
+    }
+
+    private func closeAll() {
+        for configID in panels.keys {
+            close(configID: configID)
+        }
+    }
+
+    // MARK: - Observation
+
+    /// Subscribe once; every event re-checks all visible panels. The
+    /// per-panel `lastSizingFingerprint` guard keeps unrelated settings
+    /// changes from resizing anything.
+    private func observeChanges(environment: AppEnvironment) {
+        guard settingsCancellable == nil else { return }
         settingsCancellable = environment.settingsStore.$settings
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] settings in
-                guard let self, let panel = self.panel, panel.isVisible else { return }
-                let fp = Self.sizingFingerprint(for: settings, environment: environment)
-                guard fp != self.lastSizingFingerprint else { return }
-                self.lastSizingFingerprint = fp
-                self.applyStableContentSize(
-                    to: panel,
-                    settings: settings,
-                    environment: environment,
-                    preserveTopRight: true
-                )
+            .sink { [weak self, weak environment] settings in
+                guard let self, let environment else { return }
+                self.reconcile(settings: settings, environment: environment)
             }
         quotaCancellable = environment.quotaService.$lastSuccessByAccount
             .receive(on: DispatchQueue.main)
@@ -111,74 +168,85 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
                 // `@Published` emits before the property assignment. Defer one
                 // main-loop turn so `environment.quota(for:)` reads the new map.
                 DispatchQueue.main.async { [weak self, weak environment] in
-                    guard let self, let environment, let panel = self.panel, panel.isVisible else { return }
-                    let settings = environment.settingsStore.settings
-                    let fp = Self.sizingFingerprint(for: settings, environment: environment)
-                    guard fp != self.lastSizingFingerprint else { return }
-                    self.lastSizingFingerprint = fp
-                    self.applyStableContentSize(
-                        to: panel,
-                        settings: settings,
-                        environment: environment,
-                        preserveTopRight: true
-                    )
+                    guard let self, let environment else { return }
+                    self.reconcile(settings: environment.settingsStore.settings, environment: environment)
                 }
             }
     }
 
-    /// Stable identifier for everything `stableContentSize` reads.
-    /// When this string changes we know we need to re-apply the
-    /// content size; otherwise the re-render is a no-op.
-    static func sizingFingerprint(for settings: AppSettings, environment: AppEnvironment? = nil) -> String {
-        let mini = settings.miniWindow
-        let mode = mini.displayMode.rawValue
-        let ids = visibleSelectedFieldIDs(settings: settings, environment: environment)
-            .sorted().joined(separator: ",")
-        return "\(mode)|\(ids)"
+    private func reconcile(settings: AppSettings, environment: AppEnvironment) {
+        for (configID, state) in panels {
+            guard let config = settings.miniWindow.config(id: configID) else {
+                // The window was deleted in Settings — take its panel down.
+                state.panel.orderOut(nil)
+                if let observer = state.frameObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+                panels.removeValue(forKey: configID)
+                continue
+            }
+            guard state.panel.isVisible else { continue }
+            let fingerprint = Self.sizingFingerprint(config: config, environment: environment)
+            guard fingerprint != state.lastSizingFingerprint else { continue }
+            panels[configID]?.lastSizingFingerprint = fingerprint
+            applyStableContentSize(to: state.panel, config: config, environment: environment, preserveTopRight: true)
+        }
     }
 
-    private func close() {
-        panel?.orderOut(nil)
-        markWasOpen(false)
+    /// Stable identifier for everything `stableContentSize` reads. Field
+    /// order matters — it drives the company folding — so the ids are joined
+    /// in order, not sorted.
+    static func sizingFingerprint(config: MiniWindowConfig, environment: AppEnvironment? = nil) -> String {
+        let ids = visibleOrderedFieldIDs(config: config, environment: environment).joined(separator: ",")
+        return "\(config.displayMode.rawValue)|\(ids)"
     }
+
+    // MARK: - Window delegate
 
     func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSPanel,
+              let configID = panels.first(where: { $0.value.panel === window })?.key
+        else { return }
         if !isApplicationTerminating {
-            markWasOpen(false)
+            markWasOpen(configID: configID, false)
         }
-        if let observer = frameObserver {
+        if let observer = panels[configID]?.frameObserver {
             NotificationCenter.default.removeObserver(observer)
-            frameObserver = nil
         }
-        settingsCancellable?.cancel()
-        settingsCancellable = nil
-        quotaCancellable?.cancel()
-        quotaCancellable = nil
-        lastSizingFingerprint = nil
-        panel = nil
+        panels.removeValue(forKey: configID)
+        if panels.isEmpty {
+            settingsCancellable?.cancel()
+            settingsCancellable = nil
+            quotaCancellable?.cancel()
+            quotaCancellable = nil
+        }
     }
 
     /// User-initiated close ("×" button). Same effect as ⌘W: hide and remember
     /// that the window is now closed.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if !isApplicationTerminating {
-            markWasOpen(false)
+        if !isApplicationTerminating,
+           let configID = panels.first(where: { $0.value.panel === sender })?.key {
+            markWasOpen(configID: configID, false)
         }
         return true
     }
 
-    private func makePanel(environment: AppEnvironment) -> NSPanel {
-        let contentSize = Self.stableContentSize(
-            for: environment.settingsStore.settings,
-            environment: environment
-        )
+    // MARK: - Panel construction
+
+    private func makePanel(configID: UUID, environment: AppEnvironment) -> PanelState {
+        let settings = environment.settingsStore.settings
+        let config = settings.miniWindow.config(id: configID)
+        let contentSize = config.map {
+            Self.stableContentSize(config: $0, environment: environment)
+        } ?? NSSize(width: 240, height: 181)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: contentSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.title = "Vibe Bar Mini"
+        panel.title = config.map { "Vibe Bar Mini — \($0.name)" } ?? "Vibe Bar Mini"
         panel.delegate = self
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -191,8 +259,9 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
 
         let host = NSHostingController(
             rootView: MiniQuotaWindowView(
-                onClose: { [weak self] in self?.close() },
-                onToggleDisplayMode: { [weak self] in self?.toggleDisplayMode() }
+                configID: configID,
+                onClose: { [weak self] in self?.close(configID: configID) },
+                onToggleDisplayMode: { [weak self] in self?.cycleDisplayMode(configID: configID) }
             )
                 .environmentObject(environment)
                 .environmentObject(environment.settingsStore)
@@ -204,23 +273,23 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         // NSWindowDidMoveNotification rather than NSWindowDelegate because
         // the latter only fires on willMove for some moves on macOS.
         // A 0.4s debounce keeps a long drag from hammering disk.
-        frameObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
             object: panel,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.scheduleOriginPersist() }
         }
-        return panel
+        return PanelState(panel: panel, frameObserver: observer, lastSizingFingerprint: nil)
     }
 
     private func applyStableContentSize(
         to panel: NSPanel,
-        settings: AppSettings,
+        config: MiniWindowConfig,
         environment: AppEnvironment,
         preserveTopRight: Bool
     ) {
-        let contentSize = Self.stableContentSize(for: settings, environment: environment)
+        let contentSize = Self.stableContentSize(config: config, environment: environment)
         let current = panel.contentView?.bounds.size ?? panel.frame.size
         guard abs(current.width - contentSize.width) > 0.5 || abs(current.height - contentSize.height) > 0.5 else {
             return
@@ -239,20 +308,23 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Count of primary + branch groups the mini window will render
-    /// for `tool` given the selected bucket ids. Mirrors
-    /// `MiniBranchCell.groupKey` so a sizing decision in the AppKit
-    /// controller stays in sync with the SwiftUI layout without having
-    /// to query the live quota. A primary bucket (anything that doesn't
-    /// match a known branch-group prefix) counts as one extra group.
-    /// `stableContentSize` calls it once per L2 SubProvider — the tier
-    /// that owns the groups — to reserve exactly the right number of
-    /// intra-SubProvider gaps.
-    static func miniGroupCount(tool: ToolType, selectedBucketIds: [String]) -> Int {
+    // MARK: - Sizing
+
+    /// Count of primary + branch groups the ring/bar layouts render for
+    /// `tool` given the selected bucket ids. Mirrors `MiniBranchCell.groupKey`
+    /// so a sizing decision in the AppKit controller stays in sync with the
+    /// SwiftUI layout without having to query the live quota. A primary
+    /// bucket (anything that doesn't match a known branch-group id) counts as
+    /// one extra group.
+    static func miniGroupCount(
+        tool: ToolType,
+        selectedBucketIds: [String],
+        registry: QuotaFieldRegistry
+    ) -> Int {
         var keys: Set<String> = []
         var hasPrimary = false
         for bucketId in selectedBucketIds {
-            if let key = miniBranchGroupKey(tool: tool, bucketId: bucketId) {
+            if let key = miniBranchGroupKey(tool: tool, bucketId: bucketId, registry: registry) {
                 keys.insert(key)
             } else {
                 hasPrimary = true
@@ -261,7 +333,11 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         return keys.count + (hasPrimary ? 1 : 0)
     }
 
-    private static func miniBranchGroupKey(tool: ToolType, bucketId: String) -> String? {
+    static func miniBranchGroupKey(
+        tool: ToolType,
+        bucketId: String,
+        registry: QuotaFieldRegistry
+    ) -> String? {
         switch bucketId {
         case "gpt_5_3_codex_spark_five_hour", "gpt_5_3_codex_spark_weekly":
             return "codex.spark"
@@ -286,28 +362,77 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         default:
             break
         }
-        guard tool == .antigravity else { return nil }
-        let lower = bucketId.lowercased()
-        if lower == "gemini_five_hour" || lower == "gemini_weekly" {
-            return "antigravity.gemini-models"
+        if tool == .antigravity {
+            let lower = bucketId.lowercased()
+            if lower == "gemini_five_hour" || lower == "gemini_weekly" {
+                return "antigravity.gemini-models"
+            }
+            if lower == "claude_gpt_five_hour" || lower == "claude_gpt_weekly" {
+                return "antigravity.claude-gpt-models"
+            }
+            if lower.contains("gpt-oss") { return "antigravity.gpt-oss" }
+            if lower.contains("claude")  { return "antigravity.claude" }
+            if lower.contains("flash-lite") { return "antigravity.gemini-flash-lite" }
+            if lower.contains("flash")   { return "antigravity.gemini-flash" }
+            if lower.contains("pro")     { return "antigravity.gemini-pro" }
+            return "antigravity.\(bucketId)"
         }
-        if lower == "claude_gpt_five_hour" || lower == "claude_gpt_weekly" {
-            return "antigravity.claude-gpt-models"
+        // A discovered field is a branch group exactly when its bucket
+        // carried a group title; both windows of one group share the id stem.
+        let fieldId = MenuBarFieldCatalog.fieldId(tool: tool, bucketId: bucketId)
+        if MenuBarFieldCatalog.field(id: fieldId) == nil,
+           let discovered = registry.field(id: fieldId),
+           discovered.groupTitle != nil {
+            return "\(tool.rawValue).\(MenuBarFieldCatalog.bucketGroupStem(bucketId))"
         }
-        if lower.contains("gpt-oss") { return "antigravity.gpt-oss" }
-        if lower.contains("claude")  { return "antigravity.claude" }
-        if lower.contains("flash-lite") { return "antigravity.gemini-flash-lite" }
-        if lower.contains("flash")   { return "antigravity.gemini-flash" }
-        if lower.contains("pro")     { return "antigravity.gemini-pro" }
-        return "antigravity.\(bucketId)"
+        return nil
     }
 
-    private static func stableContentSize(
-        for settings: AppSettings,
+    static func stableContentSize(
+        config: MiniWindowConfig,
         environment: AppEnvironment? = nil
     ) -> NSSize {
-        let mini = settings.miniWindow
-        let displayMode = mini.displayMode
+        let registry = environment?.quotaService.fieldRegistry ?? .empty
+        switch config.displayMode {
+        case .regular, .compact:
+            return ringOrBarContentSize(config: config, environment: environment, registry: registry)
+        case .ledger:
+            let size = MiniLedgerMetrics.size(entries: entries(config: config, environment: environment))
+            return NSSize(width: size.width, height: size.height)
+        case .strip:
+            let size = MiniStripMetrics.size(entries: entries(config: config, environment: environment))
+            return NSSize(width: size.width, height: size.height)
+        case .tile:
+            let size = MiniTileMetrics.size(entries: entries(config: config, environment: environment))
+            return NSSize(width: size.width, height: size.height)
+        case .focus:
+            return NSSize(width: MiniFocusMetrics.size.width, height: MiniFocusMetrics.size.height)
+        case .rail:
+            return NSSize(width: MiniRailMetrics.size.width, height: MiniRailMetrics.size.height)
+        }
+    }
+
+    /// The same flat entry list the alternative layouts render, so their
+    /// panel size follows from exactly what they will draw.
+    private static func entries(
+        config: MiniWindowConfig,
+        environment: AppEnvironment?
+    ) -> [MiniEntry] {
+        guard let environment else { return [] }
+        return MiniEntry.entries(
+            config: config,
+            settings: environment.settingsStore.settings.miniWindow,
+            registry: environment.quotaService.fieldRegistry,
+            quota: { environment.quota(for: $0) }
+        )
+    }
+
+    private static func ringOrBarContentSize(
+        config: MiniWindowConfig,
+        environment: AppEnvironment?,
+        registry: QuotaFieldRegistry
+    ) -> NSSize {
+        let displayMode = config.displayMode
         let cellWidth: CGFloat
         let cellSpacing: CGFloat
         /// Gap between quota groups inside one SubProvider — spacing only,
@@ -323,18 +448,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         let minWidth: CGFloat
         let height: CGFloat
         let dividerThickness: CGFloat = 0.75
-        switch displayMode {
-        case .regular:
-            cellWidth = 62
-            cellSpacing = 8
-            groupSpacing = 14
-            subProviderSpacing = 2 * 10 + dividerThickness
-            companySpacing = 2 * 14 + dividerThickness
-            horizontalPadding = 28
-            closeButtonReserve = 24
-            minWidth = 240
-            height = 181
-        case .compact:
+        if displayMode == .compact {
             cellWidth = 40
             cellSpacing = 4
             groupSpacing = 9
@@ -344,19 +458,28 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             closeButtonReserve = 20
             minWidth = 156
             height = 146
+        } else {
+            cellWidth = 62
+            cellSpacing = 8
+            groupSpacing = 14
+            subProviderSpacing = 2 * 10 + dividerThickness
+            companySpacing = 2 * 14 + dividerThickness
+            horizontalPadding = 28
+            closeButtonReserve = 24
+            minWidth = 240
+            height = 181
         }
 
         // Sizing mirrors the three-tier layout in
         // `MiniWindowProviderLayout` exactly, off the same Core grouping the
-        // SwiftUI side renders: one column per L1 company (Gemini Web +
-        // AntiGravity → "Google AI"; Grok + Cursor + Grok Bot → "SpaceXAI"),
-        // one labelled section per L2 SubProvider inside it, and the L3 quota
-        // groups side by side within a section. Cells only take the cell
-        // spacing *inside* their own group, which is why the group count is
-        // subtracted rather than one.
-        let companies = MenuBarFieldCatalog.subProviderGroups(
-            for: ToolType.dedicatedCardProviders,
-            selectedFieldIds: visibleSelectedFieldIDs(settings: settings, environment: environment)
+        // SwiftUI side renders: one column per L1 company, one labelled
+        // section per L2 SubProvider inside it, and the L3 quota groups side
+        // by side within a section. Cells only take the cell spacing *inside*
+        // their own group, which is why the group count is subtracted rather
+        // than one.
+        let companies = MenuBarFieldCatalog.orderedSubProviderGroups(
+            fieldIds: visibleOrderedFieldIDs(config: config, environment: environment),
+            registry: registry
         )
         var width: CGFloat = 0
         for company in companies {
@@ -366,7 +489,8 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
                     1,
                     Self.miniGroupCount(
                         tool: subProvider.tool,
-                        selectedBucketIds: subProvider.bucketIds
+                        selectedBucketIds: subProvider.bucketIds,
+                        registry: registry
                     )
                 )
                 width += CGFloat(cellCount) * cellWidth
@@ -385,17 +509,19 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         )
     }
 
-    private static func visibleSelectedFieldIDs(
-        settings: AppSettings,
+    /// The config's field order restricted to fields that resolve against the
+    /// merged catalog and have a live bucket. Order preserved — it drives the
+    /// company folding.
+    private static func visibleOrderedFieldIDs(
+        config: MiniWindowConfig,
         environment: AppEnvironment?
-    ) -> Set<String> {
-        let mini = settings.miniWindow
-        let selected = mini.fieldIds(for: mini.displayMode)
-        guard let environment else { return Set(selected) }
-        return Set(selected.filter { fieldID in
-            guard let field = MenuBarFieldCatalog.field(id: fieldID) else { return false }
+    ) -> [String] {
+        guard let environment else { return config.fieldIds }
+        let registry = environment.quotaService.fieldRegistry
+        return config.fieldIds.filter { fieldID in
+            guard let field = MenuBarFieldCatalog.field(id: fieldID, registry: registry) else { return false }
             return environment.quota(for: field.tool)?.bucket(id: field.bucketId) != nil
-        })
+        }
     }
 
     private static func clampedFrame(_ frame: NSRect, preferredScreen: NSScreen?) -> NSRect {
@@ -411,25 +537,26 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         return NSRect(origin: origin, size: frame.size)
     }
 
+    // MARK: - Geometry persistence
+
     private func scheduleOriginPersist() {
         originPersistWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
-            Task { @MainActor in self?.persistOrigin() }
+            Task { @MainActor in self?.persistOrigins() }
         }
         originPersistWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: item)
     }
 
-    private func applySavedPositionOrDefault(to panel: NSPanel, settings: AppSettings) {
+    private func applySavedPositionOrDefault(to panel: NSPanel, configID: UUID, settings: AppSettings) {
         let size = panel.frame.size
-        // Prefer the standalone geometry file; fall back to the legacy
-        // settings copy for users upgrading from <= 0.1 builds.
-        let savedX: Double?
-        let savedY: Double?
-        if let geometry = Self.loadGeometry() {
-            savedX = geometry.originX
-            savedY = geometry.originY
-        } else {
+        let firstID = settings.miniWindow.windows.first?.id
+        let file = MiniWindowGeometryFile.load(firstConfigID: firstID)
+        // Prefer the geometry file; fall back to the legacy settings copy
+        // (users upgrading from <= 0.1 builds) for the first window only.
+        var savedX = file.windows[configID.uuidString]?.originX
+        var savedY = file.windows[configID.uuidString]?.originY
+        if savedX == nil, configID == firstID {
             savedX = settings.miniWindow.savedOriginX
             savedY = settings.miniWindow.savedOriginY
         }
@@ -439,16 +566,16 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             return
         }
         guard let visibleFrame = NSScreen.vibeBarPresentationScreen?.visibleFrame else { return }
+        // Stagger windows without a saved position so opening three at once
+        // doesn't stack them into one pile.
+        let index = settings.miniWindow.windows.firstIndex { $0.id == configID } ?? 0
+        let offset = CGFloat(index) * 28
         panel.setFrameOrigin(
             NSPoint(
-                x: visibleFrame.maxX - size.width - 24,
-                y: visibleFrame.maxY - size.height - 48
+                x: visibleFrame.maxX - size.width - 24 - offset,
+                y: visibleFrame.maxY - size.height - 48 - offset
             )
         )
-    }
-
-    private static func loadGeometry() -> MiniWindowGeometry? {
-        try? VibeBarLocalStore.readJSON(MiniWindowGeometry.self, from: VibeBarLocalStore.miniWindowGeometryURL)
     }
 
     private static func isOriginVisible(_ origin: NSPoint, size: NSSize) -> Bool {
@@ -462,45 +589,56 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         return false
     }
 
-    private func persistOrigin() {
-        guard let panel else { return }
-        let origin = panel.frame.origin
-        let scale = panel.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1
-        let pixelOrigin = NSPoint(x: origin.x * scale, y: origin.y * scale)
-        let geometry = MiniWindowGeometry(
-            originX: Double(origin.x),
-            originY: Double(origin.y),
-            pixelOriginX: Double(pixelOrigin.x),
-            pixelOriginY: Double(pixelOrigin.y),
-            screenScale: Double(scale)
-        )
+    private func persistOrigins() {
+        guard !panels.isEmpty else { return }
+        let firstID = environment?.settingsStore.settings.miniWindow.windows.first?.id
+        var file = MiniWindowGeometryFile.load(firstConfigID: firstID)
+        for (configID, state) in panels {
+            let origin = state.panel.frame.origin
+            let scale = state.panel.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1
+            file.windows[configID.uuidString] = MiniWindowGeometry(
+                originX: Double(origin.x),
+                originY: Double(origin.y),
+                pixelOriginX: Double(origin.x * scale),
+                pixelOriginY: Double(origin.y * scale),
+                screenScale: Double(scale)
+            )
+        }
         // Standalone file: avoids rewriting the AppSettings JSON (and
         // fanning out to every $settings subscriber + status-item rerender)
         // on every drag-tick. See VibeBarLocalStore.miniWindowGeometryURL.
-        try? VibeBarLocalStore.writeJSON(geometry, to: VibeBarLocalStore.miniWindowGeometryURL)
+        try? VibeBarLocalStore.writeJSON(file, to: VibeBarLocalStore.miniWindowGeometryURL)
     }
 
-    private func toggleDisplayMode() {
+    // MARK: - Per-window state
+
+    private func cycleDisplayMode(configID: UUID) {
         guard let environment else { return }
         var settings = environment.settingsStore.settings
-        settings.miniWindow.toggleDisplayMode()
+        guard let index = settings.miniWindow.windows.firstIndex(where: { $0.id == configID }) else { return }
+        settings.miniWindow.windows[index].displayMode = settings.miniWindow.windows[index].displayMode.next
         environment.settingsStore.settings = settings
-        if let panel {
+        if let state = panels[configID] {
             applyStableContentSize(
-                to: panel,
-                settings: settings,
+                to: state.panel,
+                config: settings.miniWindow.windows[index],
                 environment: environment,
                 preserveTopRight: true
             )
-            persistOrigin()
+            panels[configID]?.lastSizingFingerprint = Self.sizingFingerprint(
+                config: settings.miniWindow.windows[index],
+                environment: environment
+            )
+            persistOrigins()
         }
     }
 
-    private func markWasOpen(_ open: Bool) {
+    private func markWasOpen(configID: UUID, _ open: Bool) {
         guard let environment else { return }
         var settings = environment.settingsStore.settings
-        if settings.miniWindow.wasOpen != open {
-            settings.miniWindow.wasOpen = open
+        guard let index = settings.miniWindow.windows.firstIndex(where: { $0.id == configID }) else { return }
+        if settings.miniWindow.windows[index].wasOpen != open {
+            settings.miniWindow.windows[index].wasOpen = open
             environment.settingsStore.settings = settings
         }
     }
