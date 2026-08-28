@@ -180,16 +180,29 @@ struct YearlyContributionHeatmapView: View {
         )
     }
 
-    private func tooltip(for entry: DailyCostPoint?) -> String {
-        guard let entry else { return "" }
-        let date = entry.date
+    // Static on purpose: `tooltip(for:)` runs once per cell — ~365 times per
+    // body pass — and a fresh `DateFormatter` per call is milliseconds of
+    // pure allocation on every redraw of the card.
+    private static let tooltipFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy"
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
+    private static let monthLabelFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM"
+        return formatter
+    }()
+
+    private func tooltip(for entry: DailyCostPoint?) -> String {
+        guard let entry else { return "" }
         let cost: String = entry.costUSD < 0.01 ? "$0.00"
             : entry.costUSD < 100 ? String(format: "$%.2f", entry.costUSD)
             : String(format: "$%.0f", entry.costUSD)
-        return "\(formatter.string(from: date)) · \(cost)"
+        return "\(Self.tooltipFormatter.string(from: entry.date)) · \(cost)"
     }
 
     /// Build week columns for the past 365 days, anchored to the most recent
@@ -244,13 +257,13 @@ struct YearlyContributionHeatmapView: View {
         let calendar = Calendar.current
         var markers: [MonthMarker] = []
         var lastMonth: Int = -1
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM"
         for (idx, column) in columns.enumerated() {
             let month = calendar.component(.month, from: column.weekStart)
             if month != lastMonth {
-                markers.append(MonthMarker(column: idx, label: formatter.string(from: column.weekStart)))
+                markers.append(MonthMarker(
+                    column: idx,
+                    label: Self.monthLabelFormatter.string(from: column.weekStart)
+                ))
                 lastMonth = month
             }
         }

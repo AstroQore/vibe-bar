@@ -75,6 +75,114 @@ struct UsageTrendChartView: View {
         let providers: [ToolType]
     }
 
+    /// Everything the panes derive from the series at the current window,
+    /// built once per (data, window, legend, metric) change.
+    ///
+    /// These used to be computed properties, which meant every body pass —
+    /// including the one per pointer move that a hover update triggers —
+    /// re-filtered and re-downsampled the whole series and resolved hover
+    /// readings by linear scan. At 30 d × hourly that is ~720 aggregate
+    /// buckets plus one series per provider, per frame. The plan is memoized
+    /// on the exact inputs (array equality hits the COW identity fast path),
+    /// so a hover or tooltip pass costs dictionary lookups and one binary
+    /// search instead.
+    private struct RenderPlan {
+        var aggregateRendered: [UsageTrendPoint] = []
+        var visibleAggregateCount: Int = 0
+        var aggregateByStart: [Date: UsageTrendPoint] = [:]
+        /// Visible bucket starts, ascending — the hover snap works on these.
+        var visibleStarts: [Date] = []
+        var providerRenderedByTool: [ToolType: [UsageTrendPoint]] = [:]
+        var providerByStart: [ToolType: [Date: UsageTrendPoint]] = [:]
+        var navigatorByTool: [ToolType: [UsageTrendPoint]] = [:]
+        var navigationMaximum: Double = 0
+        var visibleTokensTotal: Int64 = 0
+        var visibleCostTotal: Int64 = 0
+    }
+
+    private struct PlanKey: Equatable {
+        let series: UsageTrendSeries
+        let visibleDomain: ClosedRange<Date>
+        let hiddenTools: Set<ToolType>
+        let metric: UsageChartMetric
+    }
+
+    /// Reference box so a memo hit/update during `body` never dirties view
+    /// state; correctness comes from the key, not from invalidation timing.
+    private final class PlanCache {
+        var key: PlanKey?
+        var plan: RenderPlan?
+    }
+
+    @State private var planCache = PlanCache()
+
+    private var plan: RenderPlan {
+        let key = PlanKey(
+            series: series,
+            visibleDomain: visibleDomain,
+            hiddenTools: hiddenTools,
+            metric: metric
+        )
+        if let cached = planCache.plan, planCache.key == key {
+            // Adopt the newest key: a reload can return identical points in
+            // fresh storage, and re-keying keeps later compares on the O(1)
+            // identity fast path instead of walking every element per pass.
+            planCache.key = key
+            return cached
+        }
+        let built = Self.buildPlan(key: key)
+        planCache.key = key
+        planCache.plan = built
+        return built
+    }
+
+    private static func buildPlan(key: PlanKey) -> RenderPlan {
+        let series = key.series
+        let visibleDomain = key.visibleDomain
+        var plan = RenderPlan()
+
+        let visiblePoints = series.points.filter { visibleDomain.contains($0.bucketStart) }
+        plan.visibleAggregateCount = visiblePoints.count
+        plan.visibleStarts = visiblePoints.map(\.bucketStart)
+        plan.aggregateRendered = UsageTrendSeriesDownsampling.points(
+            visiblePoints,
+            limit: max(2, mainMarkBudget / UsageTokenComponent.allCases.count)
+        )
+        plan.aggregateByStart = Dictionary(
+            series.points.map { ($0.bucketStart, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        let visibleProviders = series.providerSeries.filter { !key.hiddenTools.contains($0.tool) }
+        let perProvider = max(2, mainMarkBudget / max(1, visibleProviders.count))
+        for provider in visibleProviders {
+            let points = provider.points.filter { visibleDomain.contains($0.bucketStart) }
+            plan.providerRenderedByTool[provider.tool] =
+                UsageTrendSeriesDownsampling.points(points, limit: perProvider)
+            plan.providerByStart[provider.tool] = Dictionary(
+                provider.points.map { ($0.bucketStart, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
+        let navigatorProviders = key.metric == .tokens ? series.providerSeries : visibleProviders
+        let perNavigator = max(2, navigatorMarkBudget / max(1, visibleProviders.count))
+        for provider in navigatorProviders {
+            plan.navigatorByTool[provider.tool] =
+                UsageTrendSeriesDownsampling.points(provider.points, limit: perNavigator)
+        }
+        plan.navigationMaximum = key.metric == .tokens
+            ? series.points.map { Double($0.totalTokens) }.max() ?? 0
+            : visibleProviders.flatMap(\.points).map { Double($0.costMicros) }.max() ?? 0
+
+        let accessibilityPoints = key.metric == .tokens
+            ? visiblePoints
+            : visibleProviders.flatMap(\.points).filter { visibleDomain.contains($0.bucketStart) }
+        plan.visibleTokensTotal = accessibilityPoints.reduce(Int64(0)) { $0 + $1.totalTokens }
+        plan.visibleCostTotal = accessibilityPoints.reduce(Int64(0)) { $0 + $1.costMicros }
+        return plan
+    }
+
     private var series: UsageTrendSeries { model.trend }
 
     private var visibleProviders: [UsageProviderTrendSeries] {
@@ -127,7 +235,7 @@ struct UsageTrendChartView: View {
 
     private var hoveredPoint: UsageTrendPoint? {
         guard let hoveredDate else { return nil }
-        return series.points.first { $0.bucketStart == hoveredDate }
+        return plan.aggregateByStart[hoveredDate]
     }
 
     var body: some View {
@@ -396,18 +504,11 @@ struct UsageTrendChartView: View {
     /// Keep sparse daily/weekly bars substantial without turning a dense
     /// hourly view into a picket fence of overlapping columns.
     private var tokenBarWidth: CGFloat {
-        let visibleCount = series.points.reduce(into: 0) { count, point in
-            if visibleDomain.contains(point.bucketStart) { count += 1 }
-        }
-        return max(2, min(22, 360 / CGFloat(max(visibleCount, 1))))
+        max(2, min(22, 360 / CGFloat(max(plan.visibleAggregateCount, 1))))
     }
 
     private var renderedAggregatePoints: [UsageTrendPoint] {
-        let points = series.points.filter { visibleDomain.contains($0.bucketStart) }
-        return UsageTrendSeriesDownsampling.points(
-            points,
-            limit: max(2, Self.mainMarkBudget / UsageTokenComponent.allCases.count)
-        )
+        plan.aggregateRendered
     }
 
     private var costPane: some View {
@@ -528,13 +629,14 @@ struct UsageTrendChartView: View {
     }
 
     private func nearestBucket(to date: Date) -> Date? {
-        series.points
-            .filter { visibleDomain.contains($0.bucketStart) }
-            .min { lhs, rhs in
-                abs(lhs.bucketStart.timeIntervalSince(date))
-                    < abs(rhs.bucketStart.timeIntervalSince(date))
-            }?
-            .bucketStart
+        // Runs once per pointer move; the starts are ascending, so binary
+        // search instead of a scan over every visible bucket.
+        ChartSampleSearch.nearest(
+            in: plan.visibleStarts,
+            to: date,
+            tolerance: .greatestFiniteMagnitude,
+            time: { $0 }
+        )
     }
 
     private func tooltip(_ point: UsageTrendPoint) -> some View {
@@ -633,7 +735,7 @@ struct UsageTrendChartView: View {
         for provider: UsageProviderTrendSeries,
         at date: Date
     ) -> UsageTrendPoint? {
-        provider.points.first { $0.bucketStart == date }
+        plan.providerByStart[provider.tool]?[date]
     }
 
     private func visibleCostMicros(at date: Date) -> Int64 {
@@ -643,14 +745,11 @@ struct UsageTrendChartView: View {
     }
 
     private func renderedPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
-        let points = provider.points.filter { visibleDomain.contains($0.bucketStart) }
-        let perProvider = max(2, Self.mainMarkBudget / max(1, visibleProviders.count))
-        return UsageTrendSeriesDownsampling.points(points, limit: perProvider)
+        plan.providerRenderedByTool[provider.tool] ?? []
     }
 
     private func navigatorPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
-        let perProvider = max(2, Self.navigatorMarkBudget / max(1, visibleProviders.count))
-        return UsageTrendSeriesDownsampling.points(provider.points, limit: perProvider)
+        plan.navigatorByTool[provider.tool] ?? []
     }
 
     private func areaGradient(_ color: Color) -> LinearGradient {
@@ -711,10 +810,7 @@ struct UsageTrendChartView: View {
     }
 
     private var navigationMaximum: Double {
-        if metric == .tokens {
-            return series.points.map { Double($0.totalTokens) }.max() ?? 0
-        }
-        return visibleProviders.flatMap(\.points).map { Double($0.costMicros) }.max() ?? 0
+        plan.navigationMaximum
     }
 
     private var navigatorProviders: [UsageProviderTrendSeries] {
@@ -740,13 +836,9 @@ struct UsageTrendChartView: View {
     }
 
     private var chartAccessibilityValue: String {
-        let visiblePoints = metric == .tokens
-            ? series.points.filter { visibleDomain.contains($0.bucketStart) }
-            : visibleProviders.flatMap(\.points).filter { visibleDomain.contains($0.bucketStart) }
-        let totalTokens = visiblePoints.reduce(Int64(0)) { $0 + $1.totalTokens }
-        let totalCost = visiblePoints.reduce(Int64(0)) { $0 + $1.costMicros }
-        return "\(visibleProviders.count) providers, \(UsageFormatting.compactTokens(totalTokens)) tokens, "
-            + "\(UsageFormatting.formatMicroUSD(totalCost))"
+        "\(visibleProviders.count) providers, "
+            + "\(UsageFormatting.compactTokens(plan.visibleTokensTotal)) tokens, "
+            + "\(UsageFormatting.formatMicroUSD(plan.visibleCostTotal))"
     }
 
     /// Automatic first, then every explicit bucket.

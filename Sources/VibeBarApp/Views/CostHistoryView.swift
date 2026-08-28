@@ -1214,17 +1214,58 @@ struct CostHistoryView: View {
 
     // MARK: - Data shaping
 
+    /// Memo for `visiblePoints`. Hover moves `hoveredDate`, which re-runs
+    /// `body`, which used to rebuild every `CostChartPoint` — including the
+    /// week/month paths that re-aggregate the whole daily history and re-fold
+    /// per-day model breakdowns — once per pointer move. The key holds the
+    /// exact inputs (snapshot equality is an O(1) storage-identity check when
+    /// unchanged), so only a data change, pan, or granularity switch pays for
+    /// a rebuild. A reference box on purpose: filling it during `body` must
+    /// not dirty view state.
+    private struct VisiblePointsKey: Equatable {
+        let snapshot: CostSnapshot?
+        let range: ClosedRange<Date>
+        let granularity: CostChartGranularity
+    }
+
+    private final class VisiblePointsCache {
+        var key: VisiblePointsKey?
+        var points: [CostChartPoint]?
+    }
+
+    @State private var visiblePointsCache = VisiblePointsCache()
+
+    private func visiblePoints(
+        window: ChartTimeWindow,
+        granularity: CostChartGranularity
+    ) -> [CostChartPoint] {
+        let key = VisiblePointsKey(
+            snapshot: snapshot,
+            range: window.visibleRange,
+            granularity: granularity
+        )
+        if let cached = visiblePointsCache.points, visiblePointsCache.key == key {
+            // Adopt the newest key: an equal-but-reallocated snapshot should
+            // keep later compares on the O(1) storage-identity fast path.
+            visiblePointsCache.key = key
+            return cached
+        }
+        let points = computeVisiblePoints(range: key.range, granularity: granularity)
+        visiblePointsCache.key = key
+        visiblePointsCache.points = points
+        return points
+    }
+
     /// Buckets that occupy visible time, oldest first. A bucket straddling an
     /// edge is kept whole: it is a real bar the user can see, and cutting its
     /// total to the visible slice would make the footer disagree with the
     /// chart. A bucket merely *touching* an edge is not visible at all and is
     /// left out — see `CostChartWindowPolicy.bucketOverlaps`.
-    private func visiblePoints(
-        window: ChartTimeWindow,
+    private func computeVisiblePoints(
+        range: ClosedRange<Date>,
         granularity: CostChartGranularity
     ) -> [CostChartPoint] {
         guard let snapshot else { return [] }
-        let range = window.visibleRange
         switch granularity {
         case .hour:
             return clip(hourlyPoints, date: \.date, bucket: clipBucket(.hour), to: range).map { point in
