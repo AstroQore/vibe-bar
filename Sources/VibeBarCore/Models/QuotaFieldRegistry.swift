@@ -117,6 +117,53 @@ public struct QuotaFieldRegistry: Codable, Equatable, Sendable {
     public func isLive(_ field: DiscoveredQuotaField, in quotas: [ToolType: AccountQuota]) -> Bool {
         quotas[field.tool]?.bucket(id: field.bucketId) != nil
     }
+
+    /// Forget `tool`'s entries the provider stopped returning that nothing
+    /// references — not selected in any mini window and never given a name,
+    /// where "a name" includes a custom label on the field itself *or* on
+    /// its quota group (a discovered group's label key is
+    /// `<tool>.<bucket-id stem>`). A referenced entry stays (dimmed in the
+    /// picker) so a selection survives a provider hiccup; an unreferenced
+    /// one was never the user's and does not need remembering. Returns true
+    /// when anything dropped.
+    @discardableResult
+    public mutating func prune(
+        tool: ToolType,
+        liveBucketIds: Set<String>,
+        keeping keep: QuotaFieldKeepSet
+    ) -> Bool {
+        let before = fields.count
+        fields.removeAll { field in
+            guard field.tool == tool,
+                  !liveBucketIds.contains(field.bucketId),
+                  !keep.fieldIds.contains(field.id)
+            else { return false }
+            let groupKey = "\(field.tool.rawValue).\(MenuBarFieldCatalog.bucketGroupStem(field.bucketId))"
+            return !keep.groupKeys.contains(groupKey)
+        }
+        return fields.count != before
+    }
+
+    /// Drop one entry outright — the picker's explicit "forget" control.
+    @discardableResult
+    public mutating func forget(id: String) -> Bool {
+        let before = fields.count
+        fields.removeAll { $0.id == id }
+        return fields.count != before
+    }
+}
+
+/// What the registry must not forget: field ids a mini window selects or the
+/// user labelled, plus group-label keys — naming a discovered bucket's group
+/// is as much a claim on it as naming the bucket itself.
+public struct QuotaFieldKeepSet: Sendable {
+    public var fieldIds: Set<String>
+    public var groupKeys: Set<String>
+
+    public init(fieldIds: Set<String> = [], groupKeys: Set<String> = []) {
+        self.fieldIds = fieldIds
+        self.groupKeys = groupKeys
+    }
 }
 
 public extension MenuBarFieldCatalog {

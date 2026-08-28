@@ -41,6 +41,14 @@ default to.
 These rules cause silent failures or public-repo accidents if
 ignored. The full reasoning and grep recipes live in `AGENTS.md`.
 
+0. **UI fluency is a requirement.** Any change to an interactive
+   surface (popover, Workbench, Settings, mini windows) must keep it
+   smooth: no heavy work in SwiftUI `body` or binding getters, cache
+   per-data-change derivations, downsample charts, scope `TimelineView`
+   timers, and never let hot paths write `AppSettings` per tick. A
+   visible hitch is a blocker, not a follow-up. See `AGENTS.md` § 7,
+   first bullet.
+
 1. **Real-home routing.** Any path under the user's real home
    (`~/.codex/`, `~/.claude/`, `~/.config/claude/`, `~/.vibebar/`,
    `~/.gemini/`) must resolve through `RealHomeDirectory`
