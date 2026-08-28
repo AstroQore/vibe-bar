@@ -23,14 +23,49 @@ struct YearlyContributionHeatmapView: View {
     @State private var measuredGridWidth: CGFloat = 0
     @EnvironmentObject var environment: AppEnvironment
 
-    var body: some View {
-        // Compute these ONCE per body. `thresholds` does a sort on the year's
-        // non-zero days, and `cell(...)` is invoked ~365 times — without
-        // hoisting, we'd re-sort the entire history per cell on every redraw.
+    /// The 365-day walk and the month markers rebuilt only when the history
+    /// (or the day) changes — not on every redraw of the card. A reference
+    /// box on purpose: filling it during `body` must not dirty view state.
+    private final class GridCache {
+        var historyStamp: GridStamp?
+        var columns: [WeekColumn] = []
+        var markers: [MonthMarker] = []
+    }
+
+    private struct GridStamp: Equatable {
+        let history: [DailyCostPoint]
+        let today: Date
+        /// The walk groups by `Calendar.current`; a calendar or zone change
+        /// mid-flight must invalidate even when today's start looks equal.
+        let calendarIdentity: String
+    }
+
+    @State private var gridCache = GridCache()
+
+    private func cachedGrid() -> (columns: [WeekColumn], markers: [MonthMarker]) {
+        let stamp = GridStamp(
+            history: history,
+            today: Calendar.current.startOfDay(for: Date()),
+            calendarIdentity: "\(Calendar.current.identifier)|\(TimeZone.current.identifier)"
+        )
+        if gridCache.historyStamp == stamp {
+            return (gridCache.columns, gridCache.markers)
+        }
         let columns = makeColumns()
+        let markers = monthLabelPositions(columns: columns)
+        gridCache.historyStamp = stamp
+        gridCache.columns = columns
+        gridCache.markers = markers
+        return (columns, markers)
+    }
+
+    var body: some View {
+        // `thresholds` does a sort on the year's non-zero days, and
+        // `cell(...)` is invoked ~365 times — hoisted once per body; the
+        // grid itself is memoized across bodies on the history generation.
+        let (columns, cachedMonthMarkers) = cachedGrid()
         let metrics = gridMetrics(columnCount: columns.count, measuredWidth: measuredGridWidth)
         let cachedThresholds = thresholds
-        let cachedMonthMarkers = monthLabelPositions(columns: columns)
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {

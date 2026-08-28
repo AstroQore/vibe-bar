@@ -29,6 +29,12 @@ struct UsageBreakdownTables: View {
         Array(model.trend.points.filter { $0.totalTokens > 0 || $0.costMicros != 0 }.reversed())
     }
 
+    /// Hourly over a month is ~720 rows; realizing them all makes the page
+    /// scroller diff every one on each pass. The table shows a viewport and
+    /// grows on request. Reset when the underlying series identity changes.
+    private static let periodPageSize = 120
+    @State private var visiblePeriodLimit = UsageBreakdownTables.periodPageSize
+
     var body: some View {
         CardShell(density: density, spacing: 12) {
             header
@@ -170,7 +176,7 @@ struct UsageBreakdownTables: View {
             VStack(spacing: 0) {
                 tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
-                    ForEach(populatedPeriods, id: \.bucketStart) { point in
+                    ForEach(populatedPeriods.prefix(visiblePeriodLimit), id: \.bucketStart) { point in
                         let label = period(point.bucketStart)
                         PorcelainUsageRow(
                             accessibilityLabel: periodAccessibilityLabel(point, label: label)
@@ -183,10 +189,43 @@ struct UsageBreakdownTables: View {
                             moneyCell(point.costMicros, columns.cost, emphasis: true)
                         }
                     }
+                    if populatedPeriods.count > visiblePeriodLimit {
+                        Button {
+                            visiblePeriodLimit += Self.periodPageSize
+                        } label: {
+                            Text("Show \(min(Self.periodPageSize, populatedPeriods.count - visiblePeriodLimit)) more of \(populatedPeriods.count) periods")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 34)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.vibeBar)
+                    }
                 }
             }
         }
-        .frame(height: tableHeight(for: populatedPeriods.count))
+        .frame(height: tableHeight(for: visiblePeriodRowCount))
+        // Any new result series — bucket size, range, window, or filter
+        // change — starts the viewport over; an expanded limit must not
+        // carry into a different series.
+        .onChange(of: periodSeriesIdentity) { _, _ in
+            visiblePeriodLimit = Self.periodPageSize
+        }
+    }
+
+    /// Cheap identity for the trend series: the controls that replace it
+    /// change at least one of these.
+    private var periodSeriesIdentity: String {
+        let first = model.trend.points.first?.bucketStart.timeIntervalSince1970 ?? 0
+        let last = model.trend.points.last?.bucketStart.timeIntervalSince1970 ?? 0
+        return "\(model.trend.bucket)|\(model.trend.points.count)|\(first)|\(last)"
+    }
+
+    /// Rows the clamped table actually shows, load-more row included.
+    private var visiblePeriodRowCount: Int {
+        let shown = min(populatedPeriods.count, visiblePeriodLimit)
+        return shown + (populatedPeriods.count > visiblePeriodLimit ? 1 : 0)
     }
 
     /// Requests intentionally retain a horizontal scroll surface: a request
