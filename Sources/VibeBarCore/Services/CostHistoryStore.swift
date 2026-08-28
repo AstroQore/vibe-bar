@@ -389,9 +389,19 @@ public actor CostHistoryStore {
             .map(\.date)
     }
 
+    /// A backfill candidate must account for at least this share of the
+    /// day's persisted tokens (or cost, for token-less days). The ledger can
+    /// hold only part of a day — rows ingested before the source rotated, or
+    /// dropped by a since-fixed bug — and presenting a partial mix as the
+    /// whole day's breakdown would misstate it. An under-covered day stays
+    /// unfilled, so it remains repairable by a later re-ingest.
+    private static let backfillCoverageFraction = 0.9
+
     /// One-way backfill from request-level evidence (the usage ledger):
     /// fills only entries that have no model mix yet, never overwriting one
-    /// a scan persisted. Day keys use this store's `yyyy-MM-dd` format.
+    /// a scan persisted, and only when the evidence covers the day — see
+    /// `backfillCoverageFraction`. Day keys use this store's `yyyy-MM-dd`
+    /// format.
     public func backfillDayModels(
         tool: ToolType,
         modelsByDay: [String: [CostSnapshot.ModelBreakdown]]
@@ -404,8 +414,20 @@ public actor CostHistoryStore {
             let entry = storage.entries[idx]
             guard entry.tool == toolKey,
                   entry.models?.isEmpty ?? true,
-                  let fill = Self.persistedModels(from: modelsByDay[entry.date])
+                  let candidate = modelsByDay[entry.date]
             else { continue }
+            let coveredTokens = candidate.reduce(0) { $0 + $1.totalTokens }
+            let coveredCost = candidate.reduce(0.0) { $0 + $1.costUSD }
+            let covered: Bool
+            if entry.totalTokens > 0 {
+                covered = Double(coveredTokens)
+                    >= Double(entry.totalTokens) * Self.backfillCoverageFraction
+            } else if entry.costUSD > 0 {
+                covered = coveredCost >= entry.costUSD * Self.backfillCoverageFraction
+            } else {
+                covered = true
+            }
+            guard covered, let fill = Self.persistedModels(from: candidate) else { continue }
             storage.entries[idx].models = fill
             changed = true
         }

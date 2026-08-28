@@ -640,6 +640,58 @@ final class CostHistoryStoreTests: XCTestCase {
         XCTAssertTrue(stillMissing.isEmpty)
     }
 
+    func testBackfillRejectsPartialLedgerCoverageAndLeavesTheDayRepairable() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryDayModelsCoverage-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -10, to: today))
+        let store = CostHistoryStore(fileURL: directory.appendingPathComponent("cost_history.json"))
+
+        _ = await store.mergeAndAugment(
+            snapshot(
+                tool: .antigravity,
+                dailyHistory: [DailyCostPoint(date: day, costUSD: 10, totalTokens: 10_000)],
+                dailyModels: [:],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let key = formatter.string(from: day)
+
+        // The ledger only saw 40% of the day (rows dropped before ingest, or
+        // rotated away first) — presenting that as the day's mix would
+        // misstate it, so the day must stay unfilled and repairable.
+        await store.backfillDayModels(tool: .antigravity, modelsByDay: [
+            key: [CostSnapshot.ModelBreakdown(modelName: "model-partial", costUSD: 4, totalTokens: 4_000)]
+        ])
+        var missing = await store.daysMissingModels(tool: .antigravity)
+        XCTAssertEqual(missing, [key], "an under-covered day must not be marked as filled")
+
+        // A later re-ingest recovers the rest: now the evidence covers the
+        // day and the same entry accepts the fill.
+        await store.backfillDayModels(tool: .antigravity, modelsByDay: [
+            key: [CostSnapshot.ModelBreakdown(modelName: "model-full", costUSD: 10, totalTokens: 9_500)]
+        ])
+        missing = await store.daysMissingModels(tool: .antigravity)
+        XCTAssertTrue(missing.isEmpty)
+        let augmented = await store.mergeAndAugment(
+            snapshot(tool: .antigravity, dailyHistory: [], dailyModels: [:], now: now),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        XCTAssertEqual(augmented.topModels(for: day, limit: .max).map(\.modelName), ["model-full"])
+    }
+
     func testEntriesWithoutModelsStillDecode() async throws {
         let fileManager = FileManager.default
         let directory = fileManager.temporaryDirectory
