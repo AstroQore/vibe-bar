@@ -139,17 +139,20 @@ final class AppEnvironment: ObservableObject {
             )
         }
         // What the discovered-field registry must not forget: every field a
-        // mini window selects, and every field the user has named — shared
-        // or per-window. Anything else that vanishes from a provider's
-        // response was never the user's and drops on the next refresh.
-        service.registryKeepFieldIdsProvider = { [weak settingsStore] in
-            guard let mini = settingsStore?.settings.miniWindow else { return [] }
-            var keep = Set(mini.customLabels.keys)
+        // mini window selects, every field the user has named, and every
+        // *group* the user has named — shared or per-window. Anything else
+        // that vanishes from a provider's response was never the user's and
+        // drops on the next refresh.
+        service.registryKeepProvider = { [weak settingsStore] in
+            guard let mini = settingsStore?.settings.miniWindow else { return QuotaFieldKeepSet() }
+            var fieldIds = Set(mini.customLabels.keys)
+            var groupKeys = Set(mini.groupLabels.keys)
             for window in mini.windows {
-                keep.formUnion(window.fieldIds)
-                keep.formUnion(window.customLabels.keys)
+                fieldIds.formUnion(window.fieldIds)
+                fieldIds.formUnion(window.customLabels.keys)
+                groupKeys.formUnion(window.groupLabels.keys)
             }
-            return keep
+            return QuotaFieldKeepSet(fieldIds: fieldIds, groupKeys: groupKeys)
         }
 
         if isDemo {

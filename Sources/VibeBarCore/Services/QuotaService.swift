@@ -58,10 +58,10 @@ public final class QuotaService: ObservableObject {
     /// each refresh. Optional: Core works without it, the App sets it once at
     /// wiring time.
     public var activityContextProvider: ((ToolType) -> QuotaActivityContext)?
-    /// Field ids the registry must keep even when the provider stops
-    /// returning their buckets — selections and named fields. Wired by the
-    /// App from settings; nil keeps everything (prune disabled).
-    public var registryKeepFieldIdsProvider: (() -> Set<String>)?
+    /// What the registry must keep even when the provider stops returning
+    /// the buckets — selections, named fields, and named groups. Wired by
+    /// the App from settings; nil keeps everything (prune disabled).
+    public var registryKeepProvider: (() -> QuotaFieldKeepSet)?
 
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
@@ -316,7 +316,7 @@ public final class QuotaService: ObservableObject {
         if !mockProvider(), ToolType.dedicatedCardProviders.contains(success.tool) {
             var registry = fieldRegistry
             var changed = registry.record(tool: success.tool, buckets: success.buckets, now: now)
-            if let keep = registryKeepFieldIdsProvider?() {
+            if let keep = registryKeepProvider?() {
                 changed = registry.prune(
                     tool: success.tool,
                     liveBucketIds: Set(success.buckets.map(\.id)),

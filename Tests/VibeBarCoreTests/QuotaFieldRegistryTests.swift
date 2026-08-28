@@ -98,7 +98,7 @@ final class QuotaFieldRegistryTests: XCTestCase {
         let changed = registry.prune(
             tool: .codex,
             liveBucketIds: ["gpt_reserve_weekly"],
-            keeping: ["codex.named_gone"]
+            keeping: QuotaFieldKeepSet(fieldIds: ["codex.named_gone"])
         )
         XCTAssertTrue(changed)
         XCTAssertNotNil(registry.field(id: "codex.gpt_reserve_weekly"), "live entry stays")
@@ -109,10 +109,27 @@ final class QuotaFieldRegistryTests: XCTestCase {
             registry.prune(
                 tool: .codex,
                 liveBucketIds: ["gpt_reserve_weekly"],
-                keeping: ["codex.named_gone"]
+                keeping: QuotaFieldKeepSet(fieldIds: ["codex.named_gone"])
             ),
             "second prune is a no-op"
         )
+    }
+
+    func testPruneKeepsEntriesWhoseGroupWasNamed() {
+        var registry = QuotaFieldRegistry()
+        registry.record(tool: .codex, buckets: [reserveBucket()], now: now)
+        // The user named only the quota group ("codex.gpt_reserve"), not the
+        // field — that claim keeps the entry through a provider hiccup.
+        let kept = registry.prune(
+            tool: .codex,
+            liveBucketIds: [],
+            keeping: QuotaFieldKeepSet(groupKeys: ["codex.gpt_reserve"])
+        )
+        XCTAssertFalse(kept)
+        XCTAssertNotNil(registry.field(id: "codex.gpt_reserve_weekly"))
+        // Without the group claim it drops.
+        XCTAssertTrue(registry.prune(tool: .codex, liveBucketIds: [], keeping: QuotaFieldKeepSet()))
+        XCTAssertNil(registry.field(id: "codex.gpt_reserve_weekly"))
     }
 
     func testForgetDropsOneEntry() {

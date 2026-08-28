@@ -10,7 +10,11 @@ struct MiniEntry: Identifiable {
     let tool: ToolType
     let field: MenuBarFieldOption
     let bucket: QuotaBucket
+    /// Canonical L2 identity (`ToolType.quotaSubProviderName`) — what runs
+    /// group by. Renaming two SubProviders identically must not merge them.
     let subProviderName: String
+    /// The resolved label a human sees; identity above, display here.
+    let subProviderDisplayName: String
     let companyName: String
     /// Resolved L3 quota-group label (custom name applied); nil for a primary
     /// bucket like Gemini Web's "5 Hours".
@@ -64,7 +68,8 @@ struct MiniEntry: Identifiable {
                 tool: field.tool,
                 field: field,
                 bucket: bucket,
-                subProviderName: settings.resolvedGroupLabel(config: config, key: subProviderKey) ?? subProviderName,
+                subProviderName: subProviderName,
+                subProviderDisplayName: settings.resolvedGroupLabel(config: config, key: subProviderKey) ?? subProviderName,
                 companyName: field.tool.vendorName,
                 groupLabel: groupLabel,
                 customLabel: settings.resolvedFieldLabel(config: config, fieldId: field.id)
@@ -223,7 +228,7 @@ struct MiniLedgerLayout: View {
             Circle()
                 .fill(providerAccent(for: entry.tool))
                 .frame(width: 5, height: 5)
-            Text("\(entry.companyName.uppercased()) · \(entry.subProviderName.uppercased())")
+            Text("\(entry.companyName.uppercased()) · \(entry.subProviderDisplayName.uppercased())")
                 .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(0.8)
@@ -266,7 +271,7 @@ struct MiniLedgerLayout: View {
                 .frame(width: 40, alignment: .trailing)
         }
         .frame(height: MiniLedgerMetrics.rowHeight)
-        .help("\(providerTitle(for: entry.tool)) · \(entry.bucket.groupTitle ?? entry.subProviderName) · \(entry.bucket.title)")
+        .help("\(providerTitle(for: entry.tool)) · \(entry.bucket.groupTitle ?? entry.subProviderDisplayName) · \(entry.bucket.title)")
     }
 }
 
@@ -421,7 +426,7 @@ struct MiniStripLayout: View {
         let lines = run.map { entry in
             "\(entry.rowLabel): \(Int(entryPercent(entry, mode: mode).rounded()))%"
         }
-        return "\(run[0].subProviderName) — \(lines.joined(separator: " · "))"
+        return "\(run[0].subProviderDisplayName) — \(lines.joined(separator: " · "))"
     }
 }
 
@@ -584,7 +589,7 @@ struct MiniFocusLayout: View {
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary.opacity(0.86))
                 }
-                Text("\(headline.subProviderName.uppercased()) · \(headline.rowLabel.uppercased())")
+                Text("\(headline.subProviderDisplayName.uppercased()) · \(headline.rowLabel.uppercased())")
                     .font(.system(size: 8, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
                     .tracking(1.2)
