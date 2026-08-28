@@ -1,6 +1,21 @@
 import SwiftUI
 import VibeBarCore
 
+/// Label resolution for one mini window: the window's own overrides win,
+/// the shared names second, catalog defaults last (at the call sites).
+struct MiniLabelContext {
+    let settings: MiniWindowSettings
+    let config: MiniWindowConfig?
+
+    func fieldLabel(_ fieldId: String) -> String? {
+        settings.resolvedFieldLabel(config: config, fieldId: fieldId)
+    }
+
+    func groupLabel(_ key: String) -> String? {
+        settings.resolvedGroupLabel(config: config, key: key)
+    }
+}
+
 struct MiniQuotaWindowView: View {
     /// Which `MiniWindowConfig` this panel renders. Every panel gets its own
     /// hosting view; the config is re-read from settings on each render so
@@ -35,7 +50,7 @@ struct MiniQuotaWindowView: View {
                 case .ledger:
                     MiniLedgerLayout(entries: miniEntries(config: config))
                 case .strip:
-                    MiniStripLayout(entries: miniEntries(config: config))
+                    MiniStripLayout(entries: miniEntries(config: config), density: config.stripDensity)
                 case .tile:
                     MiniTileLayout(entries: miniEntries(config: config))
                 case .focus:
@@ -74,7 +89,8 @@ struct MiniQuotaWindowView: View {
             displayMode: displayMode,
             orderedFieldIds: visibleOrderedFieldIds(config: config, contentByTool: contentByTool),
             contentByTool: contentByTool,
-            registry: quotaService.fieldRegistry
+            registry: quotaService.fieldRegistry,
+            labels: MiniLabelContext(settings: settingsStore.settings.miniWindow, config: config)
         )
         .padding(.horizontal, displayMode == .compact ? 8 : 14)
         .padding(.top, displayMode == .compact ? 16 : 22)
@@ -117,6 +133,7 @@ struct MiniQuotaWindowView: View {
         let selected = config.fieldIds
         let selectedFieldIds = Set(selected)
         let registry = quotaService.fieldRegistry
+        let labels = MiniLabelContext(settings: settingsStore.settings.miniWindow, config: config)
         var contentByTool: [ToolType: MiniToolContent] = [:]
         for tool in ToolType.dedicatedCardProviders {
             var cells: [MiniCell] = []
@@ -137,7 +154,7 @@ struct MiniQuotaWindowView: View {
                         tool: tool,
                         field: field,
                         bucket: liveBucket,
-                        customLabel: settingsStore.settings.miniWindow.customLabels[field.id]
+                        customLabel: labels.fieldLabel(field.id)
                     )
                 )
             }
@@ -146,6 +163,7 @@ struct MiniQuotaWindowView: View {
                 for: tool,
                 orderedFieldIds: selected,
                 registry: registry,
+                labels: labels,
                 excluding: selectedBucketIds
             )
             let content = MiniToolContent(primaryCells: cells, branchCells: branchCells)
@@ -167,6 +185,12 @@ struct MiniQuotaWindowView: View {
     }
 
     private func isBranchField(_ field: MenuBarFieldOption) -> Bool {
+        Self.isBranchStyleField(field)
+    }
+
+    /// Static classification shared with the Settings naming tree, which
+    /// needs the same grouped/flat answer without a live bucket in hand.
+    static func isBranchStyleField(_ field: MenuBarFieldOption) -> Bool {
         // Antigravity rows are branch-style because its four quota
         // lanes are split across the Gemini and Claude/GPT groups.
         // Gemini USED to be in this carve-out too — that
@@ -204,6 +228,7 @@ struct MiniQuotaWindowView: View {
         for tool: ToolType,
         orderedFieldIds: [String],
         registry: QuotaFieldRegistry,
+        labels: MiniLabelContext,
         excluding selectedBucketIds: Set<String>
     ) -> [MiniBranchCell] {
         guard let quota = environment.quota(for: tool) else { return [] }
@@ -219,7 +244,7 @@ struct MiniQuotaWindowView: View {
                 tool: tool,
                 field: field,
                 bucket: bucket,
-                customLabel: settingsStore.settings.miniWindow.customLabels[field.id]
+                customLabel: labels.fieldLabel(field.id)
             )
         }
     }
@@ -297,6 +322,7 @@ private struct MiniWindowProviderLayout: View {
     let orderedFieldIds: [String]
     let contentByTool: [ToolType: MiniToolContent]
     let registry: QuotaFieldRegistry
+    let labels: MiniLabelContext
 
     var body: some View {
         let groups = miniProductGroups(
@@ -316,11 +342,11 @@ private struct MiniWindowProviderLayout: View {
                 }
                 switch displayMode {
                 case .compact:
-                    MiniCompactL2GroupColumn(group: group)
+                    MiniCompactL2GroupColumn(group: group, labels: labels)
                 default:
                     // Only regular and compact reach this layout; the
                     // alternative modes render their own views.
-                    MiniCompanyGroupColumn(group: group)
+                    MiniCompanyGroupColumn(group: group, labels: labels)
                 }
             }
         }
@@ -614,13 +640,13 @@ private struct MiniBranchGroup: Identifiable {
 
 private func miniBranchGroups(
     from branchCells: [MiniBranchCell],
-    settings: MiniWindowSettings
+    labels: MiniLabelContext
 ) -> [MiniBranchGroup] {
     var groups: [MiniBranchGroup] = []
     var indexByKey: [String: Int] = [:]
     for cell in branchCells {
         let key = cell.groupKey
-        let title = miniGroupTitle(for: cell, settings: settings).trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = miniGroupTitle(for: cell, labels: labels).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { continue }
         if let index = indexByKey[key] {
             groups[index].cells.append(cell)
@@ -632,45 +658,37 @@ private func miniBranchGroups(
     return groups
 }
 
-private func miniGroupTitle(for cell: MiniBranchCell, settings: MiniWindowSettings) -> String {
-    let custom = settings.groupLabels[cell.groupKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let custom, !custom.isEmpty {
-        return custom
-    }
-    return cell.defaultGroupTitle
+private func miniGroupTitle(for cell: MiniBranchCell, labels: MiniLabelContext) -> String {
+    labels.groupLabel(cell.groupKey) ?? cell.defaultGroupTitle
 }
 
-private func miniSubProviderTitle(for member: MiniL2Member, settings: MiniWindowSettings) -> String {
+private func miniSubProviderTitle(for member: MiniL2Member, labels: MiniLabelContext) -> String {
     let key = MiniWindowGroupLabelCatalog.subProviderKey(
         tool: member.tool,
         name: member.subProviderName
     )
-    let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
-    return custom.flatMap { $0.isEmpty ? nil : $0 } ?? member.subProviderName
+    return labels.groupLabel(key) ?? member.subProviderName
 }
 
 /// Heading for a SubProvider's primary (flat, ungrouped) buckets. Every
 /// entry resolves to a quota-group name — the SubProvider itself is printed
 /// one tier up by `MiniMemberStack`, so nothing here may name a product.
-/// Gemini Web has no L3 group at all (its buckets *are* "5 Hours" and
-/// "Weekly", AGENTS.md § 7.1), so it gets no heading rather than an invented
-/// one; Grok's single group is "Weekly Credits".
+/// Gemini Web's two anonymous buckets get the same "All Models" heading as
+/// the other headline groups: the row is reserved either way, and a blank
+/// there read as a rendering bug rather than a design choice.
 private func miniPrimaryGroupTitle(
     for tool: ToolType,
-    settings: MiniWindowSettings
+    labels: MiniLabelContext
 ) -> String? {
     let key: String
     switch tool {
     case .codex: key = "codex.all-models"
     case .claude: key = "claude.all-models"
+    case .gemini: key = "gemini.all-models"
     case .grok: key = "grok.all-models"
     default: return nil
     }
-    let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let custom, !custom.isEmpty {
-        return custom
-    }
-    return MiniWindowGroupLabelCatalog.defaultLabel(for: key)
+    return labels.groupLabel(key) ?? MiniWindowGroupLabelCatalog.defaultLabel(for: key)
 }
 
 /// Renders one L1 company super-column in the regular (ring) layout: the
@@ -680,8 +698,7 @@ private func miniPrimaryGroupTitle(
 /// tiers read the same everywhere.
 private struct MiniCompanyGroupColumn: View {
     let group: MiniCompanyGroup
-
-    @EnvironmentObject var settingsStore: SettingsStore
+    let labels: MiniLabelContext
 
     var body: some View {
         VStack(alignment: .center, spacing: 7) {
@@ -702,10 +719,7 @@ private struct MiniCompanyGroupColumn: View {
                         MiniGroupDivider(height: 112)
                             .padding(.top, 4)
                     }
-                    MiniMemberStack(
-                        member: member,
-                        settings: settingsStore.settings.miniWindow
-                    )
+                    MiniMemberStack(member: member, labels: labels)
                 }
             }
         }
@@ -718,10 +732,7 @@ private struct MiniCompanyGroupColumn: View {
     private var totalContentWidth: CGFloat {
         var width: CGFloat = 0
         for member in group.members {
-            width += MiniMemberStack.width(
-                for: member,
-                settings: settingsStore.settings.miniWindow
-            )
+            width += MiniMemberStack.width(for: member, labels: labels)
         }
         if group.members.count > 1 {
             width += CGFloat(group.members.count - 1)
@@ -737,18 +748,18 @@ private struct MiniCompanyGroupColumn: View {
 /// names a quota group rather than a product.
 private struct MiniMemberStack: View {
     let member: MiniL2Member
-    let settings: MiniWindowSettings
+    let labels: MiniLabelContext
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniRingMetrics.subProviderLabelGap) {
-            Text(miniSubProviderTitle(for: member, settings: settings).uppercased())
+            Text(miniSubProviderTitle(for: member, labels: labels).uppercased())
                 .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.2)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .frame(
-                    width: Self.width(for: member, settings: settings),
+                    width: Self.width(for: member, labels: labels),
                     height: MiniRingMetrics.subProviderLabelHeight,
                     alignment: .center
                 )
@@ -767,16 +778,16 @@ private struct MiniMemberStack: View {
     }
 
     private var branchGroups: [MiniBranchGroup] {
-        miniBranchGroups(from: member.content.branchCells, settings: settings)
+        miniBranchGroups(from: member.content.branchCells, labels: labels)
     }
 
     private var primaryGroupTitle: String? {
-        miniPrimaryGroupTitle(for: member.tool, settings: settings)
+        miniPrimaryGroupTitle(for: member.tool, labels: labels)
     }
 
     static func width(
         for member: MiniL2Member,
-        settings: MiniWindowSettings
+        labels: MiniLabelContext
     ) -> CGFloat {
         var width: CGFloat = 0
         var groupCount = 0
@@ -785,7 +796,7 @@ private struct MiniMemberStack: View {
                 + CGFloat(max(0, member.content.primaryCells.count - 1)) * MiniRingMetrics.ringSpacing
             groupCount += 1
         }
-        let branchGroups = miniBranchGroups(from: member.content.branchCells, settings: settings)
+        let branchGroups = miniBranchGroups(from: member.content.branchCells, labels: labels)
         for group in branchGroups {
             width += CGFloat(group.cells.count) * MiniRingMetrics.cellWidth
                 + CGFloat(max(0, group.cells.count - 1)) * MiniRingMetrics.ringSpacing
@@ -1153,8 +1164,7 @@ private enum MiniCompactMetrics {
 /// shorter compact panel.
 private struct MiniCompactL2GroupColumn: View {
     let group: MiniCompanyGroup
-
-    @EnvironmentObject var settingsStore: SettingsStore
+    let labels: MiniLabelContext
 
     var body: some View {
         VStack(alignment: .center, spacing: 5) {
@@ -1175,10 +1185,7 @@ private struct MiniCompactL2GroupColumn: View {
                         MiniGroupDivider(height: 98)
                             .padding(.top, 3)
                     }
-                    MiniCompactMemberStack(
-                        member: member,
-                        settings: settingsStore.settings.miniWindow
-                    )
+                    MiniCompactMemberStack(member: member, labels: labels)
                 }
             }
         }
@@ -1187,10 +1194,7 @@ private struct MiniCompactL2GroupColumn: View {
     private var totalContentWidth: CGFloat {
         var width: CGFloat = 0
         for member in group.members {
-            width += MiniCompactMemberStack.width(
-                for: member,
-                settings: settingsStore.settings.miniWindow
-            )
+            width += MiniCompactMemberStack.width(for: member, labels: labels)
         }
         if group.members.count > 1 {
             width += CGFloat(group.members.count - 1)
@@ -1202,18 +1206,18 @@ private struct MiniCompactL2GroupColumn: View {
 
 private struct MiniCompactMemberStack: View {
     let member: MiniL2Member
-    let settings: MiniWindowSettings
+    let labels: MiniLabelContext
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniCompactMetrics.subProviderLabelGap) {
-            Text(miniSubProviderTitle(for: member, settings: settings).uppercased())
+            Text(miniSubProviderTitle(for: member, labels: labels).uppercased())
                 .font(.system(size: 7.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.2)
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
                 .frame(
-                    width: Self.width(for: member, settings: settings),
+                    width: Self.width(for: member, labels: labels),
                     height: MiniCompactMetrics.subProviderLabelHeight,
                     alignment: .center
                 )
@@ -1232,16 +1236,16 @@ private struct MiniCompactMemberStack: View {
     }
 
     private var branchGroups: [MiniBranchGroup] {
-        miniBranchGroups(from: member.content.branchCells, settings: settings)
+        miniBranchGroups(from: member.content.branchCells, labels: labels)
     }
 
     private var primaryGroupTitle: String? {
-        miniPrimaryGroupTitle(for: member.tool, settings: settings)
+        miniPrimaryGroupTitle(for: member.tool, labels: labels)
     }
 
     static func width(
         for member: MiniL2Member,
-        settings: MiniWindowSettings
+        labels: MiniLabelContext
     ) -> CGFloat {
         var width: CGFloat = 0
         var groupCount = 0
@@ -1250,7 +1254,7 @@ private struct MiniCompactMemberStack: View {
                 + CGFloat(max(0, member.content.primaryCells.count - 1)) * MiniCompactMetrics.ringSpacing
             groupCount += 1
         }
-        let branchGroups = miniBranchGroups(from: member.content.branchCells, settings: settings)
+        let branchGroups = miniBranchGroups(from: member.content.branchCells, labels: labels)
         for group in branchGroups {
             width += CGFloat(group.cells.count) * MiniCompactMetrics.cellWidth
                 + CGFloat(max(0, group.cells.count - 1)) * MiniCompactMetrics.ringSpacing

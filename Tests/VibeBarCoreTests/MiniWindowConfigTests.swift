@@ -52,6 +52,37 @@ final class MiniWindowConfigTests: XCTestCase {
         XCTAssertFalse(decoded.wasOpen)
     }
 
+    func testPerWindowOverridesAndDensitySurviveRoundTrip() throws {
+        var settings = AppSettings.default
+        settings.miniWindow.windows[0].displayMode = .strip
+        settings.miniWindow.windows[0].stripDensity = .twoLine
+        settings.miniWindow.windows[0].customLabels = ["codex.weekly": "Wk (mine)"]
+        settings.miniWindow.windows[0].groupLabels = [
+            "codex.all-models": "Everything",
+            "subprovider:codex/ChatGPT Agentic": "GPT"
+        ]
+        settings.miniWindow.customLabels["codex.weekly"] = "Shared Wk"
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        let window = try XCTUnwrap(decoded.miniWindow.windows.first)
+
+        XCTAssertEqual(window.stripDensity, .twoLine)
+        XCTAssertEqual(window.customLabels["codex.weekly"], "Wk (mine)")
+        XCTAssertEqual(window.groupLabels["codex.all-models"], "Everything")
+        XCTAssertEqual(window.groupLabels["subprovider:codex/ChatGPT Agentic"], "GPT")
+        // Resolution order: window override → shared → nil.
+        XCTAssertEqual(
+            decoded.miniWindow.resolvedFieldLabel(config: window, fieldId: "codex.weekly"),
+            "Wk (mine)"
+        )
+        XCTAssertEqual(
+            decoded.miniWindow.resolvedFieldLabel(config: nil, fieldId: "codex.weekly"),
+            "Shared Wk"
+        )
+        XCTAssertNil(decoded.miniWindow.resolvedGroupLabel(config: window, key: "claude.all-models"))
+    }
+
     func testDisplayModeCycleVisitsEveryModeOnce() {
         var seen: [MiniWindowDisplayMode] = []
         var mode = MiniWindowDisplayMode.regular
