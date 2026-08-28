@@ -186,6 +186,9 @@ struct WorkbenchPillButtonStyle: ButtonStyle {
                             lineWidth: isFocused ? 1 : Theme.Card.hairlineWidth
                         )
                 )
+                // The neutral fill is nearly transparent in dark mode; an
+                // explicit shape keeps the whole pill clickable regardless.
+                .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 .opacity(pressed ? 0.74 : 1)
         }
     }
