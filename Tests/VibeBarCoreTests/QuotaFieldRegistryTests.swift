@@ -84,6 +84,45 @@ final class QuotaFieldRegistryTests: XCTestCase {
         XCTAssertNil(registry.field(id: "codex.invented_0"))
     }
 
+    func testPruneForgetsOnlyUnreferencedDeadEntries() {
+        var registry = QuotaFieldRegistry()
+        registry.record(tool: .codex, buckets: [reserveBucket()], now: now)
+        let dead = QuotaBucket(id: "gone_bucket", title: "Weekly", shortLabel: "wk", usedPercent: 0)
+        registry.record(tool: .codex, buckets: [dead], now: now)
+        let named = QuotaBucket(id: "named_gone", title: "Weekly", shortLabel: "wk", usedPercent: 0)
+        registry.record(tool: .codex, buckets: [named], now: now)
+        // Another tool's entry is out of scope for this tool's prune.
+        let other = QuotaBucket(id: "ag_extra", title: "Weekly", shortLabel: "wk", usedPercent: 0)
+        registry.record(tool: .antigravity, buckets: [other], now: now)
+
+        let changed = registry.prune(
+            tool: .codex,
+            liveBucketIds: ["gpt_reserve_weekly"],
+            keeping: ["codex.named_gone"]
+        )
+        XCTAssertTrue(changed)
+        XCTAssertNotNil(registry.field(id: "codex.gpt_reserve_weekly"), "live entry stays")
+        XCTAssertNotNil(registry.field(id: "codex.named_gone"), "referenced entry stays")
+        XCTAssertNil(registry.field(id: "codex.gone_bucket"), "unreferenced dead entry drops")
+        XCTAssertNotNil(registry.field(id: "antigravity.ag_extra"), "other tools untouched")
+        XCTAssertFalse(
+            registry.prune(
+                tool: .codex,
+                liveBucketIds: ["gpt_reserve_weekly"],
+                keeping: ["codex.named_gone"]
+            ),
+            "second prune is a no-op"
+        )
+    }
+
+    func testForgetDropsOneEntry() {
+        var registry = QuotaFieldRegistry()
+        registry.record(tool: .codex, buckets: [reserveBucket()], now: now)
+        XCTAssertTrue(registry.forget(id: "codex.gpt_reserve_weekly"))
+        XCTAssertNil(registry.field(id: "codex.gpt_reserve_weekly"))
+        XCTAssertFalse(registry.forget(id: "codex.gpt_reserve_weekly"))
+    }
+
     func testMergedFieldsAppendDynamicOptionsWithComposedTitle() {
         var registry = QuotaFieldRegistry()
         registry.record(tool: .codex, buckets: [reserveBucket()], now: now)

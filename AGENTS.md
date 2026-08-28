@@ -700,6 +700,22 @@ capture against § 8 before committing it — a screenshot is source content.
 
 ## 7. Code Conventions
 
+- **UI fluency is a requirement, not a nice-to-have.** Vibe Bar is a
+  glanceable utility that sits in the user's peripheral vision all day;
+  a stuttering popover, settings page, or chart is a bug on the same
+  level as a wrong number. Every change to an interactive surface must
+  keep interaction paths free of main-thread stalls: no file I/O,
+  scanning, or O(n·m) recomputation inside a SwiftUI `body` or a
+  binding getter; expensive derivations are computed once per data
+  change (cached, or moved into Core and memoized), not once per
+  render; charts downsample before drawing (`ChartSeriesPlanning`
+  exists for this); `TimelineView` timers stay scoped to visible leaf
+  surfaces; and a settings write fans out to every `$settings`
+  subscriber, so hot paths (drags, hovers, keystrokes) must debounce or
+  bypass `AppSettings` (see the mini-window geometry rule in § 11).
+  Before merging UI work, exercise the surface it touches — scroll it,
+  drag it, hover it — and treat any visible hitch as a blocker, not a
+  follow-up.
 - **Swift package**, two targets: `VibeBarCore` (testable, pure) and
   `VibeBarApp` (AppKit/SwiftUI menu-bar app). Heavy logic lives in Core;
   UI glue in App.

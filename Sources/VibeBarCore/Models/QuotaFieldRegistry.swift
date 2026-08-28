@@ -117,6 +117,34 @@ public struct QuotaFieldRegistry: Codable, Equatable, Sendable {
     public func isLive(_ field: DiscoveredQuotaField, in quotas: [ToolType: AccountQuota]) -> Bool {
         quotas[field.tool]?.bucket(id: field.bucketId) != nil
     }
+
+    /// Forget `tool`'s entries the provider stopped returning that nothing
+    /// references — not selected in any mini window and never given a name.
+    /// A referenced entry stays (dimmed in the picker) so a selection
+    /// survives a provider hiccup; an unreferenced one was never the user's
+    /// and does not need remembering. Returns true when anything dropped.
+    @discardableResult
+    public mutating func prune(
+        tool: ToolType,
+        liveBucketIds: Set<String>,
+        keeping referencedFieldIds: Set<String>
+    ) -> Bool {
+        let before = fields.count
+        fields.removeAll { field in
+            field.tool == tool
+                && !liveBucketIds.contains(field.bucketId)
+                && !referencedFieldIds.contains(field.id)
+        }
+        return fields.count != before
+    }
+
+    /// Drop one entry outright — the picker's explicit "forget" control.
+    @discardableResult
+    public mutating func forget(id: String) -> Bool {
+        let before = fields.count
+        fields.removeAll { $0.id == id }
+        return fields.count != before
+    }
 }
 
 public extension MenuBarFieldCatalog {

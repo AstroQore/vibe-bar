@@ -138,6 +138,19 @@ final class AppEnvironment: ObservableObject {
                 dailyActivity: snapshot.dailyHistory
             )
         }
+        // What the discovered-field registry must not forget: every field a
+        // mini window selects, and every field the user has named — shared
+        // or per-window. Anything else that vanishes from a provider's
+        // response was never the user's and drops on the next refresh.
+        service.registryKeepFieldIdsProvider = { [weak settingsStore] in
+            guard let mini = settingsStore?.settings.miniWindow else { return [] }
+            var keep = Set(mini.customLabels.keys)
+            for window in mini.windows {
+                keep.formUnion(window.fieldIds)
+                keep.formUnion(window.customLabels.keys)
+            }
+            return keep
+        }
 
         if isDemo {
             // No Keychain in demo mode. A web-sourced demo account stands in

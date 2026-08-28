@@ -19,25 +19,16 @@ struct MiniEntry: Identifiable {
 
     var id: String { field.id }
 
-    /// "5h" / "Wk" style shorthand for the bucket's window.
-    var windowShort: String {
-        switch bucket.title {
-        case "5 Hours": return "5h"
-        case "Weekly":  return "Wk"
-        case "Monthly": return "Mo"
-        case "Daily":   return "Day"
-        default:        return bucket.title
-        }
-    }
-
     /// Row label for list-style layouts: the custom label wins; otherwise a
-    /// grouped bucket reads "Spark · Wk" and a primary one reads its window.
+    /// grouped bucket reads "Spark · Weekly" and a primary one reads its
+    /// window. Never an invented abbreviation — "WK" is a name the user can
+    /// choose, not a default they get.
     var rowLabel: String {
         if let customLabel, !customLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return customLabel
         }
         if let groupLabel {
-            return "\(groupLabel) · \(windowShort)"
+            return "\(groupLabel) · \(bucket.title)"
         }
         return bucket.title
     }
@@ -64,25 +55,19 @@ struct MiniEntry: Identifiable {
             var groupLabel: String?
             if isGrouped {
                 let key = MiniWindowGroupLabelCatalog.groupKey(tool: field.tool, bucketId: field.bucketId)
-                let custom = settings.groupLabels[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let custom, !custom.isEmpty {
-                    groupLabel = custom
-                } else if let catalogDefault = MiniWindowGroupLabelCatalog.defaultLabel(for: key) {
-                    groupLabel = catalogDefault
-                } else {
-                    groupLabel = bucket.groupTitle
-                }
+                groupLabel = settings.resolvedGroupLabel(config: config, key: key)
+                    ?? MiniWindowGroupLabelCatalog.defaultLabel(for: key)
+                    ?? bucket.groupTitle
             }
             let subProviderKey = MiniWindowGroupLabelCatalog.subProviderKey(tool: field.tool, name: subProviderName)
-            let customSub = settings.groupLabels[subProviderKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
             return MiniEntry(
                 tool: field.tool,
                 field: field,
                 bucket: bucket,
-                subProviderName: (customSub?.isEmpty ?? true) ? subProviderName : customSub!,
+                subProviderName: settings.resolvedGroupLabel(config: config, key: subProviderKey) ?? subProviderName,
                 companyName: field.tool.vendorName,
                 groupLabel: groupLabel,
-                customLabel: settings.customLabels[field.id]
+                customLabel: settings.resolvedFieldLabel(config: config, fieldId: field.id)
             )
         }
     }
@@ -288,32 +273,60 @@ struct MiniLedgerLayout: View {
 // MARK: - Strip
 
 /// A one-line HUD: each SubProvider shows its most critical bucket only.
-/// Hovering a chip lists every selected bucket of that SubProvider.
+/// Hovering a chip lists every selected bucket of that SubProvider. Three
+/// densities, chosen per window: roomy (number beside its label), two-line
+/// (number over its label), narrow (dot and number only).
 enum MiniStripMetrics {
-    static let height: CGFloat = 44
-    static let chipWidth: CGFloat = 64
-    static let chipSpacing: CGFloat = 6
-    static let companySpacing: CGFloat = 9
     static let dividerThickness: CGFloat = 1
     static let leadingPadding: CGFloat = 14
     static let trailingPadding: CGFloat = 26
     static let emptyWidth: CGFloat = 200
 
-    static func size(entries: [MiniEntry]) -> CGSize {
-        guard !entries.isEmpty else { return CGSize(width: emptyWidth, height: height) }
+    static func chipWidth(_ density: MiniStripDensity) -> CGFloat {
+        switch density {
+        case .roomy:   return 104
+        case .twoLine: return 62
+        case .narrow:  return 40
+        }
+    }
+
+    static func chipSpacing(_ density: MiniStripDensity) -> CGFloat {
+        switch density {
+        case .roomy:   return 8
+        case .twoLine: return 6
+        case .narrow:  return 4
+        }
+    }
+
+    static func companySpacing(_ density: MiniStripDensity) -> CGFloat {
+        density == .narrow ? 7 : 9
+    }
+
+    static func height(_ density: MiniStripDensity) -> CGFloat {
+        switch density {
+        case .roomy:   return 44
+        case .twoLine: return 54
+        case .narrow:  return 40
+        }
+    }
+
+    static func size(entries: [MiniEntry], density: MiniStripDensity) -> CGSize {
+        guard !entries.isEmpty else { return CGSize(width: emptyWidth, height: height(density)) }
         let companies = MiniEntry.companyRuns(entries)
         var width = leadingPadding + trailingPadding
         for (index, company) in companies.enumerated() {
-            if index > 0 { width += 2 * companySpacing + dividerThickness }
+            if index > 0 { width += 2 * companySpacing(density) + dividerThickness }
             let chips = MiniEntry.subProviderRuns(company).count
-            width += CGFloat(chips) * chipWidth + CGFloat(max(0, chips - 1)) * chipSpacing
+            width += CGFloat(chips) * chipWidth(density)
+                + CGFloat(max(0, chips - 1)) * chipSpacing(density)
         }
-        return CGSize(width: width, height: height)
+        return CGSize(width: width, height: height(density))
     }
 }
 
 struct MiniStripLayout: View {
     let entries: [MiniEntry]
+    let density: MiniStripDensity
 
     @EnvironmentObject var settingsStore: SettingsStore
 
@@ -330,9 +343,9 @@ struct MiniStripLayout: View {
                             Rectangle()
                                 .fill(Color.primary.opacity(0.12))
                                 .frame(width: MiniStripMetrics.dividerThickness, height: 18)
-                                .padding(.horizontal, MiniStripMetrics.companySpacing)
+                                .padding(.horizontal, MiniStripMetrics.companySpacing(density))
                         }
-                        HStack(spacing: MiniStripMetrics.chipSpacing) {
+                        HStack(spacing: MiniStripMetrics.chipSpacing(density)) {
                             ForEach(Array(MiniEntry.subProviderRuns(company).enumerated()), id: \.offset) { _, run in
                                 chip(for: run)
                             }
@@ -343,36 +356,64 @@ struct MiniStripLayout: View {
                 .padding(.trailing, MiniStripMetrics.trailingPadding)
             }
         }
-        .frame(height: MiniStripMetrics.height)
+        .frame(height: MiniStripMetrics.height(density))
     }
 
     /// The chip shows the run's most critical bucket — least remaining wins.
+    @ViewBuilder
     private func chip(for run: [MiniEntry]) -> some View {
         let mode = settingsStore.displayMode
         let worst = run.min { remainingPercent($0) < remainingPercent($1) } ?? run[0]
         let percent = entryPercent(worst, mode: mode)
         let color = entryColor(worst, mode: mode)
-        let unit: String = {
-            if let group = worst.groupLabel {
-                return "\(group) \(worst.windowShort)"
+        Group {
+            switch density {
+            case .roomy:
+                HStack(spacing: 5) {
+                    brandDot(worst)
+                    number(percent, color: color, size: 13)
+                    Text(worst.rowLabel)
+                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                .frame(width: MiniStripMetrics.chipWidth(density), alignment: .leading)
+            case .twoLine:
+                VStack(spacing: 1) {
+                    HStack(spacing: 4) {
+                        brandDot(worst)
+                        number(percent, color: color, size: 13)
+                    }
+                    Text(worst.rowLabel)
+                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(width: MiniStripMetrics.chipWidth(density))
+            case .narrow:
+                HStack(spacing: 4) {
+                    brandDot(worst)
+                    number(percent, color: color, size: 12)
+                }
+                .frame(width: MiniStripMetrics.chipWidth(density), alignment: .leading)
             }
-            return worst.windowShort
-        }()
-        return HStack(spacing: 4) {
-            Circle()
-                .fill(providerAccent(for: worst.tool))
-                .frame(width: 6, height: 6)
-            Text("\(Int(percent.rounded()))")
-                .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                .foregroundStyle(color)
-            Text(unit.uppercased())
-                .font(.system(size: 7, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
         }
-        .frame(width: MiniStripMetrics.chipWidth, alignment: .leading)
         .help(helpText(for: run))
+    }
+
+    private func brandDot(_ entry: MiniEntry) -> some View {
+        Circle()
+            .fill(providerAccent(for: entry.tool))
+            .frame(width: 6, height: 6)
+    }
+
+    private func number(_ percent: Double, color: Color, size: CGFloat) -> some View {
+        Text("\(Int(percent.rounded()))")
+            .font(.system(size: size, weight: .bold, design: .rounded).monospacedDigit())
+            .foregroundStyle(color)
     }
 
     private func helpText(for run: [MiniEntry]) -> String {
@@ -738,13 +779,8 @@ struct MiniRailLayout: View {
         .help("\(providerTitle(for: item.entry.tool)) · \(item.entry.rowLabel) — resets \(item.entry.bucket.resetAt.map { ResetCountdownFormatter.string(from: $0, now: Date()) ?? "—" } ?? "—")")
     }
 
-    /// Compact on purpose — a custom label tuned for the ring layout can be
-    /// long, and the rail has 60 pt per bubble.
     private func bubbleLabel(_ entry: MiniEntry) -> String {
-        var parts = [shortCompany(entry.tool)]
-        if let group = entry.groupLabel { parts.append(group) }
-        parts.append(entry.windowShort)
-        return parts.joined(separator: " ")
+        "\(shortCompany(entry.tool)) \(entry.rowLabel)"
     }
 
     /// Sort by reset time, then de-clutter: alternate between the two lanes
