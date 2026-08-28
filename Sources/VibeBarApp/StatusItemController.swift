@@ -166,6 +166,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 initialPage: controller.popoverInitialPage
             )
                 .vibeBarNoInitialFocus()
+                // While a shrink waits out its settle window the hosting view
+                // is briefly taller than the content; without an explicit top
+                // anchor NSHostingView centers the shorter content and the
+                // whole page appears to hop.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .environmentObject(environment)
                 .environmentObject(environment.accountStore)
                 .environmentObject(environment.settingsStore)
@@ -322,8 +327,58 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// one trailing resize, which lands on the final height.
     private static let popoverResizeCoalesceWindow: TimeInterval = 0.1
 
+    /// A *shrink* is additionally never applied while the popover is on
+    /// screen until it has survived this window. Reopening the popover or
+    /// switching pages makes SwiftUI's first layout pass report a transiently
+    /// tiny height — the cards have not measured yet — and applying that
+    /// report snapped the visible popover down to `minimumPopoverHeight`
+    /// before the settled height arrived a beat later: the "page reflows to
+    /// minimum height" bounce. A transient dip is superseded by its recovery
+    /// report inside this window and never touches the frame; a real shrink
+    /// survives it and lands once, at the settled value.
+    private static let popoverShrinkSettleWindow: TimeInterval = 0.35
+
+    /// Kinds whose pending resize task is a shrink hold (as opposed to an
+    /// ordinary trailing coalesce): a growth report cancels these instead of
+    /// waiting out their longer deadline.
+    private var popoverShrinkHoldKinds: Set<MenuBarItemKind> = []
+
     private func resizePopover(kind: MenuBarItemKind, toContentHeight height: CGFloat) {
         guard height.isFinite, height > 0 else { return }
+        if let popover = popovers[kind], popover.isShown {
+            let target = resolvedPopoverHeight(
+                forContentHeight: height,
+                maxHeight: maxPopoverHeight(for: popover)
+            )
+            let current = popover.contentSize
+            switch PopoverResizeGate.verdict(
+                currentHeight: current.height,
+                targetHeight: target,
+                currentWidth: current.width,
+                targetWidth: currentPopoverWidth(for: kind)
+            ) {
+            case .ignore:
+                // The content walked back to the on-screen size — nothing to
+                // change, and nothing a stale trailing task may restore.
+                cancelPendingPopoverResize(kind: kind)
+                return
+            case .holdForSettle:
+                cancelPendingPopoverResize(kind: kind)
+                popoverShrinkHoldKinds.insert(kind)
+                pendingPopoverHeights[kind] = height
+                scheduleCoalescedResize(kind: kind, after: Self.popoverShrinkSettleWindow)
+                return
+            case .applyNow:
+                // A held shrink must not outlive the growth that supersedes
+                // it: left in place, its 350ms task would swallow this report
+                // into its own deadline and the popover would sit undersized
+                // for the rest of the hold. Cancel it so the growth goes
+                // through the ordinary burst path below.
+                if popoverShrinkHoldKinds.contains(kind) {
+                    cancelPendingPopoverResize(kind: kind)
+                }
+            }
+        }
         let sinceLast = lastPopoverResizeAt[kind].map { Date().timeIntervalSince($0) }
         if let sinceLast, sinceLast < Self.popoverResizeCoalesceWindow {
             pendingPopoverHeights[kind] = height
@@ -337,9 +392,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // busy main actor it can wake after its deadline, land here *after*
         // this newer report, and resize the popover back to the stale height
         // it captured. Supersede both the task and its pending height.
+        cancelPendingPopoverResize(kind: kind)
+        applyPopoverResize(kind: kind, toContentHeight: height)
+    }
+
+    private func cancelPendingPopoverResize(kind: MenuBarItemKind) {
         popoverResizeTasks.removeValue(forKey: kind)?.cancel()
         pendingPopoverHeights.removeValue(forKey: kind)
-        applyPopoverResize(kind: kind, toContentHeight: height)
+        popoverShrinkHoldKinds.remove(kind)
     }
 
     private func scheduleCoalescedResize(kind: MenuBarItemKind, after delay: TimeInterval) {
@@ -351,18 +411,27 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // bookkeeping a cancelled sleeper must not clobber.
             guard let self, !Task.isCancelled else { return }
             self.popoverResizeTasks[kind] = nil
+            self.popoverShrinkHoldKinds.remove(kind)
             guard let height = self.pendingPopoverHeights.removeValue(forKey: kind) else { return }
             self.applyPopoverResize(kind: kind, toContentHeight: height)
         }
+    }
+
+    /// One resolution for both the gate and the apply, so the two can never
+    /// disagree about what a content height means for the visible frame.
+    private func resolvedPopoverHeight(forContentHeight height: CGFloat, maxHeight: CGFloat) -> CGFloat {
+        let resolved = min(max(height + Self.popoverHeightPadding, Self.minimumPopoverHeight), maxHeight)
+        return (resolved / 2).rounded() * 2
     }
 
     private func applyPopoverResize(kind: MenuBarItemKind, toContentHeight height: CGFloat) {
         lastPopoverResizeAt[kind] = Date()
         guard let popover = popovers[kind] else { return }
         guard height.isFinite, height > 0 else { return }
-        let maxHeight = maxPopoverHeight(for: popover)
-        let resolvedHeight = min(max(height + Self.popoverHeightPadding, Self.minimumPopoverHeight), maxHeight)
-        let targetHeight = (resolvedHeight / 2).rounded() * 2
+        let targetHeight = resolvedPopoverHeight(
+            forContentHeight: height,
+            maxHeight: maxPopoverHeight(for: popover)
+        )
         let width = currentPopoverWidth(for: kind)
         let current = popover.contentSize
         guard abs(current.height - targetHeight) > 1 || abs(current.width - width) > 1 else {
