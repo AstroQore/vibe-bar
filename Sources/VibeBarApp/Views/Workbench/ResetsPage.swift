@@ -10,7 +10,6 @@ struct ResetsPage: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         // One leaf timer for the whole page: countdown text drifts by the
@@ -58,48 +57,71 @@ struct ResetsPage: View {
     /// window — the cycle a subscription is priced on), and the forecast.
     private struct SubProviderCycle: Identifiable {
         let tool: ToolType
+        let accountId: String
+        let accountLabel: String?
         let name: String
         let plan: String?
         let buckets: [QuotaBucket]
         let headline: QuotaBucket
         let forecast: QuotaPaceForecast?
-        var id: String { "\(tool.rawValue)/\(name)" }
+        var id: String { "\(accountId)/\(name)" }
     }
 
     private func subProviderCycles(now: Date) -> [SubProviderCycle] {
         var out: [SubProviderCycle] = []
         for tool in ToolType.dedicatedCardProviders {
-            guard let quota = environment.quota(for: tool), !quota.buckets.isEmpty else { continue }
-            var bySub: [String: [QuotaBucket]] = [:]
-            var order: [String] = []
-            for bucket in quota.buckets {
-                let sub = tool.quotaSubProviderName(bucketID: bucket.id)
-                if bySub[sub] == nil { order.append(sub) }
-                bySub[sub, default: []].append(bucket)
-            }
-            for sub in order {
-                guard let buckets = bySub[sub],
-                      let headline = buckets.max(by: {
-                          ($0.rawWindowSeconds ?? 0) < ($1.rawWindowSeconds ?? 0)
-                      })
+            let accounts = environment.accountStore.accounts(for: tool)
+            for account in accounts {
+                guard let quota = environment.quotaService.cachedQuota(for: account.id),
+                      !quota.buckets.isEmpty
                 else { continue }
-                out.append(SubProviderCycle(
-                    tool: tool,
-                    name: sub,
-                    plan: quota.plan,
-                    buckets: buckets,
-                    headline: headline,
-                    forecast: miniQuotaForecast(
+                let accountLabel = accounts.count > 1 ? account.displayLabel : nil
+                var bySub: [String: [QuotaBucket]] = [:]
+                var order: [String] = []
+                for bucket in quota.buckets {
+                    let sub = tool.quotaSubProviderName(bucketID: bucket.id)
+                    if bySub[sub] == nil { order.append(sub) }
+                    bySub[sub, default: []].append(bucket)
+                }
+                for sub in order {
+                    guard let buckets = bySub[sub],
+                          let headline = buckets.max(by: {
+                              ($0.rawWindowSeconds ?? 0) < ($1.rawWindowSeconds ?? 0)
+                          })
+                    else { continue }
+                    out.append(SubProviderCycle(
                         tool: tool,
-                        bucket: headline,
-                        environment: environment,
-                        quotaService: quotaService,
-                        now: now
-                    )
-                ))
+                        accountId: account.id,
+                        accountLabel: accountLabel,
+                        name: sub,
+                        plan: quota.plan,
+                        buckets: buckets,
+                        headline: headline,
+                        forecast: forecast(accountId: account.id, tool: tool, bucket: headline, now: now)
+                    ))
+                }
             }
         }
         return out
+    }
+
+    /// Per-account forecast — `miniQuotaForecast` resolves the tool's first
+    /// account, which is wrong the moment a provider has two.
+    private func forecast(
+        accountId: String,
+        tool: ToolType,
+        bucket: QuotaBucket,
+        now: Date
+    ) -> QuotaPaceForecast? {
+        let snapshot = environment.costService.snapshot(for: tool)
+        return quotaService.paceForecast(
+            accountId: accountId,
+            bucket: bucket,
+            activityHeatmap: snapshot?.heatmap,
+            dailyActivity: snapshot?.dailyHistory ?? [],
+            now: now,
+            allowsPostResetGrace: true
+        )
     }
 
     // MARK: - Cycle cards
@@ -128,6 +150,13 @@ struct ResetsPage: View {
                     .font(.system(size: 10, weight: .bold))
                     .tracking(0.4)
                 Spacer(minLength: 6)
+                if let accountLabel = cycle.accountLabel {
+                    Text(accountLabel)
+                        .font(.system(size: 8.5, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
                 if let plan = cycle.plan {
                     Text(plan)
                         .font(.system(size: 9, weight: .semibold))
@@ -211,11 +240,10 @@ struct ResetsPage: View {
     }
 
     private func cyclePoints(_ cycle: SubProviderCycle) -> [Double] {
-        guard let accountId = environment.account(for: cycle.tool)?.id,
-              let resetAt = cycle.headline.resetAt,
+        guard let resetAt = cycle.headline.resetAt,
               let window = cycle.headline.rawWindowSeconds
         else { return [] }
-        let key = SubscriptionHistoryKey(accountId: accountId, bucketId: cycle.headline.id)
+        let key = SubscriptionHistoryKey(accountId: cycle.accountId, bucketId: cycle.headline.id)
         let cycleStart = resetAt.addingTimeInterval(-Double(window))
         let samples = (quotaService.observationsByAccountBucket[key] ?? [])
             .filter { $0.slotStart >= cycleStart }
@@ -234,10 +262,13 @@ struct ResetsPage: View {
     private func calendar(_ events: [UpcomingResetEvent], now: Date) -> some View {
         let columns = [GridItem(.adaptive(minimum: 96), spacing: 6, alignment: .top)]
         let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: now)
         return LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
             ForEach(0..<14, id: \.self) { offset in
-                let dayStart = calendar.startOfDay(for: now).addingTimeInterval(Double(offset) * 86_400)
-                let dayEnd = dayStart.addingTimeInterval(86_400)
+                // Calendar arithmetic, not fixed 86 400 s — a DST transition
+                // would otherwise shift every later cell off local midnight.
+                let dayStart = calendar.date(byAdding: .day, value: offset, to: todayStart) ?? todayStart
+                let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart.addingTimeInterval(86_400)
                 let hits = events.filter { $0.resetAt >= max(dayStart, now) && $0.resetAt < dayEnd }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(offset == 0 ? "Today" : dayStart.formatted(.dateTime.weekday(.abbreviated).day()))
@@ -279,21 +310,23 @@ struct ResetsPage: View {
         var rows: [(cycle: SubProviderCycle, bucket: QuotaBucket, forecast: QuotaPaceForecast?)] = []
         for cycle in cycles {
             for bucket in cycle.buckets {
-                let forecast = bucket.id == cycle.headline.id
+                let bucketForecast = bucket.id == cycle.headline.id
                     ? cycle.forecast
-                    : miniQuotaForecast(
-                        tool: cycle.tool, bucket: bucket,
-                        environment: environment, quotaService: quotaService, now: now
-                    )
+                    : forecast(accountId: cycle.accountId, tool: cycle.tool, bucket: bucket, now: now)
                 let remaining = max(0, 100 - bucket.usedPercent)
-                let uneasy = forecast.map { $0.verdict == .watch || $0.verdict == .atRisk } ?? false
+                let uneasy = bucketForecast.map { $0.verdict == .watch || $0.verdict == .atRisk } ?? false
                 if uneasy || remaining <= 15 {
-                    rows.append((cycle, bucket, forecast))
+                    rows.append((cycle, bucket, bucketForecast))
                 }
             }
         }
-        rows.sort {
-            (100 - $0.bucket.usedPercent) < (100 - $1.bucket.usedPercent)
+        // The forecast's projected run-out ranks first; buckets it is calm
+        // about sort by what is left.
+        rows.sort { lhs, rhs in
+            let lhsOut = lhs.forecast?.runOutAt ?? Date.distantFuture
+            let rhsOut = rhs.forecast?.runOutAt ?? Date.distantFuture
+            if lhsOut != rhsOut { return lhsOut < rhsOut }
+            return (100 - lhs.bucket.usedPercent) < (100 - rhs.bucket.usedPercent)
         }
         return VStack(alignment: .leading, spacing: 0) {
             if rows.isEmpty {
@@ -305,7 +338,10 @@ struct ResetsPage: View {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 let remaining = max(0, 100 - row.bucket.usedPercent)
                 HStack(spacing: 7) {
-                    Text(remaining <= 5 ? "OUT" : "WATCH")
+                    // The badge is the forecast's verdict, not a raw
+                    // threshold: an at-risk bucket with 20% left is the one
+                    // to worry about, and a low-but-stable one is not "out".
+                    Text(riskBadge(remaining: remaining, forecast: row.forecast))
                         .font(.system(size: 8, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.black.opacity(0.8))
                         .padding(.horizontal, 5)
@@ -327,22 +363,22 @@ struct ResetsPage: View {
         }
     }
 
+    private func riskBadge(remaining: Double, forecast: QuotaPaceForecast?) -> String {
+        if remaining <= 1 { return "OUT" }
+        switch forecast?.verdict {
+        case .atRisk: return "RISK"
+        case .watch: return "WATCH"
+        default: return remaining <= 5 ? "OUT" : "LOW"
+        }
+    }
+
     // MARK: - Chrome
 
-    private func box(@ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            content()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(WorkbenchPorcelain.overlayFill(for: colorScheme))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: 1)
-        )
+    /// The shared card surface — same shell as every other Workbench card,
+    /// so the porcelain floors apply here too.
+    private func box(@ViewBuilder _ content: @escaping () -> some View) -> some View {
+        CardShell(density: density, spacing: 8, content: content)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func boxHeader(_ title: String, detail: String) -> some View {

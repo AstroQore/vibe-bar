@@ -5,6 +5,10 @@ import VibeBarCore
 /// comes back, and how tight the bucket is right now.
 struct UpcomingResetEvent: Identifiable {
     let tool: ToolType
+    let accountId: String
+    /// Set only when the tool has several accounts, so a single-account
+    /// setup keeps its short labels.
+    let accountLabel: String?
     let subProviderName: String
     let groupTitle: String?
     let bucketId: String
@@ -14,14 +18,20 @@ struct UpcomingResetEvent: Identifiable {
     let gainPercent: Double
     let resetAt: Date
 
-    var id: String { "\(tool.rawValue).\(bucketId)" }
+    var id: String { "\(accountId).\(bucketId)" }
 
     /// "Claude · Fable · Weekly" — canonical quota-axis names, full words.
     var label: String {
+        var base: String
         if let groupTitle {
-            return "\(subProviderName) · \(groupTitle) · \(bucketTitle)"
+            base = "\(subProviderName) · \(groupTitle) · \(bucketTitle)"
+        } else {
+            base = "\(subProviderName) · \(bucketTitle)"
         }
-        return "\(subProviderName) · \(bucketTitle)"
+        if let accountLabel {
+            base += " · \(accountLabel)"
+        }
+        return base
     }
 }
 
@@ -37,25 +47,33 @@ enum UpcomingResets {
         let horizon = now.addingTimeInterval(horizonDays * 86_400)
         var out: [UpcomingResetEvent] = []
         for tool in ToolType.dedicatedCardProviders {
-            guard let quota = environment.quota(for: tool) else { continue }
-            for bucket in quota.buckets {
-                guard let resetAt = bucket.resetAt,
-                      resetAt > now, resetAt <= horizon,
-                      bucket.usedPercent >= 1
-                else { continue }
-                let subProvider = tool.quotaSubProviderName(bucketID: bucket.id)
-                let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-                out.append(UpcomingResetEvent(
-                    tool: tool,
-                    subProviderName: subProvider,
-                    groupTitle: (group?.isEmpty ?? true) || group?.caseInsensitiveCompare(subProvider) == .orderedSame
-                        ? nil : group,
-                    bucketId: bucket.id,
-                    bucketTitle: bucket.title,
-                    remainingPercent: max(0, 100 - bucket.usedPercent),
-                    gainPercent: bucket.usedPercent,
-                    resetAt: resetAt
-                ))
+            // Every account, not the first one — multi-account providers
+            // (Gemini, say) refill per account.
+            let accounts = environment.accountStore.accounts(for: tool)
+            for account in accounts {
+                guard let quota = environment.quotaService.cachedQuota(for: account.id) else { continue }
+                let accountLabel = accounts.count > 1 ? account.displayLabel : nil
+                for bucket in quota.buckets {
+                    guard let resetAt = bucket.resetAt,
+                          resetAt > now, resetAt <= horizon,
+                          bucket.usedPercent >= 1
+                    else { continue }
+                    let subProvider = tool.quotaSubProviderName(bucketID: bucket.id)
+                    let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    out.append(UpcomingResetEvent(
+                        tool: tool,
+                        accountId: account.id,
+                        accountLabel: accountLabel,
+                        subProviderName: subProvider,
+                        groupTitle: (group?.isEmpty ?? true) || group?.caseInsensitiveCompare(subProvider) == .orderedSame
+                            ? nil : group,
+                        bucketId: bucket.id,
+                        bucketTitle: bucket.title,
+                        remainingPercent: max(0, 100 - bucket.usedPercent),
+                        gainPercent: bucket.usedPercent,
+                        resetAt: resetAt
+                    ))
+                }
             }
         }
         return out.sorted { $0.resetAt < $1.resetAt }
