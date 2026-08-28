@@ -68,8 +68,25 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         observeChanges()
         renderMenuBar()
-        // Restore mini window if the user had it open last session.
+        // Restore mini windows the user had open last session.
         miniWindowController.restoreIfNeeded(environment: environment)
+        // Settings' "Open / Close" button reaches the panels through this
+        // notification — the controller is private to this object.
+        NotificationCenter.default.addObserver(
+            forName: .vibeBarToggleMiniWindow,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let raw = note.userInfo?["configID"] as? String
+            Task { @MainActor in
+                guard let self else { return }
+                if let raw, let id = UUID(uuidString: raw) {
+                    self.toggleMiniWindow(configID: id)
+                } else {
+                    self.toggleMiniWindow()
+                }
+            }
+        }
         // Warm the one unified popover after launch so the first open is
         // immediate without keeping retired standalone trees alive.
         DispatchQueue.main.async { [weak self] in
@@ -365,7 +382,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func toggleMiniWindow() {
-        miniWindowController.toggle(environment: environment)
+        miniWindowController.toggleAll(environment: environment)
+    }
+
+    private func toggleMiniWindow(configID: UUID) {
+        miniWindowController.toggle(configID: configID, environment: environment)
     }
 
     // MARK: - Demo mode
@@ -407,11 +428,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.contentViewController?.view.window?.makeKey()
     }
 
-    /// Show the mini window in `mode`. Demo mode only.
+    /// Show the first mini window in `mode`. Demo mode only.
     func presentMiniWindowForDemo(mode: MiniWindowDisplayMode) {
         guard DemoMode.isEnabled else { return }
-        if environment.settingsStore.settings.miniWindow.displayMode != mode {
-            environment.settingsStore.settings.miniWindow.displayMode = mode
+        var settings = environment.settingsStore.settings
+        if let index = settings.miniWindow.windows.indices.first,
+           settings.miniWindow.windows[index].displayMode != mode {
+            settings.miniWindow.windows[index].displayMode = mode
+            environment.settingsStore.settings = settings
         }
         miniWindowController.presentForDemo(environment: environment)
     }
@@ -455,7 +479,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(actionMenuItem("Refresh", action: #selector(refreshFromContextMenu(_:)), keyEquivalent: "r"))
-        menu.addItem(actionMenuItem("Open Mini Window", action: #selector(toggleMiniFromContextMenu(_:))))
+        addMiniWindowMenuItems(to: menu)
         menu.addItem(actionMenuItem("Open Workbench", action: #selector(openWorkbenchFromContextMenu(_:))))
         menu.addItem(actionMenuItem("Open Settings", action: #selector(openSettingsFromContextMenu(_:)), keyEquivalent: ","))
         let updateItem = actionMenuItem(
@@ -553,6 +577,41 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     @objc private func toggleMiniFromContextMenu(_ sender: NSMenuItem) {
         toggleMiniWindow()
+    }
+
+    /// One item when a single mini window is configured; a submenu listing
+    /// each window (checkmarked while open) plus Toggle All when there are
+    /// several.
+    private func addMiniWindowMenuItems(to menu: NSMenu) {
+        let windows = environment.settingsStore.settings.miniWindow.windows
+        guard windows.count > 1 else {
+            menu.addItem(actionMenuItem("Open Mini Window", action: #selector(toggleMiniFromContextMenu(_:))))
+            return
+        }
+        let parent = NSMenuItem(title: "Mini Windows", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        for config in windows {
+            let item = NSMenuItem(
+                title: "\(config.name) — \(config.displayMode.label)",
+                action: #selector(toggleMiniWindowFromContextMenu(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = config.id.uuidString
+            item.state = miniWindowController.isVisible(configID: config.id) ? .on : .off
+            submenu.addItem(item)
+        }
+        submenu.addItem(.separator())
+        let all = NSMenuItem(title: "Toggle All", action: #selector(toggleMiniFromContextMenu(_:)), keyEquivalent: "")
+        all.target = self
+        submenu.addItem(all)
+        parent.submenu = submenu
+        menu.addItem(parent)
+    }
+
+    @objc private func toggleMiniWindowFromContextMenu(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let id = UUID(uuidString: raw) else { return }
+        toggleMiniWindow(configID: id)
     }
 
     @objc private func openWorkbenchFromContextMenu(_ sender: NSMenuItem) {

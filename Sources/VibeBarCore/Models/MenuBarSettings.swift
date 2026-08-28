@@ -187,19 +187,30 @@ public struct MenuBarFieldOption: Identifiable, Hashable, Sendable {
     public var bucketId: String
     public var title: String
     public var defaultLabel: String
+    /// For a runtime-discovered field: the L3 group title its live bucket
+    /// carried when it was recorded. Static catalog entries leave it nil —
+    /// their grouping is the hand-maintained tables.
+    public var dynamicGroupTitle: String?
+    /// True for fields synthesized from `QuotaFieldRegistry` rather than the
+    /// static catalog.
+    public var isDynamic: Bool
 
     public init(
         id: String,
         tool: ToolType,
         bucketId: String,
         title: String,
-        defaultLabel: String
+        defaultLabel: String,
+        dynamicGroupTitle: String? = nil,
+        isDynamic: Bool = false
     ) {
         self.id = id
         self.tool = tool
         self.bucketId = bucketId
         self.title = title
         self.defaultLabel = defaultLabel
+        self.dynamicGroupTitle = dynamicGroupTitle
+        self.isDynamic = isDynamic
     }
 }
 

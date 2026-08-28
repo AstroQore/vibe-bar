@@ -652,13 +652,15 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testMiniWindowSettingsRoundTrip() throws {
+        // The windows array is the source of truth now; the legacy
+        // single-window fields are re-derived from the first window on
+        // encode, so a downgrade still shows something sensible.
         var settings = AppSettings.default
-        settings.miniWindow.displayMode = .compact
-        settings.miniWindow.selectedFieldIds = ["claude.weekly_design"]
-        settings.miniWindow.compactSelectedFieldIds = ["claude.daily_routines"]
+        settings.miniWindow.windows[0].displayMode = .compact
+        settings.miniWindow.windows[0].fieldIds = ["claude.daily_routines"]
+        settings.miniWindow.windows[0].wasOpen = true
         settings.miniWindow.customLabels["claude.weekly_design"] = "Design"
         settings.miniWindow.groupLabels["claude.design"] = "Design-ish"
-        settings.miniWindow.wasOpen = true
         settings.miniWindow.savedOriginX = 42.5
         settings.miniWindow.savedOriginY = 100.0
         settings.miniWindow.savedPixelOriginX = 85.0
@@ -668,7 +670,9 @@ final class AppSettingsTests: XCTestCase {
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
 
-        XCTAssertEqual(decoded.miniWindow.selectedFieldIds, ["claude.weekly_design"])
+        XCTAssertEqual(decoded.miniWindow.windows, settings.miniWindow.windows)
+        // The legacy mirror follows the first window.
+        XCTAssertEqual(decoded.miniWindow.selectedFieldIds, ["claude.daily_routines"])
         XCTAssertEqual(decoded.miniWindow.compactSelectedFieldIds, ["claude.daily_routines"])
         XCTAssertEqual(decoded.miniWindow.displayMode, .compact)
         XCTAssertEqual(decoded.miniWindow.customLabels["claude.weekly_design"], "Design")

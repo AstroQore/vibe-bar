@@ -761,9 +761,12 @@ capture against § 8 before committing it — a screenshot is source content.
 - **Performance.** Avoid `TimelineView(.periodic(...))` in deep view
   trees that may be eagerly instantiated; prefer scoping to the visible
   surface. The mini window's screen position is persisted to its own
-  JSON file (`mini_window_geometry.json`) — don't fold it back into
-  `AppSettings`, because every settings write fans out to every Combine
-  subscriber.
+  JSON file (`mini_window_geometry.json`, one entry per window) — don't
+  fold it back into `AppSettings`, because every settings write fans out
+  to every Combine subscriber. The same reasoning gives the discovered
+  quota buckets their own file: `quota_field_registry.json`, written by
+  `QuotaService` when an adapter returns a bucket the static
+  `MenuBarFieldCatalog` doesn't list.
 - **JSONL parsing must be O(n).** Go through
   `CostUsageScanner.forEachJSONLLine`, which forwards to the package's
   `JSONLLineScanner.forEachLine`: a moving cursor, not `removeSubrange`.
@@ -1239,10 +1242,13 @@ whose scoped entries carry the model's display name
 "Fable"}}}`). `ClaudeResponseParser.appendLimitsArrayBuckets` derives
 the bucket id from that name (`Fable` → `weekly_fable`), so a
 brand-new model **auto-surfaces in the popover with zero code
-changes**. This checklist is still required to make the model
-selectable in the menu bar / mini window and to give it hand-tuned
-labels — but the "invisible until someone edits the parser" failure
-mode is gone.
+changes** — and, since the mini window's field picker merges the
+runtime `QuotaFieldRegistry` (catalog-external buckets seen on this
+Mac, persisted in `~/.vibebar/quota_field_registry.json`), it is
+selectable in the mini window with zero code changes too. This
+checklist is still required to make the model selectable in the menu
+bar and to give it hand-tuned labels — but the "invisible until
+someone edits the parser" failure mode is gone.
 
 Use consistent ids for a model `<x>` (e.g. `fable`):
 

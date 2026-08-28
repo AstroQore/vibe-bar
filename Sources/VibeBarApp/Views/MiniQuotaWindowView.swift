@@ -2,6 +2,10 @@ import SwiftUI
 import VibeBarCore
 
 struct MiniQuotaWindowView: View {
+    /// Which `MiniWindowConfig` this panel renders. Every panel gets its own
+    /// hosting view; the config is re-read from settings on each render so
+    /// Settings edits apply live.
+    let configID: UUID
     let onClose: () -> Void
     let onToggleDisplayMode: () -> Void
 
@@ -13,26 +17,33 @@ struct MiniQuotaWindowView: View {
     /// timer- or button-driven refreshes feel laggy compared to the popover.
     @EnvironmentObject var quotaService: QuotaService
 
+    private var config: MiniWindowConfig {
+        settingsStore.settings.miniWindow.config(id: configID)
+            ?? settingsStore.settings.miniWindow.windows.first
+            ?? MiniWindowConfig(name: "Mini", fieldIds: [])
+    }
+
     var body: some View {
-        let contentByTool = miniContentByTool
-        // Mini window only surfaces dedicated-card providers — misc
-        // cards live on the Misc tab inside the Overview popover, not
-        // in this floating panel.
-        let visibleTools = ToolType.dedicatedCardProviders.filter { tool in
-            contentByTool[tool]?.isEmpty == false
-        }
-        let displayMode = settingsStore.settings.miniWindow.displayMode
+        let config = self.config
+        let displayMode = config.displayMode
 
         ZStack(alignment: .topTrailing) {
-            MiniWindowProviderLayout(
-                displayMode: displayMode,
-                visibleTools: visibleTools,
-                contentByTool: contentByTool,
-                selectedFieldIds: miniSelectedFieldIds
-            )
-            .padding(.horizontal, displayMode == .compact ? 8 : 14)
-            .padding(.top, displayMode == .compact ? 16 : 22)
-            .padding(.bottom, displayMode == .compact ? 9 : 14)
+            Group {
+                switch displayMode {
+                case .regular, .compact:
+                    ringOrBarBody(config: config, displayMode: displayMode)
+                case .ledger:
+                    MiniLedgerLayout(entries: miniEntries(config: config))
+                case .strip:
+                    MiniStripLayout(entries: miniEntries(config: config))
+                case .tile:
+                    MiniTileLayout(entries: miniEntries(config: config))
+                case .focus:
+                    MiniFocusLayout(entries: miniEntries(config: config))
+                case .rail:
+                    MiniRailLayout(entries: miniEntries(config: config))
+                }
+            }
             .frame(maxWidth: .infinity, alignment: .center)
             .contentShape(Rectangle())
             .onTapGesture(count: 2, perform: onToggleDisplayMode)
@@ -46,14 +57,6 @@ struct MiniQuotaWindowView: View {
             .padding(.top, 6)
             .padding(.trailing, 8)
         }
-        .frame(
-            minWidth: displayMode == .compact ? 156 : 240,
-            // Three tiers now: company header, SubProvider label, quota
-            // groups. `MiniQuotaWindowController.stableContentSize` reserves
-            // the same extra label row — keep the two in step.
-            minHeight: displayMode == .compact ? 146 : 181,
-            alignment: .center
-        )
         .glassEffect(
             .regular.interactive(),
             in: .rect(cornerRadius: Theme.miniCornerRadius)
@@ -64,24 +67,62 @@ struct MiniQuotaWindowView: View {
         .vibeBarControlFocus()
     }
 
-    /// The field ids selected for the current display mode. Also the input to
-    /// `MenuBarFieldCatalog.subProviderGroups`, which decides the company →
-    /// SubProvider skeleton the layout renders into.
-    private var miniSelectedFieldIds: Set<String> {
-        let mini = settingsStore.settings.miniWindow
-        return Set(mini.fieldIds(for: mini.displayMode))
+    @ViewBuilder
+    private func ringOrBarBody(config: MiniWindowConfig, displayMode: MiniWindowDisplayMode) -> some View {
+        let contentByTool = miniContentByTool(config: config)
+        MiniWindowProviderLayout(
+            displayMode: displayMode,
+            orderedFieldIds: visibleOrderedFieldIds(config: config, contentByTool: contentByTool),
+            contentByTool: contentByTool,
+            registry: quotaService.fieldRegistry
+        )
+        .padding(.horizontal, displayMode == .compact ? 8 : 14)
+        .padding(.top, displayMode == .compact ? 16 : 22)
+        .padding(.bottom, displayMode == .compact ? 9 : 14)
+        .frame(
+            minWidth: displayMode == .compact ? 156 : 240,
+            // Three tiers: company header, SubProvider label, quota groups.
+            // `MiniQuotaWindowController.stableContentSize` reserves the same
+            // rows — keep the two in step.
+            minHeight: displayMode == .compact ? 146 : 181,
+            alignment: .center
+        )
     }
 
-    private var miniContentByTool: [ToolType: MiniToolContent] {
-        let mini = settingsStore.settings.miniWindow
-        let selected = mini.fieldIds(for: mini.displayMode)
+    /// The config's field order restricted to fields that resolve and have a
+    /// live bucket — the input to the ordered company → SubProvider skeleton.
+    private func visibleOrderedFieldIds(
+        config: MiniWindowConfig,
+        contentByTool: [ToolType: MiniToolContent]
+    ) -> [String] {
+        let visible = Set(
+            contentByTool.values.flatMap { content in
+                content.primaryCells.map(\.field.id) + content.branchCells.map(\.field.id)
+            }
+        )
+        return config.fieldIds.filter { visible.contains($0) }
+    }
+
+    /// The flat, ordered entry list the alternative layouts render from.
+    private func miniEntries(config: MiniWindowConfig) -> [MiniEntry] {
+        MiniEntry.entries(
+            config: config,
+            settings: settingsStore.settings.miniWindow,
+            registry: quotaService.fieldRegistry,
+            quota: { environment.quota(for: $0) }
+        )
+    }
+
+    private func miniContentByTool(config: MiniWindowConfig) -> [ToolType: MiniToolContent] {
+        let selected = config.fieldIds
         let selectedFieldIds = Set(selected)
+        let registry = quotaService.fieldRegistry
         var contentByTool: [ToolType: MiniToolContent] = [:]
         for tool in ToolType.dedicatedCardProviders {
             var cells: [MiniCell] = []
             for fieldId in selected {
                 guard
-                    let field = MenuBarFieldCatalog.field(id: fieldId),
+                    let field = MenuBarFieldCatalog.field(id: fieldId, registry: registry),
                     field.tool == tool
                 else { continue }
                 guard let liveBucket = environment.quota(for: tool)?.bucket(id: field.bucketId) else {
@@ -103,7 +144,8 @@ struct MiniQuotaWindowView: View {
             let selectedBucketIds = Set(cells.map { $0.field.bucketId })
             let branchCells = branchCells(
                 for: tool,
-                selectedFieldIds: selectedFieldIds,
+                orderedFieldIds: selected,
+                registry: registry,
                 excluding: selectedBucketIds
             )
             let content = MiniToolContent(primaryCells: cells, branchCells: branchCells)
@@ -136,6 +178,11 @@ struct MiniQuotaWindowView: View {
         if field.tool == .antigravity {
             return true
         }
+        // A discovered field is branch-style exactly when its bucket carried
+        // an L3 group title when it was recorded.
+        if field.isDynamic {
+            return field.dynamicGroupTitle != nil
+        }
         switch field.bucketId {
         case "gpt_5_3_codex_spark_five_hour",
              "gpt_5_3_codex_spark_weekly",
@@ -151,17 +198,20 @@ struct MiniQuotaWindowView: View {
         }
     }
 
+    /// Branch cells in the config's own field order — the user's arrangement,
+    /// not the adapter's bucket order.
     private func branchCells(
         for tool: ToolType,
-        selectedFieldIds: Set<String>,
+        orderedFieldIds: [String],
+        registry: QuotaFieldRegistry,
         excluding selectedBucketIds: Set<String>
     ) -> [MiniBranchCell] {
         guard let quota = environment.quota(for: tool) else { return [] }
-        return quota.buckets.compactMap { bucket in
-            let fieldId = MenuBarFieldCatalog.fieldId(tool: tool, bucketId: bucket.id)
+        return orderedFieldIds.compactMap { fieldId in
             guard
-                selectedFieldIds.contains(fieldId),
-                let field = MenuBarFieldCatalog.field(id: fieldId),
+                let field = MenuBarFieldCatalog.field(id: fieldId, registry: registry),
+                field.tool == tool,
+                let bucket = quota.bucket(id: field.bucketId),
                 !selectedBucketIds.contains(bucket.id),
                 Self.hasQuotaGroup(bucket, tool: tool, bucketId: bucket.id)
             else { return nil }
@@ -207,13 +257,13 @@ private struct MiniCompanyGroup: Identifiable {
 /// folded by `vendorName`); this only attaches content and drops whatever the
 /// live quota had nothing for.
 private func miniProductGroups(
-    visibleTools: [ToolType],
+    orderedFieldIds: [String],
     contentByTool: [ToolType: MiniToolContent],
-    selectedFieldIds: Set<String>
+    registry: QuotaFieldRegistry
 ) -> [MiniCompanyGroup] {
-    let skeleton = MenuBarFieldCatalog.subProviderGroups(
-        for: visibleTools,
-        selectedFieldIds: selectedFieldIds
+    let skeleton = MenuBarFieldCatalog.orderedSubProviderGroups(
+        fieldIds: orderedFieldIds,
+        registry: registry
     )
     var groups: [MiniCompanyGroup] = []
     for company in skeleton {
@@ -244,27 +294,33 @@ private func miniProductGroups(
 
 private struct MiniWindowProviderLayout: View {
     let displayMode: MiniWindowDisplayMode
-    let visibleTools: [ToolType]
+    let orderedFieldIds: [String]
     let contentByTool: [ToolType: MiniToolContent]
-    let selectedFieldIds: Set<String>
+    let registry: QuotaFieldRegistry
 
     var body: some View {
         let groups = miniProductGroups(
-            visibleTools: visibleTools,
+            orderedFieldIds: orderedFieldIds,
             contentByTool: contentByTool,
-            selectedFieldIds: selectedFieldIds
+            registry: registry
         )
         HStack(alignment: .top, spacing: displayMode == .compact ? 8 : 14) {
-            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+            // Positional identity on purpose: an arrangement that interleaves
+            // vendors legally produces two columns named "Google AI", and a
+            // name-keyed ForEach would render the first column's content
+            // twice.
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
                 if index > 0 {
                     MiniProviderDivider(height: displayMode == .compact ? 94 : 131)
                         .padding(.top, 2)
                 }
                 switch displayMode {
-                case .regular:
-                    MiniCompanyGroupColumn(group: group)
                 case .compact:
                     MiniCompactL2GroupColumn(group: group)
+                default:
+                    // Only regular and compact reach this layout; the
+                    // alternative modes render their own views.
+                    MiniCompanyGroupColumn(group: group)
                 }
             }
         }
@@ -434,11 +490,11 @@ private struct MiniBranchCell: Identifiable {
 
 /// Brand hue for a provider. The table itself lives in `Theme` so the charts
 /// that colour-code providers share exactly these hues.
-private func providerAccent(for tool: ToolType) -> Color {
+func providerAccent(for tool: ToolType) -> Color {
     Theme.providerAccent(for: tool)
 }
 
-private func providerTitle(for tool: ToolType) -> String {
+func providerTitle(for tool: ToolType) -> String {
     switch tool {
     case .codex:       return "CODEX"
     case .claude:      return "CLAUDE"
@@ -469,7 +525,7 @@ private func providerTitle(for tool: ToolType) -> String {
 }
 
 @MainActor
-private func miniQuotaForecast(
+func miniQuotaForecast(
     tool: ToolType,
     bucket: QuotaBucket,
     environment: AppEnvironment,
@@ -488,14 +544,14 @@ private func miniQuotaForecast(
     )
 }
 
-private func miniForecastPlan(_ forecast: QuotaPaceForecast, mode: DisplayMode) -> Double {
+func miniForecastPlan(_ forecast: QuotaPaceForecast, mode: DisplayMode) -> Double {
     switch mode {
     case .used: forecast.plannedUsedPercent
     case .remaining: 100 - forecast.plannedUsedPercent
     }
 }
 
-private func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact: Bool = false) -> String {
+func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact: Bool = false) -> String {
     if let runOutAt = forecast.runOutAt,
        let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
         return forecast.verdict == .watch ? "may run out \(countdown)" : "out \(countdown)"
@@ -510,7 +566,7 @@ private func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact:
     }
 }
 
-private func miniForecastColor(_ forecast: QuotaPaceForecast?) -> Color {
+func miniForecastColor(_ forecast: QuotaPaceForecast?) -> Color {
     guard let forecast else { return Color.secondary.opacity(0.5) }
     switch forecast.verdict {
     case .enough: return Color(red: 0.20, green: 0.70, blue: 0.48)
@@ -1473,7 +1529,7 @@ private struct MiniVerticalQuotaBar: View {
     }
 }
 
-private struct RingGauge<CenterLabel: View>: View {
+struct RingGauge<CenterLabel: View>: View {
     let percent: Double
     let expected: Double?
     let color: Color
