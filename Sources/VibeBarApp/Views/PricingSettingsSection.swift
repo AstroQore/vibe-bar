@@ -7,10 +7,38 @@ struct PricingSettingsSection: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
 
+    /// The merged price table, rebuilt when a catalog refresh lands or the
+    /// overrides change — not on every body pass; the merge + sort spans
+    /// every known model. A reference box so filling it in `body` cannot
+    /// dirty view state.
+    private final class PriceTableCache {
+        var stamp: PriceStamp?
+        var rows: [EffectiveModelPricingRow] = []
+    }
+
+    private struct PriceStamp: Equatable {
+        let mergedAt: Date?
+        let overrides: [ModelPricingOverride]
+    }
+
+    @State private var priceTableCache = PriceTableCache()
+
+    private func cachedModelPrices() -> [EffectiveModelPricingRow] {
+        let stamp = PriceStamp(
+            mergedAt: environment.pricingRefreshStatus.mergedAt,
+            overrides: settingsStore.settings.modelPricingOverrides
+        )
+        if priceTableCache.stamp == stamp {
+            return priceTableCache.rows
+        }
+        let rows = PricingResolver.active.effectiveModelPrices
+        priceTableCache.stamp = stamp
+        priceTableCache.rows = rows
+        return rows
+    }
+
     var body: some View {
-        // One build of the merged price table per body pass, shared with the
-        // catalog below.
-        let modelPrices = PricingResolver.active.effectiveModelPrices
+        let modelPrices = cachedModelPrices()
         return VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             settingsSection("Model Pricing") {
                 Text("Catalogs refresh in the background. Higher entries win when the same provider and model name appears more than once.")
@@ -156,15 +184,37 @@ private struct PricingOverrideEditor: View {
     @Binding var override: ModelPricingOverride
     let delete: () -> Void
 
+    /// Fields edit this draft; the settings write happens once per pause,
+    /// not per keystroke — every `AppSettings` write fans out to every
+    /// `$settings` subscriber (§ 7's hot-path rule).
+    @State private var draft: ModelPricingOverride
+    @State private var commitTask: Task<Void, Never>?
+
+    init(override: Binding<ModelPricingOverride>, delete: @escaping () -> Void) {
+        _override = override
+        self.delete = delete
+        _draft = State(initialValue: override.wrappedValue)
+    }
+
+    private func scheduleCommit() {
+        commitTask?.cancel()
+        commitTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            if override != draft { override = draft }
+            commitTask = nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Picker("Provider", selection: $override.provider) {
+                Picker("Provider", selection: $draft.provider) {
                     ForEach(PricingProviderFamily.allCases) { provider in
                         Text(provider.label).tag(provider)
                     }
                 }
-                TextField("Exact model name", text: $override.model)
+                TextField("Exact model name", text: $draft.model)
                     .textFieldStyle(.roundedBorder)
                 Button(role: .destructive, action: delete) {
                     Image(systemName: "trash")
@@ -174,8 +224,8 @@ private struct PricingOverrideEditor: View {
             }
 
             HStack {
-                rateField("Input", value: $override.inputPerMillion)
-                rateField("Output", value: $override.outputPerMillion)
+                rateField("Input", value: $draft.inputPerMillion)
+                rateField("Output", value: $draft.outputPerMillion)
                 optionalRateField("Cache read", keyPath: \.cacheReadPerMillion)
                 optionalRateField("Cache write", keyPath: \.cacheWritePerMillion)
             }
@@ -196,6 +246,21 @@ private struct PricingOverrideEditor: View {
                 .padding(.top, 6)
             }
             .font(.caption)
+        }
+        .onChange(of: draft) { _, _ in
+            scheduleCommit()
+        }
+        .onChange(of: override) { _, newValue in
+            // An external change (delete/re-add, another surface) adopts,
+            // unless a local draft is still waiting to commit.
+            if commitTask == nil, draft != newValue {
+                draft = newValue
+            }
+        }
+        .onDisappear {
+            commitTask?.cancel()
+            commitTask = nil
+            if override != draft { override = draft }
         }
     }
 
@@ -234,12 +299,12 @@ private struct PricingOverrideEditor: View {
     ) -> Binding<String> {
         Binding(
             get: {
-                guard let value = override[keyPath: keyPath] else { return "" }
+                guard let value = draft[keyPath: keyPath] else { return "" }
                 return String(value)
             },
             set: { raw in
                 let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                override[keyPath: keyPath] = trimmed.isEmpty ? nil : Double(trimmed)
+                draft[keyPath: keyPath] = trimmed.isEmpty ? nil : Double(trimmed)
             }
         )
     }
@@ -248,10 +313,10 @@ private struct PricingOverrideEditor: View {
         _ keyPath: WritableKeyPath<ModelPricingOverride, Int?>
     ) -> Binding<String> {
         Binding(
-            get: { override[keyPath: keyPath].map(String.init) ?? "" },
+            get: { draft[keyPath: keyPath].map(String.init) ?? "" },
             set: { raw in
                 let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                override[keyPath: keyPath] = trimmed.isEmpty ? nil : Int(trimmed)
+                draft[keyPath: keyPath] = trimmed.isEmpty ? nil : Int(trimmed)
             }
         )
     }
