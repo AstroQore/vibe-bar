@@ -1847,6 +1847,52 @@ public actor UsageEventLedger: CostUsageEventSink {
             }
     }
 
+    /// Per-day per-model totals for one tool, detail rows and daily rollups
+    /// combined, restricted to the given day keys (this ledger's own
+    /// `yyyy-MM-dd` local-day format — the same format `CostHistoryStore`
+    /// uses, see `dayString(for:)`). Used to backfill the model mix of
+    /// persisted history days whose source logs have already rotated away.
+    public func dayModelBreakdowns(
+        tool: ToolType,
+        days: Set<String>
+    ) throws -> [String: [CostSnapshot.ModelBreakdown]] {
+        guard !days.isEmpty else { return [:] }
+        var totals: [String: [String: (tokens: Int64, costMicros: Int64)]] = [:]
+        for table in ["usage_events", "usage_daily_rollups"] {
+            let statement = try prepare(
+                """
+                SELECT day, model,
+                       COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
+                       COALESCE(SUM(cost_micros), 0)
+                  FROM \(table)
+                 WHERE tool = ? AND TRIM(model) <> ''
+                 GROUP BY day, model
+                """
+            )
+            defer { sqlite3_finalize(statement) }
+            bindAll([.text(tool.rawValue)], to: statement)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let day = columnText(statement, 0), days.contains(day),
+                      let model = columnText(statement, 1) else { continue }
+                var entry = totals[day, default: [:]][model] ?? (0, 0)
+                entry.tokens += sqlite3_column_int64(statement, 2)
+                entry.costMicros += sqlite3_column_int64(statement, 3)
+                totals[day, default: [:]][model] = entry
+            }
+        }
+        return totals.mapValues { models in
+            models
+                .map {
+                    CostSnapshot.ModelBreakdown(
+                        modelName: $0.key,
+                        costUSD: Double($0.value.costMicros) / 1_000_000,
+                        totalTokens: Int($0.value.tokens)
+                    )
+                }
+                .sorted { $0.costUSD > $1.costUSD }
+        }
+    }
+
     /// Per-project totals from request-level evidence, heaviest first.
     ///
     /// Daily rollups intentionally do not carry a project dimension: project

@@ -49,6 +49,9 @@ public final class CostUsageService: ObservableObject {
     /// history without re-walking the JSONL. Nil keeps the scan pipeline
     /// byte-identical to the pre-ledger behaviour.
     private let usageLedger: UsageEventLedger?
+    /// Tools whose persisted history has been offered a ledger model-mix
+    /// backfill this launch — see the block in `refresh()`.
+    private var dayModelBackfillAttempted: Set<ToolType> = []
     /// Keep authoritative local and selected-remote sources separate. Only the
     /// merged dictionary is published, so remote facts are never written into
     /// the local scan cache/history and cannot be counted again after relaunch.
@@ -211,6 +214,27 @@ public final class CostUsageService: ObservableObject {
         // catalog (including local overrides) changes so both surfaces can
         // adopt newly covered models without losing rotated history.
         _ = try? await usageLedger?.prepareForPricingRevision(PricingResolver.activeRevision)
+
+        // Historical days persisted before per-day models existed — or whose
+        // source logs had already rotated away when the day was recorded —
+        // can still be described by the request ledger. Fill them before the
+        // scans so the snapshots merged below already carry the recovered
+        // mix. Once per tool per launch: old days only gain new ledger
+        // evidence through rare re-ingest migrations, never a routine pass.
+        if let ledger = usageLedger {
+            for tool in ToolType.allCases
+            where tool.supportsTokenCost && !dayModelBackfillAttempted.contains(tool) {
+                dayModelBackfillAttempted.insert(tool)
+                let missing = await CostHistoryStore.shared.daysMissingModels(tool: tool)
+                guard !missing.isEmpty,
+                      let recovered = try? await ledger.dayModelBreakdowns(
+                          tool: tool, days: Set(missing)
+                      ),
+                      !recovered.isEmpty
+                else { continue }
+                await CostHistoryStore.shared.backfillDayModels(tool: tool, modelsByDay: recovered)
+            }
+        }
 
         var results: [ToolType: CostSnapshot] = [:]
         var directRemoteResults = directRemoteSnapshots
