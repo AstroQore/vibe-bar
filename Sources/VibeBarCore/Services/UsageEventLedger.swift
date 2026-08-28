@@ -90,6 +90,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Undoes the first harness rule, which read `originator == "Codex Desktop"`
     /// as ChatGPT Work. See `migrateCodexDesktopHarnessRows`.
     static let codexHarnessFixupKey = "harness_v2"
+    /// One-time re-ingest for the AntiGravity relative-clock recovery. See
+    /// `migrateAntigravityRelativeClockReingest`.
+    static let antigravityReclockKey = "antigravity_reclock_v1"
     private static let pricingRevisionKey = "pricing_revision"
     /// Row count at the last `ANALYZE`. See `refreshStatisticsIfStale`.
     private static let analyzeRowCountKey = "analyze_rows"
@@ -252,6 +255,9 @@ public actor UsageEventLedger: CostUsageEventSink {
             throw UsageLedgerError.open
         }
         guard Self.migrateCursorToolRows(database) else {
+            throw UsageLedgerError.open
+        }
+        guard Self.migrateAntigravityRelativeClockReingest(database) else {
             throw UsageLedgerError.open
         }
         var statement: OpaquePointer?
@@ -495,6 +501,54 @@ public actor UsageEventLedger: CostUsageEventSink {
             -1, &insertMarker, nil
         ) == SQLITE_OK, let insertMarker else { return rollback() }
         sqlite3_bind_text(insertMarker, 1, codexHarnessFixupKey, -1, transient)
+        let markerResult = sqlite3_step(insertMarker)
+        sqlite3_finalize(insertMarker)
+        guard markerResult == SQLITE_DONE,
+              sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
+        else { return rollback() }
+        return true
+    }
+
+    /// AntiGravity stores scanned while the reader only understood absolute
+    /// wall clocks (agent-session-kit <= 0.6.1, agy >= ~1.1.18 stores) emitted
+    /// *empty* batches, and `ingest` recorded their fingerprints anyway. The
+    /// scanner's parser-version bump makes those databases re-parse — but a
+    /// re-emitted batch with an unchanged fingerprint short-circuits at the
+    /// top of `ingest`, so the recovered request rows would never reach this
+    /// ledger. Drop AntiGravity's ingest fingerprints once; rows that do
+    /// exist survive and update in place on `dedupe_key`.
+    @discardableResult
+    static func migrateAntigravityRelativeClockReingest(_ database: OpaquePointer) -> Bool {
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        var marker: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database, "SELECT 1 FROM ledger_meta WHERE key = ?", -1, &marker, nil
+        ) == SQLITE_OK, let marker else { return false }
+        sqlite3_bind_text(marker, 1, antigravityReclockKey, -1, transient)
+        let alreadyMigrated = sqlite3_step(marker) == SQLITE_ROW
+        sqlite3_finalize(marker)
+        if alreadyMigrated { return true }
+
+        guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+            return false
+        }
+        func rollback() -> Bool {
+            sqlite3_exec(database, "ROLLBACK", nil, nil, nil)
+            return false
+        }
+        guard sqlite3_exec(
+            database,
+            "DELETE FROM ingested_files WHERE tool = '\(ToolType.antigravity.rawValue)'",
+            nil, nil, nil
+        ) == SQLITE_OK else { return rollback() }
+
+        var insertMarker: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "INSERT INTO ledger_meta(key, value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            -1, &insertMarker, nil
+        ) == SQLITE_OK, let insertMarker else { return rollback() }
+        sqlite3_bind_text(insertMarker, 1, antigravityReclockKey, -1, transient)
         let markerResult = sqlite3_step(insertMarker)
         sqlite3_finalize(insertMarker)
         guard markerResult == SQLITE_DONE,

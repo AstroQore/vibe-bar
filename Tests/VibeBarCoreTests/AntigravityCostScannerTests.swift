@@ -553,7 +553,10 @@ final class AntigravityCostScannerTests: XCTestCase {
         )
 
         XCTAssertEqual(snap.modelBreakdowns.map(\.modelName), ["Gemini 3.5 Flash (High)"])
-        XCTAssertEqual(migratedCache.antigravityDBParserVersion, 2)
+        XCTAssertEqual(
+            migratedCache.antigravityDBParserVersion,
+            CostUsageScanner.antigravityDBParserVersion
+        )
     }
 
     func testModelParserMigrationRetriesDatabaseAfterTemporaryReadFailure() async throws {
@@ -627,7 +630,7 @@ final class AntigravityCostScannerTests: XCTestCase {
         XCTAssertEqual(
             CostUsageScanCache.load(homeDirectory: home.path, tool: .antigravity)
                 .antigravityDBParserVersion,
-            2
+            CostUsageScanner.antigravityDBParserVersion
         )
     }
 

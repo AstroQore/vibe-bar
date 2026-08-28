@@ -982,7 +982,15 @@ public enum CostUsageScanner {
     /// `model_enum`) instead of grouping every routed field-19 alias such as
     /// `gemini-default`. The scan cache keeps this independent of its global
     /// schema so only `.db` events are reparsed once; `.pb` RPC events survive.
-    private static let antigravityDBParserVersion = 2
+    ///
+    /// v3 re-parses for agent-session-kit 0.6.2: agy CLI ~1.1.18 moved the
+    /// per-turn wall clock to a relative offset, and stores scanned while the
+    /// reader only understood the absolute form were cached as empty. The
+    /// reader now resolves offset turns against the trajectory's own start
+    /// time, so one re-parse recovers the usage those caches dropped.
+    /// Internal (not private) so the migration tests assert against the
+    /// constant itself instead of a literal that goes stale on every bump.
+    static let antigravityDBParserVersion = 3
 
     private static func scanAntigravity(
         homeDirectory: String,
