@@ -338,6 +338,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// survives it and lands once, at the settled value.
     private static let popoverShrinkSettleWindow: TimeInterval = 0.35
 
+    /// Kinds whose pending resize task is a shrink hold (as opposed to an
+    /// ordinary trailing coalesce): a growth report cancels these instead of
+    /// waiting out their longer deadline.
+    private var popoverShrinkHoldKinds: Set<MenuBarItemKind> = []
+
     private func resizePopover(kind: MenuBarItemKind, toContentHeight height: CGFloat) {
         guard height.isFinite, height > 0 else { return }
         if let popover = popovers[kind], popover.isShown {
@@ -355,16 +360,23 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             case .ignore:
                 // The content walked back to the on-screen size — nothing to
                 // change, and nothing a stale trailing task may restore.
-                popoverResizeTasks.removeValue(forKey: kind)?.cancel()
-                pendingPopoverHeights.removeValue(forKey: kind)
+                cancelPendingPopoverResize(kind: kind)
                 return
             case .holdForSettle:
-                popoverResizeTasks.removeValue(forKey: kind)?.cancel()
+                cancelPendingPopoverResize(kind: kind)
+                popoverShrinkHoldKinds.insert(kind)
                 pendingPopoverHeights[kind] = height
                 scheduleCoalescedResize(kind: kind, after: Self.popoverShrinkSettleWindow)
                 return
             case .applyNow:
-                break
+                // A held shrink must not outlive the growth that supersedes
+                // it: left in place, its 350ms task would swallow this report
+                // into its own deadline and the popover would sit undersized
+                // for the rest of the hold. Cancel it so the growth goes
+                // through the ordinary burst path below.
+                if popoverShrinkHoldKinds.contains(kind) {
+                    cancelPendingPopoverResize(kind: kind)
+                }
             }
         }
         let sinceLast = lastPopoverResizeAt[kind].map { Date().timeIntervalSince($0) }
@@ -380,9 +392,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // busy main actor it can wake after its deadline, land here *after*
         // this newer report, and resize the popover back to the stale height
         // it captured. Supersede both the task and its pending height.
+        cancelPendingPopoverResize(kind: kind)
+        applyPopoverResize(kind: kind, toContentHeight: height)
+    }
+
+    private func cancelPendingPopoverResize(kind: MenuBarItemKind) {
         popoverResizeTasks.removeValue(forKey: kind)?.cancel()
         pendingPopoverHeights.removeValue(forKey: kind)
-        applyPopoverResize(kind: kind, toContentHeight: height)
+        popoverShrinkHoldKinds.remove(kind)
     }
 
     private func scheduleCoalescedResize(kind: MenuBarItemKind, after delay: TimeInterval) {
@@ -394,6 +411,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // bookkeeping a cancelled sleeper must not clobber.
             guard let self, !Task.isCancelled else { return }
             self.popoverResizeTasks[kind] = nil
+            self.popoverShrinkHoldKinds.remove(kind)
             guard let height = self.pendingPopoverHeights.removeValue(forKey: kind) else { return }
             self.applyPopoverResize(kind: kind, toContentHeight: height)
         }
