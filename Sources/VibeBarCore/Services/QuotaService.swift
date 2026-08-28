@@ -316,6 +316,21 @@ public final class QuotaService: ObservableObject {
             allowsPostResetGrace: allowsPostResetGrace
         )
         var memos = paceForecastMemo[key] ?? []
+        // A refresh replaces the observation/cycle arrays wholesale, so a
+        // memo from the previous data generation can never match again —
+        // but it would keep retaining those arrays (thousands of points per
+        // bucket) for as long as it sat in the list. Keep only memos of the
+        // current generation; the differently-phased `now` values are what
+        // the multi-entry list is for.
+        memos.removeAll { memo in
+            !memo.matchesData(
+                bucket: bucket,
+                observations: observations,
+                cycles: cycles,
+                heatmap: activityHeatmap,
+                dailyActivity: dailyActivity
+            )
+        }
         memos.append(PaceForecastMemo(
             bucket: bucket,
             observations: observations,
@@ -358,7 +373,24 @@ public final class QuotaService: ObservableObject {
         ) -> Bool {
             self.now == now
                 && self.allowsPostResetGrace == allowsPostResetGrace
-                && self.bucket == bucket
+                && matchesData(
+                    bucket: bucket,
+                    observations: observations,
+                    cycles: cycles,
+                    heatmap: heatmap,
+                    dailyActivity: dailyActivity
+                )
+        }
+
+        /// The time-independent half of `matches` — one data generation.
+        func matchesData(
+            bucket: QuotaBucket,
+            observations: [FillTimelinePoint],
+            cycles: [SubscriptionWindowSample],
+            heatmap: UsageHeatmap?,
+            dailyActivity: [DailyCostPoint]
+        ) -> Bool {
+            self.bucket == bucket
                 && self.observations == observations
                 && self.cycles == cycles
                 && self.heatmap == heatmap
