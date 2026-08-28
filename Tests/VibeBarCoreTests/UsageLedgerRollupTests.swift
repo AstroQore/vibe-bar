@@ -59,6 +59,52 @@ final class UsageLedgerRollupTests: XCTestCase {
         XCTAssertEqual(again.costMicros, 4_000_000)
     }
 
+    func testDayModelBreakdownsCombineDetailAndRollupsForRequestedDays() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("RollupDayModels")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let foldedDay = try day(-40)
+        let liveDay = try day(-5)
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: foldedDay, model: "model-a", input: 1_000, output: 100),
+                costUSD: 2.0
+            ),
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: foldedDay, model: "model-b", input: 500, output: 50),
+                costUSD: 0.5
+            ),
+            UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: liveDay, model: "model-a", input: 300, output: 30),
+                costUSD: 1.0
+            )
+        ]))
+        try await ledger.rollupAndPrune(now: now, detailDays: 30, retentionDays: 0)
+
+        let formatter = DateFormatter()
+        formatter.calendar = UsageLedgerFixtures.calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let foldedKey = formatter.string(from: foldedDay)
+        let liveKey = formatter.string(from: liveDay)
+
+        let breakdowns = try await ledger.dayModelBreakdowns(
+            tool: .codex, days: [foldedKey, liveKey]
+        )
+
+        // The folded day comes out of the rollup table, cost-sorted.
+        XCTAssertEqual(breakdowns[foldedKey]?.map(\.modelName), ["model-a", "model-b"])
+        XCTAssertEqual(breakdowns[foldedKey]?.first?.costUSD ?? 0, 2.0, accuracy: 0.0001)
+        XCTAssertEqual(breakdowns[foldedKey]?.first?.totalTokens, 1_100)
+        // The recent day still lives in the detail table.
+        XCTAssertEqual(breakdowns[liveKey]?.map(\.modelName), ["model-a"])
+        XCTAssertEqual(breakdowns[liveKey]?.first?.totalTokens, 330)
+        // Days not asked for stay out, and an unknown tool yields nothing.
+        XCTAssertEqual(breakdowns.count, 2)
+        let none = try await ledger.dayModelBreakdowns(tool: .antigravity, days: [foldedKey])
+        XCTAssertTrue(none.isEmpty)
+    }
+
     func testReconsumingPreFloorEventsIsDropped() async throws {
         let (ledger, directory) = try UsageLedgerFixtures.makeLedger("RollupFloor")
         defer { try? FileManager.default.removeItem(at: directory) }

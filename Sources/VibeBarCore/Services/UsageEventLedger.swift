@@ -1847,6 +1847,64 @@ public actor UsageEventLedger: CostUsageEventSink {
             }
     }
 
+    /// Per-day per-model totals for one tool, detail rows and daily rollups
+    /// combined, restricted to the given day keys (this ledger's own
+    /// `yyyy-MM-dd` local-day format — the same format `CostHistoryStore`
+    /// uses, see `dayString(for:)`). Used to backfill the model mix of
+    /// persisted history days whose source logs have already rotated away.
+    public func dayModelBreakdowns(
+        tool: ToolType,
+        days: Set<String>
+    ) throws -> [String: [CostSnapshot.ModelBreakdown]] {
+        guard !days.isEmpty else { return [:] }
+        var totals: [String: [String: (tokens: Int64, costMicros: Int64)]] = [:]
+        // The day keys go into the SQL predicate so the database aggregates
+        // only the missing days — this runs on every launch while any day
+        // stays unfillable, and a whole-tool scan would hold the ledger
+        // actor against Workbench queries for nothing. Chunked to stay far
+        // below SQLite's bound-variable limit.
+        let sortedDays = days.sorted()
+        let dayChunks = stride(from: 0, to: sortedDays.count, by: 500).map {
+            Array(sortedDays[$0..<min($0 + 500, sortedDays.count)])
+        }
+        for table in ["usage_events", "usage_daily_rollups"] {
+            for chunk in dayChunks {
+                let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+                let statement = try prepare(
+                    """
+                    SELECT day, model,
+                           COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
+                           COALESCE(SUM(cost_micros), 0)
+                      FROM \(table)
+                     WHERE tool = ? AND TRIM(model) <> '' AND day IN (\(placeholders))
+                     GROUP BY day, model
+                    """
+                )
+                defer { sqlite3_finalize(statement) }
+                bindAll([.text(tool.rawValue)] + chunk.map { .text($0) }, to: statement)
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    guard let day = columnText(statement, 0),
+                          let model = columnText(statement, 1) else { continue }
+                    var entry = totals[day, default: [:]][model] ?? (0, 0)
+                    entry.tokens += sqlite3_column_int64(statement, 2)
+                    entry.costMicros += sqlite3_column_int64(statement, 3)
+                    totals[day, default: [:]][model] = entry
+                }
+            }
+        }
+        return totals.mapValues { models in
+            models
+                .map {
+                    CostSnapshot.ModelBreakdown(
+                        modelName: $0.key,
+                        costUSD: Double($0.value.costMicros) / 1_000_000,
+                        totalTokens: Int($0.value.tokens)
+                    )
+                }
+                .sorted { $0.costUSD > $1.costUSD }
+        }
+    }
+
     /// Per-project totals from request-level evidence, heaviest first.
     ///
     /// Daily rollups intentionally do not carry a project dimension: project

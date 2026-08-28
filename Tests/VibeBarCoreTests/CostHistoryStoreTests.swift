@@ -410,4 +410,308 @@ final class CostHistoryStoreTests: XCTestCase {
         let history = await store.history(for: .claude, days: nil, retentionDays: 30)
         XCTAssertTrue(history.days.isEmpty)
     }
+
+    // MARK: - Per-day model persistence
+
+    private func snapshot(
+        tool: ToolType,
+        dailyHistory: [DailyCostPoint],
+        dailyModels: [Date: [CostSnapshot.ModelBreakdown]],
+        now: Date
+    ) -> CostSnapshot {
+        let cost = dailyHistory.reduce(0) { $0 + $1.costUSD }
+        let tokens = dailyHistory.reduce(0) { $0 + $1.totalTokens }
+        return CostSnapshot(
+            tool: tool,
+            todayCostUSD: dailyHistory.last?.costUSD ?? 0,
+            last7DaysCostUSD: cost,
+            last30DaysCostUSD: cost,
+            allTimeCostUSD: cost,
+            todayTokens: dailyHistory.last?.totalTokens ?? 0,
+            last7DaysTokens: tokens,
+            last30DaysTokens: tokens,
+            allTimeTokens: tokens,
+            dailyHistory: dailyHistory,
+            heatmap: .empty(tool: tool),
+            modelBreakdowns: [],
+            dailyModelBreakdown: dailyModels,
+            jsonlFilesFound: 1,
+            updatedAt: now
+        )
+    }
+
+    func testPersistedDayModelsBackfillDaysTheLiveScanNoLongerSees() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryDayModels-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let yesterday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: today))
+        let yesterdayModels = [
+            CostSnapshot.ModelBreakdown(modelName: "Gemini 3.7 Flash (High)", costUSD: 2.5, totalTokens: 2_500)
+        ]
+        let todayModels = [
+            CostSnapshot.ModelBreakdown(modelName: "Gemini 3.7 Pro", costUSD: 1.5, totalTokens: 1_500)
+        ]
+        let url = directory.appendingPathComponent("cost_history.json")
+        let store = CostHistoryStore(fileURL: url)
+
+        _ = await store.mergeAndAugment(
+            snapshot(
+                tool: .antigravity,
+                dailyHistory: [
+                    DailyCostPoint(date: yesterday, costUSD: 2.5, totalTokens: 2_500),
+                    DailyCostPoint(date: today, costUSD: 1.5, totalTokens: 1_500)
+                ],
+                dailyModels: [yesterday: yesterdayModels, today: todayModels],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        await store.flushPendingWrites()
+
+        // Second launch: the source logs for yesterday rotated away, so the
+        // live scan only knows about today. A fresh store instance forces the
+        // models through the encode/decode round trip.
+        let reopened = CostHistoryStore(fileURL: url)
+        let merged = await reopened.mergeAndAugment(
+            snapshot(
+                tool: .antigravity,
+                dailyHistory: [DailyCostPoint(date: today, costUSD: 1.6, totalTokens: 1_600)],
+                dailyModels: [today: [
+                    CostSnapshot.ModelBreakdown(modelName: "Gemini 3.7 Pro", costUSD: 1.6, totalTokens: 1_600)
+                ]],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        XCTAssertEqual(merged.topModels(for: yesterday, limit: .max), yesterdayModels)
+        XCTAssertEqual(merged.topModels(for: today, limit: .max).first?.costUSD ?? 0, 1.6, accuracy: 0.001)
+    }
+
+    func testDayModelsFollowWhicheverScanWinsTheTokenMax() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryDayModelsMax-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let store = CostHistoryStore(fileURL: directory.appendingPathComponent("cost_history.json"))
+        let fullView = [
+            CostSnapshot.ModelBreakdown(modelName: "model-full", costUSD: 3, totalTokens: 3_000)
+        ]
+
+        _ = await store.mergeAndAugment(
+            snapshot(
+                tool: .antigravity,
+                dailyHistory: [DailyCostPoint(date: today, costUSD: 3, totalTokens: 3_000)],
+                dailyModels: [today: fullView],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        // A later partial scan (some files already rotated) loses the token
+        // max, so its thinner model mix must not overwrite the stored one.
+        let afterPartial = await store.mergeAndAugment(
+            snapshot(
+                tool: .antigravity,
+                dailyHistory: [DailyCostPoint(date: today, costUSD: 1, totalTokens: 1_000)],
+                dailyModels: [today: [
+                    CostSnapshot.ModelBreakdown(modelName: "model-partial", costUSD: 1, totalTokens: 1_000)
+                ]],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        XCTAssertEqual(afterPartial.topModels(for: today, limit: .max).map(\.modelName), ["model-partial"])
+        // The augmented snapshot keeps the live scan's view for days it saw;
+        // the persisted entry is what must still hold the full mix.
+        let reopened = await store.mergeAndAugment(
+            snapshot(tool: .antigravity, dailyHistory: [], dailyModels: [:], now: now),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        XCTAssertEqual(reopened.topModels(for: today, limit: .max), fullView)
+    }
+
+    func testReplaceSeriesCarriesDayModelsAndCapsThem() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryDayModelsCap-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let manyModels = (0..<12).map {
+            CostSnapshot.ModelBreakdown(modelName: "model-\($0)", costUSD: Double(12 - $0), totalTokens: 100)
+        }
+        let url = directory.appendingPathComponent("cost_history.json")
+        let store = CostHistoryStore(fileURL: url)
+
+        _ = await store.replaceAndAugment(
+            snapshot(
+                tool: .cursor,
+                dailyHistory: [DailyCostPoint(date: today, costUSD: 78, totalTokens: 1_200)],
+                dailyModels: [today: manyModels],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        await store.flushPendingWrites()
+
+        let reopened = CostHistoryStore(fileURL: url)
+        let augmented = await reopened.mergeAndAugment(
+            snapshot(tool: .cursor, dailyHistory: [], dailyModels: [:], now: now),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        let models = augmented.topModels(for: today, limit: .max)
+        XCTAssertEqual(models.count, 8, "persisted per-day models should be capped")
+        XCTAssertEqual(models.map(\.modelName), (0..<8).map { "model-\($0)" }, "cap keeps the top models by cost")
+    }
+
+    func testBackfillFillsOnlyDaysWithoutModels() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryDayModelsBackfill-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let bareDay = try XCTUnwrap(calendar.date(byAdding: .day, value: -20, to: today))
+        let scannedModels = [
+            CostSnapshot.ModelBreakdown(modelName: "model-scanned", costUSD: 1.5, totalTokens: 1_500)
+        ]
+        let store = CostHistoryStore(fileURL: directory.appendingPathComponent("cost_history.json"))
+
+        // One day with a scanned mix, one recorded before models existed.
+        _ = await store.mergeAndAugment(
+            snapshot(
+                tool: .antigravity,
+                dailyHistory: [
+                    DailyCostPoint(date: bareDay, costUSD: 4, totalTokens: 4_000),
+                    DailyCostPoint(date: today, costUSD: 1.5, totalTokens: 1_500)
+                ],
+                dailyModels: [today: scannedModels],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let bareKey = formatter.string(from: bareDay)
+        let todayKey = formatter.string(from: today)
+
+        let missing = await store.daysMissingModels(tool: .antigravity)
+        XCTAssertEqual(missing, [bareKey], "only the pre-models day should report as missing")
+
+        await store.backfillDayModels(tool: .antigravity, modelsByDay: [
+            bareKey: [CostSnapshot.ModelBreakdown(modelName: "model-ledger", costUSD: 4, totalTokens: 4_000)],
+            todayKey: [CostSnapshot.ModelBreakdown(modelName: "model-wrong", costUSD: 9, totalTokens: 9_000)]
+        ])
+
+        let augmented = await store.mergeAndAugment(
+            snapshot(tool: .antigravity, dailyHistory: [], dailyModels: [:], now: now),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        XCTAssertEqual(
+            augmented.topModels(for: bareDay, limit: .max).map(\.modelName),
+            ["model-ledger"]
+        )
+        XCTAssertEqual(
+            augmented.topModels(for: today, limit: .max), scannedModels,
+            "backfill must never overwrite a scanned mix"
+        )
+        let stillMissing = await store.daysMissingModels(tool: .antigravity)
+        XCTAssertTrue(stillMissing.isEmpty)
+    }
+
+    func testBackfillRejectsPartialLedgerCoverageAndLeavesTheDayRepairable() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryDayModelsCoverage-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -10, to: today))
+        let store = CostHistoryStore(fileURL: directory.appendingPathComponent("cost_history.json"))
+
+        _ = await store.mergeAndAugment(
+            snapshot(
+                tool: .antigravity,
+                dailyHistory: [DailyCostPoint(date: day, costUSD: 10, totalTokens: 10_000)],
+                dailyModels: [:],
+                now: now
+            ),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let key = formatter.string(from: day)
+
+        // The ledger only saw 40% of the day (rows dropped before ingest, or
+        // rotated away first) — presenting that as the day's mix would
+        // misstate it, so the day must stay unfilled and repairable.
+        await store.backfillDayModels(tool: .antigravity, modelsByDay: [
+            key: [CostSnapshot.ModelBreakdown(modelName: "model-partial", costUSD: 4, totalTokens: 4_000)]
+        ])
+        var missing = await store.daysMissingModels(tool: .antigravity)
+        XCTAssertEqual(missing, [key], "an under-covered day must not be marked as filled")
+
+        // A later re-ingest recovers the rest: now the evidence covers the
+        // day and the same entry accepts the fill.
+        await store.backfillDayModels(tool: .antigravity, modelsByDay: [
+            key: [CostSnapshot.ModelBreakdown(modelName: "model-full", costUSD: 10, totalTokens: 9_500)]
+        ])
+        missing = await store.daysMissingModels(tool: .antigravity)
+        XCTAssertTrue(missing.isEmpty)
+        let augmented = await store.mergeAndAugment(
+            snapshot(tool: .antigravity, dailyHistory: [], dailyModels: [:], now: now),
+            retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+        XCTAssertEqual(augmented.topModels(for: day, limit: .max).map(\.modelName), ["model-full"])
+    }
+
+    func testEntriesWithoutModelsStillDecode() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarCostHistoryDayModelsLegacy-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let url = directory.appendingPathComponent("cost_history.json")
+        let json = """
+        {"schemaVersion":2,"calculationVersion":\(CostUsagePricing.calculationVersion),"historyCorrectionVersion":2,"entries":[\
+        {"tool":"codex","date":"2026-05-28","costUSD":1.5,"totalTokens":1000}]}
+        """
+        try json.write(to: url, atomically: true, encoding: .utf8)
+
+        let store = CostHistoryStore(fileURL: url)
+        let history = await store.history(
+            for: .codex, days: nil, retentionDays: CostDataSettings.unlimitedRetentionDays
+        )
+
+        XCTAssertEqual(history.days.count, 1)
+        XCTAssertEqual(history.days.first?.totalTokens, 1000)
+    }
 }

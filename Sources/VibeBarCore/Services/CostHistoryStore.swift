@@ -25,6 +25,34 @@ public actor CostHistoryStore {
         let date: String      // YYYY-MM-DD
         var costUSD: Double
         var totalTokens: Int
+        /// Top models for the day, by cost. Optional so pre-v3 files decode;
+        /// nil on days recorded before the field existed. Persisted so the
+        /// chart's day inspector keeps its model mix after the source logs
+        /// rotate away — AntiGravity keeps ~9 days of conversations, and
+        /// "Model detail is unavailable" for anything older was this.
+        var models: [ModelEntry]?
+    }
+
+    struct ModelEntry: Codable, Equatable {
+        let name: String
+        var costUSD: Double
+        var totalTokens: Int
+    }
+
+    /// Per-day cap: the inspector lists a handful, and eight covers every
+    /// real mix seen so far without letting the file grow per model ever
+    /// used on one day.
+    private static let maxPersistedModelsPerDay = 8
+
+    private static func persistedModels(
+        from breakdowns: [CostSnapshot.ModelBreakdown]?
+    ) -> [ModelEntry]? {
+        guard let breakdowns, !breakdowns.isEmpty else { return nil }
+        let capped = breakdowns
+            .sorted { $0.costUSD > $1.costUSD }
+            .prefix(maxPersistedModelsPerDay)
+            .map { ModelEntry(name: $0.modelName, costUSD: $0.costUSD, totalTokens: $0.totalTokens) }
+        return capped.isEmpty ? nil : Array(capped)
     }
     private struct Storage: Codable {
         var schemaVersion: Int
@@ -128,19 +156,37 @@ public actor CostHistoryStore {
     public func mergeSeries(
         _ series: [DailyCostPoint],
         tool: ToolType,
-        retentionDays: Int = CostDataSettings.defaultRetentionDays
+        retentionDays: Int = CostDataSettings.defaultRetentionDays,
+        dailyModels: [Date: [CostSnapshot.ModelBreakdown]] = [:]
     ) {
         var storage = load()
         let toolKey = tool.rawValue
         let cutoffKey = retentionCutoffKey(retentionDays: retentionDays)
+        var modelsByKey: [String: [CostSnapshot.ModelBreakdown]] = [:]
+        for (day, breakdowns) in dailyModels {
+            modelsByKey[dateFormatter.string(from: day)] = breakdowns
+        }
         for point in series {
             let key = dateFormatter.string(from: point.date)
             if let cutoffKey, key < cutoffKey { continue }
             if let idx = storage.entries.firstIndex(where: { $0.tool == toolKey && $0.date == key }) {
+                // The models follow whichever side won the token max: a
+                // fresh scan that saw at least as much of the day is the
+                // better witness; a rotated-away day keeps its stored mix.
+                let freshWins = point.totalTokens >= storage.entries[idx].totalTokens
                 storage.entries[idx].costUSD = max(storage.entries[idx].costUSD, point.costUSD)
                 storage.entries[idx].totalTokens = max(storage.entries[idx].totalTokens, point.totalTokens)
+                if freshWins, let fresh = Self.persistedModels(from: modelsByKey[key]) {
+                    storage.entries[idx].models = fresh
+                }
             } else if point.costUSD > 0 || point.totalTokens > 0 {
-                storage.entries.append(Entry(tool: toolKey, date: key, costUSD: point.costUSD, totalTokens: point.totalTokens))
+                storage.entries.append(Entry(
+                    tool: toolKey,
+                    date: key,
+                    costUSD: point.costUSD,
+                    totalTokens: point.totalTokens,
+                    models: Self.persistedModels(from: modelsByKey[key])
+                ))
             }
         }
         prune(&storage, retentionDays: retentionDays)
@@ -153,7 +199,12 @@ public actor CostHistoryStore {
         _ snapshot: CostSnapshot,
         retentionDays: Int = CostDataSettings.defaultRetentionDays
     ) -> CostSnapshot {
-        mergeSeries(snapshot.dailyHistory, tool: snapshot.tool, retentionDays: retentionDays)
+        mergeSeries(
+            snapshot.dailyHistory,
+            tool: snapshot.tool,
+            retentionDays: retentionDays,
+            dailyModels: snapshot.dailyModelBreakdown
+        )
         return augmentedSnapshot(snapshot, retentionDays: retentionDays)
     }
 
@@ -169,7 +220,8 @@ public actor CostHistoryStore {
             snapshot.dailyHistory,
             tool: snapshot.tool,
             now: snapshot.updatedAt,
-            retentionDays: retentionDays
+            retentionDays: retentionDays,
+            dailyModels: snapshot.dailyModelBreakdown
         )
         return augmentedSnapshot(snapshot, retentionDays: retentionDays)
     }
@@ -178,11 +230,16 @@ public actor CostHistoryStore {
         _ series: [DailyCostPoint],
         tool: ToolType,
         now: Date,
-        retentionDays: Int
+        retentionDays: Int,
+        dailyModels: [Date: [CostSnapshot.ModelBreakdown]] = [:]
     ) {
         var storage = load()
         let toolKey = tool.rawValue
         let cutoffKey = retentionCutoffKey(now: now, retentionDays: retentionDays)
+        var modelsByKey: [String: [CostSnapshot.ModelBreakdown]] = [:]
+        for (day, breakdowns) in dailyModels {
+            modelsByKey[dateFormatter.string(from: day)] = breakdowns
+        }
         var replacements: [String: Entry] = [:]
         for point in series {
             let key = dateFormatter.string(from: point.date)
@@ -192,7 +249,8 @@ public actor CostHistoryStore {
                 tool: toolKey,
                 date: key,
                 costUSD: point.costUSD,
-                totalTokens: point.totalTokens
+                totalTokens: point.totalTokens,
+                models: Self.persistedModels(from: modelsByKey[key])
             )
         }
         storage.entries.removeAll { $0.tool == toolKey }
@@ -216,6 +274,7 @@ public actor CostHistoryStore {
         var monthCost = 0.0, monthTokens = 0
         var allCost = 0.0, allTokens = 0
         var dailyPoints: [DailyCostPoint] = []
+        var persistedDayModels: [Date: [CostSnapshot.ModelBreakdown]] = [:]
         let cutoffKey = retentionCutoffKey(now: snapshot.updatedAt, retentionDays: retentionDays)
         for entry in storage.entries where entry.tool == toolKey {
             if let cutoffKey, entry.date < cutoffKey { continue }
@@ -223,6 +282,11 @@ public actor CostHistoryStore {
             let normalizedDay = calendar.startOfDay(for: day)
             guard normalizedDay <= today else { continue }
             dailyPoints.append(DailyCostPoint(date: normalizedDay, costUSD: entry.costUSD, totalTokens: entry.totalTokens))
+            if let models = entry.models, !models.isEmpty {
+                persistedDayModels[normalizedDay] = models.map {
+                    CostSnapshot.ModelBreakdown(modelName: $0.name, costUSD: $0.costUSD, totalTokens: $0.totalTokens)
+                }
+            }
             allCost += entry.costUSD
             allTokens += entry.totalTokens
             if calendar.isDate(normalizedDay, inSameDayAs: snapshot.updatedAt) {
@@ -258,9 +322,13 @@ public actor CostHistoryStore {
             heatmap: snapshot.heatmap,
             modelBreakdowns: snapshot.modelBreakdowns,
             last7DaysModelBreakdowns: snapshot.last7DaysModelBreakdowns,
-            // Per-day model breakdown is in-memory only; preserve whatever
-            // the live scan produced. Persisted historical days won't have it.
-            dailyModelBreakdown: snapshot.dailyModelBreakdown,
+            // The live scan's per-day mix wins for the days it actually saw;
+            // days whose source logs rotated away fall back to the top-8 mix
+            // persisted alongside their totals.
+            dailyModelBreakdown: persistedDayModels.merging(
+                snapshot.dailyModelBreakdown,
+                uniquingKeysWith: { _, live in live }
+            ),
             hourlyModelBreakdown: snapshot.hourlyModelBreakdown,
             jsonlFilesFound: snapshot.jsonlFilesFound,
             updatedAt: snapshot.updatedAt
@@ -308,6 +376,62 @@ public actor CostHistoryStore {
             }
         }
         return CostHistory(tool: tool, days: points, updatedAt: now)
+    }
+
+    /// Day keys (this store's `yyyy-MM-dd` format) for `tool` whose
+    /// persisted entries carry totals but no model mix — days recorded
+    /// before per-day models were persisted, or merged from a scan that had
+    /// no per-model detail for them.
+    public func daysMissingModels(tool: ToolType) -> [String] {
+        let toolKey = tool.rawValue
+        return load().entries
+            .filter { $0.tool == toolKey && ($0.models?.isEmpty ?? true) }
+            .map(\.date)
+    }
+
+    /// A backfill candidate must account for at least this share of the
+    /// day's persisted tokens (or cost, for token-less days). The ledger can
+    /// hold only part of a day — rows ingested before the source rotated, or
+    /// dropped by a since-fixed bug — and presenting a partial mix as the
+    /// whole day's breakdown would misstate it. An under-covered day stays
+    /// unfilled, so it remains repairable by a later re-ingest.
+    private static let backfillCoverageFraction = 0.9
+
+    /// One-way backfill from request-level evidence (the usage ledger):
+    /// fills only entries that have no model mix yet, never overwriting one
+    /// a scan persisted, and only when the evidence covers the day — see
+    /// `backfillCoverageFraction`. Day keys use this store's `yyyy-MM-dd`
+    /// format.
+    public func backfillDayModels(
+        tool: ToolType,
+        modelsByDay: [String: [CostSnapshot.ModelBreakdown]]
+    ) {
+        guard !modelsByDay.isEmpty else { return }
+        var storage = load()
+        let toolKey = tool.rawValue
+        var changed = false
+        for idx in storage.entries.indices {
+            let entry = storage.entries[idx]
+            guard entry.tool == toolKey,
+                  entry.models?.isEmpty ?? true,
+                  let candidate = modelsByDay[entry.date]
+            else { continue }
+            let coveredTokens = candidate.reduce(0) { $0 + $1.totalTokens }
+            let coveredCost = candidate.reduce(0.0) { $0 + $1.costUSD }
+            let covered: Bool
+            if entry.totalTokens > 0 {
+                covered = Double(coveredTokens)
+                    >= Double(entry.totalTokens) * Self.backfillCoverageFraction
+            } else if entry.costUSD > 0 {
+                covered = coveredCost >= entry.costUSD * Self.backfillCoverageFraction
+            } else {
+                covered = true
+            }
+            guard covered, let fill = Self.persistedModels(from: candidate) else { continue }
+            storage.entries[idx].models = fill
+            changed = true
+        }
+        if changed { save(storage) }
     }
 
     public func prune(retentionDays: Int) {
