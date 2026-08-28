@@ -1858,26 +1858,38 @@ public actor UsageEventLedger: CostUsageEventSink {
     ) throws -> [String: [CostSnapshot.ModelBreakdown]] {
         guard !days.isEmpty else { return [:] }
         var totals: [String: [String: (tokens: Int64, costMicros: Int64)]] = [:]
+        // The day keys go into the SQL predicate so the database aggregates
+        // only the missing days — this runs on every launch while any day
+        // stays unfillable, and a whole-tool scan would hold the ledger
+        // actor against Workbench queries for nothing. Chunked to stay far
+        // below SQLite's bound-variable limit.
+        let sortedDays = days.sorted()
+        let dayChunks = stride(from: 0, to: sortedDays.count, by: 500).map {
+            Array(sortedDays[$0..<min($0 + 500, sortedDays.count)])
+        }
         for table in ["usage_events", "usage_daily_rollups"] {
-            let statement = try prepare(
-                """
-                SELECT day, model,
-                       COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
-                       COALESCE(SUM(cost_micros), 0)
-                  FROM \(table)
-                 WHERE tool = ? AND TRIM(model) <> ''
-                 GROUP BY day, model
-                """
-            )
-            defer { sqlite3_finalize(statement) }
-            bindAll([.text(tool.rawValue)], to: statement)
-            while sqlite3_step(statement) == SQLITE_ROW {
-                guard let day = columnText(statement, 0), days.contains(day),
-                      let model = columnText(statement, 1) else { continue }
-                var entry = totals[day, default: [:]][model] ?? (0, 0)
-                entry.tokens += sqlite3_column_int64(statement, 2)
-                entry.costMicros += sqlite3_column_int64(statement, 3)
-                totals[day, default: [:]][model] = entry
+            for chunk in dayChunks {
+                let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+                let statement = try prepare(
+                    """
+                    SELECT day, model,
+                           COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
+                           COALESCE(SUM(cost_micros), 0)
+                      FROM \(table)
+                     WHERE tool = ? AND TRIM(model) <> '' AND day IN (\(placeholders))
+                     GROUP BY day, model
+                    """
+                )
+                defer { sqlite3_finalize(statement) }
+                bindAll([.text(tool.rawValue)] + chunk.map { .text($0) }, to: statement)
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    guard let day = columnText(statement, 0),
+                          let model = columnText(statement, 1) else { continue }
+                    var entry = totals[day, default: [:]][model] ?? (0, 0)
+                    entry.tokens += sqlite3_column_int64(statement, 2)
+                    entry.costMicros += sqlite3_column_int64(statement, 3)
+                    totals[day, default: [:]][model] = entry
+                }
             }
         }
         return totals.mapValues { models in
