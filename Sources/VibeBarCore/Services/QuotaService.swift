@@ -47,6 +47,12 @@ public final class QuotaService: ObservableObject {
     /// power personal pace forecasts; completed-cycle summaries remain in
     /// `historyByAccountBucket` for Fill History and reset outcomes.
     @Published public private(set) var observationsByAccountBucket: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
+    /// Catalog-external quota buckets seen on this Mac, loaded from and
+    /// persisted to `VibeBarLocalStore.quotaFieldRegistryURL`. The mini-window
+    /// field picker and layouts merge this with the static catalog, which is
+    /// how a bucket the provider shipped after this build (GPT-reserve, say)
+    /// becomes selectable without a release.
+    @Published public private(set) var fieldRegistry: QuotaFieldRegistry = .empty
 
     /// Supplies the cost-side activity inputs for the forecast recorded after
     /// each refresh. Optional: Core works without it, the App sets it once at
@@ -80,6 +86,22 @@ public final class QuotaService: ObservableObject {
         // A cache entry is by definition the last thing that succeeded, so at
         // launch the two timestamps agree; they diverge on the first failure.
         self.lastAttemptedByAccount = cached.mapValues(\.queriedAt)
+
+        // Load the discovered-field registry, then fold the cached quotas in
+        // so a bucket the catalog doesn't know is selectable before the first
+        // live refresh of this launch.
+        var registry = (try? VibeBarLocalStore.readJSON(
+            QuotaFieldRegistry.self,
+            from: VibeBarLocalStore.quotaFieldRegistryURL
+        )) ?? .empty
+        var registryChanged = false
+        for quota in cached.values where ToolType.dedicatedCardProviders.contains(quota.tool) {
+            registryChanged = registry.record(tool: quota.tool, buckets: quota.buckets, now: quota.queriedAt) || registryChanged
+        }
+        self.fieldRegistry = registry
+        if registryChanged {
+            try? VibeBarLocalStore.writeJSON(registry, to: VibeBarLocalStore.quotaFieldRegistryURL)
+        }
 
         // Hydrate the subscription history dictionary from disk. The
         // store is an actor, so this has to be deferred — the popover
@@ -275,6 +297,15 @@ public final class QuotaService: ObservableObject {
         lastErrorByAccount.removeValue(forKey: success.accountId)
         lastUpdatedByAccount[success.accountId] = success.queriedAt
         lastAttemptedByAccount[success.accountId] = now
+
+        // Mock-mode buckets must not be remembered as real discoveries.
+        if !mockProvider(), ToolType.dedicatedCardProviders.contains(success.tool) {
+            var registry = fieldRegistry
+            if registry.record(tool: success.tool, buckets: success.buckets, now: now) {
+                fieldRegistry = registry
+                try? VibeBarLocalStore.writeJSON(registry, to: VibeBarLocalStore.quotaFieldRegistryURL)
+            }
+        }
 
         // Store both the point observations used by the personal forecast and
         // the inferred completed cycles used by reset history. Both paths

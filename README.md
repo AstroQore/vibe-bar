@@ -99,9 +99,14 @@ projection; the forecast never claims a confidence it does not have.
 ## Mini window
 
 Every active quota as a gauge that stays above your work — on a second
-display, beside a full-screen terminal, wherever you put it. Two densities
-of the same model, switched from the window itself; the surface is Liquid
-Glass and follows whatever is behind it.
+display, beside a full-screen terminal, wherever you put it. Open as many
+mini windows as you like; each has its own display mode, its own field
+selection, and its own drag-arranged order. Double-click a window to cycle
+through the seven modes: ring gauges, compact bars, a ledger list, a
+one-line strip, a tile grid, a single-provider focus view, and a seven-day
+reset-timeline rail. Quota buckets a provider ships after this build are
+discovered at runtime and become selectable without an update. The surface
+is Liquid Glass and follows whatever is behind it.
 
 ![The regular mini window: one gauge per quota window, grouped by provider](docs/screenshots/mini-regular.png)
 

@@ -1094,6 +1094,50 @@ private struct LossyMenuBarItem: Decodable {
     }
 }
 
+/// One floating mini window: its own display mode and its own ordered field
+/// selection. The order of `fieldIds` *is* the arrangement — the layouts walk
+/// it front to back, so dragging a field up in Settings moves its gauge left
+/// (or up) in the panel.
+public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID
+    public var name: String
+    public var displayMode: MiniWindowDisplayMode
+    public var fieldIds: [String]
+    /// Whether this window was open last time the app quit; restored on launch.
+    public var wasOpen: Bool
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        displayMode: MiniWindowDisplayMode = .regular,
+        fieldIds: [String],
+        wasOpen: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.displayMode = displayMode
+        self.fieldIds = fieldIds
+        self.wasOpen = wasOpen
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, displayMode, fieldIds, wasOpen
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Mini"
+        // Lossy on purpose: a mode this build doesn't know (added later,
+        // or removed) falls back to regular instead of discarding the
+        // whole settings blob.
+        self.displayMode = (try? c.decodeIfPresent(MiniWindowDisplayMode.self, forKey: .displayMode)) ?? .regular
+        let decoded = try c.decodeIfPresent([String].self, forKey: .fieldIds) ?? []
+        self.fieldIds = MenuBarFieldCatalog.migratedFieldIds(decoded)
+        self.wasOpen = try c.decodeIfPresent(Bool.self, forKey: .wasOpen) ?? false
+    }
+}
+
 public struct MiniWindowSettings: Codable, Equatable, Sendable {
     public var displayMode: MiniWindowDisplayMode
     /// Fields shown in the regular ring layout.
@@ -1101,6 +1145,11 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
     /// Fields shown in the compact vertical-bar layout. Kept separate so the
     /// user can make the tiny mode denser without changing the regular mode.
     public var compactSelectedFieldIds: [String]
+    /// The mini windows themselves. Every window has its own mode and its own
+    /// ordered field list; `displayMode`/`selectedFieldIds` above are the
+    /// pre-multi-window fields, kept for decode migration and re-written from
+    /// the first window on encode so a downgrade still shows something sane.
+    public var windows: [MiniWindowConfig]
     public var customLabels: [String: String]
     public var groupLabels: [String: String]
     /// Whether the mini window was open last time the app quit. Restored on
@@ -1120,6 +1169,7 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         displayMode: MiniWindowDisplayMode = .regular,
         selectedFieldIds: [String],
         compactSelectedFieldIds: [String]? = nil,
+        windows: [MiniWindowConfig]? = nil,
         customLabels: [String: String] = [:],
         groupLabels: [String: String] = [:],
         wasOpen: Bool = false,
@@ -1132,6 +1182,16 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         self.displayMode = displayMode
         self.selectedFieldIds = selectedFieldIds
         self.compactSelectedFieldIds = compactSelectedFieldIds ?? selectedFieldIds
+        self.windows = windows ?? [
+            MiniWindowConfig(
+                name: MiniWindowSettings.defaultWindowName(index: 0),
+                displayMode: displayMode,
+                fieldIds: displayMode == .compact
+                    ? (compactSelectedFieldIds ?? selectedFieldIds)
+                    : selectedFieldIds,
+                wasOpen: wasOpen
+            )
+        ]
         self.customLabels = customLabels
         self.groupLabels = groupLabels
         self.wasOpen = wasOpen
@@ -1143,13 +1203,13 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case displayMode, selectedFieldIds, compactSelectedFieldIds, customLabels, groupLabels, wasOpen
+        case displayMode, selectedFieldIds, compactSelectedFieldIds, windows, customLabels, groupLabels, wasOpen
         case savedOriginX, savedOriginY, savedPixelOriginX, savedPixelOriginY, savedScreenScale
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.displayMode = try c.decodeIfPresent(MiniWindowDisplayMode.self, forKey: .displayMode) ?? .regular
+        self.displayMode = (try? c.decodeIfPresent(MiniWindowDisplayMode.self, forKey: .displayMode)) ?? .regular
         let decodedSelected = try c.decodeIfPresent([String].self, forKey: .selectedFieldIds) ?? []
         self.selectedFieldIds = MenuBarFieldCatalog.migratedFieldIds(decodedSelected)
         if let decodedCompact = try c.decodeIfPresent([String].self, forKey: .compactSelectedFieldIds) {
@@ -1166,12 +1226,63 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         self.savedPixelOriginX = try c.decodeIfPresent(Double.self, forKey: .savedPixelOriginX)
         self.savedPixelOriginY = try c.decodeIfPresent(Double.self, forKey: .savedPixelOriginY)
         self.savedScreenScale = try c.decodeIfPresent(Double.self, forKey: .savedScreenScale)
+        if let decodedWindows = try c.decodeIfPresent([MiniWindowConfig].self, forKey: .windows),
+           !decodedWindows.isEmpty {
+            self.windows = decodedWindows
+        } else {
+            // Pre-multi-window settings: the one window the user had is the
+            // active mode with that mode's field list.
+            self.windows = [
+                MiniWindowConfig(
+                    name: MiniWindowSettings.defaultWindowName(index: 0),
+                    displayMode: self.displayMode,
+                    fieldIds: self.displayMode == .compact ? self.compactSelectedFieldIds : self.selectedFieldIds,
+                    wasOpen: self.wasOpen
+                )
+            ]
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        // Mirror the first window into the legacy single-window fields so a
+        // downgraded build still opens with a sensible mini window.
+        let first = windows.first
+        try c.encode(first?.displayMode ?? displayMode, forKey: .displayMode)
+        try c.encode(first?.fieldIds ?? selectedFieldIds, forKey: .selectedFieldIds)
+        try c.encode(first?.fieldIds ?? compactSelectedFieldIds, forKey: .compactSelectedFieldIds)
+        try c.encode(windows, forKey: .windows)
+        try c.encode(customLabels, forKey: .customLabels)
+        try c.encode(groupLabels, forKey: .groupLabels)
+        try c.encode(first?.wasOpen ?? wasOpen, forKey: .wasOpen)
+        try c.encodeIfPresent(savedOriginX, forKey: .savedOriginX)
+        try c.encodeIfPresent(savedOriginY, forKey: .savedOriginY)
+        try c.encodeIfPresent(savedPixelOriginX, forKey: .savedPixelOriginX)
+        try c.encodeIfPresent(savedPixelOriginY, forKey: .savedPixelOriginY)
+        try c.encodeIfPresent(savedScreenScale, forKey: .savedScreenScale)
+    }
+
+    public static func defaultWindowName(index: Int) -> String {
+        index == 0 ? "Mini" : "Mini \(index + 1)"
+    }
+
+    public func config(id: UUID) -> MiniWindowConfig? {
+        windows.first { $0.id == id }
+    }
+
+    public mutating func upsert(_ config: MiniWindowConfig) {
+        if let index = windows.firstIndex(where: { $0.id == config.id }) {
+            windows[index] = config
+        } else {
+            windows.append(config)
+        }
     }
 
     public func fieldIds(for mode: MiniWindowDisplayMode) -> [String] {
         switch mode {
         case .regular: return selectedFieldIds
         case .compact: return compactSelectedFieldIds
+        default: return selectedFieldIds
         }
     }
 
@@ -1181,17 +1292,24 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
             selectedFieldIds = ids
         case .compact:
             compactSelectedFieldIds = ids
+        default:
+            selectedFieldIds = ids
         }
     }
 
     public mutating func toggleDisplayMode() {
-        displayMode = displayMode == .regular ? .compact : .regular
+        displayMode = displayMode.next
     }
 }
 
 public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case regular
     case compact
+    case ledger
+    case strip
+    case tile
+    case focus
+    case rail
 
     public var id: String { rawValue }
 
@@ -1199,7 +1317,31 @@ public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, 
         switch self {
         case .regular: return "Regular"
         case .compact: return "Compact"
+        case .ledger:  return "Ledger"
+        case .strip:   return "Strip"
+        case .tile:    return "Tiles"
+        case .focus:   return "Focus"
+        case .rail:    return "Rail"
         }
+    }
+
+    public var detail: String {
+        switch self {
+        case .regular: return "Ring gauges grouped company → SubProvider → quota group."
+        case .compact: return "The same three tiers as vertical bars, sized for a corner."
+        case .ledger:  return "One row per quota bucket — fixed width, grows downward."
+        case .strip:   return "One 40 pt line; each SubProvider shows its most critical bucket."
+        case .tile:    return "A grid of tiles with a big number and a severity stripe."
+        case .focus:   return "One company at a time, large — click to cycle."
+        case .rail:    return "The next seven days as a timeline of quota resets."
+        }
+    }
+
+    /// The mode a double-click on the panel advances to.
+    public var next: MiniWindowDisplayMode {
+        let all = Self.allCases
+        guard let index = all.firstIndex(of: self) else { return .regular }
+        return all[(index + 1) % all.count]
     }
 }
 

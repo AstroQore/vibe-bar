@@ -66,7 +66,10 @@ enum MiniWindowGroupLabelCatalog {
             if id.contains("flash") { return "antigravity.gemini-flash" }
             if id.contains("pro") { return "antigravity.gemini-pro" }
         }
-        return "\(tool.rawValue).\(bucketId)"
+        // Discovered buckets: both windows of one runtime quota group
+        // ("gpt_reserve_five_hour" / "gpt_reserve_weekly") share one label
+        // key, so the group renders — and is renamed — as one unit.
+        return "\(tool.rawValue).\(MenuBarFieldCatalog.bucketGroupStem(bucketId))"
     }
 
     static func subProviderKey(tool: ToolType, name: String) -> String {
