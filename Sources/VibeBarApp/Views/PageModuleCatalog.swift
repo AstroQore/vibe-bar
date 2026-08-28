@@ -38,6 +38,7 @@ enum PageModuleKind: Hashable {
     case overviewCostAll
     case overviewCost(ToolType)
     case overviewUsageMix
+    case overviewUpcomingResets
     case overviewModelRanking
     case overviewYearHeatmap
     case overviewActivityHeatmap
@@ -156,6 +157,18 @@ enum PageModuleCatalog {
                 accent: .neutral,
                 masonryPhase: .summary,
                 fallbackHeight: FallbackHeight.summary
+            )
+        )
+        // Refill horizon — a quota answer, so it sits with the quota band.
+        result.append(
+            PageModuleDescriptor(
+                id: .custom("overview-upcoming-resets"),
+                kind: .overviewUpcomingResets,
+                displayName: "Upcoming Resets",
+                defaultColumn: 1,
+                accent: .neutral,
+                masonryPhase: .quota,
+                fallbackHeight: FallbackHeight.status
             )
         )
         let hasCostData = self.hasCostData(environment: environment, settings: settings)

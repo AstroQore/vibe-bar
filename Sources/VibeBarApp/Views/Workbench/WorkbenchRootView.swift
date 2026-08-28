@@ -4,6 +4,7 @@ import VibeBarCore
 enum WorkbenchPage: String, CaseIterable, Identifiable {
     case usageStats
     case sessionManager
+    case resets
     case skillsManager
     case settings
 
@@ -13,6 +14,7 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         switch self {
         case .usageStats: "Usage Stats"
         case .sessionManager: "Sessions"
+        case .resets: "Resets"
         case .skillsManager: "Skills"
         case .settings: "Settings"
         }
@@ -22,6 +24,7 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         switch self {
         case .usageStats: "chart.xyaxis.line"
         case .sessionManager: "bubble.left.and.text.bubble.right"
+        case .resets: "clock.arrow.circlepath"
         case .skillsManager: "puzzlepiece.extension"
         case .settings: "gearshape"
         }
@@ -33,6 +36,7 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         switch self {
         case .usageStats: "Local per-request ledger · all providers"
         case .sessionManager: "Search and resume local agent sessions"
+        case .resets: "Cycles, refills, and run-out forecasts"
         case .skillsManager: "One shared skill library · every agent CLI"
         case .settings: "Appearance, providers, data, privacy, and sync"
         }
@@ -159,6 +163,12 @@ struct WorkbenchRootView: View {
         case .sessionManager:
             let count = workbench.sessions.totalSessionCount
             return count == 0 ? "local index" : "\(count.formatted()) indexed"
+        case .resets:
+            let next = UpcomingResets.events(environment: environment, now: Date(), horizonDays: 7).first
+            guard let next,
+                  let countdown = ResetCountdownFormatter.string(from: next.resetAt, now: Date())
+            else { return "cached quotas" }
+            return "next refill \(countdown)"
         case .skillsManager:
             let count = workbench.skills.skills.count
             return count == 0 ? "shared library" : "\(count.formatted()) installed"
@@ -175,6 +185,7 @@ struct WorkbenchRootView: View {
         switch page {
         case .usageStats: workbench.usageStats.refresh()
         case .sessionManager: workbench.sessions.refreshIndex()
+        case .resets: environment.refreshAll()
         case .skillsManager: workbench.skills.refresh()
         case .settings: break
         }
@@ -194,6 +205,8 @@ struct WorkbenchRootView: View {
             UsageStatsPage(density: density, model: workbench.usageStats)
         case .sessionManager:
             SessionManagerPage(density: density, model: workbench.sessions)
+        case .resets:
+            ResetsPage(density: density)
         case .skillsManager:
             SkillsManagerPage(density: density, model: workbench.skills)
         case .settings:
@@ -206,7 +219,7 @@ private struct WorkbenchSidebar: View {
     @Binding var selection: WorkbenchPage?
     @Environment(\.colorScheme) private var colorScheme
     @State private var hoveredPage: WorkbenchPage?
-    private let primaryPages: [WorkbenchPage] = [.usageStats, .sessionManager, .skillsManager]
+    private let primaryPages: [WorkbenchPage] = [.usageStats, .sessionManager, .resets, .skillsManager]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -272,6 +285,7 @@ private struct WorkbenchSidebar: View {
         switch page {
         case .usageStats: WorkbenchPorcelain.accent
         case .sessionManager: Color(red: 20 / 255, green: 169 / 255, blue: 124 / 255)
+        case .resets: Color(red: 88 / 255, green: 134 / 255, blue: 220 / 255)
         case .skillsManager: Color(red: 217 / 255, green: 137 / 255, blue: 11 / 255)
         case .settings: .secondary
         }
