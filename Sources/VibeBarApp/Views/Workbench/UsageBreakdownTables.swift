@@ -206,10 +206,20 @@ struct UsageBreakdownTables: View {
             }
         }
         .frame(height: tableHeight(for: visiblePeriodRowCount))
-        // A new bucket size is a different series; the viewport starts over.
-        .onChange(of: model.trend.bucket) { _, _ in
+        // Any new result series — bucket size, range, window, or filter
+        // change — starts the viewport over; an expanded limit must not
+        // carry into a different series.
+        .onChange(of: periodSeriesIdentity) { _, _ in
             visiblePeriodLimit = Self.periodPageSize
         }
+    }
+
+    /// Cheap identity for the trend series: the controls that replace it
+    /// change at least one of these.
+    private var periodSeriesIdentity: String {
+        let first = model.trend.points.first?.bucketStart.timeIntervalSince1970 ?? 0
+        let last = model.trend.points.last?.bucketStart.timeIntervalSince1970 ?? 0
+        return "\(model.trend.bucket)|\(model.trend.points.count)|\(first)|\(last)"
     }
 
     /// Rows the clamped table actually shows, load-more row included.

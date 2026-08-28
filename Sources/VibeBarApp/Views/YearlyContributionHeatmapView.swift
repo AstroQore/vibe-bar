@@ -35,6 +35,9 @@ struct YearlyContributionHeatmapView: View {
     private struct GridStamp: Equatable {
         let history: [DailyCostPoint]
         let today: Date
+        /// The walk groups by `Calendar.current`; a calendar or zone change
+        /// mid-flight must invalidate even when today's start looks equal.
+        let calendarIdentity: String
     }
 
     @State private var gridCache = GridCache()
@@ -42,7 +45,8 @@ struct YearlyContributionHeatmapView: View {
     private func cachedGrid() -> (columns: [WeekColumn], markers: [MonthMarker]) {
         let stamp = GridStamp(
             history: history,
-            today: Calendar.current.startOfDay(for: Date())
+            today: Calendar.current.startOfDay(for: Date()),
+            calendarIdentity: "\(Calendar.current.identifier)|\(TimeZone.current.identifier)"
         )
         if gridCache.historyStamp == stamp {
             return (gridCache.columns, gridCache.markers)

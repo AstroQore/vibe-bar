@@ -189,6 +189,11 @@ private struct PricingOverrideEditor: View {
     /// `$settings` subscriber (§ 7's hot-path rule).
     @State private var draft: ModelPricingOverride
     @State private var commitTask: Task<Void, Never>?
+    /// Set when this editor's own trash button removed the element: the
+    /// `ForEach` binding is stale from that moment, and a flush through it
+    /// would overwrite whichever row shifted into this index — or trap on
+    /// the last row.
+    @State private var isDeleted = false
 
     init(override: Binding<ModelPricingOverride>, delete: @escaping () -> Void) {
         _override = override
@@ -200,7 +205,7 @@ private struct PricingOverrideEditor: View {
         commitTask?.cancel()
         commitTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 400_000_000)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !isDeleted else { return }
             if override != draft { override = draft }
             commitTask = nil
         }
@@ -216,7 +221,12 @@ private struct PricingOverrideEditor: View {
                 }
                 TextField("Exact model name", text: $draft.model)
                     .textFieldStyle(.roundedBorder)
-                Button(role: .destructive, action: delete) {
+                Button(role: .destructive) {
+                    commitTask?.cancel()
+                    commitTask = nil
+                    isDeleted = true
+                    delete()
+                } label: {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
@@ -260,6 +270,7 @@ private struct PricingOverrideEditor: View {
         .onDisappear {
             commitTask?.cancel()
             commitTask = nil
+            guard !isDeleted else { return }
             if override != draft { override = draft }
         }
     }
