@@ -716,6 +716,27 @@ capture against § 8 before committing it — a screenshot is source content.
   Before merging UI work, exercise the surface it touches — scroll it,
   drag it, hover it — and treat any visible hitch as a blocker, not a
   follow-up.
+
+  The budgets that make "fluent" testable:
+
+  | Metric | Target | Blocker |
+  |--------|--------|---------|
+  | Hitch rate during interaction (Instruments "Animation Hitches", ms of hitch per second while scrolling/dragging/hovering the surface) | < 5 ms/s | ≥ 10 ms/s |
+  | Longest synchronous main-thread stall on an interaction path | ≤ 16 ms | ≥ 100 ms |
+  | Popover open, click → first frame from cached data | ≤ 100 ms | ≥ 250 ms |
+  | Workbench page switch / Settings section switch | ≤ 150 ms | ≥ 300 ms |
+  | Chart first paint at the largest retained dataset (30 d × hourly) | ≤ 100 ms | ≥ 250 ms |
+  | Hover / crosshair update on any chart | 1 frame (≤ 8.3 ms @ 120 Hz) | > 2 frames |
+  | Marks actually drawn per chart after downsampling | ≤ ~1 000 | unbounded raw series |
+  | Idle CPU, popover closed / mini windows open | < 0.5 % / < 2 % | sustained ≥ 5 % |
+  | Sustained settings-file write rate from any interaction | ≤ 1/s (debounced) | per-tick writes |
+
+  How to measure: demo mode (§ 6.5) makes every surface reproducible;
+  profile it with Instruments — *Animation Hitches* for the hitch rate,
+  *Time Profiler* for stalls — or, minimally, `sample VibeBar` during
+  the jank and Activity Monitor for idle CPU. When a budget cannot be
+  met, the PR says which one and why rather than shipping the hitch
+  silently.
 - **Swift package**, two targets: `VibeBarCore` (testable, pure) and
   `VibeBarApp` (AppKit/SwiftUI menu-bar app). Heavy logic lives in Core;
   UI glue in App.
