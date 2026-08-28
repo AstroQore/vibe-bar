@@ -220,6 +220,63 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(sqlite3_step(query), SQLITE_DONE)
     }
 
+    /// The relative-clock recovery re-parses AntiGravity databases that were
+    /// cached as empty — but their fingerprints were recorded by the empty
+    /// ingest, so without this migration the recovered batches would
+    /// short-circuit. It drops exactly AntiGravity's fingerprints, once.
+    func testAntigravityReclockMigrationDropsOnlyAntigravityFingerprints() throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        let db = try XCTUnwrap(database)
+        defer { sqlite3_close_v2(db) }
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE ledger_meta(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE ingested_files(
+                tool TEXT NOT NULL,
+                file_key TEXT NOT NULL,
+                mtime REAL NOT NULL,
+                size INTEGER NOT NULL,
+                PRIMARY KEY(tool, file_key)
+            );
+            INSERT INTO ingested_files VALUES('antigravity', 'conv-a.db', 1.0, 10);
+            INSERT INTO ingested_files VALUES('antigravity', 'conv-b.db', 2.0, 20);
+            INSERT INTO ingested_files VALUES('codex', 'rollout.jsonl', 3.0, 30);
+            """, nil, nil, nil), SQLITE_OK)
+
+        XCTAssertTrue(UsageEventLedger.migrateAntigravityRelativeClockReingest(db))
+
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db, "SELECT tool FROM ingested_files ORDER BY tool", -1, &statement, nil
+        ), SQLITE_OK)
+        let query = try XCTUnwrap(statement)
+        defer { sqlite3_finalize(query) }
+        var tools: [String] = []
+        while sqlite3_step(query) == SQLITE_ROW {
+            tools.append(String(cString: sqlite3_column_text(query, 0)))
+        }
+        XCTAssertEqual(tools, ["codex"])
+
+        // Second run is a marker-guarded no-op: a fingerprint recorded after
+        // the migration must survive later launches.
+        XCTAssertEqual(sqlite3_exec(
+            db,
+            "INSERT INTO ingested_files VALUES('antigravity', 'conv-c.db', 4.0, 40)",
+            nil, nil, nil
+        ), SQLITE_OK)
+        XCTAssertTrue(UsageEventLedger.migrateAntigravityRelativeClockReingest(db))
+        var recheck: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT COUNT(*) FROM ingested_files WHERE tool = 'antigravity'",
+            -1, &recheck, nil
+        ), SQLITE_OK)
+        let countQuery = try XCTUnwrap(recheck)
+        defer { sqlite3_finalize(countQuery) }
+        XCTAssertEqual(sqlite3_step(countQuery), SQLITE_ROW)
+        XCTAssertEqual(sqlite3_column_int64(countQuery, 0), 1)
+    }
+
     /// A second batch carrying the same `(mtime, size)` fingerprint is
     /// skipped wholesale — proven by handing it *more* events than the
     /// first and watching the extra one never land.
