@@ -756,7 +756,10 @@ struct MiniRailLayout: View {
             .compactMap { entry -> (MiniEntry, TimeInterval)? in
                 guard let reset = entry.bucket.resetAt else { return nil }
                 let interval = reset.timeIntervalSince(now)
-                guard interval > -3_600 else { return nil }
+                // Dropped, not clamped, outside the window: pinning a
+                // monthly reset to the +7d tick would present it as due this
+                // week.
+                guard interval > -3_600, interval <= horizon else { return nil }
                 return (entry, max(0, interval))
             }
             .sorted { $0.1 < $1.1 }

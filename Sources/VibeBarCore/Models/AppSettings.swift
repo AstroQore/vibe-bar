@@ -1106,6 +1106,12 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
     /// Whether this window was open last time the app quit; restored on launch.
     public var wasOpen: Bool
 
+    /// The id every pre-multi-window settings blob migrates onto. It must be
+    /// deterministic: the migration runs on every decode until something
+    /// rewrites the settings file, and a fresh UUID per launch would orphan
+    /// the window's saved geometry and open-state each time.
+    public static let legacyPrimaryID = UUID(uuidString: "9B1D6A64-11A7-4D6E-8B7A-2F60C7E1A001")!
+
     public init(
         id: UUID = UUID(),
         name: String,
@@ -1184,6 +1190,7 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         self.compactSelectedFieldIds = compactSelectedFieldIds ?? selectedFieldIds
         self.windows = windows ?? [
             MiniWindowConfig(
+                id: MiniWindowConfig.legacyPrimaryID,
                 name: MiniWindowSettings.defaultWindowName(index: 0),
                 displayMode: displayMode,
                 fieldIds: displayMode == .compact
@@ -1234,6 +1241,7 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
             // active mode with that mode's field list.
             self.windows = [
                 MiniWindowConfig(
+                    id: MiniWindowConfig.legacyPrimaryID,
                     name: MiniWindowSettings.defaultWindowName(index: 0),
                     displayMode: self.displayMode,
                     fieldIds: self.displayMode == .compact ? self.compactSelectedFieldIds : self.selectedFieldIds,

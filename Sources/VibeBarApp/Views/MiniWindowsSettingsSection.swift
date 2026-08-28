@@ -127,9 +127,13 @@ struct MiniWindowsSettingsSection: View {
                 prompt: "Name",
                 value: Binding(
                     get: { selectedWindow?.name ?? "" },
-                    set: { value in
+                    set: { [configID = config.id] value in
                         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                        update { $0.name = trimmed.isEmpty ? $0.name : trimmed }
+                        guard !trimmed.isEmpty else { return }
+                        // Keyed to the window this field was typed for — the
+                        // debounced commit may fire after the user selects
+                        // another chip, and it must not rename that one.
+                        update(id: configID) { $0.name = trimmed }
                     }
                 )
             )
@@ -257,8 +261,10 @@ struct MiniWindowsSettingsSection: View {
                 }
             )
         }
-        // Runtime-discovered fields join the first section of their tool.
-        for discovered in registry.fields {
+        // Runtime-discovered fields join the first section of their tool. A
+        // field a later release promoted into the static catalog is already
+        // listed above — appending it again would duplicate a SwiftUI id.
+        for discovered in registry.fields where MenuBarFieldCatalog.field(id: discovered.id) == nil {
             let option = MenuBarFieldCatalog.option(for: discovered)
             guard let index = sections.firstIndex(where: { $0.tool == discovered.tool }) else { continue }
             sections[index].entries.append(
@@ -574,9 +580,14 @@ struct MiniWindowsSettingsSection: View {
     // MARK: - Bindings
 
     private func update(_ mutate: (inout MiniWindowConfig) -> Void) {
-        guard var config = selectedWindow else { return }
-        mutate(&config)
+        guard let config = selectedWindow else { return }
+        update(id: config.id, mutate)
+    }
+
+    private func update(id: UUID, _ mutate: (inout MiniWindowConfig) -> Void) {
         var settings = settingsStore.settings
+        guard var config = settings.miniWindow.config(id: id) else { return }
+        mutate(&config)
         settings.miniWindow.upsert(config)
         settingsStore.settings = settings
     }
