@@ -397,6 +397,7 @@ struct MiniWindowsSettingsSection: View {
     private static let lastSeenFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MM-dd"
+        formatter.timeZone = .autoupdatingCurrent
         return formatter
     }()
 

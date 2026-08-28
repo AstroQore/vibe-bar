@@ -187,6 +187,9 @@ struct YearlyContributionHeatmapView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy"
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        // The app runs for weeks; a static formatter must follow a system
+        // time-zone change instead of keeping the one it was born with.
+        formatter.timeZone = .autoupdatingCurrent
         return formatter
     }()
 
@@ -194,6 +197,7 @@ struct YearlyContributionHeatmapView: View {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "MMM"
+        formatter.timeZone = .autoupdatingCurrent
         return formatter
     }()
 

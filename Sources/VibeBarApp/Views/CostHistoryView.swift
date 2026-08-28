@@ -1226,6 +1226,14 @@ struct CostHistoryView: View {
         let snapshot: CostSnapshot?
         let range: ClosedRange<Date>
         let granularity: CostChartGranularity
+        /// Week/month buckets are grouped with `Calendar.current`; a time
+        /// zone or calendar change mid-flight must invalidate the memo, not
+        /// keep serving the old boundaries until the data happens to move.
+        let calendarIdentity: String
+    }
+
+    private static var currentCalendarIdentity: String {
+        "\(Calendar.current.identifier)|\(TimeZone.current.identifier)"
     }
 
     private final class VisiblePointsCache {
@@ -1242,7 +1250,8 @@ struct CostHistoryView: View {
         let key = VisiblePointsKey(
             snapshot: snapshot,
             range: window.visibleRange,
-            granularity: granularity
+            granularity: granularity,
+            calendarIdentity: Self.currentCalendarIdentity
         )
         if let cached = visiblePointsCache.points, visiblePointsCache.key == key {
             // Adopt the newest key: an equal-but-reallocated snapshot should
