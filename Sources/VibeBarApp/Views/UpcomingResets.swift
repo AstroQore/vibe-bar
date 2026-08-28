@@ -46,7 +46,8 @@ enum UpcomingResets {
     ) -> [UpcomingResetEvent] {
         let horizon = now.addingTimeInterval(horizonDays * 86_400)
         var out: [UpcomingResetEvent] = []
-        for tool in ToolType.dedicatedCardProviders {
+        let settings = environment.settingsStore.settings
+        for tool in ToolType.dedicatedCardProviders where settings.isCoreProviderVisible(tool) {
             // Every account, not the first one — multi-account providers
             // (Gemini, say) refill per account.
             let accounts = environment.accountStore.accounts(for: tool)
@@ -113,17 +114,38 @@ struct ResetLaneView: View {
                         .frame(width: 30)
                         .offset(x: x - 15, y: laneHeight - 11)
                 }
+                let fanned = fannedOffsets(width: width)
                 ForEach(events) { event in
-                    marker(event, width: width)
+                    marker(event, width: width, fanOffset: fanned[event.id] ?? 0)
                 }
             }
         }
         .frame(height: laneHeight)
     }
 
-    private func marker(_ event: UpcomingResetEvent, width: CGFloat) -> some View {
+    /// Buckets that reset together (Claude's overall and model-scoped
+    /// weeklies, say) would stack into one indistinguishable column; fan a
+    /// cluster out by a column width per member.
+    private func fannedOffsets(width: CGFloat) -> [String: CGFloat] {
+        var byX: [Int: [String]] = [:]
+        for event in events {
+            let fraction = min(1, event.resetAt.timeIntervalSince(now) / (horizonDays * 86_400))
+            let slot = Int((width * fraction / 9).rounded())
+            byX[slot, default: []].append(event.id)
+        }
+        var offsets: [String: CGFloat] = [:]
+        for ids in byX.values where ids.count > 1 {
+            let span = CGFloat(ids.count - 1) * 9
+            for (index, id) in ids.enumerated() {
+                offsets[id] = CGFloat(index) * 9 - span / 2
+            }
+        }
+        return offsets
+    }
+
+    private func marker(_ event: UpcomingResetEvent, width: CGFloat, fanOffset: CGFloat) -> some View {
         let fraction = min(1, event.resetAt.timeIntervalSince(now) / (horizonDays * 86_400))
-        let x = max(4, min(width - 4, width * fraction))
+        let x = max(4, min(width - 4, width * fraction + fanOffset))
         let height = 6 + (laneHeight - 30) * event.gainPercent / 100
         return UnevenRoundedRectangle(
             topLeadingRadius: 3.5, bottomLeadingRadius: 1,

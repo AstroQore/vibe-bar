@@ -22,7 +22,14 @@ struct ResetsPage: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let events = UpcomingResets.events(environment: environment, now: now, horizonDays: 14)
-        let cycles = subProviderCycles(now: now)
+        // Forecasts run on a 5-minute clock: the pace blend over the full
+        // observation history is the expensive part, and QuotaService memoizes
+        // it on exact inputs — a fresh `now` every 60 s tick would defeat
+        // that for every bucket on the page. Countdown strings keep the
+        // minute clock.
+        let cycles = subProviderCycles(now: Date(
+            timeIntervalSinceReferenceDate: (now.timeIntervalSinceReferenceDate / 300).rounded(.down) * 300
+        ))
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 14) {
                 box {
@@ -222,9 +229,9 @@ struct ResetsPage: View {
                 let w = proxy.size.width
                 let h = proxy.size.height
                 Path { path in
-                    for (index, value) in points.enumerated() {
-                        let x = w * CGFloat(index) / CGFloat(points.count - 1)
-                        let y = h - h * CGFloat(value) / 100
+                    for (index, point) in points.enumerated() {
+                        let x = w * CGFloat(point.fraction)
+                        let y = h - h * CGFloat(point.remaining) / 100
                         if index == 0 { path.move(to: CGPoint(x: x, y: y)) }
                         else { path.addLine(to: CGPoint(x: x, y: y)) }
                     }
@@ -239,21 +246,36 @@ struct ResetsPage: View {
         }
     }
 
-    private func cyclePoints(_ cycle: SubProviderCycle) -> [Double] {
+    private struct CyclePoint {
+        /// Position across the cycle window, 0…1 — samples sit where their
+        /// timestamps put them, so a gap (app closed, refreshes off) reads
+        /// as a gap instead of compressing the curve.
+        let fraction: Double
+        let remaining: Double
+    }
+
+    private func cyclePoints(_ cycle: SubProviderCycle) -> [CyclePoint] {
         guard let resetAt = cycle.headline.resetAt,
-              let window = cycle.headline.rawWindowSeconds
+              let window = cycle.headline.rawWindowSeconds, window > 0
         else { return [] }
         let key = SubscriptionHistoryKey(accountId: cycle.accountId, bucketId: cycle.headline.id)
         let cycleStart = resetAt.addingTimeInterval(-Double(window))
         let samples = (quotaService.observationsByAccountBucket[key] ?? [])
             .filter { $0.slotStart >= cycleStart }
-            .map { max(0, 100 - $0.usedPercent) }
+            .map { sample in
+                CyclePoint(
+                    fraction: min(1, max(0, sample.slotStart.timeIntervalSince(cycleStart) / Double(window))),
+                    remaining: max(0, 100 - sample.usedPercent)
+                )
+            }
         guard samples.count > 2 else { return samples }
         // Bounded draw: the chart is 30 pt tall, forty-eight segments is
         // already denser than it can show.
         let stride = max(1, samples.count / 48)
         var thinned = Swift.stride(from: 0, to: samples.count, by: stride).map { samples[$0] }
-        if let last = samples.last, thinned.last != last { thinned.append(last) }
+        if let last = samples.last, thinned.last?.fraction != last.fraction {
+            thinned.append(last)
+        }
         return thinned
     }
 
@@ -349,7 +371,7 @@ struct ResetsPage: View {
                         .background(
                             Capsule().fill(Theme.barColor(percent: remaining, mode: .remaining))
                         )
-                    Text("\(row.cycle.name) · \(row.bucket.groupTitle.map { "\($0) · " } ?? "")\(row.bucket.title)")
+                    Text("\(row.cycle.name)\(row.cycle.accountLabel.map { " · \($0)" } ?? "") · \(row.bucket.groupTitle.map { "\($0) · " } ?? "")\(row.bucket.title)")
                         .font(.system(size: 10))
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
@@ -364,11 +386,13 @@ struct ResetsPage: View {
     }
 
     private func riskBadge(remaining: Double, forecast: QuotaPaceForecast?) -> String {
+        // OUT means exhausted, full stop; a calm or still-learning bucket
+        // that happens to be low is LOW, and only the forecast may escalate.
         if remaining <= 1 { return "OUT" }
         switch forecast?.verdict {
         case .atRisk: return "RISK"
         case .watch: return "WATCH"
-        default: return remaining <= 5 ? "OUT" : "LOW"
+        default: return "LOW"
         }
     }
 
