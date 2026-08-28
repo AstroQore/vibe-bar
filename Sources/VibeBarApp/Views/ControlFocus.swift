@@ -27,6 +27,12 @@ struct VibeBarButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         FocusRing(cornerRadius: cornerRadius) { configuration.label }
+            // Without an explicit content shape a hand-drawn label hit-tests
+            // only its opaque pixels: a padded pill whose fill is conditional
+            // (or absent) responds to clicks on the text but not the padding.
+            // The shape follows the label's full bounds so every .vibeBar
+            // control is clickable across the whole area it draws.
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .opacity(configuration.isPressed ? 0.72 : 1)
     }
 

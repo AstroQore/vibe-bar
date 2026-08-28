@@ -198,7 +198,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     /// in order, not sorted.
     static func sizingFingerprint(config: MiniWindowConfig, environment: AppEnvironment? = nil) -> String {
         let ids = visibleOrderedFieldIDs(config: config, environment: environment).joined(separator: ",")
-        return "\(config.displayMode.rawValue)|\(ids)"
+        return "\(config.displayMode.rawValue)|\(config.stripDensity.rawValue)|\(ids)"
     }
 
     // MARK: - Window delegate
@@ -400,7 +400,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             let size = MiniLedgerMetrics.size(entries: entries(config: config, environment: environment))
             return NSSize(width: size.width, height: size.height)
         case .strip:
-            let size = MiniStripMetrics.size(entries: entries(config: config, environment: environment))
+            let size = MiniStripMetrics.size(
+                entries: entries(config: config, environment: environment),
+                density: config.stripDensity
+            )
             return NSSize(width: size.width, height: size.height)
         case .tile:
             let size = MiniTileMetrics.size(entries: entries(config: config, environment: environment))

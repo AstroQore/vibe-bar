@@ -20,6 +20,23 @@ struct MiniWindowsSettingsSection: View {
     @State private var selectedWindowID: UUID?
     @State private var arrangeFrames: [String: CGRect] = [:]
     @State private var drag: DragState?
+    /// Whether name edits below write the shared names or this window's
+    /// overrides. Overrides fall back to the shared name when empty.
+    @State private var namingScope: NamingScope = .shared
+    /// Registry-derived structures are rebuilt when the registry changes,
+    /// never during a body render — a debounced name edit republishes
+    /// AppSettings and re-renders this whole section, and rebuilding the
+    /// merged catalog tree on each of those violates the fluency budget.
+    @State private var cachedCompanies: [NamingCompany] = []
+    @State private var cachedSections: [PickerSection] = []
+    @State private var mergedOptionsById: [String: MenuBarFieldOption] = [:]
+    /// Field ids whose bucket the live quota cache currently returns.
+    @State private var liveFieldIds: Set<String> = []
+
+    private enum NamingScope: Hashable {
+        case shared
+        case window
+    }
 
     private static let arrangeSpace = "vibebar.mini.arrange"
     private static let dragThreshold: CGFloat = 5
@@ -52,6 +69,39 @@ struct MiniWindowsSettingsSection: View {
                 .padding(.vertical, 2)
             sharedNameEditors()
         }
+        .onAppear {
+            rebuildRegistryCaches()
+            rebuildLiveness()
+        }
+        .onChange(of: quotaService.fieldRegistry) { _, _ in
+            rebuildRegistryCaches()
+            rebuildLiveness()
+        }
+        .onReceive(quotaService.$lastSuccessByAccount) { _ in
+            rebuildLiveness()
+        }
+    }
+
+    private func rebuildRegistryCaches() {
+        cachedCompanies = namingCompanies()
+        cachedSections = pickerSections()
+        mergedOptionsById = Dictionary(
+            MenuBarFieldCatalog.mergedFields(registry: quotaService.fieldRegistry).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private func rebuildLiveness() {
+        var quotas: [ToolType: AccountQuota] = [:]
+        for tool in ToolType.dedicatedCardProviders {
+            if let quota = environment.quota(for: tool) { quotas[tool] = quota }
+        }
+        var live: Set<String> = []
+        for option in mergedOptionsById.values
+        where quotas[option.tool]?.bucket(id: option.bucketId) != nil {
+            live.insert(option.id)
+        }
+        liveFieldIds = live
     }
 
     // MARK: - Window list
@@ -161,6 +211,20 @@ struct MiniWindowsSettingsSection: View {
         Text(config.displayMode.detail)
             .font(.caption)
             .foregroundStyle(.secondary)
+        if config.displayMode == .strip {
+            Picker("Strip density", selection: Binding(
+                get: { selectedWindow?.stripDensity ?? .roomy },
+                set: { value in update { $0.stripDensity = value } }
+            )) {
+                ForEach(MiniStripDensity.allCases) { density in
+                    Text(density.label).tag(density)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text((selectedWindow?.stripDensity ?? .roomy).detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
 
         Text("Fields shown in “\(config.name)”. Buckets the adapters discover at runtime appear here automatically; a dimmed row is remembered but not in the account's current response.")
             .font(.caption)
@@ -168,7 +232,7 @@ struct MiniWindowsSettingsSection: View {
             .fixedSize(horizontal: false, vertical: true)
         fieldPicker(config)
 
-        Text("Arrangement — drag to reorder. The order decides the layout: first field leftmost (or topmost).")
+        Text("Arrangement — grouped exactly as the window folds them (company → SubProvider). Drag a row to reorder; dragging across a group moves the field into it. First field renders leftmost (or topmost).")
             .font(.caption)
             .foregroundStyle(.secondary)
         arrangementList(config)
@@ -228,12 +292,7 @@ struct MiniWindowsSettingsSection: View {
     private struct PickerEntry: Identifiable {
         let option: MenuBarFieldOption
         let discovered: DiscoveredQuotaField?
-        let isLive: Bool
         var id: String { option.id }
-        var isNew: Bool {
-            guard let discovered else { return false }
-            return Date().timeIntervalSince(discovered.firstSeen) < 14 * 86_400
-        }
     }
 
     private struct PickerSection: Identifiable {
@@ -245,20 +304,11 @@ struct MiniWindowsSettingsSection: View {
 
     private func pickerSections() -> [PickerSection] {
         let registry = quotaService.fieldRegistry
-        var quotas: [ToolType: AccountQuota] = [:]
-        for tool in ToolType.dedicatedCardProviders {
-            if let quota = environment.quota(for: tool) { quotas[tool] = quota }
-        }
-        func isLive(_ option: MenuBarFieldOption) -> Bool {
-            quotas[option.tool]?.bucket(id: option.bucketId) != nil
-        }
         var sections = MiniWindowFieldProviderSection.all.map { section in
             PickerSection(
                 tool: section.tool,
                 title: section.title,
-                entries: section.fields.map {
-                    PickerEntry(option: $0, discovered: nil, isLive: isLive($0))
-                }
+                entries: section.fields.map { PickerEntry(option: $0, discovered: nil) }
             )
         }
         // Runtime-discovered fields join the first section of their tool. A
@@ -267,16 +317,14 @@ struct MiniWindowsSettingsSection: View {
         for discovered in registry.fields where MenuBarFieldCatalog.field(id: discovered.id) == nil {
             let option = MenuBarFieldCatalog.option(for: discovered)
             guard let index = sections.firstIndex(where: { $0.tool == discovered.tool }) else { continue }
-            sections[index].entries.append(
-                PickerEntry(option: option, discovered: discovered, isLive: isLive(option))
-            )
+            sections[index].entries.append(PickerEntry(option: option, discovered: discovered))
         }
         return sections
     }
 
     private func fieldPicker(_ config: MiniWindowConfig) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(pickerSections()) { section in
+            ForEach(cachedSections) { section in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         ToolBrandIconView(tool: section.tool, size: 13)
@@ -299,37 +347,48 @@ struct MiniWindowsSettingsSection: View {
     }
 
     private func pickerRow(_ entry: PickerEntry, config: MiniWindowConfig) -> some View {
-        HStack(spacing: 10) {
+        let isLive = liveFieldIds.contains(entry.option.id)
+        return HStack(spacing: 10) {
             Toggle(isOn: fieldSelectedBinding(entry.option.id)) {
-                HStack(spacing: 6) {
-                    Text(entry.option.title)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(2)
-                    if entry.isNew {
-                        Text("NEW")
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.8))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Color.orange.opacity(0.85)))
-                    }
-                }
+                Text(entry.option.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(2)
             }
             .help(entry.option.id)
             Spacer(minLength: 8)
-            if !entry.isLive {
+            if !isLive {
                 Text(lastSeenCaption(entry))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
+                if entry.discovered != nil {
+                    Button {
+                        forgetDiscoveredField(entry.option.id)
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(width: 18, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.vibeBar)
+                    .help("Forget this discovered bucket — drops it from the list and from every window that selected it.")
+                }
             }
-            DebouncedSettingsTextField(
-                prompt: entry.option.defaultLabel,
-                value: fieldLabelBinding(entry.option)
-            )
-            .frame(width: 110)
         }
-        .opacity(entry.isLive ? 1 : 0.55)
+        .opacity(isLive ? 1 : 0.55)
+    }
+
+    /// Forget a discovered bucket the provider no longer returns: registry
+    /// entry, every window's selection of it, and any names it was given.
+    private func forgetDiscoveredField(_ fieldId: String) {
+        quotaService.forgetDiscoveredField(id: fieldId)
+        var settings = settingsStore.settings
+        settings.miniWindow.customLabels.removeValue(forKey: fieldId)
+        for index in settings.miniWindow.windows.indices {
+            settings.miniWindow.windows[index].fieldIds.removeAll { $0 == fieldId }
+            settings.miniWindow.windows[index].customLabels.removeValue(forKey: fieldId)
+        }
+        settingsStore.settings = settings
     }
 
     // Static: this caption renders once per dimmed picker row, and the picker
@@ -350,23 +409,55 @@ struct MiniWindowsSettingsSection: View {
 
     private struct ArrangeRow: Identifiable {
         let option: MenuBarFieldOption
-        let isLive: Bool
         var id: String { option.id }
+        /// Canonical L2 identity — what the tree groups by. Display names
+        /// come from the label chain at render time.
+        var subProviderName: String {
+            option.tool.quotaSubProviderName(bucketID: option.bucketId)
+        }
+    }
+
+    /// One consecutive run of fields billing the same SubProvider, under a
+    /// company header when the vendor changes — the same folding the mini
+    /// window itself performs, so the editor's grouping is the layout's.
+    private struct ArrangeGroup: Identifiable {
+        let companyName: String?
+        let tool: ToolType
+        let subProviderName: String
+        var rows: [ArrangeRow]
+        let firstIndex: Int
+        var id: String { "\(firstIndex)" }
     }
 
     private func arrangeRows(_ config: MiniWindowConfig) -> [ArrangeRow] {
-        let registry = quotaService.fieldRegistry
-        var quotas: [ToolType: AccountQuota] = [:]
-        for tool in ToolType.dedicatedCardProviders {
-            if let quota = environment.quota(for: tool) { quotas[tool] = quota }
+        config.fieldIds.compactMap { fieldId in
+            mergedOptionsById[fieldId].map { ArrangeRow(option: $0) }
         }
-        return config.fieldIds.compactMap { fieldId in
-            guard let option = MenuBarFieldCatalog.field(id: fieldId, registry: registry) else { return nil }
-            return ArrangeRow(
-                option: option,
-                isLive: quotas[option.tool]?.bucket(id: option.bucketId) != nil
-            )
+    }
+
+    private func arrangeGroups(_ rows: [ArrangeRow]) -> [ArrangeGroup] {
+        var groups: [ArrangeGroup] = []
+        var index = 0
+        for row in rows {
+            let vendor = row.option.tool.vendorName
+            if var last = groups.last,
+               last.tool == row.option.tool,
+               last.subProviderName == row.subProviderName {
+                last.rows.append(row)
+                groups[groups.count - 1] = last
+            } else {
+                let previousVendor = groups.last?.tool.vendorName
+                groups.append(ArrangeGroup(
+                    companyName: vendor == previousVendor ? nil : vendor,
+                    tool: row.option.tool,
+                    subProviderName: row.subProviderName,
+                    rows: [row],
+                    firstIndex: index
+                ))
+            }
+            index += 1
         }
+        return groups
     }
 
     @ViewBuilder
@@ -377,11 +468,32 @@ struct MiniWindowsSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         } else {
+            let groups = arrangeGroups(rows)
             let insertion = insertionIndex(rows: rows)
-            VStack(spacing: 3) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    arrangeRowView(row, index: index, count: rows.count)
-                        .opacity(drag?.engaged == true && drag?.fieldID == row.id ? 0.3 : 1)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(groups) { group in
+                    if let company = group.companyName {
+                        HStack(spacing: 6) {
+                            ToolBrandIconView(tool: group.tool, size: 12)
+                                .opacity(0.85)
+                            Text(company)
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .tracking(0.4)
+                        }
+                        .padding(.top, group.firstIndex == 0 ? 0 : 5)
+                    }
+                    Text(subProviderDisplayName(group).uppercased())
+                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                        .tracking(1.0)
+                        .padding(.leading, 16)
+                    ForEach(Array(group.rows.enumerated()), id: \.element.id) { offset, row in
+                        arrangeRowView(row, index: group.firstIndex + offset, count: rows.count)
+                            .opacity(drag?.engaged == true && drag?.fieldID == row.id ? 0.3 : 1)
+                    }
                 }
             }
             .coordinateSpace(.named(Self.arrangeSpace))
@@ -397,8 +509,16 @@ struct MiniWindowsSettingsSection: View {
         }
     }
 
+    private func subProviderDisplayName(_ group: ArrangeGroup) -> String {
+        let key = MiniWindowGroupLabelCatalog.subProviderKey(tool: group.tool, name: group.subProviderName)
+        return settingsStore.settings.miniWindow.resolvedGroupLabel(config: selectedWindow, key: key)
+            ?? group.subProviderName
+    }
+
     private func arrangeRowView(_ row: ArrangeRow, index: Int, count: Int) -> some View {
-        HStack(spacing: 8) {
+        let isLive = liveFieldIds.contains(row.id)
+        let percent = livePercent(row)
+        return HStack(spacing: 8) {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.tertiary)
@@ -412,12 +532,17 @@ struct MiniWindowsSettingsSection: View {
                 .font(.system(size: 11.5, weight: .medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
-            if !row.isLive {
+            if !isLive {
                 Text("offline")
                     .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 6)
+            if let percent {
+                Text("\(Int(percent.rounded()))%")
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Theme.barColor(percent: percent, mode: settingsStore.displayMode))
+            }
             Button {
                 moveField(row.id, by: -1)
             } label: {
@@ -447,17 +572,26 @@ struct MiniWindowsSettingsSection: View {
             .help("Remove from this window")
         }
         .padding(.horizontal, 8)
+        .padding(.leading, 8)
         .frame(height: 26)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.primary.opacity(row.isLive ? 0.05 : 0.03))
+                .fill(Color.primary.opacity(isLive ? 0.05 : 0.03))
+                .padding(.leading, 8)
         )
-        .opacity(row.isLive ? 1 : 0.6)
+        .opacity(isLive ? 1 : 0.6)
         .onGeometryChange(for: CGRect.self) { proxy in
             proxy.frame(in: .named(Self.arrangeSpace))
         } action: { frame in
             arrangeFrames[row.id] = frame
         }
+    }
+
+    private func livePercent(_ row: ArrangeRow) -> Double? {
+        guard liveFieldIds.contains(row.id),
+              let bucket = environment.quota(for: row.option.tool)?.bucket(id: row.option.bucketId)
+        else { return nil }
+        return bucket.displayPercent(settingsStore.displayMode, tool: row.option.tool)
     }
 
     private func dragGesture(fieldID: String) -> some Gesture {
@@ -536,52 +670,262 @@ struct MiniWindowsSettingsSection: View {
         }
     }
 
-    // MARK: - Shared name editors
+    // MARK: - Names, as the hierarchy they belong to
+
+    /// One renamable thing in the L1 → L2 → L3 → bucket tree.
+    private struct NamingRow: Identifiable {
+        enum Kind {
+            case subProvider
+            case group
+            case field
+        }
+        let kind: Kind
+        /// `groupLabels` key for sub-providers and groups; field id for fields.
+        let key: String
+        let title: String
+        let defaultLabel: String
+        var id: String { key }
+        var indent: CGFloat {
+            switch kind {
+            case .subProvider: return 0
+            case .group: return 16
+            case .field: return 32
+            }
+        }
+    }
+
+    private struct NamingCompany: Identifiable {
+        let name: String
+        let tool: ToolType
+        var rows: [NamingRow]
+        var id: String { name }
+    }
+
+    /// The L3 group a field's gauge renders under, or nil for a bucket that
+    /// sits directly under its SubProvider (Grok Bot's single Weekly).
+    private static func namingGroupKey(for option: MenuBarFieldOption) -> String? {
+        if option.tool == .cursor {
+            if option.bucketId == "grok_bot_weekly" { return nil }
+            return MiniWindowGroupLabelCatalog.groupKey(tool: .cursor, bucketId: option.bucketId)
+        }
+        if MiniQuotaWindowView.isBranchStyleField(option) {
+            return MiniWindowGroupLabelCatalog.groupKey(tool: option.tool, bucketId: option.bucketId)
+        }
+        switch option.tool {
+        case .codex: return "codex.all-models"
+        case .claude: return "claude.all-models"
+        case .gemini: return "gemini.all-models"
+        case .grok: return "grok.all-models"
+        default: return nil
+        }
+    }
+
+    private func namingCompanies() -> [NamingCompany] {
+        let merged = MenuBarFieldCatalog.mergedFields(registry: quotaService.fieldRegistry)
+        var companies: [NamingCompany] = []
+        var companyIndex: [String: Int] = [:]
+        var seenSubKeys: Set<String> = []
+        var seenGroupKeys: Set<String> = []
+        for tool in ToolType.dedicatedCardProviders {
+            for option in merged where option.tool == tool {
+                let vendor = tool.vendorName
+                let company: Int
+                if let index = companyIndex[vendor] {
+                    company = index
+                } else {
+                    company = companies.count
+                    companyIndex[vendor] = company
+                    companies.append(NamingCompany(name: vendor, tool: tool, rows: []))
+                }
+                let subName = tool.quotaSubProviderName(bucketID: option.bucketId)
+                let subKey = MiniWindowGroupLabelCatalog.subProviderKey(tool: tool, name: subName)
+                if seenSubKeys.insert(subKey).inserted {
+                    companies[company].rows.append(NamingRow(
+                        kind: .subProvider, key: subKey, title: subName, defaultLabel: subName
+                    ))
+                }
+                if let groupKey = Self.namingGroupKey(for: option),
+                   seenGroupKeys.insert(groupKey).inserted {
+                    let fallback = option.dynamicGroupTitle
+                        ?? MenuBarFieldCatalog.bucketGroupStem(option.bucketId)
+                    let label = MiniWindowGroupLabelCatalog.defaultLabel(for: groupKey) ?? fallback
+                    companies[company].rows.append(NamingRow(
+                        kind: .group, key: groupKey, title: label, defaultLabel: label
+                    ))
+                }
+                companies[company].rows.append(NamingRow(
+                    kind: .field, key: option.id, title: option.title, defaultLabel: option.defaultLabel
+                ))
+            }
+        }
+        return companies
+    }
 
     @ViewBuilder
     private func sharedNameEditors() -> some View {
-        Text("SubProvider names:")
+        Text("Names")
             .font(.caption)
+            .fontWeight(.semibold)
             .foregroundStyle(.secondary)
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(MiniWindowGroupLabelCatalog.subProviderOptions) { option in
-                groupLabelRow(option)
-            }
+        HStack(spacing: 4) {
+            namingScopeButton(.shared, label: "All windows")
+            namingScopeButton(.window, label: "Only “\(selectedWindow?.name ?? "this window")”")
+            Spacer(minLength: 0)
         }
-        Text("Model group names:")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(groupLabelOptions) { option in
-                groupLabelRow(option)
+        .padding(3)
+        .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.045)))
+        Text(
+            namingScope == .shared
+                ? "One tree, the levels quotas actually have: company → SubProvider → quota group → bucket. Names set here apply to every mini window."
+                : "Overrides for this window only. An empty field inherits the shared name — shown as the placeholder."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(cachedCompanies) { company in
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        ToolBrandIconView(tool: company.tool, size: 13)
+                            .opacity(0.85)
+                        Text(company.name)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .tracking(0.4)
+                    }
+                    ForEach(company.rows) { row in
+                        namingRow(row)
+                    }
+                }
             }
         }
     }
 
-    private var groupLabelOptions: [MiniWindowGroupLabelOption] {
-        var quotas: [ToolType: AccountQuota] = [:]
-        for tool in ToolType.dedicatedCardProviders {
-            if let quota = environment.quota(for: tool) { quotas[tool] = quota }
+    private func namingScopeButton(_ scope: NamingScope, label: String) -> some View {
+        let isSelected = namingScope == scope
+        return Button {
+            namingScope = scope
+        } label: {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                .padding(.horizontal, 11)
+                .frame(height: 22)
+                .background {
+                    if isSelected {
+                        Capsule(style: .continuous)
+                            .fill(Color.accentColor.opacity(0.20))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
+                            )
+                    }
+                }
+                .contentShape(Capsule(style: .continuous))
         }
-        return MiniWindowGroupLabelCatalog.options(liveQuotas: quotas)
+        .buttonStyle(.vibeBar(cornerRadius: 11))
     }
 
-    private func groupLabelRow(_ option: MiniWindowGroupLabelOption) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(option.title)
-                    .font(.system(size: 12, weight: .medium))
-                Text(option.id)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+    private func namingRow(_ row: NamingRow) -> some View {
+        HStack(spacing: 8) {
+            Text(row.title)
+                .font(.system(
+                    size: row.kind == .field ? 11.5 : 12,
+                    weight: row.kind == .field ? .regular : .medium
+                ))
+                .foregroundStyle(row.kind == .field ? Color.secondary : Color.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Spacer(minLength: 8)
             DebouncedSettingsTextField(
-                prompt: option.defaultLabel,
-                value: groupLabelBinding(option)
+                prompt: namingPrompt(row),
+                value: namingBinding(row)
             )
             .frame(width: 130)
         }
+        .padding(.leading, row.indent)
+        .help(row.key)
+    }
+
+    /// What an empty field falls back to — in window scope that is the shared
+    /// name when one is set, so the placeholder always shows what will render.
+    private func namingPrompt(_ row: NamingRow) -> String {
+        let shared: String?
+        switch row.kind {
+        case .field:
+            shared = settingsStore.settings.miniWindow.customLabels[row.key]
+        case .subProvider, .group:
+            shared = settingsStore.settings.miniWindow.groupLabels[row.key]
+        }
+        if namingScope == .window,
+           let trimmed = shared?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !trimmed.isEmpty {
+            return trimmed
+        }
+        return row.defaultLabel
+    }
+
+    private func namingBinding(_ row: NamingRow) -> Binding<String> {
+        // Captured at construction: a debounced commit may fire after the
+        // user switches scope or window, and the draft belongs to the target
+        // it was typed for — same discipline as the window-name editor.
+        let scope = namingScope
+        let windowID = selectedWindow?.id
+        return Binding(
+            get: {
+                let mini = settingsStore.settings.miniWindow
+                switch (scope, row.kind) {
+                case (.shared, .field):
+                    return mini.customLabels[row.key] ?? ""
+                case (.shared, _):
+                    return mini.groupLabels[row.key] ?? ""
+                case (.window, .field):
+                    return windowID.flatMap { mini.config(id: $0)?.customLabels[row.key] } ?? ""
+                case (.window, _):
+                    return windowID.flatMap { mini.config(id: $0)?.groupLabels[row.key] } ?? ""
+                }
+            },
+            set: { value in
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                switch scope {
+                case .shared:
+                    var mini = settingsStore.settings.miniWindow
+                    if row.kind == .field {
+                        if trimmed.isEmpty {
+                            mini.customLabels.removeValue(forKey: row.key)
+                        } else {
+                            mini.customLabels[row.key] = value
+                        }
+                    } else {
+                        if trimmed.isEmpty {
+                            mini.groupLabels.removeValue(forKey: row.key)
+                        } else {
+                            mini.groupLabels[row.key] = value
+                        }
+                    }
+                    settingsStore.settings.miniWindow = mini
+                case .window:
+                    guard let windowID else { return }
+                    update(id: windowID) { config in
+                        if row.kind == .field {
+                            if trimmed.isEmpty {
+                                config.customLabels.removeValue(forKey: row.key)
+                            } else {
+                                config.customLabels[row.key] = value
+                            }
+                        } else {
+                            if trimmed.isEmpty {
+                                config.groupLabels.removeValue(forKey: row.key)
+                            } else {
+                                config.groupLabels[row.key] = value
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 
     // MARK: - Bindings
@@ -628,35 +972,4 @@ struct MiniWindowsSettingsSection: View {
         }
     }
 
-    private func fieldLabelBinding(_ field: MenuBarFieldOption) -> Binding<String> {
-        Binding(
-            get: { settingsStore.settings.miniWindow.customLabels[field.id] ?? "" },
-            set: { value in
-                var mini = settingsStore.settings.miniWindow
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    mini.customLabels.removeValue(forKey: field.id)
-                } else {
-                    mini.customLabels[field.id] = value
-                }
-                settingsStore.settings.miniWindow = mini
-            }
-        )
-    }
-
-    private func groupLabelBinding(_ option: MiniWindowGroupLabelOption) -> Binding<String> {
-        Binding(
-            get: { settingsStore.settings.miniWindow.groupLabels[option.id] ?? "" },
-            set: { value in
-                var mini = settingsStore.settings.miniWindow
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    mini.groupLabels.removeValue(forKey: option.id)
-                } else {
-                    mini.groupLabels[option.id] = value
-                }
-                settingsStore.settings.miniWindow = mini
-            }
-        )
-    }
 }

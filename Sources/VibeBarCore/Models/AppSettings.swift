@@ -1105,6 +1105,16 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
     public var fieldIds: [String]
     /// Whether this window was open last time the app quit; restored on launch.
     public var wasOpen: Bool
+    /// Per-window overrides for field labels. Empty by default — a window
+    /// inherits the shared `MiniWindowSettings.customLabels`, and an entry
+    /// here wins over the shared name for this window only.
+    public var customLabels: [String: String]
+    /// Per-window overrides for SubProvider / quota-group labels, same
+    /// inheritance: window entry → shared `groupLabels` → catalog default.
+    public var groupLabels: [String: String]
+    /// Density of the strip layout — the one mode whose whole point is its
+    /// footprint, so it gets the menu-bar-style choice of three.
+    public var stripDensity: MiniStripDensity
 
     /// The id every pre-multi-window settings blob migrates onto. It must be
     /// deterministic: the migration runs on every decode until something
@@ -1117,17 +1127,23 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
         name: String,
         displayMode: MiniWindowDisplayMode = .regular,
         fieldIds: [String],
-        wasOpen: Bool = false
+        wasOpen: Bool = false,
+        customLabels: [String: String] = [:],
+        groupLabels: [String: String] = [:],
+        stripDensity: MiniStripDensity = .roomy
     ) {
         self.id = id
         self.name = name
         self.displayMode = displayMode
         self.fieldIds = fieldIds
         self.wasOpen = wasOpen
+        self.customLabels = customLabels
+        self.groupLabels = groupLabels
+        self.stripDensity = stripDensity
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, displayMode, fieldIds, wasOpen
+        case id, name, displayMode, fieldIds, wasOpen, customLabels, groupLabels, stripDensity
     }
 
     public init(from decoder: Decoder) throws {
@@ -1141,6 +1157,35 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
         let decoded = try c.decodeIfPresent([String].self, forKey: .fieldIds) ?? []
         self.fieldIds = MenuBarFieldCatalog.migratedFieldIds(decoded)
         self.wasOpen = try c.decodeIfPresent(Bool.self, forKey: .wasOpen) ?? false
+        self.customLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
+        self.groupLabels = try c.decodeIfPresent([String: String].self, forKey: .groupLabels) ?? [:]
+        self.stripDensity = (try? c.decodeIfPresent(MiniStripDensity.self, forKey: .stripDensity)) ?? .roomy
+    }
+}
+
+/// The strip layout's three footprints, mirroring the menu bar's density
+/// choice: one roomy line, a two-line stack, or the narrowest dot + number.
+public enum MiniStripDensity: String, Codable, CaseIterable, Identifiable, Sendable {
+    case roomy
+    case twoLine
+    case narrow
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .roomy:   return "Roomy"
+        case .twoLine: return "Two Lines"
+        case .narrow:  return "Narrow"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .roomy:   return "One line, full labels beside each number."
+        case .twoLine: return "Number over its label — narrower per bucket."
+        case .narrow:  return "Dot and number only; labels on hover."
+        }
     }
 }
 
@@ -1292,6 +1337,26 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         case .compact: return compactSelectedFieldIds
         default: return selectedFieldIds
         }
+    }
+
+    private static func trimmedNonEmpty(_ raw: String?) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty
+        else { return nil }
+        return value
+    }
+
+    /// The custom field label one window shows: its own override first, the
+    /// shared name second, nil when neither is set.
+    public func resolvedFieldLabel(config: MiniWindowConfig?, fieldId: String) -> String? {
+        Self.trimmedNonEmpty(config?.customLabels[fieldId])
+            ?? Self.trimmedNonEmpty(customLabels[fieldId])
+    }
+
+    /// Same inheritance for SubProvider and quota-group labels.
+    public func resolvedGroupLabel(config: MiniWindowConfig?, key: String) -> String? {
+        Self.trimmedNonEmpty(config?.groupLabels[key])
+            ?? Self.trimmedNonEmpty(groupLabels[key])
     }
 
     public mutating func setFieldIds(_ ids: [String], for mode: MiniWindowDisplayMode) {

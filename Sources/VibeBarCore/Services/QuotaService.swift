@@ -58,6 +58,10 @@ public final class QuotaService: ObservableObject {
     /// each refresh. Optional: Core works without it, the App sets it once at
     /// wiring time.
     public var activityContextProvider: ((ToolType) -> QuotaActivityContext)?
+    /// What the registry must keep even when the provider stops returning
+    /// the buckets — selections, named fields, and named groups. Wired by
+    /// the App from settings; nil keeps everything (prune disabled).
+    public var registryKeepProvider: (() -> QuotaFieldKeepSet)?
 
     private let adapters: [ToolType: any QuotaAdapter]
     private let mockProvider: () -> Bool
@@ -365,6 +369,16 @@ public final class QuotaService: ObservableObject {
     private static let paceForecastMemoLimit = 4
     private var paceForecastMemo: [SubscriptionHistoryKey: [PaceForecastMemo]] = [:]
 
+    /// The picker's explicit "forget": drop one discovered field from the
+    /// registry and persist. The caller removes its own references
+    /// (selections, labels) — this only owns the registry file.
+    public func forgetDiscoveredField(id: String) {
+        var registry = fieldRegistry
+        guard registry.forget(id: id) else { return }
+        fieldRegistry = registry
+        try? VibeBarLocalStore.writeJSON(registry, to: VibeBarLocalStore.quotaFieldRegistryURL)
+    }
+
     // MARK: - Private
 
     private func store(success: AccountQuota, now: Date = Date()) {
@@ -376,7 +390,15 @@ public final class QuotaService: ObservableObject {
         // Mock-mode buckets must not be remembered as real discoveries.
         if !mockProvider(), ToolType.dedicatedCardProviders.contains(success.tool) {
             var registry = fieldRegistry
-            if registry.record(tool: success.tool, buckets: success.buckets, now: now) {
+            var changed = registry.record(tool: success.tool, buckets: success.buckets, now: now)
+            if let keep = registryKeepProvider?() {
+                changed = registry.prune(
+                    tool: success.tool,
+                    liveBucketIds: Set(success.buckets.map(\.id)),
+                    keeping: keep
+                ) || changed
+            }
+            if changed {
                 fieldRegistry = registry
                 try? VibeBarLocalStore.writeJSON(registry, to: VibeBarLocalStore.quotaFieldRegistryURL)
             }

@@ -123,6 +123,9 @@ struct SkillsManagerPage: View {
         .workbenchFieldSurface(cornerRadius: 15)
     }
 
+    // The porcelain pill is part of each button's label, not decoration
+    // around it: applied outside the Button its 11 pt side padding sat
+    // outside the clickable area, so the pill's edges ignored clicks.
     private var actionButtons: some View {
         HStack(spacing: 6) {
             Button {
@@ -135,9 +138,9 @@ struct SkillsManagerPage: View {
                         : "Check Updates",
                     busy: model.isBusy(SkillsManagerModel.BusyKey.updates)
                 )
+                .porcelainToolbarButton()
             }
-            .buttonStyle(.vibeBar)
-            .porcelainToolbarButton()
+            .buttonStyle(.vibeBar(cornerRadius: 11))
             .disabled(model.isBusy(SkillsManagerModel.BusyKey.updates))
 
             Button {
@@ -148,9 +151,9 @@ struct SkillsManagerPage: View {
                     title: "Install from ZIP",
                     busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
                 )
+                .porcelainToolbarButton()
             }
-            .buttonStyle(.vibeBar)
-            .porcelainToolbarButton()
+            .buttonStyle(.vibeBar(cornerRadius: 11))
 
             Button {
                 model.presentImportSheet()
@@ -160,25 +163,25 @@ struct SkillsManagerPage: View {
                     title: "Import Existing",
                     busy: model.isBusy(SkillsManagerModel.BusyKey.importing)
                 )
+                .porcelainToolbarButton()
             }
-            .buttonStyle(.vibeBar)
-            .porcelainToolbarButton()
+            .buttonStyle(.vibeBar(cornerRadius: 11))
 
             Button {
                 model.presentBackupsSheet()
             } label: {
                 buttonLabel(systemImage: "clock.arrow.circlepath", title: "Backups", busy: false)
+                    .porcelainToolbarButton()
             }
-            .buttonStyle(.vibeBar)
-            .porcelainToolbarButton()
+            .buttonStyle(.vibeBar(cornerRadius: 11))
 
             Button {
                 model.isDiscoverSheetPresented = true
             } label: {
                 buttonLabel(systemImage: "sparkle.magnifyingglass", title: "Discover", busy: false)
+                    .porcelainToolbarButton(prominent: true)
             }
-            .buttonStyle(.vibeBar)
-            .porcelainToolbarButton(prominent: true)
+            .buttonStyle(.vibeBar(cornerRadius: 11))
             .help("Browse configured repositories and the skills.sh index")
         }
     }
