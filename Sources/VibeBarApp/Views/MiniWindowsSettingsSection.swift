@@ -391,11 +391,19 @@ struct MiniWindowsSettingsSection: View {
         settingsStore.settings = settings
     }
 
-    private func lastSeenCaption(_ entry: PickerEntry) -> String {
-        guard let discovered = entry.discovered else { return "not in current response" }
+    // Static: this caption renders once per dimmed picker row, and the picker
+    // re-renders on every settings or quota publish — a formatter per call is
+    // the classic per-row allocation.
+    private static let lastSeenFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MM-dd"
-        return "not returned · last seen \(formatter.string(from: discovered.lastSeen))"
+        formatter.timeZone = .autoupdatingCurrent
+        return formatter
+    }()
+
+    private func lastSeenCaption(_ entry: PickerEntry) -> String {
+        guard let discovered = entry.discovered else { return "not in current response" }
+        return "not returned · last seen \(Self.lastSeenFormatter.string(from: discovered.lastSeen))"
     }
 
     // MARK: - Arrangement
