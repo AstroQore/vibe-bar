@@ -624,6 +624,8 @@ private struct OverviewWaterfall: View {
             }
         case .overviewUsageMix:
             OverviewUsageMixCard(density: density)
+        case .overviewUpcomingResets:
+            UpcomingResetsCard(density: density)
         case .overviewModelRanking:
             ModelRankingList(
                 breakdowns: context.models,
@@ -1787,7 +1789,7 @@ private struct ProviderPageModule: View {
             }
         case .overviewCostSummary, .overviewStatusSummary, .overviewQuota,
              .overviewQuotaHistoryAll, .overviewCostAll, .overviewCost,
-             .overviewUsageMix, .overviewModelRanking,
+             .overviewUsageMix, .overviewUpcomingResets, .overviewModelRanking,
              .overviewYearHeatmap, .overviewActivityHeatmap:
             // Overview families. `PageModuleCatalog` never puts them on a
             // provider page, and a stale identifier is dropped before it gets

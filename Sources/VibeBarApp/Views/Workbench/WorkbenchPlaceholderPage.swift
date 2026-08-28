@@ -28,6 +28,8 @@ struct WorkbenchPlaceholderPage: View {
         switch page {
         case .usageStats:
             "Full-window usage and cost analytics are on their way."
+        case .resets:
+            "Cycle, refill and forecast views are on their way."
         case .sessionManager:
             "Browsing and searching local Codex and Claude Code sessions is on its way."
         case .skillsManager:
