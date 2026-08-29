@@ -124,6 +124,34 @@ public enum MenuBarPercentColor: Equatable, Sendable {
     }
 }
 
+/// How one selected field draws itself on the status item: its label beside
+/// the percent (the default), the provider's logo instead of the label, or
+/// both. Chosen per field, so a crowded bar can shorten some quotas to a
+/// logo while the ambiguous ones keep their words.
+public enum MenuBarFieldStyle: String, Codable, CaseIterable, Identifiable, Sendable {
+    case labelAndPercent
+    case logoAndPercent
+    case logoLabelAndPercent
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .labelAndPercent: return "Label"
+        case .logoAndPercent: return "Logo"
+        case .logoLabelAndPercent: return "Logo and label"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .labelAndPercent: return "The field's name beside its percent."
+        case .logoAndPercent: return "The provider's logo beside the percent — no text."
+        case .logoLabelAndPercent: return "Logo, name, and percent."
+        }
+    }
+}
+
 public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     public var kind: MenuBarItemKind
     public var isVisible: Bool
@@ -131,6 +159,8 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     public var layout: MenuBarLayout
     public var selectedFieldIds: [String]
     public var customLabels: [String: String]
+    /// Per-field display style; a missing entry is `.labelAndPercent`.
+    public var fieldStyles: [String: MenuBarFieldStyle]
 
     public var id: MenuBarItemKind { kind }
 
@@ -140,7 +170,8 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         showTitle: Bool,
         layout: MenuBarLayout = .singleLine,
         selectedFieldIds: [String],
-        customLabels: [String: String] = [:]
+        customLabels: [String: String] = [:],
+        fieldStyles: [String: MenuBarFieldStyle] = [:]
     ) {
         self.kind = kind
         self.isVisible = isVisible
@@ -148,6 +179,11 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         self.layout = layout
         self.selectedFieldIds = selectedFieldIds
         self.customLabels = customLabels
+        self.fieldStyles = fieldStyles
+    }
+
+    public func style(for fieldId: String) -> MenuBarFieldStyle {
+        fieldStyles[fieldId] ?? .labelAndPercent
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -157,6 +193,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         case layout
         case selectedFieldIds
         case customLabels
+        case fieldStyles
     }
 
     public init(from decoder: Decoder) throws {
@@ -168,6 +205,10 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
             ?? (kind == .compact ? .iconOnly : .singleLine)
         self.selectedFieldIds = try c.decodeIfPresent([String].self, forKey: .selectedFieldIds) ?? []
         self.customLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
+        // Lossy per entry: a style this build doesn't know falls back to the
+        // default instead of discarding the settings blob.
+        let rawStyles = try c.decodeIfPresent([String: String].self, forKey: .fieldStyles) ?? [:]
+        self.fieldStyles = rawStyles.compactMapValues(MenuBarFieldStyle.init(rawValue:))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -178,6 +219,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         try c.encode(layout, forKey: .layout)
         try c.encode(selectedFieldIds, forKey: .selectedFieldIds)
         try c.encode(customLabels, forKey: .customLabels)
+        try c.encode(fieldStyles, forKey: .fieldStyles)
     }
 }
 

@@ -53,6 +53,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var blockWatchdog: MenuBarBlockWatchdog?
     /// Tab the next popover is built on. Overview outside demo mode.
     private var popoverInitialPage: OverviewPage = .overview
+    /// Rendered brand-logo images keyed by tool, point size, and appearance —
+    /// see `brandAttachment(for:fontSize:font:)`.
+    private var brandAttachmentImages: [String: NSImage?] = [:]
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -833,7 +836,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
                 color: percentColor(for: field, bucket: bucket, settings: settings),
-                fontSize: fontSize
+                fontSize: fontSize,
+                style: itemSettings.style(for: field.id),
+                tool: field.tool
             )
         }
 
@@ -904,7 +909,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 label: label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
                 color: percentColor(for: field, bucket: bucket, settings: settings),
-                fontSize: MenuBarStatusMetrics.twoRowFontSize
+                fontSize: MenuBarStatusMetrics.twoRowFontSize,
+                style: itemSettings.style(for: field.id),
+                tool: field.tool
             )
         }
     }
@@ -941,16 +948,33 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menuTextPiece(label: label, percent: percent, color: color, fontSize: fontSize)
     }
 
-    private func menuTextPiece(label: String, percent: Double?, color: NSColor, fontSize: CGFloat) -> NSAttributedString {
+    private func menuTextPiece(
+        label: String,
+        percent: Double?,
+        color: NSColor,
+        fontSize: CGFloat,
+        style: MenuBarFieldStyle = .labelAndPercent,
+        tool: ToolType? = nil
+    ) -> NSAttributedString {
         let baseFont = NSFont.systemFont(ofSize: fontSize, weight: .medium)
         let chunk = NSMutableAttributedString()
-        chunk.append(NSAttributedString(
-            string: "\(label) ",
-            attributes: [
-                .foregroundColor: NSColor.labelColor,
-                .font: baseFont
-            ]
-        ))
+        if style != .labelAndPercent, let tool,
+           let attachment = brandAttachment(for: tool, fontSize: fontSize, font: baseFont) {
+            chunk.append(attachment)
+            chunk.append(NSAttributedString(
+                string: " ",
+                attributes: [.font: NSFont.systemFont(ofSize: fontSize * 0.4)]
+            ))
+        }
+        if style != .logoAndPercent {
+            chunk.append(NSAttributedString(
+                string: "\(label) ",
+                attributes: [
+                    .foregroundColor: NSColor.labelColor,
+                    .font: baseFont
+                ]
+            ))
+        }
         if let percent {
             chunk.append(NSAttributedString(
                 string: "\(Int(percent.rounded()))%",
@@ -961,6 +985,34 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             ))
         }
         return chunk
+    }
+
+    /// Brand-logo run for a text piece, vertically centered on the font's
+    /// cap height. Cached per (tool, point size, appearance) — the status
+    /// item re-renders on every quota publish and must not rasterize icons
+    /// per tick.
+    private func brandAttachment(for tool: ToolType, fontSize: CGFloat, font: NSFont) -> NSAttributedString? {
+        let side = (fontSize + 3).rounded()
+        let appearanceName = NSApp.effectiveAppearance.name.rawValue
+        let key = "\(tool.rawValue).\(side).\(appearanceName)"
+        let image: NSImage?
+        if let cached = brandAttachmentImages[key] {
+            image = cached
+        } else {
+            image = ProviderBrandIcon.image(
+                for: tool,
+                size: NSSize(width: side, height: side),
+                tint: NSColor.labelColor,
+                appearance: NSApp.effectiveAppearance
+            )
+            brandAttachmentImages[key] = image
+        }
+        guard let image else { return nil }
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        let yOffset = (font.capHeight - side) / 2
+        attachment.bounds = CGRect(x: 0, y: yOffset, width: side, height: side)
+        return NSAttributedString(attachment: attachment)
     }
 
     private func installIconOnlyContent(
