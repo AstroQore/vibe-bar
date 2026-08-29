@@ -1183,7 +1183,7 @@ public enum MiniStripDensity: String, Codable, CaseIterable, Identifiable, Senda
     public var detail: String {
         switch self {
         case .roomy:   return "One line, full labels beside each number."
-        case .twoLine: return "Number over its label — narrower per bucket."
+        case .twoLine: return "Menu-bar style: buckets pair into stacked columns, label beside each number."
         case .narrow:  return "Dot and number only; labels on hover."
         }
     }
