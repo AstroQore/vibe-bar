@@ -11,6 +11,11 @@ struct ResetsPage: View {
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
 
+    /// Which month the calendar shows, as an offset from the current one.
+    /// Negative pages into recorded history, positive into the forecastable
+    /// future.
+    @State private var calendarMonthOffset = 0
+
     var body: some View {
         // One leaf timer for the whole page: countdown text drifts by the
         // minute; data re-renders arrive with quota refreshes on their own.
@@ -43,8 +48,8 @@ struct ResetsPage: View {
                 cycleGrid(cycles, now: now)
                 HStack(alignment: .top, spacing: 14) {
                     box {
-                        boxHeader("Reset Calendar", detail: "14 days")
-                        calendar(events, now: now)
+                        calendarHeader(now: now)
+                        monthCalendar(now: now)
                     }
                     .frame(maxWidth: .infinity)
                     box {
@@ -60,18 +65,24 @@ struct ResetsPage: View {
 
     // MARK: - Cycle model
 
-    /// One L2 SubProvider's live cycle: its buckets, the headline (longest
-    /// window — the cycle a subscription is priced on), and the forecast.
+    /// One quota group's live cycle — the popover's own granularity: a
+    /// SubProvider's primary buckets are one card ("Chatgpt Agentic"), and
+    /// every model-scoped group (Spark, Reserve, Fable…) is its own card,
+    /// with the headline being that group's longest window.
     private struct SubProviderCycle: Identifiable {
         let tool: ToolType
         let accountId: String
         let accountLabel: String?
-        let name: String
+        /// The SubProvider ("Claude"), always shown.
+        let subProviderName: String
+        /// The quota group inside it ("Fable"), nil for the primary buckets.
+        let groupTitle: String?
         let plan: String?
         let buckets: [QuotaBucket]
         let headline: QuotaBucket
         let forecast: QuotaPaceForecast?
-        var id: String { "\(accountId)/\(name)" }
+        var id: String { "\(accountId)/\(subProviderName)/\(groupTitle ?? "")" }
+        var name: String { groupTitle.map { "\(subProviderName) · \($0)" } ?? subProviderName }
     }
 
     private func subProviderCycles(now: Date) -> [SubProviderCycle] {
@@ -83,15 +94,26 @@ struct ResetsPage: View {
                       !quota.buckets.isEmpty
                 else { continue }
                 let accountLabel = accounts.count > 1 ? account.displayLabel : nil
-                var bySub: [String: [QuotaBucket]] = [:]
+                var byGroup: [String: [QuotaBucket]] = [:]
+                var meta: [String: (sub: String, group: String?)] = [:]
                 var order: [String] = []
                 for bucket in quota.buckets {
                     let sub = tool.quotaSubProviderName(bucketID: bucket.id)
-                    if bySub[sub] == nil { order.append(sub) }
-                    bySub[sub, default: []].append(bucket)
+                    let trimmed = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // A group titled after its own SubProvider is the primary
+                    // lane (Grok Bot), not a model group.
+                    let group = (trimmed?.isEmpty ?? true)
+                        || trimmed?.caseInsensitiveCompare(sub) == .orderedSame
+                        ? nil : trimmed
+                    let key = "\(sub)/\(group ?? "")"
+                    if byGroup[key] == nil {
+                        order.append(key)
+                        meta[key] = (sub, group)
+                    }
+                    byGroup[key, default: []].append(bucket)
                 }
-                for sub in order {
-                    guard let buckets = bySub[sub],
+                for key in order {
+                    guard let buckets = byGroup[key], let info = meta[key],
                           let headline = buckets.max(by: {
                               ($0.rawWindowSeconds ?? 0) < ($1.rawWindowSeconds ?? 0)
                           })
@@ -100,7 +122,8 @@ struct ResetsPage: View {
                         tool: tool,
                         accountId: account.id,
                         accountLabel: accountLabel,
-                        name: sub,
+                        subProviderName: info.sub,
+                        groupTitle: info.group,
                         plan: quota.plan,
                         buckets: buckets,
                         headline: headline,
@@ -202,7 +225,7 @@ struct ResetsPage: View {
             ForEach(cycle.buckets.filter { $0.id != cycle.headline.id }, id: \.id) { bucket in
                 let remaining = max(0, 100 - bucket.usedPercent)
                 HStack(spacing: 5) {
-                    Text(bucket.groupTitle.map { "\($0) · \(bucket.title)" } ?? bucket.title)
+                    Text(bucket.title)
                         .font(.system(size: 9.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -281,48 +304,223 @@ struct ResetsPage: View {
 
     // MARK: - Calendar
 
-    private func calendar(_ events: [UpcomingResetEvent], now: Date) -> some View {
-        let columns = [GridItem(.adaptive(minimum: 96), spacing: 6, alignment: .top)]
+    /// One thing happening on one day: a future reset (from the cached
+    /// quotas) or a recorded one (from the subscription history), with how
+    /// much it gives/gave back.
+    private struct CalendarEntry: Identifiable {
+        let id: String
+        let tool: ToolType
+        let label: String
+        let shortLabel: String
+        let gainPercent: Double
+        let at: Date
+        let isPast: Bool
+    }
+
+    private static let monthTitleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        formatter.timeZone = .autoupdatingCurrent
+        return formatter
+    }()
+
+    private static let entryTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, HH:mm"
+        formatter.timeZone = .autoupdatingCurrent
+        return formatter
+    }()
+
+    private func displayedMonthStart(now: Date) -> Date {
         let calendar = Calendar.current
-        let todayStart = calendar.startOfDay(for: now)
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
-            ForEach(0..<14, id: \.self) { offset in
-                // Calendar arithmetic, not fixed 86 400 s — a DST transition
-                // would otherwise shift every later cell off local midnight.
-                let dayStart = calendar.date(byAdding: .day, value: offset, to: todayStart) ?? todayStart
-                let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart.addingTimeInterval(86_400)
-                let hits = events.filter { $0.resetAt >= max(dayStart, now) && $0.resetAt < dayEnd }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(offset == 0 ? "Today" : dayStart.formatted(.dateTime.weekday(.abbreviated).day()))
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                    ForEach(hits) { event in
-                        HStack(spacing: 3) {
-                            Circle()
-                                .fill(Theme.providerAccent(for: event.tool))
-                                .frame(width: 4, height: 4)
-                            Text("\(event.subProviderName) +\(Int(event.gainPercent.rounded()))%")
-                                .font(.system(size: 8, weight: .semibold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        .help(event.label)
-                    }
-                    if hits.isEmpty {
-                        Text("—")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.quaternary)
-                    }
+        let thisMonth = calendar.dateInterval(of: .month, for: now)?.start ?? now
+        return calendar.date(byAdding: .month, value: calendarMonthOffset, to: thisMonth) ?? thisMonth
+    }
+
+    private func calendarHeader(now: Date) -> some View {
+        let monthStart = displayedMonthStart(now: now)
+        return HStack(spacing: 8) {
+            Text("Reset Calendar")
+                .font(.system(size: 12, weight: .semibold))
+            Spacer(minLength: 6)
+            Button {
+                calendarMonthOffset -= 1
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.vibeBar)
+            .help("Previous month")
+            Text(Self.monthTitleFormatter.string(from: monthStart))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .frame(minWidth: 110)
+            Button {
+                calendarMonthOffset += 1
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.vibeBar)
+            .help("Next month")
+            if calendarMonthOffset != 0 {
+                Button("Today") {
+                    calendarMonthOffset = 0
                 }
-                .padding(6)
-                .frame(maxWidth: .infinity, minHeight: 52, alignment: .topLeading)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.primary.opacity(hits.isEmpty ? 0.025 : 0.05))
-                )
+                .font(.system(size: 10, weight: .semibold))
+                .buttonStyle(.vibeBar)
             }
         }
+    }
+
+    /// Everything that lands in the displayed month: recorded cycle ends from
+    /// the subscription history (the past pages) and scheduled resets from
+    /// the cached quotas (the future ones — as far ahead as the providers
+    /// declare their next reset).
+    private func calendarEntries(monthStart: Date, monthEnd: Date, now: Date) -> [CalendarEntry] {
+        var out: [CalendarEntry] = []
+        // Past: completed cycles. Bucket titles come from the account's
+        // current quota when it still carries the bucket; a lane that no
+        // longer exists keeps just its SubProvider name rather than leaking
+        // a raw bucket id into copy.
+        for (key, samples) in quotaService.historyByAccountBucket {
+            let quota = environment.quotaService.cachedQuota(for: key.accountId)
+            for sample in samples {
+                let at = sample.completedAt ?? sample.windowEnd
+                guard at >= monthStart, at < monthEnd, at <= now else { continue }
+                let sub = sample.tool.quotaSubProviderName(bucketID: sample.bucketId)
+                let title = quota?.bucket(id: sample.bucketId)?.title
+                let name = title.map { "\(sub) · \($0)" } ?? sub
+                out.append(CalendarEntry(
+                    id: "past.\(key.accountId).\(sample.bucketId).\(at.timeIntervalSinceReferenceDate)",
+                    tool: sample.tool,
+                    label: "\(name) — reset \(Self.entryTimeFormatter.string(from: at)) at \(Int(sample.lastUsedPercent.rounded()))% used",
+                    shortLabel: sub,
+                    gainPercent: sample.lastUsedPercent,
+                    at: at,
+                    isPast: true
+                ))
+            }
+        }
+        // Future: scheduled resets from the live quotas.
+        for tool in ToolType.dedicatedCardProviders {
+            for account in environment.accountStore.accounts(for: tool) {
+                guard let quota = environment.quotaService.cachedQuota(for: account.id) else { continue }
+                for bucket in quota.buckets {
+                    guard let resetAt = bucket.resetAt,
+                          resetAt >= max(monthStart, now), resetAt < monthEnd
+                    else { continue }
+                    let sub = tool.quotaSubProviderName(bucketID: bucket.id)
+                    out.append(CalendarEntry(
+                        id: "next.\(account.id).\(bucket.id)",
+                        tool: tool,
+                        label: "\(sub) · \(bucket.title) — resets \(Self.entryTimeFormatter.string(from: resetAt)), +\(Int(bucket.usedPercent.rounded()))% back",
+                        shortLabel: sub,
+                        gainPercent: bucket.usedPercent,
+                        at: resetAt,
+                        isPast: false
+                    ))
+                }
+            }
+        }
+        return out.sorted { $0.at < $1.at }
+    }
+
+    private func monthCalendar(now: Date) -> some View {
+        let calendar = Calendar.current
+        let monthStart = displayedMonthStart(now: now)
+        let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let entries = calendarEntries(monthStart: monthStart, monthEnd: monthEnd, now: now)
+        var byDay: [Date: [CalendarEntry]] = [:]
+        for entry in entries {
+            byDay[calendar.startOfDay(for: entry.at), default: []].append(entry)
+        }
+        let today = calendar.startOfDay(for: now)
+        // Natural weeks: pad to the calendar's own first weekday.
+        let firstWeekdayOffset = (calendar.component(.weekday, from: monthStart)
+            - calendar.firstWeekday + 7) % 7
+        let dayCount = calendar.range(of: .day, in: .month, for: monthStart)?.count ?? 30
+        let weekdaySymbols = orderedWeekdaySymbols(calendar)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 4, alignment: .top), count: 7)
+        return VStack(alignment: .leading, spacing: 4) {
+            LazyVGrid(columns: columns, spacing: 4) {
+                ForEach(weekdaySymbols, id: \.self) { symbol in
+                    Text(symbol.uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                }
+                ForEach(0..<firstWeekdayOffset, id: \.self) { blank in
+                    Color.clear
+                        .frame(height: 8)
+                        .id("blank-\(blank)")
+                }
+                ForEach(1...dayCount, id: \.self) { day in
+                    let dayStart = calendar.date(byAdding: .day, value: day - 1, to: monthStart) ?? monthStart
+                    dayCell(
+                        day: day,
+                        dayStart: dayStart,
+                        isToday: dayStart == today,
+                        isPast: dayStart < today,
+                        entries: byDay[dayStart] ?? []
+                    )
+                }
+            }
+        }
+    }
+
+    private func orderedWeekdaySymbols(_ calendar: Calendar) -> [String] {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        let first = calendar.firstWeekday - 1
+        return Array(symbols[first...] + symbols[..<first])
+    }
+
+    private func dayCell(
+        day: Int,
+        dayStart: Date,
+        isToday: Bool,
+        isPast: Bool,
+        entries: [CalendarEntry]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2.5) {
+            Text("\(day)")
+                .font(.system(size: 10.5, weight: isToday ? .bold : .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(isToday ? Color.accentColor : (isPast ? Color.secondary : Color.primary))
+            ForEach(entries.prefix(3)) { entry in
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(Theme.providerAccent(for: entry.tool))
+                        .frame(width: 4.5, height: 4.5)
+                    Text("\(entry.shortLabel) +\(Int(entry.gainPercent.rounded()))%")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(entry.isPast ? .tertiary : .secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .help(entry.label)
+            }
+            if entries.count > 3 {
+                Text("+\(entries.count - 3) more")
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(5)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(
+                    isToday
+                        ? Color.accentColor.opacity(0.10)
+                        : Color.primary.opacity(entries.isEmpty ? 0.025 : 0.05)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(isToday ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 0.8)
+        )
+        .opacity(isPast ? 0.75 : 1)
     }
 
     // MARK: - Risk
