@@ -821,27 +821,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func menuItemFieldList(for kind: MenuBarItemKind) -> some View {
         if kind == .compact {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(MiniWindowFieldProviderSection.all) { section in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 6) {
-                            ToolBrandIconView(tool: section.tool, size: 13)
-                                .opacity(0.85)
-                            Text(section.title)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
-                                .tracking(0.4)
-                        }
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(section.fields) { field in
-                                menuFieldRow(kind: kind, field: field)
-                            }
-                        }
-                    }
-                }
-            }
+            MenuBarFieldsEditor(kind: kind)
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(MenuBarFieldCatalog.fields(for: kind)) { field in

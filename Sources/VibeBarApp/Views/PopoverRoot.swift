@@ -2260,12 +2260,15 @@ private struct ProviderBucketRow: View {
                 Text(bucket.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 if let resetStatus {
+                    // Same size and scale floor as the primary bucket rows —
+                    // see QuotaGroupCard: mismatched caption sizes read as a
+                    // typography bug.
                     Text(resetStatus.label)
-                        .font(.system(size: resetCountdownFontSize))
+                        .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
-                        .minimumScaleFactor(tool == .antigravity ? 0.92 : 0.80)
-                        .layoutPriority(tool == .antigravity ? 1 : 0)
+                        .minimumScaleFactor(0.9)
+                        .layoutPriority(1)
                 }
                 Spacer(minLength: 6)
                 Text("\(Int(percent.rounded()))%")
@@ -2328,12 +2331,6 @@ private struct ProviderBucketRow: View {
                 QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
             }
         }
-    }
-
-    private var resetCountdownFontSize: CGFloat {
-        tool == .antigravity
-            ? max(density.subtitleFontSize, density.resetCountdownFontSize + 1)
-            : density.resetCountdownFontSize
     }
 
     private func paceForecast(now: Date) -> QuotaPaceForecast? {

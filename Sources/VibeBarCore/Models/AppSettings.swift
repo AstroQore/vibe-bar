@@ -1115,6 +1115,16 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
     /// Density of the strip layout — the one mode whose whole point is its
     /// footprint, so it gets the menu-bar-style choice of three.
     public var stripDensity: MiniStripDensity
+    /// Per-style label overrides: display-mode rawValue → field id → label.
+    /// A style entry wins over the window's own label, which wins over the
+    /// shared one — a tile can carry the terse name while the ledger keeps
+    /// the full one.
+    public var modeCustomLabels: [String: [String: String]]
+    /// Same per-style inheritance for SubProvider / quota-group labels.
+    public var modeGroupLabels: [String: [String: String]]
+    /// The display modes a double-click on the window cycles through, in
+    /// this order. Empty means every mode, in the natural order.
+    public var cycleModes: [MiniWindowDisplayMode]
 
     /// The id every pre-multi-window settings blob migrates onto. It must be
     /// deterministic: the migration runs on every decode until something
@@ -1130,7 +1140,10 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
         wasOpen: Bool = false,
         customLabels: [String: String] = [:],
         groupLabels: [String: String] = [:],
-        stripDensity: MiniStripDensity = .roomy
+        stripDensity: MiniStripDensity = .roomy,
+        modeCustomLabels: [String: [String: String]] = [:],
+        modeGroupLabels: [String: [String: String]] = [:],
+        cycleModes: [MiniWindowDisplayMode] = []
     ) {
         self.id = id
         self.name = name
@@ -1140,10 +1153,25 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
         self.customLabels = customLabels
         self.groupLabels = groupLabels
         self.stripDensity = stripDensity
+        self.modeCustomLabels = modeCustomLabels
+        self.modeGroupLabels = modeGroupLabels
+        self.cycleModes = cycleModes
+    }
+
+    /// Where a double-click moves next from the current mode. An empty
+    /// cycle means every mode; a mode outside its own cycle enters at the
+    /// cycle's start rather than being stuck.
+    public func nextDisplayMode() -> MiniWindowDisplayMode {
+        let cycle = cycleModes.isEmpty ? Array(MiniWindowDisplayMode.allCases) : cycleModes
+        guard let index = cycle.firstIndex(of: displayMode) else {
+            return cycle.first ?? displayMode
+        }
+        return cycle[(index + 1) % cycle.count]
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, displayMode, fieldIds, wasOpen, customLabels, groupLabels, stripDensity
+        case modeCustomLabels, modeGroupLabels, cycleModes
     }
 
     public init(from decoder: Decoder) throws {
@@ -1160,6 +1188,12 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
         self.customLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
         self.groupLabels = try c.decodeIfPresent([String: String].self, forKey: .groupLabels) ?? [:]
         self.stripDensity = (try? c.decodeIfPresent(MiniStripDensity.self, forKey: .stripDensity)) ?? .roomy
+        self.modeCustomLabels = try c.decodeIfPresent([String: [String: String]].self, forKey: .modeCustomLabels) ?? [:]
+        self.modeGroupLabels = try c.decodeIfPresent([String: [String: String]].self, forKey: .modeGroupLabels) ?? [:]
+        // Lossy like displayMode: modes a build doesn't know drop out of the
+        // cycle instead of discarding the whole settings blob.
+        let cycleRaw = try c.decodeIfPresent([String].self, forKey: .cycleModes) ?? []
+        self.cycleModes = cycleRaw.compactMap(MiniWindowDisplayMode.init(rawValue:))
     }
 }
 
@@ -1361,13 +1395,15 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
     /// The custom field label one window shows: its own override first, the
     /// shared name second, nil when neither is set.
     public func resolvedFieldLabel(config: MiniWindowConfig?, fieldId: String) -> String? {
-        Self.trimmedNonEmpty(config?.customLabels[fieldId])
+        Self.trimmedNonEmpty(config.flatMap { $0.modeCustomLabels[$0.displayMode.rawValue]?[fieldId] })
+            ?? Self.trimmedNonEmpty(config?.customLabels[fieldId])
             ?? Self.trimmedNonEmpty(customLabels[fieldId])
     }
 
     /// Same inheritance for SubProvider and quota-group labels.
     public func resolvedGroupLabel(config: MiniWindowConfig?, key: String) -> String? {
-        Self.trimmedNonEmpty(config?.groupLabels[key])
+        Self.trimmedNonEmpty(config.flatMap { $0.modeGroupLabels[$0.displayMode.rawValue]?[key] })
+            ?? Self.trimmedNonEmpty(config?.groupLabels[key])
             ?? Self.trimmedNonEmpty(groupLabels[key])
     }
 
