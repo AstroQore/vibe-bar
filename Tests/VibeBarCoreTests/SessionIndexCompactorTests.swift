@@ -153,4 +153,53 @@ final class SessionIndexCompactorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: fresh.path))
     }
+    func testScratchSweepRefusesSymlinkedRootAndSkipsSymlinkedEntries() throws {
+        let fileManager = FileManager.default
+        let base = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarScratchSymlink-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: base) }
+        let home = base.appendingPathComponent("home", isDirectory: true)
+        let victim = base.appendingPathComponent("victim", isDirectory: true)
+        try fileManager.createDirectory(
+            at: home.appendingPathComponent(".vibebar", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try fileManager.createDirectory(at: victim, withIntermediateDirectories: true)
+        let victimFile = victim.appendingPathComponent("keep.txt")
+        try Data("precious".utf8).write(to: victimFile)
+        try fileManager.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -3 * 86_400)],
+            ofItemAtPath: victimFile.path
+        )
+
+        // A symlink planted where the scratch root should be must be removed
+        // as a link — its target untouched.
+        let scratch = VibeBarLocalStore.sessionIndexScratchDirectoryURL(homeDirectory: home.path)
+        try fileManager.createSymbolicLink(at: scratch, withDestinationURL: victim)
+        let compactor = SessionIndexCompactor(
+            databaseURL: base.appendingPathComponent("absent.sqlite3"),
+            stampURL: base.appendingPathComponent("stamp.json"),
+            scratchDirectoryURL: scratch
+        )
+        compactor.sweepScratchForTesting(now: Date())
+        XCTAssertTrue(fileManager.fileExists(atPath: victimFile.path), "the sweep must never follow a symlinked root")
+        var isDirectory: ObjCBool = false
+        XCTAssertFalse(
+            fileManager.fileExists(atPath: scratch.path, isDirectory: &isDirectory)
+                && !isDirectory.boolValue,
+            "the planted link itself should be gone"
+        )
+
+        // A symlinked entry inside a real scratch root is dropped as a link.
+        try fileManager.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let plantedLink = scratch.appendingPathComponent("escape")
+        try fileManager.createSymbolicLink(at: plantedLink, withDestinationURL: victim)
+        try fileManager.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -3 * 86_400)],
+            ofItemAtPath: plantedLink.path
+        )
+        compactor.sweepScratchForTesting(now: Date())
+        XCTAssertTrue(fileManager.fileExists(atPath: victimFile.path))
+        XCTAssertNil(try? fileManager.destinationOfSymbolicLink(atPath: plantedLink.path))
+    }
 }

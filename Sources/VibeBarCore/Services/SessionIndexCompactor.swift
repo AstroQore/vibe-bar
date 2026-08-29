@@ -95,6 +95,12 @@ public final class SessionIndexCompactor: @unchecked Sendable {
         }
     }
 
+    /// Test seam for the scratch sweep's containment rules — the sweep is
+    /// otherwise only reachable through a full pass over a live database.
+    public func sweepScratchForTesting(now: Date = Date()) {
+        sweepScratch(now: now)
+    }
+
     /// Runs a pass unconditionally (except for a missing database).
     public func compact(now: Date = Date()) async -> Outcome? {
         await onQueue { [self] in performCompact(now: now) }
@@ -345,16 +351,42 @@ public final class SessionIndexCompactor: @unchecked Sendable {
 
     /// Head copies are deleted by their creator; anything still here is a
     /// crash leftover once it is a day old.
+    ///
+    /// Containment before deletion, same discipline as `SessionDeleter`
+    /// (AGENTS.md § 5): an unsandboxed sweep must never follow a symlinked
+    /// scratch root into an arbitrary directory. The root has to be a real
+    /// directory — a symlink in its place is removed as a link and never
+    /// traversed — and enumerated entries are deleted only when they are
+    /// not themselves symlinks out of the scratch tree.
     private func sweepScratch(now: Date) {
         let fileManager = FileManager.default
+        let rootPath = scratchDirectoryURL.path
+        guard let rootType = (try? fileManager.attributesOfItem(atPath: rootPath))?[.type] as? FileAttributeType else {
+            return
+        }
+        guard rootType == .typeDirectory else {
+            // Whatever sits at the scratch path, it is not our directory —
+            // drop a symlink (the link itself, never its target) and refuse
+            // anything else.
+            if rootType == .typeSymbolicLink {
+                try? fileManager.removeItem(at: scratchDirectoryURL)
+            }
+            return
+        }
         guard let entries = try? fileManager.contentsOfDirectory(
             at: scratchDirectoryURL,
-            includingPropertiesForKeys: [.contentModificationDateKey],
+            includingPropertiesForKeys: [.contentModificationDateKey, .isSymbolicLinkKey],
             options: [.skipsHiddenFiles]
         ) else { return }
         for entry in entries {
-            let modified = (try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate ?? .distantPast
+            let values = try? entry.resourceValues(forKeys: [.contentModificationDateKey, .isSymbolicLinkKey])
+            if values?.isSymbolicLink == true {
+                // A planted link could point anywhere; removing it removes
+                // the link only, which is exactly what a sweep should do.
+                try? fileManager.removeItem(at: entry)
+                continue
+            }
+            let modified = values?.contentModificationDate ?? .distantPast
             if now.timeIntervalSince(modified) > 24 * 60 * 60 {
                 try? fileManager.removeItem(at: entry)
             }
