@@ -1182,9 +1182,9 @@ public enum MiniStripDensity: String, Codable, CaseIterable, Identifiable, Senda
 
     public var detail: String {
         switch self {
-        case .roomy:   return "One line, full labels beside each number."
+        case .roomy:   return "The menu bar's single-line style: every bucket, full label beside its number."
         case .twoLine: return "Menu-bar style: buckets pair into stacked columns, label beside each number."
-        case .narrow:  return "Dot and number only; labels on hover."
+        case .narrow:  return "The menu bar's compact style: the same cells at the small size."
         }
     }
 }
@@ -1415,10 +1415,10 @@ public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, 
         case .regular: return "Ring gauges grouped company → SubProvider → quota group."
         case .compact: return "The same three tiers as vertical bars, sized for a corner."
         case .ledger:  return "One row per quota bucket — fixed width, grows downward."
-        case .strip:   return "One 40 pt line; each SubProvider shows its most critical bucket."
+        case .strip:   return "A slim line mirroring the menu bar's styles — one cell per bucket."
         case .tile:    return "A grid of tiles with a big number and a severity stripe."
-        case .focus:   return "One company at a time, large — click to cycle."
-        case .rail:    return "The next seven days as a timeline of quota resets."
+        case .focus:   return "One selected bucket at a time, large — click to cycle in your order."
+        case .rail:    return "The next seven days as a refill lane with the coming resets listed."
         }
     }
 

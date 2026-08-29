@@ -446,7 +446,7 @@ private struct MiniBranchCell: Identifiable {
         case let id where tool == .antigravity && id.contains("high"):
             return "High"
         case let id where tool == .antigravity && id.contains("medium"):
-            return "Med"
+            return "Medium"
         case let id where tool == .antigravity && id.contains("low"):
             return "Low"
         default:
@@ -489,9 +489,9 @@ private struct MiniBranchCell: Identifiable {
         case let id where tool == .antigravity && ["gemini_five_hour", "gemini_weekly"].contains(id):
             return "Gemini"
         case let id where tool == .antigravity && ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id):
-            return "C+G"
+            return "Claude + GPT"
         case let id where tool == .gemini && id.contains("flash-lite"):
-            return "Lite"
+            return "Flash Lite"
         case let id where tool == .gemini && id.contains("flash"):
             return "Flash"
         case let id where tool == .gemini && id.contains("pro"):
@@ -501,11 +501,11 @@ private struct MiniBranchCell: Identifiable {
         case let id where tool == .antigravity && id.contains("claude"):
             return "Claude"
         case let id where tool == .antigravity && id.contains("flash-lite"):
-            return "G Lite"
+            return "Flash Lite"
         case let id where tool == .antigravity && id.contains("flash"):
-            return "G Flash"
+            return "Flash"
         case let id where tool == .antigravity && id.contains("gemini") && id.contains("pro"):
-            return "G Pro"
+            return "Pro"
         default:
             return (bucket.groupTitle ?? bucket.shortLabel)
                 .replacingOccurrences(of: "GPT-5.3 Codex Spark", with: "Spark")

@@ -590,8 +590,8 @@ struct MiniWindowsSettingsSection: View {
         let key = MiniWindowGroupLabelCatalog.subProviderKey(tool: group.tool, name: group.subProviderName)
         return HStack(spacing: 8) {
             Text(subProviderDisplayName(group).uppercased())
-                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
                 .tracking(1.0)
             Spacer(minLength: 8)
             nameField(NamingRow(
@@ -599,7 +599,7 @@ struct MiniWindowsSettingsSection: View {
                 title: group.subProviderName, defaultLabel: group.subProviderName
             ))
         }
-        .padding(.leading, 16)
+        .padding(.leading, 14)
     }
 
     private func groupHeader(groupKey: String, run: GroupRun) -> some View {
@@ -611,7 +611,7 @@ struct MiniWindowsSettingsSection: View {
             .resolvedGroupLabel(config: selectedWindow, key: groupKey) ?? defaultLabel
         return HStack(spacing: 8) {
             Text(resolved.uppercased())
-                .font(.system(size: 8, weight: .semibold, design: .rounded))
+                .font(.system(size: 8, weight: .medium, design: .rounded))
                 .foregroundStyle(.tertiary)
                 .tracking(0.8)
             Spacer(minLength: 8)
@@ -620,7 +620,7 @@ struct MiniWindowsSettingsSection: View {
                 title: defaultLabel, defaultLabel: defaultLabel
             ))
         }
-        .padding(.leading, 24)
+        .padding(.leading, 26)
     }
 
     private func nameField(_ row: NamingRow) -> some View {
@@ -811,23 +811,8 @@ struct MiniWindowsSettingsSection: View {
         var id: String { key }
     }
 
-    /// The L3 group a field's gauge renders under, or nil for a bucket that
-    /// sits directly under its SubProvider (Grok Bot's single Weekly).
     private static func namingGroupKey(for option: MenuBarFieldOption) -> String? {
-        if option.tool == .cursor {
-            if option.bucketId == "grok_bot_weekly" { return nil }
-            return MiniWindowGroupLabelCatalog.groupKey(tool: .cursor, bucketId: option.bucketId)
-        }
-        if MiniQuotaWindowView.isBranchStyleField(option) {
-            return MiniWindowGroupLabelCatalog.groupKey(tool: option.tool, bucketId: option.bucketId)
-        }
-        switch option.tool {
-        case .codex: return "codex.all-models"
-        case .claude: return "claude.all-models"
-        case .gemini: return "gemini.all-models"
-        case .grok: return "grok.all-models"
-        default: return nil
-        }
+        MiniWindowGroupLabelCatalog.namingGroupKey(for: option)
     }
 
     private func namingScopeButton(_ scope: NamingScope, label: String) -> some View {

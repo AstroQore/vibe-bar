@@ -9,16 +9,16 @@ struct MiniWindowGroupLabelOption: Identifiable, Hashable {
 
 enum MiniWindowGroupLabelCatalog {
     static let all: [MiniWindowGroupLabelOption] = [
-        .init(id: "codex.all-models", title: "CHATGPT · All Models", defaultLabel: "All Models"),
+        .init(id: "codex.all-models", title: "CHATGPT · All Models", defaultLabel: "All"),
         .init(id: "codex.spark", title: "CODEX · Spark", defaultLabel: "Spark"),
-        .init(id: "claude.all-models", title: "CLAUDE · All Models", defaultLabel: "All Models"),
+        .init(id: "claude.all-models", title: "CLAUDE · All Models", defaultLabel: "All"),
         .init(id: "claude.sonnet", title: "CLAUDE · Sonnet", defaultLabel: "Sonnet"),
         .init(id: "claude.design", title: "CLAUDE · Design", defaultLabel: "Design"),
         .init(id: "claude.routine", title: "CLAUDE · Routine", defaultLabel: "Routine"),
         .init(id: "claude.opus", title: "CLAUDE · Opus", defaultLabel: "Opus"),
         .init(id: "claude.fable", title: "CLAUDE · Fable", defaultLabel: "Fable"),
         .init(id: "claude.oauth", title: "CLAUDE · OAuth", defaultLabel: "OAuth"),
-        .init(id: "gemini.all-models", title: "GEMINI WEB · All Models", defaultLabel: "All Models"),
+        .init(id: "gemini.all-models", title: "GEMINI WEB · All Models", defaultLabel: "All"),
         .init(id: "gemini.pro", title: "GEMINI · Pro", defaultLabel: "Pro"),
         .init(id: "gemini.flash", title: "GEMINI · Flash", defaultLabel: "Flash"),
         .init(id: "gemini.flash-lite", title: "GEMINI · Flash Lite", defaultLabel: "Flash Lite"),
@@ -26,13 +26,34 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "antigravity.claude-gpt-models", title: "ANTIGRAVITY · Claude + GPT Models", defaultLabel: "Claude + GPT"),
         // Stable persisted key (custom labels are stored under it); the
         // wording is the L3 group name from AGENTS.md § 7.1.
-        .init(id: "grok.all-models", title: "GROK · Weekly Credits", defaultLabel: "Weekly Credits"),
-        .init(id: "cursor.models", title: "CURSOR · Cursor Models", defaultLabel: "Cursor Models"),
-        .init(id: "cursor.other-models", title: "CURSOR · Other Models", defaultLabel: "Other Models")
+        .init(id: "grok.all-models", title: "GROK · Weekly Credits", defaultLabel: "All"),
+        .init(id: "cursor.models", title: "CURSOR · Cursor Models", defaultLabel: "Cursor"),
+        .init(id: "cursor.other-models", title: "CURSOR · Other Models", defaultLabel: "Other")
     ]
 
     static func defaultLabel(for id: String) -> String? {
         all.first { $0.id == id }?.defaultLabel
+    }
+
+    /// The L3 group a field belongs to on the quota axis, or nil for a bucket
+    /// that sits directly under its SubProvider (Grok Bot's single Weekly).
+    /// Shared by the settings tree and every mini layout, so a bucket is
+    /// grouped identically wherever it appears.
+    static func namingGroupKey(for option: MenuBarFieldOption) -> String? {
+        if option.tool == .cursor {
+            if option.bucketId == "grok_bot_weekly" { return nil }
+            return groupKey(tool: .cursor, bucketId: option.bucketId)
+        }
+        if MiniQuotaWindowView.isBranchStyleField(option) {
+            return groupKey(tool: option.tool, bucketId: option.bucketId)
+        }
+        switch option.tool {
+        case .codex: return "codex.all-models"
+        case .claude: return "claude.all-models"
+        case .gemini: return "gemini.all-models"
+        case .grok: return "grok.all-models"
+        default: return nil
+        }
     }
 
     static func groupKey(tool: ToolType, bucketId: String) -> String {
