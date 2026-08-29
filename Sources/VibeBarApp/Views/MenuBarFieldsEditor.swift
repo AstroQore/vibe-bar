@@ -150,6 +150,15 @@ struct MenuBarFieldsEditor: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 6)
+            Picker("", selection: styleBinding(option)) {
+                ForEach(MenuBarFieldStyle.allCases) { style in
+                    Text(style.label).tag(style)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 108)
+            .help("How this field draws on the menu bar: its label, the provider's logo, or both — each beside the percent.")
             DebouncedSettingsTextField(
                 prompt: option.defaultLabel,
                 value: labelBinding(option)
@@ -319,6 +328,21 @@ struct MenuBarFieldsEditor: View {
             guard item.selectedFieldIds.indices.contains(target) else { return }
             item.selectedFieldIds.swapAt(index, target)
         }
+    }
+
+    private func styleBinding(_ option: MenuBarFieldOption) -> Binding<MenuBarFieldStyle> {
+        Binding(
+            get: { settingsStore.settings.menuBarItem(kind).style(for: option.id) },
+            set: { style in
+                updateItem { item in
+                    if style == .labelAndPercent {
+                        item.fieldStyles.removeValue(forKey: option.id)
+                    } else {
+                        item.fieldStyles[option.id] = style
+                    }
+                }
+            }
+        )
     }
 
     private func labelBinding(_ option: MenuBarFieldOption) -> Binding<String> {
