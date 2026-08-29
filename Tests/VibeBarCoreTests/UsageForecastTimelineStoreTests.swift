@@ -225,8 +225,9 @@ final class UsageForecastTimelineStoreTests: XCTestCase {
     }
 
     func testOversizedFileIsIgnored() async throws {
-        // A file past the defensive cap is corrupt, not history: it must not
-        // be decoded, and the store has to keep working afterwards.
+        // Garbage past the defensive cap at the database path is corrupt, not
+        // history: the store must recover to a small fresh database and keep
+        // working afterwards.
         try Data(count: 25 * 1024 * 1024).write(to: tempURL, options: .atomic)
         let store = UsageForecastTimelineStore(fileURL: tempURL)
         let initial = await store.allPoints()
@@ -241,10 +242,48 @@ final class UsageForecastTimelineStoreTests: XCTestCase {
 
         let attrs = try FileManager.default.attributesOfItem(atPath: tempURL.path)
         let size = (attrs[.size] as? NSNumber)?.intValue ?? .max
-        XCTAssertLessThan(size, 4_096)
+        XCTAssertLessThan(size, 64 * 1_024)
     }
 
-    func testFutureSchemaVersionResetsStorage() async throws {
+    func testOversizedLegacyJSONIsNotImported() async throws {
+        let legacyURL = tempURL.deletingPathExtension().appendingPathExtension("legacy.json")
+        defer { try? FileManager.default.removeItem(at: legacyURL) }
+        try Data(count: 25 * 1024 * 1024).write(to: legacyURL, options: .atomic)
+
+        let store = UsageForecastTimelineStore(fileURL: tempURL, legacyJSONURL: legacyURL)
+        let points = await store.allPoints()
+        XCTAssertTrue(points.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyURL.path))
+    }
+
+    func testLegacyJSONImportsAndIsRemoved() async throws {
+        let sampledAt = Date(timeIntervalSince1970: 1_780_000_000)
+        let point = ForecastTimelinePoint(
+            accountId: "acct-legacy",
+            tool: .codex,
+            bucketId: "weekly",
+            slotStart: sampledAt,
+            sampledAt: sampledAt,
+            projectedUsedPercent: 61,
+            projectedUsedLowerPercent: 50,
+            projectedUsedUpperPercent: 74
+        )
+        struct LegacyStorage: Encodable {
+            let schemaVersion = 1
+            let points: [ForecastTimelinePoint]
+        }
+        let legacyURL = tempURL.deletingPathExtension().appendingPathExtension("legacy.json")
+        defer { try? FileManager.default.removeItem(at: legacyURL) }
+        try JSONEncoder().encode(LegacyStorage(points: [point])).write(to: legacyURL, options: .atomic)
+
+        let store = UsageForecastTimelineStore(fileURL: tempURL, legacyJSONURL: legacyURL)
+        let migrated = await store.points(accountId: "acct-legacy", bucketId: "weekly")
+        XCTAssertEqual(migrated.count, 1)
+        XCTAssertEqual(migrated.first?.projectedUsedPercent, 61)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyURL.path))
+    }
+
+    func testFutureSchemaLegacyJSONIsDroppedNotImported() async throws {
         struct FutureStorage: Encodable {
             let schemaVersion = 99
             let points: [ForecastTimelinePoint]
@@ -260,9 +299,11 @@ final class UsageForecastTimelineStoreTests: XCTestCase {
             projectedUsedLowerPercent: 50,
             projectedUsedUpperPercent: 74
         )
-        try JSONEncoder().encode(FutureStorage(points: [point])).write(to: tempURL, options: .atomic)
+        let legacyURL = tempURL.deletingPathExtension().appendingPathExtension("legacy.json")
+        defer { try? FileManager.default.removeItem(at: legacyURL) }
+        try JSONEncoder().encode(FutureStorage(points: [point])).write(to: legacyURL, options: .atomic)
 
-        let store = UsageForecastTimelineStore(fileURL: tempURL)
+        let store = UsageForecastTimelineStore(fileURL: tempURL, legacyJSONURL: legacyURL)
         let points = await store.allPoints()
         XCTAssertTrue(points.isEmpty)
     }

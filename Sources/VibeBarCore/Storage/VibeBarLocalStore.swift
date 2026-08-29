@@ -73,15 +73,27 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("subscription_history.json")
     }
 
+    /// Legacy whole-file JSON fill timeline. Imported once into
+    /// `fillTimelineDatabaseURL` and removed; kept only so the migration can
+    /// find it.
     public static var fillTimelineURL: URL {
         baseDirectory.appendingPathComponent("fill_timeline.json")
     }
 
-    /// Companion to `fillTimelineURL`: what the pace forecast predicted at each
-    /// observation, so the history chart can draw the projection that was
-    /// actually shown instead of recomputing it with hindsight.
+    public static var fillTimelineDatabaseURL: URL {
+        baseDirectory.appendingPathComponent("fill_timeline.sqlite3")
+    }
+
+    /// Companion to `fillTimelineDatabaseURL`: what the pace forecast
+    /// predicted at each observation, so the history chart can draw the
+    /// projection that was actually shown instead of recomputing it with
+    /// hindsight. The `.json` variant is the legacy file, imported once.
     public static var forecastTimelineURL: URL {
         baseDirectory.appendingPathComponent("forecast_timeline.json")
+    }
+
+    public static var forecastTimelineDatabaseURL: URL {
+        baseDirectory.appendingPathComponent("forecast_timeline.sqlite3")
     }
 
     /// Per-page card layout chosen in the layout editor: column ratio, the two
