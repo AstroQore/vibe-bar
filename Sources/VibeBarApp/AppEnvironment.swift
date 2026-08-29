@@ -144,13 +144,31 @@ final class AppEnvironment: ObservableObject {
         // that vanishes from a provider's response was never the user's and
         // drops on the next refresh.
         service.registryKeepProvider = { [weak settingsStore] in
-            guard let mini = settingsStore?.settings.miniWindow else { return QuotaFieldKeepSet() }
+            guard let settings = settingsStore?.settings else { return QuotaFieldKeepSet() }
+            let mini = settings.miniWindow
             var fieldIds = Set(mini.customLabels.keys)
             var groupKeys = Set(mini.groupLabels.keys)
             for window in mini.windows {
                 fieldIds.formUnion(window.fieldIds)
                 fieldIds.formUnion(window.customLabels.keys)
                 groupKeys.formUnion(window.groupLabels.keys)
+                // Per-style names claim their targets too — a tile-only
+                // rename must anchor a discovered field exactly like a
+                // window-level one.
+                for labels in window.modeCustomLabels.values {
+                    fieldIds.formUnion(labels.keys)
+                }
+                for labels in window.modeGroupLabels.values {
+                    groupKeys.formUnion(labels.keys)
+                }
+            }
+            // The menu bar selects from the same registry: a discovered
+            // bucket shown only there must survive a response that
+            // temporarily omits it.
+            for kind in MenuBarItemKind.allCases {
+                let item = settings.menuBarItem(kind)
+                fieldIds.formUnion(item.selectedFieldIds)
+                fieldIds.formUnion(item.customLabels.keys)
             }
             return QuotaFieldKeepSet(fieldIds: fieldIds, groupKeys: groupKeys)
         }

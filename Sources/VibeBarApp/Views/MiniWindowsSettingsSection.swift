@@ -499,6 +499,9 @@ struct MiniWindowsSettingsSection: View {
         for index in settings.miniWindow.windows.indices {
             settings.miniWindow.windows[index].fieldIds.removeAll { $0 == fieldId }
             settings.miniWindow.windows[index].customLabels.removeValue(forKey: fieldId)
+            for mode in settings.miniWindow.windows[index].modeCustomLabels.keys {
+                settings.miniWindow.windows[index].modeCustomLabels[mode]?.removeValue(forKey: fieldId)
+            }
         }
         settingsStore.settings = settings
     }
