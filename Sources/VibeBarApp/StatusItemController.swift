@@ -775,7 +775,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         var displayed = 0
         for fieldId in itemSettings.selectedFieldIds {
             guard
-                let field = MenuBarFieldCatalog.field(id: fieldId),
+                let field = MenuBarFieldCatalog.field(id: fieldId, registry: environment.quotaService.fieldRegistry),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { continue }
             if displayed > 0 {
@@ -825,7 +825,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
         let entries = itemSettings.selectedFieldIds.compactMap { fieldId -> NSAttributedString? in
             guard
-                let field = MenuBarFieldCatalog.field(id: fieldId),
+                let field = MenuBarFieldCatalog.field(id: fieldId, registry: environment.quotaService.fieldRegistry),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { return nil }
             let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
@@ -896,7 +896,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func displayedEntries(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [NSAttributedString] {
         itemSettings.selectedFieldIds.compactMap { fieldId in
             guard
-                let field = MenuBarFieldCatalog.field(id: fieldId),
+                let field = MenuBarFieldCatalog.field(id: fieldId, registry: environment.quotaService.fieldRegistry),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { return nil }
             let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)

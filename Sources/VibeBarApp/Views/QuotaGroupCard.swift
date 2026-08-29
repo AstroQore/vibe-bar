@@ -413,12 +413,15 @@ struct QuotaGroupCard: View {
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
                 if let resetStatus {
+                    // One size and one scale floor for every provider — the
+                    // per-tool bump and the 0.80 shrink made visually
+                    // different caption sizes from row to row.
                     Text(resetStatus.label)
-                        .font(.system(size: resetCountdownFontSize(for: item.tool)))
+                        .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
-                        .minimumScaleFactor(item.tool == .antigravity ? 0.92 : 0.80)
-                        .layoutPriority(item.tool == .antigravity ? 1 : 0)
+                        .minimumScaleFactor(0.9)
+                        .layoutPriority(1)
                 }
                 Spacer(minLength: 6)
                 Text(percentLabel(used: used))
@@ -476,12 +479,6 @@ struct QuotaGroupCard: View {
                 forecastExplanation(itemID: item.id, forecast: forecast, pace: pace)
             }
         }
-    }
-
-    private func resetCountdownFontSize(for tool: ToolType) -> CGFloat {
-        tool == .antigravity
-            ? max(density.subtitleFontSize, density.resetCountdownFontSize + 1)
-            : density.resetCountdownFontSize
     }
 
     @ViewBuilder

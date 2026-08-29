@@ -26,6 +26,58 @@ final class MiniWindowConfigTests: XCTestCase {
         XCTAssertTrue(settings.hiddenStaleFieldIds.isEmpty)
     }
 
+    func testPerStyleLabelsWinOverWindowAndShared() throws {
+        var settings = MiniWindowSettings(selectedFieldIds: ["claude.weekly"])
+        var config = try XCTUnwrap(settings.windows.first)
+        settings.customLabels["claude.weekly"] = "Shared Name"
+        config.customLabels["claude.weekly"] = "Window Name"
+        config.displayMode = .tile
+        config.modeCustomLabels[MiniWindowDisplayMode.tile.rawValue] = ["claude.weekly": "Tile Name"]
+        settings.upsert(config)
+
+        XCTAssertEqual(settings.resolvedFieldLabel(config: config, fieldId: "claude.weekly"), "Tile Name")
+        // A different style falls back to the window's own name.
+        config.displayMode = .ledger
+        XCTAssertEqual(settings.resolvedFieldLabel(config: config, fieldId: "claude.weekly"), "Window Name")
+        // No window override → shared.
+        config.customLabels.removeValue(forKey: "claude.weekly")
+        XCTAssertEqual(settings.resolvedFieldLabel(config: config, fieldId: "claude.weekly"), "Shared Name")
+    }
+
+    func testDoubleClickCycleHonorsConfiguredOrderAndFallsBackToAll() {
+        var config = MiniWindowConfig(name: "Mini", fieldIds: [])
+        config.displayMode = .regular
+        // Empty cycle: natural order over every mode.
+        XCTAssertEqual(config.nextDisplayMode(), MiniWindowDisplayMode.allCases[1])
+        // Configured cycle wraps in its own order.
+        config.cycleModes = [.ledger, .strip, .regular]
+        XCTAssertEqual(config.nextDisplayMode(), .ledger)
+        config.displayMode = .strip
+        XCTAssertEqual(config.nextDisplayMode(), .regular)
+        config.displayMode = .regular
+        XCTAssertEqual(config.nextDisplayMode(), .ledger)
+        // A mode outside its own cycle enters at the cycle's start.
+        config.displayMode = .focus
+        XCTAssertEqual(config.nextDisplayMode(), .ledger)
+    }
+
+    func testPerStyleAndCycleSurviveRoundTripAndUnknownModesDrop() throws {
+        var config = MiniWindowConfig(name: "Mini", fieldIds: ["codex.weekly"])
+        config.modeGroupLabels[MiniWindowDisplayMode.strip.rawValue] = ["claude/Claude": "CL"]
+        config.cycleModes = [.regular, .tile]
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(MiniWindowConfig.self, from: data)
+        XCTAssertEqual(decoded.modeGroupLabels["strip"]?["claude/Claude"], "CL")
+        XCTAssertEqual(decoded.cycleModes, [.regular, .tile])
+
+        // A cycle containing a mode this build doesn't know drops just that
+        // mode instead of failing the decode.
+        var json = String(data: data, encoding: .utf8)!
+        json = json.replacingOccurrences(of: "\"regular\",\"tile\"", with: "\"regular\",\"holographic\",\"tile\"")
+        let lossy = try JSONDecoder().decode(MiniWindowConfig.self, from: Data(json.utf8))
+        XCTAssertEqual(lossy.cycleModes, [.regular, .tile])
+    }
+
     func testHiddenStaleFieldIdsSurviveRoundTrip() throws {
         var settings = MiniWindowSettings(selectedFieldIds: ["codex.weekly"])
         settings.hiddenStaleFieldIds = ["claude.weekly_opus", "claude.daily_routines"]
