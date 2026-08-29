@@ -313,7 +313,8 @@ enum MiniStripMetrics {
         density == .narrow ? 7 : 9
     }
 
-    static func height(_ density: MiniStripDensity) -> CGFloat {
+    /// Height of one strip band.
+    static func rowHeight(_ density: MiniStripDensity) -> CGFloat {
         switch density {
         case .roomy:   return 40
         case .twoLine: return 54
@@ -321,23 +322,33 @@ enum MiniStripMetrics {
         }
     }
 
+    static let rowGap: CGFloat = 2
+    /// The strip never outgrows the screen: past this width, cells wrap into
+    /// further bands. A default selection can hold twenty-plus fields, and an
+    /// unwrapped run of 132-pt cells would put most of the panel off screen.
+    static let maxRowWidth: CGFloat = 1180
+
+    /// Cells per band, and how many bands `count` cells need.
+    static func gridPlan(count: Int, cellWidth: CGFloat, cellSpacing: CGFloat) -> (perRow: Int, rows: Int) {
+        let available = maxRowWidth - leadingPadding - trailingPadding
+        let perRow = max(1, Int((available + cellSpacing) / (cellWidth + cellSpacing)))
+        let rows = Int(ceil(Double(count) / Double(perRow)))
+        return (perRow, rows)
+    }
+
     static func size(entries: [MiniEntry], density: MiniStripDensity) -> CGSize {
-        guard !entries.isEmpty else { return CGSize(width: emptyWidth, height: height(density)) }
-        if density == .twoLine {
-            let columns = (entries.count + 1) / 2
-            let width = leadingPadding + trailingPadding
-                + CGFloat(columns) * pairedColumnWidth
-                + CGFloat(max(0, columns - 1)) * pairedColumnSpacing
-            return CGSize(width: width, height: height(density))
-        }
-        let companies = MiniEntry.companyRuns(entries)
-        var width = leadingPadding + trailingPadding
-        for (index, company) in companies.enumerated() {
-            if index > 0 { width += 2 * companySpacing(density) + dividerThickness }
-            width += CGFloat(company.count) * chipWidth(density)
-                + CGFloat(max(0, company.count - 1)) * chipSpacing(density)
-        }
-        return CGSize(width: width, height: height(density))
+        guard !entries.isEmpty else { return CGSize(width: emptyWidth, height: rowHeight(density)) }
+        let cellCount = density == .twoLine ? (entries.count + 1) / 2 : entries.count
+        let cellWidth = chipWidth(density)
+        let cellSpacing = density == .twoLine ? pairedColumnSpacing : chipSpacing(density)
+        let plan = gridPlan(count: cellCount, cellWidth: cellWidth, cellSpacing: cellSpacing)
+        let cellsInWidestRow = min(cellCount, plan.perRow)
+        let width = leadingPadding + trailingPadding
+            + CGFloat(cellsInWidestRow) * cellWidth
+            + CGFloat(max(0, cellsInWidestRow - 1)) * cellSpacing
+        let height = CGFloat(plan.rows) * rowHeight(density)
+            + CGFloat(max(0, plan.rows - 1)) * rowGap
+        return CGSize(width: width, height: height)
     }
 }
 
@@ -355,27 +366,25 @@ struct MiniStripLayout: View {
             } else if density == .twoLine {
                 pairedColumns
             } else {
-                let companies = MiniEntry.companyRuns(entries)
-                HStack(spacing: 0) {
-                    ForEach(Array(companies.enumerated()), id: \.offset) { index, company in
-                        if index > 0 {
-                            Rectangle()
-                                .fill(Color.primary.opacity(0.12))
-                                .frame(width: MiniStripMetrics.dividerThickness, height: 16)
-                                .padding(.horizontal, MiniStripMetrics.companySpacing(density))
-                        }
+                let plan = MiniStripMetrics.gridPlan(
+                    count: entries.count,
+                    cellWidth: MiniStripMetrics.chipWidth(density),
+                    cellSpacing: MiniStripMetrics.chipSpacing(density)
+                )
+                VStack(alignment: .leading, spacing: MiniStripMetrics.rowGap) {
+                    ForEach(Array(entries.chunked(into: plan.perRow).enumerated()), id: \.offset) { _, band in
                         HStack(spacing: MiniStripMetrics.chipSpacing(density)) {
-                            ForEach(company) { entry in
+                            ForEach(band) { entry in
                                 lineCell(entry)
                             }
                         }
+                        .frame(height: MiniStripMetrics.rowHeight(density))
                     }
                 }
                 .padding(.leading, MiniStripMetrics.leadingPadding)
                 .padding(.trailing, MiniStripMetrics.trailingPadding)
             }
         }
-        .frame(height: MiniStripMetrics.height(density))
     }
 
     /// The menu bar's two-row layout, as a mini window: entries pair into
@@ -386,15 +395,25 @@ struct MiniStripLayout: View {
         let pairs = stride(from: 0, to: entries.count, by: 2).map { index in
             (top: entries[index], bottom: index + 1 < entries.count ? entries[index + 1] : nil)
         }
-        return HStack(spacing: MiniStripMetrics.pairedColumnSpacing) {
-            ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
-                VStack(alignment: .leading, spacing: MiniStripMetrics.pairedRowSpacing) {
-                    pairedCell(pair.top, mode: mode)
-                    if let bottom = pair.bottom {
-                        pairedCell(bottom, mode: mode)
+        let plan = MiniStripMetrics.gridPlan(
+            count: pairs.count,
+            cellWidth: MiniStripMetrics.pairedColumnWidth,
+            cellSpacing: MiniStripMetrics.pairedColumnSpacing
+        )
+        return VStack(alignment: .leading, spacing: MiniStripMetrics.rowGap) {
+            ForEach(Array(pairs.chunked(into: plan.perRow).enumerated()), id: \.offset) { _, band in
+                HStack(spacing: MiniStripMetrics.pairedColumnSpacing) {
+                    ForEach(Array(band.enumerated()), id: \.offset) { _, pair in
+                        VStack(alignment: .leading, spacing: MiniStripMetrics.pairedRowSpacing) {
+                            pairedCell(pair.top, mode: mode)
+                            if let bottom = pair.bottom {
+                                pairedCell(bottom, mode: mode)
+                            }
+                        }
+                        .frame(width: MiniStripMetrics.pairedColumnWidth, alignment: .leading)
                     }
                 }
-                .frame(width: MiniStripMetrics.pairedColumnWidth, alignment: .leading)
+                .frame(height: MiniStripMetrics.rowHeight(.twoLine))
             }
         }
         .padding(.leading, MiniStripMetrics.leadingPadding)

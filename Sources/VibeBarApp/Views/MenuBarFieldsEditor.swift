@@ -13,12 +13,24 @@ struct MenuBarFieldsEditor: View {
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
 
-    var body: some View {
-        let merged = Dictionary(
+    // Rebuilt when the registry or quota data changes, never per body pass —
+    // every settings publication re-renders this editor, and the merge plus
+    // per-field bucket lookups are O(fields · buckets). Same discipline as
+    // the mini-window editor next door.
+    @State private var mergedOptionsById: [String: MenuBarFieldOption] = [:]
+    @State private var liveIds: Set<String> = []
+
+    private func rebuildCaches() {
+        mergedOptionsById = Dictionary(
             MenuBarFieldCatalog.mergedFields(registry: quotaService.fieldRegistry).map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        let live = liveFieldIds(merged: merged)
+        liveIds = liveFieldIds(merged: mergedOptionsById)
+    }
+
+    var body: some View {
+        let merged = mergedOptionsById
+        let live = liveIds
         let item = settingsStore.settings.menuBarItem(kind)
         let shown = item.selectedFieldIds.compactMap { merged[$0] }
         VStack(alignment: .leading, spacing: 10) {
@@ -38,6 +50,11 @@ struct MenuBarFieldsEditor: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             candidateList(merged: merged, live: live, selected: Set(item.selectedFieldIds))
+        }
+        .onAppear { rebuildCaches() }
+        .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildCaches() }
+        .onReceive(quotaService.$lastSuccessByAccount) { _ in
+            liveIds = liveFieldIds(merged: mergedOptionsById)
         }
     }
 
@@ -327,6 +344,9 @@ struct MenuBarFieldsEditor: View {
         for index in settings.miniWindow.windows.indices {
             settings.miniWindow.windows[index].fieldIds.removeAll { $0 == fieldId }
             settings.miniWindow.windows[index].customLabels.removeValue(forKey: fieldId)
+            for mode in settings.miniWindow.windows[index].modeCustomLabels.keys {
+                settings.miniWindow.windows[index].modeCustomLabels[mode]?.removeValue(forKey: fieldId)
+            }
         }
         for kind in MenuBarItemKind.allCases {
             var item = settings.menuBarItem(kind)
