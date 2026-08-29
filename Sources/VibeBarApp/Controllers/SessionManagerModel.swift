@@ -248,7 +248,16 @@ final class SessionManagerModel: ObservableObject {
             SessionIndexService(
                 homeDirectory: homeDirectory,
                 store: $0,
-                registry: registry,
+                // The indexer gets the bounded adapters: oversized rollouts
+                // are parsed from a head copy (memory) and excerpts are
+                // pre-trimmed to the host policy (index size). The raw
+                // `registry` stays for the transcript viewer and the
+                // deleter, which must see whole sessions.
+                registry: SessionIndexingBounds.boundedRegistry(
+                    registry,
+                    scratchDirectory: VibeBarLocalStore
+                        .sessionIndexScratchDirectoryURL(homeDirectory: homeDirectory)
+                ),
                 bodyIndexing: { flag.current }
             )
         }
@@ -302,6 +311,12 @@ final class SessionManagerModel: ObservableObject {
             self.lastScanFinishedAt = Date()
             self.reloadSummaryPage(reset: true)
             self.rerunSearch()
+            // A refresh is when churn lands in the index, so it is the
+            // natural moment to ask for maintenance. The compactor
+            // throttles itself; most calls return without touching SQLite.
+            Task.detached(priority: .utility) {
+                await SessionIndexCompactor.standard.compactIfDue()
+            }
         }
     }
 
