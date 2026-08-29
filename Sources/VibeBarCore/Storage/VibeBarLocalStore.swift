@@ -146,6 +146,28 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("session_index.sqlite3")
     }
 
+    /// `SessionIndexCompactor`'s throttle stamp: when the last maintenance
+    /// pass over `session_index.sqlite3` completed and under which
+    /// `SessionIndexExcerptPolicy.version`. Its own file so maintenance
+    /// never rewrites the settings blob.
+    public static var sessionIndexMaintenanceStampURL: URL {
+        baseDirectory.appendingPathComponent("session_index_maintenance.json")
+    }
+
+    /// Scratch directory for `SessionIndexingBounds`' head copies of
+    /// oversized rollouts. Under `~/.vibebar` because that is the only
+    /// directory the app writes; the compactor sweeps leftovers.
+    public static var sessionIndexScratchDirectoryURL: URL {
+        sessionIndexScratchDirectoryURL(homeDirectory: RealHomeDirectory.path)
+    }
+
+    /// Explicit-home variant, so a caller built around a synthetic home
+    /// (tests, demo trees) never scratches in the real one.
+    public static func sessionIndexScratchDirectoryURL(homeDirectory: String) -> URL {
+        baseDirectory(homeDirectory: homeDirectory)
+            .appendingPathComponent("session_index_scratch", isDirectory: true)
+    }
+
     /// Skills manager registry: which skills are installed in the SSOT
     /// (`~/.agents/skills`) and how each one is materialized per agent CLI.
     /// The skill payloads themselves live in the SSOT, not here.

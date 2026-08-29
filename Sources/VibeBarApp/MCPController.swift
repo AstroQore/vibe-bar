@@ -393,7 +393,13 @@ final class MCPController: ObservableObject, MCPDataSource {
             let service = SessionIndexService(
                 homeDirectory: home,
                 store: store,
-                registry: SessionProviderRegistry.standard(homeDirectory: home),
+                // Bounded like the Workbench's indexer: MCP-triggered
+                // backfills hit the same multi-hundred-MB rollouts.
+                registry: SessionIndexingBounds.boundedRegistry(
+                    SessionProviderRegistry.standard(homeDirectory: home),
+                    scratchDirectory: VibeBarLocalStore
+                        .sessionIndexScratchDirectoryURL(homeDirectory: home)
+                ),
                 bodyIndexing: { [bodyIndexing] in bodyIndexing.current }
             )
             sessionIndex = service

@@ -48,6 +48,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CookieRefreshScheduler.shared.start()
         observeCookieRefreshes(environment: env)
 
+        // Session-index maintenance (excerpt trims, FTS merge, vacuum) runs
+        // off the launch path: the Workbench may never open on a headless
+        // MCP-only day, so launch is the trigger that always exists. The
+        // compactor throttles itself to one completed pass per day.
+        Task.detached(priority: .utility) {
+            try? await Task.sleep(for: .seconds(60))
+            await SessionIndexCompactor.standard.compactIfDue()
+        }
+
         SafeLog.info("Vibe Bar started")
     }
 
