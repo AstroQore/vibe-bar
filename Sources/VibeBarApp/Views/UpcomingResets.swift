@@ -17,6 +17,9 @@ struct UpcomingResetEvent: Identifiable {
     /// What the reset gives back — the used share of the window.
     let gainPercent: Double
     let resetAt: Date
+    /// The personal forecast's remaining % at the moment of this reset, when
+    /// one exists — shown in the lane's hover card.
+    var forecastRemainingAtResetPercent: Double? = nil
 
     var id: String { "\(accountId).\(bucketId)" }
 
@@ -47,6 +50,12 @@ enum UpcomingResets {
         let horizon = now.addingTimeInterval(horizonDays * 86_400)
         var out: [UpcomingResetEvent] = []
         let settings = environment.settingsStore.settings
+        // Forecasts run on the page's shared 5-minute clock so the memo in
+        // QuotaService actually hits — a fresh `now` per minute tick would
+        // recompute every bucket's blend for nothing.
+        let forecastNow = Date(
+            timeIntervalSinceReferenceDate: (now.timeIntervalSinceReferenceDate / 300).rounded(.down) * 300
+        )
         for tool in ToolType.dedicatedCardProviders where settings.isCoreProviderVisible(tool) {
             // Every account, not the first one — multi-account providers
             // (Gemini, say) refill per account.
@@ -61,6 +70,15 @@ enum UpcomingResets {
                     else { continue }
                     let subProvider = tool.quotaSubProviderName(bucketID: bucket.id)
                     let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let snapshot = environment.costService.snapshot(for: tool)
+                    let forecast = environment.quotaService.paceForecast(
+                        accountId: account.id,
+                        bucket: bucket,
+                        activityHeatmap: snapshot?.heatmap,
+                        dailyActivity: snapshot?.dailyHistory ?? [],
+                        now: forecastNow,
+                        allowsPostResetGrace: true
+                    )
                     out.append(UpcomingResetEvent(
                         tool: tool,
                         accountId: account.id,
@@ -72,7 +90,10 @@ enum UpcomingResets {
                         bucketTitle: bucket.title,
                         remainingPercent: max(0, 100 - bucket.usedPercent),
                         gainPercent: bucket.usedPercent,
-                        resetAt: resetAt
+                        resetAt: resetAt,
+                        forecastRemainingAtResetPercent: forecast.map {
+                            max(0, min(100, 100 - $0.projectedUsedPercent))
+                        }
                     ))
                 }
             }
@@ -89,6 +110,15 @@ struct ResetLaneView: View {
     let now: Date
     var horizonDays: Double = 7
     var laneHeight: CGFloat = 64
+
+    @State private var hoveredEventID: String?
+
+    private static let absoluteTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, HH:mm"
+        formatter.timeZone = .autoupdatingCurrent
+        return formatter
+    }()
 
     var body: some View {
         GeometryReader { proxy in
@@ -118,9 +148,59 @@ struct ResetLaneView: View {
                 ForEach(events) { event in
                     marker(event, width: width, fanOffset: fanned[event.id] ?? 0)
                 }
+                if let hovered = events.first(where: { $0.id == hoveredEventID }) {
+                    hoverCard(hovered, width: width, fanOffset: fanned[hovered.id] ?? 0)
+                }
             }
         }
         .frame(height: laneHeight)
+    }
+
+    /// The hover legend AQ asked for: what the column is, exactly when it
+    /// resets, how much is left now, how much comes back, and what the
+    /// forecast expects at that moment.
+    private func hoverCard(_ event: UpcomingResetEvent, width: CGFloat, fanOffset: CGFloat) -> some View {
+        let fraction = min(1, event.resetAt.timeIntervalSince(now) / (horizonDays * 86_400))
+        let x = max(4, min(width - 4, width * fraction + fanOffset))
+        let cardWidth: CGFloat = 236
+        let cardX = max(0, min(width - cardWidth, x - cardWidth / 2))
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(Theme.providerAccent(for: event.tool))
+                    .frame(width: 5, height: 5)
+                Text(event.label)
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            Text("resets \(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—") · \(Self.absoluteTimeFormatter.string(from: event.resetAt))")
+                .font(.system(size: 9, design: .rounded).monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text("\(Int(event.remainingPercent.rounded()))% left now · +\(Int(event.gainPercent.rounded()))% comes back")
+                .font(.system(size: 9, design: .rounded).monospacedDigit())
+                .foregroundStyle(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
+            if let projected = event.forecastRemainingAtResetPercent {
+                Text("forecast \(Int(projected.rounded()))% left at reset")
+                    .font(.system(size: 9, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(width: cardWidth, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(.thickMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.7)
+                )
+        )
+        .offset(x: cardX, y: -2)
+        .zIndex(2)
+        .allowsHitTesting(false)
+        .transition(.opacity)
     }
 
     /// Buckets that reset together (Claude's overall and model-scoped
@@ -154,7 +234,23 @@ struct ResetLaneView: View {
         )
         .fill(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
         .frame(width: 7, height: height)
+        .overlay(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 3.5, bottomLeadingRadius: 1,
+                bottomTrailingRadius: 1, topTrailingRadius: 3.5,
+                style: .continuous
+            )
+            .stroke(Color.primary.opacity(hoveredEventID == event.id ? 0.55 : 0), lineWidth: 1)
+        )
         .offset(x: x - 3.5, y: laneHeight - 14 - height)
+        .contentShape(Rectangle().inset(by: -4))
+        .onHover { inside in
+            if inside {
+                hoveredEventID = event.id
+            } else if hoveredEventID == event.id {
+                hoveredEventID = nil
+            }
+        }
         .help("\(event.label) — \(Int(event.remainingPercent.rounded()))% now, +\(Int(event.gainPercent.rounded()))% \(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "")")
     }
 }
