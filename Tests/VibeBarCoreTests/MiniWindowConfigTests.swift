@@ -22,6 +22,16 @@ final class MiniWindowConfigTests: XCTestCase {
         XCTAssertTrue(window.wasOpen)
         // Shared labels stay on the settings struct.
         XCTAssertEqual(settings.customLabels["codex.weekly"], "Wk")
+        // Pre-dismissal settings decode to an empty dismissed set.
+        XCTAssertTrue(settings.hiddenStaleFieldIds.isEmpty)
+    }
+
+    func testHiddenStaleFieldIdsSurviveRoundTrip() throws {
+        var settings = MiniWindowSettings(selectedFieldIds: ["codex.weekly"])
+        settings.hiddenStaleFieldIds = ["claude.weekly_opus", "claude.daily_routines"]
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(MiniWindowSettings.self, from: data)
+        XCTAssertEqual(decoded.hiddenStaleFieldIds, ["claude.weekly_opus", "claude.daily_routines"])
     }
 
     func testUnknownDisplayModeFallsBackInsteadOfFailingDecode() throws {

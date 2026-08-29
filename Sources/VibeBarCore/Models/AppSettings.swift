@@ -1203,6 +1203,13 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
     public var windows: [MiniWindowConfig]
     public var customLabels: [String: String]
     public var groupLabels: [String: String]
+    /// Built-in catalog fields the user dismissed while the provider was not
+    /// returning them. A hidden field stays out of the settings tree only
+    /// while it is absent from the account's current response — the moment
+    /// the provider returns it again, it reappears. Discovered fields are
+    /// forgotten through the registry instead; this set is for the static
+    /// catalog rows that have no registry entry to forget.
+    public var hiddenStaleFieldIds: Set<String>
     /// Whether the mini window was open last time the app quit. Restored on
     /// launch so the user doesn't have to re-toggle every session.
     public var wasOpen: Bool
@@ -1223,6 +1230,7 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         windows: [MiniWindowConfig]? = nil,
         customLabels: [String: String] = [:],
         groupLabels: [String: String] = [:],
+        hiddenStaleFieldIds: Set<String> = [],
         wasOpen: Bool = false,
         savedOriginX: Double? = nil,
         savedOriginY: Double? = nil,
@@ -1246,6 +1254,7 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         ]
         self.customLabels = customLabels
         self.groupLabels = groupLabels
+        self.hiddenStaleFieldIds = hiddenStaleFieldIds
         self.wasOpen = wasOpen
         self.savedOriginX = savedOriginX
         self.savedOriginY = savedOriginY
@@ -1255,7 +1264,8 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case displayMode, selectedFieldIds, compactSelectedFieldIds, windows, customLabels, groupLabels, wasOpen
+        case displayMode, selectedFieldIds, compactSelectedFieldIds, windows, customLabels, groupLabels
+        case hiddenStaleFieldIds, wasOpen
         case savedOriginX, savedOriginY, savedPixelOriginX, savedPixelOriginY, savedScreenScale
     }
 
@@ -1272,6 +1282,7 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         let decodedLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
         self.customLabels = MenuBarFieldCatalog.migratedCustomLabels(decodedLabels)
         self.groupLabels = try c.decodeIfPresent([String: String].self, forKey: .groupLabels) ?? [:]
+        self.hiddenStaleFieldIds = try c.decodeIfPresent(Set<String>.self, forKey: .hiddenStaleFieldIds) ?? []
         self.wasOpen = try c.decodeIfPresent(Bool.self, forKey: .wasOpen) ?? false
         self.savedOriginX = try c.decodeIfPresent(Double.self, forKey: .savedOriginX)
         self.savedOriginY = try c.decodeIfPresent(Double.self, forKey: .savedOriginY)
@@ -1307,6 +1318,7 @@ public struct MiniWindowSettings: Codable, Equatable, Sendable {
         try c.encode(windows, forKey: .windows)
         try c.encode(customLabels, forKey: .customLabels)
         try c.encode(groupLabels, forKey: .groupLabels)
+        try c.encode(hiddenStaleFieldIds, forKey: .hiddenStaleFieldIds)
         try c.encode(first?.wasOpen ?? wasOpen, forKey: .wasOpen)
         try c.encodeIfPresent(savedOriginX, forKey: .savedOriginX)
         try c.encodeIfPresent(savedOriginY, forKey: .savedOriginY)

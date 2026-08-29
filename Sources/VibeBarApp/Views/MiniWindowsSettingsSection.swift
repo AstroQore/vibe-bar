@@ -27,7 +27,6 @@ struct MiniWindowsSettingsSection: View {
     /// never during a body render — a debounced name edit republishes
     /// AppSettings and re-renders this whole section, and rebuilding the
     /// merged catalog tree on each of those violates the fluency budget.
-    @State private var cachedCompanies: [NamingCompany] = []
     @State private var cachedSections: [PickerSection] = []
     @State private var mergedOptionsById: [String: MenuBarFieldOption] = [:]
     /// Field ids whose bucket the live quota cache currently returns.
@@ -65,9 +64,6 @@ struct MiniWindowsSettingsSection: View {
             if let config = selectedWindow {
                 windowDetail(config)
             }
-            Divider()
-                .padding(.vertical, 2)
-            sharedNameEditors()
         }
         .onAppear {
             rebuildRegistryCaches()
@@ -83,7 +79,6 @@ struct MiniWindowsSettingsSection: View {
     }
 
     private func rebuildRegistryCaches() {
-        cachedCompanies = namingCompanies()
         cachedSections = pickerSections()
         mergedOptionsById = Dictionary(
             MenuBarFieldCatalog.mergedFields(registry: quotaService.fieldRegistry).map { ($0.id, $0) },
@@ -226,16 +221,30 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
 
-        Text("Fields shown in “\(config.name)”. Buckets the adapters discover at runtime appear here automatically; a dimmed row is remembered but not in the account's current response.")
+        Text("One tree for the window — grouped exactly as it folds them (company → SubProvider → quota group → bucket). Drag a row to reorder, ✕ to remove, and rename any level in place. First field renders leftmost (or topmost).")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-        fieldPicker(config)
+        HStack(spacing: 4) {
+            namingScopeButton(.shared, label: "Names: all windows")
+            namingScopeButton(.window, label: "Only “\(config.name)”")
+            Spacer(minLength: 0)
+        }
+        .padding(3)
+        .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.045)))
+        if namingScope == .window {
+            Text("Name overrides for this window only. An empty field inherits the shared name — shown as the placeholder.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        arrangementList(config)
 
-        Text("Arrangement — grouped exactly as the window folds them (company → SubProvider). Drag a row to reorder; dragging across a group moves the field into it. First field renders leftmost (or topmost).")
+        Text("Not in “\(config.name)” — tick a bucket to add it. Buckets the adapters discover at runtime appear here automatically; a dimmed row is remembered but not in the account's current response, and ✕ dismisses it until the provider returns it.")
             .font(.caption)
             .foregroundStyle(.secondary)
-        arrangementList(config)
+            .fixedSize(horizontal: false, vertical: true)
+        notShownList(config)
     }
 
     private func modePicker(_ config: MiniWindowConfig) -> some View {
@@ -322,9 +331,33 @@ struct MiniWindowsSettingsSection: View {
         return sections
     }
 
-    private func fieldPicker(_ config: MiniWindowConfig) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(cachedSections) { section in
+    /// The unified tree above holds everything the window shows; this list is
+    /// only what it does not — candidates to tick in, and remembered-but-gone
+    /// rows to dismiss.
+    private func notShownList(_ config: MiniWindowConfig) -> some View {
+        let hidden = settingsStore.settings.miniWindow.hiddenStaleFieldIds
+        let sections: [PickerSection] = cachedSections.compactMap { section in
+            let remaining = section.entries.filter { entry in
+                guard !config.fieldIds.contains(entry.option.id) else { return false }
+                // A dismissed built-in row stays out only while the provider
+                // is not returning it.
+                if entry.discovered == nil,
+                   hidden.contains(entry.option.id),
+                   !liveFieldIds.contains(entry.option.id) {
+                    return false
+                }
+                return true
+            }
+            guard !remaining.isEmpty else { return nil }
+            return PickerSection(tool: section.tool, title: section.title, entries: remaining)
+        }
+        return VStack(alignment: .leading, spacing: 12) {
+            if sections.isEmpty {
+                Text("Every known bucket is already in this window.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            ForEach(sections) { section in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         ToolBrandIconView(tool: section.tool, size: 13)
@@ -361,21 +394,36 @@ struct MiniWindowsSettingsSection: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                if entry.discovered != nil {
-                    Button {
+                Button {
+                    if entry.discovered != nil {
                         forgetDiscoveredField(entry.option.id)
-                    } label: {
-                        Image(systemName: "xmark.circle")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 18, height: 18)
-                            .contentShape(Rectangle())
+                    } else {
+                        hideStaleField(entry.option.id)
                     }
-                    .buttonStyle(.vibeBar)
-                    .help("Forget this discovered bucket — drops it from the list and from every window that selected it.")
+                } label: {
+                    Image(systemName: "xmark.circle")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.vibeBar)
+                .help(
+                    entry.discovered != nil
+                        ? "Forget this discovered bucket — drops it from the list and from every window that selected it."
+                        : "Dismiss this built-in bucket while the provider is not returning it. It comes back the moment the provider does."
+                )
             }
         }
         .opacity(isLive ? 1 : 0.55)
+    }
+
+    /// Dismiss a built-in catalog bucket while its provider is not returning
+    /// it. Selection state is untouched — the row only leaves the candidate
+    /// list, and returns on its own once the bucket goes live again.
+    private func hideStaleField(_ fieldId: String) {
+        var settings = settingsStore.settings
+        settings.miniWindow.hiddenStaleFieldIds.insert(fieldId)
+        settingsStore.settings = settings
     }
 
     /// Forget a discovered bucket the provider no longer returns: registry
@@ -486,14 +534,15 @@ struct MiniWindowsSettingsSection: View {
                         }
                         .padding(.top, group.firstIndex == 0 ? 0 : 5)
                     }
-                    Text(subProviderDisplayName(group).uppercased())
-                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.tertiary)
-                        .tracking(1.0)
-                        .padding(.leading, 16)
-                    ForEach(Array(group.rows.enumerated()), id: \.element.id) { offset, row in
-                        arrangeRowView(row, index: group.firstIndex + offset, count: rows.count)
-                            .opacity(drag?.engaged == true && drag?.fieldID == row.id ? 0.3 : 1)
+                    subProviderHeader(group)
+                    ForEach(groupRuns(group)) { run in
+                        if let groupKey = run.groupKey {
+                            groupHeader(groupKey: groupKey, run: run)
+                        }
+                        ForEach(Array(run.rows.enumerated()), id: \.element.id) { offset, row in
+                            arrangeRowView(row, index: run.firstIndex + offset, count: rows.count)
+                                .opacity(drag?.engaged == true && drag?.fieldID == row.id ? 0.3 : 1)
+                        }
                     }
                 }
             }
@@ -508,6 +557,76 @@ struct MiniWindowsSettingsSection: View {
                 }
             }
         }
+    }
+
+    /// One consecutive run of buckets sharing an L3 quota group inside a
+    /// SubProvider run — the level between the SubProvider header and its
+    /// bucket rows. `nil` groupKey buckets (Grok Bot's single Weekly) render
+    /// without the extra header.
+    private struct GroupRun: Identifiable {
+        let groupKey: String?
+        var rows: [ArrangeRow]
+        let firstIndex: Int
+        var id: String { "\(firstIndex)" }
+    }
+
+    private func groupRuns(_ group: ArrangeGroup) -> [GroupRun] {
+        var runs: [GroupRun] = []
+        var index = group.firstIndex
+        for row in group.rows {
+            let key = Self.namingGroupKey(for: row.option)
+            if var last = runs.last, last.groupKey == key {
+                last.rows.append(row)
+                runs[runs.count - 1] = last
+            } else {
+                runs.append(GroupRun(groupKey: key, rows: [row], firstIndex: index))
+            }
+            index += 1
+        }
+        return runs
+    }
+
+    private func subProviderHeader(_ group: ArrangeGroup) -> some View {
+        let key = MiniWindowGroupLabelCatalog.subProviderKey(tool: group.tool, name: group.subProviderName)
+        return HStack(spacing: 8) {
+            Text(subProviderDisplayName(group).uppercased())
+                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .tracking(1.0)
+            Spacer(minLength: 8)
+            nameField(NamingRow(
+                kind: .subProvider, key: key,
+                title: group.subProviderName, defaultLabel: group.subProviderName
+            ))
+        }
+        .padding(.leading, 16)
+    }
+
+    private func groupHeader(groupKey: String, run: GroupRun) -> some View {
+        let fallback = run.rows.first.map { row in
+            row.option.dynamicGroupTitle ?? MenuBarFieldCatalog.bucketGroupStem(row.option.bucketId)
+        } ?? groupKey
+        let defaultLabel = MiniWindowGroupLabelCatalog.defaultLabel(for: groupKey) ?? fallback
+        let resolved = settingsStore.settings.miniWindow
+            .resolvedGroupLabel(config: selectedWindow, key: groupKey) ?? defaultLabel
+        return HStack(spacing: 8) {
+            Text(resolved.uppercased())
+                .font(.system(size: 8, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .tracking(0.8)
+            Spacer(minLength: 8)
+            nameField(NamingRow(
+                kind: .group, key: groupKey,
+                title: defaultLabel, defaultLabel: defaultLabel
+            ))
+        }
+        .padding(.leading, 24)
+    }
+
+    private func nameField(_ row: NamingRow) -> some View {
+        DebouncedSettingsTextField(prompt: namingPrompt(row), value: namingBinding(row))
+            .frame(width: 108)
+            .help(row.key)
     }
 
     private func subProviderDisplayName(_ group: ArrangeGroup) -> String {
@@ -539,6 +658,10 @@ struct MiniWindowsSettingsSection: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 6)
+            nameField(NamingRow(
+                kind: .field, key: row.id,
+                title: row.option.title, defaultLabel: row.option.defaultLabel
+            ))
             if let percent {
                 Text("\(Int(percent.rounded()))%")
                     .font(.system(size: 10.5, weight: .bold, design: .rounded).monospacedDigit())
@@ -686,20 +809,6 @@ struct MiniWindowsSettingsSection: View {
         let title: String
         let defaultLabel: String
         var id: String { key }
-        var indent: CGFloat {
-            switch kind {
-            case .subProvider: return 0
-            case .group: return 16
-            case .field: return 32
-            }
-        }
-    }
-
-    private struct NamingCompany: Identifiable {
-        let name: String
-        let tool: ToolType
-        var rows: [NamingRow]
-        var id: String { name }
     }
 
     /// The L3 group a field's gauge renders under, or nil for a bucket that
@@ -718,89 +827,6 @@ struct MiniWindowsSettingsSection: View {
         case .gemini: return "gemini.all-models"
         case .grok: return "grok.all-models"
         default: return nil
-        }
-    }
-
-    private func namingCompanies() -> [NamingCompany] {
-        let merged = MenuBarFieldCatalog.mergedFields(registry: quotaService.fieldRegistry)
-        var companies: [NamingCompany] = []
-        var companyIndex: [String: Int] = [:]
-        var seenSubKeys: Set<String> = []
-        var seenGroupKeys: Set<String> = []
-        for tool in ToolType.dedicatedCardProviders {
-            for option in merged where option.tool == tool {
-                let vendor = tool.vendorName
-                let company: Int
-                if let index = companyIndex[vendor] {
-                    company = index
-                } else {
-                    company = companies.count
-                    companyIndex[vendor] = company
-                    companies.append(NamingCompany(name: vendor, tool: tool, rows: []))
-                }
-                let subName = tool.quotaSubProviderName(bucketID: option.bucketId)
-                let subKey = MiniWindowGroupLabelCatalog.subProviderKey(tool: tool, name: subName)
-                if seenSubKeys.insert(subKey).inserted {
-                    companies[company].rows.append(NamingRow(
-                        kind: .subProvider, key: subKey, title: subName, defaultLabel: subName
-                    ))
-                }
-                if let groupKey = Self.namingGroupKey(for: option),
-                   seenGroupKeys.insert(groupKey).inserted {
-                    let fallback = option.dynamicGroupTitle
-                        ?? MenuBarFieldCatalog.bucketGroupStem(option.bucketId)
-                    let label = MiniWindowGroupLabelCatalog.defaultLabel(for: groupKey) ?? fallback
-                    companies[company].rows.append(NamingRow(
-                        kind: .group, key: groupKey, title: label, defaultLabel: label
-                    ))
-                }
-                companies[company].rows.append(NamingRow(
-                    kind: .field, key: option.id, title: option.title, defaultLabel: option.defaultLabel
-                ))
-            }
-        }
-        return companies
-    }
-
-    @ViewBuilder
-    private func sharedNameEditors() -> some View {
-        Text("Names")
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-        HStack(spacing: 4) {
-            namingScopeButton(.shared, label: "All windows")
-            namingScopeButton(.window, label: "Only “\(selectedWindow?.name ?? "this window")”")
-            Spacer(minLength: 0)
-        }
-        .padding(3)
-        .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.045)))
-        Text(
-            namingScope == .shared
-                ? "One tree, the levels quotas actually have: company → SubProvider → quota group → bucket. Names set here apply to every mini window."
-                : "Overrides for this window only. An empty field inherits the shared name — shown as the placeholder."
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(cachedCompanies) { company in
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        ToolBrandIconView(tool: company.tool, size: 13)
-                            .opacity(0.85)
-                        Text(company.name)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                            .textCase(.uppercase)
-                            .tracking(0.4)
-                    }
-                    ForEach(company.rows) { row in
-                        namingRow(row)
-                    }
-                }
-            }
         }
     }
 
@@ -827,27 +853,6 @@ struct MiniWindowsSettingsSection: View {
                 .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.vibeBar(cornerRadius: 11))
-    }
-
-    private func namingRow(_ row: NamingRow) -> some View {
-        HStack(spacing: 8) {
-            Text(row.title)
-                .font(.system(
-                    size: row.kind == .field ? 11.5 : 12,
-                    weight: row.kind == .field ? .regular : .medium
-                ))
-                .foregroundStyle(row.kind == .field ? Color.secondary : Color.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Spacer(minLength: 8)
-            DebouncedSettingsTextField(
-                prompt: namingPrompt(row),
-                value: namingBinding(row)
-            )
-            .frame(width: 130)
-        }
-        .padding(.leading, row.indent)
-        .help(row.key)
     }
 
     /// What an empty field falls back to — in window scope that is the shared
