@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 
 /// Persists the pace forecast that was actually shown for each quota bucket.
 ///
@@ -14,44 +15,44 @@ import Foundation
 /// forecast from today's history would quietly launder hindsight into the
 /// projection line, which is exactly what the feature is meant to expose.
 ///
-/// File: `~/.vibebar/forecast_timeline.json` (mode 0600).
+/// Storage is SQLite (`~/.vibebar/forecast_timeline.sqlite3`, mode 0600, WAL)
+/// for the same reason as the fill timeline: whole-file JSON rewrites of a
+/// multi-megabyte history every save throttle blew the OS disk-write budget,
+/// while WAL upserts cost a few KB per refresh. A legacy
+/// `forecast_timeline.json` is imported once and removed.
 public actor UsageForecastTimelineStore {
-    public static let shared = UsageForecastTimelineStore()
+    public static let shared = UsageForecastTimelineStore(
+        fileURL: UsageForecastTimelineStore.defaultFileURL(),
+        legacyJSONURL: VibeBarLocalStore.forecastTimelineURL
+    )
 
-    private struct Storage: Codable {
+    private struct LegacyStorage: Codable {
         var schemaVersion: Int
         var points: [ForecastTimelinePoint]
-
-        init(
-            schemaVersion: Int = UsageForecastTimelineStore.storageSchemaVersion,
-            points: [ForecastTimelinePoint] = []
-        ) {
-            self.schemaVersion = schemaVersion
-            self.points = points
-        }
     }
 
     private let fileURL: URL
-    private var cachedStorage: Storage?
-    private var lastSavedAt: Date?
-    private var pendingFlushTask: Task<Void, Never>?
-    private var pendingStorage: Storage?
+    private let legacyJSONURL: URL?
+    private var database: TimelineSQLite?
+    private var openAttempted = false
+    private var sidecarPermissionsSet = false
 
-    private static let storageSchemaVersion = 1
-    private static let saveThrottleInterval: TimeInterval = 30
-    /// Defensive cap only. Slot cardinality matches the fill timeline and each
-    /// point is roughly twice the payload, so the real file stays far under a
-    /// megabyte; a file past this size is corrupt, not legitimate history.
-    private static let maxFileBytes = 24 * 1024 * 1024
+    private static let databaseSchemaVersion: Int32 = 1
+    /// Highest legacy JSON schema this build can import.
+    private static let legacyJSONSchemaVersion = 1
+    /// Defensive cap on the legacy import: a JSON file past this size is
+    /// corrupt, not legitimate history.
+    private static let maxLegacyFileBytes = 24 * 1024 * 1024
     private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
 
-    public init(fileURL: URL = UsageForecastTimelineStore.defaultFileURL()) {
+    public init(fileURL: URL = UsageForecastTimelineStore.defaultFileURL(), legacyJSONURL: URL? = nil) {
         self.fileURL = fileURL
+        self.legacyJSONURL = legacyJSONURL
     }
 
     public static func defaultFileURL() -> URL {
         try? VibeBarLocalStore.ensureBaseDirectory()
-        return VibeBarLocalStore.forecastTimelineURL
+        return VibeBarLocalStore.forecastTimelineDatabaseURL
     }
 
     // MARK: - Public API
@@ -67,9 +68,28 @@ public actor UsageForecastTimelineStore {
         retentionDays: Int = CostDataSettings.defaultRetentionDays
     ) {
         guard Self.supportedTools.contains(tool), !forecasts.isEmpty else { return }
+        guard let db = ensureDatabase() else { return }
 
-        var storage = load()
+        let upsert = db.prepare("""
+            INSERT INTO forecast_points(
+                account_id, tool, bucket_id, slot_start, sampled_at,
+                projected_used_percent, projected_lower_percent, projected_upper_percent,
+                reset_at, raw_window_seconds
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account_id, bucket_id, slot_start) DO UPDATE SET
+                tool = excluded.tool,
+                sampled_at = excluded.sampled_at,
+                projected_used_percent = excluded.projected_used_percent,
+                projected_lower_percent = excluded.projected_lower_percent,
+                projected_upper_percent = excluded.projected_upper_percent,
+                reset_at = excluded.reset_at,
+                raw_window_seconds = excluded.raw_window_seconds
+            """)
+        guard let upsert else { return }
+        defer { sqlite3_finalize(upsert) }
+
         var dirty = false
+        db.exec("BEGIN IMMEDIATE")
         for forecast in forecasts {
             guard forecast.projectedUsedPercent.isFinite,
                   forecast.projectedUsedLowerPercent.isFinite,
@@ -79,141 +99,258 @@ public actor UsageForecastTimelineStore {
                 for: now,
                 windowSeconds: forecast.rawWindowSeconds
             )
-            if let idx = storage.points.firstIndex(where: {
-                $0.accountId == accountId
-                    && $0.bucketId == forecast.bucketId
-                    && $0.slotStart == slotStart
-            }) {
-                storage.points[idx].sampledAt = now
-                storage.points[idx].projectedUsedPercent = forecast.projectedUsedPercent
-                storage.points[idx].projectedUsedLowerPercent = forecast.projectedUsedLowerPercent
-                storage.points[idx].projectedUsedUpperPercent = forecast.projectedUsedUpperPercent
-                storage.points[idx].resetAt = forecast.resetAt
-                storage.points[idx].rawWindowSeconds = forecast.rawWindowSeconds
-            } else {
-                storage.points.append(ForecastTimelinePoint(
-                    accountId: accountId,
-                    tool: tool,
-                    bucketId: forecast.bucketId,
-                    slotStart: slotStart,
-                    sampledAt: now,
-                    projectedUsedPercent: forecast.projectedUsedPercent,
-                    projectedUsedLowerPercent: forecast.projectedUsedLowerPercent,
-                    projectedUsedUpperPercent: forecast.projectedUsedUpperPercent,
-                    resetAt: forecast.resetAt,
-                    rawWindowSeconds: forecast.rawWindowSeconds
-                ))
-            }
-            dirty = true
+            sqlite3_reset(upsert)
+            db.bindText(upsert, 1, accountId)
+            db.bindText(upsert, 2, tool.rawValue)
+            db.bindText(upsert, 3, forecast.bucketId)
+            db.bindDouble(upsert, 4, slotStart.timeIntervalSince1970)
+            db.bindDouble(upsert, 5, now.timeIntervalSince1970)
+            db.bindDouble(upsert, 6, forecast.projectedUsedPercent)
+            db.bindDouble(upsert, 7, forecast.projectedUsedLowerPercent)
+            db.bindDouble(upsert, 8, forecast.projectedUsedUpperPercent)
+            db.bindOptionalDouble(upsert, 9, forecast.resetAt?.timeIntervalSince1970)
+            db.bindOptionalInt(upsert, 10, forecast.rawWindowSeconds)
+            if sqlite3_step(upsert) == SQLITE_DONE { dirty = true }
         }
-        guard dirty else { return }
-        pruneInPlace(&storage, retentionDays: retentionDays, now: now)
-        save(storage)
+        if dirty {
+            prune(db, retentionDays: retentionDays, now: now)
+        }
+        db.exec("COMMIT")
+        setSidecarPermissionsIfNeeded()
     }
 
     /// Points for one account+bucket, oldest first.
     public func points(accountId: String, bucketId: String) -> [ForecastTimelinePoint] {
-        load().points
-            .filter { $0.accountId == accountId && $0.bucketId == bucketId }
-            .sorted { $0.slotStart < $1.slotStart }
+        guard let db = ensureDatabase(),
+              let statement = db.prepare("""
+                  SELECT account_id, tool, bucket_id, slot_start, sampled_at,
+                         projected_used_percent, projected_lower_percent,
+                         projected_upper_percent, reset_at, raw_window_seconds
+                    FROM forecast_points
+                   WHERE account_id = ? AND bucket_id = ?
+                   ORDER BY slot_start
+                  """)
+        else { return [] }
+        defer { sqlite3_finalize(statement) }
+        db.bindText(statement, 1, accountId)
+        db.bindText(statement, 2, bucketId)
+        return readPoints(db, statement)
     }
 
     public func allPoints() -> [ForecastTimelinePoint] {
-        load().points
+        guard let db = ensureDatabase(),
+              let statement = db.prepare("""
+                  SELECT account_id, tool, bucket_id, slot_start, sampled_at,
+                         projected_used_percent, projected_lower_percent,
+                         projected_upper_percent, reset_at, raw_window_seconds
+                    FROM forecast_points
+                   ORDER BY slot_start
+                  """)
+        else { return [] }
+        defer { sqlite3_finalize(statement) }
+        return readPoints(db, statement)
     }
 
     public func eraseAll() {
-        cachedStorage = Storage(points: [])
-        pendingStorage = nil
-        pendingFlushTask?.cancel()
-        pendingFlushTask = nil
-        lastSavedAt = nil
-        try? FileManager.default.removeItem(at: fileURL)
+        database?.close()
+        database = nil
+        openAttempted = false
+        sidecarPermissionsSet = false
+        removeDatabaseFiles()
+        if let legacyJSONURL {
+            try? FileManager.default.removeItem(at: legacyJSONURL)
+        }
     }
 
+    /// Writes are committed per observation now; this folds the WAL back into
+    /// the main file so tests (and privacy-conscious users) see one file.
     public func flushPendingWrites() async {
-        if let storage = pendingStorage {
-            persist(storage)
-            pendingStorage = nil
-            lastSavedAt = Date()
-        }
-        pendingFlushTask?.cancel()
-        pendingFlushTask = nil
+        database?.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     }
 
     // MARK: - Private
 
-    private func load() -> Storage {
-        if let cached = cachedStorage { return cached }
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-           let size = (attrs[.size] as? NSNumber)?.intValue,
-           size > Self.maxFileBytes {
-            let empty = Storage()
-            cachedStorage = empty
-            return empty
-        }
-        guard let data = try? Data(contentsOf: fileURL),
-              let storage = try? JSONDecoder().decode(Storage.self, from: data)
-        else {
-            let empty = Storage()
-            cachedStorage = empty
-            return empty
-        }
-        if storage.schemaVersion > Self.storageSchemaVersion {
-            let empty = Storage()
-            persist(empty)
-            cachedStorage = empty
-            return empty
-        }
-        var migrated = storage
-        if migrated.schemaVersion < Self.storageSchemaVersion {
-            migrated.schemaVersion = Self.storageSchemaVersion
-            persist(migrated)
-        }
-        cachedStorage = migrated
-        return migrated
-    }
+    private func ensureDatabase() -> TimelineSQLite? {
+        if let database { return database }
+        guard !openAttempted else { return nil }
+        openAttempted = true
 
-    private func save(_ storage: Storage) {
-        cachedStorage = storage
-        let now = Date()
-        if let last = lastSavedAt, now.timeIntervalSince(last) < Self.saveThrottleInterval {
-            pendingStorage = storage
-            scheduleFlush(after: Self.saveThrottleInterval - now.timeIntervalSince(last))
-            return
+        var db = TimelineSQLite(url: fileURL)
+        if db == nil || !Self.initializeSchema(db!) {
+            // A corrupt database loads empty and still accepts new points —
+            // same contract the JSON store had for a corrupt file.
+            db?.close()
+            removeDatabaseFiles()
+            db = TimelineSQLite(url: fileURL)
+            guard let retried = db, Self.initializeSchema(retried) else {
+                db?.close()
+                return nil
+            }
         }
-        persist(storage)
-        pendingStorage = nil
-        pendingFlushTask?.cancel()
-        pendingFlushTask = nil
-        lastSavedAt = now
-    }
+        guard let opened = db else { return nil }
 
-    private func persist(_ storage: Storage) {
-        guard let data = try? JSONEncoder().encode(storage) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        if opened.userVersion > Self.databaseSchemaVersion {
+            // A future build owns this file. Start over rather than guessing
+            // at its schema — mirrors the JSON store's reset-on-future-schema.
+            opened.close()
+            removeDatabaseFiles()
+            guard let fresh = TimelineSQLite(url: fileURL), Self.initializeSchema(fresh) else {
+                return nil
+            }
+            fresh.userVersion = Self.databaseSchemaVersion
+            database = fresh
+        } else {
+            opened.userVersion = Self.databaseSchemaVersion
+            database = opened
+        }
         try? FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o600))],
             ofItemAtPath: fileURL.path
         )
+        importLegacyJSONIfPresent()
+        return database
     }
 
-    private func scheduleFlush(after delay: TimeInterval) {
-        if pendingFlushTask != nil { return }
-        let nanoseconds = UInt64(max(0.05, delay) * 1_000_000_000)
-        pendingFlushTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: nanoseconds)
-            await self?.flushPendingWrites()
+    private static func initializeSchema(_ db: TimelineSQLite) -> Bool {
+        db.exec("""
+            PRAGMA journal_mode=WAL;
+            PRAGMA synchronous=NORMAL;
+            CREATE TABLE IF NOT EXISTS forecast_points (
+                account_id TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                bucket_id TEXT NOT NULL,
+                slot_start REAL NOT NULL,
+                sampled_at REAL NOT NULL,
+                projected_used_percent REAL NOT NULL,
+                projected_lower_percent REAL NOT NULL,
+                projected_upper_percent REAL NOT NULL,
+                reset_at REAL,
+                raw_window_seconds INTEGER,
+                PRIMARY KEY(account_id, bucket_id, slot_start)
+            );
+            """)
+    }
+
+    private func importLegacyJSONIfPresent() {
+        guard let legacyJSONURL, let database,
+              FileManager.default.fileExists(atPath: legacyJSONURL.path)
+        else { return }
+        defer {
+            // One shot either way: a file that failed to decode is corrupt or
+            // from a future build, and leaving it would only re-run this on
+            // every launch. The new database is the source of truth now.
+            try? FileManager.default.removeItem(at: legacyJSONURL)
         }
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: legacyJSONURL.path),
+           let size = (attrs[.size] as? NSNumber)?.intValue,
+           size > Self.maxLegacyFileBytes {
+            return
+        }
+        guard let data = try? Data(contentsOf: legacyJSONURL),
+              let legacy = try? JSONDecoder().decode(LegacyStorage.self, from: data),
+              legacy.schemaVersion <= Self.legacyJSONSchemaVersion
+        else { return }
+        let upsert = database.prepare("""
+            INSERT OR REPLACE INTO forecast_points(
+                account_id, tool, bucket_id, slot_start, sampled_at,
+                projected_used_percent, projected_lower_percent, projected_upper_percent,
+                reset_at, raw_window_seconds
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """)
+        guard let upsert else { return }
+        defer { sqlite3_finalize(upsert) }
+        database.exec("BEGIN IMMEDIATE")
+        for point in legacy.points {
+            sqlite3_reset(upsert)
+            database.bindText(upsert, 1, point.accountId)
+            database.bindText(upsert, 2, point.tool.rawValue)
+            database.bindText(upsert, 3, point.bucketId)
+            database.bindDouble(upsert, 4, point.slotStart.timeIntervalSince1970)
+            database.bindDouble(upsert, 5, point.sampledAt.timeIntervalSince1970)
+            database.bindDouble(upsert, 6, point.projectedUsedPercent)
+            database.bindDouble(upsert, 7, point.projectedUsedLowerPercent)
+            database.bindDouble(upsert, 8, point.projectedUsedUpperPercent)
+            database.bindOptionalDouble(upsert, 9, point.resetAt?.timeIntervalSince1970)
+            database.bindOptionalInt(upsert, 10, point.rawWindowSeconds)
+            sqlite3_step(upsert)
+        }
+        database.exec("COMMIT")
+        setSidecarPermissionsIfNeeded()
     }
 
-    private func pruneInPlace(_ storage: inout Storage, retentionDays: Int, now: Date) {
-        storage.points.removeAll { point in
+    private func readPoints(_ db: TimelineSQLite, _ statement: OpaquePointer) -> [ForecastTimelinePoint] {
+        var points: [ForecastTimelinePoint] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let accountId = db.columnText(statement, 0),
+                  let toolRaw = db.columnText(statement, 1),
+                  let tool = ToolType(rawValue: toolRaw),
+                  let bucketId = db.columnText(statement, 2)
+            else { continue }
+            points.append(ForecastTimelinePoint(
+                accountId: accountId,
+                tool: tool,
+                bucketId: bucketId,
+                slotStart: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
+                sampledAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 4)),
+                projectedUsedPercent: sqlite3_column_double(statement, 5),
+                projectedUsedLowerPercent: sqlite3_column_double(statement, 6),
+                projectedUsedUpperPercent: sqlite3_column_double(statement, 7),
+                resetAt: db.columnOptionalDouble(statement, 8).map(Date.init(timeIntervalSince1970:)),
+                rawWindowSeconds: db.columnOptionalInt(statement, 9)
+            ))
+        }
+        return points
+    }
+
+    /// Window-aware retention, evaluated in SQL. The horizon depends only on
+    /// which of the four slot classes a point's window falls into, so four
+    /// cutoffs bound the whole table — see `UsageTimelineSlotPolicy`.
+    private func prune(_ db: TimelineSQLite, retentionDays: Int, now: Date) {
+        let statement = db.prepare("""
+            DELETE FROM forecast_points WHERE slot_start <
+                CASE
+                    WHEN raw_window_seconds IS NOT NULL AND raw_window_seconds <= 21600 THEN ?
+                    WHEN raw_window_seconds IS NOT NULL AND raw_window_seconds <= 691200 THEN ?
+                    WHEN raw_window_seconds IS NOT NULL AND raw_window_seconds <= 3888000 THEN ?
+                    ELSE ?
+                END
+            """)
+        guard let statement else { return }
+        defer { sqlite3_finalize(statement) }
+        for (index, representative) in [21_600, 691_200, 3_888_000, nil as Int?].enumerated() {
             let horizon = UsageTimelineSlotPolicy.retentionHorizonDays(
-                windowSeconds: point.rawWindowSeconds,
+                windowSeconds: representative,
                 retentionDays: retentionDays
             )
-            return point.slotStart < now.addingTimeInterval(-TimeInterval(horizon) * 86_400)
+            db.bindDouble(
+                statement,
+                Int32(index + 1),
+                now.addingTimeInterval(-TimeInterval(horizon) * 86_400).timeIntervalSince1970
+            )
         }
+        sqlite3_step(statement)
+    }
+
+    private func removeDatabaseFiles() {
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: fileURL.path + suffix)
+        }
+    }
+
+    private func setSidecarPermissionsIfNeeded() {
+        guard !sidecarPermissionsSet else { return }
+        var allPresentSet = true
+        for suffix in ["-wal", "-shm"] {
+            let path = fileURL.path + suffix
+            guard FileManager.default.fileExists(atPath: path) else {
+                allPresentSet = false
+                continue
+            }
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: NSNumber(value: Int16(0o600))],
+                ofItemAtPath: path
+            )
+        }
+        sidecarPermissionsSet = allPresentSet
     }
 }

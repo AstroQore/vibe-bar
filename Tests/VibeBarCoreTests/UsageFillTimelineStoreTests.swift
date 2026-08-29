@@ -176,8 +176,9 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         XCTAssertEqual(points.first?.tool, .claude)
     }
 
-    func testSchemaOnePointsMigrateWithoutResetMetadata() async throws {
+    func testLegacyJSONImportsOnceAndIsRemoved() async throws {
         let sampledAt = Date(timeIntervalSince1970: 1_780_000_000)
+        // Schema-1 points lack reset metadata; both legacy schemas import.
         let point = FillTimelinePoint(
             accountId: "acct-legacy",
             tool: .codex,
@@ -190,13 +191,24 @@ final class UsageFillTimelineStoreTests: XCTestCase {
             let schemaVersion = 1
             let points: [FillTimelinePoint]
         }
-        try JSONEncoder().encode(LegacyStorage(points: [point])).write(to: tempURL, options: .atomic)
+        let legacyURL = tempURL.deletingPathExtension().appendingPathExtension("legacy.json")
+        defer { try? FileManager.default.removeItem(at: legacyURL) }
+        try JSONEncoder().encode(LegacyStorage(points: [point])).write(to: legacyURL, options: .atomic)
 
-        let store = UsageFillTimelineStore(fileURL: tempURL)
+        let store = UsageFillTimelineStore(fileURL: tempURL, legacyJSONURL: legacyURL)
         let migrated = await store.points(accountId: "acct-legacy", bucketId: "weekly")
         XCTAssertEqual(migrated.count, 1)
         XCTAssertEqual(migrated.first?.usedPercent, 42)
         XCTAssertNil(migrated.first?.resetAt)
         XCTAssertNil(migrated.first?.rawWindowSeconds)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: legacyURL.path),
+            "the imported JSON must be removed so it is never rewritten or re-imported"
+        )
+
+        // A reopened store reads the imported history from the database.
+        let reopened = UsageFillTimelineStore(fileURL: tempURL, legacyJSONURL: legacyURL)
+        let persisted = await reopened.points(accountId: "acct-legacy", bucketId: "weekly")
+        XCTAssertEqual(persisted.count, 1)
     }
 }
