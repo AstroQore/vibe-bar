@@ -290,10 +290,18 @@ enum MiniStripMetrics {
     static func chipWidth(_ density: MiniStripDensity) -> CGFloat {
         switch density {
         case .roomy:   return 104
-        case .twoLine: return 62
+        case .twoLine: return pairedColumnWidth
         case .narrow:  return 40
         }
     }
+
+    /// Two-line density mirrors the menu bar's two-row layout: entries pair
+    /// into stacked columns, every cell carrying its full label — so the
+    /// column must fit "Claude + GPT Weekly 100%"-class text, scaled down
+    /// rather than abbreviated.
+    static let pairedColumnWidth: CGFloat = 128
+    static let pairedColumnSpacing: CGFloat = 12
+    static let pairedRowSpacing: CGFloat = 2
 
     static func chipSpacing(_ density: MiniStripDensity) -> CGFloat {
         switch density {
@@ -317,6 +325,13 @@ enum MiniStripMetrics {
 
     static func size(entries: [MiniEntry], density: MiniStripDensity) -> CGSize {
         guard !entries.isEmpty else { return CGSize(width: emptyWidth, height: height(density)) }
+        if density == .twoLine {
+            let columns = (entries.count + 1) / 2
+            let width = leadingPadding + trailingPadding
+                + CGFloat(columns) * pairedColumnWidth
+                + CGFloat(max(0, columns - 1)) * pairedColumnSpacing
+            return CGSize(width: width, height: height(density))
+        }
         let companies = MiniEntry.companyRuns(entries)
         var width = leadingPadding + trailingPadding
         for (index, company) in companies.enumerated() {
@@ -340,6 +355,8 @@ struct MiniStripLayout: View {
             if entries.isEmpty {
                 MiniEmptyHint()
                     .frame(width: MiniStripMetrics.emptyWidth)
+            } else if density == .twoLine {
+                pairedColumns
             } else {
                 let companies = MiniEntry.companyRuns(entries)
                 HStack(spacing: 0) {
@@ -364,6 +381,45 @@ struct MiniStripLayout: View {
         .frame(height: MiniStripMetrics.height(density))
     }
 
+    /// The menu bar's two-row layout, as a mini window: entries pair into
+    /// stacked columns in window order — every entry gets a cell, label
+    /// beside its colored number, nothing summarized away.
+    private var pairedColumns: some View {
+        let mode = settingsStore.displayMode
+        let pairs = stride(from: 0, to: entries.count, by: 2).map { index in
+            (top: entries[index], bottom: index + 1 < entries.count ? entries[index + 1] : nil)
+        }
+        return HStack(spacing: MiniStripMetrics.pairedColumnSpacing) {
+            ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
+                VStack(alignment: .leading, spacing: MiniStripMetrics.pairedRowSpacing) {
+                    pairedCell(pair.top, mode: mode)
+                    if let bottom = pair.bottom {
+                        pairedCell(bottom, mode: mode)
+                    }
+                }
+                .frame(width: MiniStripMetrics.pairedColumnWidth, alignment: .leading)
+            }
+        }
+        .padding(.leading, MiniStripMetrics.leadingPadding)
+        .padding(.trailing, MiniStripMetrics.trailingPadding)
+    }
+
+    private func pairedCell(_ entry: MiniEntry, mode: DisplayMode) -> some View {
+        let percent = entryPercent(entry, mode: mode)
+        let color = entryColor(entry, mode: mode)
+        return HStack(spacing: 5) {
+            Text(entry.rowLabel)
+                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text("\(Int(percent.rounded()))%")
+                .font(.system(size: 10.5, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(color)
+        }
+        .help("\(entry.subProviderDisplayName) — \(entry.rowLabel): \(Int(percent.rounded()))%")
+    }
+
     /// The chip shows the run's most critical bucket — least remaining wins.
     @ViewBuilder
     private func chip(for run: [MiniEntry]) -> some View {
@@ -373,7 +429,9 @@ struct MiniStripLayout: View {
         let color = entryColor(worst, mode: mode)
         Group {
             switch density {
-            case .roomy:
+            // .twoLine never reaches the chip path — it renders pairedColumns
+            // with one cell per entry instead of one chip per run.
+            case .roomy, .twoLine:
                 HStack(spacing: 5) {
                     brandDot(worst)
                     number(percent, color: color, size: 13)
@@ -384,20 +442,6 @@ struct MiniStripLayout: View {
                         .minimumScaleFactor(0.6)
                 }
                 .frame(width: MiniStripMetrics.chipWidth(density), alignment: .leading)
-            case .twoLine:
-                VStack(spacing: 1) {
-                    HStack(spacing: 4) {
-                        brandDot(worst)
-                        number(percent, color: color, size: 13)
-                    }
-                    Text(worst.rowLabel)
-                        .font(.system(size: 8, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .frame(maxWidth: .infinity)
-                }
-                .frame(width: MiniStripMetrics.chipWidth(density))
             case .narrow:
                 HStack(spacing: 4) {
                     brandDot(worst)

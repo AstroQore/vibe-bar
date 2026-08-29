@@ -104,7 +104,7 @@ final class ZaiParserTests: XCTestCase {
         let mcp = snap.buckets[2]
         XCTAssertEqual(mcp.id, "zai.time")
         XCTAssertEqual(mcp.title, "MCP Monthly")
-        XCTAssertEqual(mcp.shortLabel, "Month")
+        XCTAssertEqual(mcp.shortLabel, "Monthly")
         XCTAssertEqual(mcp.rawWindowSeconds, 30 * 86_400)
         XCTAssertEqual(mcp.usedPercent, 0.0, accuracy: 0.01)
     }
