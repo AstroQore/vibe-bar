@@ -35,6 +35,9 @@ struct MiniWindowsSettingsSection: View {
     private enum NamingScope: Hashable {
         case shared
         case window
+        /// The selected window's *current display style* only — a tile can
+        /// carry a terse name while the ledger keeps the full one.
+        case style
     }
 
     private static let arrangeSpace = "vibebar.mini.arrange"
@@ -221,6 +224,12 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
 
+        Text("Double-click on the window cycles its style. Tap a style to include it — the badge is its turn in the cycle. Nothing selected means every style, in this order.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        cycleEditor(config)
+
         Text("One tree for the window — grouped exactly as it folds them (company → SubProvider → quota group → bucket). Drag a row to reorder, ✕ to remove, and rename any level in place. First field renders leftmost (or topmost).")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -228,12 +237,19 @@ struct MiniWindowsSettingsSection: View {
         HStack(spacing: 4) {
             namingScopeButton(.shared, label: "Names: all windows")
             namingScopeButton(.window, label: "Only “\(config.name)”")
+            namingScopeButton(.style, label: "Only \(config.displayMode.label) here")
             Spacer(minLength: 0)
         }
         .padding(3)
         .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.045)))
         if namingScope == .window {
             Text("Name overrides for this window only. An empty field inherits the shared name — shown as the placeholder.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if namingScope == .style {
+            Text("Overrides for the \(config.displayMode.label) style of this window only. An empty field inherits the window name, then the shared one — shown as the placeholder.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -280,6 +296,54 @@ struct MiniWindowsSettingsSection: View {
                 }
                 .buttonStyle(.vibeBar(cornerRadius: 7))
                 .help(mode.detail)
+            }
+        }
+    }
+
+    private func cycleEditor(_ config: MiniWindowConfig) -> some View {
+        let columns = [GridItem(.adaptive(minimum: 78), spacing: 5)]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 5) {
+            ForEach(MiniWindowDisplayMode.allCases) { mode in
+                let position = config.cycleModes.firstIndex(of: mode)
+                Button {
+                    update { cfg in
+                        if let index = cfg.cycleModes.firstIndex(of: mode) {
+                            cfg.cycleModes.remove(at: index)
+                        } else {
+                            cfg.cycleModes.append(mode)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if let position {
+                            Text("\(position + 1)")
+                                .font(.system(size: 8.5, weight: .bold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 12, height: 12)
+                                .background(Circle().fill(Color.accentColor.opacity(0.16)))
+                        }
+                        Text(mode.label)
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(position != nil ? Color.primary : Color.secondary)
+                    .padding(.horizontal, 8)
+                    .frame(height: 21)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(position != nil ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.04))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(
+                                position != nil ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.08),
+                                lineWidth: 0.7
+                            )
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.vibeBar(cornerRadius: 6))
+                .help("Include \(mode.label) in the double-click cycle")
             }
         }
     }
@@ -843,17 +907,28 @@ struct MiniWindowsSettingsSection: View {
     /// What an empty field falls back to — in window scope that is the shared
     /// name when one is set, so the placeholder always shows what will render.
     private func namingPrompt(_ row: NamingRow) -> String {
+        let mini = settingsStore.settings.miniWindow
         let shared: String?
+        let window: String?
         switch row.kind {
         case .field:
-            shared = settingsStore.settings.miniWindow.customLabels[row.key]
+            shared = mini.customLabels[row.key]
+            window = selectedWindow?.customLabels[row.key]
         case .subProvider, .group:
-            shared = settingsStore.settings.miniWindow.groupLabels[row.key]
+            shared = mini.groupLabels[row.key]
+            window = selectedWindow?.groupLabels[row.key]
         }
-        if namingScope == .window,
-           let trimmed = shared?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !trimmed.isEmpty {
-            return trimmed
+        let candidates: [String?]
+        switch namingScope {
+        case .shared: candidates = []
+        case .window: candidates = [shared]
+        case .style:  candidates = [window, shared]
+        }
+        for candidate in candidates {
+            if let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !trimmed.isEmpty {
+                return trimmed
+            }
         }
         return row.defaultLabel
     }
@@ -864,6 +939,10 @@ struct MiniWindowsSettingsSection: View {
         // it was typed for — same discipline as the window-name editor.
         let scope = namingScope
         let windowID = selectedWindow?.id
+        // The style scope binds to the mode the window showed when the field
+        // was constructed — a debounced commit after a mode switch must land
+        // on the style it was typed for.
+        let modeKey = selectedWindow?.displayMode.rawValue ?? MiniWindowDisplayMode.regular.rawValue
         return Binding(
             get: {
                 let mini = settingsStore.settings.miniWindow
@@ -876,6 +955,10 @@ struct MiniWindowsSettingsSection: View {
                     return windowID.flatMap { mini.config(id: $0)?.customLabels[row.key] } ?? ""
                 case (.window, _):
                     return windowID.flatMap { mini.config(id: $0)?.groupLabels[row.key] } ?? ""
+                case (.style, .field):
+                    return windowID.flatMap { mini.config(id: $0)?.modeCustomLabels[modeKey]?[row.key] } ?? ""
+                case (.style, _):
+                    return windowID.flatMap { mini.config(id: $0)?.modeGroupLabels[modeKey]?[row.key] } ?? ""
                 }
             },
             set: { value in
@@ -912,6 +995,27 @@ struct MiniWindowsSettingsSection: View {
                             } else {
                                 config.groupLabels[row.key] = value
                             }
+                        }
+                    }
+                case .style:
+                    guard let windowID else { return }
+                    update(id: windowID) { config in
+                        if row.kind == .field {
+                            var labels = config.modeCustomLabels[modeKey] ?? [:]
+                            if trimmed.isEmpty {
+                                labels.removeValue(forKey: row.key)
+                            } else {
+                                labels[row.key] = value
+                            }
+                            config.modeCustomLabels[modeKey] = labels.isEmpty ? nil : labels
+                        } else {
+                            var labels = config.modeGroupLabels[modeKey] ?? [:]
+                            if trimmed.isEmpty {
+                                labels.removeValue(forKey: row.key)
+                            } else {
+                                labels[row.key] = value
+                            }
+                            config.modeGroupLabels[modeKey] = labels.isEmpty ? nil : labels
                         }
                     }
                 }

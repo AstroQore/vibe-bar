@@ -619,7 +619,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
         guard let environment else { return }
         var settings = environment.settingsStore.settings
         guard let index = settings.miniWindow.windows.firstIndex(where: { $0.id == configID }) else { return }
-        settings.miniWindow.windows[index].displayMode = settings.miniWindow.windows[index].displayMode.next
+        settings.miniWindow.windows[index].displayMode = settings.miniWindow.windows[index].nextDisplayMode()
         environment.settingsStore.settings = settings
         if let state = panels[configID] {
             applyStableContentSize(
