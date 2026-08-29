@@ -35,7 +35,7 @@ final class SessionIndexingBoundsTests: XCTestCase {
             truncated: false
         )
 
-        let trimmed = SessionIndexingBounds.trimmed(document, policy: policy, headTruncated: false)
+        let trimmed = SessionIndexingBounds.trimmed(document, policy: policy, headTruncated: false, provider: .claude)
         // user 40→21 ("…" included), tool 40→11, assistant 5; the fourth
         // message (21 bytes… the ellipsis is 3 UTF-8 bytes, so 20+3=23)
         // would push past the 60-byte budget and everything stops there.
@@ -57,7 +57,7 @@ final class SessionIndexingBoundsTests: XCTestCase {
             totalMessageCount: 2,
             truncated: false
         )
-        let trimmed = SessionIndexingBounds.trimmed(document, policy: .standard, headTruncated: false)
+        let trimmed = SessionIndexingBounds.trimmed(document, policy: .standard, headTruncated: false, provider: .claude)
         XCTAssertEqual(trimmed, document)
     }
 
@@ -145,5 +145,25 @@ final class SessionIndexingBoundsTests: XCTestCase {
         )
         XCTAssertEqual(bounded.providers, registry.providers)
         XCTAssertTrue(bounded.adapters.allSatisfy { $0 is BoundedSessionAdapter })
+    }
+    func testCodexIDEEnvelopeIsStrippedBeforeTheCap() {
+        // Kilobytes of editor context ahead of the marker: a raw-text cap
+        // would cut both the marker and the request away and the index
+        // would only ever see the context prefix.
+        let context = "# Context from my IDE setup:\n" + String(repeating: "x", count: 5_000)
+        let raw = context + "\n## My request for Codex:\nfind the flaky retry test"
+        let document = TranscriptDocument(
+            messages: [SessionMessage(seq: 0, role: .user, text: raw, timestamp: nil)],
+            totalMessageCount: 1,
+            truncated: false
+        )
+        let trimmed = SessionIndexingBounds.trimmed(
+            document, policy: .standard, headTruncated: false, provider: .codex
+        )
+        XCTAssertTrue(
+            trimmed.messages.first?.text.contains("find the flaky retry test") ?? false,
+            "the user's actual request must survive the excerpt cap"
+        )
+        XCTAssertFalse(trimmed.messages.first?.text.hasPrefix("xxxx") ?? true)
     }
 }

@@ -51,7 +51,8 @@ public enum SessionIndexingBounds {
     static func trimmed(
         _ document: TranscriptDocument,
         policy: SessionIndexExcerptPolicy,
-        headTruncated: Bool
+        headTruncated: Bool,
+        provider: SessionProvider
     ) -> TranscriptDocument {
         var kept: [SessionMessage] = []
         kept.reserveCapacity(document.messages.count)
@@ -59,8 +60,21 @@ public enum SessionIndexingBounds {
         var changed = false
         for message in document.messages {
             let cap = policy.excerptCharacters(for: message.role)
-            let text = SessionParsing.truncate(message.text, limit: cap)
+            // Provider envelopes come off before any cap. A Codex IDE
+            // prompt puts kilobytes of editor context ahead of the
+            // "## My request for Codex:" marker; truncating the raw text
+            // first would cut the marker and the actual request away, and
+            // the kit's own later normalization could then only index the
+            // context prefix. Same call the kit makes at index time.
+            var source = message.text
+            if provider == .codex {
+                source = CodexSessionAdapter.strippingIDEEnvelope(source)
+            }
+            let text = SessionParsing.truncate(source, limit: cap)
             if text != message.text { changed = true }
+            // `changed` compares against the raw message on purpose: an
+            // envelope strip with no truncation still needs a rebuilt
+            // document so the indexed text matches what was budgeted.
             let cost = text.utf8.count
             guard cost <= budget else {
                 changed = true
@@ -121,7 +135,7 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
         } else {
             document = try inner.parseTranscript(fileURL: fileURL, range: nil)
         }
-        return SessionIndexingBounds.trimmed(document, policy: policy, headTruncated: headTruncated)
+        return SessionIndexingBounds.trimmed(document, policy: policy, headTruncated: headTruncated, provider: inner.provider)
     }
 
     /// Streams the first `headParseByteLimit` bytes into a scratch file.
