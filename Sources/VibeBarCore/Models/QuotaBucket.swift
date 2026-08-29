@@ -82,6 +82,7 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
                 switch component.lowercased() {
                 case "5h": return "5 Hours"
                 case "wk": return "Weekly"
+                case "mo", "month": return "Monthly"
                 default: return String(component)
                 }
             }

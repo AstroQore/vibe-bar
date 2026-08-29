@@ -462,10 +462,10 @@ private struct QuotaSummarySlot: Hashable {
 
     var shortLabel: String {
         switch (group, cadence) {
-        case (.gemini, .fiveHour): return "G 5h"
-        case (.gemini, .weekly): return "G wk"
-        case (.claudeGPT, .fiveHour): return "C+G 5h"
-        case (.claudeGPT, .weekly): return "C+G wk"
+        case (.gemini, .fiveHour): return "Gemini 5 Hours"
+        case (.gemini, .weekly): return "Gemini Weekly"
+        case (.claudeGPT, .fiveHour): return "Claude + GPT 5 Hours"
+        case (.claudeGPT, .weekly): return "Claude + GPT Weekly"
         }
     }
 }

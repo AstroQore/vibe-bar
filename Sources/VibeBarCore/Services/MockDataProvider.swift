@@ -243,10 +243,10 @@ public enum MockDataProvider {
                             shortLabel: "G wk", usedPercent: 17, resetAt: weeklyReset,
                             rawWindowSeconds: 604_800, groupTitle: "Gemini Models"),
                 QuotaBucket(id: "claude_gpt_five_hour", title: "5 Hours",
-                            shortLabel: "C+G 5h", usedPercent: 71, resetAt: fiveHourReset,
+                            shortLabel: "Claude + GPT 5 Hours", usedPercent: 71, resetAt: fiveHourReset,
                             rawWindowSeconds: 18_000, groupTitle: "Claude and GPT Models"),
                 QuotaBucket(id: "claude_gpt_weekly", title: "Weekly",
-                            shortLabel: "C+G wk", usedPercent: 28, resetAt: weeklyReset,
+                            shortLabel: "Claude + GPT Weekly", usedPercent: 28, resetAt: weeklyReset,
                             rawWindowSeconds: 604_800, groupTitle: "Claude and GPT Models")
             ]
         case .grok:

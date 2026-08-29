@@ -75,7 +75,7 @@ final class TencentTokenPlanParserTests: XCTestCase {
         let bucket = snap.buckets[0]
         XCTAssertEqual(bucket.id, "tencentTokenPlan.generic.tp_standard")
         XCTAssertEqual(bucket.title, "Monthly")
-        XCTAssertEqual(bucket.shortLabel, "Month")
+        XCTAssertEqual(bucket.shortLabel, "Monthly")
         XCTAssertEqual(bucket.rawWindowSeconds, 30 * 86_400)
         XCTAssertEqual(bucket.groupTitle, "Standard")
         // 51 / 100_000_000 * 100 ≈ 0.000051

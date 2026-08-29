@@ -132,7 +132,7 @@ final class KimiParserTests: XCTestCase {
         )
         XCTAssertEqual(bucket.id, "kimi.monthly")
         XCTAssertEqual(bucket.title, "Monthly")
-        XCTAssertEqual(bucket.shortLabel, "Mo")
+        XCTAssertEqual(bucket.shortLabel, "Monthly")
         XCTAssertEqual(bucket.usedPercent, 42, accuracy: 0.001)
         XCTAssertEqual(bucket.rawWindowSeconds, 30 * 86_400)
         XCTAssertEqual(

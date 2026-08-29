@@ -63,7 +63,7 @@ final class AlibabaTokenPlanParserTests: XCTestCase {
         let bucket = snap.buckets[0]
         XCTAssertEqual(bucket.id, "alibabaTokenPlan.\(cnProductCode).standard")
         XCTAssertEqual(bucket.title, "Monthly")
-        XCTAssertEqual(bucket.shortLabel, "Month")
+        XCTAssertEqual(bucket.shortLabel, "Monthly")
         XCTAssertEqual(bucket.rawWindowSeconds, 30 * 86_400)
         XCTAssertEqual(bucket.groupTitle, "Team · Standard")
         XCTAssertEqual(snap.planName, "Token Plan · Team · Standard")

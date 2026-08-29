@@ -288,10 +288,10 @@ public enum MenuBarFieldCatalog {
     ]
 
     public static let antigravityFields: [MenuBarFieldOption] = [
-        option(.antigravity, "gemini_five_hour", "Gemini Models · 5 Hours", "G 5 Hours"),
-        option(.antigravity, "gemini_weekly", "Gemini Models · Weekly", "G Weekly"),
-        option(.antigravity, "claude_gpt_five_hour", "Claude and GPT Models · 5 Hours", "C+G 5 Hours"),
-        option(.antigravity, "claude_gpt_weekly", "Claude and GPT Models · Weekly", "C+G Weekly")
+        option(.antigravity, "gemini_five_hour", "Gemini Models · 5 Hours", "Gemini 5 Hours"),
+        option(.antigravity, "gemini_weekly", "Gemini Models · Weekly", "Gemini Weekly"),
+        option(.antigravity, "claude_gpt_five_hour", "Claude and GPT Models · 5 Hours", "Claude + GPT 5 Hours"),
+        option(.antigravity, "claude_gpt_weekly", "Claude and GPT Models · Weekly", "Claude + GPT Weekly")
     ]
 
     public static let grokFields: [MenuBarFieldOption] = [
