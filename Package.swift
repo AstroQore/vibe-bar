@@ -32,6 +32,11 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4")
     ],
     targets: [
+        .target(
+            name: "VibeBarPOSIX",
+            path: "Sources/VibeBarPOSIX",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "VibeBarApp",
             dependencies: [
@@ -50,7 +55,8 @@ let package = Package(
             name: "VibeBarCore",
             dependencies: [
                 .product(name: "AgentSessionKit", package: "agent-session-kit"),
-                .product(name: "SweetCookieKit", package: "SweetCookieKit")
+                .product(name: "SweetCookieKit", package: "SweetCookieKit"),
+                "VibeBarPOSIX"
             ],
             resources: [
                 // Pricing tables: shipped as a bundled JSON so model

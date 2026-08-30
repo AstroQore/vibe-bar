@@ -161,6 +161,21 @@ public enum VibeBarLocalStore {
         sessionIndexScratchDirectoryURL(homeDirectory: RealHomeDirectory.path)
     }
 
+    /// Coordination artifacts shared by every Vibe Bar client.  Nothing in
+    /// the current stores uses this directory yet; it is reserved for the
+    /// cross-client lease protocol so a future writer never has to invent a
+    /// second location below the data root.
+    public static var runDirectoryURL: URL {
+        runDirectoryURL(homeDirectory: RealHomeDirectory.path)
+    }
+
+    /// Explicit-home variant for tests and for clients which do not use the
+    /// native macOS home-directory resolver.
+    public static func runDirectoryURL(homeDirectory: String) -> URL {
+        baseDirectory(homeDirectory: homeDirectory)
+            .appendingPathComponent("run", isDirectory: true)
+    }
+
     /// Explicit-home variant, so a caller built around a synthetic home
     /// (tests, demo trees) never scratches in the real one.
     public static func sessionIndexScratchDirectoryURL(homeDirectory: String) -> URL {
