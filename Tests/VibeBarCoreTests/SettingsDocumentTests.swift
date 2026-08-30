@@ -149,6 +149,18 @@ final class SettingsDocumentTests: XCTestCase {
     }
   }
 
+  func testMergeComparesJSONSemanticsButKeepsDesiredRawToken() throws {
+    let base = try parse(
+      #"{"future":{"a":"a","b":[1,2]},"revision":1,"schemaVersion":1}"#)
+    let current = try parse(
+      #"{"future":{"b" : [1, 2],"a":"\u0061"},"revision":2,"schemaVersion":1}"#)
+    let desired = try parse(
+      #"{"future":{"a":"changed","b":[1,2]},"revision":1,"schemaVersion":1}"#)
+    let result = try SettingsDocument.patch(base: base, current: current, desired: desired)
+    XCTAssertEqual(result.revision, 3)
+    XCTAssertTrue(result.rawJSON.contains(Data(#""a":"changed""#.utf8)))
+  }
+
   func testFixtureVectorsDriveBothPatchOutcomes() throws {
     let data = try Data(contentsOf: fixture("settings-document-vectors.json"))
     let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

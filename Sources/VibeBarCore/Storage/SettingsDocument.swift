@@ -114,7 +114,7 @@ public struct SettingsDocument: Sendable {
     let currentObject = current.rawFields
     let desiredObject = desired.rawFields
     for key in ["schemaVersion", "revision"] {
-      if baseObject[key] != desiredObject[key] {
+      if !semanticJSONEqual(baseObject[key], desiredObject[key]) {
         throw Error.reservedFieldPatch(key)
       }
     }
@@ -129,12 +129,12 @@ public struct SettingsDocument: Sendable {
       let d = desiredObject[key]
       // A caller that did not change a key cannot conflict with a concurrent
       // writer that did; leave the current value untouched.
-      if d == b {
+      if semanticJSONEqual(d, b) {
         continue
-      } else if c == b {
-        if c != d { changed = true }
+      } else if semanticJSONEqual(c, b) {
+        if !semanticJSONEqual(c, d) { changed = true }
         if let d { result[key] = d } else { result.removeValue(forKey: key) }
-      } else if c == d {
+      } else if semanticJSONEqual(c, d) {
         continue
       } else {
         conflicts.append(key)
@@ -173,6 +173,70 @@ public struct SettingsDocument: Sendable {
       let parsed = UInt64(token), String(parsed) == token
     else { throw Error.invalidRevision }
     return parsed
+  }
+
+  /// Compare parsed JSON semantics while retaining the chosen raw token for
+  /// output. Foundation handles whitespace, key order, and string escapes. Its
+  /// decimal type is bounded, so differently serialized values containing more
+  /// than 38 numeric digits deliberately remain a safe conflict rather than
+  /// risk treating two distinct arbitrary-precision values as equal.
+  private static func semanticJSONEqual(_ lhs: String?, _ rhs: String?) -> Bool {
+    switch (lhs, rhs) {
+    case (nil, nil): return true
+    case (nil, _), (_, nil): return false
+    case (.some(let lhs), .some(let rhs)):
+      if lhs == rhs { return true }
+      if containsHighPrecisionNumber(lhs) || containsHighPrecisionNumber(rhs) { return false }
+      guard
+        let left = try? JSONSerialization.jsonObject(
+          with: Data(lhs.utf8), options: [.fragmentsAllowed]),
+        let right = try? JSONSerialization.jsonObject(
+          with: Data(rhs.utf8), options: [.fragmentsAllowed])
+      else { return false }
+      return (left as AnyObject).isEqual(right)
+    }
+  }
+
+  private static func containsHighPrecisionNumber(_ token: String) -> Bool {
+    let bytes = Array(token.utf8)
+    var index = 0
+    var inString = false
+    var escaped = false
+    while index < bytes.count {
+      let byte = bytes[index]
+      if inString {
+        if escaped {
+          escaped = false
+        } else if byte == 0x5C {
+          escaped = true
+        } else if byte == 0x22 {
+          inString = false
+        }
+        index += 1
+        continue
+      }
+      if byte == 0x22 {
+        inString = true
+        index += 1
+        continue
+      }
+      if byte == 0x2D || (0x30...0x39).contains(byte) {
+        var cursor = index
+        var digits = 0
+        while cursor < bytes.count,
+          (0x30...0x39).contains(bytes[cursor])
+            || [0x2D, 0x2B, 0x2E, 0x65, 0x45].contains(bytes[cursor])
+        {
+          if (0x30...0x39).contains(bytes[cursor]) { digits += 1 }
+          cursor += 1
+        }
+        if digits > 38 { return true }
+        index = cursor
+        continue
+      }
+      index += 1
+    }
+    return false
   }
 
   /// Returns exact raw JSON value tokens for every top-level key. Duplicate
