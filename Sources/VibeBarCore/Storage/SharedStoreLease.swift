@@ -170,21 +170,21 @@ public final class SharedStoreLeaseBatch: @unchecked Sendable {
     _ body: (Int32) throws -> T
   ) throws -> T {
     state.lock()
+    defer { state.unlock() }
     guard stores == self.stores, role == self.role, let rootFD else {
-      state.unlock()
       throw RootAccessError.unauthorized
     }
     // The path is only an identity label; all I/O uses the duplicated
     // descriptor retained from acquisition, so path replacement cannot
     // redirect the write.
     guard dataRootURL.standardizedFileURL.path == rootPath else {
-      state.unlock()
       throw RootAccessError.unauthorized
     }
     let duplicate = Darwin.dup(rootFD)
-    state.unlock()
     guard duplicate >= 0 else { throw RootAccessError.duplicateFailed(errno) }
     defer { Darwin.close(duplicate) }
+    // Hold the state lock until authorized I/O finishes so release() cannot
+    // drop the filesystem lease while this capability is still in use.
     return try body(duplicate)
   }
 

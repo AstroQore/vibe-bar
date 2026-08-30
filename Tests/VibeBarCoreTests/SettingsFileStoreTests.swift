@@ -83,6 +83,36 @@ final class SettingsFileStoreTests: XCTestCase {
     ) { XCTAssertEqual($0 as? VibeBarLocalStore.SettingsFileStoreError, .leaseRequired) }
   }
 
+  func testReleaseWaitsForAuthorizedIOToFinish() throws {
+    let root = try syntheticRoot()
+    let lease = try SharedStoreLeaseBatch.acquireNativeWriter(dataRootURL: root, clientID: "test")
+    let entered = DispatchSemaphore(value: 0)
+    let resume = DispatchSemaphore(value: 0)
+    let releaseFinished = DispatchSemaphore(value: 0)
+
+    DispatchQueue.global().async {
+      try! lease.withAuthorizedRootFD(
+        dataRootURL: root, stores: [.settings], role: .settingsEditor
+      ) { _ in
+        entered.signal()
+        resume.wait()
+      }
+    }
+    XCTAssertEqual(entered.wait(timeout: .now() + 1), .success)
+    DispatchQueue.global().async {
+      lease.release()
+      releaseFinished.signal()
+    }
+    XCTAssertEqual(releaseFinished.wait(timeout: .now() + 0.05), .timedOut)
+    XCTAssertThrowsError(
+      try SharedStoreLeaseBatch.acquireNativeWriter(dataRootURL: root, clientID: "other")
+    ) { XCTAssertEqual($0 as? SharedStoreLeaseError, .busy) }
+
+    resume.signal()
+    XCTAssertEqual(releaseFinished.wait(timeout: .now() + 1), .success)
+    try SharedStoreLeaseBatch.acquireNativeWriter(dataRootURL: root, clientID: "other").release()
+  }
+
   func testPrecommitFailureLeavesNoSettingsTempFiles() throws {
     let root = try syntheticRoot()
     let lease = try SharedStoreLeaseBatch.acquireNativeWriter(dataRootURL: root, clientID: "test")
