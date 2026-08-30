@@ -9,6 +9,7 @@ int vb_open_directory_nofollow(const char *absolute_path);
 int vb_mkdirat_private(int parent_fd, const char *name);
 int vb_openat_directory_nofollow(int parent_fd, const char *name);
 int vb_openat_lock_nofollow(int parent_fd, const char *name);
+int vb_openat_read_nofollow(int parent_fd, const char *name);
 int vb_openat_new_private(int parent_fd, const char *name);
 int vb_flock_shared_nonblocking(int fd);
 int vb_flock_exclusive_nonblocking(int fd);

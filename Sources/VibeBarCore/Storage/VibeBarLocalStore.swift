@@ -1,4 +1,6 @@
+import Darwin
 import Foundation
+import VibeBarPOSIX
 
 public enum VibeBarLocalStore {
     public static let directoryName = ".vibebar"
@@ -247,6 +249,83 @@ public enum VibeBarLocalStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(value)
         try writeData(data, to: url, base: base)
+    }
+
+    enum SettingsFileStoreError: Error, Equatable {
+        case invalidDestination
+        case tooLarge
+        case leaseRequired
+        case precommit(operation: String, code: Int32)
+        case postRenameUnconfirmed(operation: String, code: Int32)
+    }
+
+    /// Durable same-directory replacement for the lease-aware settings writer.
+    static func writeSettingsData(
+        _ data: Data, to url: URL, base: URL, lease: SharedStoreLeaseBatch
+    ) throws {
+        guard data.count <= 8 * 1024 * 1024 else { throw SettingsFileStoreError.tooLarge }
+        guard url.path == base.appendingPathComponent("settings.json").path else {
+            throw SettingsFileStoreError.invalidDestination
+        }
+        do {
+            try lease.withAuthorizedRootFD(
+                dataRootURL: base, stores: [.settings], role: .settingsEditor
+            ) { directoryFD in
+                let symlink = "settings.json".withCString {
+                    vb_is_symlink_at(directoryFD, $0)
+                }
+                guard symlink == 0 || (symlink == -1 && errno == ENOENT) else {
+                    throw SettingsFileStoreError.precommit(
+                        operation: "inspect_destination", code: errno)
+                }
+                let tempName = ".settings.\(UUID().uuidString).tmp"
+                let fd = tempName.withCString { vb_openat_new_private(directoryFD, $0) }
+                guard fd >= 0 else {
+                    throw SettingsFileStoreError.precommit(operation: "open_temp", code: errno)
+                }
+                defer {
+                    tempName.withCString { _ = vb_unlinkat_file(directoryFD, $0) }
+                    close(fd)
+                }
+                guard vb_fchmod_private(fd) == 0 else {
+                    throw SettingsFileStoreError.precommit(operation: "chmod_temp", code: errno)
+                }
+                try data.withUnsafeBytes { bytes in
+                    var offset = 0
+                    while offset < bytes.count {
+                        let chunk = min(bytes.count - offset, Int(Int32.max))
+                        let wrote = vb_write_bytes(
+                            fd, bytes.baseAddress!.advanced(by: offset), Int32(chunk))
+                        if wrote < 0 && errno == EINTR { continue }
+                        guard wrote > 0 else {
+                            throw SettingsFileStoreError.precommit(
+                                operation: "write_temp", code: errno)
+                        }
+                        offset += Int(wrote)
+                    }
+                }
+                guard vb_fsync_fd(fd) == 0 else {
+                    throw SettingsFileStoreError.precommit(operation: "fsync_temp", code: errno)
+                }
+                let name = url.lastPathComponent
+                guard tempName.withCString({ from in
+                    name.withCString { to in
+                        vb_renameat_same_directory(directoryFD, from, to)
+                    }
+                }) == 0 else {
+                    throw SettingsFileStoreError.precommit(
+                        operation: "rename_settings", code: errno)
+                }
+                guard vb_fsync_fd(directoryFD) == 0 else {
+                    throw SettingsFileStoreError.postRenameUnconfirmed(
+                        operation: "fsync_directory", code: errno)
+                }
+            }
+        } catch SharedStoreLeaseBatch.RootAccessError.unauthorized {
+            throw SettingsFileStoreError.leaseRequired
+        } catch SharedStoreLeaseBatch.RootAccessError.duplicateFailed(let code) {
+            throw SettingsFileStoreError.precommit(operation: "dup_data_root", code: code)
+        }
     }
 
     public static func deleteFile(at url: URL) throws {

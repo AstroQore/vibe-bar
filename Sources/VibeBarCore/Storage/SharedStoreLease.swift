@@ -31,20 +31,32 @@ public enum SharedStoreLeaseError: Error, Equatable, Sendable {
 /// Batch RAII lease. A writer holds the global barrier shared plus sorted
 /// per-store exclusive locks; maintenance holds the barrier exclusive first.
 public final class SharedStoreLeaseBatch: @unchecked Sendable {
+  enum RootAccessError: Error, Equatable {
+    case unauthorized
+    case duplicateFailed(Int32)
+  }
+
   public let stores: [SharedStoreID]
   public let role: SharedStoreLeaseRole
+  private let rootIdentity: (UInt64, UInt64)
+  private let rootPath: String
   private let state = NSLock()
   private var locks: [LockHandle]?
   private var runFD: Int32?
+  private var rootFD: Int32?
   private static let heldLock = NSLock()
   private nonisolated(unsafe) static var heldExclusive: Set<String> = []
 
   private init(
-    stores: [SharedStoreID], role: SharedStoreLeaseRole, runFD: Int32, locks: [LockHandle]
+    stores: [SharedStoreID], role: SharedStoreLeaseRole, runFD: Int32, locks: [LockHandle],
+    rootIdentity: (UInt64, UInt64), rootFD: Int32, rootPath: String
   ) {
     self.stores = stores
     self.role = role
+    self.rootIdentity = rootIdentity
+    self.rootPath = rootPath
     self.runFD = runFD
+    self.rootFD = rootFD
     self.locks = locks
   }
   deinit { release() }
@@ -58,8 +70,21 @@ public final class SharedStoreLeaseBatch: @unchecked Sendable {
     throw SharedStoreLeaseError.notEligible(first)
   }
 
-  /// Test-only raw protocol seam. Product code must use `acquireWriter`.
-  static func acquireForTesting(
+  /// Native's first internal shared-store writer. Kept separate from the
+  /// public API until the cross-client contract changes eligibility.
+  static func acquireNativeWriter(
+    dataRootURL: URL, clientID: String
+  ) throws -> SharedStoreLeaseBatch {
+    try acquireInternal(
+      dataRootURL: dataRootURL,
+      stores: [.settings],
+      role: .settingsEditor,
+      maintenance: false,
+      clientID: clientID
+    )
+  }
+
+  private static func acquireInternal(
     dataRootURL: URL, stores: [SharedStoreID], role: SharedStoreLeaseRole, maintenance: Bool,
     clientID: String, pid: Int32 = getpid(), startedAt: Date = Date()
   ) throws -> SharedStoreLeaseBatch {
@@ -80,12 +105,24 @@ public final class SharedStoreLeaseBatch: @unchecked Sendable {
     }
     let rootFD = vb_open_directory_nofollow(dataRootURL.path)
     guard rootFD >= 0 else { throw error("open_data_root") }
-    defer { Darwin.close(rootFD) }
-    guard vb_mkdirat_private(rootFD, "run") == 0 else { throw error("mkdirat_run") }
+    var rootDevice: UInt64 = 0
+    var rootInode: UInt64 = 0
+    guard vb_fd_identity(rootFD, &rootDevice, &rootInode) == 0 else {
+      Darwin.close(rootFD)
+      throw error("fstat_data_root")
+    }
+    guard vb_mkdirat_private(rootFD, "run") == 0 else {
+      Darwin.close(rootFD)
+      throw error("mkdirat_run")
+    }
     let runFD = vb_openat_directory_nofollow(rootFD, "run")
-    guard runFD >= 0 else { throw error("openat_run") }
+    guard runFD >= 0 else {
+      Darwin.close(rootFD)
+      throw error("openat_run")
+    }
     guard vb_fchmod_directory(runFD) == 0 else {
       Darwin.close(runFD)
+      Darwin.close(rootFD)
       throw error("chmod_run")
     }
 
@@ -103,23 +140,73 @@ public final class SharedStoreLeaseBatch: @unchecked Sendable {
         acquired.append(
           try acquireLock(runFD: runFD, name: store.rawValue, mode: .exclusive, record: record))
       }
-      return SharedStoreLeaseBatch(stores: sorted, role: role, runFD: runFD, locks: acquired)
+      return SharedStoreLeaseBatch(
+        stores: sorted, role: role, runFD: runFD, locks: acquired,
+        rootIdentity: (rootDevice, rootInode), rootFD: rootFD,
+        rootPath: dataRootURL.standardizedFileURL.path)
     } catch {
       for name in acquired.compactMap(\.recordName) {
         _ = name.withCString { vb_unlinkat_file(runFD, $0) }
       }
       for lock in acquired.reversed() { lock.release() }
       Darwin.close(runFD)
+      Darwin.close(rootFD)
       throw error
     }
+  }
+
+  func authorizes(dataRootURL: URL, stores: [SharedStoreID], role: SharedStoreLeaseRole) -> Bool {
+    guard stores == self.stores, role == self.role else { return false }
+    let fd = vb_open_directory_nofollow(dataRootURL.path)
+    guard fd >= 0 else { return false }
+    defer { Darwin.close(fd) }
+    var device: UInt64 = 0
+    var inode: UInt64 = 0
+    return vb_fd_identity(fd, &device, &inode) == 0 && (device, inode) == rootIdentity
+  }
+
+  func withAuthorizedRootFD<T>(
+    dataRootURL: URL, stores: [SharedStoreID], role: SharedStoreLeaseRole,
+    _ body: (Int32) throws -> T
+  ) throws -> T {
+    state.lock()
+    guard stores == self.stores, role == self.role, let rootFD else {
+      state.unlock()
+      throw RootAccessError.unauthorized
+    }
+    // The path is only an identity label; all I/O uses the duplicated
+    // descriptor retained from acquisition, so path replacement cannot
+    // redirect the write.
+    guard dataRootURL.standardizedFileURL.path == rootPath else {
+      state.unlock()
+      throw RootAccessError.unauthorized
+    }
+    let duplicate = Darwin.dup(rootFD)
+    state.unlock()
+    guard duplicate >= 0 else { throw RootAccessError.duplicateFailed(errno) }
+    defer { Darwin.close(duplicate) }
+    return try body(duplicate)
+  }
+
+  /// Test-only raw protocol seam.
+  static func acquireForTesting(
+    dataRootURL: URL, stores: [SharedStoreID], role: SharedStoreLeaseRole, maintenance: Bool,
+    clientID: String, pid: Int32 = getpid(), startedAt: Date = Date()
+  ) throws -> SharedStoreLeaseBatch {
+    try acquireInternal(
+      dataRootURL: dataRootURL, stores: stores, role: role, maintenance: maintenance,
+      clientID: clientID, pid: pid, startedAt: startedAt
+    )
   }
 
   public func release() {
     state.lock()
     let held = locks
     let directory = runFD
+    let root = rootFD
     locks = nil
     runFD = nil
+    rootFD = nil
     state.unlock()
     if let directory, let held {
       for name in held.compactMap(\.recordName) {
@@ -130,6 +217,7 @@ public final class SharedStoreLeaseBatch: @unchecked Sendable {
       for lock in held.reversed() { lock.release() }
     }
     if let directory { _ = Darwin.close(directory) }
+    if let root { _ = Darwin.close(root) }
   }
 
   private enum Mode { case shared, exclusive }

@@ -65,6 +65,10 @@ int vb_openat_lock_nofollow(int parent_fd, const char *name) {
                 0600);
 }
 
+int vb_openat_read_nofollow(int parent_fd, const char *name) {
+  return openat(parent_fd, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+}
+
 int vb_openat_new_private(int parent_fd, const char *name) {
   return openat(parent_fd, name,
                 O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
