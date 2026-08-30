@@ -64,6 +64,7 @@ public struct SettingsDocument: Sendable {
   /// only typed projection and never persists migration results.
   public static func parse(_ data: Data) throws -> SettingsDocument {
     guard data.count <= maxBytes else { throw Error.tooLarge }
+    guard !containsTrailingComma(data) else { throw Error.invalidEnvelope }
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw Error.nonObject
     }
@@ -179,6 +180,41 @@ public struct SettingsDocument: Sendable {
   private static func topLevelFields(_ data: Data) throws -> [String: String] {
     var scanner = TopLevelJSONScanner(bytes: Array(data))
     return try scanner.fields()
+  }
+
+  /// Foundation accepts trailing commas even though RFC 8259 and Rust's parser
+  /// reject them. Scan outside strings so both clients fail closed on the same
+  /// top-level or nested malformed shape.
+  private static func containsTrailingComma(_ data: Data) -> Bool {
+    let bytes = Array(data)
+    var index = 0
+    var inString = false
+    var escaped = false
+    while index < bytes.count {
+      let byte = bytes[index]
+      if inString {
+        if escaped {
+          escaped = false
+        } else if byte == 0x5C {
+          escaped = true
+        } else if byte == 0x22 {
+          inString = false
+        }
+        index += 1
+        continue
+      }
+      if byte == 0x22 {
+        inString = true
+      } else if byte == 0x2C {
+        var next = index + 1
+        while next < bytes.count, [0x20, 0x09, 0x0A, 0x0D].contains(bytes[next]) {
+          next += 1
+        }
+        if next < bytes.count, bytes[next] == 0x7D || bytes[next] == 0x5D { return true }
+      }
+      index += 1
+    }
+    return false
   }
 
   private struct TopLevelJSONScanner {

@@ -66,6 +66,11 @@ final class SettingsDocumentTests: XCTestCase {
       try SettingsDocument.parse(
         Data("{\"schemaVersion\":1,\"revision\":1,\"revision\":2}".utf8)))
     XCTAssertThrowsError(
+      try SettingsDocument.parse(Data("{\"schemaVersion\":1,\"revision\":1,}".utf8)))
+    XCTAssertThrowsError(
+      try SettingsDocument.parse(
+        Data("{\"schemaVersion\":1,\"revision\":1,\"future\":[1,2,]}".utf8)))
+    XCTAssertThrowsError(
       try SettingsDocument.parse(
         Data("{\"schemaVersion\":1,\"revision\":1,\"\\u0072evision\":2}".utf8)))
     XCTAssertThrowsError(
