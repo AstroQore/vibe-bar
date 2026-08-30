@@ -31,6 +31,17 @@ final class SettingsDocumentTests: XCTestCase {
         "schemaVersion"] as? String),
       "opaque")
     XCTAssertEqual(object["topLevelUnknown"] as? String, "keep-me")
+    XCTAssertTrue(
+      document.rawJSON.contains(Data("12345678901234567890123456789012345678901234567890".utf8)))
+    XCTAssertTrue(
+      document.rawJSON.contains(Data("0.12345678901234567890123456789012345678901234567890".utf8)))
+    let desired = try document.replacingRawValue(
+      Data("\"used\"".utf8), forKey: "displayMode")
+    let patched = try SettingsDocument.patch(base: document, current: document, desired: desired)
+    XCTAssertTrue(
+      patched.rawJSON.contains(Data("12345678901234567890123456789012345678901234567890".utf8)))
+    XCTAssertTrue(
+      patched.rawJSON.contains(Data("0.12345678901234567890123456789012345678901234567890".utf8)))
   }
 
   func testInvalidShapeSchemaAndRevisionFailClosed() {
@@ -54,6 +65,9 @@ final class SettingsDocumentTests: XCTestCase {
     XCTAssertThrowsError(
       try SettingsDocument.parse(
         Data("{\"schemaVersion\":1,\"revision\":1,\"revision\":2}".utf8)))
+    XCTAssertThrowsError(
+      try SettingsDocument.parse(
+        Data("{\"schemaVersion\":1,\"revision\":1,\"\\u0072evision\":2}".utf8)))
     XCTAssertThrowsError(
       try SettingsDocument.parse(Data(repeating: 0x20, count: 8 * 1024 * 1024 + 1)))
     XCTAssertNoThrow(
@@ -84,6 +98,18 @@ final class SettingsDocumentTests: XCTestCase {
     let result = try SettingsDocument.patch(base: base, current: current, desired: desired)
     XCTAssertEqual(result.revision, 3)
     XCTAssertEqual(result.typed.displayMode, .used)
+  }
+
+  func testExplicitDesiredOmissionRemovesAKey() throws {
+    let base = try parse(
+      "{\"displayMode\":\"remaining\",\"future\":{\"keep\":true},\"revision\":1,\"schemaVersion\":1}"
+    )
+    let desired = try parse(
+      "{\"displayMode\":\"remaining\",\"revision\":1,\"schemaVersion\":1}")
+    let result = try SettingsDocument.patch(base: base, current: base, desired: desired)
+    XCTAssertEqual(result.revision, 2)
+    let object = try XCTUnwrap(JSONSerialization.jsonObject(with: result.rawJSON) as? [String: Any])
+    XCTAssertNil(object["future"])
   }
 
   func testUntouchedConcurrentKeyIsNotAConflict() throws {

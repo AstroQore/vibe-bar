@@ -23,18 +23,42 @@ public struct SettingsDocument: Sendable {
   public let revision: UInt64
   public let typed: AppSettings
 
-  private let objectData: Data
+  private let rawFields: [String: String]
 
-  private init(schemaVersion: Int, revision: UInt64, typed: AppSettings, objectData: Data) {
+  private init(
+    schemaVersion: Int, revision: UInt64, typed: AppSettings, rawFields: [String: String]
+  ) {
     self.schemaVersion = schemaVersion
     self.revision = revision
     self.typed = typed
-    self.objectData = objectData
+    self.rawFields = rawFields
   }
 
   /// The canonical raw JSON object. Unknown top-level and nested values are
   /// retained because patches operate on this raw object, not AppSettings.
-  public var rawJSON: Data { objectData }
+  public var rawJSON: Data { Self.encode(fields: rawFields) }
+
+  /// Returns a full desired document by cloning every raw field and replacing
+  /// one top-level value token. Callers use this rather than constructing a
+  /// partial document, so unknown values remain present during three-way merge.
+  public func replacingRawValue(_ value: Data?, forKey key: String) throws -> SettingsDocument {
+    guard key != "schemaVersion", key != "revision" else {
+      throw Error.reservedFieldPatch(key)
+    }
+    var fields = rawFields
+    if let value {
+      guard let text = String(data: value, encoding: .utf8) else { throw Error.invalidSettings }
+      let token = text.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !token.isEmpty,
+        (try? JSONSerialization.jsonObject(
+          with: Data(token.utf8), options: [.fragmentsAllowed])) != nil
+      else { throw Error.invalidSettings }
+      fields[key] = token
+    } else {
+      fields.removeValue(forKey: key)
+    }
+    return try Self.parse(Self.encode(fields: fields))
+  }
 
   /// Decodes v1 or legacy v0 (missing schemaVersion/revision). This performs
   /// only typed projection and never persists migration results.
@@ -43,14 +67,11 @@ public struct SettingsDocument: Sendable {
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw Error.nonObject
     }
-    let schemaTokens = try topLevelValueTokens(data, key: "schemaVersion")
-    let revisionTokens = try topLevelValueTokens(data, key: "revision")
-    guard schemaTokens.count <= 1, revisionTokens.count <= 1 else { throw Error.invalidEnvelope }
-    let schemaPresent = object.keys.contains("schemaVersion")
-    let revisionPresent = object.keys.contains("revision")
-    guard schemaPresent == !schemaTokens.isEmpty, revisionPresent == !revisionTokens.isEmpty else {
-      throw Error.invalidEnvelope
-    }
+    let rawFields = try topLevelFields(data)
+    let schemaToken = rawFields["schemaVersion"]
+    let revisionToken = rawFields["revision"]
+    let schemaPresent = schemaToken != nil
+    let revisionPresent = revisionToken != nil
     guard schemaPresent == revisionPresent else { throw Error.invalidEnvelope }
     let schemaVersion: Int
     let revision: UInt64
@@ -59,10 +80,10 @@ public struct SettingsDocument: Sendable {
       schemaVersion = 0
       revision = 0
     default:
-      let version = try strictInt(schemaTokens.first, error: .invalidSchemaVersion)
+      let version = try strictInt(schemaToken, error: .invalidSchemaVersion)
       guard version == 1 else { throw Error.unsupportedSchema(version) }
       schemaVersion = version
-      revision = try strictUInt64(revisionTokens.first)
+      revision = try strictUInt64(revisionToken)
     }
     var projectionObject = object
     projectionObject.removeValue(forKey: "schemaVersion")
@@ -72,9 +93,8 @@ public struct SettingsDocument: Sendable {
       throw Error.invalidSettings
     }
     let typed = SettingsStore.migrated(decoded)
-    let canonical = try canonicalData(object)
     return SettingsDocument(
-      schemaVersion: schemaVersion, revision: revision, typed: typed, objectData: canonical)
+      schemaVersion: schemaVersion, revision: revision, typed: typed, rawFields: rawFields)
   }
 
   /// Applies a top-level three-way patch. A key changes only when current
@@ -89,11 +109,11 @@ public struct SettingsDocument: Sendable {
       throw Error.unsupportedSchema(
         max(base.schemaVersion, current.schemaVersion, desired.schemaVersion))
     }
-    let baseObject = try object(base)
-    let currentObject = try object(current)
-    let desiredObject = try object(desired)
+    let baseObject = base.rawFields
+    let currentObject = current.rawFields
+    let desiredObject = desired.rawFields
     for key in ["schemaVersion", "revision"] {
-      if !jsonEqual(value(baseObject, key), value(desiredObject, key)) {
+      if baseObject[key] != desiredObject[key] {
         throw Error.reservedFieldPatch(key)
       }
     }
@@ -108,12 +128,12 @@ public struct SettingsDocument: Sendable {
       let d = desiredObject[key]
       // A caller that did not change a key cannot conflict with a concurrent
       // writer that did; leave the current value untouched.
-      if jsonEqual(d, b) {
+      if d == b {
         continue
-      } else if jsonEqual(c, b) {
-        if !jsonEqual(c, d) { changed = true }
+      } else if c == b {
+        if c != d { changed = true }
         if let d { result[key] = d } else { result.removeValue(forKey: key) }
-      } else if jsonEqual(c, d) {
+      } else if c == d {
         continue
       } else {
         conflicts.append(key)
@@ -122,38 +142,22 @@ public struct SettingsDocument: Sendable {
     guard conflicts.isEmpty else { throw Error.conflict(conflicts) }
     if !changed { return current }
     guard current.revision < UInt64.max else { throw Error.revisionOverflow }
-    result["schemaVersion"] = 1
-    result["revision"] = NSNumber(value: current.revision + 1)
-    let data = try canonicalData(result)
+    result["schemaVersion"] = "1"
+    result["revision"] = String(current.revision + 1)
+    let data = Self.encode(fields: result)
     return try parse(data)
   }
 
-  private static func object(_ document: SettingsDocument) throws -> [String: Any] {
-    guard let value = try JSONSerialization.jsonObject(with: document.objectData) as? [String: Any]
-    else {
-      throw Error.nonObject
+  private static func encode(fields: [String: String]) -> Data {
+    var data = Data("{".utf8)
+    for (index, key) in fields.keys.sorted().enumerated() {
+      if index > 0 { data.append(0x2C) }
+      let keyData = try! JSONSerialization.data(withJSONObject: [key], options: [.fragmentsAllowed])
+      data.append(keyData.dropFirst().dropLast())
+      data.append(Data(":\(fields[key]!)".utf8))
     }
-    return value
-  }
-
-  private static func value(_ object: [String: Any], _ key: String) -> Any? {
-    object[key]
-  }
-
-  private static func jsonEqual(_ lhs: Any?, _ rhs: Any?) -> Bool {
-    switch (lhs, rhs) {
-    case (nil, nil): return true
-    case (nil, _), (_, nil): return false
-    default:
-      guard let left = try? canonicalData(["v": lhs!]),
-        let right = try? canonicalData(["v": rhs!])
-      else { return false }
-      return left == right
-    }
-  }
-
-  private static func canonicalData(_ object: [String: Any]) throws -> Data {
-    try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    data.append(0x7D)
+    return data
   }
 
   private static func strictInt(_ token: String?, error: Error) throws -> Int {
@@ -170,26 +174,24 @@ public struct SettingsDocument: Sendable {
     return parsed
   }
 
-  /// Returns exact raw JSON value tokens for one top-level key. Foundation
-  /// normalizes `-0` to NSNumber(0), so protocol integers must be validated
-  /// before that sign information is lost. Nested keys and quoted text are
-  /// intentionally ignored; duplicate protocol keys fail closed at the caller.
-  private static func topLevelValueTokens(_ data: Data, key: String) throws -> [String] {
+  /// Returns exact raw JSON value tokens for every top-level key. Duplicate
+  /// decoded keys fail closed, including differently escaped spellings.
+  private static func topLevelFields(_ data: Data) throws -> [String: String] {
     var scanner = TopLevelJSONScanner(bytes: Array(data))
-    return try scanner.valueTokens(for: key)
+    return try scanner.fields()
   }
 
   private struct TopLevelJSONScanner {
     let bytes: [UInt8]
     var index = 0
 
-    mutating func valueTokens(for target: String) throws -> [String] {
+    mutating func fields() throws -> [String: String] {
       skipWhitespace()
       guard take(0x7B) else { throw Error.invalidEnvelope }  // {
-      var tokens: [String] = []
+      var fields: [String: String] = [:]
       while true {
         skipWhitespace()
-        if take(0x7D) { return tokens }  // }
+        if take(0x7D) { return fields }  // }
         let keyStart = index
         try skipString()
         let keyData = Data(bytes[keyStart..<index])
@@ -201,15 +203,17 @@ public struct SettingsDocument: Sendable {
         skipWhitespace()
         let valueStart = index
         try skipValue()
-        if decodedKey == target {
-          let token = String(decoding: bytes[valueStart..<index], as: UTF8.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-          tokens.append(token)
+        let token = String(decoding: bytes[valueStart..<index], as: UTF8.self)
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard fields.updateValue(token, forKey: decodedKey) == nil else {
+          throw Error.invalidEnvelope
         }
         skipWhitespace()
         if take(0x2C) { continue }  // ,
         guard take(0x7D) else { throw Error.invalidEnvelope }  // }
-        return tokens
+        skipWhitespace()
+        guard index == bytes.count else { throw Error.invalidEnvelope }
+        return fields
       }
     }
 
