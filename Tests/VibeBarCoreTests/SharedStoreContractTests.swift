@@ -92,6 +92,22 @@ final class SharedStoreContractTests: XCTestCase {
       "\(sha256(data))  \(fixture.lastPathComponent)\n")
   }
 
+  func testLeaseRecordSlashEscapingIsCanonical() throws {
+    let record = SharedStoreLeaseRecord(
+      role: .quotaCollector,
+      pid: 42,
+      startedAt: 1_700_000_000_000,
+      clientID: "fixture/client"
+    )
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let text = try XCTUnwrap(String(data: encoder.encode(record), encoding: .utf8))
+    XCTAssertEqual(
+      text,
+      #"{"clientID":"fixture\/client","pid":42,"role":"quota_collector","startedAt":1700000000000,"version":1}"#
+    )
+  }
+
   private func fixtureURL() -> URL {
     URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
