@@ -90,7 +90,7 @@ public final class SettingsStore: ObservableObject {
         }
     }
 
-    static func migrated(_ settings: AppSettings) -> AppSettings {
+    nonisolated static func migrated(_ settings: AppSettings) -> AppSettings {
         var migrated = settings
         migrated.mockEnabled = false
         // Claude bucket IDs were renamed when Daily Routines moved out of the
@@ -147,7 +147,7 @@ public final class SettingsStore: ObservableObject {
         return migrated
     }
 
-    private static func renameOrDropFieldIds(_ ids: [String], mapping: [String: String?]) -> [String] {
+    private nonisolated static func renameOrDropFieldIds(_ ids: [String], mapping: [String: String?]) -> [String] {
         var seen: Set<String> = []
         var out: [String] = []
         for id in ids {
