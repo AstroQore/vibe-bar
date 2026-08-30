@@ -84,9 +84,10 @@ int vb_fd_identity(int fd, uint64_t *device, uint64_t *inode) {
   *inode = (uint64_t)info.st_ino;
   return 0;
 }
-int vb_fd_is_regular(int fd) {
+int vb_fd_is_owned_single_link_regular(int fd) {
   struct stat info;
-  return fstat(fd, &info) == 0 && S_ISREG(info.st_mode);
+  return fstat(fd, &info) == 0 && S_ISREG(info.st_mode) && info.st_nlink == 1 &&
+         info.st_uid == geteuid();
 }
 
 int vb_is_symlink_at(int parent_fd, const char *name) {

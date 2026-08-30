@@ -14,7 +14,7 @@ int vb_flock_shared_nonblocking(int fd);
 int vb_flock_exclusive_nonblocking(int fd);
 int vb_flock_unlock(int fd);
 int vb_fd_identity(int fd, uint64_t *device, uint64_t *inode);
-int vb_fd_is_regular(int fd);
+int vb_fd_is_owned_single_link_regular(int fd);
 int vb_is_symlink_at(int parent_fd, const char *name);
 int vb_renameat_same_directory(int directory_fd, const char *from,
                                const char *to);

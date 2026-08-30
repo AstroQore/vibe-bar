@@ -110,6 +110,19 @@ final class SharedStoreLeaseTests: XCTestCase {
       XCTAssertEqual($0 as? SharedStoreLeaseError, .symlinkDetected)
     }
   }
+  func testHardLinkedLockIsRejectedWithoutChangingExternalMode() throws {
+    let run = directory.appendingPathComponent("run")
+    try FileManager.default.createDirectory(at: run, withIntermediateDirectories: true)
+    let external = directory.appendingPathComponent("external")
+    try Data("external".utf8).write(to: external)
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: external.path)
+    try FileManager.default.linkItem(
+      at: external, to: run.appendingPathComponent("quota_cache.lock"))
+
+    XCTAssertThrowsError(try writer([.quotaCache]))
+    let attributes = try FileManager.default.attributesOfItem(atPath: external.path)
+    XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o644)
+  }
   func testRecordPermissionsAndStaleRecordDoNotAuthorize() throws {
     let run = directory.appendingPathComponent("run")
     try FileManager.default.createDirectory(at: run, withIntermediateDirectories: true)

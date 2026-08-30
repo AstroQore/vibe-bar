@@ -164,13 +164,13 @@ public final class SharedStoreLeaseBatch: @unchecked Sendable {
     try rejectSymlink(runFD: runFD, name: lockName)
     let fd = lockName.withCString { vb_openat_lock_nofollow(runFD, $0) }
     guard fd >= 0 else { throw error("openat_lock") }
+    guard vb_fd_is_owned_single_link_regular(fd) != 0 else {
+      Darwin.close(fd)
+      throw error("fstat_safe_lock")
+    }
     guard vb_fchmod_private(fd) == 0 else {
       Darwin.close(fd)
       throw error("chmod_lock")
-    }
-    guard vb_fd_is_regular(fd) != 0 else {
-      Darwin.close(fd)
-      throw error("fstat_regular_lock")
     }
     let heldKey: String?
     if mode == .exclusive {
