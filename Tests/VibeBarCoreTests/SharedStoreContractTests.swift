@@ -54,6 +54,11 @@ final class SharedStoreContractTests: XCTestCase {
     XCTAssertEqual(
       SharedStoreContractRegistry.contract(for: .remoteUsage).schemaKind, .sqliteUnversioned)
     XCTAssertNil(SharedStoreContractRegistry.contract(for: .remoteUsage).currentSchemaVersion)
+    XCTAssertEqual(
+      SharedStoreContractRegistry.contract(for: .sessionIndexMaintenance).schemaKind,
+      .jsonUnversioned)
+    XCTAssertNil(
+      SharedStoreContractRegistry.contract(for: .sessionIndexMaintenance).currentSchemaVersion)
   }
 
   func testEndpointLocatorsNeverMasqueradeAsFilesystemStores() {

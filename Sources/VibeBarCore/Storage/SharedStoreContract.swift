@@ -246,7 +246,7 @@ public enum SharedStoreContractRegistry {
       .checkpointWalOnShutdown),
     contract(
       .sessionIndexMaintenance, "session_index_maintenance.json", .reconstructible,
-      .jsonSchemaVersion, 1, [.pruner, .migrator], .rebuildFromAuthoritativeSource, .flushOnShutdown
+      .jsonUnversioned, nil, [.pruner, .migrator], .rebuildFromAuthoritativeSource, .flushOnShutdown
     ),
     contract(
       .sessionIndexScratch, "session_index_scratch", .ephemeral, .directory, nil,
