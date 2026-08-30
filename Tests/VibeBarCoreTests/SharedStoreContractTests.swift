@@ -61,6 +61,7 @@ final class SharedStoreContractTests: XCTestCase {
     XCTAssertEqual(vault.shareEligibility, .endpointOnly)
     let socket = SharedStoreContractRegistry.contract(for: .mcpSocket)
     XCTAssertEqual(socket.locatorKind, .endpoint)
+    XCTAssertEqual(socket.relativeLocator, "mcp.sock")
     XCTAssertEqual(socket.endpointProtocol, "mcp-jsonrpc")
     XCTAssertEqual(socket.endpointVersion, MCPServer.protocolVersion)
     XCTAssertEqual(socket.endpointVersion, "2025-06-18")

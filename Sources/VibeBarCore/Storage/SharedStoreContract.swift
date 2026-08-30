@@ -291,7 +291,8 @@ public enum SharedStoreContractRegistry {
       keychainService: "com.astroqore.VibeBar.credential-vault", keychainAccount: "vault-v1",
       eligibility: .endpointOnly, status: .nativeOnlyCredentialEndpoint),
     contract(
-      .mcpSocket, "", .ephemeral, .unixSocket, nil, [.mcpOwner], .recreateEphemeralOwnerState,
+      .mcpSocket, "mcp.sock", .ephemeral, .unixSocket, nil, [.mcpOwner],
+      .recreateEphemeralOwnerState,
       .removeOnOwnerShutdown, locatorKind: .endpoint, endpointProtocol: "mcp-jsonrpc",
       endpointVersion: MCPServer.protocolVersion, eligibility: .endpointOnly,
       status: .endpointOwned),
