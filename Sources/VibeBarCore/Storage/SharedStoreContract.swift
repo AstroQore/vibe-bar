@@ -20,6 +20,7 @@ public enum SharedStoreSchemaKind: String, Codable, CaseIterable, Sendable {
   case jsonSchemaVersion = "json_schema_version"
   case sqliteUserVersion = "sqlite_user_version"
   case sqliteMetadataVersion = "sqlite_metadata_version"
+  case sqliteUnversioned = "sqlite_unversioned"
   case keychainEnvelope = "keychain_envelope"
   case unixSocket = "unix_socket"
   case directory
@@ -283,7 +284,7 @@ public enum SharedStoreContractRegistry {
       [.remoteSync, .migrator], .requireExplicitMigration, .flushOnShutdown),
     contract(
       .remoteUsage, "remote_usage.sqlite3", sidecars: ["-wal", "-shm"], .durable,
-      .sqliteMetadataVersion, nil, [.remoteSync, .migrator], .requireExplicitMigration,
+      .sqliteUnversioned, nil, [.remoteSync, .migrator], .requireExplicitMigration,
       .checkpointWalOnShutdown),
     contract(
       .credentialVault, "", .durable, .keychainEnvelope, 1, [.credentialManager],
