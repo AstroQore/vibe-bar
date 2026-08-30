@@ -70,6 +70,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             configureButton(for: .compact, item: compactStatusItem)
         }
         observeChanges()
+        // The menu bar's appearance flips with the system theme while the
+        // app keeps running; rasterized logo tints must follow immediately,
+        // not on the next quota publish.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.brandAttachmentImages.removeAll()
+                self.renderMenuBar()
+            }
+        }
         renderMenuBar()
         // Restore mini windows the user had open last session.
         miniWindowController.restoreIfNeeded(environment: environment)
@@ -991,10 +1005,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// cap height. Cached per (tool, point size, appearance) — the status
     /// item re-renders on every quota publish and must not rasterize icons
     /// per tick.
+    ///
+    /// The tint resolves against the *status button's* effective appearance,
+    /// not the app's: the menu bar follows the system/wallpaper theme
+    /// independently, and rasterizing labelColor under the wrong appearance
+    /// painted logos invisible on the opposite menu bar. Small fonts (the
+    /// two-row layout) cap the icon at 10pt — a 12pt attachment grew the
+    /// line and pushed the second row out of the bar.
     private func brandAttachment(for tool: ToolType, fontSize: CGFloat, font: NSFont) -> NSAttributedString? {
-        let side = (fontSize + 3).rounded()
-        let appearanceName = NSApp.effectiveAppearance.name.rawValue
-        let key = "\(tool.rawValue).\(side).\(appearanceName)"
+        let side = fontSize <= 10 ? min(fontSize + 1, 10) : (fontSize + 3).rounded()
+        let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+        let key = "\(tool.rawValue).\(side).\(appearance.name.rawValue)"
         let image: NSImage?
         if let cached = brandAttachmentImages[key] {
             image = cached
@@ -1003,7 +1024,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 for: tool,
                 size: NSSize(width: side, height: side),
                 tint: NSColor.labelColor,
-                appearance: NSApp.effectiveAppearance
+                appearance: appearance
             )
             brandAttachmentImages[key] = image
         }
