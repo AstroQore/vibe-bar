@@ -50,6 +50,11 @@ final class SettingsDocumentTests: XCTestCase {
     XCTAssertThrowsError(
       try SettingsDocument.parse(Data("{\"schemaVersion\":1,\"revision\":true}".utf8)))
     XCTAssertThrowsError(
+      try SettingsDocument.parse(Data("{\"schemaVersion\":1,\"revision\":-0}".utf8)))
+    XCTAssertThrowsError(
+      try SettingsDocument.parse(
+        Data("{\"schemaVersion\":1,\"revision\":1,\"revision\":2}".utf8)))
+    XCTAssertThrowsError(
       try SettingsDocument.parse(Data(repeating: 0x20, count: 8 * 1024 * 1024 + 1)))
     XCTAssertNoThrow(
       try SettingsDocument.parse(
