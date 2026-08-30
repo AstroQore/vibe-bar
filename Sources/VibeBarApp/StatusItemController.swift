@@ -1013,7 +1013,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// two-row layout) cap the icon at 10pt — a 12pt attachment grew the
     /// line and pushed the second row out of the bar.
     private func brandAttachment(for tool: ToolType, fontSize: CGFloat, font: NSFont) -> NSAttributedString? {
-        let side = fontSize <= 10 ? min(fontSize + 1, 10) : (fontSize + 3).rounded()
+        // Small fonts (the two-row layout) keep the icon at the font size
+        // itself: the block packs two 9pt lines into a ~22pt bar, and even a
+        // 10pt attachment left the rows' icons a point apart — reading as
+        // clipped. At 9pt the icon stays inside the line's own metrics.
+        let side = fontSize <= 10 ? fontSize.rounded() : (fontSize + 3).rounded()
         let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
         let key = "\(tool.rawValue).\(side).\(appearance.name.rawValue)"
         let image: NSImage?
@@ -1077,8 +1081,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let topRowHeight = ceil(columnSizes.map(\.top.height).max() ?? 0)
         let bottomRowHeight = ceil(columnSizes.compactMap { $0.bottom?.height }.max() ?? 0)
         let hasBottomRow = columns.contains { $0.bottom != nil }
+        // The negative line spacing packs text rows tightly — their ascenders
+        // and descenders rarely meet. Logo attachments fill their whole line
+        // box, so any column carrying one gets the rows separated instead of
+        // overlapped; the bar's ~22pt still fits two 11pt lines at zero.
+        let hasLogos = columns.contains {
+            $0.top.containsAttachments(in: NSRange(location: 0, length: $0.top.length))
+                || ($0.bottom.map { b in b.containsAttachments(in: NSRange(location: 0, length: b.length)) } ?? false)
+        }
+        let lineSpacing = hasLogos ? 0 : MenuBarStatusMetrics.twoRowLineSpacing
         let contentHeight = hasBottomRow
-            ? topRowHeight + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing
+            ? topRowHeight + bottomRowHeight + lineSpacing
             : topRowHeight
         let statusBarHeight = max(18, NSStatusBar.system.thickness - 2)
         let imageHeight = min(
@@ -1108,11 +1121,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             var x = MenuBarStatusMetrics.twoRowHorizontalPadding
             for (column, sizes) in zip(columns, columnSizes) {
                 if let bottom = column.bottom, let bottomSize = sizes.bottom {
-                    let blockHeight = topRowHeight + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing
+                    let blockHeight = topRowHeight + bottomRowHeight + lineSpacing
                     let blockBottom = max(0, floor((imageHeight - blockHeight) / 2))
                     let topPoint = NSPoint(
                         x: x + floor((sizes.width - sizes.top.width) / 2),
-                        y: blockBottom + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing
+                        y: blockBottom + bottomRowHeight + lineSpacing
                     )
                     let bottomPoint = NSPoint(
                         x: x + floor((sizes.width - bottomSize.width) / 2),
