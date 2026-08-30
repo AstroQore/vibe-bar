@@ -23,18 +23,24 @@ struct MiniEntry: Identifiable {
 
     var id: String { field.id }
 
-    /// Row label for list-style layouts: the custom label wins; otherwise a
-    /// grouped bucket reads "Spark · Weekly" and a primary one reads its
-    /// window. Never an invented abbreviation — "WK" is a name the user can
-    /// choose, not a default they get.
-    var rowLabel: String {
+    /// The bucket-level name: a custom label renames exactly this level.
+    var bucketDisplayName: String {
         if let customLabel, !customLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return customLabel
         }
-        if let groupLabel {
-            return "\(groupLabel) · \(bucket.title)"
-        }
         return bucket.title
+    }
+
+    /// Row label for list-style layouts: always the quota-axis path, with a
+    /// custom label renaming the bucket level only — "All · Weekly" stays
+    /// "All · <custom>" rather than collapsing to the custom text. Years of
+    /// stored field labels literally say "Weekly"; letting them swallow the
+    /// group made every row identical.
+    var rowLabel: String {
+        if let groupLabel {
+            return "\(groupLabel) · \(bucketDisplayName)"
+        }
+        return bucketDisplayName
     }
 
     static func entries(
@@ -90,6 +96,20 @@ struct MiniEntry: Identifiable {
                 runs[runs.count - 1].append(entry)
             } else {
                 runs.append([entry])
+            }
+        }
+        return runs
+    }
+
+    /// Consecutive entries of one SubProvider run sharing an L3 group label,
+    /// in entry order — the level list layouts print as a subheader.
+    static func groupRuns(_ run: [MiniEntry]) -> [(label: String?, entries: [MiniEntry])] {
+        var runs: [(label: String?, entries: [MiniEntry])] = []
+        for entry in run {
+            if let last = runs.last, last.label == entry.groupLabel {
+                runs[runs.count - 1].entries.append(entry)
+            } else {
+                runs.append((entry.groupLabel, [entry]))
             }
         }
         return runs
@@ -161,6 +181,7 @@ enum MiniLedgerMetrics {
     static let bottomPadding: CGFloat = 12
     static let headerHeight: CGFloat = 16
     static let headerGap: CGFloat = 3
+    static let groupHeaderHeight: CGFloat = 14
     static let rowHeight: CGFloat = 21
     static let groupGap: CGFloat = 7
     static let emptyHeight: CGFloat = 84
@@ -172,6 +193,9 @@ enum MiniLedgerMetrics {
         for (index, run) in runs.enumerated() {
             if index > 0 { height += groupGap }
             height += headerHeight + headerGap + CGFloat(run.count) * rowHeight
+            for group in MiniEntry.groupRuns(run) where group.label != nil {
+                height += groupHeaderHeight
+            }
         }
         return CGSize(width: width, height: height)
     }
@@ -203,8 +227,13 @@ struct MiniLedgerLayout: View {
                     }
                     header(for: run[0])
                     Spacer().frame(height: MiniLedgerMetrics.headerGap)
-                    ForEach(run) { entry in
-                        row(entry, now: now)
+                    ForEach(Array(MiniEntry.groupRuns(run).enumerated()), id: \.offset) { _, group in
+                        if let label = group.label {
+                            groupHeader(label)
+                        }
+                        ForEach(group.entries) { entry in
+                            row(entry, now: now)
+                        }
                     }
                 }
             }
@@ -230,12 +259,22 @@ struct MiniLedgerLayout: View {
         .frame(height: MiniLedgerMetrics.headerHeight, alignment: .bottomLeading)
     }
 
+    private func groupHeader(_ label: String) -> some View {
+        Text(label.uppercased())
+            .font(.system(size: 8, weight: .semibold, design: .rounded))
+            .foregroundStyle(.tertiary)
+            .tracking(0.9)
+            .lineLimit(1)
+            .padding(.leading, 10)
+            .frame(height: MiniLedgerMetrics.groupHeaderHeight, alignment: .bottomLeading)
+    }
+
     private func row(_ entry: MiniEntry, now: Date) -> some View {
         let mode = settingsStore.displayMode
         let percent = entryPercent(entry, mode: mode)
         let color = entryColor(entry, mode: mode)
         return HStack(spacing: 8) {
-            Text(entry.rowLabel)
+            Text(entry.bucketDisplayName)
                 .font(.system(size: 10.5, weight: .medium, design: .rounded))
                 .foregroundStyle(.primary.opacity(0.88))
                 .lineLimit(1)
@@ -323,32 +362,29 @@ enum MiniStripMetrics {
     }
 
     static let rowGap: CGFloat = 2
-    /// The strip never outgrows the screen: past this width, cells wrap into
-    /// further bands. A default selection can hold twenty-plus fields, and an
-    /// unwrapped run of 132-pt cells would put most of the panel off screen.
+    /// The strip is one line by design — it simulates the menu bar. It still
+    /// never outgrows the screen: past this width the cells themselves
+    /// shrink, and their text scales down inside.
     static let maxRowWidth: CGFloat = 1180
 
-    /// Cells per band, and how many bands `count` cells need.
-    static func gridPlan(count: Int, cellWidth: CGFloat, cellSpacing: CGFloat) -> (perRow: Int, rows: Int) {
+    /// The cell width that keeps `count` cells on the single line: the ideal
+    /// width until the line would pass `maxRowWidth`, then evenly shrunk.
+    static func fittedCellWidth(count: Int, ideal: CGFloat, spacing: CGFloat) -> CGFloat {
+        guard count > 0 else { return ideal }
         let available = maxRowWidth - leadingPadding - trailingPadding
-        let perRow = max(1, Int((available + cellSpacing) / (cellWidth + cellSpacing)))
-        let rows = Int(ceil(Double(count) / Double(perRow)))
-        return (perRow, rows)
+            - CGFloat(max(0, count - 1)) * spacing
+        return min(ideal, max(44, available / CGFloat(count)))
     }
 
     static func size(entries: [MiniEntry], density: MiniStripDensity) -> CGSize {
         guard !entries.isEmpty else { return CGSize(width: emptyWidth, height: rowHeight(density)) }
         let cellCount = density == .twoLine ? (entries.count + 1) / 2 : entries.count
-        let cellWidth = chipWidth(density)
         let cellSpacing = density == .twoLine ? pairedColumnSpacing : chipSpacing(density)
-        let plan = gridPlan(count: cellCount, cellWidth: cellWidth, cellSpacing: cellSpacing)
-        let cellsInWidestRow = min(cellCount, plan.perRow)
+        let cellWidth = fittedCellWidth(count: cellCount, ideal: chipWidth(density), spacing: cellSpacing)
         let width = leadingPadding + trailingPadding
-            + CGFloat(cellsInWidestRow) * cellWidth
-            + CGFloat(max(0, cellsInWidestRow - 1)) * cellSpacing
-        let height = CGFloat(plan.rows) * rowHeight(density)
-            + CGFloat(max(0, plan.rows - 1)) * rowGap
-        return CGSize(width: width, height: height)
+            + CGFloat(cellCount) * cellWidth
+            + CGFloat(max(0, cellCount - 1)) * cellSpacing
+        return CGSize(width: width, height: rowHeight(density))
     }
 }
 
@@ -366,21 +402,17 @@ struct MiniStripLayout: View {
             } else if density == .twoLine {
                 pairedColumns
             } else {
-                let plan = MiniStripMetrics.gridPlan(
+                let cellWidth = MiniStripMetrics.fittedCellWidth(
                     count: entries.count,
-                    cellWidth: MiniStripMetrics.chipWidth(density),
-                    cellSpacing: MiniStripMetrics.chipSpacing(density)
+                    ideal: MiniStripMetrics.chipWidth(density),
+                    spacing: MiniStripMetrics.chipSpacing(density)
                 )
-                VStack(alignment: .leading, spacing: MiniStripMetrics.rowGap) {
-                    ForEach(Array(entries.chunked(into: plan.perRow).enumerated()), id: \.offset) { _, band in
-                        HStack(spacing: MiniStripMetrics.chipSpacing(density)) {
-                            ForEach(band) { entry in
-                                lineCell(entry)
-                            }
-                        }
-                        .frame(height: MiniStripMetrics.rowHeight(density))
+                HStack(spacing: MiniStripMetrics.chipSpacing(density)) {
+                    ForEach(entries) { entry in
+                        lineCell(entry, width: cellWidth)
                     }
                 }
+                .frame(height: MiniStripMetrics.rowHeight(density))
                 .padding(.leading, MiniStripMetrics.leadingPadding)
                 .padding(.trailing, MiniStripMetrics.trailingPadding)
             }
@@ -395,27 +427,23 @@ struct MiniStripLayout: View {
         let pairs = stride(from: 0, to: entries.count, by: 2).map { index in
             (top: entries[index], bottom: index + 1 < entries.count ? entries[index + 1] : nil)
         }
-        let plan = MiniStripMetrics.gridPlan(
+        let columnWidth = MiniStripMetrics.fittedCellWidth(
             count: pairs.count,
-            cellWidth: MiniStripMetrics.pairedColumnWidth,
-            cellSpacing: MiniStripMetrics.pairedColumnSpacing
+            ideal: MiniStripMetrics.pairedColumnWidth,
+            spacing: MiniStripMetrics.pairedColumnSpacing
         )
-        return VStack(alignment: .leading, spacing: MiniStripMetrics.rowGap) {
-            ForEach(Array(pairs.chunked(into: plan.perRow).enumerated()), id: \.offset) { _, band in
-                HStack(spacing: MiniStripMetrics.pairedColumnSpacing) {
-                    ForEach(Array(band.enumerated()), id: \.offset) { _, pair in
-                        VStack(alignment: .leading, spacing: MiniStripMetrics.pairedRowSpacing) {
-                            pairedCell(pair.top, mode: mode)
-                            if let bottom = pair.bottom {
-                                pairedCell(bottom, mode: mode)
-                            }
-                        }
-                        .frame(width: MiniStripMetrics.pairedColumnWidth, alignment: .leading)
+        return HStack(spacing: MiniStripMetrics.pairedColumnSpacing) {
+            ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
+                VStack(alignment: .leading, spacing: MiniStripMetrics.pairedRowSpacing) {
+                    pairedCell(pair.top, mode: mode)
+                    if let bottom = pair.bottom {
+                        pairedCell(bottom, mode: mode)
                     }
                 }
-                .frame(height: MiniStripMetrics.rowHeight(.twoLine))
+                .frame(width: columnWidth, alignment: .leading)
             }
         }
+        .frame(height: MiniStripMetrics.rowHeight(.twoLine))
         .padding(.leading, MiniStripMetrics.leadingPadding)
         .padding(.trailing, MiniStripMetrics.trailingPadding)
     }
@@ -439,7 +467,7 @@ struct MiniStripLayout: View {
     /// The menu bar's single-line style, one cell per bucket: full label
     /// beside its colored number. Narrow is the compact variant — the same
     /// pieces at the menu bar's small size.
-    private func lineCell(_ entry: MiniEntry) -> some View {
+    private func lineCell(_ entry: MiniEntry, width: CGFloat) -> some View {
         let mode = settingsStore.displayMode
         let percent = entryPercent(entry, mode: mode)
         let color = entryColor(entry, mode: mode)
@@ -449,12 +477,12 @@ struct MiniStripLayout: View {
                 .font(.system(size: size, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.5)
             Text("\(Int(percent.rounded()))%")
                 .font(.system(size: size, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(color)
         }
-        .frame(width: MiniStripMetrics.chipWidth(density), alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .help("\(entry.subProviderDisplayName) — \(entry.rowLabel): \(Int(percent.rounded()))%")
     }
 }

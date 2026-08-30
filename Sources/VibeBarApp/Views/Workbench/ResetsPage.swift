@@ -49,6 +49,7 @@ struct ResetsPage: View {
                 HStack(alignment: .top, spacing: 14) {
                     box {
                         calendarHeader(now: now)
+                        subDailyLane(now: now)
                         monthCalendar(now: now)
                     }
                     .frame(maxWidth: .infinity)
@@ -337,6 +338,29 @@ struct ResetsPage: View {
         return calendar.date(byAdding: .month, value: calendarMonthOffset, to: thisMonth) ?? thisMonth
     }
 
+    /// Quotas that cycle inside a day (the five-hour lanes) would reset
+    /// several times per calendar cell; they get their own next-24-hours
+    /// timeline instead, with the same hover cards as the horizon.
+    @ViewBuilder
+    private func subDailyLane(now: Date) -> some View {
+        let events = UpcomingResets.events(environment: environment, now: now, horizonDays: 1)
+            .filter { event in
+                guard let bucket = environment.quotaService.cachedQuota(for: event.accountId)?
+                    .bucket(id: event.bucketId) else { return false }
+                return (bucket.rawWindowSeconds ?? 86_400) < 86_400
+            }
+        if !events.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("NEXT 24 HOURS · SUB-DAILY QUOTAS")
+                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .tracking(1.2)
+                ResetLaneView(events: events, now: now, horizonDays: 1, laneHeight: 52)
+            }
+            .padding(.bottom, 2)
+        }
+    }
+
     private func calendarHeader(now: Date) -> some View {
         let monthStart = displayedMonthStart(now: now)
         return HStack(spacing: 8) {
@@ -388,7 +412,9 @@ struct ResetsPage: View {
             let quota = environment.quotaService.cachedQuota(for: key.accountId)
             for sample in samples {
                 let at = sample.completedAt ?? sample.windowEnd
-                guard at >= monthStart, at < monthEnd, at <= now else { continue }
+                guard at >= monthStart, at < monthEnd, at <= now,
+                      (sample.rawWindowSeconds ?? 86_400) >= 86_400
+                else { continue }
                 let sub = sample.tool.quotaSubProviderName(bucketID: sample.bucketId)
                 let title = quota?.bucket(id: sample.bucketId)?.title
                 let name = title.map { "\(sub) · \($0)" } ?? sub
@@ -403,13 +429,16 @@ struct ResetsPage: View {
                 ))
             }
         }
-        // Future: scheduled resets from the live quotas.
+        // Future: scheduled resets from the live quotas. Sub-daily windows
+        // (the five-hour lanes) reset several times per cell — they live on
+        // the 24-hour timeline above the grid, not in day cells.
         for tool in ToolType.dedicatedCardProviders {
             for account in environment.accountStore.accounts(for: tool) {
                 guard let quota = environment.quotaService.cachedQuota(for: account.id) else { continue }
                 for bucket in quota.buckets {
                     guard let resetAt = bucket.resetAt,
-                          resetAt >= max(monthStart, now), resetAt < monthEnd
+                          resetAt >= max(monthStart, now), resetAt < monthEnd,
+                          (bucket.rawWindowSeconds ?? 86_400) >= 86_400
                     else { continue }
                     let sub = tool.quotaSubProviderName(bucketID: bucket.id)
                     out.append(CalendarEntry(

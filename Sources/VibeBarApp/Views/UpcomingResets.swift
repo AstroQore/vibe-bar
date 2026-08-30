@@ -132,13 +132,18 @@ struct ResetLaneView: View {
                     .fill(Color.primary.opacity(0.35))
                     .frame(width: 2, height: laneHeight - 20)
                     .offset(y: 4)
-                ForEach(1...Int(horizonDays), id: \.self) { day in
-                    let x = width * CGFloat(day) / horizonDays
+                // Day ticks for multi-day horizons; hour ticks when the
+                // lane covers a single day (the sub-daily timeline).
+                let ticks: [(fraction: Double, label: String)] = horizonDays <= 1
+                    ? [0.25, 0.5, 0.75, 1].map { ($0, "+\(Int($0 * horizonDays * 24))h") }
+                    : (1...Int(horizonDays)).map { (Double($0) / horizonDays, "+\($0)d") }
+                ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
+                    let x = width * CGFloat(tick.fraction)
                     Rectangle()
                         .fill(Color.primary.opacity(0.18))
                         .frame(width: 1, height: 5)
                         .offset(x: x, y: laneHeight - 18)
-                    Text("+\(day)d")
+                    Text(tick.label)
                         .font(.system(size: 7.5, design: .rounded).monospacedDigit())
                         .foregroundStyle(.tertiary)
                         .frame(width: 30)
