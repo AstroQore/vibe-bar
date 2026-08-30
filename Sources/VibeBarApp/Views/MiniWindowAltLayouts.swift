@@ -175,26 +175,36 @@ private struct MiniEmptyHint: View {
 /// grows downward, so the panel width no longer depends on how many buckets
 /// are selected — the natural shape for a dynamic catalog.
 enum MiniLedgerMetrics {
-    static let width: CGFloat = 272
+    static let width: CGFloat = 284
     static let horizontalPadding: CGFloat = 14
     static let topPadding: CGFloat = 18
     static let bottomPadding: CGFloat = 12
-    static let headerHeight: CGFloat = 16
+    static let companyHeaderHeight: CGFloat = 16
+    static let subHeaderHeight: CGFloat = 15
     static let headerGap: CGFloat = 3
     static let groupHeaderHeight: CGFloat = 14
     static let rowHeight: CGFloat = 21
-    static let groupGap: CGFloat = 7
+    static let companyGap: CGFloat = 8
     static let emptyHeight: CGFloat = 84
+    /// Tier indents: the SubProvider header steps in under its company, and
+    /// group headers plus bucket rows share one deeper step — a header must
+    /// never sit further right than its own children, and rows keeping one
+    /// indent keeps every bar starting at the same x.
+    static let subIndent: CGFloat = 10
+    static let rowIndent: CGFloat = 20
+    static let rowLabelWidth: CGFloat = 76
 
     static func size(entries: [MiniEntry]) -> CGSize {
         guard !entries.isEmpty else { return CGSize(width: width, height: emptyHeight) }
-        let runs = MiniEntry.subProviderRuns(entries)
         var height = topPadding + bottomPadding
-        for (index, run) in runs.enumerated() {
-            if index > 0 { height += groupGap }
-            height += headerHeight + headerGap + CGFloat(run.count) * rowHeight
-            for group in MiniEntry.groupRuns(run) where group.label != nil {
-                height += groupHeaderHeight
+        for (index, company) in MiniEntry.companyRuns(entries).enumerated() {
+            if index > 0 { height += companyGap }
+            height += companyHeaderHeight
+            for run in MiniEntry.subProviderRuns(company) {
+                height += subHeaderHeight + headerGap + CGFloat(run.count) * rowHeight
+                for group in MiniEntry.groupRuns(run) where group.label != nil {
+                    height += groupHeaderHeight
+                }
             }
         }
         return CGSize(width: width, height: height)
@@ -219,20 +229,23 @@ struct MiniLedgerLayout: View {
             MiniEmptyHint()
                 .frame(height: MiniLedgerMetrics.emptyHeight)
         } else {
-            let runs = MiniEntry.subProviderRuns(entries)
+            let companies = MiniEntry.companyRuns(entries)
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(runs.enumerated()), id: \.offset) { index, run in
+                ForEach(Array(companies.enumerated()), id: \.offset) { index, company in
                     if index > 0 {
-                        Spacer().frame(height: MiniLedgerMetrics.groupGap)
+                        Spacer().frame(height: MiniLedgerMetrics.companyGap)
                     }
-                    header(for: run[0])
-                    Spacer().frame(height: MiniLedgerMetrics.headerGap)
-                    ForEach(Array(MiniEntry.groupRuns(run).enumerated()), id: \.offset) { _, group in
-                        if let label = group.label {
-                            groupHeader(label)
-                        }
-                        ForEach(group.entries) { entry in
-                            row(entry, now: now)
+                    companyHeader(for: company[0])
+                    ForEach(Array(MiniEntry.subProviderRuns(company).enumerated()), id: \.offset) { _, run in
+                        subProviderHeader(for: run[0])
+                        Spacer().frame(height: MiniLedgerMetrics.headerGap)
+                        ForEach(Array(MiniEntry.groupRuns(run).enumerated()), id: \.offset) { _, group in
+                            if let label = group.label {
+                                groupHeader(label)
+                            }
+                            ForEach(group.entries) { entry in
+                                row(entry, now: now)
+                            }
                         }
                     }
                 }
@@ -243,20 +256,33 @@ struct MiniLedgerLayout: View {
         }
     }
 
-    private func header(for entry: MiniEntry) -> some View {
+    /// L1: the company alone. The SubProvider gets its own tier below —
+    /// "SPACEXAI · CURSOR" one-liners jammed two levels into one header.
+    private func companyHeader(for entry: MiniEntry) -> some View {
         HStack(spacing: 5) {
             Circle()
                 .fill(providerAccent(for: entry.tool))
                 .frame(width: 5, height: 5)
-            Text("\(entry.companyName.uppercased()) · \(entry.subProviderDisplayName.uppercased())")
-                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+            Text(entry.companyName.uppercased())
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary.opacity(0.82))
                 .tracking(0.8)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Spacer(minLength: 0)
         }
-        .frame(height: MiniLedgerMetrics.headerHeight, alignment: .bottomLeading)
+        .frame(height: MiniLedgerMetrics.companyHeaderHeight, alignment: .bottomLeading)
+    }
+
+    private func subProviderHeader(for entry: MiniEntry) -> some View {
+        Text(entry.subProviderDisplayName.uppercased())
+            .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+            .foregroundStyle(.secondary)
+            .tracking(0.8)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.leading, MiniLedgerMetrics.subIndent)
+            .frame(height: MiniLedgerMetrics.subHeaderHeight, alignment: .bottomLeading)
     }
 
     private func groupHeader(_ label: String) -> some View {
@@ -265,7 +291,7 @@ struct MiniLedgerLayout: View {
             .foregroundStyle(.tertiary)
             .tracking(0.9)
             .lineLimit(1)
-            .padding(.leading, 10)
+            .padding(.leading, MiniLedgerMetrics.rowIndent)
             .frame(height: MiniLedgerMetrics.groupHeaderHeight, alignment: .bottomLeading)
     }
 
@@ -279,7 +305,7 @@ struct MiniLedgerLayout: View {
                 .foregroundStyle(.primary.opacity(0.88))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(width: 88, alignment: .leading)
+                .frame(width: MiniLedgerMetrics.rowLabelWidth, alignment: .leading)
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.09))
@@ -300,6 +326,7 @@ struct MiniLedgerLayout: View {
                 .minimumScaleFactor(0.7)
                 .frame(width: 40, alignment: .trailing)
         }
+        .padding(.leading, MiniLedgerMetrics.rowIndent)
         .frame(height: MiniLedgerMetrics.rowHeight)
         .help("\(providerTitle(for: entry.tool)) · \(entry.bucket.groupTitle ?? entry.subProviderDisplayName) · \(entry.bucket.title)")
     }
@@ -307,10 +334,9 @@ struct MiniLedgerLayout: View {
 
 // MARK: - Strip
 
-/// A one-line HUD: each SubProvider shows its most critical bucket only.
-/// Hovering a chip lists every selected bucket of that SubProvider. Three
-/// densities, chosen per window: roomy (number beside its label), two-line
-/// (number over its label), narrow (dot and number only).
+/// A menu-bar-style HUD, one cell per selected bucket; past `maxRowWidth`
+/// it wraps into further bands. Three densities, chosen per window: roomy,
+/// two-line (menu bar's paired columns), narrow (compact size).
 enum MiniStripMetrics {
     static let dividerThickness: CGFloat = 1
     static let leadingPadding: CGFloat = 14
@@ -362,29 +388,31 @@ enum MiniStripMetrics {
     }
 
     static let rowGap: CGFloat = 2
-    /// The strip is one line by design — it simulates the menu bar. It still
-    /// never outgrows the screen: past this width the cells themselves
-    /// shrink, and their text scales down inside.
+    /// The strip never outgrows the screen: past this width it wraps into
+    /// further bands at full cell width — cells shrunk to stay on one line
+    /// went unreadable first.
     static let maxRowWidth: CGFloat = 1180
 
-    /// The cell width that keeps `count` cells on the single line: the ideal
-    /// width until the line would pass `maxRowWidth`, then evenly shrunk.
-    static func fittedCellWidth(count: Int, ideal: CGFloat, spacing: CGFloat) -> CGFloat {
-        guard count > 0 else { return ideal }
+    /// How many ideal-width cells fit one band.
+    static func cellsPerBand(count: Int, ideal: CGFloat, spacing: CGFloat) -> Int {
+        guard count > 0 else { return 1 }
         let available = maxRowWidth - leadingPadding - trailingPadding
-            - CGFloat(max(0, count - 1)) * spacing
-        return min(ideal, max(44, available / CGFloat(count)))
+        return max(1, min(count, Int((available + spacing) / (ideal + spacing))))
     }
 
     static func size(entries: [MiniEntry], density: MiniStripDensity) -> CGSize {
         guard !entries.isEmpty else { return CGSize(width: emptyWidth, height: rowHeight(density)) }
         let cellCount = density == .twoLine ? (entries.count + 1) / 2 : entries.count
         let cellSpacing = density == .twoLine ? pairedColumnSpacing : chipSpacing(density)
-        let cellWidth = fittedCellWidth(count: cellCount, ideal: chipWidth(density), spacing: cellSpacing)
+        let cellWidth = chipWidth(density)
+        let perBand = cellsPerBand(count: cellCount, ideal: cellWidth, spacing: cellSpacing)
+        let bands = (cellCount + perBand - 1) / perBand
         let width = leadingPadding + trailingPadding
-            + CGFloat(cellCount) * cellWidth
-            + CGFloat(max(0, cellCount - 1)) * cellSpacing
-        return CGSize(width: width, height: rowHeight(density))
+            + CGFloat(perBand) * cellWidth
+            + CGFloat(max(0, perBand - 1)) * cellSpacing
+        let height = CGFloat(bands) * rowHeight(density)
+            + CGFloat(max(0, bands - 1)) * rowGap
+        return CGSize(width: width, height: height)
     }
 }
 
@@ -402,17 +430,22 @@ struct MiniStripLayout: View {
             } else if density == .twoLine {
                 pairedColumns
             } else {
-                let cellWidth = MiniStripMetrics.fittedCellWidth(
+                let cellWidth = MiniStripMetrics.chipWidth(density)
+                let perBand = MiniStripMetrics.cellsPerBand(
                     count: entries.count,
-                    ideal: MiniStripMetrics.chipWidth(density),
+                    ideal: cellWidth,
                     spacing: MiniStripMetrics.chipSpacing(density)
                 )
-                HStack(spacing: MiniStripMetrics.chipSpacing(density)) {
-                    ForEach(entries) { entry in
-                        lineCell(entry, width: cellWidth)
+                VStack(alignment: .leading, spacing: MiniStripMetrics.rowGap) {
+                    ForEach(Array(entries.chunked(into: perBand).enumerated()), id: \.offset) { _, band in
+                        HStack(spacing: MiniStripMetrics.chipSpacing(density)) {
+                            ForEach(band) { entry in
+                                lineCell(entry, width: cellWidth)
+                            }
+                        }
+                        .frame(height: MiniStripMetrics.rowHeight(density))
                     }
                 }
-                .frame(height: MiniStripMetrics.rowHeight(density))
                 .padding(.leading, MiniStripMetrics.leadingPadding)
                 .padding(.trailing, MiniStripMetrics.trailingPadding)
             }
@@ -427,23 +460,27 @@ struct MiniStripLayout: View {
         let pairs = stride(from: 0, to: entries.count, by: 2).map { index in
             (top: entries[index], bottom: index + 1 < entries.count ? entries[index + 1] : nil)
         }
-        let columnWidth = MiniStripMetrics.fittedCellWidth(
+        let perBand = MiniStripMetrics.cellsPerBand(
             count: pairs.count,
             ideal: MiniStripMetrics.pairedColumnWidth,
             spacing: MiniStripMetrics.pairedColumnSpacing
         )
-        return HStack(spacing: MiniStripMetrics.pairedColumnSpacing) {
-            ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
-                VStack(alignment: .leading, spacing: MiniStripMetrics.pairedRowSpacing) {
-                    pairedCell(pair.top, mode: mode)
-                    if let bottom = pair.bottom {
-                        pairedCell(bottom, mode: mode)
+        return VStack(alignment: .leading, spacing: MiniStripMetrics.rowGap) {
+            ForEach(Array(pairs.chunked(into: perBand).enumerated()), id: \.offset) { _, band in
+                HStack(spacing: MiniStripMetrics.pairedColumnSpacing) {
+                    ForEach(Array(band.enumerated()), id: \.offset) { _, pair in
+                        VStack(alignment: .leading, spacing: MiniStripMetrics.pairedRowSpacing) {
+                            pairedCell(pair.top, mode: mode)
+                            if let bottom = pair.bottom {
+                                pairedCell(bottom, mode: mode)
+                            }
+                        }
+                        .frame(width: MiniStripMetrics.pairedColumnWidth, alignment: .leading)
                     }
                 }
-                .frame(width: columnWidth, alignment: .leading)
+                .frame(height: MiniStripMetrics.rowHeight(.twoLine))
             }
         }
-        .frame(height: MiniStripMetrics.rowHeight(.twoLine))
         .padding(.leading, MiniStripMetrics.leadingPadding)
         .padding(.trailing, MiniStripMetrics.trailingPadding)
     }
@@ -489,11 +526,12 @@ struct MiniStripLayout: View {
 
 // MARK: - Tiles
 
-/// A fixed grid, one tile per bucket: big number, thin bar, and a severity
+/// A fixed grid, one tile per bucket: provenance caption (company +
+/// SubProvider), the bucket path, big number, thin bar, and a severity
 /// stripe on the leading edge.
 enum MiniTileMetrics {
-    static let tileWidth: CGFloat = 106
-    static let tileHeight: CGFloat = 56
+    static let tileWidth: CGFloat = 120
+    static let tileHeight: CGFloat = 62
     static let spacing: CGFloat = 7
     static let columns = 4
     static let horizontalPadding: CGFloat = 12
@@ -556,29 +594,44 @@ struct MiniTileLayout: View {
                     .fill(color)
                     .frame(width: 3)
                     .padding(.vertical, 5)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
+                    // Both parent tiers in one caption, two-tone so the
+                    // levels still read apart: company faint, SubProvider
+                    // stronger — a bare "All · Weekly" said nothing about
+                    // whose quota the tile was.
                     HStack(spacing: 4) {
                         Circle()
                             .fill(providerAccent(for: entry.tool))
                             .frame(width: 5, height: 5)
-                        Text(entry.rowLabel)
-                            .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
+                        (Text(entry.companyName.uppercased())
+                            .foregroundStyle(.tertiary)
+                         + Text("  ")
+                         + Text(entry.subProviderDisplayName.uppercased())
+                            .foregroundStyle(.secondary))
+                            .font(.system(size: 7, weight: .semibold, design: .rounded))
+                            .tracking(0.4)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.6)
+                            .minimumScaleFactor(0.55)
                     }
-                    Text("\(Int(percent.rounded()))%")
-                        .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(color)
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.10))
-                            Capsule()
-                                .fill(color)
-                                .frame(width: max(2, proxy.size.width * min(1, max(0, percent / 100))))
+                    Text(entry.rowLabel)
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(.primary.opacity(0.88))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    HStack(spacing: 6) {
+                        Text("\(Int(percent.rounded()))%")
+                            .font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(color)
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.primary.opacity(0.10))
+                                Capsule()
+                                    .fill(color)
+                                    .frame(width: max(2, proxy.size.width * min(1, max(0, percent / 100))))
+                            }
                         }
+                        .frame(height: 3)
                     }
-                    .frame(height: 3)
                 }
                 .padding(.leading, 6)
                 .padding(.trailing, 8)
