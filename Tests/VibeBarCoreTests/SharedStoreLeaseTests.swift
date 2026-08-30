@@ -154,6 +154,12 @@ final class SharedStoreLeaseTests: XCTestCase {
       XCTAssertEqual($0 as? SharedStoreLeaseError, .invalidRole)
     }
   }
+  func testMaintenanceRoleMustBelongToEveryStore() throws {
+    XCTAssertThrowsError(
+      try Self.acquire(directory, [.sessionIndexScratch], role: .migrator, maintenance: true)
+    ) { XCTAssertEqual($0 as? SharedStoreLeaseError, .invalidRole) }
+    try Self.acquire(directory, [.sessionIndexScratch], role: .pruner, maintenance: true).release()
+  }
   func testTestingSeamRejectsEndpoints() {
     XCTAssertThrowsError(try Self.acquire(directory, [.mcpSocket])) {
       XCTAssertEqual($0 as? SharedStoreLeaseError, .notEligible(.mcpSocket))

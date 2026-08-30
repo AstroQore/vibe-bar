@@ -73,11 +73,9 @@ public final class SharedStoreLeaseBatch: @unchecked Sendable {
     if maintenance && role != .migrator && role != .pruner {
       throw SharedStoreLeaseError.invalidRole
     }
-    if !maintenance
-      && stores.contains(where: {
-        !SharedStoreContractRegistry.contract(for: $0).writerRoles.contains(role)
-      })
-    {
+    if stores.contains(where: {
+      !SharedStoreContractRegistry.contract(for: $0).writerRoles.contains(role)
+    }) {
       throw SharedStoreLeaseError.invalidRole
     }
     let rootFD = vb_open_directory_nofollow(dataRootURL.path)
