@@ -193,8 +193,32 @@ public struct SettingsDocument: Sendable {
         let right = try? JSONSerialization.jsonObject(
           with: Data(rhs.utf8), options: [.fragmentsAllowed])
       else { return false }
-      return (left as AnyObject).isEqual(right)
+      return foundationJSONEqual(left, right)
     }
+  }
+
+  private static func foundationJSONEqual(_ lhs: Any, _ rhs: Any) -> Bool {
+    if lhs is NSNull || rhs is NSNull { return lhs is NSNull && rhs is NSNull }
+    if let left = lhs as? NSNumber, let right = rhs as? NSNumber {
+      let leftIsBool = CFGetTypeID(left) == CFBooleanGetTypeID()
+      let rightIsBool = CFGetTypeID(right) == CFBooleanGetTypeID()
+      guard leftIsBool == rightIsBool else { return false }
+      return leftIsBool ? left.boolValue == right.boolValue : left.compare(right) == .orderedSame
+    }
+    if lhs is NSNumber || rhs is NSNumber { return false }
+    if let left = lhs as? String, let right = rhs as? String { return left == right }
+    if let left = lhs as? [Any], let right = rhs as? [Any] {
+      return left.count == right.count
+        && zip(left, right).allSatisfy { foundationJSONEqual($0.0, $0.1) }
+    }
+    if let left = lhs as? [String: Any], let right = rhs as? [String: Any] {
+      guard Set(left.keys) == Set(right.keys) else { return false }
+      return left.keys.allSatisfy { key in
+        guard let leftValue = left[key], let rightValue = right[key] else { return false }
+        return foundationJSONEqual(leftValue, rightValue)
+      }
+    }
+    return false
   }
 
   private static func containsHighPrecisionNumber(_ token: String) -> Bool {
