@@ -172,6 +172,17 @@ final class SettingsDocumentTests: XCTestCase {
     }
   }
 
+  func testTinyExponentCannotBeMistakenForZero() throws {
+    let base = try parse(#"{"future":0,"revision":1,"schemaVersion":1}"#)
+    let current = try parse(#"{"future":1e-400,"revision":2,"schemaVersion":1}"#)
+    let desired = try parse(#"{"future":1,"revision":1,"schemaVersion":1}"#)
+    XCTAssertThrowsError(
+      try SettingsDocument.patch(base: base, current: current, desired: desired)
+    ) { error in
+      XCTAssertEqual(error as? SettingsDocument.Error, .conflict(["future"]))
+    }
+  }
+
   func testFixtureVectorsDriveBothPatchOutcomes() throws {
     let data = try Data(contentsOf: fixture("settings-document-vectors.json"))
     let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -251,6 +251,7 @@ public struct SettingsDocument: Sendable {
           (0x30...0x39).contains(bytes[cursor])
             || [0x2D, 0x2B, 0x2E, 0x65, 0x45].contains(bytes[cursor])
         {
+          if bytes[cursor] == 0x65 || bytes[cursor] == 0x45 { return true }
           if (0x30...0x39).contains(bytes[cursor]) { digits += 1 }
           cursor += 1
         }
