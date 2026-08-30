@@ -129,7 +129,9 @@ public struct SharedStoreContract: Codable, Equatable, Sendable {
   public let keychainService: String?
   public let keychainAccount: String?
   public let endpointProtocol: String?
-  public let endpointVersion: Int?
+  /// The endpoint's wire-level protocol revision. This is a string because
+  /// MCP revisions are dates such as `2025-06-18`, not integer schema numbers.
+  public let endpointVersion: String?
   /// Filename/member shape below `relativeLocator`, when it is a directory.
   public let memberPattern: String?
   public let keyEncoding: String?
@@ -153,7 +155,7 @@ public struct SharedStoreContract: Codable, Equatable, Sendable {
     keychainService: String? = nil,
     keychainAccount: String? = nil,
     endpointProtocol: String? = nil,
-    endpointVersion: Int? = nil,
+    endpointVersion: String? = nil,
     memberPattern: String? = nil,
     keyEncoding: String? = nil,
     sidecars: [String] = [],
@@ -291,7 +293,8 @@ public enum SharedStoreContractRegistry {
     contract(
       .mcpSocket, "", .ephemeral, .unixSocket, nil, [.mcpOwner], .recreateEphemeralOwnerState,
       .removeOnOwnerShutdown, locatorKind: .endpoint, endpointProtocol: "mcp-jsonrpc",
-      endpointVersion: 1, eligibility: .endpointOnly, status: .endpointOwned),
+      endpointVersion: MCPServer.protocolVersion, eligibility: .endpointOnly,
+      status: .endpointOwned),
   ]
 
   public static func contract(for storeID: SharedStoreID) -> SharedStoreContract {
@@ -328,7 +331,7 @@ public enum SharedStoreContractRegistry {
     keychainService: String? = nil,
     keychainAccount: String? = nil,
     endpointProtocol: String? = nil,
-    endpointVersion: Int? = nil,
+    endpointVersion: String? = nil,
     eligibility: SharedStoreShareEligibility = .legacyUnsafe,
     status: SharedStoreImplementationStatus = .legacyUnsafe
   ) -> SharedStoreContract {
