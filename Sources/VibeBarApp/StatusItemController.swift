@@ -11,11 +11,20 @@ private enum MenuBarStatusMetrics {
     static let twoRowVerticalPadding: CGFloat = 1
     static let minimumTwoRowLength: CGFloat = 24
     static let twoRowContentIdentifier = NSUserInterfaceItemIdentifier("VibeBarTwoRowStatusContent")
+    /// Manually drawn beside the text in each ~10pt row band; see
+    /// `twoRowImage` — text attachments cannot be used at this size.
+    static let twoRowLogoSide: CGFloat = 8
+    static let twoRowLogoGap: CGFloat = 2
+}
+
+private struct TwoRowMenuCell {
+    var text: NSAttributedString
+    var logo: NSImage?
 }
 
 private struct TwoRowMenuColumn {
-    var top: NSAttributedString
-    var bottom: NSAttributedString?
+    var top: TwoRowMenuCell
+    var bottom: TwoRowMenuCell?
 }
 
 @MainActor
@@ -884,7 +893,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func twoRowMenuColumns(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [TwoRowMenuColumn] {
         let entries = displayedEntries(for: itemSettings, settings: settings)
         guard !entries.isEmpty else {
-            return [TwoRowMenuColumn(top: emptyMenuTitle(for: itemSettings, fontSize: MenuBarStatusMetrics.twoRowFontSize))]
+            return [TwoRowMenuColumn(top: TwoRowMenuCell(
+                text: emptyMenuTitle(for: itemSettings, fontSize: MenuBarStatusMetrics.twoRowFontSize),
+                logo: nil
+            ))]
         }
 
         var columns: [TwoRowMenuColumn] = []
@@ -899,11 +911,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if itemSettings.showTitle {
             columns.insert(
                 TwoRowMenuColumn(
-                    top: menuTextPiece(
-                        label: itemSettings.kind.title,
-                        percent: nil,
-                        color: NSColor.labelColor,
-                        fontSize: MenuBarStatusMetrics.twoRowFontSize
+                    top: TwoRowMenuCell(
+                        text: menuTextPiece(
+                            label: itemSettings.kind.title,
+                            percent: nil,
+                            color: NSColor.labelColor,
+                            fontSize: MenuBarStatusMetrics.twoRowFontSize
+                        ),
+                        logo: nil
                     )
                 ),
                 at: 0
@@ -912,21 +927,30 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return columns
     }
 
-    private func displayedEntries(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [NSAttributedString] {
+    private func displayedEntries(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [TwoRowMenuCell] {
         itemSettings.selectedFieldIds.compactMap { fieldId in
             guard
                 let field = MenuBarFieldCatalog.field(id: fieldId, registry: environment.quotaService.fieldRegistry),
                 let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
             else { return nil }
             let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
-            return menuTextPiece(
-                label: label(for: field, bucket: bucket, itemSettings: itemSettings),
+            let style = itemSettings.style(for: field.id)
+            // The two-row canvas is thickness - 2 with overlapping lines; a
+            // text attachment inflates its line box to 14pt no matter what
+            // bounds it declares, so logos never enter these strings — the
+            // rasterizer draws them beside the text instead.
+            let text = menuTextPiece(
+                label: style == .logoAndPercent
+                    ? nil
+                    : label(for: field, bucket: bucket, itemSettings: itemSettings),
                 percent: percent,
                 color: percentColor(for: field, bucket: bucket, settings: settings),
-                fontSize: MenuBarStatusMetrics.twoRowFontSize,
-                style: itemSettings.style(for: field.id),
-                tool: field.tool
+                fontSize: MenuBarStatusMetrics.twoRowFontSize
             )
+            let logo = style == .labelAndPercent
+                ? nil
+                : brandLogoImage(for: field.tool, side: MenuBarStatusMetrics.twoRowLogoSide)
+            return TwoRowMenuCell(text: text, logo: logo)
         }
     }
 
@@ -963,7 +987,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func menuTextPiece(
-        label: String,
+        label: String?,
         percent: Double?,
         color: NSColor,
         fontSize: CGFloat,
@@ -980,7 +1004,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 attributes: [.font: NSFont.systemFont(ofSize: fontSize * 0.4)]
             ))
         }
-        if style != .logoAndPercent {
+        if style != .logoAndPercent, let label {
             chunk.append(NSAttributedString(
                 string: "\(label) ",
                 attributes: [
@@ -1013,11 +1037,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// two-row layout) cap the icon at 10pt — a 12pt attachment grew the
     /// line and pushed the second row out of the bar.
     private func brandAttachment(for tool: ToolType, fontSize: CGFloat, font: NSFont) -> NSAttributedString? {
-        // Small fonts (the two-row layout) keep the icon at the font size
-        // itself: the block packs two 9pt lines into a ~22pt bar, and even a
-        // 10pt attachment left the rows' icons a point apart — reading as
-        // clipped. At 9pt the icon stays inside the line's own metrics.
-        let side = fontSize <= 10 ? fontSize.rounded() : (fontSize + 3).rounded()
+        let side: CGFloat = (fontSize + 3).rounded()
         let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
         let key = "\(tool.rawValue).\(side).\(appearance.name.rawValue)"
         let image: NSImage?
@@ -1038,6 +1058,22 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let yOffset = (font.capHeight - side) / 2
         attachment.bounds = CGRect(x: 0, y: yOffset, width: side, height: side)
         return NSAttributedString(attachment: attachment)
+    }
+
+    /// Raw logo image for the two-row rasterizer's manual drawing — same
+    /// cache the attachment path uses.
+    private func brandLogoImage(for tool: ToolType, side: CGFloat) -> NSImage? {
+        let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+        let key = "\(tool.rawValue).\(side).\(appearance.name.rawValue)"
+        if let cached = brandAttachmentImages[key] { return cached }
+        let image = ProviderBrandIcon.image(
+            for: tool,
+            size: NSSize(width: side, height: side),
+            tint: NSColor.labelColor,
+            appearance: appearance
+        )
+        brandAttachmentImages[key] = image
+        return image
     }
 
     private func installIconOnlyContent(
@@ -1067,31 +1103,29 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.setAccessibilityLabel("\(kind.label) \(twoRowAccessibilityTitle(for: columns))")
     }
 
+    nonisolated private static func cellWidth(_ cell: TwoRowMenuCell) -> CGFloat {
+        let logoWidth = cell.logo == nil
+            ? 0
+            : MenuBarStatusMetrics.twoRowLogoSide + MenuBarStatusMetrics.twoRowLogoGap
+        return logoWidth + cell.text.size().width
+    }
+
     private func twoRowImage(for columns: [TwoRowMenuColumn], appearance: NSAppearance) -> NSImage {
         let columnSizes = columns.map { column -> (top: NSSize, bottom: NSSize?, width: CGFloat) in
-            let topSize = column.top.size()
-            let bottomSize = column.bottom?.size()
+            let topSize = column.top.text.size()
+            let bottomSize = column.bottom?.text.size()
             return (
                 top: topSize,
                 bottom: bottomSize,
-                width: ceil(max(topSize.width, bottomSize?.width ?? 0))
+                width: ceil(max(Self.cellWidth(column.top), column.bottom.map(Self.cellWidth) ?? 0))
             )
         }
 
         let topRowHeight = ceil(columnSizes.map(\.top.height).max() ?? 0)
         let bottomRowHeight = ceil(columnSizes.compactMap { $0.bottom?.height }.max() ?? 0)
         let hasBottomRow = columns.contains { $0.bottom != nil }
-        // The negative line spacing packs text rows tightly — their ascenders
-        // and descenders rarely meet. Logo attachments fill their whole line
-        // box, so any column carrying one gets the rows separated instead of
-        // overlapped; the bar's ~22pt still fits two 11pt lines at zero.
-        let hasLogos = columns.contains {
-            $0.top.containsAttachments(in: NSRange(location: 0, length: $0.top.length))
-                || ($0.bottom.map { b in b.containsAttachments(in: NSRange(location: 0, length: b.length)) } ?? false)
-        }
-        let lineSpacing = hasLogos ? 0 : MenuBarStatusMetrics.twoRowLineSpacing
         let contentHeight = hasBottomRow
-            ? topRowHeight + bottomRowHeight + lineSpacing
+            ? topRowHeight + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing
             : topRowHeight
         let statusBarHeight = max(18, NSStatusBar.system.thickness - 2)
         let imageHeight = min(
@@ -1118,27 +1152,50 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             NSColor.clear.setFill()
             NSRect(origin: .zero, size: imageSize).fill()
 
+            func drawCell(_ cell: TwoRowMenuCell, at origin: NSPoint, rowHeight: CGFloat, columnWidth: CGFloat) {
+                let width = Self.cellWidth(cell)
+                var x = origin.x + floor((columnWidth - width) / 2)
+                if let logo = cell.logo {
+                    let side = MenuBarStatusMetrics.twoRowLogoSide
+                    // Centered in the row's own band, clamped to the canvas —
+                    // never handed to the text system, whose attachment line
+                    // box would not fit two rows in this height.
+                    let logoY = max(0, origin.y + floor((rowHeight - side) / 2))
+                    logo.draw(
+                        in: NSRect(x: x, y: logoY, width: side, height: side),
+                        from: .zero,
+                        operation: .sourceOver,
+                        fraction: 1
+                    )
+                    x += side + MenuBarStatusMetrics.twoRowLogoGap
+                }
+                cell.text.draw(at: NSPoint(x: x, y: origin.y))
+            }
+
             var x = MenuBarStatusMetrics.twoRowHorizontalPadding
             for (column, sizes) in zip(columns, columnSizes) {
-                if let bottom = column.bottom, let bottomSize = sizes.bottom {
-                    let blockHeight = topRowHeight + bottomRowHeight + lineSpacing
+                if let bottom = column.bottom {
+                    let blockHeight = topRowHeight + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing
                     let blockBottom = max(0, floor((imageHeight - blockHeight) / 2))
-                    let topPoint = NSPoint(
-                        x: x + floor((sizes.width - sizes.top.width) / 2),
-                        y: blockBottom + bottomRowHeight + lineSpacing
+                    drawCell(
+                        bottom,
+                        at: NSPoint(x: x, y: blockBottom),
+                        rowHeight: bottomRowHeight,
+                        columnWidth: sizes.width
                     )
-                    let bottomPoint = NSPoint(
-                        x: x + floor((sizes.width - bottomSize.width) / 2),
-                        y: blockBottom
+                    drawCell(
+                        column.top,
+                        at: NSPoint(x: x, y: blockBottom + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing),
+                        rowHeight: topRowHeight,
+                        columnWidth: sizes.width
                     )
-                    bottom.draw(at: bottomPoint)
-                    column.top.draw(at: topPoint)
                 } else {
-                    let topPoint = NSPoint(
-                        x: x + floor((sizes.width - sizes.top.width) / 2),
-                        y: floor((imageHeight - sizes.top.height) / 2)
+                    drawCell(
+                        column.top,
+                        at: NSPoint(x: x, y: floor((imageHeight - sizes.top.height) / 2)),
+                        rowHeight: sizes.top.height,
+                        columnWidth: sizes.width
                     )
-                    column.top.draw(at: topPoint)
                 }
                 x += sizes.width + MenuBarStatusMetrics.twoRowColumnSpacing
             }
@@ -1151,7 +1208,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func twoRowAccessibilityTitle(for columns: [TwoRowMenuColumn]) -> String {
         columns
             .map { column in
-                [column.top.string, column.bottom?.string]
+                [column.top.text.string, column.bottom?.text.string]
                     .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
                     .joined(separator: " ")
