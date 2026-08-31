@@ -26,25 +26,25 @@ MAX_WIDTH="${MAX_WIDTH:-1600}"  # pixels; captures wider than this are resampled
 shift $(( $# > 0 ? 1 : 0 ))
 
 # name=surface=appearances. The name is the file stem; a light capture gets a
-# -light suffix. Every surface is captured dark; the light twin is kept for
-# the surfaces the README shows in both, which keeps the checked-in set small.
+# -light suffix. Every surface is captured in both appearances: the READMEs
+# lead with the light one, and the dark twin sits in a disclosure beside it.
 SURFACES=(
   "popover-overview=popover:overview=both"
-  "popover-openai=popover:openAI=dark"
-  "popover-anthropic=popover:claude=dark"
-  "popover-google=popover:googleAI=dark"
-  "popover-spacexai=popover:grok=dark"
-  "popover-misc=popover:misc=dark"
-  "popover-machines=popover:machines=dark"
+  "popover-openai=popover:openAI=both"
+  "popover-anthropic=popover:claude=both"
+  "popover-google=popover:googleAI=both"
+  "popover-spacexai=popover:grok=both"
+  "popover-misc=popover:misc=both"
+  "popover-machines=popover:machines=both"
   "mini-regular=mini:regular=both"
-  "mini-compact=mini:compact=dark"
+  "mini-compact=mini:compact=both"
   "workbench-usage=workbench:usageStats=both"
   "workbench-sessions=workbench:sessionManager=both"
   "workbench-skills=workbench:skillsManager=both"
   "settings-layout=settings:layout=both"
-  "settings-menubar=settings:menuBar=dark"
-  "settings-mcp=settings:mcp=dark"
-  "settings-remote=settings:remote=dark"
+  "settings-menubar=settings:menuBar=both"
+  "settings-mcp=settings:mcp=both"
+  "settings-remote=settings:remote=both"
 )
 if (( $# > 0 )); then
   SURFACES=()
