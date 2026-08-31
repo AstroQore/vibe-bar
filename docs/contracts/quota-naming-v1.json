@@ -1,0 +1,259 @@
+{
+  "fallback": "A bucket no rule names takes the key '<tool>.<stem>', where the stem is the bucket id with one stemSuffix removed, and shows the bucket's own groupTitle as its label.",
+  "groupKey": {
+    "contains": [
+      {
+        "contains": "flash-lite",
+        "key": "gemini.flash-lite",
+        "tool": "gemini"
+      },
+      {
+        "contains": "flash",
+        "key": "gemini.flash",
+        "tool": "gemini"
+      },
+      {
+        "contains": "pro",
+        "key": "gemini.pro",
+        "tool": "gemini"
+      },
+      {
+        "anyOf": [
+          "gemini_five_hour",
+          "gemini_weekly"
+        ],
+        "key": "antigravity.gemini-models",
+        "tool": "antigravity"
+      },
+      {
+        "anyOf": [
+          "claude_gpt_five_hour",
+          "claude_gpt_weekly"
+        ],
+        "key": "antigravity.claude-gpt-models",
+        "tool": "antigravity"
+      },
+      {
+        "contains": "gpt-oss",
+        "key": "antigravity.gpt-oss",
+        "tool": "antigravity"
+      },
+      {
+        "contains": "claude",
+        "key": "antigravity.claude",
+        "tool": "antigravity"
+      },
+      {
+        "contains": "flash-lite",
+        "key": "antigravity.gemini-flash-lite",
+        "tool": "antigravity"
+      },
+      {
+        "contains": "flash",
+        "key": "antigravity.gemini-flash",
+        "tool": "antigravity"
+      },
+      {
+        "contains": "pro",
+        "key": "antigravity.gemini-pro",
+        "tool": "antigravity"
+      }
+    ],
+    "defaultGroup": {
+      "claude": "claude.all-models",
+      "codex": "codex.all-models",
+      "gemini": "gemini.all-models",
+      "grok": "grok.all-models"
+    },
+    "exact": [
+      {
+        "bucket": "gpt_5_3_codex_spark_five_hour",
+        "key": "codex.spark"
+      },
+      {
+        "bucket": "gpt_5_3_codex_spark_weekly",
+        "key": "codex.spark"
+      },
+      {
+        "bucket": "weekly_sonnet",
+        "key": "claude.sonnet"
+      },
+      {
+        "bucket": "weekly_design",
+        "key": "claude.design"
+      },
+      {
+        "bucket": "daily_routines",
+        "key": "claude.routine"
+      },
+      {
+        "bucket": "weekly_opus",
+        "key": "claude.opus"
+      },
+      {
+        "bucket": "weekly_fable",
+        "key": "claude.fable"
+      },
+      {
+        "bucket": "weekly_oauth_apps",
+        "key": "claude.oauth"
+      },
+      {
+        "bucket": "models",
+        "key": "cursor.models",
+        "tool": "cursor"
+      },
+      {
+        "bucket": "other_models",
+        "key": "cursor.other-models",
+        "tool": "cursor"
+      }
+    ],
+    "stemSuffixes": [
+      "_five_hour",
+      "_weekly",
+      "_monthly",
+      "_daily",
+      "_primary",
+      "_secondary"
+    ]
+  },
+  "groupLabels": {
+    "antigravity.claude-gpt-models": "Claude + GPT",
+    "antigravity.gemini-models": "Gemini",
+    "claude.all-models": "All",
+    "claude.design": "Design",
+    "claude.fable": "Fable",
+    "claude.oauth": "OAuth",
+    "claude.opus": "Opus",
+    "claude.routine": "Routine",
+    "claude.sonnet": "Sonnet",
+    "codex.all-models": "All",
+    "codex.spark": "Spark",
+    "cursor.models": "Cursor",
+    "cursor.other-models": "Other",
+    "gemini.all-models": "All",
+    "gemini.flash": "Flash",
+    "gemini.flash-lite": "Flash Lite",
+    "gemini.pro": "Pro",
+    "grok.all-models": "All"
+  },
+  "hierarchy": {
+    "alibaba": {
+      "company": "Alibaba",
+      "subProvider": "Bailian"
+    },
+    "alibabaTokenPlan": {
+      "company": "Alibaba",
+      "subProvider": "Bailian"
+    },
+    "antigravity": {
+      "company": "Google AI",
+      "subProvider": "AntiGravity"
+    },
+    "baiduQianfan": {
+      "company": "Baidu",
+      "subProvider": "Qianfan"
+    },
+    "claude": {
+      "company": "Anthropic",
+      "subProvider": "Claude"
+    },
+    "codex": {
+      "company": "OpenAI",
+      "subProvider": "ChatGPT Agentic"
+    },
+    "copilot": {
+      "company": "GitHub",
+      "subProvider": "Copilot"
+    },
+    "cursor": {
+      "company": "SpaceXAI",
+      "subProvider": "Cursor"
+    },
+    "gemini": {
+      "company": "Google AI",
+      "subProvider": "Gemini Web"
+    },
+    "grok": {
+      "company": "SpaceXAI",
+      "subProvider": "Grok"
+    },
+    "iflytek": {
+      "company": "iFlytek",
+      "subProvider": "Spark"
+    },
+    "kilo": {
+      "company": "Kilo",
+      "subProvider": "Kilo"
+    },
+    "kimi": {
+      "company": "Moonshot",
+      "subProvider": "Kimi"
+    },
+    "kiro": {
+      "company": "Kiro",
+      "subProvider": "Kiro"
+    },
+    "mimo": {
+      "company": "Xiaomi",
+      "subProvider": "MiMo"
+    },
+    "minimax": {
+      "company": "MiniMax",
+      "subProvider": "MiniMax"
+    },
+    "ollama": {
+      "company": "Ollama",
+      "subProvider": "Ollama"
+    },
+    "openCodeGo": {
+      "company": "OpenCode",
+      "subProvider": "OpenCode Go"
+    },
+    "openRouter": {
+      "company": "OpenRouter",
+      "subProvider": "OpenRouter"
+    },
+    "tencentHunyuan": {
+      "company": "Tencent",
+      "subProvider": "Hunyuan"
+    },
+    "tencentTokenPlan": {
+      "company": "Tencent",
+      "subProvider": "Hunyuan"
+    },
+    "volcengine": {
+      "company": "ByteDance",
+      "subProvider": "Doubao"
+    },
+    "volcengineAgentPlan": {
+      "company": "ByteDance",
+      "subProvider": "Doubao"
+    },
+    "warp": {
+      "company": "Warp",
+      "subProvider": "Warp"
+    },
+    "zai": {
+      "company": "Zhipu",
+      "subProvider": "GLM"
+    }
+  },
+  "note": "The quota axis: L1 company, L2 SubProvider, L3 group. Generated by Scripts/generate_quota_naming_contract.py from ToolType.swift, MiniWindowGroupLabelCatalog.swift and QuotaFieldRegistry.swift. Usage-axis names (harnesses) are a different axis and never mix with these in one list.",
+  "schema": "quota-naming-v1",
+  "subProviderOverrides": [
+    {
+      "bucket": "grok_bot_weekly",
+      "subProvider": "Grok Bot",
+      "tool": "cursor"
+    }
+  ],
+  "ungrouped": [
+    {
+      "bucket": "grok_bot_weekly",
+      "tool": "cursor",
+      "why": "sits directly under its SubProvider, with no L3 group"
+    }
+  ]
+}
