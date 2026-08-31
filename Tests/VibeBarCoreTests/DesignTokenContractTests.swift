@@ -31,6 +31,63 @@ final class DesignTokenContractTests: XCTestCase {
         )
     }
 
+    private func fillTimelineSource() throws -> String {
+        try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources/VibeBarApp/Views/FillTimelineChart.swift"),
+            encoding: .utf8
+        )
+    }
+
+    /// The reset-history bars use their own five-colour palette, not
+    /// `Theme.providerAccent`. Both clients draw the same chart, so the palette
+    /// belongs in the contract like the rest — and one case per line makes it
+    /// easy to add a provider here and forget the other client entirely.
+    func testResetHistoryAccentsMatchTheContract() throws {
+        let source = try fillTimelineSource()
+        let contractAccents = try XCTUnwrap(
+            contract()["resetHistoryAccent"] as? [String: String]
+        )
+
+        let block = try XCTUnwrap(slice(
+            source,
+            from: "private static func accent(for tool: ToolType)",
+            to: "private static let timestampFormatter"
+        ))
+        var found: [String: String] = [:]
+        for line in block.split(separator: "\n") {
+            guard let red = capture(line, #"red: ([\d.]+)"#),
+                  let green = capture(line, #"green: ([\d.]+)"#),
+                  let blue = capture(line, #"blue: ([\d.]+)"#)
+            else { continue }
+            let colour = hex(red, green, blue)
+            if line.contains("default:") {
+                found["default"] = colour
+                continue
+            }
+            // One case can name several tools: `case .gemini, .antigravity:`.
+            guard let cases = capture(line, #"case ([^:]+):"#) else { continue }
+            for tool in cases.split(separator: ",") {
+                found[tool.trimmingCharacters(in: CharacterSet(charactersIn: " ."))] = colour
+            }
+        }
+
+        XCTAssertFalse(found.isEmpty, "no reset-history accents were parsed")
+        XCTAssertEqual(
+            Set(found.keys), Set(contractAccents.keys),
+            "the contract and the chart disagree about which tools have an accent"
+        )
+        for (tool, colour) in found {
+            XCTAssertEqual(
+                contractAccents[tool], colour,
+                "reset-history accent for \(tool) drifted from the chart"
+            )
+        }
+        // The fallback is what an unlisted provider gets in both clients, so a
+        // missing one would silently give them different colours.
+        XCTAssertNotNil(found["default"], "the fallback accent must be in the contract")
+    }
+
     /// Every provider accent in `Theme.providerAccent` appears in the contract
     /// with the same colour, and the contract names no provider the theme has
     /// dropped.

@@ -54,5 +54,13 @@
       "warningAtOrAbove": 70
     }
   },
+  "resetHistoryAccent": {
+    "antigravity": "#579EF5",
+    "claude": "#ED6666",
+    "codex": "#4DC7BD",
+    "default": "#738CA6",
+    "gemini": "#579EF5",
+    "grok": "#737380"
+  },
   "schema": 1
 }
