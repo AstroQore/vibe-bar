@@ -287,8 +287,12 @@ Workbench 都直接构建在 AppKit 与 SwiftUI 之上，而不是用 Web 视图
 Windows 与 Linux 由第二个客户端覆盖：
 [**Vibe Bar Desktop**](https://github.com/AstroQore/vibe-bar-desktop)——Tauri +
 Rust，同一个产品，同一份数据。两者都装在同一台 Mac 上时，它读取同一个
-`~/.vibebar` 数据根，所以不会在配额或设置上各说各话；在从未装过原生版的机器上，
-它也能独立运行。
+`~/.vibebar` 数据根——一套 Provider 账号、一套设置，不需要维护第二份；在从未装过
+原生版的机器上，它也能独立运行。
+
+目前 Desktop 只写自己的 `client/desktop/` 命名空间，不会改动本 App 拥有的数据。
+让两个客户端同时对共享数据根写入是另一件事：本 App 在启动时读一次
+`settings.json` 并整文件覆盖写，既不会察觉也不会合并另一个客户端的修改。
 
 Desktop 仍在向本 App 对齐，在达成之前使用自己的 `0.x` 版本号。对齐之后两者共用
 同一个 `MAJOR.MINOR.PATCH`，每次 feature release 由两个仓库同时发布。这不改变本

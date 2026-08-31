@@ -323,10 +323,16 @@ SwiftUI, not approximated through a web view.
 
 For Windows and Linux there is a second client,
 [**Vibe Bar Desktop**](https://github.com/AstroQore/vibe-bar-desktop) — Tauri
-and Rust, same product, same data. It reads the same `~/.vibebar` data root on
-a Mac where both are installed, so the two never disagree about your quota or
-your settings, and it runs standalone on a machine that has never had the
-native app.
+and Rust, same product, same data. On a Mac where both are installed it reads
+the same `~/.vibebar` data root — one set of provider accounts, one set of
+settings, no second copy to maintain — and it runs standalone on a machine
+that has never had the native app.
+
+Desktop writes only inside its own `client/desktop/` namespace today, so it
+never edits what this app owns. Both clients holding the shared root open for
+writing is a separate piece of work: this app loads `settings.json` once at
+launch and rewrites it whole, so it would neither see nor merge another
+client's edit.
 
 Desktop is still being built up to this app and carries its own `0.x` version
 until it gets there. At parity the two adopt one shared
