@@ -133,19 +133,25 @@ final class ForecastContractTests: XCTestCase {
                 let now = resetAt.addingTimeInterval(-window * (1 - fraction))
                 let visible = observations.filter { $0.sampledAt <= now }
                 guard let last = visible.last else { continue }
-                guard let forecast = QuotaPaceForecast.compute(
-                    bucket: QuotaBucket(
-                        id: "weekly",
-                        title: "Weekly",
-                        shortLabel: "Weekly",
-                        usedPercent: last.usedPercent,
-                        resetAt: resetAt,
-                        rawWindowSeconds: testCase.input.rawWindowSeconds
+                // Not `continue`: a case that stops producing a forecast would
+                // vanish from the run, and the remaining cases still cleared
+                // the total-count check at the end.
+                let forecast = try XCTUnwrap(
+                    QuotaPaceForecast.compute(
+                        bucket: QuotaBucket(
+                            id: "weekly",
+                            title: "Weekly",
+                            shortLabel: "Weekly",
+                            usedPercent: last.usedPercent,
+                            resetAt: resetAt,
+                            rawWindowSeconds: testCase.input.rawWindowSeconds
+                        ),
+                        observations: visible,
+                        cycles: cycles,
+                        now: now
                     ),
-                    observations: visible,
-                    cycles: cycles,
-                    now: now
-                ) else { continue }
+                    "\(testCase.name) @ \(Int(fraction * 100))%: no forecast at all"
+                )
                 let want = try XCTUnwrap(
                     expectations.next(),
                     "\(testCase.name): more results than expectations"
@@ -192,6 +198,30 @@ final class ForecastContractTests: XCTestCase {
                     Double(forecast.diagnostics.recentSampleCount),
                     want["recentSampleCount"]?.numberValue, "\(context): recentSampleCount"
                 )
+                // The historical diagnostics are published, so they are part of
+                // the agreement. Without these the two clients could blend the
+                // same verdict out of different histories.
+                XCTAssertEqual(
+                    Double(forecast.completedCycleCount),
+                    want["completedCycleCount"]?.numberValue ?? 0,
+                    "\(context): completedCycleCount"
+                )
+                switch (
+                    forecast.diagnostics.historicalProjectionUsedPercent,
+                    want["historicalProjection"]?.numberValue
+                ) {
+                case (nil, nil):
+                    break
+                case (let got?, let expected?):
+                    XCTAssertEqual(got, expected, accuracy: contract.numericTolerance,
+                                   "\(context): historicalProjection")
+                case (let got, let expected):
+                    XCTFail(
+                        "\(context): historicalProjection \(String(describing: got)) vs "
+                            + "\(String(describing: expected)) — one client compared against "
+                            + "past cycles and the other did not"
+                    )
+                }
             }
         }
         XCTAssertGreaterThanOrEqual(checked, 20, "the vectors stopped being evaluated")

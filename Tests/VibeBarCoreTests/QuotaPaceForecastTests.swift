@@ -181,9 +181,15 @@ final class QuotaPaceForecastTests: XCTestCase {
                 resetAt: end
             )
         }
-        // The reading that detected the refill: 5%, stamped at the reset, and
-        // already part of the next window.
-        let afterRefill = point(5, at: end, resetAt: end.addingTimeInterval(TimeInterval(week)))
+        // The reading that detected the refill: 5%, already part of the next
+        // window. Stamped a shade *before* the cycle's completedAt, which is
+        // how it arrives in production — the timeline store and the history
+        // store are told separately and each takes its own `Date()`. An end
+        // bound on the timestamp therefore cannot exclude it.
+        let afterRefill = point(
+            5, at: end.addingTimeInterval(-0.4),
+            resetAt: end.addingTimeInterval(TimeInterval(week))
+        )
 
         let cycle = SubscriptionWindowSample(
             accountId: "account",

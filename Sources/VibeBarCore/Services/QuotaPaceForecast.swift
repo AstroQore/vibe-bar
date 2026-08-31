@@ -363,12 +363,19 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             let cycleEnd = cycle.completedAt ?? cycle.windowEnd
             guard cycleEnd > cycleStart else { return nil }
             let total = max(0.001, profile.weight(from: cycleStart, to: cycleEnd))
-            // Half-open at the end: the observation that detected the refill is
-            // stamped exactly `completedAt` and belongs to the cycle that
-            // follows. Including it let a 60% → 5% refill contribute 55 points
-            // of consumption to the window that had already finished.
+            // Bounded by the last observation this cycle actually absorbed,
+            // not by its end. The observation that detected the refill belongs
+            // to the cycle that follows, and comparing timestamps cannot
+            // separate them: `UsageFillTimelineStore.observe` and this store
+            // are told separately and each takes its own `Date()`, so the
+            // refill point is stamped a shade *before* `completedAt` and slips
+            // through any end bound. `lastSeenAt` is the cycle's own answer to
+            // "the last reading that was mine". Without it a 60% → 5% refill
+            // contributed 55 points of consumption to a window that had
+            // already finished.
+            let observationEnd = cycle.lastSeenAt
             let matching = observations
-                .filter { $0.sampledAt >= cycleStart && $0.sampledAt < cycleEnd }
+                .filter { $0.sampledAt >= cycleStart && $0.sampledAt <= observationEnd }
                 .map { point -> (distance: Double, used: Double) in
                     let progress = clamp(profile.weight(from: cycleStart, to: point.sampledAt) / total, 0, 1)
                     return (abs(progress - currentProgress), point.usedPercent)

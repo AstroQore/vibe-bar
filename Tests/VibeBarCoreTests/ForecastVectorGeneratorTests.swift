@@ -189,10 +189,11 @@ final class ForecastVectorGeneratorTests: XCTestCase {
         let awkward = Scenario(
             name: "cycles_collapsed_start_and_refill_sample",
             description: """
-                A cycle whose stored windowStart collapsed to fifteen minutes, \
-                and a post-refill reading stamped at its exact end. Both clients \
-                must reconstruct the span from the window length and leave the \
-                stray reading to the cycle it belongs to.
+                A cycle whose stored windowStart is far shorter than its window, \
+                and a post-refill reading at its end. Both clients must take the \
+                stored start as it stands — many buckets refill more often than \
+                the window they advertise, so a short span is usually the truth \
+                — and must leave the stray reading to the cycle it opened.
                 """,
             resetAt: reset,
             observations: ramp(0, 58, start: start, end: reset.addingTimeInterval(-600),
