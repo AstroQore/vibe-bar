@@ -55,12 +55,12 @@ resume, and a skills manager that reconciles one library across six
 agent CLIs. All of it is read from files already on your Mac, and an MCP
 server lets your agents ask the same questions.
 
-![The Overview: cost and status at the top, one quota card per provider below, each bar carrying its forecast](docs/screenshots/popover-overview.png)
+![The Overview: cost and status at the top, one quota card per provider below, each bar carrying its forecast](docs/screenshots/popover-overview-light.png)
 
 <details>
-<summary>The same Overview in the light appearance</summary>
+<summary>The same Overview in the dark appearance</summary>
 
-![The Overview in the light appearance](docs/screenshots/popover-overview-light.png)
+![The Overview in the dark appearance](docs/screenshots/popover-overview.png)
 
 </details>
 
@@ -148,12 +148,12 @@ range; drag the navigator to focus the chart while five simultaneous donut
 cards explain Token Flow, Harness, Provider, Project and Model distribution.
 The tables keep the full window and include a project ranking.
 
-![Usage Stats: 30 days of tokens by day, the harness mix, and the period table below](docs/screenshots/workbench-usage.png)
+![Usage Stats: 30 days of tokens by day, the harness mix, and the period table below](docs/screenshots/workbench-usage-light.png)
 
 <details>
-<summary>Usage Stats in the light appearance</summary>
+<summary>Usage Stats in the dark appearance</summary>
 
-![Usage Stats in the light appearance](docs/screenshots/workbench-usage-light.png)
+![Usage Stats in the dark appearance](docs/screenshots/workbench-usage.png)
 
 </details>
 
@@ -166,12 +166,12 @@ controls that stay fast on transcripts with tens of thousands of lines;
 **Open** hands the session back to its own CLI (`claude --resume`,
 `codex resume`, `grok --resume`, `agy --conversation`).
 
-![Sessions: the session list on the left, an open transcript with tool calls on the right](docs/screenshots/workbench-sessions.png)
+![Sessions: the session list on the left, an open transcript with tool calls on the right](docs/screenshots/workbench-sessions-light.png)
 
 <details>
-<summary>Sessions in the light appearance</summary>
+<summary>Sessions in the dark appearance</summary>
 
-![Sessions in the light appearance](docs/screenshots/workbench-sessions-light.png)
+![Sessions in the dark appearance](docs/screenshots/workbench-sessions.png)
 
 </details>
 
@@ -190,12 +190,12 @@ choose native enable/disable or projection removal. Install from a ZIP, adopt
 skills a CLI already has, discover more from a repository, and back up before
 anything is replaced.
 
-![Skills: one row per skill, a toggle per harness, and the install, import and discover actions](docs/screenshots/workbench-skills.png)
+![Skills: one row per skill, a toggle per harness, and the install, import and discover actions](docs/screenshots/workbench-skills-light.png)
 
 <details>
-<summary>Skills in the light appearance</summary>
+<summary>Skills in the dark appearance</summary>
 
-![Skills in the light appearance](docs/screenshots/workbench-skills-light.png)
+![Skills in the dark appearance](docs/screenshots/workbench-skills.png)
 
 </details>
 
@@ -208,12 +208,12 @@ which column, which order — with an explicit Visibility menu, per-card eyes,
 presets and a live preview, so the Overview can be the four quotas you watch
 and nothing else.
 
-![The Layout editor: three segments of cards for the Overview page with a preview on the right](docs/screenshots/settings-layout.png)
+![The Layout editor: three segments of cards for the Overview page with a preview on the right](docs/screenshots/settings-layout-light.png)
 
 <details>
-<summary>The Layout editor in the light appearance</summary>
+<summary>The Layout editor in the dark appearance</summary>
 
-![The Layout editor in the light appearance](docs/screenshots/settings-layout-light.png)
+![The Layout editor in the dark appearance](docs/screenshots/settings-layout.png)
 
 </details>
 
@@ -230,12 +230,12 @@ the narrow repair command, or repair and re-register the status item without
 terminating the app's MCP connections. An explicit opt-in can run that same
 narrow repair automatically after three consecutive blocked probes.
 
-![Menu Bar Health: live AppKit probe, Control Center audit, alert state, and one-click repair](docs/screenshots/settings-menuBarHealth.png)
+![Menu Bar Health: live AppKit probe, Control Center audit, alert state, and one-click repair](docs/screenshots/settings-menuBarHealth-light.png)
 
 <details>
-<summary>Menu Bar Health in the light appearance</summary>
+<summary>Menu Bar Health in the dark appearance</summary>
 
-![Menu Bar Health in the light appearance](docs/screenshots/settings-menuBarHealth-light.png)
+![Menu Bar Health in the dark appearance](docs/screenshots/settings-menuBarHealth.png)
 
 </details>
 
@@ -339,6 +339,68 @@ until it gets there. At parity the two adopt one shared
 `MAJOR.MINOR.PATCH` and every feature release ships from both repositories
 together. Nothing about that client changes this one: this repository is the
 complete implementation and the reference for what parity means.
+
+## Feature parity
+
+One product, two clients. The binding rule is the **minor** version: the same
+`MAJOR.MINOR` means the same features. Patch versions diverge freely — each
+client fixes its own bugs at its own pace — and build numbers are always
+independent.
+
+Two things are exempt from parity, and only these two:
+
+- **Bug fixes.**
+- **Features with no equivalent on another platform at all.** Needing a
+  different implementation is not an exemption: Keychain becomes DPAPI or
+  libsecret, Sparkle becomes the Tauri updater, `SMAppService` becomes each
+  platform's autostart. Those are the same feature, built differently.
+
+**This table lists only where the two differ.** Anything not here is at
+parity — the quota hierarchy, tray percentages with your own fields and
+labels, session search and transcripts, mini-window geometry, and so on. A new
+feature on either side must appear here until it lands on both.
+
+Legend: ● full · ◐ partial · ○ not yet · ▲ platform equivalent · — exempt
+
+| Feature | macOS native | Desktop | Note |
+| --- | :---: | :---: | --- |
+| **Quota** |
+| Live provider fetch | ● 25 | ◐ 10 | Desktop reads the rest from the shared cache, labelled as such |
+| Browser-cookie providers | ● | ○ | Windows blocks third-party cookie reads; explicit import there |
+| Forecast verdicts, run-out ETA, confidence | ● | ○ | The product's own thesis — every bar and gauge carries one |
+| Observation and forecast history | ● | ○ | What happened, and what was predicted at the time |
+| Plan badges and provider brand icons | ● | ○ | 23 brand assets not yet ported |
+| Service status sources | ● 5 | ● 4 | |
+| **Menu bar / tray** |
+| Rich-text and two-row title | ● | — | Windows and Linux trays have no title at all, only an icon |
+| Field editor with style scopes | ● | ○ | |
+| Control Center allow-list watchdog | ● | — | macOS 26 platform behaviour |
+| **Main window** |
+| Provider detail pages | ● 4 | ○ | Desktop has one flat Quota tab |
+| Arrangeable module waterfall | ● 11 | ○ | |
+| Layout editor with presets | ● | ○ | |
+| **Mini window** |
+| Layouts | ● 7 | ◐ 1 | ring, compact, ledger, strip, tile, focus, rail |
+| Multiple independent windows | ● | ○ | |
+| Translucent surface | ● Liquid Glass | ▲ | Platform blur — deliberately not a copy |
+| **Workbench** |
+| Usage charts, donuts, breakdown tables | ● | ○ | Desktop renders no charts at all yet |
+| Session deletion | ● | ○ | |
+| Resets: risk view | ● | ○ | Needs forecasting |
+| Skills: install, import, discover, backups | ● | ◐ | Desktop is a read-only inventory |
+| **Cost and usage** |
+| Local scan | ● 9 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI |
+| Per-request ledger, multi-source pricing, history | ● | ○ | Desktop keeps an in-memory aggregate |
+| **Settings** |
+| Writable | ● | ○ | Shared writes need the cross-client storage contract |
+| Provider credential panes | ● 25 | ○ | |
+| **Platform** |
+| MCP tools | ● 12 | ◐ 5 | Read-only subset |
+| Remote probe sync | ● | ○ | |
+| Launch at login | ● | ▲ | |
+| In-app updates | ● Sparkle | ▲ | Tauri updater |
+| App Sandbox | ○ by design | ○ for now | Neither ships sandboxed. Native **cannot**: reading browser cookies, probing AntiGravity with `ps`/`lsof`, and driving Terminal by Apple events are all blocked inside it, and the release script refuses a sandboxed bundle. Desktop needs none of that while it stays read-only, so it is the one that *could* — an option that closes as soon as it grows cookie providers |
+| Windows and Linux | — | ◐ | Core is tested on all three; the GUI has only had a macOS pass |
 
 ## Architecture
 
