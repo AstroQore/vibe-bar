@@ -351,18 +351,16 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         profile: ActivityProfile
     ) -> [Double] {
         cycles.compactMap { cycle in
-            // The refill time is observed; the window's beginning is not. A
-            // rolling bucket moves `windowStart` forward on every poll and
-            // stops when the cycle closes, which can leave it a single polling
-            // interval before the end — on real data that is a fifth to a
-            // third of one bucket's cycles. Reconstructing it from the window
-            // length the provider reported gives the span the cycle actually
-            // had, and agrees with the stored value whenever that value was
-            // trustworthy.
+            // `windowStart` tracks what the provider reported, and measurement
+            // says to leave it alone. Several buckets refill far more often
+            // than their stated window — two Codex weeklies have a median gap
+            // of 57 hours against a 168-hour window — so a short span is
+            // usually the truth, not a stale value. Checked against the
+            // interval between observed refills, the stored start is right for
+            // 86-100% of cycles on every bucket; reconstructing it from the
+            // window length instead drops that to 14% on the worst.
+            let cycleStart = cycle.windowStart ?? cycle.firstSeenAt
             let cycleEnd = cycle.completedAt ?? cycle.windowEnd
-            let cycleStart = cycle.rawWindowSeconds.map {
-                cycleEnd.addingTimeInterval(-TimeInterval($0))
-            } ?? cycle.windowStart ?? cycle.firstSeenAt
             guard cycleEnd > cycleStart else { return nil }
             let total = max(0.001, profile.weight(from: cycleStart, to: cycleEnd))
             // Half-open at the end: the observation that detected the refill is
