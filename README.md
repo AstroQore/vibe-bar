@@ -376,9 +376,8 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | **Quota** |
 | Live provider fetch | ● 25 | ◐ 10 | Desktop reads the rest from the shared cache, labelled as such |
 | Browser-cookie providers | ● | ○ | Windows blocks third-party cookie reads; explicit import there |
-| Forecast verdicts, run-out ETA, confidence | ● | ○ | The product's own thesis — every bar and gauge carries one |
-| Observation and forecast history | ● | ○ | What happened, and what was predicted at the time |
-| Plan badges and provider brand icons | ● | ○ | 23 brand assets not yet ported |
+| Forecast verdicts, run-out ETA, confidence | ● | ◐ | The product's own thesis. Desktop carries one on its quota cards and reset list; its mini window does not yet |
+| Observation and forecast history | ● | ◐ | Desktop records observations and draws the reset-history strip; the quota history chart with its brush is not ported |
 | Service status sources | ● 5 | ● 4 | |
 | **Menu bar / tray** |
 | Rich-text and two-row title | ● | — | Windows and Linux trays have no title at all, only an icon |
@@ -389,13 +388,13 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | Arrangeable module waterfall | ● 11 | ○ | |
 | Layout editor with presets | ● | ○ | |
 | **Mini window** |
-| Layouts | ● 7 | ◐ 1 | ring, compact, ledger, strip, tile, focus, rail |
+| Layouts | ● 7 | ◐ 1 | ring, compact, ledger, strip, tile, focus, rail. Desktop's one layout is a bar list rather than any of them |
 | Multiple independent windows | ● | ○ | |
 | Translucent surface | ● Liquid Glass | ○ | Planned as a platform blur, deliberately not a copy. The window is currently opaque and undecorated |
 | **Workbench** |
-| Usage charts, donuts, breakdown tables | ● | ○ | Desktop renders no charts at all yet |
+| Usage charts, donuts, breakdown tables | ● | ○ | Desktop draws the reset-history strip but no usage charts |
 | Session deletion | ● | ○ | |
-| Resets: risk view | ● | ○ | Needs forecasting |
+| Resets: risk view | ● | ◐ | Desktop lists resets with each one's forecast; the calendar and the risk grouping are not ported |
 | Skills: install, import, discover, backups | ● | ◐ | Desktop is a read-only inventory |
 | **Cost and usage** |
 | Local usage scan | ● 7 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI. Counts harnesses with a local scanner: Cursor's usage comes from dashboard events and Grok Bot has no usage source at all, so neither is a local scan on either side |
