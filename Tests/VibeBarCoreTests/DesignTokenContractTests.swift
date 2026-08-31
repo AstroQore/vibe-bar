@@ -31,6 +31,47 @@ final class DesignTokenContractTests: XCTestCase {
         )
     }
 
+    /// The verdict colours. Two of them carry a distinction the reader would
+    /// otherwise lose: `enough` is green and `surplus` blue, because "it will
+    /// last" and "you have paid for capacity you will not use" are different
+    /// pieces of news. A client that collapses them into one severity says
+    /// less than this one does.
+    func testForecastVerdictColoursMatchTheContract() throws {
+        let source = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources/VibeBarApp/Views/QuotaForecastRow.swift"),
+            encoding: .utf8
+        )
+        let contractColours = try XCTUnwrap(
+            contract()["forecastVerdict"] as? [String: String]
+        )
+        let block = try XCTUnwrap(slice(
+            source, from: "enum QuotaForecastPalette", to: "\n}"
+        ))
+        var found: [String: String] = [:]
+        for line in block.split(separator: "\n") {
+            guard let verdict = capture(line, #"case \.(\w+):"#),
+                  let red = capture(line, #"red: ([\d.]+)"#),
+                  let green = capture(line, #"green: ([\d.]+)"#),
+                  let blue = capture(line, #"blue: ([\d.]+)"#)
+            else { continue }
+            found[verdict] = hex(red, green, blue)
+        }
+
+        XCTAssertEqual(Set(found.keys), Set(contractColours.keys))
+        for (verdict, colour) in found {
+            XCTAssertEqual(contractColours[verdict], colour,
+                           "the \(verdict) colour drifted from the palette")
+        }
+        XCTAssertNotEqual(
+            contractColours["enough"], contractColours["surplus"],
+            "these say different things and must not share a colour"
+        )
+        // `learning` deliberately has none: it takes the secondary text colour,
+        // because a verdict with no evidence behind it should not look like one.
+        XCTAssertNil(contractColours["learning"])
+    }
+
     /// Every provider accent in `Theme.providerAccent` appears in the contract
     /// with the same colour, and the contract names no provider the theme has
     /// dropped.
@@ -176,8 +217,15 @@ final class DesignTokenContractTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// The text between two markers, with the end looked for *after* the
+    /// start. Searching the whole file for the end marker meant a common one
+    /// like a closing brace matched something earlier and crashed on an
+    /// inverted range, rather than returning nil the way a caller expects.
     private func slice(_ text: String, from: String, to: String) -> String? {
-        guard let start = text.range(of: from), let end = text.range(of: to) else { return nil }
+        guard let start = text.range(of: from) else { return nil }
+        guard let end = text.range(of: to, range: start.upperBound..<text.endIndex) else {
+            return nil
+        }
         return String(text[start.lowerBound..<end.lowerBound])
     }
 
