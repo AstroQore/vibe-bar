@@ -86,6 +86,89 @@ final class ResetKindRealDataTests: XCTestCase {
                 samples.filter { $0.resetKind == nil }.count, 0,
                 "\(key.bucketId) left cycles unclassified"
             )
+
+            // The same history through the other route. Cycles recorded before
+            // classification existed are filled in from the timeline instead of
+            // at the moment they completed, and the two clocks involved are not
+            // the same one — so the two paths agreeing is the thing to check,
+            // not that either one runs.
+            let backfilled = try await classifiedByBackfill(key: key, points: sorted)
+            // Matched by the cycle each describes, not by position: the repair
+            // pass can also recover boundaries the replay missed, and whether
+            // the two paths find the same *set* of cycles is a different
+            // question from whether they classify a shared one the same way.
+            let live = Dictionary(
+                samples.map { ($0.windowEnd, $0.resetKind) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            var compared = 0
+            for cycle in backfilled {
+                guard let expected = live[cycle.windowEnd] else { continue }
+                compared += 1
+                XCTAssertEqual(
+                    cycle.resetKind, expected,
+                    "\(key.bucketId) at \(cycle.windowEnd): backfill says "
+                        + "\(String(describing: cycle.resetKind)), the live path says "
+                        + "\(String(describing: expected))"
+                )
+            }
+            XCTAssertGreaterThan(compared, 0, "\(key.bucketId): nothing was comparable")
         }
+    }
+
+    /// Replay the same observations into a store whose samples carry no
+    /// classification, then let the repair pass fill them in.
+    private func classifiedByBackfill(
+        key: SubscriptionHistoryKey,
+        points: [FillTimelinePoint]
+    ) async throws -> [SubscriptionWindowSample] {
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibebar-backfill-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let file = scratch.appendingPathComponent("subscription_history.json")
+        let store = SubscriptionHistoryStore(fileURL: file)
+
+        for point in points {
+            await store.observe(
+                AccountQuota(
+                    accountId: key.accountId,
+                    tool: point.tool,
+                    buckets: [QuotaBucket(
+                        id: key.bucketId,
+                        title: key.bucketId,
+                        shortLabel: key.bucketId,
+                        usedPercent: point.usedPercent,
+                        resetAt: point.resetAt,
+                        rawWindowSeconds: point.rawWindowSeconds
+                    )],
+                    queriedAt: point.sampledAt
+                ),
+                now: point.sampledAt,
+                retentionDays: 3_650
+            )
+        }
+        await store.flushPendingWrites()
+
+        // Strip the classifications and re-open, so the repair pass has to do
+        // the work rather than finding it already done.
+        var document = try JSONSerialization.jsonObject(
+            with: Data(contentsOf: file)
+        ) as! [String: Any]
+        var samples = document["samples"] as! [[String: Any]]
+        for index in samples.indices {
+            samples[index]["resetKind"] = nil
+            samples[index].removeValue(forKey: "resetKind")
+            samples[index].removeValue(forKey: "intervalSeconds")
+        }
+        document["samples"] = samples
+        try JSONSerialization.data(withJSONObject: document).write(to: file)
+
+        let reopened = SubscriptionHistoryStore(fileURL: file)
+        await reopened.importLegacyTimeline(points, retentionDays: 3_650)
+        return await reopened.samples(
+            accountId: key.accountId, bucketId: key.bucketId,
+            now: Date(), includeCurrent: false
+        ).filter(\.isCompleted)
     }
 }

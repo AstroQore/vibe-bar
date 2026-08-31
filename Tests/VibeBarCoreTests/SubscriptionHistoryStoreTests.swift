@@ -189,22 +189,31 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
     /// Cycles that finished before the app classified refills get their answer
     /// from the observations recorded at the time, rather than waiting three
     /// months for a weekly bucket to fill twelve fresh bars.
+    ///
+    /// Shaped around the case that shows a mismatched lookup: a window that
+    /// ran its *full* length. The timeline point that saw the refill is
+    /// written a moment before this store is told, by a different `Date()`, so
+    /// it lands just before `completedAt`. Reaching forward from there picks
+    /// the following poll and reads the refill's own reset as the one the old
+    /// cycle had been reporting — which makes an on-schedule cycle look like
+    /// an early refill, and puts a mark on a bar that deserves none.
     func testStoredCyclesAreClassifiedFromTheTimeline() async throws {
         let (store, url, cleanup) = try makeTempStore()
         defer { cleanup() }
         let window = 18_000
         let base = Date(timeIntervalSince1970: 1_800_000_000)
-        let refill = base.addingTimeInterval(5_000)
+        let reset = base.addingTimeInterval(TimeInterval(window))
 
-        // One completed cycle, written the way an older build would have.
+        // One completed cycle, written the way an older build would have: it
+        // ran its full length and ended at its stated reset.
         let json = """
         {"schemaVersion":2,"legacyTimelineImported":true,"resetSignalRepairVersion":1,\
         "samples":[{"accountId":"acct-test","tool":"codex","bucketId":"weekly",\
-        "windowEnd":\(refill.timeIntervalSinceReferenceDate),"rawWindowSeconds":\(window),\
+        "windowEnd":\(reset.timeIntervalSinceReferenceDate),"rawWindowSeconds":\(window),\
         "peakUsedPercent":40,"lastUsedPercent":40,"observationCount":3,\
         "firstSeenAt":\(base.timeIntervalSinceReferenceDate),\
-        "lastSeenAt":\(refill.timeIntervalSinceReferenceDate),\
-        "completedAt":\(refill.timeIntervalSinceReferenceDate),\
+        "lastSeenAt":\(reset.timeIntervalSinceReferenceDate),\
+        "completedAt":\(reset.timeIntervalSinceReferenceDate),\
         "completionReason":"scheduledReset"}]}
         """
         try Data(json.utf8).write(to: url)
@@ -221,15 +230,21 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
                 rawWindowSeconds: window
             )
         }
-        // Refilled 13,000s early, and the next reset moved a full window out.
-        let reported = base.addingTimeInterval(TimeInterval(window))
+        let seen = reset.addingTimeInterval(-0.4)
+        let nextReset = seen.addingTimeInterval(TimeInterval(window))
         await store.importLegacyTimeline([
-            point(40, at: base, resetAt: reported),
-            point(2, at: refill, resetAt: refill.addingTimeInterval(TimeInterval(window))),
+            point(40, at: base, resetAt: reset),
+            point(2, at: seen, resetAt: nextReset),
+            // The poll after the refill, which a forward lookup would match.
+            point(6, at: reset.addingTimeInterval(600), resetAt: nextReset),
         ])
 
         let samples = await store.samples(accountId: "acct-test", bucketId: "weekly")
-        XCTAssertEqual(samples.first?.resetKind, .earlyClockRestarted)
+        XCTAssertEqual(
+            samples.first?.resetKind, .onSchedule,
+            "a window that ran its full length was read as an early refill"
+        )
+        XCTAssertEqual(samples.first?.refilledEarly, false)
     }
 
     func testObserveCreatesOneSamplePerEligibleBucket() async throws {

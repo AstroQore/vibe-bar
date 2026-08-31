@@ -44,7 +44,7 @@ public actor SubscriptionHistoryStore {
     private static let storageSchemaVersion = 2
     private static let saveThrottleInterval: TimeInterval = 30
     private static let maxFileBytes = 16 * 1024 * 1024
-    private static let currentResetSignalRepairVersion = 2
+    private static let currentResetSignalRepairVersion = 1
     /// How early is early, and how close a new reset has to be to count as
     /// restarted or unchanged. A tenth of the window on each side: wide enough
     /// to absorb the minute or two a provider takes to publish a new boundary,
@@ -169,7 +169,10 @@ public actor SubscriptionHistoryStore {
         let needsLegacyImport = !storage.legacyTimelineImported
         let needsResetSignalRepair = (storage.resetSignalRepairVersion ?? 0)
             < Self.currentResetSignalRepairVersion
-        guard needsLegacyImport || needsResetSignalRepair else { return }
+        let needsClassification = storage.samples.contains {
+            $0.isCompleted && $0.resetKind == nil
+        }
+        guard needsLegacyImport || needsResetSignalRepair || needsClassification else { return }
 
         if needsLegacyImport {
             storage.legacyTimelineImported = true
@@ -184,6 +187,13 @@ public actor SubscriptionHistoryStore {
         // Cheap to fill in, and worth doing rather than waiting: the chart
         // shows twelve cycles, which on a weekly bucket is three months of
         // going without.
+        //
+        // Gated on the samples themselves rather than on
+        // `resetSignalRepairVersion`. That number also gates
+        // `repairMissedResetSignals`, so bumping it to reach this pass would
+        // re-run a migration that had already finished — and a pass that knows
+        // from its own data whether there is anything to do needs no version
+        // at all.
         classifyStoredResets(points, in: &storage)
         pruneInPlace(&storage, retentionDays: retentionDays, now: Date())
         save(storage)
@@ -245,7 +255,15 @@ public actor SubscriptionHistoryStore {
         }
         var sortedByKey: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
         for (key, raw) in grouped {
-            sortedByKey[key] = raw.sorted { $0.sampledAt < $1.sampledAt }
+            // Only points carrying a reset time, because those are the only
+            // ones `observe` ever looked at: it skips the rest outright. A
+            // nearest-timestamp match over the full series lands on a
+            // neighbour the live path never saw, and on this developer's
+            // timeline that is most of them — 173 cycles went unclassified
+            // for want of a reset time on the row next door.
+            sortedByKey[key] = raw
+                .filter { $0.resetAt != nil }
+                .sorted { $0.sampledAt < $1.sampledAt }
         }
 
         // Previous refill per bucket, for the gap between them.
@@ -269,7 +287,11 @@ public actor SubscriptionHistoryStore {
                   let completedAt = sample.completedAt,
                   let sorted = sortedByKey[key],
                   // The observation that saw the refill, and the one before it.
-                  let refillIndex = sorted.firstIndex(where: { $0.sampledAt >= completedAt }),
+                  let refillIndex = Self.indexOfRefillObservation(
+                      in: sorted,
+                      completedAt: completedAt,
+                      rawWindowSeconds: sample.rawWindowSeconds
+                  ),
                   refillIndex > 0,
                   let newReset = sorted[refillIndex].resetAt,
                   let reportedReset = sorted[refillIndex - 1].resetAt
@@ -544,6 +566,40 @@ public actor SubscriptionHistoryStore {
             return .earlyClockUnchanged
         }
         return .earlyUnclear
+    }
+
+    /// Which observation saw the refill that ended a cycle.
+    ///
+    /// Matched by nearest timestamp rather than by the first at or after
+    /// `completedAt`. The two clocks are not the same one: the timeline point
+    /// is written by `UsageFillTimelineStore.observe` a moment before this
+    /// store is told, and each takes its own `Date()`, so the refill
+    /// observation normally sits *just before* `completedAt`. Reaching forward
+    /// instead picked the following poll, which made the observation before it
+    /// — the refill itself, already carrying the new reset — stand in for the
+    /// reset the old cycle had been reporting.
+    ///
+    /// A match further away than half a window is not the refill; the sample
+    /// stays unclassified rather than being classified from the wrong pair.
+    static func indexOfRefillObservation(
+        in sorted: [FillTimelinePoint],
+        completedAt: Date,
+        rawWindowSeconds: Int?
+    ) -> Int? {
+        guard !sorted.isEmpty else { return nil }
+        var best: (index: Int, distance: TimeInterval)?
+        for (index, point) in sorted.enumerated() {
+            let distance = abs(point.sampledAt.timeIntervalSince(completedAt))
+            if best == nil || distance < best!.distance {
+                best = (index, distance)
+            } else if point.sampledAt > completedAt {
+                // Sorted ascending, so nothing later can be closer.
+                break
+            }
+        }
+        guard let best else { return nil }
+        let window = TimeInterval(rawWindowSeconds ?? 86_400)
+        return best.distance <= window / 2 ? best.index : nil
     }
 
     /// When this bucket last refilled, for the gap between refills.
