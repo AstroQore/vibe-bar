@@ -126,6 +126,34 @@ final class QuotaNamingContractTests: XCTestCase {
                         "the unnamed case has to be written down somewhere")
     }
 
+    /// The rule that decides whether a bucket is an L3 group at all. Without
+    /// it a second implementation cannot tell Codex's plain Weekly (which
+    /// belongs to the "All" group) from its Spark buckets (which are their
+    /// own), and has to guess — the guess I wrote was wrong for every bucket
+    /// discovered at runtime.
+    func testTheContractSaysWhichBucketsAreTheirOwnGroup() throws {
+        let rules = try XCTUnwrap(contract()["groupKey"] as? [String: Any])
+        let branch = try XCTUnwrap(rules["branchStyle"] as? [String: Any])
+
+        let always = try XCTUnwrap(branch["alwaysTools"] as? [String])
+        XCTAssertEqual(
+            always, [ToolType.antigravity.rawValue],
+            "AntiGravity's lanes are split across two groups, so all of its rows are"
+        )
+        let buckets = try XCTUnwrap(branch["buckets"] as? [String])
+        XCTAssertTrue(buckets.contains("weekly_fable"))
+        XCTAssertFalse(
+            buckets.contains("weekly"),
+            "a plain weekly bucket takes its tool's default group, not its own"
+        )
+        XCTAssertEqual(branch["discoveredNeedGroupTitle"] as? Bool, true)
+
+        // Order is load-bearing and cannot be recovered from the tables.
+        let order = try XCTUnwrap(contract()["groupKeyOrder"] as? String)
+        XCTAssertTrue(order.contains("defaultGroup"))
+        XCTAssertTrue(order.contains("in order"), "`contains` rules are ordered")
+    }
+
     private func contract() throws -> [String: Any] {
         let data = try Data(contentsOf: contractURL)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
