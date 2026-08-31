@@ -376,7 +376,6 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | **Quota** |
 | Live provider fetch | ● 25 | ◐ 10 | Desktop reads the rest from the shared cache, labelled as such |
 | Browser-cookie providers | ● | ○ | Windows blocks third-party cookie reads; explicit import there |
-| Forecast verdicts, run-out ETA, confidence | ● | ◐ | The product's own thesis. Desktop carries one on its quota cards and reset list; its mini window does not yet |
 | Observation and forecast history | ● | ◐ | Desktop records observations and draws the reset-history strip; the quota history chart with its brush is not ported |
 | Service status sources | ● 5 | ● 4 | |
 | **Menu bar / tray** |
@@ -384,7 +383,7 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | Field editor with style scopes | ● | ○ | |
 | Control Center allow-list watchdog | ● | — | macOS 26 platform behaviour |
 | **Main window** |
-| Provider detail pages | ● 4 | ○ | Desktop has one flat Quota tab |
+| Provider detail pages | ● 4 | ◐ | Desktop has a page per company with its quota and status. This app's pages also carry that provider's cost cards and history charts |
 | Arrangeable module waterfall | ● 11 | ○ | |
 | Layout editor with presets | ● | ○ | |
 | **Mini window** |
