@@ -351,12 +351,31 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         profile: ActivityProfile
     ) -> [Double] {
         cycles.compactMap { cycle in
+            // `windowStart` tracks what the provider reported, and measurement
+            // says to leave it alone. Several buckets refill far more often
+            // than their stated window — two Codex weeklies have a median gap
+            // of 57 hours against a 168-hour window — so a short span is
+            // usually the truth, not a stale value. Checked against the
+            // interval between observed refills, the stored start is right for
+            // 86-100% of cycles on every bucket; reconstructing it from the
+            // window length instead drops that to 14% on the worst.
             let cycleStart = cycle.windowStart ?? cycle.firstSeenAt
             let cycleEnd = cycle.completedAt ?? cycle.windowEnd
             guard cycleEnd > cycleStart else { return nil }
             let total = max(0.001, profile.weight(from: cycleStart, to: cycleEnd))
+            // Bounded by the last observation this cycle actually absorbed,
+            // not by its end. The observation that detected the refill belongs
+            // to the cycle that follows, and comparing timestamps cannot
+            // separate them: `UsageFillTimelineStore.observe` and this store
+            // are told separately and each takes its own `Date()`, so the
+            // refill point is stamped a shade *before* `completedAt` and slips
+            // through any end bound. `lastSeenAt` is the cycle's own answer to
+            // "the last reading that was mine". Without it a 60% → 5% refill
+            // contributed 55 points of consumption to a window that had
+            // already finished.
+            let observationEnd = cycle.lastSeenAt
             let matching = observations
-                .filter { $0.sampledAt >= cycleStart && $0.sampledAt <= cycleEnd }
+                .filter { $0.sampledAt >= cycleStart && $0.sampledAt <= observationEnd }
                 .map { point -> (distance: Double, used: Double) in
                     let progress = clamp(profile.weight(from: cycleStart, to: point.sampledAt) / total, 0, 1)
                     return (abs(progress - currentProgress), point.usedPercent)

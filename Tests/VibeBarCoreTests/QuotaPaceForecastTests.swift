@@ -146,6 +146,85 @@ final class QuotaPaceForecastTests: XCTestCase {
         )
     }
 
+    /// The observation that detected a refill belongs to the cycle that
+    /// follows, not the one that ended.
+    ///
+    /// It is stamped exactly `completedAt`, so an end-inclusive filter put it
+    /// inside the finished cycle — and at progress 1.0, which is where a
+    /// nearly-finished current window looks for its comparison. A visible
+    /// 60% → 5% refill was then read as 55 further points of consumption in a
+    /// window that was already over.
+    ///
+    /// Stated as an A/B: adding a sample that belongs to the next cycle must
+    /// not change what this one contributes.
+    func testTheRefillObservationDoesNotCountAgainstTheCycleItEnded() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        // Current window nearly over, so the closest comparable progress is
+        // exactly where the stray sample sits.
+        let reset = now.addingTimeInterval(TimeInterval(week) / 40)
+        let start = reset.addingTimeInterval(-TimeInterval(week))
+        let currentPoints = (0..<24).map { index in
+            point(
+                Double(index) * 55 / 23,
+                at: start.addingTimeInterval(TimeInterval(index) * (TimeInterval(week) / 24)),
+                resetAt: reset
+            )
+        }
+
+        let end = start.addingTimeInterval(-TimeInterval(week))
+        let cycleStart = end.addingTimeInterval(-TimeInterval(week))
+        // A past cycle that climbed to 60%, last seen a little before it reset.
+        let history = (0..<12).map { index in
+            point(
+                Double(index) * 60 / 11,
+                at: cycleStart.addingTimeInterval(TimeInterval(index) * (TimeInterval(week) / 12)),
+                resetAt: end
+            )
+        }
+        // The reading that detected the refill: 5%, already part of the next
+        // window. Stamped a shade *before* the cycle's completedAt, which is
+        // how it arrives in production — the timeline store and the history
+        // store are told separately and each takes its own `Date()`. An end
+        // bound on the timestamp therefore cannot exclude it.
+        let afterRefill = point(
+            5, at: end.addingTimeInterval(-0.4),
+            resetAt: end.addingTimeInterval(TimeInterval(week))
+        )
+
+        let cycle = SubscriptionWindowSample(
+            accountId: "account",
+            tool: .codex,
+            bucketId: "weekly",
+            windowEnd: end,
+            windowStart: cycleStart,
+            rawWindowSeconds: week,
+            peakUsedPercent: 60,
+            lastUsedPercent: 60,
+            observationCount: 12,
+            firstSeenAt: cycleStart,
+            lastSeenAt: end.addingTimeInterval(-600),
+            completedAt: end,
+            completionReason: .refillDetected
+        )
+        func historicalProjection(with observations: [FillTimelinePoint]) throws -> Double {
+            let forecast = try XCTUnwrap(QuotaPaceForecast.compute(
+                bucket: bucket(used: 55, resetAt: reset),
+                observations: observations,
+                cycles: [cycle],
+                now: now
+            ))
+            return try XCTUnwrap(forecast.diagnostics.historicalProjectionUsedPercent)
+        }
+
+        let without = try historicalProjection(with: currentPoints + history)
+        let with = try historicalProjection(with: currentPoints + history + [afterRefill])
+
+        XCTAssertEqual(
+            with, without, accuracy: 0.000_001,
+            "a reading from the next cycle changed what the previous one contributed"
+        )
+    }
+
     func testForecastKeepsEveryBucketIndependent() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let reset = now.addingTimeInterval(2 * 86_400)

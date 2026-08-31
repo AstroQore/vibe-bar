@@ -1144,6 +1144,50 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 
 ## 11. Implementation Rules That Have Bitten
 
+- **A quota cycle shorter than its stated window is usually real, not a
+  bug.** Several buckets refill far more often than the window they
+  report: two Codex weeklies have a *median* observed gap of 57 hours
+  against a 168-hour window, and 62-71% of their cycles come in under
+  half of it. Buckets that do follow their window (`claude_gpt_weekly`,
+  `gemini_weekly`, `weekly_fable`) sit at 166-168 hours, so the two
+  cases are easy to tell apart with data and impossible to tell apart by
+  reading the code.
+
+  This has already caused one wrong fix. `SubscriptionWindowSample`
+  moves `windowStart` forward on every observation of a rolling window
+  and stops when the cycle closes, which *looks* like it must leave a
+  stale value behind, and reconstructing the start from
+  `rawWindowSeconds` looks like the obvious repair. Measured against the
+  interval between observed refills, the stored start is right for
+  86-100% of cycles on every bucket; the reconstruction managed 14% on
+  the worst. **Do not "fix" a short span without measuring first** —
+  `QuotaPaceForecast.historicalRemainingUsage` derives each observation's
+  progress from that span, so inflating it to the nominal window
+  misplaces every comparison.
+
+  The corollary worth building on: a cycle whose observed interval
+  disagrees with the nominal window is an *event* — an off-schedule
+  refill — and is worth recording and showing rather than smoothing
+  away.
+
+- **An early refill comes in two shapes, and they mean opposite
+  things.** When a bucket refills before its window is up, the provider
+  either moves the next reset out to a full window from the refill (the
+  clock restarts, so a whole window lies ahead and the extra capacity is
+  usable) or leaves the next boundary where it was (less than a window
+  remains, so the refill is easier to waste than to spend). Both are
+  decidable from what is already recorded: compare the reset the new
+  cycle reports against the refill time plus the window, and against the
+  reset the old cycle was carrying.
+
+  Over ~600 real boundaries in a 50-day window the two are not evenly
+  spread — OpenAI's weekly buckets restart the clock in 85% of cycles,
+  Anthropic's ran on schedule 128 times out of 128, Grok showed one of
+  each — but **do not turn that into a table of provider habits.** The
+  observation window only covers what the timeline retained while the
+  app was running, so "never seen" is not "never happens", and a bucket
+  that changes behaviour should be described correctly without a code
+  change. Classify per cycle from the observations.
 - **JSONL scanning must be O(n).** See
   `CostUsageScanner.forEachJSONLLine`. Use a moving cursor, not
   `removeSubrange`.

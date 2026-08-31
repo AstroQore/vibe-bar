@@ -1,0 +1,1501 @@
+{
+  "cases": [
+    {
+      "description": "a real five-hour window from a live data root",
+      "expected": [
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5032028433300124,
+          "lower": 7.057651179940223,
+          "observationCount": 15,
+          "planned": 22.756405686660024,
+          "projected": 16,
+          "recentSampleCount": 14,
+          "target": 8.9743772533599,
+          "upper": 24.942348820059777,
+          "verdict": "surplus"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5088228040816783,
+          "lower": 5,
+          "observationCount": 30,
+          "planned": 45.53529121632671,
+          "projected": 10,
+          "recentSampleCount": 17,
+          "target": 8.929417567346572,
+          "upper": 18.84118952652979,
+          "verdict": "surplus"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5677130677567764,
+          "lower": 7,
+          "observationCount": 45,
+          "planned": 68.65627840654066,
+          "projected": 9.333333333333334,
+          "recentSampleCount": 17,
+          "target": 8.458295457945788,
+          "upper": 17.114498113711356,
+          "verdict": "surplus"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5371761791682244,
+          "lower": 8,
+          "observationCount": 57,
+          "planned": 86.7325389616785,
+          "projected": 8.421052631578947,
+          "recentSampleCount": 17,
+          "target": 8.702590566654205,
+          "upper": 16.751881406550908,
+          "verdict": "surplus"
+        }
+      ],
+      "input": {
+        "observations": [
+          {
+            "sampledAt": 1788155484.178921,
+            "usedPercent": 0.0
+          },
+          {
+            "sampledAt": 1788155705.49719,
+            "usedPercent": 0.0
+          },
+          {
+            "sampledAt": 1788156005.458693,
+            "usedPercent": 1.0
+          },
+          {
+            "sampledAt": 1788156305.104734,
+            "usedPercent": 2.0
+          },
+          {
+            "sampledAt": 1788156605.916263,
+            "usedPercent": 2.0
+          },
+          {
+            "sampledAt": 1788156905.6080909,
+            "usedPercent": 2.0
+          },
+          {
+            "sampledAt": 1788157205.882018,
+            "usedPercent": 2.0
+          },
+          {
+            "sampledAt": 1788157505.985965,
+            "usedPercent": 2.0
+          },
+          {
+            "sampledAt": 1788157805.401404,
+            "usedPercent": 3.0
+          },
+          {
+            "sampledAt": 1788158105.200952,
+            "usedPercent": 3.0
+          },
+          {
+            "sampledAt": 1788158405.7736201,
+            "usedPercent": 3.0
+          },
+          {
+            "sampledAt": 1788158705.4232779,
+            "usedPercent": 3.0
+          },
+          {
+            "sampledAt": 1788159005.45628,
+            "usedPercent": 3.0
+          },
+          {
+            "sampledAt": 1788159305.595261,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788159605.3200278,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788159905.9974751,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788160205.958755,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788160505.830048,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788160805.328126,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788161105.5469809,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788161405.223506,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788161705.9178681,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788162005.366987,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788162305.20853,
+            "usedPercent": 4.0
+          },
+          {
+            "sampledAt": 1788162606.1467118,
+            "usedPercent": 5.0
+          },
+          {
+            "sampledAt": 1788162905.149294,
+            "usedPercent": 5.0
+          },
+          {
+            "sampledAt": 1788163205.7743769,
+            "usedPercent": 5.0
+          },
+          {
+            "sampledAt": 1788163580.793871,
+            "usedPercent": 5.0
+          },
+          {
+            "sampledAt": 1788163805.593182,
+            "usedPercent": 5.0
+          },
+          {
+            "sampledAt": 1788164105.4097672,
+            "usedPercent": 5.0
+          },
+          {
+            "sampledAt": 1788164405.517277,
+            "usedPercent": 6.0
+          },
+          {
+            "sampledAt": 1788164706.2802649,
+            "usedPercent": 6.0
+          },
+          {
+            "sampledAt": 1788165005.307486,
+            "usedPercent": 6.0
+          },
+          {
+            "sampledAt": 1788165305.289989,
+            "usedPercent": 6.0
+          },
+          {
+            "sampledAt": 1788165605.724235,
+            "usedPercent": 6.0
+          },
+          {
+            "sampledAt": 1788165905.9837961,
+            "usedPercent": 6.0
+          },
+          {
+            "sampledAt": 1788166205.868532,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788166505.534418,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788166969.1751409,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788167105.886889,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788167406.40639,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788167705.262477,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788168005.739733,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788168551.591836,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788168851.126464,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788169151.937773,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788169451.769017,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788169751.9243221,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788169902.111405,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788170228.0435572,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788170517.6393561,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788170817.139616,
+            "usedPercent": 7.0
+          },
+          {
+            "sampledAt": 1788171117.50311,
+            "usedPercent": 8.0
+          },
+          {
+            "sampledAt": 1788171417.053107,
+            "usedPercent": 8.0
+          },
+          {
+            "sampledAt": 1788171717.723744,
+            "usedPercent": 8.0
+          },
+          {
+            "sampledAt": 1788172157.172696,
+            "usedPercent": 8.0
+          },
+          {
+            "sampledAt": 1788172317.1575541,
+            "usedPercent": 8.0
+          }
+        ],
+        "rawWindowSeconds": 18000,
+        "resetAt": 1788173400.519
+      },
+      "name": "real"
+    },
+    {
+      "description": "a burn rate that overruns the cap before reset",
+      "expected": [
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5059,
+          "lower": 131.1062,
+          "observationCount": 7,
+          "planned": 22.7618,
+          "projected": 140,
+          "recentSampleCount": 6,
+          "runOutAt": 1788168257.142857,
+          "target": 8.9528,
+          "upper": 148.8938,
+          "verdict": "atRisk"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5800000000000001,
+          "lower": 132.43999999999997,
+          "observationCount": 13,
+          "planned": 45.82,
+          "projected": 140,
+          "recentSampleCount": 12,
+          "runOutAt": 1788168257.142857,
+          "target": 8.36,
+          "upper": 147.56000000000003,
+          "verdict": "atRisk"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5800000000000001,
+          "lower": 127.08646464646462,
+          "observationCount": 19,
+          "planned": 68.73,
+          "projected": 134.64646464646466,
+          "recentSampleCount": 17,
+          "runOutAt": 1788168900,
+          "target": 8.36,
+          "upper": 142.20646464646472,
+          "verdict": "atRisk"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.35783333333333334,
+          "lower": 100,
+          "observationCount": 20,
+          "planned": 85.36953333333334,
+          "projected": 106.63157894736842,
+          "recentSampleCount": 17,
+          "runOutAt": 1788172500,
+          "target": 10.137333333333334,
+          "upper": 118.19057894736844,
+          "verdict": "atRisk"
+        }
+      ],
+      "input": {
+        "observations": [
+          {
+            "sampledAt": 1788155400.0,
+            "usedPercent": 0.0
+          },
+          {
+            "sampledAt": 1788156150.0,
+            "usedPercent": 5.833333333333334
+          },
+          {
+            "sampledAt": 1788156900.0,
+            "usedPercent": 11.666666666666668
+          },
+          {
+            "sampledAt": 1788157650.0,
+            "usedPercent": 17.5
+          },
+          {
+            "sampledAt": 1788158400.0,
+            "usedPercent": 23.333333333333336
+          },
+          {
+            "sampledAt": 1788159150.0,
+            "usedPercent": 29.166666666666668
+          },
+          {
+            "sampledAt": 1788159900.0,
+            "usedPercent": 35.0
+          },
+          {
+            "sampledAt": 1788160650.0,
+            "usedPercent": 40.83333333333333
+          },
+          {
+            "sampledAt": 1788161400.0,
+            "usedPercent": 46.66666666666667
+          },
+          {
+            "sampledAt": 1788162150.0,
+            "usedPercent": 52.5
+          },
+          {
+            "sampledAt": 1788162900.0,
+            "usedPercent": 58.333333333333336
+          },
+          {
+            "sampledAt": 1788163650.0,
+            "usedPercent": 64.16666666666666
+          },
+          {
+            "sampledAt": 1788164400.0,
+            "usedPercent": 70.0
+          },
+          {
+            "sampledAt": 1788165150.0,
+            "usedPercent": 75.83333333333334
+          },
+          {
+            "sampledAt": 1788165900.0,
+            "usedPercent": 81.66666666666666
+          },
+          {
+            "sampledAt": 1788166650.0,
+            "usedPercent": 87.5
+          },
+          {
+            "sampledAt": 1788167400.0,
+            "usedPercent": 93.33333333333334
+          },
+          {
+            "sampledAt": 1788168150.0,
+            "usedPercent": 99.16666666666666
+          },
+          {
+            "sampledAt": 1788168900.0,
+            "usedPercent": 100.0
+          },
+          {
+            "sampledAt": 1788169650.0,
+            "usedPercent": 100.0
+          }
+        ],
+        "rawWindowSeconds": 18000,
+        "resetAt": 1788173400.0
+      },
+      "name": "atRisk_fast_burn"
+    },
+    {
+      "description": "a rate near the boundary of the safety target",
+      "expected": [
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5059,
+          "lower": 76.10619999999999,
+          "observationCount": 7,
+          "planned": 22.7618,
+          "projected": 85,
+          "recentSampleCount": 6,
+          "target": 8.9528,
+          "upper": 93.89380000000001,
+          "verdict": "enough"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5800000000000001,
+          "lower": 77.43999999999998,
+          "observationCount": 13,
+          "planned": 45.82,
+          "projected": 85,
+          "recentSampleCount": 12,
+          "target": 8.36,
+          "upper": 92.56000000000002,
+          "verdict": "enough"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.5800000000000001,
+          "lower": 77.43999999999998,
+          "observationCount": 19,
+          "planned": 68.73,
+          "projected": 85,
+          "recentSampleCount": 17,
+          "target": 8.36,
+          "upper": 92.56000000000002,
+          "verdict": "enough"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.35783333333333334,
+          "lower": 67.29166666666667,
+          "observationCount": 20,
+          "planned": 85.36953333333334,
+          "projected": 71.39141414141415,
+          "recentSampleCount": 17,
+          "target": 10.137333333333334,
+          "upper": 82.95041414141414,
+          "verdict": "enough"
+        }
+      ],
+      "input": {
+        "observations": [
+          {
+            "sampledAt": 1788155400.0,
+            "usedPercent": 0.0
+          },
+          {
+            "sampledAt": 1788156150.0,
+            "usedPercent": 3.541666666666667
+          },
+          {
+            "sampledAt": 1788156900.0,
+            "usedPercent": 7.083333333333334
+          },
+          {
+            "sampledAt": 1788157650.0,
+            "usedPercent": 10.625
+          },
+          {
+            "sampledAt": 1788158400.0,
+            "usedPercent": 14.166666666666668
+          },
+          {
+            "sampledAt": 1788159150.0,
+            "usedPercent": 17.708333333333336
+          },
+          {
+            "sampledAt": 1788159900.0,
+            "usedPercent": 21.25
+          },
+          {
+            "sampledAt": 1788160650.0,
+            "usedPercent": 24.791666666666664
+          },
+          {
+            "sampledAt": 1788161400.0,
+            "usedPercent": 28.333333333333336
+          },
+          {
+            "sampledAt": 1788162150.0,
+            "usedPercent": 31.875
+          },
+          {
+            "sampledAt": 1788162900.0,
+            "usedPercent": 35.41666666666667
+          },
+          {
+            "sampledAt": 1788163650.0,
+            "usedPercent": 38.95833333333333
+          },
+          {
+            "sampledAt": 1788164400.0,
+            "usedPercent": 42.5
+          },
+          {
+            "sampledAt": 1788165150.0,
+            "usedPercent": 46.04166666666667
+          },
+          {
+            "sampledAt": 1788165900.0,
+            "usedPercent": 49.58333333333333
+          },
+          {
+            "sampledAt": 1788166650.0,
+            "usedPercent": 53.125
+          },
+          {
+            "sampledAt": 1788167400.0,
+            "usedPercent": 56.66666666666667
+          },
+          {
+            "sampledAt": 1788168150.0,
+            "usedPercent": 60.20833333333333
+          },
+          {
+            "sampledAt": 1788168900.0,
+            "usedPercent": 63.75
+          },
+          {
+            "sampledAt": 1788169650.0,
+            "usedPercent": 67.29166666666667
+          }
+        ],
+        "rawWindowSeconds": 18000,
+        "resetAt": 1788173400.0
+      },
+      "name": "watch_borderline"
+    },
+    {
+      "description": "too few observations to claim a verdict",
+      "expected": [
+        {
+          "confidence": "learning",
+          "confidenceScore": 0.13806666666666664,
+          "lower": 22.59794509803922,
+          "observationCount": 2,
+          "planned": 22.026133333333334,
+          "projected": 38.11274509803922,
+          "recentSampleCount": 1,
+          "target": 11.895466666666668,
+          "upper": 53.62754509803922,
+          "verdict": "learning"
+        },
+        {
+          "confidence": "learning",
+          "confidenceScore": 0.09373333333333332,
+          "lower": 8.333333333333334,
+          "observationCount": 2,
+          "planned": 43.87493333333333,
+          "projected": 23.039215686274513,
+          "recentSampleCount": 1,
+          "target": 12.250133333333334,
+          "upper": 39.35201568627451,
+          "verdict": "learning"
+        },
+        {
+          "confidence": "learning",
+          "confidenceScore": 0.07895555555555556,
+          "lower": 8.333333333333334,
+          "observationCount": 2,
+          "planned": 65.72373333333334,
+          "projected": 14.828431372549021,
+          "recentSampleCount": 1,
+          "target": 12.368355555555556,
+          "upper": 31.40723137254902,
+          "verdict": "learning"
+        },
+        {
+          "confidence": "learning",
+          "confidenceScore": 0.07273333333333333,
+          "lower": 8.333333333333334,
+          "observationCount": 2,
+          "planned": 83.20277333333333,
+          "projected": 9.560113519091848,
+          "recentSampleCount": 1,
+          "target": 12.418133333333333,
+          "upper": 26.250913519091846,
+          "verdict": "learning"
+        }
+      ],
+      "input": {
+        "observations": [
+          {
+            "sampledAt": 1788155400.0,
+            "usedPercent": 0.0
+          },
+          {
+            "sampledAt": 1788158400.0,
+            "usedPercent": 8.333333333333334
+          }
+        ],
+        "rawWindowSeconds": 18000,
+        "resetAt": 1788173400.0
+      },
+      "name": "learning_sparse"
+    },
+    {
+      "description": "a bucket already at 100%",
+      "expected": [
+        {
+          "confidence": "learning",
+          "confidenceScore": 0.1805,
+          "lower": 385.249,
+          "observationCount": 3,
+          "planned": 22.111,
+          "projected": 400,
+          "recentSampleCount": 2,
+          "runOutAt": 1788159900,
+          "target": 11.556000000000001,
+          "upper": 414.751,
+          "verdict": "atRisk"
+        },
+        {
+          "confidence": "medium",
+          "confidenceScore": 0.4812,
+          "lower": 190.6616,
+          "observationCount": 6,
+          "planned": 45.4248,
+          "projected": 200,
+          "recentSampleCount": 5,
+          "runOutAt": 1788164400,
+          "target": 9.1504,
+          "upper": 209.3384,
+          "verdict": "atRisk"
+        },
+        {
+          "confidence": "learning",
+          "confidenceScore": 0.23686666666666664,
+          "lower": 119.59693333333334,
+          "observationCount": 6,
+          "planned": 66.6712,
+          "projected": 133.33333333333334,
+          "recentSampleCount": 5,
+          "runOutAt": 1788168900,
+          "target": 11.105066666666666,
+          "upper": 147.06973333333335,
+          "verdict": "atRisk"
+        },
+        {
+          "confidence": "learning",
+          "confidenceScore": 0.2182,
+          "lower": 100,
+          "observationCount": 6,
+          "planned": 84.30832,
+          "projected": 105.26315789473685,
+          "recentSampleCount": 5,
+          "runOutAt": 1788172500,
+          "target": 11.2544,
+          "upper": 119.33555789473685,
+          "verdict": "atRisk"
+        }
+      ],
+      "input": {
+        "observations": [
+          {
+            "sampledAt": 1788155400.0,
+            "usedPercent": 100.0
+          },
+          {
+            "sampledAt": 1788157200.0,
+            "usedPercent": 100.0
+          },
+          {
+            "sampledAt": 1788159000.0,
+            "usedPercent": 100.0
+          },
+          {
+            "sampledAt": 1788160800.0,
+            "usedPercent": 100.0
+          },
+          {
+            "sampledAt": 1788162600.0,
+            "usedPercent": 100.0
+          },
+          {
+            "sampledAt": 1788164400.0,
+            "usedPercent": 100.0
+          }
+        ],
+        "rawWindowSeconds": 18000,
+        "resetAt": 1788173400.0
+      },
+      "name": "already_spent"
+    },
+    {
+      "description": "Three fully observed weekly cycles behind a window on a similar pace.",
+      "expected": [
+        {
+          "completedCycleCount": 3,
+          "confidence": "medium",
+          "confidenceScore": 0.44373743961356304,
+          "historicalProjection": 64.38735177865613,
+          "lower": 49.01819596764855,
+          "observationCount": 6,
+          "planned": 22.637474879227128,
+          "projected": 60.06874205460442,
+          "recentSampleCount": 5,
+          "target": 9.450100483091497,
+          "upper": 71.11928814156029,
+          "verdict": "surplus"
+        },
+        {
+          "completedCycleCount": 3,
+          "confidence": "medium",
+          "confidenceScore": 0.5540911835748564,
+          "historicalProjection": 61.4703557312253,
+          "lower": 51.58130700342562,
+          "observationCount": 12,
+          "planned": 45.716364734299425,
+          "projected": 60.64548569907821,
+          "recentSampleCount": 11,
+          "target": 8.56727053140115,
+          "upper": 69.7096643947308,
+          "verdict": "surplus"
+        },
+        {
+          "completedCycleCount": 3,
+          "confidence": "medium",
+          "confidenceScore": 0.6279907407402533,
+          "historicalProjection": 64.91699604743081,
+          "lower": 54.41281805765016,
+          "observationCount": 18,
+          "planned": 69.01794444444153,
+          "projected": 62.14680472432561,
+          "recentSampleCount": 17,
+          "target": 7.976074074077974,
+          "upper": 69.88079139100105,
+          "verdict": "surplus"
+        },
+        {
+          "completedCycleCount": 3,
+          "confidence": "medium",
+          "confidenceScore": 0.5546992753623261,
+          "historicalProjection": 62.972332015810274,
+          "lower": 56.60869565217391,
+          "observationCount": 22,
+          "planned": 86.86571449275367,
+          "projected": 60.46158838067761,
+          "recentSampleCount": 17,
+          "target": 8.562405797101391,
+          "upper": 69.51482142415574,
+          "verdict": "surplus"
+        }
+      ],
+      "input": {
+        "completedCycles": [
+          {
+            "lastSeenAt": 1799894600,
+            "peakUsedPercent": 68,
+            "windowEnd": 1799895200,
+            "windowStart": 1799290400
+          },
+          {
+            "lastSeenAt": 1799289800,
+            "peakUsedPercent": 70,
+            "windowEnd": 1799290400,
+            "windowStart": 1798685600
+          },
+          {
+            "lastSeenAt": 1798685000,
+            "peakUsedPercent": 72,
+            "windowEnd": 1798685600,
+            "windowStart": 1798080800
+          }
+        ],
+        "observations": [
+          {
+            "sampledAt": 1798080800,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1798135727.2727273,
+            "usedPercent": 6.545454545454546
+          },
+          {
+            "sampledAt": 1798190654.5454545,
+            "usedPercent": 13.090909090909092
+          },
+          {
+            "sampledAt": 1798245581.818182,
+            "usedPercent": 19.636363636363633
+          },
+          {
+            "sampledAt": 1798300509.090909,
+            "usedPercent": 26.181818181818183
+          },
+          {
+            "sampledAt": 1798355436.3636365,
+            "usedPercent": 32.72727272727273
+          },
+          {
+            "sampledAt": 1798410363.6363635,
+            "usedPercent": 39.272727272727266
+          },
+          {
+            "sampledAt": 1798465290.909091,
+            "usedPercent": 45.81818181818182
+          },
+          {
+            "sampledAt": 1798520218.181818,
+            "usedPercent": 52.36363636363637
+          },
+          {
+            "sampledAt": 1798575145.4545455,
+            "usedPercent": 58.909090909090914
+          },
+          {
+            "sampledAt": 1798630072.7272727,
+            "usedPercent": 65.45454545454545
+          },
+          {
+            "sampledAt": 1798685000,
+            "usedPercent": 72
+          },
+          {
+            "sampledAt": 1798685600,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1798740527.2727273,
+            "usedPercent": 6.363636363636364
+          },
+          {
+            "sampledAt": 1798795454.5454545,
+            "usedPercent": 12.727272727272728
+          },
+          {
+            "sampledAt": 1798850381.818182,
+            "usedPercent": 19.09090909090909
+          },
+          {
+            "sampledAt": 1798905309.090909,
+            "usedPercent": 25.454545454545457
+          },
+          {
+            "sampledAt": 1798960236.3636365,
+            "usedPercent": 31.818181818181817
+          },
+          {
+            "sampledAt": 1799015163.6363635,
+            "usedPercent": 38.18181818181818
+          },
+          {
+            "sampledAt": 1799070090.909091,
+            "usedPercent": 44.54545454545455
+          },
+          {
+            "sampledAt": 1799125018.181818,
+            "usedPercent": 50.909090909090914
+          },
+          {
+            "sampledAt": 1799179945.4545455,
+            "usedPercent": 57.27272727272727
+          },
+          {
+            "sampledAt": 1799234872.7272727,
+            "usedPercent": 63.63636363636363
+          },
+          {
+            "sampledAt": 1799289800,
+            "usedPercent": 70
+          },
+          {
+            "sampledAt": 1799290400,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1799345327.2727273,
+            "usedPercent": 6.181818181818182
+          },
+          {
+            "sampledAt": 1799400254.5454545,
+            "usedPercent": 12.363636363636363
+          },
+          {
+            "sampledAt": 1799455181.818182,
+            "usedPercent": 18.545454545454543
+          },
+          {
+            "sampledAt": 1799510109.090909,
+            "usedPercent": 24.727272727272727
+          },
+          {
+            "sampledAt": 1799565036.3636365,
+            "usedPercent": 30.909090909090907
+          },
+          {
+            "sampledAt": 1799619963.6363635,
+            "usedPercent": 37.090909090909086
+          },
+          {
+            "sampledAt": 1799674890.909091,
+            "usedPercent": 43.27272727272727
+          },
+          {
+            "sampledAt": 1799729818.181818,
+            "usedPercent": 49.45454545454545
+          },
+          {
+            "sampledAt": 1799784745.4545455,
+            "usedPercent": 55.63636363636364
+          },
+          {
+            "sampledAt": 1799839672.7272727,
+            "usedPercent": 61.81818181818181
+          },
+          {
+            "sampledAt": 1799894600,
+            "usedPercent": 68
+          },
+          {
+            "sampledAt": 1799895200,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1799921469.5652175,
+            "usedPercent": 2.6956521739130435
+          },
+          {
+            "sampledAt": 1799947739.1304348,
+            "usedPercent": 5.391304347826087
+          },
+          {
+            "sampledAt": 1799974008.695652,
+            "usedPercent": 8.08695652173913
+          },
+          {
+            "sampledAt": 1800000278.2608695,
+            "usedPercent": 10.782608695652174
+          },
+          {
+            "sampledAt": 1800026547.826087,
+            "usedPercent": 13.478260869565217
+          },
+          {
+            "sampledAt": 1800052817.3913045,
+            "usedPercent": 16.17391304347826
+          },
+          {
+            "sampledAt": 1800079086.9565217,
+            "usedPercent": 18.869565217391305
+          },
+          {
+            "sampledAt": 1800105356.521739,
+            "usedPercent": 21.565217391304348
+          },
+          {
+            "sampledAt": 1800131626.0869565,
+            "usedPercent": 24.26086956521739
+          },
+          {
+            "sampledAt": 1800157895.652174,
+            "usedPercent": 26.956521739130434
+          },
+          {
+            "sampledAt": 1800184165.2173913,
+            "usedPercent": 29.65217391304348
+          },
+          {
+            "sampledAt": 1800210434.7826087,
+            "usedPercent": 32.34782608695652
+          },
+          {
+            "sampledAt": 1800236704.347826,
+            "usedPercent": 35.04347826086956
+          },
+          {
+            "sampledAt": 1800262973.9130435,
+            "usedPercent": 37.73913043478261
+          },
+          {
+            "sampledAt": 1800289243.478261,
+            "usedPercent": 40.434782608695656
+          },
+          {
+            "sampledAt": 1800315513.0434783,
+            "usedPercent": 43.130434782608695
+          },
+          {
+            "sampledAt": 1800341782.6086955,
+            "usedPercent": 45.826086956521735
+          },
+          {
+            "sampledAt": 1800368052.173913,
+            "usedPercent": 48.52173913043478
+          },
+          {
+            "sampledAt": 1800394321.7391305,
+            "usedPercent": 51.21739130434783
+          },
+          {
+            "sampledAt": 1800420591.304348,
+            "usedPercent": 53.91304347826087
+          },
+          {
+            "sampledAt": 1800446860.8695652,
+            "usedPercent": 56.60869565217391
+          },
+          {
+            "sampledAt": 1800473130.4347825,
+            "usedPercent": 59.30434782608696
+          },
+          {
+            "sampledAt": 1800499400,
+            "usedPercent": 62
+          }
+        ],
+        "rawWindowSeconds": 604800,
+        "resetAt": 1800500000
+      },
+      "name": "cycles_measured"
+    },
+    {
+      "description": "A cycle whose stored windowStart is far shorter than its window, and a post-refill reading at its end. Both clients must take the stored start as it stands \u2014 many buckets refill more often than the window they advertise, so a short span is usually the truth \u2014 and must leave the stray reading to the cycle it opened.",
+      "expected": [
+        {
+          "completedCycleCount": 1,
+          "confidence": "learning",
+          "confidenceScore": 0.32373743961356305,
+          "historicalProjection": 57.608695652173914,
+          "lower": 42.88561271670495,
+          "observationCount": 6,
+          "planned": 22.397474879227126,
+          "projected": 55.05833880366082,
+          "recentSampleCount": 5,
+          "target": 10.410100483091496,
+          "upper": 67.2310648906167,
+          "verdict": "learning"
+        },
+        {
+          "completedCycleCount": 1,
+          "confidence": "medium",
+          "confidenceScore": 0.43409118357485643,
+          "historicalProjection": 57.73913043478261,
+          "lower": 46.42427370981959,
+          "observationCount": 12,
+          "planned": 45.23636473429943,
+          "projected": 56.61063240547218,
+          "recentSampleCount": 11,
+          "target": 9.527270531401149,
+          "upper": 66.79699110112477,
+          "verdict": "surplus"
+        },
+        {
+          "completedCycleCount": 1,
+          "confidence": "medium",
+          "confidenceScore": 0.5079907407402533,
+          "historicalProjection": 57.869565217391305,
+          "lower": 48.529974508189966,
+          "observationCount": 18,
+          "planned": 68.29794444444151,
+          "projected": 57.38614117486541,
+          "recentSampleCount": 17,
+          "target": 8.936074074077974,
+          "upper": 66.24230784154085,
+          "verdict": "surplus"
+        },
+        {
+          "completedCycleCount": 1,
+          "confidence": "medium",
+          "confidenceScore": 0.43469927536232605,
+          "historicalProjection": 55.95652173913043,
+          "lower": 52.95652173913043,
+          "observationCount": 22,
+          "planned": 85.95371449275368,
+          "projected": 55.84622430374032,
+          "recentSampleCount": 17,
+          "target": 9.522405797101392,
+          "upper": 66.02163734721846,
+          "verdict": "surplus"
+        }
+      ],
+      "input": {
+        "completedCycles": [
+          {
+            "lastSeenAt": 1799289800,
+            "peakUsedPercent": 60,
+            "windowEnd": 1799290400,
+            "windowStart": 1799289500
+          }
+        ],
+        "observations": [
+          {
+            "sampledAt": 1798685600,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1798736000,
+            "usedPercent": 5.454545454545455
+          },
+          {
+            "sampledAt": 1798786400,
+            "usedPercent": 10.90909090909091
+          },
+          {
+            "sampledAt": 1798836800,
+            "usedPercent": 16.363636363636363
+          },
+          {
+            "sampledAt": 1798887200,
+            "usedPercent": 21.81818181818182
+          },
+          {
+            "sampledAt": 1798937600,
+            "usedPercent": 27.272727272727273
+          },
+          {
+            "sampledAt": 1798988000,
+            "usedPercent": 32.72727272727273
+          },
+          {
+            "sampledAt": 1799038400,
+            "usedPercent": 38.18181818181818
+          },
+          {
+            "sampledAt": 1799088800,
+            "usedPercent": 43.63636363636364
+          },
+          {
+            "sampledAt": 1799139200,
+            "usedPercent": 49.09090909090909
+          },
+          {
+            "sampledAt": 1799189600,
+            "usedPercent": 54.54545454545455
+          },
+          {
+            "sampledAt": 1799240000,
+            "usedPercent": 60
+          },
+          {
+            "sampledAt": 1799290400,
+            "usedPercent": 5
+          },
+          {
+            "sampledAt": 1799895200,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1799921469.5652175,
+            "usedPercent": 2.5217391304347827
+          },
+          {
+            "sampledAt": 1799947739.1304348,
+            "usedPercent": 5.043478260869565
+          },
+          {
+            "sampledAt": 1799974008.695652,
+            "usedPercent": 7.565217391304348
+          },
+          {
+            "sampledAt": 1800000278.2608695,
+            "usedPercent": 10.08695652173913
+          },
+          {
+            "sampledAt": 1800026547.826087,
+            "usedPercent": 12.608695652173912
+          },
+          {
+            "sampledAt": 1800052817.3913045,
+            "usedPercent": 15.130434782608695
+          },
+          {
+            "sampledAt": 1800079086.9565217,
+            "usedPercent": 17.65217391304348
+          },
+          {
+            "sampledAt": 1800105356.521739,
+            "usedPercent": 20.17391304347826
+          },
+          {
+            "sampledAt": 1800131626.0869565,
+            "usedPercent": 22.695652173913043
+          },
+          {
+            "sampledAt": 1800157895.652174,
+            "usedPercent": 25.217391304347824
+          },
+          {
+            "sampledAt": 1800184165.2173913,
+            "usedPercent": 27.73913043478261
+          },
+          {
+            "sampledAt": 1800210434.7826087,
+            "usedPercent": 30.26086956521739
+          },
+          {
+            "sampledAt": 1800236704.347826,
+            "usedPercent": 32.78260869565217
+          },
+          {
+            "sampledAt": 1800262973.9130435,
+            "usedPercent": 35.30434782608696
+          },
+          {
+            "sampledAt": 1800289243.478261,
+            "usedPercent": 37.82608695652174
+          },
+          {
+            "sampledAt": 1800315513.0434783,
+            "usedPercent": 40.34782608695652
+          },
+          {
+            "sampledAt": 1800341782.6086955,
+            "usedPercent": 42.869565217391305
+          },
+          {
+            "sampledAt": 1800368052.173913,
+            "usedPercent": 45.391304347826086
+          },
+          {
+            "sampledAt": 1800394321.7391305,
+            "usedPercent": 47.91304347826087
+          },
+          {
+            "sampledAt": 1800420591.304348,
+            "usedPercent": 50.43478260869565
+          },
+          {
+            "sampledAt": 1800446860.8695652,
+            "usedPercent": 52.95652173913043
+          },
+          {
+            "sampledAt": 1800473130.4347825,
+            "usedPercent": 55.47826086956522
+          },
+          {
+            "sampledAt": 1800499400,
+            "usedPercent": 58
+          }
+        ],
+        "rawWindowSeconds": 604800,
+        "resetAt": 1800500000
+      },
+      "name": "cycles_collapsed_start_and_refill_sample"
+    },
+    {
+      "description": "A past cycle seen only through its first 60%, and a post-refill reading stamped at its exact end. Past that progress the stray reading is the closest comparable moment, so a client that keeps it inside the finished cycle reads the refill as consumption.",
+      "expected": [
+        {
+          "completedCycleCount": 1,
+          "confidence": "learning",
+          "confidenceScore": 0.32373743961356305,
+          "historicalProjection": 59.7888198757764,
+          "lower": 53.244384574508935,
+          "observationCount": 6,
+          "planned": 22.397474879227126,
+          "projected": 65.4171106614648,
+          "recentSampleCount": 5,
+          "target": 10.410100483091496,
+          "upper": 77.58983674842068,
+          "verdict": "learning"
+        },
+        {
+          "completedCycleCount": 1,
+          "confidence": "medium",
+          "confidenceScore": 0.43409118357485643,
+          "historicalProjection": 62.621118012422365,
+          "lower": 57.47699048856234,
+          "observationCount": 12,
+          "planned": 45.23636473429943,
+          "projected": 67.66334918421494,
+          "recentSampleCount": 11,
+          "target": 9.527270531401149,
+          "upper": 77.84970787986754,
+          "verdict": "enough"
+        },
+        {
+          "completedCycleCount": 1,
+          "confidence": "medium",
+          "confidenceScore": 0.5079907407402533,
+          "historicalProjection": 75.7391304347826,
+          "lower": 60.953746043421674,
+          "observationCount": 18,
+          "planned": 68.29794444444151,
+          "projected": 69.80991271009712,
+          "recentSampleCount": 17,
+          "target": 8.936074074077974,
+          "upper": 78.66607937677257,
+          "verdict": "enough"
+        },
+        {
+          "completedCycleCount": 1,
+          "confidence": "medium",
+          "confidenceScore": 0.43469927536232605,
+          "historicalProjection": 66.91304347826087,
+          "lower": 63.91304347826087,
+          "observationCount": 22,
+          "planned": 85.95371449275368,
+          "projected": 67.34263903274456,
+          "recentSampleCount": 17,
+          "target": 9.522405797101392,
+          "upper": 77.51805207622269,
+          "verdict": "enough"
+        }
+      ],
+      "input": {
+        "completedCycles": [
+          {
+            "lastSeenAt": 1799289800,
+            "peakUsedPercent": 60,
+            "windowEnd": 1799290400,
+            "windowStart": 1798685600
+          }
+        ],
+        "observations": [
+          {
+            "sampledAt": 1798685600,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1798737440,
+            "usedPercent": 5.142857142857142
+          },
+          {
+            "sampledAt": 1798789280,
+            "usedPercent": 10.285714285714285
+          },
+          {
+            "sampledAt": 1798841120,
+            "usedPercent": 15.428571428571427
+          },
+          {
+            "sampledAt": 1798892960,
+            "usedPercent": 20.57142857142857
+          },
+          {
+            "sampledAt": 1798944800,
+            "usedPercent": 25.714285714285715
+          },
+          {
+            "sampledAt": 1798996640,
+            "usedPercent": 30.857142857142854
+          },
+          {
+            "sampledAt": 1799048480,
+            "usedPercent": 36
+          },
+          {
+            "sampledAt": 1799290400,
+            "usedPercent": 4
+          },
+          {
+            "sampledAt": 1799895200,
+            "usedPercent": 0
+          },
+          {
+            "sampledAt": 1799921469.5652175,
+            "usedPercent": 3.043478260869565
+          },
+          {
+            "sampledAt": 1799947739.1304348,
+            "usedPercent": 6.08695652173913
+          },
+          {
+            "sampledAt": 1799974008.695652,
+            "usedPercent": 9.130434782608695
+          },
+          {
+            "sampledAt": 1800000278.2608695,
+            "usedPercent": 12.17391304347826
+          },
+          {
+            "sampledAt": 1800026547.826087,
+            "usedPercent": 15.217391304347826
+          },
+          {
+            "sampledAt": 1800052817.3913045,
+            "usedPercent": 18.26086956521739
+          },
+          {
+            "sampledAt": 1800079086.9565217,
+            "usedPercent": 21.304347826086957
+          },
+          {
+            "sampledAt": 1800105356.521739,
+            "usedPercent": 24.34782608695652
+          },
+          {
+            "sampledAt": 1800131626.0869565,
+            "usedPercent": 27.39130434782609
+          },
+          {
+            "sampledAt": 1800157895.652174,
+            "usedPercent": 30.434782608695652
+          },
+          {
+            "sampledAt": 1800184165.2173913,
+            "usedPercent": 33.47826086956522
+          },
+          {
+            "sampledAt": 1800210434.7826087,
+            "usedPercent": 36.52173913043478
+          },
+          {
+            "sampledAt": 1800236704.347826,
+            "usedPercent": 39.565217391304344
+          },
+          {
+            "sampledAt": 1800262973.9130435,
+            "usedPercent": 42.608695652173914
+          },
+          {
+            "sampledAt": 1800289243.478261,
+            "usedPercent": 45.65217391304348
+          },
+          {
+            "sampledAt": 1800315513.0434783,
+            "usedPercent": 48.69565217391304
+          },
+          {
+            "sampledAt": 1800341782.6086955,
+            "usedPercent": 51.7391304347826
+          },
+          {
+            "sampledAt": 1800368052.173913,
+            "usedPercent": 54.78260869565218
+          },
+          {
+            "sampledAt": 1800394321.7391305,
+            "usedPercent": 57.82608695652174
+          },
+          {
+            "sampledAt": 1800420591.304348,
+            "usedPercent": 60.869565217391305
+          },
+          {
+            "sampledAt": 1800446860.8695652,
+            "usedPercent": 63.91304347826087
+          },
+          {
+            "sampledAt": 1800473130.4347825,
+            "usedPercent": 66.95652173913044
+          },
+          {
+            "sampledAt": 1800499400,
+            "usedPercent": 70
+          }
+        ],
+        "rawWindowSeconds": 604800,
+        "resetAt": 1800500000
+      },
+      "name": "cycles_refill_sample_at_the_boundary"
+    }
+  ],
+  "evaluationFractions": [
+    0.25,
+    0.5,
+    0.75,
+    0.95
+  ],
+  "note": "Cross-language forecast vectors. Both implementations evaluate each case at 25%, 50%, 75% and 95% of the window using the last observation at or before that moment, and must agree on every field. Verdicts and confidences must match exactly; numeric fields are compared to 1e-6, which is far tighter than any real difference and far looser than float reordering noise. The expected values were produced by the native Swift implementation, so this file is an independent oracle rather than a snapshot of either port. An expectation with no runOutAt predicts the bucket will not run out before the reset; that is a different claim from a timestamp and must not be read as one. Cases carrying completedCycles also exercise the historical projection, which the first five leave untouched: both clients take a cycle's stored windowStart as it stands \u2014 many buckets refill more often than the window they advertise, so a short span is usually the truth \u2014 and bound its observations at lastSeenAt, because the reading that detected the refill belongs to the cycle it opened and is stamped too close to the boundary to separate by time.",
+  "numericTolerance": 1e-06,
+  "schema": 1
+}
