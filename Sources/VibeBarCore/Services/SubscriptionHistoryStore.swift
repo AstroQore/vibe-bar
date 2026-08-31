@@ -255,15 +255,7 @@ public actor SubscriptionHistoryStore {
         }
         var sortedByKey: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
         for (key, raw) in grouped {
-            // Only points carrying a reset time, because those are the only
-            // ones `observe` ever looked at: it skips the rest outright. A
-            // nearest-timestamp match over the full series lands on a
-            // neighbour the live path never saw, and on this developer's
-            // timeline that is most of them — 173 cycles went unclassified
-            // for want of a reset time on the row next door.
-            sortedByKey[key] = raw
-                .filter { $0.resetAt != nil }
-                .sorted { $0.sampledAt < $1.sampledAt }
+            sortedByKey[key] = raw.sorted { $0.sampledAt < $1.sampledAt }
         }
 
         // Previous refill per bucket, for the gap between them.
@@ -286,15 +278,23 @@ public actor SubscriptionHistoryStore {
             guard sample.resetKind == nil else { continue }
             guard let completedAt = sample.completedAt,
                   let sorted = sortedByKey[key],
-                  // The observation that saw the refill, and the one before it.
+                  // The observation that saw the refill…
                   let refillIndex = Self.indexOfRefillObservation(
                       in: sorted,
                       completedAt: completedAt,
                       rawWindowSeconds: sample.rawWindowSeconds
                   ),
-                  refillIndex > 0,
                   let newReset = sorted[refillIndex].resetAt,
-                  let reportedReset = sorted[refillIndex - 1].resetAt
+                  // …and the last one before it that reported a reset, which
+                  // is not always the row immediately above. Not every point
+                  // carries one, and the migration passes can place a cycle on
+                  // a point that does not, so neither the match nor its
+                  // predecessor can assume it.
+                  let reportedReset = sorted[..<refillIndex]
+                      .reversed()
+                      .lazy
+                      .compactMap(\.resetAt)
+                      .first
             else {
                 // Recorded as asked-and-unanswerable, so the pass does not come
                 // back to it on every launch for evidence that is gone.

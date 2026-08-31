@@ -167,6 +167,53 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
         )
     }
 
+    /// The migration passes can place a completed cycle on a timeline point
+    /// that reported no reset time. Dropping such points before matching
+    /// removed the refill observation itself, and the nearest survivor — a
+    /// poll ten minutes later — produced a confident answer for a cycle whose
+    /// evidence does not support one.
+    func testACycleOnAPointWithNoResetTimeIsNotGivenAnInventedAnswer() async throws {
+        let (store, url, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let window = 18_000
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = base.addingTimeInterval(TimeInterval(window))
+        // The refill was seen on a point that carried no reset time.
+        let refill = reset.addingTimeInterval(-0.4)
+        let json = """
+        {"schemaVersion":2,"legacyTimelineImported":true,"resetSignalRepairVersion":1,\
+        "samples":[{"accountId":"acct-test","tool":"codex","bucketId":"weekly",\
+        "windowEnd":\(refill.timeIntervalSinceReferenceDate),"rawWindowSeconds":\(window),\
+        "peakUsedPercent":40,"lastUsedPercent":40,"observationCount":4,\
+        "firstSeenAt":\(base.timeIntervalSinceReferenceDate),\
+        "lastSeenAt":\(refill.timeIntervalSinceReferenceDate),\
+        "completedAt":\(refill.timeIntervalSinceReferenceDate),\
+        "completionReason":"refillDetected"}]}
+        """
+        try Data(json.utf8).write(to: url)
+
+        func point(_ used: Double, at date: Date, resetAt: Date?) -> FillTimelinePoint {
+            FillTimelinePoint(
+                accountId: "acct-test", tool: .codex, bucketId: "weekly",
+                slotStart: UsageFillTimelineStore.hourSlotStart(for: date),
+                usedPercent: used, sampledAt: date, resetAt: resetAt,
+                rawWindowSeconds: window
+            )
+        }
+        await store.importLegacyTimeline([
+            point(30, at: base, resetAt: reset),
+            point(2, at: refill, resetAt: nil),
+            point(6, at: reset.addingTimeInterval(600),
+                  resetAt: reset.addingTimeInterval(TimeInterval(window))),
+        ])
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "weekly")
+        XCTAssertEqual(
+            samples.first?.resetKind, .unobserved,
+            "a cycle whose refill reported no reset time was given a confident answer"
+        )
+    }
+
     /// A cycle whose evidence is gone is marked as asked-and-unanswerable,
     /// not left blank. Blank means nobody has looked, so the backfill would
     /// come back to it on every launch for observations that no longer exist.
