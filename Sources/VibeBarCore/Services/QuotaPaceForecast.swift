@@ -351,12 +351,26 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         profile: ActivityProfile
     ) -> [Double] {
         cycles.compactMap { cycle in
-            let cycleStart = cycle.windowStart ?? cycle.firstSeenAt
+            // The refill time is observed; the window's beginning is not. A
+            // rolling bucket moves `windowStart` forward on every poll and
+            // stops when the cycle closes, which can leave it a single polling
+            // interval before the end — on real data that is a fifth to a
+            // third of one bucket's cycles. Reconstructing it from the window
+            // length the provider reported gives the span the cycle actually
+            // had, and agrees with the stored value whenever that value was
+            // trustworthy.
             let cycleEnd = cycle.completedAt ?? cycle.windowEnd
+            let cycleStart = cycle.rawWindowSeconds.map {
+                cycleEnd.addingTimeInterval(-TimeInterval($0))
+            } ?? cycle.windowStart ?? cycle.firstSeenAt
             guard cycleEnd > cycleStart else { return nil }
             let total = max(0.001, profile.weight(from: cycleStart, to: cycleEnd))
+            // Half-open at the end: the observation that detected the refill is
+            // stamped exactly `completedAt` and belongs to the cycle that
+            // follows. Including it let a 60% → 5% refill contribute 55 points
+            // of consumption to the window that had already finished.
             let matching = observations
-                .filter { $0.sampledAt >= cycleStart && $0.sampledAt <= cycleEnd }
+                .filter { $0.sampledAt >= cycleStart && $0.sampledAt < cycleEnd }
                 .map { point -> (distance: Double, used: Double) in
                     let progress = clamp(profile.weight(from: cycleStart, to: point.sampledAt) / total, 0, 1)
                     return (abs(progress - currentProgress), point.usedPercent)

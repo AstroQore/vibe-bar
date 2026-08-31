@@ -146,6 +146,150 @@ final class QuotaPaceForecastTests: XCTestCase {
         )
     }
 
+    /// A cycle whose stored `windowStart` collapsed still contributes a
+    /// measured figure.
+    ///
+    /// `SubscriptionHistoryStore` moves `windowStart` forward on every
+    /// observation of a rolling window and stops when the cycle closes, so a
+    /// finished cycle can claim a span of one polling interval. The historical
+    /// projection filters observations by that span and derives their progress
+    /// from it, so a collapsed cycle used to contribute nothing measured —
+    /// either ~0 or the whole peak, depending on which end it matched.
+    func testACollapsedStoredSpanStillYieldsAMeasuredHistory() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = now.addingTimeInterval(TimeInterval(week) / 2)
+        let start = reset.addingTimeInterval(-TimeInterval(week))
+        let currentPoints = (0..<12).map { index in
+            point(
+                Double(index) * 20 / 11,
+                at: start.addingTimeInterval(TimeInterval(index) * (TimeInterval(week) / 24)),
+                resetAt: reset
+            )
+        }
+
+        // One past cycle, fully observed, that climbed from 0 to 80%.
+        let end = start.addingTimeInterval(-TimeInterval(week))
+        let history = (0..<12).map { index in
+            point(
+                Double(index) * 80 / 11,
+                at: end.addingTimeInterval(-TimeInterval(week) + TimeInterval(index) * (TimeInterval(week) / 12)),
+                resetAt: end
+            )
+        }
+        func sample(windowStart: Date) -> SubscriptionWindowSample {
+            SubscriptionWindowSample(
+                accountId: "account",
+                tool: .codex,
+                bucketId: "weekly",
+                windowEnd: end,
+                windowStart: windowStart,
+                rawWindowSeconds: week,
+                peakUsedPercent: 80,
+                lastUsedPercent: 80,
+                observationCount: 12,
+                firstSeenAt: end.addingTimeInterval(-TimeInterval(week)),
+                lastSeenAt: end.addingTimeInterval(-600),
+                completedAt: end,
+                completionReason: .scheduledReset
+            )
+        }
+
+        let honest = try XCTUnwrap(QuotaPaceForecast.compute(
+            bucket: bucket(used: 20, resetAt: reset),
+            observations: currentPoints + history,
+            cycles: [sample(windowStart: end.addingTimeInterval(-TimeInterval(week)))],
+            now: now
+        ))
+        // The same cycle, with the span a rolling window would have left behind.
+        let collapsed = try XCTUnwrap(QuotaPaceForecast.compute(
+            bucket: bucket(used: 20, resetAt: reset),
+            observations: currentPoints + history,
+            cycles: [sample(windowStart: end.addingTimeInterval(-900))],
+            now: now
+        ))
+
+        XCTAssertEqual(honest.diagnostics.comparableCycleCount, 1)
+        XCTAssertEqual(
+            try XCTUnwrap(collapsed.diagnostics.historicalProjectionUsedPercent),
+            try XCTUnwrap(honest.diagnostics.historicalProjectionUsedPercent),
+            accuracy: 0.000_001,
+            "the window length the provider reported decides the span, not a stale windowStart"
+        )
+    }
+
+    /// The observation that detected a refill belongs to the cycle that
+    /// follows, not the one that ended.
+    ///
+    /// It is stamped exactly `completedAt`, so an end-inclusive filter put it
+    /// inside the finished cycle — and at progress 1.0, which is where a
+    /// nearly-finished current window looks for its comparison. A visible
+    /// 60% → 5% refill was then read as 55 further points of consumption in a
+    /// window that was already over.
+    ///
+    /// Stated as an A/B: adding a sample that belongs to the next cycle must
+    /// not change what this one contributes.
+    func testTheRefillObservationDoesNotCountAgainstTheCycleItEnded() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        // Current window nearly over, so the closest comparable progress is
+        // exactly where the stray sample sits.
+        let reset = now.addingTimeInterval(TimeInterval(week) / 40)
+        let start = reset.addingTimeInterval(-TimeInterval(week))
+        let currentPoints = (0..<24).map { index in
+            point(
+                Double(index) * 55 / 23,
+                at: start.addingTimeInterval(TimeInterval(index) * (TimeInterval(week) / 24)),
+                resetAt: reset
+            )
+        }
+
+        let end = start.addingTimeInterval(-TimeInterval(week))
+        let cycleStart = end.addingTimeInterval(-TimeInterval(week))
+        // A past cycle that climbed to 60%, last seen a little before it reset.
+        let history = (0..<12).map { index in
+            point(
+                Double(index) * 60 / 11,
+                at: cycleStart.addingTimeInterval(TimeInterval(index) * (TimeInterval(week) / 12)),
+                resetAt: end
+            )
+        }
+        // The reading that detected the refill: 5%, stamped at the reset, and
+        // already part of the next window.
+        let afterRefill = point(5, at: end, resetAt: end.addingTimeInterval(TimeInterval(week)))
+
+        let cycle = SubscriptionWindowSample(
+            accountId: "account",
+            tool: .codex,
+            bucketId: "weekly",
+            windowEnd: end,
+            windowStart: cycleStart,
+            rawWindowSeconds: week,
+            peakUsedPercent: 60,
+            lastUsedPercent: 60,
+            observationCount: 12,
+            firstSeenAt: cycleStart,
+            lastSeenAt: end.addingTimeInterval(-600),
+            completedAt: end,
+            completionReason: .refillDetected
+        )
+        func historicalProjection(with observations: [FillTimelinePoint]) throws -> Double {
+            let forecast = try XCTUnwrap(QuotaPaceForecast.compute(
+                bucket: bucket(used: 55, resetAt: reset),
+                observations: observations,
+                cycles: [cycle],
+                now: now
+            ))
+            return try XCTUnwrap(forecast.diagnostics.historicalProjectionUsedPercent)
+        }
+
+        let without = try historicalProjection(with: currentPoints + history)
+        let with = try historicalProjection(with: currentPoints + history + [afterRefill])
+
+        XCTAssertEqual(
+            with, without, accuracy: 0.000_001,
+            "a reading from the next cycle changed what the previous one contributed"
+        )
+    }
+
     func testForecastKeepsEveryBucketIndependent() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let reset = now.addingTimeInterval(2 * 86_400)
