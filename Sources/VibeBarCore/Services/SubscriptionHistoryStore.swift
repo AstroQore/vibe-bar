@@ -283,8 +283,8 @@ public actor SubscriptionHistoryStore {
                 storage.samples[index].intervalSeconds =
                     sample.windowEnd.timeIntervalSince(last)
             }
-            guard sample.resetKind == nil,
-                  let completedAt = sample.completedAt,
+            guard sample.resetKind == nil else { continue }
+            guard let completedAt = sample.completedAt,
                   let sorted = sortedByKey[key],
                   // The observation that saw the refill, and the one before it.
                   let refillIndex = Self.indexOfRefillObservation(
@@ -295,7 +295,12 @@ public actor SubscriptionHistoryStore {
                   refillIndex > 0,
                   let newReset = sorted[refillIndex].resetAt,
                   let reportedReset = sorted[refillIndex - 1].resetAt
-            else { continue }
+            else {
+                // Recorded as asked-and-unanswerable, so the pass does not come
+                // back to it on every launch for evidence that is gone.
+                storage.samples[index].resetKind = .unobserved
+                continue
+            }
 
             storage.samples[index].resetKind = Self.classifyReset(
                 reportedResetAt: reportedReset,
@@ -303,7 +308,7 @@ public actor SubscriptionHistoryStore {
                 observedAt: completedAt,
                 rawWindowSeconds: sample.rawWindowSeconds
                     ?? sorted[refillIndex - 1].rawWindowSeconds
-            )
+            ) ?? .unobserved
         }
     }
 
@@ -559,13 +564,16 @@ public actor SubscriptionHistoryStore {
         if reportedResetAt.timeIntervalSince(observedAt) <= tolerance {
             return .onSchedule
         }
-        if abs(newResetAt.timeIntervalSince(observedAt.addingTimeInterval(window))) <= tolerance {
-            return .earlyClockRestarted
-        }
-        if abs(newResetAt.timeIntervalSince(reportedResetAt)) <= tolerance {
-            return .earlyClockUnchanged
-        }
-        return .earlyUnclear
+        // The two bands overlap near the start of a window — an hour into a
+        // week, a boundary that has not moved is 167 hours out, which is also
+        // within tolerance of a full window from here. Testing in order would
+        // always answer "restarted"; the nearer explanation wins instead.
+        let restartedBy = abs(
+            newResetAt.timeIntervalSince(observedAt.addingTimeInterval(window))
+        )
+        let unchangedBy = abs(newResetAt.timeIntervalSince(reportedResetAt))
+        guard min(restartedBy, unchangedBy) <= tolerance else { return .earlyUnclear }
+        return unchangedBy <= restartedBy ? .earlyClockUnchanged : .earlyClockRestarted
     }
 
     /// Which observation saw the refill that ended a cycle.

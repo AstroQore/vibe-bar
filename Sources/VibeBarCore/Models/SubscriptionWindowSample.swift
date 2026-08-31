@@ -24,6 +24,12 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
         case earlyClockRestarted
         case earlyClockUnchanged
         case earlyUnclear
+        /// Asked and unanswerable: the observations this cycle would have been
+        /// judged from are gone, pruned or never recorded. Distinct from `nil`,
+        /// which means nobody has looked — without the difference the backfill
+        /// would retry every launch, forever, for a cycle whose evidence no
+        /// longer exists.
+        case unobserved
     }
 
     public var accountId: String
@@ -53,7 +59,7 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
     public var refilledEarly: Bool {
         switch resetKind {
         case .earlyClockRestarted, .earlyClockUnchanged, .earlyUnclear: true
-        case .onSchedule, nil: false
+        case .onSchedule, .unobserved, nil: false
         }
     }
     public var remainingPercentAtReset: Double {

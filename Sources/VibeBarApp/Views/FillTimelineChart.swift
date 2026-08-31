@@ -186,7 +186,7 @@ struct FillTimelineChart: View {
         case .earlyClockRestarted: " · refilled early, next window restarted"
         case .earlyClockUnchanged: " · refilled early, next reset unchanged"
         case .earlyUnclear: " · refilled early, onto a different schedule"
-        case .onSchedule, nil: ""
+        case .onSchedule, .unobserved, nil: ""
         }
     }
 

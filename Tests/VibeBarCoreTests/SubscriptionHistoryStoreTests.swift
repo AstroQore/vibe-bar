@@ -133,6 +133,68 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
         XCTAssertEqual(completed.first?.resetKind, .earlyClockUnchanged)
     }
 
+    /// Near the start of a window the two early bands overlap: a boundary
+    /// that has not moved is almost exactly a window away from here. Testing
+    /// the bands in order always answered "restarted", which is the opposite
+    /// of the truth and the more reassuring of the two.
+    func testAnEarlyRefillJustAfterAWindowOpensIsNotMisreadAsRestarted() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let week = 604_800
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = start.addingTimeInterval(TimeInterval(week))
+        // One hour in, and the boundary does not move.
+        let early = start.addingTimeInterval(3_600)
+
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "weekly", usedPercent: 40, resetAt: reset, rawWindowSeconds: week)
+            ], queriedAt: start),
+            now: start
+        )
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "weekly", usedPercent: 2, resetAt: reset, rawWindowSeconds: week)
+            ], queriedAt: early),
+            now: early
+        )
+
+        let completed = await store.samples(accountId: "acct-test", bucketId: "weekly")
+            .filter(\.isCompleted)
+        XCTAssertEqual(
+            completed.first?.resetKind, .earlyClockUnchanged,
+            "an unmoved boundary an hour into a week was read as a restarted clock"
+        )
+    }
+
+    /// A cycle whose evidence is gone is marked as asked-and-unanswerable,
+    /// not left blank. Blank means nobody has looked, so the backfill would
+    /// come back to it on every launch for observations that no longer exist.
+    func testACycleWithNoSurvivingObservationsIsMarkedUnobserved() async throws {
+        let (store, url, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let window = 18_000
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let json = """
+        {"schemaVersion":2,"legacyTimelineImported":true,"resetSignalRepairVersion":1,\
+        "samples":[{"accountId":"acct-test","tool":"codex","bucketId":"weekly",\
+        "windowEnd":\(base.timeIntervalSinceReferenceDate),"rawWindowSeconds":\(window),\
+        "peakUsedPercent":40,"lastUsedPercent":40,"observationCount":3,\
+        "firstSeenAt":\(base.timeIntervalSinceReferenceDate),\
+        "lastSeenAt":\(base.timeIntervalSinceReferenceDate),\
+        "completedAt":\(base.timeIntervalSinceReferenceDate),\
+        "completionReason":"scheduledReset"}]}
+        """
+        try Data(json.utf8).write(to: url)
+
+        // The timeline has been pruned; nothing survives to judge this by.
+        await store.importLegacyTimeline([])
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "weekly")
+        XCTAssertEqual(samples.first?.resetKind, .unobserved)
+        XCTAssertEqual(samples.first?.refilledEarly, false, "unanswerable is not early")
+    }
+
     /// The gap between refills, which is what shows a bucket keeping a
     /// schedule other than the one it advertises.
     func testTheGapBetweenRefillsIsRecorded() async throws {
