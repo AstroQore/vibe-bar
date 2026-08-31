@@ -279,6 +279,25 @@ systemd 的 Linux 机器上受支持的 CLI 日志，无需开放入站端口。
 [`Scripts/capture_demo_screenshots.sh`](Scripts/capture_demo_screenshots.sh)
 在两种外观下逐个打开每个界面，在纯色背景上抓图；`DemoMode.swift` 是那个开关。
 
+## 一个产品，两个客户端
+
+Vibe Bar 是一个 macOS 原生 App，并且会一直是：菜单栏、Liquid Glass 迷你浮窗和
+Workbench 都直接构建在 AppKit 与 SwiftUI 之上，而不是用 Web 视图去近似。
+
+Windows 与 Linux 由第二个客户端覆盖：
+[**Vibe Bar Desktop**](https://github.com/AstroQore/vibe-bar-desktop)——Tauri +
+Rust，同一个产品，同一份数据。两者都装在同一台 Mac 上时，它读取同一个
+`~/.vibebar` 数据根——一套 Provider 账号、一套设置，不需要维护第二份；在从未装过
+原生版的机器上，它也能独立运行。
+
+目前 Desktop 只写自己的 `client/desktop/` 命名空间，不会改动本 App 拥有的数据。
+让两个客户端同时对共享数据根写入是另一件事：本 App 在启动时读一次
+`settings.json` 并整文件覆盖写，既不会察觉也不会合并另一个客户端的修改。
+
+Desktop 仍在向本 App 对齐，在达成之前使用自己的 `0.x` 版本号。对齐之后两者共用
+同一个 `MAJOR.MINOR.PATCH`，每次 feature release 由两个仓库同时发布。这不改变本
+仓库的地位：这里是完整实现，也是"对齐"这件事的参照标准。
+
 ## 架构
 
 Vibe Bar 是一个 App，由两个 SwiftPM target 加一个独立仓库的自有 package 组成。

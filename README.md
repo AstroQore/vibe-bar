@@ -315,6 +315,31 @@ written for the occasion. [`Scripts/capture_demo_screenshots.sh`](Scripts/captur
 opens each surface in both appearances and captures it over a flat backdrop;
 `DemoMode.swift` is the switch.
 
+## One product, two clients
+
+Vibe Bar is a macOS-native app and intends to stay one: the menu bar, the
+Liquid Glass Mini Window, and the Workbench are built directly on AppKit and
+SwiftUI, not approximated through a web view.
+
+For Windows and Linux there is a second client,
+[**Vibe Bar Desktop**](https://github.com/AstroQore/vibe-bar-desktop) — Tauri
+and Rust, same product, same data. On a Mac where both are installed it reads
+the same `~/.vibebar` data root — one set of provider accounts, one set of
+settings, no second copy to maintain — and it runs standalone on a machine
+that has never had the native app.
+
+Desktop writes only inside its own `client/desktop/` namespace today, so it
+never edits what this app owns. Both clients holding the shared root open for
+writing is a separate piece of work: this app loads `settings.json` once at
+launch and rewrites it whole, so it would neither see nor merge another
+client's edit.
+
+Desktop is still being built up to this app and carries its own `0.x` version
+until it gets there. At parity the two adopt one shared
+`MAJOR.MINOR.PATCH` and every feature release ships from both repositories
+together. Nothing about that client changes this one: this repository is the
+complete implementation and the reference for what parity means.
+
 ## Architecture
 
 Vibe Bar is one app built from two SwiftPM targets plus one package of its
@@ -330,6 +355,12 @@ The kit was extracted from this repository so that the "what did my agents
 actually do" half is usable — and auditable — on its own. It knows nothing
 about quotas, plans or prices; that vocabulary stays in `VibeBarCore`. It has
 no third-party dependencies and is AGPL-3.0-only, same as Vibe Bar.
+
+The kit now ships two implementation lanes: the Swift package this app links,
+and a Rust crate that Vibe Bar Desktop links. They are peers rather than a
+port — anything both must agree on, such as the session index schema, lives in
+the kit's `contracts/` directory with a test on each side, so the two clients
+cannot drift into reading the same file differently.
 
 **How a kit release reaches you.** `Package.swift` pins the kit to an exact
 tag and SwiftPM links it statically — it is compiled into the executable, not
