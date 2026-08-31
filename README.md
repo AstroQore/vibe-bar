@@ -388,7 +388,7 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | Arrangeable module waterfall | ● 11 | ○ | |
 | Layout editor with presets | ● | ○ | |
 | **Mini window** |
-| Layouts | ● 7 | ◐ 1 | ring, compact, ledger, strip, tile, focus, rail. Desktop's one layout is a bar list rather than any of them |
+| Layouts | ● 7 | ◐ 1 | ring, compact, ledger, strip, tile, focus, rail. Desktop has the ring |
 | Multiple independent windows | ● | ○ | |
 | Translucent surface | ● Liquid Glass | ○ | Planned as a platform blur, deliberately not a copy. The window is currently opaque and undecorated |
 | **Workbench** |
