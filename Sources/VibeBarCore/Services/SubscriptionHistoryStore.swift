@@ -45,6 +45,12 @@ public actor SubscriptionHistoryStore {
     private static let saveThrottleInterval: TimeInterval = 30
     private static let maxFileBytes = 16 * 1024 * 1024
     private static let currentResetSignalRepairVersion = 1
+    /// How early is early, and how close a new reset has to be to count as
+    /// restarted or unchanged. A tenth of the window on each side: wide enough
+    /// to absorb the minute or two a provider takes to publish a new boundary,
+    /// narrow enough that a genuinely different schedule does not slip
+    /// through. Shared with the Rust client, which classifies identically.
+    private static let resetToleranceFraction = 0.10
     private static let strongResetAdvanceFraction = 0.10
     private static let weakResetAdvanceFraction = 0.01
     private static let minimumStrongUsageDrop = 0.5
@@ -105,6 +111,21 @@ public actor SubscriptionHistoryStore {
             ) {
                 current.completedAt = now
                 current.completionReason = reason
+                // Classified before `windowEnd` is overwritten below: the reset
+                // this cycle was still carrying is one of the two inputs, and
+                // that is the last moment it exists.
+                current.resetKind = Self.classifyReset(
+                    reportedResetAt: current.windowEnd,
+                    newResetAt: resetAt,
+                    observedAt: now,
+                    rawWindowSeconds: current.rawWindowSeconds
+                )
+                current.intervalSeconds = Self.previousRefill(
+                    in: storage.samples,
+                    accountId: quota.accountId,
+                    bucketId: bucket.id,
+                    before: now
+                ).map { now.timeIntervalSince($0) }
                 // The observed refill time is more useful than a stale reset
                 // forecast when providers reset early or late.
                 current.windowEnd = now
@@ -148,7 +169,10 @@ public actor SubscriptionHistoryStore {
         let needsLegacyImport = !storage.legacyTimelineImported
         let needsResetSignalRepair = (storage.resetSignalRepairVersion ?? 0)
             < Self.currentResetSignalRepairVersion
-        guard needsLegacyImport || needsResetSignalRepair else { return }
+        let needsClassification = storage.samples.contains {
+            $0.isCompleted && $0.resetKind == nil
+        }
+        guard needsLegacyImport || needsResetSignalRepair || needsClassification else { return }
 
         if needsLegacyImport {
             storage.legacyTimelineImported = true
@@ -159,6 +183,18 @@ public actor SubscriptionHistoryStore {
             repairMissedResetSignals(points, in: &storage)
             storage.resetSignalRepairVersion = Self.currentResetSignalRepairVersion
         }
+        // Cycles finished before the app classified refills carry no answer.
+        // Cheap to fill in, and worth doing rather than waiting: the chart
+        // shows twelve cycles, which on a weekly bucket is three months of
+        // going without.
+        //
+        // Gated on the samples themselves rather than on
+        // `resetSignalRepairVersion`. That number also gates
+        // `repairMissedResetSignals`, so bumping it to reach this pass would
+        // re-run a migration that had already finished — and a pass that knows
+        // from its own data whether there is anything to do needs no version
+        // at all.
+        classifyStoredResets(points, in: &storage)
         pruneInPlace(&storage, retentionDays: retentionDays, now: Date())
         save(storage)
     }
@@ -205,6 +241,77 @@ public actor SubscriptionHistoryStore {
     /// model. This repairs low-utilization and reset-time-only transitions
     /// missed by older builds without manufacturing cycles from ordinary
     /// reset forecast drift.
+    /// Fill in `resetKind` and `intervalSeconds` for cycles that completed
+    /// before those existed, from the observations that were recorded at the
+    /// time. The inputs are the same two the live path uses: the reset the
+    /// cycle was still carrying just before it refilled, and the reset the
+    /// next observation reported.
+    private func classifyStoredResets(
+        _ points: [FillTimelinePoint],
+        in storage: inout Storage
+    ) {
+        let grouped = Dictionary(grouping: points) {
+            SubscriptionHistoryKey(accountId: $0.accountId, bucketId: $0.bucketId)
+        }
+        var sortedByKey: [SubscriptionHistoryKey: [FillTimelinePoint]] = [:]
+        for (key, raw) in grouped {
+            sortedByKey[key] = raw.sorted { $0.sampledAt < $1.sampledAt }
+        }
+
+        // Previous refill per bucket, for the gap between them.
+        var previousEnd: [SubscriptionHistoryKey: Date] = [:]
+        let order = storage.samples.indices.sorted {
+            storage.samples[$0].windowEnd < storage.samples[$1].windowEnd
+        }
+        for index in order {
+            let sample = storage.samples[index]
+            guard sample.isCompleted else { continue }
+            let key = SubscriptionHistoryKey(
+                accountId: sample.accountId, bucketId: sample.bucketId
+            )
+            defer { previousEnd[key] = sample.windowEnd }
+
+            if storage.samples[index].intervalSeconds == nil, let last = previousEnd[key] {
+                storage.samples[index].intervalSeconds =
+                    sample.windowEnd.timeIntervalSince(last)
+            }
+            guard sample.resetKind == nil else { continue }
+            guard let completedAt = sample.completedAt,
+                  let sorted = sortedByKey[key],
+                  // The observation that saw the refill…
+                  let refillIndex = Self.indexOfRefillObservation(
+                      in: sorted,
+                      completedAt: completedAt,
+                      rawWindowSeconds: sample.rawWindowSeconds
+                  ),
+                  let newReset = sorted[refillIndex].resetAt,
+                  // …and the last one before it that reported a reset, which
+                  // is not always the row immediately above. Not every point
+                  // carries one, and the migration passes can place a cycle on
+                  // a point that does not, so neither the match nor its
+                  // predecessor can assume it.
+                  let reportedReset = sorted[..<refillIndex]
+                      .reversed()
+                      .lazy
+                      .compactMap(\.resetAt)
+                      .first
+            else {
+                // Recorded as asked-and-unanswerable, so the pass does not come
+                // back to it on every launch for evidence that is gone.
+                storage.samples[index].resetKind = .unobserved
+                continue
+            }
+
+            storage.samples[index].resetKind = Self.classifyReset(
+                reportedResetAt: reportedReset,
+                newResetAt: newReset,
+                observedAt: completedAt,
+                rawWindowSeconds: sample.rawWindowSeconds
+                    ?? sorted[refillIndex - 1].rawWindowSeconds
+            ) ?? .unobserved
+        }
+    }
+
     private func repairMissedResetSignals(
         _ points: [FillTimelinePoint],
         in storage: inout Storage
@@ -434,6 +541,89 @@ public actor SubscriptionHistoryStore {
             return .scheduledReset
         }
         return nil
+    }
+
+    /// Did the window end when it said it would, and if not, what happened to
+    /// the next boundary?
+    ///
+    /// Deliberately not a table of provider habits. Over ~600 real boundaries
+    /// OpenAI's weekly buckets restart the clock in 85% of cycles while
+    /// Anthropic's ran on schedule 128 times out of 128, but that was one
+    /// 50-day window on one machine: "never seen" is not "never happens", and
+    /// a bucket that changes behaviour should be described correctly without a
+    /// code change.
+    static func classifyReset(
+        reportedResetAt: Date,
+        newResetAt: Date,
+        observedAt: Date,
+        rawWindowSeconds: Int?
+    ) -> SubscriptionWindowSample.ResetKind? {
+        guard let rawWindowSeconds, rawWindowSeconds > 0 else { return nil }
+        let window = TimeInterval(rawWindowSeconds)
+        let tolerance = window * resetToleranceFraction
+        if reportedResetAt.timeIntervalSince(observedAt) <= tolerance {
+            return .onSchedule
+        }
+        // The two bands overlap near the start of a window — an hour into a
+        // week, a boundary that has not moved is 167 hours out, which is also
+        // within tolerance of a full window from here. Testing in order would
+        // always answer "restarted"; the nearer explanation wins instead.
+        let restartedBy = abs(
+            newResetAt.timeIntervalSince(observedAt.addingTimeInterval(window))
+        )
+        let unchangedBy = abs(newResetAt.timeIntervalSince(reportedResetAt))
+        guard min(restartedBy, unchangedBy) <= tolerance else { return .earlyUnclear }
+        return unchangedBy <= restartedBy ? .earlyClockUnchanged : .earlyClockRestarted
+    }
+
+    /// Which observation saw the refill that ended a cycle.
+    ///
+    /// Matched by nearest timestamp rather than by the first at or after
+    /// `completedAt`. The two clocks are not the same one: the timeline point
+    /// is written by `UsageFillTimelineStore.observe` a moment before this
+    /// store is told, and each takes its own `Date()`, so the refill
+    /// observation normally sits *just before* `completedAt`. Reaching forward
+    /// instead picked the following poll, which made the observation before it
+    /// — the refill itself, already carrying the new reset — stand in for the
+    /// reset the old cycle had been reporting.
+    ///
+    /// A match further away than half a window is not the refill; the sample
+    /// stays unclassified rather than being classified from the wrong pair.
+    static func indexOfRefillObservation(
+        in sorted: [FillTimelinePoint],
+        completedAt: Date,
+        rawWindowSeconds: Int?
+    ) -> Int? {
+        guard !sorted.isEmpty else { return nil }
+        var best: (index: Int, distance: TimeInterval)?
+        for (index, point) in sorted.enumerated() {
+            let distance = abs(point.sampledAt.timeIntervalSince(completedAt))
+            if best == nil || distance < best!.distance {
+                best = (index, distance)
+            } else if point.sampledAt > completedAt {
+                // Sorted ascending, so nothing later can be closer.
+                break
+            }
+        }
+        guard let best else { return nil }
+        let window = TimeInterval(rawWindowSeconds ?? 86_400)
+        return best.distance <= window / 2 ? best.index : nil
+    }
+
+    /// When this bucket last refilled, for the gap between refills.
+    private static func previousRefill(
+        in samples: [SubscriptionWindowSample],
+        accountId: String,
+        bucketId: String,
+        before: Date
+    ) -> Date? {
+        samples
+            .filter {
+                $0.accountId == accountId && $0.bucketId == bucketId
+                    && $0.isCompleted && $0.windowEnd < before
+            }
+            .map(\.windowEnd)
+            .max()
     }
 
     private static func isMaterialRefill(previous: Double, peak: Double, current: Double) -> Bool {
