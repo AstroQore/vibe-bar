@@ -337,9 +337,10 @@ launch and rewrites it whole, so it would neither see nor merge another
 client's edit.
 
 Desktop is still being built up to this app and carries its own `0.x` version
-until it gets there. At parity the two adopt one shared
-`MAJOR.MINOR.PATCH` and every feature release ships from both repositories
-together. Nothing about that client changes this one: this repository is the
+until it gets there. At parity the two adopt one shared `MAJOR.MINOR`, and
+every feature release ships from both repositories together; patch versions
+stay independent so either client can fix its own bugs without waiting for
+the other. Nothing about that client changes this one: this repository is the
 complete implementation and the reference for what parity means.
 
 ## Feature parity
@@ -368,7 +369,7 @@ When Desktop reaches parity with the native minor of the day, both ship the
 next minor together as the first joint release — and from that point neither
 client ships a feature minor the other cannot.
 
-Legend: ● full · ◐ partial · ○ not yet · ▲ platform equivalent · — exempt
+Legend: ● full · ◐ partial · ○ not yet · — exempt
 
 | Feature | macOS native | Desktop | Note |
 | --- | :---: | :---: | --- |
@@ -390,14 +391,14 @@ Legend: ● full · ◐ partial · ○ not yet · ▲ platform equivalent · —
 | **Mini window** |
 | Layouts | ● 7 | ◐ 1 | ring, compact, ledger, strip, tile, focus, rail |
 | Multiple independent windows | ● | ○ | |
-| Translucent surface | ● Liquid Glass | ▲ | Platform blur — deliberately not a copy |
+| Translucent surface | ● Liquid Glass | ○ | Planned as a platform blur, deliberately not a copy. The window is currently opaque and undecorated |
 | **Workbench** |
 | Usage charts, donuts, breakdown tables | ● | ○ | Desktop renders no charts at all yet |
 | Session deletion | ● | ○ | |
 | Resets: risk view | ● | ○ | Needs forecasting |
 | Skills: install, import, discover, backups | ● | ◐ | Desktop is a read-only inventory |
 | **Cost and usage** |
-| Local scan | ● 9 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI |
+| Local usage scan | ● 7 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI. Counts harnesses with a local scanner: Cursor's usage comes from dashboard events and Grok Bot has no usage source at all, so neither is a local scan on either side |
 | Per-request ledger, multi-source pricing, history | ● | ○ | Desktop keeps an in-memory aggregate |
 | **Settings** |
 | Writable | ● | ○ | Shared writes need the cross-client storage contract |
@@ -405,8 +406,8 @@ Legend: ● full · ◐ partial · ○ not yet · ▲ platform equivalent · —
 | **Platform** |
 | MCP tools | ● 12 | ◐ 5 | Read-only subset |
 | Remote probe sync | ● | ○ | |
-| Launch at login | ● | ▲ | |
-| In-app updates | ● Sparkle | ▲ | Tauri updater |
+| Launch at login | ● | ○ | |
+| In-app updates | ● Sparkle | ○ | Planned on the Tauri updater |
 | App Sandbox | ○ by design | ○ for now | Neither ships sandboxed. Native **cannot**: reading browser cookies, probing AntiGravity with `ps`/`lsof`, and driving Terminal by Apple events are all blocked inside it, and the release script refuses a sandboxed bundle. Desktop needs none of that while it stays read-only, so it is the one that *could* — an option that closes as soon as it grows cookie providers |
 | Windows and Linux | — | ◐ | Core is tested on all three; the GUI has only had a macOS pass |
 

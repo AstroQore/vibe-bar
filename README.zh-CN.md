@@ -54,9 +54,9 @@ Agent 也能来问同样的问题。
 ![Overview：顶部是成本与服务状态，下方每个服务商一张额度卡，每条进度条都带着自己的预测](docs/screenshots/popover-overview-light.png)
 
 <details>
-<summary>浅色外观下的同一个 Overview</summary>
+<summary>深色外观下的同一个 Overview</summary>
 
-![浅色外观下的 Overview](docs/screenshots/popover-overview-light.png)
+![深色外观下的 Overview](docs/screenshots/popover-overview.png)
 
 </details>
 
@@ -101,9 +101,9 @@ Agent 也能来问同样的问题。
 ![Compact 迷你浮窗：同样的额度，换成细长的竖条](docs/screenshots/mini-compact-light.png)
 
 <details>
-<summary>浅色外观下的 Regular 迷你浮窗</summary>
+<summary>深色外观下的 Regular 迷你浮窗</summary>
 
-![浅色外观下的 Regular 迷你浮窗](docs/screenshots/mini-regular-light.png)
+![深色外观下的 Regular 迷你浮窗](docs/screenshots/mini-regular.png)
 
 </details>
 
@@ -135,9 +135,9 @@ Project、Model 五张分布环形图；表格仍保持完整窗口，并增加�
 ![Usage Stats：30 天逐日 Token、harness 构成，以及下方的分期表](docs/screenshots/workbench-usage-light.png)
 
 <details>
-<summary>浅色外观下的 Usage Stats</summary>
+<summary>深色外观下的 Usage Stats</summary>
 
-![浅色外观下的 Usage Stats](docs/screenshots/workbench-usage-light.png)
+![深色外观下的 Usage Stats](docs/screenshots/workbench-usage.png)
 
 </details>
 
@@ -151,9 +151,9 @@ Project、Model 五张分布环形图；表格仍保持完整窗口，并增加�
 ![Sessions：左侧是会话列表，右侧是一条带工具调用的 transcript](docs/screenshots/workbench-sessions-light.png)
 
 <details>
-<summary>浅色外观下的 Sessions</summary>
+<summary>深色外观下的 Sessions</summary>
 
-![浅色外观下的 Sessions](docs/screenshots/workbench-sessions-light.png)
+![深色外观下的 Sessions](docs/screenshots/workbench-sessions.png)
 
 </details>
 
@@ -171,9 +171,9 @@ AntiGravity、Grok Build 和 Cursor。每一行会把 harness 的真实有效状
 ![Skills：每个 Skill 一行，每个 harness 一个开关，以及安装、导入和发现操作](docs/screenshots/workbench-skills-light.png)
 
 <details>
-<summary>浅色外观下的 Skills</summary>
+<summary>深色外观下的 Skills</summary>
 
-![浅色外观下的 Skills](docs/screenshots/workbench-skills-light.png)
+![深色外观下的 Skills](docs/screenshots/workbench-skills.png)
 
 </details>
 
@@ -188,9 +188,9 @@ Visibility 菜单、每张卡的眼睛开关、预设和实时预览，所以 Ov
 ![Layout 编辑器：Overview 页的三段卡片，右侧是预览](docs/screenshots/settings-layout-light.png)
 
 <details>
-<summary>浅色外观下的 Layout 编辑器</summary>
+<summary>深色外观下的 Layout 编辑器</summary>
 
-![浅色外观下的 Layout 编辑器](docs/screenshots/settings-layout-light.png)
+![深色外观下的 Layout 编辑器](docs/screenshots/settings-layout.png)
 
 </details>
 
@@ -207,9 +207,9 @@ Visibility 菜单、每张卡的眼睛开关、预设和实时预览，所以 Ov
 ![Menu Bar Health：实时 AppKit probe、Control Center 审计、提醒状态和一键修复](docs/screenshots/settings-menuBarHealth-light.png)
 
 <details>
-<summary>浅色外观下的 Menu Bar Health</summary>
+<summary>深色外观下的 Menu Bar Health</summary>
 
-![浅色外观下的 Menu Bar Health](docs/screenshots/settings-menuBarHealth-light.png)
+![深色外观下的 Menu Bar Health](docs/screenshots/settings-menuBarHealth.png)
 
 </details>
 
@@ -318,7 +318,7 @@ Desktop 仍在向本 App 对齐，在达成之前使用自己的 `0.x` 版本号
 跨平台版则在补下面这张表。当跨平台版追平原生版当时的 minor 时，两边共同发布下一个 minor
 作为首个联合版本——从那一刻起，任何一边都不能再发一个对方给不出的 feature minor。
 
-图例：● 完整 · ◐ 部分 · ○ 尚未 · ▲ 平台等价物 · — 豁免
+图例：● 完整 · ◐ 部分 · ○ 尚未 · — 豁免
 
 | 功能 | macOS 原生 | 跨平台 | 说明 |
 | --- | :---: | :---: | --- |
@@ -340,14 +340,14 @@ Desktop 仍在向本 App 对齐，在达成之前使用自己的 `0.x` 版本号
 | **迷你窗口** |
 | 布局 | ● 7 | ◐ 1 | 环形、紧凑、账本、条带、磁贴、聚焦、轨道 |
 | 多个独立窗口 | ● | ○ | |
-| 半透明表面 | ● Liquid Glass | ▲ | 各平台自身的模糊效果，刻意不做复刻 |
+| 半透明表面 | ● Liquid Glass | ○ | 计划用各平台自身的模糊效果，刻意不做复刻。目前窗口是不透明的无边框窗 |
 | **工作台** |
 | 用量图表、环图、明细表 | ● | ○ | 跨平台版目前完全没有图表 |
 | 会话删除 | ● | ○ | |
 | 重置：风险视图 | ● | ○ | 依赖预测能力 |
 | 技能：安装、导入、发现、备份 | ● | ◐ | 跨平台版目前是只读清单 |
 | **成本与用量** |
-| 本地扫描 | ● 9 个 harness | ◐ 3 | Codex、Claude Code、Gemini CLI |
+| 本地用量扫描 | ● 7 个 harness | ◐ 3 | Codex、Claude Code、Gemini CLI。只计有本地扫描器的 harness：Cursor 的用量来自 dashboard 事件，Grok Bot 根本没有用量来源，两者在任何一边都不算本地扫描 |
 | 逐请求账本、多源价格、历史 | ● | ○ | 跨平台版只保留内存中的聚合 |
 | **设置** |
 | 可写 | ● | ○ | 写共享数据需要跨客户端存储契约 |
@@ -355,8 +355,8 @@ Desktop 仍在向本 App 对齐，在达成之前使用自己的 `0.x` 版本号
 | **平台** |
 | MCP 工具 | ● 12 | ◐ 5 | 只读子集 |
 | 远端 Probe 同步 | ● | ○ | |
-| 开机启动 | ● | ▲ | |
-| 应用内更新 | ● Sparkle | ▲ | Tauri updater |
+| 开机启动 | ● | ○ | |
+| 应用内更新 | ● Sparkle | ○ | 计划基于 Tauri updater |
 | App Sandbox | ○ 刻意关闭 | ○ 暂未启用 | 两边都没有沙盒。原生版**不能**有：读取浏览器 Cookie、用 `ps`/`lsof` 探测 AntiGravity、通过 Apple 事件驱动终端，在沙盒里全部被禁，发版脚本也会拒绝带沙盒的构建。跨平台版目前只读、不需要这些，所以它才是那个*可以*沙盒的——一旦做了 Cookie 类 Provider，这个选项就关闭了 |
 | Windows 与 Linux | — | ◐ | 核心已在三平台测试；GUI 只做过 macOS 验证 |
 
