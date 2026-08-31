@@ -54,11 +54,13 @@ struct FillTimelineChart: View {
                     .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
                     .foregroundStyle(.quaternary)
             }
+            earlyRefillMarks(cycles, tool: series.tool)
             cycleStrip(cycles, tool: series.tool, targetPercent: targetPercent)
             Text(caption(cycles))
                 .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            earlyRefillNote(cycles)
             axis(cycles)
         }
         .padding(.top, 4)
@@ -140,6 +142,54 @@ struct FillTimelineChart: View {
         }
     }
 
+    /// Dots over the cycles that refilled before their window was up.
+    ///
+    /// Above the bars rather than inside them: a cycle that spent all of its
+    /// quota fills its track to the top, where a marker would be the same
+    /// colour as the fill under it.
+    @ViewBuilder
+    private func earlyRefillMarks(
+        _ cycles: [SubscriptionWindowSample],
+        tool: ToolType
+    ) -> some View {
+        if cycles.contains(where: \.refilledEarly) {
+            HStack(alignment: .center, spacing: barSpacing) {
+                ForEach(Array(cycles.enumerated()), id: \.offset) { _, cycle in
+                    Circle()
+                        .fill(Theme.providerAccent(for: tool).opacity(cycle.refilledEarly ? 0.8 : 0))
+                        .frame(width: 3, height: 3)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 4)
+        }
+    }
+
+    @ViewBuilder
+    private func earlyRefillNote(_ cycles: [SubscriptionWindowSample]) -> some View {
+        let early = cycles.filter(\.refilledEarly).count
+        if early > 0 {
+            Text(
+                early == 1
+                    ? "1 cycle refilled before the window was up"
+                    : "\(early) cycles refilled before the window was up"
+            )
+            .font(.system(size: max(7.5, density.subtitleFontSize - 4), design: .rounded))
+            .foregroundStyle(.quaternary)
+        }
+    }
+
+    /// What the provider did to the clock, when it did anything unusual. The
+    /// two early shapes mean opposite things, so the caption says which.
+    private func resetDescription(_ cycle: SubscriptionWindowSample) -> String {
+        switch cycle.resetKind {
+        case .earlyClockRestarted: " · refilled early, next window restarted"
+        case .earlyClockUnchanged: " · refilled early, next reset unchanged"
+        case .earlyUnclear: " · refilled early, onto a different schedule"
+        case .onSchedule, .unobserved, nil: ""
+        }
+    }
+
     private func caption(_ cycles: [SubscriptionWindowSample]) -> String {
         guard !cycles.isEmpty else {
             return "A cycle is recorded when the quota refills"
@@ -157,7 +207,7 @@ struct FillTimelineChart: View {
             } else {
                 gapText = ""
             }
-            return "\(Self.timestampFormatter.string(from: completedAt)) reset · \(used)% used · \(left)% left\(gapText)"
+            return "\(Self.timestampFormatter.string(from: completedAt)) reset · \(used)% used · \(left)% left\(resetDescription(cycle))\(gapText)"
         }
         return "Current cycle · \(used)% used so far · \(left)% left"
     }
