@@ -383,7 +383,7 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | Field editor with style scopes | ● | ○ | |
 | Control Center allow-list watchdog | ● | — | macOS 26 platform behaviour |
 | **Main window** |
-| Provider detail pages | ● 4 | ◐ | Desktop has a page per company with its quota and status; these also carry that provider's cost cards and history charts |
+| Provider detail pages | ● 4 | ◐ | Desktop has a page per company with its quota and status. This app's pages also carry that provider's cost cards and history charts |
 | Arrangeable module waterfall | ● 11 | ○ | |
 | Layout editor with presets | ● | ○ | |
 | **Mini window** |
