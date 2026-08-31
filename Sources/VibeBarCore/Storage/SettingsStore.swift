@@ -85,10 +85,13 @@ public final class SettingsStore: ObservableObject {
         persistSequence += 1
         let sequence = persistSequence
         let snapshot = settings
+        let fold = foldHandler()
         pendingPersist = Task.detached(priority: .utility) {
             try? await Task.sleep(nanoseconds: Self.persistCoalesceNanoseconds)
             guard !Task.isCancelled else { return }
-            Self.writeQueue.async { Self.write(snapshot, sequence: sequence) }
+            Self.writeQueue.async {
+                Self.write(snapshot, sequence: sequence, foldedExternalChange: fold)
+            }
         }
     }
 
@@ -103,7 +106,10 @@ public final class SettingsStore: ObservableObject {
         persistSequence += 1
         let sequence = persistSequence
         let value = snapshot ?? settings
-        Self.writeQueue.sync { Self.write(value, sequence: sequence) }
+        let fold = foldHandler()
+        Self.writeQueue.sync {
+            Self.write(value, sequence: sequence, foldedExternalChange: fold)
+        }
     }
 
     /// What another writer took over, for the user to be told about.
@@ -158,18 +164,22 @@ public final class SettingsStore: ObservableObject {
         let url = settingsURL ?? VibeBarLocalStore.settingsURL
         // The raw object as well as the decoded value: a write puts back only
         // what changed, so it needs to know what was there to begin with.
+        var existing: SettingsDocument.Object?
         Self.writeQueue.sync {
             Self.fileURL = url
             Self.lastWrittenSequence = 0
             Self.editedKeys = []
             Self.lastMine = [:]
-            Self.baseline = SettingsDocument.read(from: url) ?? [:]
+            existing = SettingsDocument.read(from: url)
+            Self.baseline = existing ?? [:]
         }
-        if
-            let decoded = try? VibeBarLocalStore.readJSON(AppSettings.self, from: url)
-        {
+
+        if let decoded = try? VibeBarLocalStore.readJSON(AppSettings.self, from: url) {
             let migrated = Self.migrated(decoded)
             self.settings = migrated
+            // What was loaded is this process's starting position. A migration
+            // that follows is a real change and writes only what it changed.
+            Self.setLastMine(encoding: decoded)
             if migrated != decoded {
                 persist()
             }
@@ -178,21 +188,36 @@ public final class SettingsStore: ObservableObject {
             let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
         {
             self.settings = Self.migrated(decoded)
-            persist()
+            adoptStartingPosition(writingOver: existing)
         } else {
             self.settings = .default
-            persist()
-        }
-        // The settings this process starts from — whatever migration or the
-        // defaults just filled in — are its position, not its edits. Any
-        // write above ran against an empty `lastMine` and so recorded the
-        // whole document; this is where that accounting is set straight.
-        let loaded = SettingsDocument.object(encoding: settings)
-        Self.writeQueue.sync {
-            Self.lastMine = loaded ?? [:]
-            Self.editedKeys = []
+            adoptStartingPosition(writingOver: existing)
         }
         startWatching(url)
+    }
+
+    /// The fallback branches, which run both when there is no file and when
+    /// there is one this build cannot decode. Those are opposite situations.
+    ///
+    /// No file: write, so the settings exist somewhere. A file that is a valid
+    /// object but does not decode is a *newer* client's — a settings value with
+    /// a case added since this build — and saving defaults over it destroys
+    /// exactly what the merge exists to protect. Hold the defaults in memory so
+    /// there is something to show, take them as the starting position so a
+    /// later write carries only what the user actually changes, and leave the
+    /// file alone.
+    private func adoptStartingPosition(writingOver existing: SettingsDocument.Object?) {
+        Self.setLastMine(encoding: existing == nil ? nil : settings)
+        if existing == nil {
+            persist()
+        }
+    }
+
+    /// `nil` means "nothing written yet", so the first write carries the whole
+    /// document — which is right when there is no file to carry it.
+    private nonisolated static func setLastMine<T: Encodable>(encoding value: T?) {
+        let object = value.flatMap { SettingsDocument.object(encoding: $0) } ?? [:]
+        writeQueue.sync { lastMine = object }
     }
 
     /// The file is shared — with Vibe Bar Desktop, and with a second copy of
@@ -286,9 +311,33 @@ public final class SettingsStore: ObservableObject {
         isAdoptingExternalChange = false
         if hadUnsavedEdits { schedulePersist() }
 
-        replacedByAnotherWriter = adopted.conflicts.isEmpty
-            ? nil
-            : ExternalSettingsChange(replacedKeys: adopted.conflicts, observedAt: Date())
+        report(replaced: adopted.conflicts)
+    }
+
+    /// Install a file this process has just written on top of an external
+    /// change, so what is on screen matches what is on disk.
+    private func install(_ object: SettingsDocument.Object, replaced: [String]) {
+        guard
+            let data = try? SettingsDocument.data(from: object),
+            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
+        else { return }
+        isAdoptingExternalChange = true
+        settings = Self.migrated(decoded)
+        isAdoptingExternalChange = false
+        report(replaced: replaced)
+    }
+
+    /// Add to the standing notice rather than replacing it.
+    ///
+    /// A later external write that costs nothing is not news that the first
+    /// one cost nothing, and a second one that costs something does not undo
+    /// the first. Only `acknowledgeExternalChange()` clears this.
+    private func report(replaced keys: [String]) {
+        guard !keys.isEmpty else { return }
+        let combined = Set(replacedByAnotherWriter?.replacedKeys ?? []).union(keys)
+        replacedByAnotherWriter = ExternalSettingsChange(
+            replacedKeys: combined.sorted(), observedAt: Date()
+        )
     }
 
     /// Dismiss the notice, once the user has seen it.
@@ -297,7 +346,16 @@ public final class SettingsStore: ObservableObject {
     }
 
     private func persist() {
-        Self.write(settings, sequence: nil)
+        Self.write(settings, sequence: nil, foldedExternalChange: foldHandler())
+    }
+
+    /// A write can find the file already changed, fold it in, and record the
+    /// result as seen. The watcher then has nothing left to notice, so the
+    /// write says so itself.
+    private func foldHandler() -> @Sendable (SettingsDocument.Object, [String]) -> Void {
+        { [weak self] object, replaced in
+            Task { @MainActor in self?.install(object, replaced: replaced) }
+        }
     }
 
     /// `sequence == nil` (load-time migration writes) always applies.
@@ -306,7 +364,11 @@ public final class SettingsStore: ObservableObject {
     /// rewrite from a decoded `AppSettings` deletes every key the writer did
     /// not know — another client's settings, or a newer build's — and the loss
     /// only shows up later as a setting that quietly reverted.
-    private nonisolated static func write(_ settings: AppSettings, sequence: UInt64?) {
+    private nonisolated static func write(
+        _ settings: AppSettings,
+        sequence: UInt64?,
+        foldedExternalChange: (@Sendable (SettingsDocument.Object, [String]) -> Void)? = nil
+    ) {
         if let sequence {
             guard sequence > lastWrittenSequence else { return }
             lastWrittenSequence = sequence
@@ -322,11 +384,37 @@ public final class SettingsStore: ObservableObject {
             // Re-read rather than trusting the baseline: something else may have
             // written since, and its keys have to survive this write.
             let theirs = SettingsDocument.read(from: fileURL) ?? baseline
+            // Against this process's own previous value, never against the
+            // file. A settings file written by an older version is missing
+            // keys that decoding materialises as defaults here; measured
+            // against the file those defaults look like edits, and the next
+            // save writes them over whatever the other client had put there.
             let changed = SettingsDocument.changedKeys(
-                from: baseline, to: mine, owned: ownedKeys(writing: mine)
+                from: lastMine, to: mine, owned: ownedKeys(writing: mine)
             )
-            editedKeys.formUnion(SettingsDocument.changedKeys(from: lastMine, to: mine))
+            editedKeys.formUnion(changed)
             lastMine = mine
+            // The other writer got there first, and this write is about to put
+            // its own keys on top and record the result as the file we have
+            // seen. Without saying so, the watcher that follows compares the
+            // file against a baseline that already contains their change,
+            // finds nothing, and this process goes on showing stale settings
+            // until the next external write or a restart.
+            let theirChanges = SettingsDocument.changedKeys(from: baseline, to: theirs)
+            let conflicts = theirChanges
+                .intersection(editedKeys.union(changed))
+                .filter { !SettingsDocument.equal(mine[$0], theirs[$0]) }
+                .sorted()
+            // Their value is our position now for anything we are not writing.
+            for key in theirChanges where !changed.contains(key) {
+                if let value = theirs[key] {
+                    lastMine[key] = value
+                } else {
+                    lastMine.removeValue(forKey: key)
+                }
+                editedKeys.remove(key)
+            }
+
             var merged = theirs
             for key in changed {
                 if let value = mine[key] { merged[key] = value } else { merged.removeValue(forKey: key) }
@@ -337,6 +425,9 @@ public final class SettingsStore: ObservableObject {
                     base: fileURL.deletingLastPathComponent()
                 )
                 baseline = merged
+                if !theirChanges.isEmpty {
+                    foldedExternalChange?(merged, conflicts)
+                }
             } catch {
                 SafeLog.warn("Saving settings failed: \(SafeLog.sanitize(error.localizedDescription))")
             }

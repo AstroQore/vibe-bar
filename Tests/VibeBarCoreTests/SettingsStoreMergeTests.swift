@@ -95,6 +95,22 @@ final class SettingsStoreMergeTests: XCTestCase {
         XCTAssertEqual(try fileObject()["refreshIntervalSeconds"] as? Int, 900)
     }
 
+    /// A newer client's file, opened by an older build: the typed decode
+    /// fails, and the fallback is defaults. Saving those over the file is the
+    /// downgrade version of the loss this whole change exists to prevent, and
+    /// it happens before the user has touched anything.
+    func testDefaultsAreNotSavedOverAFileThisBuildCannotDecode() throws {
+        let original = #"{"displayMode":"aModeFromAFutureBuild","refreshIntervalSeconds":120}"#
+        try writeFile(original)
+
+        _ = try makeStore()
+
+        XCTAssertEqual(
+            try String(contentsOf: settingsURL, encoding: .utf8), original,
+            "launching wrote defaults over a file written by a newer client"
+        )
+    }
+
     /// The file is still something the store itself can read back: a merged
     /// write has to stay a decodable `AppSettings`, not just a valid object.
     func testTheMergedFileStillLoadsAsSettings() throws {
@@ -139,6 +155,10 @@ final class SettingsStoreAdoptionTests: XCTestCase {
 
     private func writeFile(_ json: String) throws {
         try Data(json.utf8).write(to: settingsURL, options: [.atomic])
+    }
+
+    private func fileObject() throws -> SettingsDocument.Object {
+        try XCTUnwrap(SettingsDocument.read(from: settingsURL), "settings.json is missing")
     }
 
     /// Waits for the watcher's debounce plus the hop back to the main actor.
@@ -293,6 +313,95 @@ final class SettingsStoreAdoptionTests: XCTestCase {
             store.replacedByAnotherWriter,
             "reported a loss for a setting this process never chose a value for"
         )
+    }
+
+    /// A save can beat the watcher to an external change. The save re-reads,
+    /// keeps their keys, and records the result as the file it has seen — at
+    /// which point the watcher has nothing left to notice, and this process
+    /// shows settings the file has not held for some time.
+    func testASaveThatFoldsInAnExternalChangeStillAdoptsIt() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        // Their write, then ours before the watcher's debounce elapses.
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":120}"#)
+        store.settings.displayMode = .used
+        store.flush()
+
+        waitForAdoption(store) { $0.settings.refreshIntervalSeconds == 120 }
+        XCTAssertEqual(store.settings.displayMode, .used, "our own edit was lost")
+        XCTAssertEqual(try fileObject()["refreshIntervalSeconds"] as? Int, 120)
+    }
+
+    /// The notice is about something the user lost. A later external change
+    /// that costs nothing is not news that the first one cost nothing.
+    func testANoticeStandsUntilItIsAcknowledged() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        store.settings.refreshIntervalSeconds = 900
+        store.flush()
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":120}"#)
+        waitForAdoption(store) { $0.replacedByAnotherWriter != nil }
+
+        // An unrelated external change, costing nothing.
+        try writeFile(#"{"displayMode":"used","refreshIntervalSeconds":120}"#)
+        waitForAdoption(store) { $0.settings.displayMode == .used }
+
+        XCTAssertEqual(
+            store.replacedByAnotherWriter?.replacedKeys, ["refreshIntervalSeconds"],
+            "the notice was cleared by a later change that cost nothing"
+        )
+        store.acknowledgeExternalChange()
+        XCTAssertNil(store.replacedByAnotherWriter)
+    }
+
+    /// Two losses are two things to tell the user about, not one replacing
+    /// the other.
+    func testASecondLossIsAddedToTheNotice() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        store.settings.refreshIntervalSeconds = 900
+        store.flush()
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":120}"#)
+        waitForAdoption(store) { $0.replacedByAnotherWriter != nil }
+
+        store.settings.displayMode = .used
+        store.flush()
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":120}"#)
+        waitForAdoption(store) { ($0.replacedByAnotherWriter?.replacedKeys.count ?? 0) > 1 }
+
+        XCTAssertEqual(
+            store.replacedByAnotherWriter?.replacedKeys,
+            ["displayMode", "refreshIntervalSeconds"]
+        )
+    }
+
+    /// A settings file from an older version is missing keys this build knows.
+    /// Decoding materialises defaults for them, and measuring a save against
+    /// the file makes every one of those look like something this process
+    /// chose — so a save writes them over whatever the other client has just
+    /// put there.
+    ///
+    /// Before the watcher runs, deliberately: once their value has been
+    /// adopted it is in memory too, and the save agrees with it by accident.
+    func testADefaultThisBuildFilledInIsNotTreatedAsOurChoice() throws {
+        try writeFile(#"{"displayMode":"remaining"}"#)
+        let store = try makeStore()
+        let theirValue = !store.settings.refreshOnPopoverOpen
+
+        // The other client sets a key our file never carried, and this store
+        // saves something unrelated before hearing about it.
+        try writeFile(#"{"displayMode":"remaining","refreshOnPopoverOpen":\#(theirValue)}"#)
+        store.settings.refreshIntervalSeconds = 300
+        store.flush()
+
+        XCTAssertEqual(
+            try fileObject()["refreshOnPopoverOpen"] as? Bool, theirValue,
+            "a default this build filled in was written over the other client's value"
+        )
+        XCTAssertEqual(try fileObject()["refreshIntervalSeconds"] as? Int, 300)
     }
 
     /// Adopting the file must not schedule a save of what was just read: that

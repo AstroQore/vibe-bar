@@ -31,9 +31,24 @@ A writer keeps three things, not one:
 
 A write is then:
 
-1. `changed` = the top-level keys where `mine` differs from `baseline`,
-   including keys present in `baseline` and absent from `mine` — but a
-   key is only *absent* if this build could have written it (below).
+1. `changed` = the top-level keys where `mine` differs from **the value
+   this process last wrote**, including keys it wrote and no longer has
+   — but a key is only *absent* if this build could have written it
+   (below).
+
+   Not against `baseline`. A settings file from an older version is
+   missing keys this build knows, and decoding materialises defaults for
+   them; measured against the file every one of those looks like a
+   choice this process made, and the next save writes them over whatever
+   the other client had put there. What this process changed is what
+   changed *here*.
+
+   The same reasoning covers the file this build cannot decode at all: it
+   holds defaults in memory so there is something to show, takes them as
+   its starting position, and does not save them. Writing defaults over a
+   newer client's file is the downgrade version of the loss this whole
+   rule exists to prevent, and it would happen before the user had
+   touched anything.
 2. Start from `theirs`. Apply `changed`, setting or removing each key.
 3. Write that, atomically.
 4. `baseline` = what was written.
@@ -100,6 +115,16 @@ Three more, each of which turns the merge against itself if missed:
   adoption.** Left to run it writes those values back and undoes what
   was just adopted. Replace it rather than cancel it: the snapshot is
   stale, the unsaved edits in it are not.
+- **A write can beat the watcher to an external change.** It re-reads,
+  keeps the other writer's keys, and records the result as the file it
+  has seen — after which the watcher compares the file with a baseline
+  that already contains their change and finds nothing. The write has to
+  report what it folded in, or this client shows settings the file
+  stopped holding some time ago.
+- **A notice stands until the user dismisses it.** A later external
+  change that costs nothing is not news that the first one cost nothing,
+  and a second loss is a second thing to say rather than a replacement
+  for the first.
 
 ## Telling the user
 
