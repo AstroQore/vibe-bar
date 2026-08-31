@@ -131,6 +131,43 @@ struct SettingsView: View {
         selectedDestination.sectionID
     }
 
+    /// `settings.json` is shared with Vibe Bar Desktop and with a second copy
+    /// of this app, and the last writer wins per setting. When that costs the
+    /// user a choice they made here, say so where they made it — the
+    /// alternative is a control that silently springs back.
+    @ViewBuilder
+    private var externalChangeBanner: some View {
+        if let change = settingsStore.replacedByAnotherWriter {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Another Vibe Bar replaced your change")
+                        .font(.callout.weight(.medium))
+                    Text(change.summary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                Button("Dismiss") { settingsStore.acknowledgeExternalChange() }
+                    .buttonStyle(.vibeBar)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                    .fill(Color.orange.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                    .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+            )
+            .transition(.opacity)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             SettingsSidebarView(selection: $selection)
@@ -139,6 +176,7 @@ struct SettingsView: View {
 
             ScrollView(.vertical, showsIndicators: true) {
                         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                    externalChangeBanner
                     if selectedSection == .system {
                     settingsSection("System") {
                         Toggle("Launch at login", isOn: launchAtLoginBinding())

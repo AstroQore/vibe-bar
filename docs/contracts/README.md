@@ -15,6 +15,7 @@ is not finished until it has been carried across.
 | `design-tokens-v1.json` | Provider accents, quota-bar colours and thresholds, card recipe | `DesignTokenContractTests` |
 | `quota-naming-v1.json` | The quota axis: L1 company, L2 SubProvider, L3 group, and the rules that assign them | `QuotaNamingContractTests` |
 | `forecast-v1.json` | The quota pace forecast, as evaluated vectors | `ForecastContractTests` |
+| `settings-write-v1.md` | How either client may write `settings.json` without losing the other's data | `SettingsDocumentTests`, `SettingsStoreMergeTests` |
 
 ## `design-tokens-v1.json`
 
