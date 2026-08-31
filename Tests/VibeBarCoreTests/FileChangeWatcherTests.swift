@@ -93,23 +93,45 @@ final class FileChangeWatcherTests: XCTestCase {
         wait(for: [quiet], timeout: 0.5)
     }
 
-    /// A burst of writes is one reload, not one per event.
+    /// A burst of writes is far fewer reloads than writes.
+    ///
+    /// Written in place rather than atomically, which is the only way this
+    /// measures the debounce: an atomic write replaces the inode, the source
+    /// cancels and re-arms, and that gap swallows a burst all by itself. The
+    /// first version of this test used atomic writes and passed with the
+    /// debounce removed entirely.
+    ///
+    /// And not *one* reload: the debounce promises at most one report per
+    /// window, not that a burst finishes inside one. An exact count asserts
+    /// how fast the machine is, which is how the first version passed here
+    /// and failed on a slower CI runner.
     func testCoalescesABurstOfWrites() throws {
         try writeAtomically("{}")
         let counter = OSAllocatedUnfairLockCounter()
-        let watcher = FileChangeWatcher(url: file, debounceMilliseconds: 120) {
+        let watcher = FileChangeWatcher(url: file, debounceMilliseconds: 300) {
             _ = counter.increment()
         }
         watcher.start()
         defer { watcher.stop() }
 
         Thread.sleep(forTimeInterval: 0.1)
-        for index in 0..<5 {
-            try writeAtomically(#"{"a":\#(index)}"#)
+        let handle = try FileHandle(forWritingTo: file)
+        defer { try? handle.close() }
+        let writes = 8
+        for index in 0..<writes {
+            try handle.seek(toOffset: 0)
+            try handle.write(contentsOf: Data("{\"a\":\(index)}".utf8))
+            try handle.synchronize()
             Thread.sleep(forTimeInterval: 0.01)
         }
-        Thread.sleep(forTimeInterval: 0.6)
-        XCTAssertEqual(counter.value, 1, "expected one coalesced report for one burst")
+        Thread.sleep(forTimeInterval: 1.0)
+
+        let reports = counter.value
+        XCTAssertGreaterThan(reports, 0, "a burst of writes was not reported at all")
+        XCTAssertLessThan(
+            reports, writes,
+            "every write produced its own report, so nothing is being coalesced"
+        )
     }
 }
 
