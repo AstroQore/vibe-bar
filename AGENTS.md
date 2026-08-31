@@ -1169,6 +1169,25 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   disagrees with the nominal window is an *event* — an off-schedule
   refill — and is worth recording and showing rather than smoothing
   away.
+
+- **An early refill comes in two shapes, and they mean opposite
+  things.** When a bucket refills before its window is up, the provider
+  either moves the next reset out to a full window from the refill (the
+  clock restarts, so a whole window lies ahead and the extra capacity is
+  usable) or leaves the next boundary where it was (less than a window
+  remains, so the refill is easier to waste than to spend). Both are
+  decidable from what is already recorded: compare the reset the new
+  cycle reports against the refill time plus the window, and against the
+  reset the old cycle was carrying.
+
+  Over ~600 real boundaries in a 50-day window the two are not evenly
+  spread — OpenAI's weekly buckets restart the clock in 85% of cycles,
+  Anthropic's ran on schedule 128 times out of 128, Grok showed one of
+  each — but **do not turn that into a table of provider habits.** The
+  observation window only covers what the timeline retained while the
+  app was running, so "never seen" is not "never happens", and a bucket
+  that changes behaviour should be described correctly without a code
+  change. Classify per cycle from the observations.
 - **JSONL scanning must be O(n).** See
   `CostUsageScanner.forEachJSONLLine`. Use a moving cursor, not
   `removeSubrange`.
