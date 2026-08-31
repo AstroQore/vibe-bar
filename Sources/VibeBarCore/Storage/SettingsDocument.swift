@@ -21,9 +21,14 @@ enum SettingsDocument {
     /// a caller should then fall back to its defaults rather than assume an
     /// empty document, which would look like "every setting was cleared".
     static func read(from url: URL) -> Object? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let data = try? Data(contentsOf: url), data.count <= maximumBytes else { return nil }
         return object(from: data)
     }
+
+    /// A settings file is a few tens of kilobytes. Anything approaching this
+    /// is a corrupt or hostile file, not settings, and parsing it into memory
+    /// is work with nothing at the end of it.
+    static let maximumBytes = 8 * 1024 * 1024
 
     static func object(from data: Data) -> Object? {
         (try? JSONSerialization.jsonObject(with: data)) as? Object

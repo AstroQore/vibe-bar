@@ -155,6 +155,19 @@ final class SettingsDocumentTests: XCTestCase {
     /// A file that is not an object at all reads as nothing, so a caller falls
     /// back to its defaults rather than treating a corrupt file as "every
     /// setting was cleared" and writing that back.
+    /// A file far larger than settings could be is not settings.
+    func testAFileTooLargeToBeSettingsReadsAsNothing() throws {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("huge-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var data = Data(#"{"a":""#.utf8)
+        data.append(Data(repeating: UInt8(ascii: "x"), count: SettingsDocument.maximumBytes))
+        data.append(Data(#""}"#.utf8))
+        try data.write(to: url)
+
+        XCTAssertNil(SettingsDocument.read(from: url))
+    }
+
     func testAFileThatIsNotAnObjectReadsAsNothing() {
         XCTAssertNil(SettingsDocument.object(from: Data("[1,2,3]".utf8)))
         XCTAssertNil(SettingsDocument.object(from: Data("not json".utf8)))

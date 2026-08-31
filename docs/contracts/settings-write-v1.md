@@ -145,6 +145,33 @@ worth a new way to lose settings.
 Reads do not take it. A write is a rename, so a reader either sees the
 whole old file or the whole new one.
 
+## Size
+
+8 MiB, refused rather than truncated. A settings file is a few tens of
+kilobytes; anything near the cap is a corrupt or hostile file, and a
+reader that refuses it falls back to its defaults rather than parsing it.
+
+## What this supersedes
+
+Vibe Bar Desktop's `docs/contracts/settings-document-v1.md` records an
+earlier design for the same problem, kept as a design record after its
+implementation was removed. Two of its decisions are deliberately not
+carried over, and one is:
+
+- **No `schemaVersion` / `revision` envelope.** That design had both
+  clients adopt one together; neither did, and the file in the field has
+  neither key. A writer that added them alone would be adding keys the
+  reference implementation never emits, to a file whose whole point is
+  that unknown keys are somebody else's.
+- **A contested key goes to the last writer, not the first.** That
+  design left a key alone when the file had moved and reported a
+  conflict, so a user's most recent click could silently fail to take
+  effect. Here the write applies it, a later external change replaces
+  it, and either way the person who is told is the one whose choice was
+  replaced.
+- **The 8 MiB cap and the writer whitelist are kept**, both from that
+  design.
+
 ## Why there is no revision counter
 
 An earlier sketch of this had every writer carry a revision, so a client

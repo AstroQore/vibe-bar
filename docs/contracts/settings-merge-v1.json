@@ -1,0 +1,304 @@
+{
+  "version": 1,
+  "note": "Merge cases for the three-way patch. Only this client implements one: Vibe Bar Desktop holds no in-memory settings model, so its writes are a locked read, the changed keys set on top, and a write. Value equality is the part both implement and both verify \u2014 settings-value-equality-v1.json.",
+  "cases": [
+    {
+      "name": "a key this build cannot encode survives a write",
+      "baseline": {
+        "displayMode": "remaining",
+        "futureSetting": {
+          "a": 1
+        }
+      },
+      "mine": {
+        "displayMode": "used"
+      },
+      "theirs": {
+        "displayMode": "remaining",
+        "futureSetting": {
+          "a": 1
+        }
+      },
+      "owned": [
+        "displayMode"
+      ],
+      "merged": {
+        "displayMode": "used",
+        "futureSetting": {
+          "a": 1
+        }
+      },
+      "conflicts": []
+    },
+    {
+      "name": "a key this build knows is removed when it goes missing",
+      "baseline": {
+        "displayMode": "remaining",
+        "customLabels": {
+          "a": "b"
+        }
+      },
+      "mine": {
+        "displayMode": "remaining"
+      },
+      "theirs": {
+        "displayMode": "remaining",
+        "customLabels": {
+          "a": "b"
+        }
+      },
+      "owned": [
+        "displayMode",
+        "customLabels"
+      ],
+      "merged": {
+        "displayMode": "remaining"
+      },
+      "conflicts": []
+    },
+    {
+      "name": "the other client's edit survives this one's write",
+      "baseline": {
+        "displayMode": "remaining",
+        "refreshIntervalSeconds": 600
+      },
+      "mine": {
+        "displayMode": "used",
+        "refreshIntervalSeconds": 600
+      },
+      "theirs": {
+        "displayMode": "remaining",
+        "refreshIntervalSeconds": 120
+      },
+      "owned": null,
+      "merged": {
+        "displayMode": "used",
+        "refreshIntervalSeconds": 120
+      },
+      "conflicts": []
+    },
+    {
+      "name": "a write that changed nothing leaves the file alone",
+      "baseline": {
+        "displayMode": "remaining"
+      },
+      "mine": {
+        "displayMode": "remaining"
+      },
+      "theirs": {
+        "displayMode": "used",
+        "newKey": true
+      },
+      "owned": null,
+      "merged": {
+        "displayMode": "used",
+        "newKey": true
+      },
+      "conflicts": []
+    },
+    {
+      "name": "the same key changed two ways is a conflict, and the file wins nothing",
+      "baseline": {
+        "displayMode": "remaining"
+      },
+      "mine": {
+        "displayMode": "used"
+      },
+      "theirs": {
+        "displayMode": "forecast"
+      },
+      "owned": null,
+      "merged": {
+        "displayMode": "used"
+      },
+      "conflicts": [
+        "displayMode"
+      ]
+    },
+    {
+      "name": "the same key changed to the same value is agreement",
+      "baseline": {
+        "displayMode": "remaining"
+      },
+      "mine": {
+        "displayMode": "used"
+      },
+      "theirs": {
+        "displayMode": "used"
+      },
+      "owned": null,
+      "merged": {
+        "displayMode": "used"
+      },
+      "conflicts": []
+    },
+    {
+      "name": "nested values compare by content, not by order",
+      "baseline": {
+        "miniWindow": {
+          "fields": [
+            "a",
+            "b"
+          ],
+          "size": {
+            "w": 1
+          }
+        }
+      },
+      "mine": {
+        "miniWindow": {
+          "size": {
+            "w": 1
+          },
+          "fields": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "theirs": {
+        "miniWindow": {
+          "fields": [
+            "a"
+          ],
+          "size": {
+            "w": 1
+          }
+        }
+      },
+      "owned": null,
+      "merged": {
+        "miniWindow": {
+          "fields": [
+            "a"
+          ],
+          "size": {
+            "w": 1
+          }
+        }
+      },
+      "conflicts": []
+    },
+    {
+      "name": "an explicit null is a value, not an absence",
+      "baseline": {
+        "a": null
+      },
+      "mine": {
+        "a": 1
+      },
+      "theirs": {
+        "a": null
+      },
+      "owned": null,
+      "merged": {
+        "a": 1
+      },
+      "conflicts": []
+    },
+    {
+      "name": "a key added by this process reaches the file",
+      "baseline": {
+        "displayMode": "remaining"
+      },
+      "mine": {
+        "displayMode": "remaining",
+        "providerPlanLabels": {
+          "codex": "Pro"
+        }
+      },
+      "theirs": {
+        "displayMode": "remaining",
+        "theirNewKey": 2
+      },
+      "owned": null,
+      "merged": {
+        "displayMode": "remaining",
+        "providerPlanLabels": {
+          "codex": "Pro"
+        },
+        "theirNewKey": 2
+      },
+      "conflicts": []
+    },
+    {
+      "name": "both sides removing the same key is not a conflict",
+      "baseline": {
+        "displayMode": "remaining",
+        "gone": 1
+      },
+      "mine": {
+        "displayMode": "remaining"
+      },
+      "theirs": {
+        "displayMode": "remaining"
+      },
+      "owned": [
+        "displayMode",
+        "gone"
+      ],
+      "merged": {
+        "displayMode": "remaining"
+      },
+      "conflicts": []
+    },
+    {
+      "name": "our removal against their change is a conflict",
+      "baseline": {
+        "displayMode": "remaining",
+        "contested": 1
+      },
+      "mine": {
+        "displayMode": "remaining"
+      },
+      "theirs": {
+        "displayMode": "remaining",
+        "contested": 2
+      },
+      "owned": [
+        "displayMode",
+        "contested"
+      ],
+      "merged": {
+        "displayMode": "remaining"
+      },
+      "conflicts": [
+        "contested"
+      ]
+    },
+    {
+      "name": "a number that differs only in spelling is not a change",
+      "baseline": {
+        "a": 1
+      },
+      "mine": {
+        "a": 1.0
+      },
+      "theirs": {
+        "a": 1
+      },
+      "owned": null,
+      "merged": {
+        "a": 1
+      },
+      "conflicts": []
+    },
+    {
+      "name": "integers past the precision of a double are still told apart",
+      "baseline": {
+        "a": 9007199254740993
+      },
+      "mine": {
+        "a": 9007199254740992
+      },
+      "theirs": {
+        "a": 9007199254740993
+      },
+      "owned": null,
+      "merged": {
+        "a": 9007199254740992
+      },
+      "conflicts": []
+    }
+  ]
+}
