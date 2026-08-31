@@ -29,6 +29,10 @@ final class ForecastContractTests: XCTestCase {
         struct Cycle: Decodable {
             let windowStart: Double
             let windowEnd: Double
+            /// The last observation that belonged to this cycle, which decides
+            /// which readings the historical projection may compare against.
+            /// Published because it cannot be derived from the boundaries.
+            let lastSeenAt: Double?
             let peakUsedPercent: Double
         }
         struct Input: Decodable {
@@ -122,7 +126,9 @@ final class ForecastContractTests: XCTestCase {
                     lastUsedPercent: cycle.peakUsedPercent,
                     observationCount: 12,
                     firstSeenAt: Date(timeIntervalSince1970: cycle.windowStart),
-                    lastSeenAt: Date(timeIntervalSince1970: cycle.windowEnd - 600),
+                    lastSeenAt: Date(
+                        timeIntervalSince1970: cycle.lastSeenAt ?? (cycle.windowEnd - 600)
+                    ),
                     completedAt: Date(timeIntervalSince1970: cycle.windowEnd),
                     completionReason: .scheduledReset
                 )

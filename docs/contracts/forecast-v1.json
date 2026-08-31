@@ -791,16 +791,19 @@
       "input": {
         "completedCycles": [
           {
+            "lastSeenAt": 1799894600,
             "peakUsedPercent": 68,
             "windowEnd": 1799895200,
             "windowStart": 1799290400
           },
           {
+            "lastSeenAt": 1799289800,
             "peakUsedPercent": 70,
             "windowEnd": 1799290400,
             "windowStart": 1798685600
           },
           {
+            "lastSeenAt": 1798685000,
             "peakUsedPercent": 72,
             "windowEnd": 1798685600,
             "windowStart": 1798080800
@@ -1116,6 +1119,7 @@
       "input": {
         "completedCycles": [
           {
+            "lastSeenAt": 1799289800,
             "peakUsedPercent": 60,
             "windowEnd": 1799290400,
             "windowStart": 1799289500
@@ -1339,6 +1343,7 @@
       "input": {
         "completedCycles": [
           {
+            "lastSeenAt": 1799289800,
             "peakUsedPercent": 60,
             "windowEnd": 1799290400,
             "windowStart": 1798685600
@@ -1490,7 +1495,7 @@
     0.75,
     0.95
   ],
-  "note": "Cross-language forecast vectors. Both implementations evaluate each case at 25%, 50%, 75% and 95% of the window using the last observation at or before that moment, and must agree on every field. Verdicts and confidences must match exactly; numeric fields are compared to 1e-6, which is far tighter than any real difference and far looser than float reordering noise. The expected values were produced by the native Swift implementation, so this file is an independent oracle rather than a snapshot of either port. An expectation with no runOutAt predicts the bucket will not run out before the reset; that is a different claim from a timestamp and must not be read as one. Cases carrying completedCycles also exercise the historical projection, which the first five leave untouched: both clients must reconstruct a cycle's span from the window length it reported rather than trusting a stored start, and must leave a reading stamped at a cycle's end to the cycle that follows.",
+  "note": "Cross-language forecast vectors. Both implementations evaluate each case at 25%, 50%, 75% and 95% of the window using the last observation at or before that moment, and must agree on every field. Verdicts and confidences must match exactly; numeric fields are compared to 1e-6, which is far tighter than any real difference and far looser than float reordering noise. The expected values were produced by the native Swift implementation, so this file is an independent oracle rather than a snapshot of either port. An expectation with no runOutAt predicts the bucket will not run out before the reset; that is a different claim from a timestamp and must not be read as one. Cases carrying completedCycles also exercise the historical projection, which the first five leave untouched: both clients take a cycle's stored windowStart as it stands \u2014 many buckets refill more often than the window they advertise, so a short span is usually the truth \u2014 and bound its observations at lastSeenAt, because the reading that detected the refill belongs to the cycle it opened and is stamped too close to the boundary to separate by time.",
   "numericTolerance": 1e-06,
   "schema": 1
 }

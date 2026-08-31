@@ -79,6 +79,11 @@ final class ForecastVectorGeneratorTests: XCTestCase {
                                 .timeIntervalSince1970,
                             "windowEnd": (cycle.completedAt ?? cycle.windowEnd)
                                 .timeIntervalSince1970,
+                            // The bound on which observations belong to this
+                            // cycle. Not derivable from the boundaries: it is
+                            // wherever the last reading before the refill
+                            // happened to land.
+                            "lastSeenAt": cycle.lastSeenAt.timeIntervalSince1970,
                             "peakUsedPercent": cycle.peakUsedPercent,
                         ]
                         if let raw = cycle.rawWindowSeconds { out["rawWindowSeconds"] = raw }
