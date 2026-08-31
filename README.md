@@ -360,6 +360,12 @@ parity — the quota hierarchy, tray percentages with your own fields and
 labels, session search and transcripts, mini-window geometry, and so on. A new
 feature on either side must appear here until it lands on both.
 
+**Until then.** Desktop is `0.x` and this contract is not yet in force: the
+native app ships feature minors freely while Desktop closes the table below.
+When Desktop reaches parity with the native minor of the day, both ship the
+next minor together as the first joint release — and from that point neither
+client ships a feature minor the other cannot.
+
 Legend: ● full · ◐ partial · ○ not yet · ▲ platform equivalent · — exempt
 
 | Feature | macOS native | Desktop | Note |
