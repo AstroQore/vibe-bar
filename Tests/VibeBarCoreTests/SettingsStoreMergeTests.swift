@@ -209,6 +209,92 @@ final class SettingsStoreAdoptionTests: XCTestCase {
         XCTAssertEqual(store.settings.refreshIntervalSeconds, 900)
     }
 
+    /// A save is coalesced over 250ms, so an external change can land while
+    /// one is still in flight holding a snapshot taken before it. Left alone
+    /// that snapshot writes the pre-adoption values back and undoes the other
+    /// writer's edit — the merge having done its job and then been overwritten
+    /// by a save that never knew.
+    func testAnInFlightSaveDoesNotUndoAChangeThatLandedDuringIt() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        // Our edit: coalesced, not yet written.
+        store.settings.displayMode = .used
+        // Theirs, arriving inside that window.
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":120}"#)
+
+        waitForAdoption(store) { $0.settings.refreshIntervalSeconds == 120 }
+        // Long enough for the coalesced save — original or replacement — to run.
+        let settled = expectation(description: "settled")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { settled.fulfill() }
+        wait(for: [settled], timeout: 3)
+
+        let onDisk = try XCTUnwrap(SettingsDocument.read(from: settingsURL))
+        XCTAssertEqual(
+            onDisk["refreshIntervalSeconds"] as? Int, 120,
+            "a save from before the external change wrote the old value back"
+        )
+        XCTAssertEqual(
+            onDisk["displayMode"] as? String, "used",
+            "our own unsaved edit was dropped along with the stale snapshot"
+        )
+    }
+
+    /// A newer writer can put a value in the file that this build cannot
+    /// decode — a settings enum with a case added since. Treating that as
+    /// "seen" would let the next save diff our old values against it and
+    /// overwrite the newer writer's, which is the whole failure this change
+    /// exists to prevent.
+    func testAFileThisBuildCannotDecodeIsNotTakenAsSeen() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        try writeFile(#"{"displayMode":"aModeFromAFutureBuild","refreshIntervalSeconds":120}"#)
+
+        // Nothing to wait for — the point is that nothing happens.
+        let settled = expectation(description: "settled")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { settled.fulfill() }
+        wait(for: [settled], timeout: 3)
+        XCTAssertEqual(store.settings.displayMode, .remaining, "an undecodable value was adopted")
+
+        // The save that follows must leave the value it could not read alone.
+        store.settings.refreshIntervalSeconds = 300
+        store.flush()
+
+        let onDisk = try XCTUnwrap(SettingsDocument.read(from: settingsURL))
+        XCTAssertEqual(
+            onDisk["displayMode"] as? String, "aModeFromAFutureBuild",
+            "a value this build cannot decode was overwritten by a save"
+        )
+        XCTAssertEqual(onDisk["refreshIntervalSeconds"] as? Int, 300)
+    }
+
+    /// A setting adopted from the other writer is that writer's, not ours. If
+    /// the next save were to claim it, the time after that they changed it we
+    /// would tell the user their own choice had been replaced — about a value
+    /// they never picked.
+    func testASettingAdoptedFromAnotherWriterIsNotClaimedAsOurs() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        try writeFile(#"{"displayMode":"used","refreshIntervalSeconds":600}"#)
+        waitForAdoption(store) { $0.settings.displayMode == .used }
+        XCTAssertNil(store.replacedByAnotherWriter)
+
+        // A save of something else, which must not adopt authorship of theirs.
+        store.settings.refreshIntervalSeconds = 300
+        store.flush()
+
+        // They change their own setting again.
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":300}"#)
+        waitForAdoption(store) { $0.settings.displayMode == .remaining }
+
+        XCTAssertNil(
+            store.replacedByAnotherWriter,
+            "reported a loss for a setting this process never chose a value for"
+        )
+    }
+
     /// Adopting the file must not schedule a save of what was just read: that
     /// would be this store answering every external edit with a write.
     func testAdoptingDoesNotWriteBack() throws {

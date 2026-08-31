@@ -83,6 +83,24 @@ Where both sides changed the same setting, the file wins — it is the
 shared state, and keeping a value the file no longer holds is the stale
 reading this watching exists to end.
 
+Three more, each of which turns the merge against itself if missed:
+
+- **Do not advance `baseline` until the merged object decodes.** A newer
+  writer can put a value in the file this build cannot read — an enum
+  case added since. Recording it as seen lets the next save diff our old
+  values against it and write them over the newer writer's, which is
+  precisely the loss the merge exists to prevent. A file that cannot be
+  read has not been seen.
+- **A setting adopted from the other writer is theirs, not ours.** Move
+  it in the record of this process's own previous values, and drop it
+  from the set of settings this process changed. Otherwise the next save
+  claims it, and the next time they touch it the user is told their own
+  choice was replaced — about a value they never picked.
+- **A coalesced save in flight holds a snapshot from before the
+  adoption.** Left to run it writes those values back and undoes what
+  was just adopted. Replace it rather than cancel it: the snapshot is
+  stale, the unsaved edits in it are not.
+
 ## Telling the user
 
 The one cost of the file winning is that a choice the user made here can

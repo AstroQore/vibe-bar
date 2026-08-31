@@ -226,36 +226,65 @@ public final class SettingsStore: ObservableObject {
     /// told, which is the part that makes the file winning acceptable.
     private func adoptExternalChange() {
         guard let mine = SettingsDocument.object(encoding: settings) else { return }
-        var adopted: (object: SettingsDocument.Object, conflicts: [String])?
+        var adopted: (settings: AppSettings, conflicts: [String])?
 
+        // One block: the decode decides whether any of this is adopted at all,
+        // and a write landing between deciding and recording would leave the
+        // baseline describing a file this store never actually took on.
         Self.writeQueue.sync {
             guard let theirs = SettingsDocument.read(from: Self.fileURL) else { return }
             // Our own write, coming back to us.
             guard !SettingsDocument.equal(theirs, Self.baseline) else { return }
+            let theirChanges = SettingsDocument.changedKeys(from: Self.baseline, to: theirs)
             // What they changed, among the settings we chose a value for —
             // whether that choice is still sitting unsaved in memory or was
             // written out and has since been taken over.
             let unsaved = SettingsDocument.changedKeys(from: Self.lastMine, to: mine)
-            let ours = Self.editedKeys.union(unsaved)
-            let conflicts = SettingsDocument.changedKeys(from: Self.baseline, to: theirs)
-                .intersection(ours)
+            let conflicts = theirChanges
+                .intersection(Self.editedKeys.union(unsaved))
                 .filter { !SettingsDocument.equal(mine[$0], theirs[$0]) }
             // Their changes land on top of ours; anything we changed and they
             // did not is still unwritten here and survives to the next save.
             let object = SettingsDocument.merge(baseline: Self.baseline, mine: theirs, theirs: mine)
+
+            // A file this build cannot read is one it must not claim to have
+            // seen. Advancing the baseline here would let the next save diff
+            // our old values against it and write them over a newer writer's
+            // — losing exactly what the merge exists to keep.
+            guard
+                let data = try? SettingsDocument.data(from: object),
+                let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
+            else { return }
+
             Self.baseline = theirs
-            adopted = (object, conflicts.sorted())
+            // Their value is our position now, not our edit: leaving `lastMine`
+            // behind would make the next save claim their key as ours and
+            // report it as lost the next time they touched it.
+            for key in theirChanges {
+                if let value = theirs[key] {
+                    Self.lastMine[key] = value
+                } else {
+                    Self.lastMine.removeValue(forKey: key)
+                }
+            }
+            Self.editedKeys.subtract(theirChanges)
+            adopted = (Self.migrated(decoded), conflicts.sorted())
         }
 
-        guard
-            let adopted,
-            let data = try? SettingsDocument.data(from: adopted.object),
-            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
-        else { return }
+        guard let adopted else { return }
+
+        // A coalesced save may be in flight, holding a snapshot taken before
+        // any of this. Left alone it would write those values back and undo
+        // the change just adopted, so it is replaced rather than cancelled:
+        // the snapshot is stale, the edits in it are not.
+        let hadUnsavedEdits = pendingPersist != nil
+        pendingPersist?.cancel()
+        pendingPersist = nil
 
         isAdoptingExternalChange = true
-        settings = Self.migrated(decoded)
+        settings = adopted.settings
         isAdoptingExternalChange = false
+        if hadUnsavedEdits { schedulePersist() }
 
         replacedByAnotherWriter = adopted.conflicts.isEmpty
             ? nil
