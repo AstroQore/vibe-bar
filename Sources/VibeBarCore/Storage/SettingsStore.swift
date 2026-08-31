@@ -286,26 +286,31 @@ public final class SettingsStore: ObservableObject {
             SafeLog.warn("Saving settings failed: settings did not encode to an object")
             return
         }
-        // Re-read rather than trusting the baseline: something else may have
-        // written since, and its keys have to survive this write.
-        let theirs = SettingsDocument.read(from: fileURL) ?? baseline
-        let changed = SettingsDocument.changedKeys(
-            from: baseline, to: mine, owned: ownedKeys(writing: mine)
-        )
-        editedKeys.formUnion(SettingsDocument.changedKeys(from: lastMine, to: mine))
-        lastMine = mine
-        var merged = theirs
-        for key in changed {
-            if let value = mine[key] { merged[key] = value } else { merged.removeValue(forKey: key) }
-        }
-        do {
-            try VibeBarLocalStore.writeData(
-                SettingsDocument.data(from: merged), to: fileURL,
-                base: fileURL.deletingLastPathComponent()
+        // Re-read and write under one lock: the re-read is what lets the
+        // other writer's keys survive, and without the lock another writer
+        // can land between the two and have its whole merge undone.
+        SharedFileLock.withLock(named: "settings", in: fileURL.deletingLastPathComponent()) {
+            // Re-read rather than trusting the baseline: something else may have
+            // written since, and its keys have to survive this write.
+            let theirs = SettingsDocument.read(from: fileURL) ?? baseline
+            let changed = SettingsDocument.changedKeys(
+                from: baseline, to: mine, owned: ownedKeys(writing: mine)
             )
-            baseline = merged
-        } catch {
-            SafeLog.warn("Saving settings failed: \(SafeLog.sanitize(error.localizedDescription))")
+            editedKeys.formUnion(SettingsDocument.changedKeys(from: lastMine, to: mine))
+            lastMine = mine
+            var merged = theirs
+            for key in changed {
+                if let value = mine[key] { merged[key] = value } else { merged.removeValue(forKey: key) }
+            }
+            do {
+                try VibeBarLocalStore.writeData(
+                    SettingsDocument.data(from: merged), to: fileURL,
+                    base: fileURL.deletingLastPathComponent()
+                )
+                baseline = merged
+            } catch {
+                SafeLog.warn("Saving settings failed: \(SafeLog.sanitize(error.localizedDescription))")
+            }
         }
     }
 

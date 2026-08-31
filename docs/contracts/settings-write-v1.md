@@ -98,9 +98,40 @@ of the whole document and the next external edit reports most of it as
 lost. An external change to a setting nobody here touched is adopted
 silently — nothing was lost, and a notice would be noise.
 
-## Not covered
+## The lock
 
-No lock. Two writers can still interleave read-merge-write and lose the
-later one's edit; the window is the few milliseconds between re-reading
-and renaming, and settings are written by hand. An advisory lock under
-`~/.vibebar/run/` is the fix if that ever stops being true.
+Re-reading and renaming are two steps, so two writers can interleave
+between them and the second one's merge is based on a file that no
+longer exists. Both steps go under one lock.
+
+```
+~/.vibebar/run/settings.lock      mode 0600, in a run/ directory of 0700
+```
+
+`flock(2)`, `LOCK_EX`, blocking, held from the re-read to the rename and
+released by closing the descriptor. Not a lock file holding a pid: the
+kernel drops a `flock` when the descriptor closes, process death
+included, so there is no stale lock to break and no liveness check to
+get wrong. It is advisory, which binds the clients that ask for it —
+both of them.
+
+Rust takes the same lock through `flock(2)` on the same path; the
+primitive is the same from either language, and the interop is worth a
+test rather than an assumption.
+
+**Failing to take the lock is not failing to write.** A read-only or
+unusual filesystem falls back to the unlocked behaviour, which is what
+both clients did until now. The narrow race is worth closing; it is not
+worth a new way to lose settings.
+
+Reads do not take it. A write is a rename, so a reader either sees the
+whole old file or the whole new one.
+
+## Why there is no revision counter
+
+An earlier sketch of this had every writer carry a revision, so a client
+could tell that the file had moved under it. With the lock, a write
+cannot be based on a stale read; with the baseline, a client already
+knows *which* settings changed, which is strictly more than a counter
+would tell it, and is what the user is shown. A revision would be a
+number both clients maintain and neither consults.
