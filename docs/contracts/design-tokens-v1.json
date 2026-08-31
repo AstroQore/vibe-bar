@@ -1,0 +1,58 @@
+{
+  "card": {
+    "fillOpacity": 0.6,
+    "hairlineWidth": 0.5,
+    "strokeOpacity": 0.4,
+    "workbenchMinCornerRadius": 16.0,
+    "workbenchMinPadding": 16.0
+  },
+  "note": "Visual tokens both Vibe Bar clients render from. Extracted from the native Theme.swift, which remains the source of truth: change it there, regenerate this file, and both lanes' tests report whether either drifted. A provider that is teal in one client and green in the other is two providers as far as the reader is concerned. Colours are the Swift rounding of each channel \u2014 Int(value * 255 + 0.5) \u2014 so a lane using banker's rounding will disagree on the .5 cases and the tests will say so.",
+  "providerAccent": {
+    "alibaba": "#FF9E33",
+    "alibabaTokenPlan": "#FF7A2E",
+    "antigravity": "#8C66EB",
+    "baiduQianfan": "#2966ED",
+    "claude": "#ED6666",
+    "codex": "#4DC7BD",
+    "copilot": "#757575",
+    "cursor": "#8C8CF5",
+    "gemini": "#579EF5",
+    "grok": {
+      "dark": "#ADBFD4",
+      "light": "#4D6178"
+    },
+    "iflytek": "#1A5EBF",
+    "kilo": "#785EED",
+    "kimi": "#333333",
+    "kiro": "#3D7AF0",
+    "mimo": "#F78033",
+    "minimax": "#F74D73",
+    "ollama": "#2E2E2E",
+    "openCodeGo": "#38A880",
+    "openRouter": "#FA9E29",
+    "tencentHunyuan": "#007DE8",
+    "tencentTokenPlan": "#2E9EF5",
+    "volcengine": "#EB4D4D",
+    "volcengineAgentPlan": "#F57338",
+    "warp": "#948CB5",
+    "zai": "#42BD8C"
+  },
+  "quotaBar": {
+    "remaining": {
+      "critical": "#F54D4D",
+      "criticalBelow": 10,
+      "ok": "#2EBD8C",
+      "warning": "#F79E33",
+      "warningBelow": 30
+    },
+    "trackOpacity": 0.08,
+    "used": {
+      "critical": "#F54D4D",
+      "criticalAtOrAbove": 90,
+      "ok": "#33A8C7",
+      "warning": "#F79E33",
+      "warningAtOrAbove": 70
+    }
+  },
+  "schema": 1
+}
