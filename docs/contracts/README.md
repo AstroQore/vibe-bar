@@ -15,6 +15,9 @@ is not finished until it has been carried across.
 | `design-tokens-v1.json` | Provider accents, quota-bar colours and thresholds, card recipe | `DesignTokenContractTests` |
 | `quota-naming-v1.json` | The quota axis: L1 company, L2 SubProvider, L3 group, and the rules that assign them | `QuotaNamingContractTests` |
 | `forecast-v1.json` | The quota pace forecast, as evaluated vectors | `ForecastContractTests` |
+| `settings-write-v1.md` | How either client may write `settings.json` without losing the other's data | `SettingsDocumentTests`, `SettingsStoreMergeTests` |
+| `settings-value-equality-v1.json` | When two JSON values mean the same setting, and the one place the clients disagree | `SettingsValueEqualityContractTests` |
+| `settings-merge-v1.json` | The three-way patch, which only this client performs | `SettingsMergeContractTests` |
 
 ## `design-tokens-v1.json`
 
@@ -53,3 +56,23 @@ Regenerate the cycle-carrying cases with:
 ```sh
 VIBEBAR_EMIT_FORECAST_VECTORS=/tmp/cycles.json swift test --filter ForecastVectorGenerator
 ```
+
+## `settings-write-v1.md`, `settings-value-equality-v1.json`, `settings-merge-v1.json`
+
+The write rule is prose because what has to match is a procedure, not a
+table. Underneath it, the two files split by who implements what.
+
+Value equality is the shared part: both clients decide whether a value
+changed, and a disagreement is not academic — whichever side thinks it
+did writes a file the other did not expect, and tells its user a setting
+was replaced when nothing happened to it. Numbers are why it is not
+structural equality, and the file records the one case where the two
+clients genuinely differ rather than papering over it. Each side asserts
+that its own recorded behaviour is still true, so the note explaining why
+it was left alone cannot go stale unnoticed.
+
+The merge vectors are this client's alone. Vibe Bar Desktop holds no
+in-memory settings model — every surface reads the file when it needs it
+— so its writes are a locked read, the changed keys set on top, and a
+write. There is no second state to reconcile there, and a merge it never
+calls would be worse than none.

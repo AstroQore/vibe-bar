@@ -1381,6 +1381,30 @@ but add for parity so the labels look hand-tuned):**
 buckets by `QuotaBucket.groupTitle`, so a new model appears there the
 moment step 1 lands.
 
+### Writing a file two clients share
+
+`settings.json` has two writers (this app and Vibe Bar Desktop, in any
+combination of versions). The full rule is
+`docs/contracts/settings-write-v1.md`; three traps are worth naming here
+because each one passed its first round of tests.
+
+- **A merge measured against the file cannot tell a user's choice from a
+  materialised default.** The load-time write fills in every key the
+  file did not carry, so the first save looks like the user just changed
+  all forty settings, and the next external edit reports most of the
+  document as lost. What this process changed is what changed *here*:
+  diff against its own previous value.
+- **Atomic writes replace the inode**, so a `DispatchSource` on the file
+  descriptor goes quiet after the first replacement — and it is the
+  second write, not the first, that proves a watcher works. A missing
+  file has the mirror problem: the write that creates it happens before
+  there is anything to watch, so a successful re-open after a failed one
+  *is* the change.
+- **Testing the merge function is not testing the merge.** Replacing the
+  store's merged write with a whole-file one left every test of the pure
+  helper green. If a change claims the file survives a save, a test has
+  to drive the thing that saves.
+
 ## 12. Releases
 
 - Follow [RELEASING.md](RELEASING.md) for the complete tag, asset, signing,

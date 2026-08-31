@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "note": "When two JSON values mean the same setting. Both clients implement this and both run these cases. Numbers are the reason it is not plain structural equality: the native client parses with JSONSerialization, which compares NSNumbers numerically and re-emits them in its own spelling, so no client can keep a number's exact text. Measured against Foundation, not assumed.",
+  "cases": [
+    {
+      "name": "an integer and the same value written as a decimal",
+      "left": 1,
+      "right": 1.0,
+      "equal": true
+    },
+    {
+      "name": "different integers",
+      "left": 1,
+      "right": 2,
+      "equal": false
+    },
+    {
+      "name": "integers past the precision of a double are still told apart",
+      "left": 9007199254740993,
+      "right": 9007199254740992,
+      "equal": false
+    },
+    {
+      "name": "a value that underflows a double is the value it underflows to",
+      "left": 0.0,
+      "right": 0,
+      "equal": true
+    },
+    {
+      "name": "trailing zeroes do not make a different number",
+      "left": 2.5,
+      "right": 2.5,
+      "equal": true
+    },
+    {
+      "name": "a number and its string spelling are different values",
+      "left": 1,
+      "right": "1",
+      "equal": false
+    },
+    {
+      "name": "null is not zero",
+      "left": null,
+      "right": 0,
+      "equal": false
+    },
+    {
+      "name": "null equals null",
+      "left": null,
+      "right": null,
+      "equal": true
+    },
+    {
+      "name": "objects compare by content, whatever order they were written in",
+      "left": {
+        "a": 1,
+        "b": [
+          1,
+          2
+        ]
+      },
+      "right": {
+        "b": [
+          1,
+          2
+        ],
+        "a": 1
+      },
+      "equal": true
+    },
+    {
+      "name": "an object with an extra key is a different object",
+      "left": {
+        "a": 1
+      },
+      "right": {
+        "a": 1,
+        "b": 2
+      },
+      "equal": false
+    },
+    {
+      "name": "arrays keep their order",
+      "left": [
+        1,
+        2
+      ],
+      "right": [
+        2,
+        1
+      ],
+      "equal": false
+    },
+    {
+      "name": "numbers nested in an array follow the same rule",
+      "left": [
+        1,
+        2.0
+      ],
+      "right": [
+        1.0,
+        2
+      ],
+      "equal": true
+    },
+    {
+      "name": "numbers nested in an object follow the same rule",
+      "left": {
+        "a": {
+          "b": 3.0
+        }
+      },
+      "right": {
+        "a": {
+          "b": 3
+        }
+      },
+      "equal": true
+    },
+    {
+      "name": "an empty object is not an empty array",
+      "left": {},
+      "right": [],
+      "equal": false
+    }
+  ],
+  "knownDivergences": [
+    {
+      "case": "a boolean against the number it is represented by",
+      "left": false,
+      "right": 0,
+      "native": true,
+      "desktop": false,
+      "why": "Foundation parses JSON `false` into an NSNumber, and NSNumber compares booleans against integers numerically, so the native client reads `false` and `0` as the same value. serde_json keeps them as distinct types. Both clients *store* them correctly \u2014 measured: a round trip through either writer leaves `false` as `false` and `0` as `0` \u2014 and both encode settings from typed models, so neither ever writes one where the other would write the other. Recorded rather than reconciled: making Rust agree would carry a Foundation representation quirk into a client that does not share it, to settle a case that cannot arise. Desktop's stricter reading is the safe direction \u2014 it writes when unsure rather than skipping a write it should have made."
+    }
+  ]
+}
