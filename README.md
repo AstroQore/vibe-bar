@@ -83,12 +83,12 @@ same layout for every core provider.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/popover-openai.png" alt="The OpenAI page: ChatGPT Agentic and Codex Spark quotas with reset history and fill curves beside cost, models and activity"><br><sub><strong>OpenAI</strong> — ChatGPT Agentic and GPT-5.3 Codex Spark windows, reset history, quota history, cost, model ranking, and a year of activity.</sub></td>
-    <td width="50%"><img src="docs/screenshots/popover-anthropic.png" alt="The Anthropic page: 5 Hours, Weekly and Fable windows with their forecasts"><br><sub><strong>Anthropic</strong> — 5 Hours, Weekly and per-model weekly windows, each with its own forecast and cycle history.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-openai-light.png" alt="The OpenAI page: ChatGPT Agentic and Codex Spark quotas with reset history and fill curves beside cost, models and activity"><br><sub><strong>OpenAI</strong> — ChatGPT Agentic and GPT-5.3 Codex Spark windows, reset history, quota history, cost, model ranking, and a year of activity.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-anthropic-light.png" alt="The Anthropic page: 5 Hours, Weekly and Fable windows with their forecasts"><br><sub><strong>Anthropic</strong> — 5 Hours, Weekly and per-model weekly windows, each with its own forecast and cycle history.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/popover-google.png" alt="The Google AI page: Gemini Web and AntiGravity quotas"><br><sub><strong>Google AI</strong> — Gemini Web quotas and the AntiGravity language-server quotas for Gemini and Claude/GPT models, side by side.</sub></td>
-    <td width="50%"><img src="docs/screenshots/popover-spacexai.png" alt="The SpaceXAI page: Grok, Cursor and Grok Bot quotas"><br><sub><strong>SpaceXAI</strong> — Grok Build, Cursor and Grok Bot quotas, with Cursor's account usage folded into the cost side.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-google-light.png" alt="The Google AI page: Gemini Web and AntiGravity quotas"><br><sub><strong>Google AI</strong> — Gemini Web quotas and the AntiGravity language-server quotas for Gemini and Claude/GPT models, side by side.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-spacexai-light.png" alt="The SpaceXAI page: Grok, Cursor and Grok Bot quotas"><br><sub><strong>SpaceXAI</strong> — Grok Build, Cursor and Grok Bot quotas, with Cursor's account usage folded into the cost side.</sub></td>
   </tr>
 </table>
 
@@ -108,14 +108,16 @@ reset-timeline rail. Quota buckets a provider ships after this build are
 discovered at runtime and become selectable without an update. The surface
 is Liquid Glass and follows whatever is behind it.
 
-![The regular mini window: one gauge per quota window, grouped by provider](docs/screenshots/mini-regular.png)
+![The regular mini window: one gauge per quota window, grouped by provider](docs/screenshots/mini-regular-light.png)
 
-![The compact mini window: the same quotas as slim vertical bars](docs/screenshots/mini-compact.png)
+![The compact mini window: the same quotas as slim vertical bars](docs/screenshots/mini-compact-light.png)
 
 <details>
-<summary>The regular mini window in the light appearance</summary>
+<summary>Both mini windows in the dark appearance</summary>
 
-![The regular mini window in the light appearance](docs/screenshots/mini-regular-light.png)
+![The regular mini window in the dark appearance](docs/screenshots/mini-regular.png)
+
+![The compact mini window in the dark appearance](docs/screenshots/mini-compact.png)
 
 </details>
 
@@ -128,7 +130,7 @@ Bailian, Volcengine Coding and Agent Plans, Tencent Hunyuan, Baidu Qianfan and
 Warp. Sign in through the app's own WebView, import a browser cookie, or paste
 a key — whatever the provider's console offers.
 
-![The Misc page: OpenCode Go, Ollama, Zhipu GLM and MiniMax plan windows](docs/screenshots/popover-misc.png)
+![The Misc page: OpenCode Go, Ollama, Zhipu GLM and MiniMax plan windows](docs/screenshots/popover-misc-light.png)
 
 ## The Workbench
 
@@ -221,7 +223,7 @@ and nothing else.
 line, two rows or compact — which quota windows it shows, and whether the
 colour follows the forecast or the raw percentage.
 
-![Menu Bar settings: layout and density pickers, and a checklist of quota windows per provider](docs/screenshots/settings-menubar.png)
+![Menu Bar settings: layout and density pickers, and a checklist of quota windows per provider](docs/screenshots/settings-menubar-light.png)
 
 **Menu Bar Health** shows what AppKit requested versus what macOS actually
 placed, the status-item/window/menu-bar heights, the Control Center allow-list
@@ -264,7 +266,7 @@ Or configure it by hand — every client runs the same command:
 claude mcp add --scope user vibebar -- "/Applications/Vibe Bar.app/Contents/MacOS/VibeBar" --mcp-stdio
 ```
 
-![MCP Server settings: the switch, socket path and connected clients, then a copyable snippet per client](docs/screenshots/settings-mcp.png)
+![MCP Server settings: the switch, socket path and connected clients, then a copyable snippet per client](docs/screenshots/settings-mcp-light.png)
 
 Everything agents can reach is read-only except an opt-in "refresh my quota"
 tool and an opt-in skill installer; credentials are never exposed and emails
@@ -280,9 +282,9 @@ routed through an opaque Relay that never sees plaintext. Each machine stays
 out of your totals until you switch **Include in totals** on; then its usage
 joins this Mac's in the Overview and the cost pages.
 
-![The Machines page: two probes with today's, 7-day and 30-day tokens and cost, and an Include in totals switch](docs/screenshots/popover-machines.png)
+![The Machines page: two probes with today's, 7-day and 30-day tokens and cost, and an Include in totals switch](docs/screenshots/popover-machines-light.png)
 
-![Remote Probes settings: the workspace, relay and sync state, provisioning, and per-machine cost aggregation](docs/screenshots/settings-remote.png)
+![Remote Probes settings: the workspace, relay and sync state, provisioning, and per-machine cost aggregation](docs/screenshots/settings-remote-light.png)
 
 See the [Remote Probe guide](https://vibebar.aqor.io/docs/guide/remote-probes)
 for installation, enrollment, updates, rollback and the end-to-end encryption

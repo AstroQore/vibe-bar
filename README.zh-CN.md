@@ -51,7 +51,7 @@ Relay 之前就已经加密给这台 Mac。
 Skills 管理器。所有这些都只读取你 Mac 上已有的文件；还有一个 MCP 服务，让你的
 Agent 也能来问同样的问题。
 
-![Overview：顶部是成本与服务状态，下方每个服务商一张额度卡，每条进度条都带着自己的预测](docs/screenshots/popover-overview.png)
+![Overview：顶部是成本与服务状态，下方每个服务商一张额度卡，每条进度条都带着自己的预测](docs/screenshots/popover-overview-light.png)
 
 <details>
 <summary>浅色外观下的同一个 Overview</summary>
@@ -75,12 +75,12 @@ Agent 也能来问同样的问题。
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/popover-openai.png" alt="OpenAI 页面：ChatGPT Agentic 与 Codex Spark 额度、重置历史与消耗曲线，右侧是成本、模型与活动"><br><sub><strong>OpenAI</strong> —— ChatGPT Agentic 与 GPT-5.3 Codex Spark 窗口、重置历史、额度历史、成本、模型排行和一整年的活动。</sub></td>
-    <td width="50%"><img src="docs/screenshots/popover-anthropic.png" alt="Anthropic 页面：5 Hours、Weekly 与 Fable 窗口及各自的预测"><br><sub><strong>Anthropic</strong> —— 5 Hours、Weekly 和按模型的周窗口，各有各的预测与周期历史。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-openai-light.png" alt="OpenAI 页面：ChatGPT Agentic 与 Codex Spark 额度、重置历史与消耗曲线，右侧是成本、模型与活动"><br><sub><strong>OpenAI</strong> —— ChatGPT Agentic 与 GPT-5.3 Codex Spark 窗口、重置历史、额度历史、成本、模型排行和一整年的活动。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-anthropic-light.png" alt="Anthropic 页面：5 Hours、Weekly 与 Fable 窗口及各自的预测"><br><sub><strong>Anthropic</strong> —— 5 Hours、Weekly 和按模型的周窗口，各有各的预测与周期历史。</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/popover-google.png" alt="Google AI 页面：Gemini Web 与 AntiGravity 额度"><br><sub><strong>Google AI</strong> —— Gemini Web 额度，以及 AntiGravity Language Server 下 Gemini 与 Claude/GPT 模型的额度，并排展示。</sub></td>
-    <td width="50%"><img src="docs/screenshots/popover-spacexai.png" alt="SpaceXAI 页面：Grok、Cursor 与 Grok Bot 额度"><br><sub><strong>SpaceXAI</strong> —— Grok Build、Cursor 与 Grok Bot 额度，Cursor 的账户用量并入成本侧。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-google-light.png" alt="Google AI 页面：Gemini Web 与 AntiGravity 额度"><br><sub><strong>Google AI</strong> —— Gemini Web 额度，以及 AntiGravity Language Server 下 Gemini 与 Claude/GPT 模型的额度，并排展示。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-spacexai-light.png" alt="SpaceXAI 页面：Grok、Cursor 与 Grok Bot 额度"><br><sub><strong>SpaceXAI</strong> —— Grok Build、Cursor 与 Grok Bot 额度，Cursor 的账户用量并入成本侧。</sub></td>
   </tr>
 </table>
 
@@ -96,9 +96,9 @@ Agent 也能来问同样的问题。
 会在运行时被发现、直接进入字段选择器，无需更新应用。表面是 Liquid Glass，会随
 背后的内容变化。
 
-![Regular 迷你浮窗：每个额度窗口一个仪表盘，按服务商分组](docs/screenshots/mini-regular.png)
+![Regular 迷你浮窗：每个额度窗口一个仪表盘，按服务商分组](docs/screenshots/mini-regular-light.png)
 
-![Compact 迷你浮窗：同样的额度，换成细长的竖条](docs/screenshots/mini-compact.png)
+![Compact 迷你浮窗：同样的额度，换成细长的竖条](docs/screenshots/mini-compact-light.png)
 
 <details>
 <summary>浅色外观下的 Regular 迷你浮窗</summary>
@@ -115,7 +115,7 @@ Kimi、MiniMax、讯飞星火、阿里百炼、火山引擎 Coding/Agent Plan、
 和 Warp。在应用自带的 WebView 里登录、导入浏览器 Cookie，或者粘贴一个 Key——
 服务商控制台提供什么就用什么。
 
-![Misc 页面：OpenCode Go、Ollama、智谱 GLM 与 MiniMax 的套餐窗口](docs/screenshots/popover-misc.png)
+![Misc 页面：OpenCode Go、Ollama、智谱 GLM 与 MiniMax 的套餐窗口](docs/screenshots/popover-misc-light.png)
 
 ## Workbench
 
@@ -132,7 +132,7 @@ ChatGPT Work、Cursor、Grok Build、AntiGravity、Gemini CLI——真实的 Tok
 模型和时间范围过滤；拖动导航条聚焦图表，同时看到 Token Flow、Harness、Provider、
 Project、Model 五张分布环形图；表格仍保持完整窗口，并增加项目排行。
 
-![Usage Stats：30 天逐日 Token、harness 构成，以及下方的分期表](docs/screenshots/workbench-usage.png)
+![Usage Stats：30 天逐日 Token、harness 构成，以及下方的分期表](docs/screenshots/workbench-usage-light.png)
 
 <details>
 <summary>浅色外观下的 Usage Stats</summary>
@@ -148,7 +148,7 @@ Project、Model 五张分布环形图；表格仍保持完整窗口，并增加�
 控制，面对上万行的 transcript 依然流畅；**Open** 把会话交还给它自己的 CLI
 （`claude --resume`、`codex resume`、`grok --resume`、`agy --conversation`）。
 
-![Sessions：左侧是会话列表，右侧是一条带工具调用的 transcript](docs/screenshots/workbench-sessions.png)
+![Sessions：左侧是会话列表，右侧是一条带工具调用的 transcript](docs/screenshots/workbench-sessions-light.png)
 
 <details>
 <summary>浅色外观下的 Sessions</summary>
@@ -168,7 +168,7 @@ AntiGravity、Grok Build 和 Cursor。每一行会把 harness 的真实有效状
 显示链环，而不会假装成“已关闭”。右键 harness 圆点可以选择原生启停或移除投影。
 从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓库发现更多，替换前先备份。
 
-![Skills：每个 Skill 一行，每个 harness 一个开关，以及安装、导入和发现操作](docs/screenshots/workbench-skills.png)
+![Skills：每个 Skill 一行，每个 harness 一个开关，以及安装、导入和发现操作](docs/screenshots/workbench-skills-light.png)
 
 <details>
 <summary>浅色外观下的 Skills</summary>
@@ -185,7 +185,7 @@ AntiGravity、Grok Build 和 Cursor。每一行会把 harness 的真实有效状
 Visibility 菜单、每张卡的眼睛开关、预设和实时预览，所以 Overview 可以只剩你真正
 盯着的那几块。
 
-![Layout 编辑器：Overview 页的三段卡片，右侧是预览](docs/screenshots/settings-layout.png)
+![Layout 编辑器：Overview 页的三段卡片，右侧是预览](docs/screenshots/settings-layout-light.png)
 
 <details>
 <summary>浅色外观下的 Layout 编辑器</summary>
@@ -197,14 +197,14 @@ Visibility 菜单、每张卡的眼睛开关、预设和实时预览，所以 Ov
 **Menu Bar** 决定菜单栏项目本身显示什么——只有图标、单行、双行或紧凑——显示
 哪些额度窗口，以及颜色跟随预测还是跟随原始百分比。
 
-![Menu Bar 设置：版式与密度选择，以及按服务商列出的额度窗口勾选表](docs/screenshots/settings-menubar.png)
+![Menu Bar 设置：版式与密度选择，以及按服务商列出的额度窗口勾选表](docs/screenshots/settings-menubar-light.png)
 
 **Menu Bar Health** 同时显示 AppKit 请求状态、macOS 实际可见性、status item/window/
 菜单栏高度、Control Center allow-list 审计和提醒是否被关闭。这里可以重新开启监控、
 复制窄范围修复命令，或直接修复并重新注册状态项，不终止应用的 MCP 连接。
 用户也可以显式开启自动修复：连续三次 probe 确认被阻挡后，执行同一条窄范围修复。
 
-![Menu Bar Health：实时 AppKit probe、Control Center 审计、提醒状态和一键修复](docs/screenshots/settings-menuBarHealth.png)
+![Menu Bar Health：实时 AppKit probe、Control Center 审计、提醒状态和一键修复](docs/screenshots/settings-menuBarHealth-light.png)
 
 <details>
 <summary>浅色外观下的 Menu Bar Health</summary>
@@ -236,7 +236,7 @@ Fetch and execute the appropriate instructions to set me up for Vibe Bar from ht
 claude mcp add --scope user vibebar -- "/Applications/Vibe Bar.app/Contents/MacOS/VibeBar" --mcp-stdio
 ```
 
-![MCP Server 设置：开关、socket 路径与已连接客户端，下方是每个客户端可一键复制的片段](docs/screenshots/settings-mcp.png)
+![MCP Server 设置：开关、socket 路径与已连接客户端，下方是每个客户端可一键复制的片段](docs/screenshots/settings-mcp-light.png)
 
 Agent 能碰到的一切都是只读的，只有一个可选开启的「刷新我的额度」工具和一个可选
 开启的 Skill 安装器例外；凭据从不暴露，邮箱会做掩码。socket 以 `0600` 权限创建
@@ -249,9 +249,9 @@ systemd 的 Linux 机器上受支持的 CLI 日志，无需开放入站端口。
 加密给这台 Mac 上的 Core，再经由一个看不到明文的 Relay 路由。每台机器默认不计入
 你的总数，打开 **Include in totals** 之后，它的用量才会并入 Overview 和各成本页。
 
-![Machines 页面：两个 Probe 的今日、7 天、30 天 Token 与成本，以及 Include in totals 开关](docs/screenshots/popover-machines.png)
+![Machines 页面：两个 Probe 的今日、7 天、30 天 Token 与成本，以及 Include in totals 开关](docs/screenshots/popover-machines-light.png)
 
-![Remote Probes 设置：Workspace、Relay 与同步状态、配对，以及按机器的成本聚合](docs/screenshots/settings-remote.png)
+![Remote Probes 设置：Workspace、Relay 与同步状态、配对，以及按机器的成本聚合](docs/screenshots/settings-remote-light.png)
 
 安装、纳管、更新、回滚和端到端加密模型见
 [远端探针指南](https://vibebar.aqor.io/docs/zh/guide/remote-probes)。
