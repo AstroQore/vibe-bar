@@ -48,6 +48,190 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
 
     // MARK: - Tests
 
+    /// A window that ran its full length.
+    func testAWindowThatRunsItsLengthIsRecordedAsOnSchedule() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = start.addingTimeInterval(18_000)
+
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "five_hour", usedPercent: 40, resetAt: reset, rawWindowSeconds: 18_000)
+            ], queriedAt: start),
+            now: start
+        )
+        // The reset arrives; the next window is a full one from here.
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "five_hour", usedPercent: 2,
+                       resetAt: reset.addingTimeInterval(18_000), rawWindowSeconds: 18_000)
+            ], queriedAt: reset),
+            now: reset
+        )
+
+        let completed = await store.samples(accountId: "acct-test", bucketId: "five_hour")
+            .filter(\.isCompleted)
+        XCTAssertEqual(completed.count, 1)
+        XCTAssertEqual(completed.first?.resetKind, .onSchedule)
+        XCTAssertEqual(completed.first?.refilledEarly, false)
+    }
+
+    /// Refilled early, and the next reset moved out to a full window from the
+    /// refill — a whole window lies ahead, so the extra capacity is usable.
+    func testAnEarlyRefillThatRestartsTheClockIsRecorded() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = start.addingTimeInterval(18_000)
+        let early = start.addingTimeInterval(5_000)
+
+        await store.observe(
+            quota(tool: .codex, buckets: [
+                bucket(id: "weekly", usedPercent: 40, resetAt: reset, rawWindowSeconds: 18_000)
+            ], queriedAt: start),
+            now: start
+        )
+        await store.observe(
+            quota(tool: .codex, buckets: [
+                bucket(id: "weekly", usedPercent: 2,
+                       resetAt: early.addingTimeInterval(18_000), rawWindowSeconds: 18_000)
+            ], queriedAt: early),
+            now: early
+        )
+
+        let completed = await store.samples(accountId: "acct-test", bucketId: "weekly")
+            .filter(\.isCompleted)
+        XCTAssertEqual(completed.first?.resetKind, .earlyClockRestarted)
+        XCTAssertEqual(completed.first?.refilledEarly, true)
+    }
+
+    /// The opposite consequence: refilled early and the boundary did not move,
+    /// so less than a window remains to spend the refill in.
+    func testAnEarlyRefillThatLeavesTheClockAloneIsRecorded() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = start.addingTimeInterval(18_000)
+        let early = start.addingTimeInterval(5_000)
+
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "five_hour", usedPercent: 40, resetAt: reset, rawWindowSeconds: 18_000)
+            ], queriedAt: start),
+            now: start
+        )
+        await store.observe(
+            quota(tool: .claude, buckets: [
+                bucket(id: "five_hour", usedPercent: 2, resetAt: reset, rawWindowSeconds: 18_000)
+            ], queriedAt: early),
+            now: early
+        )
+
+        let completed = await store.samples(accountId: "acct-test", bucketId: "five_hour")
+            .filter(\.isCompleted)
+        XCTAssertEqual(completed.first?.resetKind, .earlyClockUnchanged)
+    }
+
+    /// The gap between refills, which is what shows a bucket keeping a
+    /// schedule other than the one it advertises.
+    func testTheGapBetweenRefillsIsRecorded() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let window: TimeInterval = 18_000
+
+        var moment = start
+        for step in 0...3 {
+            let used: Double = step % 2 == 0 ? 40 : 2
+            await store.observe(
+                quota(tool: .claude, buckets: [
+                    bucket(id: "five_hour", usedPercent: used,
+                           resetAt: moment.addingTimeInterval(window),
+                           rawWindowSeconds: Int(window))
+                ], queriedAt: moment),
+                now: moment
+            )
+            moment = moment.addingTimeInterval(window)
+        }
+
+        let completed = await store.samples(accountId: "acct-test", bucketId: "five_hour")
+            .filter(\.isCompleted)
+            .sorted { $0.windowEnd < $1.windowEnd }
+        XCTAssertGreaterThanOrEqual(completed.count, 2)
+        // Nothing to measure the first against.
+        XCTAssertNil(completed.first?.intervalSeconds)
+        let gap = try XCTUnwrap(completed.dropFirst().first?.intervalSeconds)
+        XCTAssertEqual(gap, window, accuracy: 1)
+    }
+
+    /// A file written before this existed still decodes, and its cycles simply
+    /// have no classification rather than a wrong one.
+    func testSamplesWrittenBeforeClassificationStillDecode() async throws {
+        let (store, url, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let json = """
+        {"schemaVersion":2,"legacyTimelineImported":false,"samples":[{\
+        "accountId":"acct-test","tool":"claude","bucketId":"five_hour",\
+        "windowEnd":800000000,"rawWindowSeconds":18000,"peakUsedPercent":40,\
+        "lastUsedPercent":40,"observationCount":3,"firstSeenAt":799982000,\
+        "lastSeenAt":799999400,"completedAt":800000000,\
+        "completionReason":"scheduledReset"}]}
+        """
+        try Data(json.utf8).write(to: url)
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "five_hour")
+        XCTAssertEqual(samples.count, 1, "an older file must still load")
+        XCTAssertNil(samples.first?.resetKind)
+        XCTAssertEqual(samples.first?.refilledEarly, false, "unclassified is not early")
+    }
+
+    /// Cycles that finished before the app classified refills get their answer
+    /// from the observations recorded at the time, rather than waiting three
+    /// months for a weekly bucket to fill twelve fresh bars.
+    func testStoredCyclesAreClassifiedFromTheTimeline() async throws {
+        let (store, url, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let window = 18_000
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let refill = base.addingTimeInterval(5_000)
+
+        // One completed cycle, written the way an older build would have.
+        let json = """
+        {"schemaVersion":2,"legacyTimelineImported":true,"resetSignalRepairVersion":1,\
+        "samples":[{"accountId":"acct-test","tool":"codex","bucketId":"weekly",\
+        "windowEnd":\(refill.timeIntervalSinceReferenceDate),"rawWindowSeconds":\(window),\
+        "peakUsedPercent":40,"lastUsedPercent":40,"observationCount":3,\
+        "firstSeenAt":\(base.timeIntervalSinceReferenceDate),\
+        "lastSeenAt":\(refill.timeIntervalSinceReferenceDate),\
+        "completedAt":\(refill.timeIntervalSinceReferenceDate),\
+        "completionReason":"scheduledReset"}]}
+        """
+        try Data(json.utf8).write(to: url)
+
+        func point(_ used: Double, at date: Date, resetAt: Date) -> FillTimelinePoint {
+            FillTimelinePoint(
+                accountId: "acct-test",
+                tool: .codex,
+                bucketId: "weekly",
+                slotStart: UsageFillTimelineStore.hourSlotStart(for: date),
+                usedPercent: used,
+                sampledAt: date,
+                resetAt: resetAt,
+                rawWindowSeconds: window
+            )
+        }
+        // Refilled 13,000s early, and the next reset moved a full window out.
+        let reported = base.addingTimeInterval(TimeInterval(window))
+        await store.importLegacyTimeline([
+            point(40, at: base, resetAt: reported),
+            point(2, at: refill, resetAt: refill.addingTimeInterval(TimeInterval(window))),
+        ])
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "weekly")
+        XCTAssertEqual(samples.first?.resetKind, .earlyClockRestarted)
+    }
+
     func testObserveCreatesOneSamplePerEligibleBucket() async throws {
         let (store, _, cleanup) = try makeTempStore()
         defer { cleanup() }
