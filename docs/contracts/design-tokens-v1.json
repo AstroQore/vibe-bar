@@ -3,8 +3,8 @@
     "fillOpacity": 0.6,
     "hairlineWidth": 0.5,
     "strokeOpacity": 0.4,
-    "workbenchMinCornerRadius": 16,
-    "workbenchMinPadding": 16
+    "workbenchMinCornerRadius": 16.0,
+    "workbenchMinPadding": 16.0
   },
   "note": "Visual tokens both Vibe Bar clients render from. Extracted from the native Theme.swift, which remains the source of truth: change it there, regenerate this file, and both lanes' tests report whether either drifted. A provider that is teal in one client and green in the other is two providers as far as the reader is concerned. Colours are the Swift rounding of each channel \u2014 Int(value * 255 + 0.5) \u2014 so a lane using banker's rounding will disagree on the .5 cases and the tests will say so.",
   "providerAccent": {

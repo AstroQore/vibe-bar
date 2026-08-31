@@ -127,26 +127,36 @@ final class DesignTokenContractTests: XCTestCase {
     }
 
     /// The card recipe is what makes a card in one client look like a card in
-    /// the other. It is published, so it has to be checked.
+    /// the other. Each token is read from its own declaration inside
+    /// `Theme.Card`: a repository-wide search for the value would pass while
+    /// stale, because `sectionPadding` and `workbenchMinPadding` are both 16.
     func testCardRecipeMatchesTheContract() throws {
         let source = try themeSource()
+        let cardBlock = try XCTUnwrap(slice(source, from: "enum Card {", to: "struct Density"))
         let card = try XCTUnwrap(contract()["card"] as? [String: Any])
-        for (key, expected) in [
-            ("fillOpacity", "0.6"),
-            ("strokeOpacity", "0.4"),
-            ("hairlineWidth", "0.5"),
-            ("workbenchMinCornerRadius", "16"),
-        ] {
-            XCTAssertTrue(
-                source.contains("static let \(key)") && source.contains("= \(expected)"),
-                "Theme.Card.\(key) is no longer \(expected)"
-            )
-            let value = card[key]
-            let asDouble = (value as? Double) ?? Double(value as? Int ?? -1)
-            XCTAssertEqual(
-                asDouble, Double(expected),
-                "card.\(key) drifted from docs/contracts/design-tokens-v1.json"
-            )
+
+        var declared: [String: Double] = [:]
+        for line in cardBlock.split(separator: "\n") {
+            guard let name = capture(line, #"static let (\w+)"#),
+                  let value = capture(line, #"=\s*([\d.]+)"#),
+                  let number = Double(value)
+            else { continue }
+            declared[name] = number
+        }
+
+        // Every token the contract publishes must exist in Theme.Card with
+        // that exact value, and nothing may be published that is not there.
+        for (key, published) in card {
+            let asDouble = (published as? Double) ?? Double(published as? Int ?? -1)
+            guard let source = declared[key] else {
+                XCTFail("the contract publishes card.\(key), which Theme.Card does not declare")
+                continue
+            }
+            XCTAssertEqual(source, asDouble, "card.\(key) drifted from Theme.Card")
+        }
+        for key in ["fillOpacity", "strokeOpacity", "hairlineWidth",
+                    "workbenchMinPadding", "workbenchMinCornerRadius"] {
+            XCTAssertNotNil(card[key], "the contract does not publish card.\(key)")
         }
     }
 
