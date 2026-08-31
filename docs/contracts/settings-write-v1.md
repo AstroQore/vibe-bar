@@ -121,6 +121,18 @@ Three more, each of which turns the merge against itself if missed:
   that already contains their change and finds nothing. The write has to
   report what it folded in, or this client shows settings the file
   stopped holding some time ago.
+- **A key this write is applying is not a key this write lost.** Ours is
+  the value that reaches the file, so reporting it puts "another client
+  replaced your change" in front of the person whose change won. Only
+  the keys the other writer changed and this one is *not* writing count.
+- **Record a write only after it succeeds.** A write that failed changed
+  nothing; a process that has already recorded those settings as written
+  leaves them out of the next merge, and they stay off the disk until it
+  restarts.
+- **A merged object this build cannot decode is one it has not taken
+  on.** Write it — the file is correct, and the other writer's value is
+  in it — but do not record its values as this process's own, or the
+  next save treats its own fallback as an edit and overwrites them.
 - **A notice stands until the user dismisses it.** A later external
   change that costs nothing is not news that the first one cost nothing,
   and a second loss is a second thing to say rather than a replacement

@@ -111,6 +111,65 @@ final class SettingsStoreMergeTests: XCTestCase {
         )
     }
 
+    /// A value this build cannot decode, folded in by a save rather than by
+    /// the watcher. The merge keeps it on disk, but nothing here took it on —
+    /// the merged object does not decode — so recording it as this process's
+    /// own value lets the next save write the fallback over it.
+    func testAnUndecodableValueASaveFoldedInSurvivesTheNextSave() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        try writeFile(#"{"displayMode":"aModeFromAFutureBuild","refreshIntervalSeconds":600}"#)
+        store.settings.refreshIntervalSeconds = 900
+        store.flush()
+        XCTAssertEqual(try fileObject()["displayMode"] as? String, "aModeFromAFutureBuild")
+
+        store.settings.refreshIntervalSeconds = 1200
+        store.flush()
+        XCTAssertEqual(
+            try fileObject()["displayMode"] as? String, "aModeFromAFutureBuild",
+            "a later save overwrote a value this build cannot decode"
+        )
+        XCTAssertEqual(try fileObject()["refreshIntervalSeconds"] as? Int, 1200)
+    }
+
+    /// A write that failed has changed nothing. A process that recorded those
+    /// settings as written leaves them out of the next merge, and they stay
+    /// off the disk until it restarts.
+    ///
+    /// The failure is a directory where the file should be, rather than a
+    /// read-only parent: `ensureDirectory` resets the parent to 0700 on every
+    /// write, so taking its permissions away does not stop anything.
+    func testASettingSurvivesAWriteThatFailed() throws {
+        let original = #"{"displayMode":"remaining","refreshIntervalSeconds":600}"#
+        try writeFile(original)
+        let store = try makeStore()
+        let manager = FileManager.default
+
+        store.settings.refreshIntervalSeconds = 900
+        try manager.removeItem(at: settingsURL)
+        try manager.createDirectory(at: settingsURL, withIntermediateDirectories: false)
+        store.flush()
+
+        try manager.removeItem(at: settingsURL)
+        try writeFile(original)
+        XCTAssertEqual(
+            try fileObject()["refreshIntervalSeconds"] as? Int, 600,
+            "the write was expected to fail; this test proves nothing if it did not"
+        )
+
+        // A later, unrelated edit. The setting that could not be written is
+        // still this process's, and belongs in the same save.
+        store.settings.displayMode = .used
+        store.flush()
+
+        XCTAssertEqual(try fileObject()["displayMode"] as? String, "used")
+        XCTAssertEqual(
+            try fileObject()["refreshIntervalSeconds"] as? Int, 900,
+            "a setting was dropped because a failed write had recorded it as saved"
+        )
+    }
+
     /// The file is still something the store itself can read back: a merged
     /// write has to stay a decodable `AppSettings`, not just a valid object.
     func testTheMergedFileStillLoadsAsSettings() throws {
@@ -312,6 +371,32 @@ final class SettingsStoreAdoptionTests: XCTestCase {
         XCTAssertNil(
             store.replacedByAnotherWriter,
             "reported a loss for a setting this process never chose a value for"
+        )
+    }
+
+    /// When this process is the one writing the contested setting, its value
+    /// is the one that reaches the file. Telling the user their change was
+    /// replaced puts the notice in front of the person whose change won.
+    func testNoNoticeWhenOurOwnWriteIsTheValueThatWins() throws {
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":600}"#)
+        let store = try makeStore()
+
+        store.settings.refreshIntervalSeconds = 900
+        store.flush()
+
+        // Theirs, then ours again before the watcher runs.
+        try writeFile(#"{"displayMode":"remaining","refreshIntervalSeconds":120}"#)
+        store.settings.refreshIntervalSeconds = 1800
+        store.flush()
+
+        let settled = expectation(description: "settled")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settled.fulfill() }
+        wait(for: [settled], timeout: 3)
+
+        XCTAssertEqual(try fileObject()["refreshIntervalSeconds"] as? Int, 1800)
+        XCTAssertNil(
+            store.replacedByAnotherWriter,
+            "reported a loss for the setting this process had just won"
         )
     }
 

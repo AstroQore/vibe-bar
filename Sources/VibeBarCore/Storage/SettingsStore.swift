@@ -392,8 +392,6 @@ public final class SettingsStore: ObservableObject {
             let changed = SettingsDocument.changedKeys(
                 from: lastMine, to: mine, owned: ownedKeys(writing: mine)
             )
-            editedKeys.formUnion(changed)
-            lastMine = mine
             // The other writer got there first, and this write is about to put
             // its own keys on top and record the result as the file we have
             // seen. Without saying so, the watcher that follows compares the
@@ -401,30 +399,51 @@ public final class SettingsStore: ObservableObject {
             // finds nothing, and this process goes on showing stale settings
             // until the next external write or a restart.
             let theirChanges = SettingsDocument.changedKeys(from: baseline, to: theirs)
+            // Not the keys this write is applying: ours is the value that
+            // reaches the file, so nothing of ours was replaced there. Saying
+            // otherwise puts "another Vibe Bar replaced your change" in front
+            // of someone whose change is the one that won.
             let conflicts = theirChanges
-                .intersection(editedKeys.union(changed))
+                .subtracting(changed)
+                .intersection(editedKeys)
                 .filter { !SettingsDocument.equal(mine[$0], theirs[$0]) }
                 .sorted()
-            // Their value is our position now for anything we are not writing.
-            for key in theirChanges where !changed.contains(key) {
-                if let value = theirs[key] {
-                    lastMine[key] = value
-                } else {
-                    lastMine.removeValue(forKey: key)
-                }
-                editedKeys.remove(key)
-            }
 
             var merged = theirs
             for key in changed {
                 if let value = mine[key] { merged[key] = value } else { merged.removeValue(forKey: key) }
             }
+
+            // Whether this build can read back what it is about to write. It
+            // writes either way — the file is correct, and their value is in
+            // it — but a merged object it cannot decode is one whose values it
+            // has *not* taken on, and recording otherwise would let the next
+            // save treat its own fallback as an edit and overwrite them.
+            let readable = (try? SettingsDocument.data(from: merged))
+                .flatMap { try? JSONDecoder().decode(AppSettings.self, from: $0) } != nil
+
             do {
                 try VibeBarLocalStore.writeData(
                     SettingsDocument.data(from: merged), to: fileURL,
                     base: fileURL.deletingLastPathComponent()
                 )
+                // Only now: a write that failed has changed nothing, and a
+                // process that recorded these as written would leave them out
+                // of the next merge and off the disk until it restarted.
                 baseline = merged
+                editedKeys.formUnion(changed)
+                lastMine = mine
+                guard readable else { return }
+                // Their value is our position now for anything we are not
+                // writing ourselves.
+                for key in theirChanges where !changed.contains(key) {
+                    if let value = theirs[key] {
+                        lastMine[key] = value
+                    } else {
+                        lastMine.removeValue(forKey: key)
+                    }
+                    editedKeys.remove(key)
+                }
                 if !theirChanges.isEmpty {
                     foldedExternalChange?(merged, conflicts)
                 }
