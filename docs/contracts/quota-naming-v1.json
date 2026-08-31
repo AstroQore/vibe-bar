@@ -1,6 +1,22 @@
 {
   "fallback": "A bucket no rule names takes the key '<tool>.<stem>', where the stem is the bucket id with one stemSuffix removed, and shows the bucket's own groupTitle as its label.",
   "groupKey": {
+    "branchStyle": {
+      "alwaysTools": [
+        "antigravity"
+      ],
+      "buckets": [
+        "gpt_5_3_codex_spark_five_hour",
+        "gpt_5_3_codex_spark_weekly",
+        "weekly_sonnet",
+        "weekly_design",
+        "daily_routines",
+        "weekly_opus",
+        "weekly_fable",
+        "weekly_oauth_apps"
+      ],
+      "discoveredNeedGroupTitle": true
+    },
     "contains": [
       {
         "contains": "flash-lite",
@@ -118,6 +134,7 @@
       "_secondary"
     ]
   },
+  "groupKeyOrder": "Cursor first: grok_bot_weekly is ungrouped, its other buckets go through the rules. Then branchStyle decides whether a bucket is its own L3 group at all \u2014 alwaysTools always are, a bucket in branchStyle.buckets is, and a bucket discovered at runtime is exactly when it carried a groupTitle. Everything else takes its tool's defaultGroup, and has none if the tool is not listed there. Only a branch-style bucket reaches exact, then contains in order, then the fallback.",
   "groupLabels": {
     "antigravity.claude-gpt-models": "Claude + GPT",
     "antigravity.gemini-models": "Gemini",

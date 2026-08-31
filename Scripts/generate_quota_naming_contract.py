@@ -122,6 +122,19 @@ def group_key_rules() -> dict:
                    slice_between(source, "static func namingGroupKey", "static func groupKey"))
     )
 
+    # Which buckets go through the rules at all. The rest take their tool's
+    # default group, and a second implementation cannot infer the difference:
+    # Codex's plain Weekly is "All", but its Spark buckets are their own group.
+    branch = slice_between(
+        read("Sources/VibeBarApp/Views/MiniQuotaWindowView.swift"),
+        "static func isBranchStyleField",
+        "\n    }",
+    )
+    always = re.findall(r"if field\.tool == \.(\w+) \{\s*\n\s*return true", branch)
+    listed = re.findall(r'"([\w]+)"', branch[branch.index("switch field.bucketId"):])
+    if not always or not listed:
+        raise SystemExit("the branch-style rule did not parse")
+
     suffixes = re.findall(
         r'"(_[a-z_]+)"',
         slice_between(read("Sources/VibeBarCore/Models/QuotaFieldRegistry.swift"),
@@ -132,6 +145,11 @@ def group_key_rules() -> dict:
         "contains": contains,
         "defaultGroup": defaults,
         "stemSuffixes": [s for s in suffixes if s != "_window"],
+        "branchStyle": {
+            "alwaysTools": always,
+            "buckets": listed,
+            "discoveredNeedGroupTitle": True,
+        },
     }
     # Every group key the Swift switch can return must have made it into one of
     # the rule lists. A regex that stops matching is otherwise indistinguishable
@@ -171,6 +189,16 @@ def main() -> None:
             "A bucket no rule names takes the key '<tool>.<stem>', where the stem "
             "is the bucket id with one stemSuffix removed, and shows the bucket's "
             "own groupTitle as its label."
+        ),
+        "groupKeyOrder": (
+            "Cursor first: grok_bot_weekly is ungrouped, its other buckets go "
+            "through the rules. Then branchStyle decides whether a bucket is its "
+            "own L3 group at all — alwaysTools always are, a bucket in "
+            "branchStyle.buckets is, and a bucket discovered at runtime is "
+            "exactly when it carried a groupTitle. Everything else takes its "
+            "tool's defaultGroup, and has none if the tool is not listed there. "
+            "Only a branch-style bucket reaches exact, then contains in order, "
+            "then the fallback."
         ),
     }
     path = ROOT / "docs/contracts/quota-naming-v1.json"
