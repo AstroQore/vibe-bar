@@ -107,6 +107,63 @@ final class DesignTokenContractTests: XCTestCase {
         XCTAssertEqual(used["warningAtOrAbove"] as? Int, 70)
     }
 
+    /// Grok resolves per appearance, so both halves must come from
+    /// `adaptiveNeutralAccent` rather than being typed in. The first version
+    /// of this contract had a hand-written light value that did not match the
+    /// source, and nothing here noticed.
+    func testGrokAccentMatchesBothAppearances() throws {
+        let source = try themeSource()
+        let block = try XCTUnwrap(slice(
+            source, from: "private static var adaptiveNeutralAccent", to: "static func barColor"
+        ))
+        let values = matches(block, #"srgbRed: ([\d.]+), green: ([\d.]+), blue: ([\d.]+)"#)
+            .map { hex($0[0], $0[1], $0[2]) }
+        XCTAssertEqual(values.count, 2, "expected a dark and a light value")
+
+        let accents = try XCTUnwrap(contract()["providerAccent"] as? [String: Any])
+        let grok = try XCTUnwrap(accents["grok"] as? [String: String])
+        XCTAssertEqual(grok["dark"], values[0])
+        XCTAssertEqual(grok["light"], values[1])
+    }
+
+    /// The card recipe is what makes a card in one client look like a card in
+    /// the other. It is published, so it has to be checked.
+    func testCardRecipeMatchesTheContract() throws {
+        let source = try themeSource()
+        let card = try XCTUnwrap(contract()["card"] as? [String: Any])
+        for (key, expected) in [
+            ("fillOpacity", "0.6"),
+            ("strokeOpacity", "0.4"),
+            ("hairlineWidth", "0.5"),
+            ("workbenchMinCornerRadius", "16"),
+        ] {
+            XCTAssertTrue(
+                source.contains("static let \(key)") && source.contains("= \(expected)"),
+                "Theme.Card.\(key) is no longer \(expected)"
+            )
+            let value = card[key]
+            let asDouble = (value as? Double) ?? Double(value as? Int ?? -1)
+            XCTAssertEqual(
+                asDouble, Double(expected),
+                "card.\(key) drifted from docs/contracts/design-tokens-v1.json"
+            )
+        }
+    }
+
+    /// The bar track sits behind every quota bar in both clients, and the
+    /// source slice the colour test reads deliberately stops before it.
+    func testBarTrackOpacityMatchesTheContract() throws {
+        let source = try themeSource()
+        let opacity = try XCTUnwrap(
+            capture(Substring(source), #"barTrack = Color\.primary\.opacity\(([\d.]+)\)"#)
+        )
+        let quotaBar = try XCTUnwrap(contract()["quotaBar"] as? [String: Any])
+        XCTAssertEqual(
+            quotaBar["trackOpacity"] as? Double, Double(opacity),
+            "trackOpacity drifted from Theme.barTrack"
+        )
+    }
+
     // MARK: - Helpers
 
     private func slice(_ text: String, from: String, to: String) -> String? {
