@@ -1144,6 +1144,31 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 
 ## 11. Implementation Rules That Have Bitten
 
+- **A quota cycle shorter than its stated window is usually real, not a
+  bug.** Several buckets refill far more often than the window they
+  report: two Codex weeklies have a *median* observed gap of 57 hours
+  against a 168-hour window, and 62-71% of their cycles come in under
+  half of it. Buckets that do follow their window (`claude_gpt_weekly`,
+  `gemini_weekly`, `weekly_fable`) sit at 166-168 hours, so the two
+  cases are easy to tell apart with data and impossible to tell apart by
+  reading the code.
+
+  This has already caused one wrong fix. `SubscriptionWindowSample`
+  moves `windowStart` forward on every observation of a rolling window
+  and stops when the cycle closes, which *looks* like it must leave a
+  stale value behind, and reconstructing the start from
+  `rawWindowSeconds` looks like the obvious repair. Measured against the
+  interval between observed refills, the stored start is right for
+  86-100% of cycles on every bucket; the reconstruction managed 14% on
+  the worst. **Do not "fix" a short span without measuring first** —
+  `QuotaPaceForecast.historicalRemainingUsage` derives each observation's
+  progress from that span, so inflating it to the nominal window
+  misplaces every comparison.
+
+  The corollary worth building on: a cycle whose observed interval
+  disagrees with the nominal window is an *event* — an off-schedule
+  refill — and is worth recording and showing rather than smoothing
+  away.
 - **JSONL scanning must be O(n).** See
   `CostUsageScanner.forEachJSONLLine`. Use a moving cursor, not
   `removeSubrange`.
