@@ -128,14 +128,14 @@ struct FillTimelineChart: View {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .fill(Theme.barTrack.opacity(isHovered ? 0.95 : 0.62))
             RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Self.accent(for: tool).opacity(isHovered ? 1 : 0.86))
+                .fill(Theme.providerAccent(for: tool).opacity(isHovered ? 1 : 0.86))
                 .frame(maxHeight: .infinity)
                 .scaleEffect(x: 1, y: max(0.04, percent / 100), anchor: .bottom)
         }
         .overlay {
             if !cycle.isCompleted {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .stroke(Self.accent(for: tool).opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    .stroke(Theme.providerAccent(for: tool).opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
             }
         }
     }
@@ -192,16 +192,6 @@ struct FillTimelineChart: View {
 
     private func axisLabel(_ cycle: SubscriptionWindowSample) -> String {
         Self.dayFormatter.string(from: cycleDate(cycle))
-    }
-
-    private static func accent(for tool: ToolType) -> Color {
-        switch tool {
-        case .codex: Color(red: 0.30, green: 0.78, blue: 0.74)
-        case .claude: Color(red: 0.93, green: 0.40, blue: 0.40)
-        case .gemini, .antigravity: Color(red: 0.34, green: 0.62, blue: 0.96)
-        case .grok: Color(red: 0.45, green: 0.45, blue: 0.50)
-        default: Color(red: 0.45, green: 0.55, blue: 0.65)
-        }
     }
 
     private static let timestampFormatter: DateFormatter = {
