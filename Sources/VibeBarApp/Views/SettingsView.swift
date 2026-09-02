@@ -188,6 +188,16 @@ struct SettingsView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.orange)
                         }
+                        Divider()
+                            .padding(.vertical, 2)
+                        Button {
+                            environment.showOnboarding()
+                        } label: {
+                            Label("Show setup assistant", systemImage: "wand.and.stars")
+                        }
+                        Text("Walk through subscriptions, browser cookies, API keys, model pricing and login items again. Nothing is reset.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                     .id(SettingsSectionID.system.rawValue)
 

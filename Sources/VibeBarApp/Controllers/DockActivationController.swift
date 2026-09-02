@@ -13,6 +13,7 @@ final class DockActivationController {
 
     enum DockToken: String, Hashable {
         case workbench
+        case onboarding
     }
 
     private var tokens: Set<DockToken> = []

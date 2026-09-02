@@ -50,6 +50,12 @@ final class AppEnvironment: ObservableObject {
     private let claudeWebLoginController = ClaudeWebLoginController()
     private let miscWebLoginRegistry = MiscWebLoginRegistry()
     private let workbenchWindowController = WorkbenchWindowController()
+    private let onboardingWindowController = OnboardingWindowController()
+    /// Opens the compact popover from its status item. Installed by the
+    /// `AppDelegate` once the status item exists, so the setup assistant's
+    /// Finish can land the user on the readout; nil in demo mode, where
+    /// there is no status item to anchor to.
+    var presentPopoverHandler: (() -> Void)?
     private var workbenchServicesStorage: WorkbenchServices?
     private var cancellables: Set<AnyCancellable> = []
     private var routineBudgetInFlightAccountIds: Set<String> = []
@@ -674,6 +680,25 @@ final class AppEnvironment: ObservableObject {
         workbenchWindowController.show(environment: self, page: .settings, settingsDestination: destination)
     }
 
+    /// Open the first-run setup assistant, on `step` if one is named. Resets
+    /// nothing: from Settings it is a guided tour of controls that also
+    /// live there.
+    func showOnboarding(step: OnboardingStep? = nil) {
+        onboardingWindowController.show(environment: self, step: step)
+    }
+
+    /// Finishing and skipping both record completion; only finishing goes on
+    /// to open the popover, because a user who skipped asked to be left alone.
+    func finishOnboarding(openPopover: Bool) {
+        settingsStore.settings.hasCompletedOnboarding = true
+        onboardingWindowController.close()
+        guard !DemoMode.isEnabled else { return }
+        refreshAll()
+        if openPopover {
+            presentPopoverHandler?()
+        }
+    }
+
     /// Built on the first Workbench open and kept for the process lifetime, so
     /// reopening the window lands on the state the user left rather than on a
     /// fresh set of queries.
@@ -694,6 +719,14 @@ final class AppEnvironment: ObservableObject {
     @discardableResult
     func frontWorkbenchIfOpen() -> Bool {
         workbenchWindowController.frontExistingWindow()
+    }
+
+    /// Front an open or minimised setup assistant without creating one; the
+    /// Dock reopen path's first stop, since on a first launch it is the only
+    /// window there is.
+    @discardableResult
+    func frontOnboardingIfOpen() -> Bool {
+        onboardingWindowController.frontExistingWindow()
     }
 
     func openClaudeWebLogin() {

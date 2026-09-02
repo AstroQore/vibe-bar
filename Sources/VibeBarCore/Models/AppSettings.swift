@@ -6,6 +6,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var refreshOnPopoverOpen: Bool
     public var popoverOpenRefreshCooldownSeconds: Int
     public var launchAtLogin: Bool
+    /// Set once the first-run setup assistant has been finished or skipped.
+    /// Absent from a settings file written before the assistant existed;
+    /// `OnboardingGate` tells a fresh install apart from an upgrade so an
+    /// existing user is never walked through setup they already did.
+    public var hasCompletedOnboarding: Bool
     public var updateChannel: UpdateChannel
     public var menuBarTextEnabled: Bool
     /// Set by "Don't check again" on the alert that reports macOS blocking our
@@ -177,6 +182,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         refreshOnPopoverOpen: false,
         popoverOpenRefreshCooldownSeconds: 60,
         launchAtLogin: false,
+        hasCompletedOnboarding: false,
         updateChannel: .main,
         menuBarTextEnabled: true,
         menuBarBlockAlertSuppressed: false,
@@ -284,6 +290,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         refreshOnPopoverOpen: Bool = false,
         popoverOpenRefreshCooldownSeconds: Int = 60,
         launchAtLogin: Bool,
+        hasCompletedOnboarding: Bool = false,
         updateChannel: UpdateChannel = .main,
         menuBarTextEnabled: Bool,
         menuBarBlockAlertSuppressed: Bool = false,
@@ -323,6 +330,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.refreshOnPopoverOpen = refreshOnPopoverOpen
         self.popoverOpenRefreshCooldownSeconds = max(60, popoverOpenRefreshCooldownSeconds)
         self.launchAtLogin = launchAtLogin
+        self.hasCompletedOnboarding = hasCompletedOnboarding
         self.updateChannel = updateChannel
         self.menuBarTextEnabled = menuBarTextEnabled
         self.menuBarBlockAlertSuppressed = menuBarBlockAlertSuppressed
@@ -395,6 +403,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case refreshOnPopoverOpen
         case popoverOpenRefreshCooldownSeconds
         case launchAtLogin
+        case hasCompletedOnboarding
         case updateChannel
         case menuBarTextEnabled
         case menuBarBlockAlertSuppressed
@@ -442,6 +451,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 ?? Self.default.popoverOpenRefreshCooldownSeconds
         )
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? Self.default.launchAtLogin
+        // Missing means "never recorded", not "not done": whether that is a
+        // fresh install or an upgrade is `OnboardingGate`'s call at launch.
+        self.hasCompletedOnboarding =
+            try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding)
+            ?? Self.default.hasCompletedOnboarding
         self.updateChannel =
             (try? c.decodeIfPresent(UpdateChannel.self, forKey: .updateChannel))
             ?? Self.default.updateChannel
@@ -628,6 +642,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(refreshOnPopoverOpen, forKey: .refreshOnPopoverOpen)
         try c.encode(popoverOpenRefreshCooldownSeconds, forKey: .popoverOpenRefreshCooldownSeconds)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
+        try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
         try c.encode(updateChannel, forKey: .updateChannel)
         try c.encode(menuBarTextEnabled, forKey: .menuBarTextEnabled)
         try c.encode(menuBarBlockAlertSuppressed, forKey: .menuBarBlockAlertSuppressed)

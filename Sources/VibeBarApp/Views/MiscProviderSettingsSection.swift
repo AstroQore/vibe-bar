@@ -63,7 +63,7 @@ struct MiscProviderSettingsSection: View {
                     }
                 }
             }
-            placeholderRow
+            MiscProviderCredentialRows(instance: instance)
         }
     }
 
@@ -94,8 +94,24 @@ struct MiscProviderSettingsSection: View {
         }
     }
 
+}
+
+/// The credential and configuration controls for one misc-provider instance —
+/// API-key and AK/SK fields, cookie slots, region and variant pickers, web
+/// login rows. Every Keychain write happens in the field views this composes;
+/// nothing here touches a secret itself. Shared by the Misc Providers settings
+/// page and the setup assistant so the two can never offer different ways to
+/// enter the same credential.
+struct MiscProviderCredentialRows: View {
+    let instance: MiscProviderInstance
+
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    private var tool: ToolType { instance.tool }
+    private var instanceID: String { instance.id }
+
     @ViewBuilder
-    private var placeholderRow: some View {
+    var body: some View {
         switch tool {
         case .zai:
             VStack(alignment: .leading, spacing: 4) {
@@ -311,7 +327,6 @@ struct MiscProviderSettingsSection: View {
             EmptyView()
         }
     }
-
 }
 
 /// Alibaba Token Plan commercial edition. This uses a dedicated

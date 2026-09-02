@@ -164,6 +164,10 @@ final class DemoPresenter {
         case let .settings(section):
             guard let destination = Self.settingsDestination(for: section) else { return warnUnknown(surface) }
             environment.showSettings(destination)
+        case let .onboarding(step):
+            let resolved = step.isEmpty ? .welcome : OnboardingStep(rawValue: step)
+            guard let resolved else { return warnUnknown(surface) }
+            environment.showOnboarding(step: resolved)
         }
     }
 
