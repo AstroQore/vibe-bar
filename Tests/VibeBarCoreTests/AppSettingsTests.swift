@@ -201,6 +201,27 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.displayMode, .used)
     }
 
+    func testHasCompletedOnboardingDefaultsFalseAndRoundTrips() throws {
+        // A file written before the setup assistant existed carries no key;
+        // that decodes to `false` and it is `OnboardingGate`, not the decoder,
+        // that decides whether an upgrade counts as done.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertFalse(legacy.hasCompletedOnboarding)
+        XCTAssertFalse(AppSettings.default.hasCompletedOnboarding)
+
+        var settings = AppSettings.default
+        settings.hasCompletedOnboarding = true
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(decoded.hasCompletedOnboarding)
+
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["hasCompletedOnboarding"] as? Bool, true)
+    }
+
     func testSkillsSyncMethodDefaultsToAutoAndRoundTrips() throws {
         // `.auto` links where it can and copies where it cannot, which is the
         // only value that keeps every agent CLI reading one copy of a skill —

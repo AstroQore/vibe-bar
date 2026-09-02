@@ -280,6 +280,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             popoverCloseStamps.removeValue(forKey: kind)
             return
         }
+        openPopover(popover, kind: kind, anchoredTo: button)
+    }
+
+    /// Open the compact popover as a click on its status item would. The
+    /// setup assistant calls this on Finish, so the first thing a new user
+    /// sees after setup is the readout they installed the app for.
+    func presentCompactPopover() {
+        guard let button = compactStatusItem?.button else { return }
+        let popover = popover(for: .compact)
+        guard !popover.isShown else { return }
+        openPopover(popover, kind: .compact, anchoredTo: button)
+    }
+
+    private func openPopover(_ popover: NSPopover, kind: MenuBarItemKind, anchoredTo button: NSStatusBarButton) {
         // Close any other open popover first to keep behavior consistent.
         for (otherKind, other) in popovers where otherKind != kind && other.isShown {
             other.performClose(nil)

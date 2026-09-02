@@ -137,6 +137,8 @@ final class DemoModeTests: XCTestCase {
         XCTAssertEqual(DemoMode.Surface(parsing: "mini:compact"), .miniWindow(mode: "compact"))
         XCTAssertEqual(DemoMode.Surface(parsing: " workbench:skillsManager "), .workbench(page: "skillsManager"))
         XCTAssertEqual(DemoMode.Surface(parsing: "settings:layout"), .settings(section: "layout"))
+        XCTAssertEqual(DemoMode.Surface(parsing: "onboarding"), .onboarding(step: ""))
+        XCTAssertEqual(DemoMode.Surface(parsing: "onboarding:subscriptions"), .onboarding(step: "subscriptions"))
         XCTAssertNil(DemoMode.Surface(parsing: "window:main"))
         XCTAssertNil(DemoMode.Surface(parsing: ""))
     }

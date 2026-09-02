@@ -45,6 +45,7 @@ SURFACES=(
   "settings-menubar=settings:menuBar=both"
   "settings-mcp=settings:mcp=both"
   "settings-remote=settings:remote=both"
+  "onboarding=onboarding=both"
 )
 if (( $# > 0 )); then
   SURFACES=()

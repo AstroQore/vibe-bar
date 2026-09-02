@@ -19,8 +19,9 @@ import Foundation
 ///   process, so the same surface can be captured in both.
 /// - `VIBEBAR_DEMO_SURFACE=<surface>` — open one surface after launch:
 ///   `popover:<page>`, `mini:<regular|compact>`, `workbench:<page>`,
-///   `settings:<section>`, where the identifiers are the app's own raw
-///   values (`overview`, `openAI`, `usageStats`, `layout`, …).
+///   `settings:<section>`, `onboarding:<step>`, where the identifiers are
+///   the app's own raw values (`overview`, `openAI`, `usageStats`, `layout`,
+///   `subscriptions`, …).
 /// - `VIBEBAR_DEMO_BACKDROP=0` — skip the solid backdrop window demo mode
 ///   otherwise puts behind the popover so a translucent surface is captured
 ///   over one flat colour rather than over whatever happens to be on screen.
@@ -40,6 +41,8 @@ public enum DemoMode {
         case miniWindow(mode: String)
         case workbench(page: String)
         case settings(section: String)
+        /// The first-run setup assistant, opened on the named step.
+        case onboarding(step: String)
 
         /// `kind:identifier`. An unknown kind is `nil`; an empty identifier
         /// is allowed and means "the surface's default".
@@ -51,6 +54,7 @@ public enum DemoMode {
                 case "mini": self = .miniWindow(mode: "")
                 case "workbench": self = .workbench(page: "")
                 case "settings": self = .settings(section: "")
+                case "onboarding": self = .onboarding(step: "")
                 default: return nil
                 }
                 return
@@ -62,6 +66,7 @@ public enum DemoMode {
             case "mini": self = .miniWindow(mode: identifier)
             case "workbench": self = .workbench(page: identifier)
             case "settings": self = .settings(section: identifier)
+            case "onboarding": self = .onboarding(step: identifier)
             default: return nil
             }
         }
