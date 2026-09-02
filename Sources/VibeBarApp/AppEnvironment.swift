@@ -721,6 +721,14 @@ final class AppEnvironment: ObservableObject {
         workbenchWindowController.frontExistingWindow()
     }
 
+    /// Front an open or minimised setup assistant without creating one; the
+    /// Dock reopen path's first stop, since on a first launch it is the only
+    /// window there is.
+    @discardableResult
+    func frontOnboardingIfOpen() -> Bool {
+        onboardingWindowController.frontExistingWindow()
+    }
+
     func openClaudeWebLogin() {
         claudeWebLoginController.open { [weak self] in
             self?.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()

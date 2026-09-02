@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         installMainMenuIfNeeded()
 
+        // Taken before the environment exists on purpose: constructing
+        // `SettingsStore` materialises the defaults and writes `settings.json`
+        // back, so from that point on the file always exists and can no
+        // longer tell a fresh install from an upgrade. See `OnboardingGate`.
+        let hadSettingsFile = FileManager.default.fileExists(atPath: VibeBarLocalStore.settingsURL.path)
+
         let env = AppEnvironment()
         self.environment = env
         if let demo = DemoMode.configuration {
@@ -48,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.presentPopoverHandler = { [weak statusItem] in
             statusItem?.presentCompactPopover()
         }
-        presentOnboardingIfNeeded(environment: env)
+        presentOnboardingIfNeeded(environment: env, hadSettingsFile: hadSettingsFile)
 
         CookieRefreshScheduler.shared.start()
         observeCookieRefreshes(environment: env)
@@ -66,14 +72,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// First real launch: open the setup assistant. The decision is
-    /// `OnboardingGate`'s; this only supplies its one signal — a quota cache
-    /// on disk — and records completion silently for an install that
-    /// predates the key. CLI credentials on the Mac are not consulted: they
-    /// say the user runs Codex or Claude, not that they have run Vibe Bar.
-    private func presentOnboardingIfNeeded(environment env: AppEnvironment) {
+    /// `OnboardingGate`'s; this only supplies its signals — a quota cache on
+    /// disk, and whether `settings.json` predated this launch's store — and
+    /// records completion silently for an install that predates the key.
+    /// CLI credentials on the Mac are not consulted: they say the user runs
+    /// Codex or Claude, not that they have run Vibe Bar.
+    private func presentOnboardingIfNeeded(environment env: AppEnvironment, hadSettingsFile: Bool) {
         switch OnboardingGate.decide(
             hasCompletedOnboarding: env.settingsStore.settings.hasCompletedOnboarding,
-            hasQuotaCaches: OnboardingGate.hasQuotaCaches()
+            hasQuotaCaches: OnboardingGate.hasQuotaCaches(),
+            hadSettingsFile: hadSettingsFile
         ) {
         case .show:
             env.showOnboarding()
@@ -106,13 +114,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Clicking the Dock icon — which only exists while the Workbench holds a
-    /// Dock token — should bring that window back rather than do nothing. The
-    /// Workbench is never created here: a Dock icon without a live Workbench
-    /// means the window is mid-teardown, and resurrecting it would fight the
+    /// Clicking the Dock icon — which only exists while the Workbench or the
+    /// setup assistant holds a Dock token — should bring that window back
+    /// rather than do nothing. The assistant is asked first: on a first
+    /// launch it is the only window, and a minimised one has no other way
+    /// back. Neither window is ever created here: a Dock icon without a live
+    /// window means it is mid-teardown, and resurrecting it would fight the
     /// close the user just asked for.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        environment?.frontWorkbenchIfOpen()
+        guard let environment else { return true }
+        if !environment.frontOnboardingIfOpen() {
+            environment.frontWorkbenchIfOpen()
+        }
         return true
     }
 

@@ -72,7 +72,7 @@ struct OnboardingSubscriptionsStep: View {
     @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
-        Text("Turn on the subscriptions you use. A provider that is off stays out of the Overview, the menu bar and the refresh schedule; turning one off later keeps its credentials and history.")
+        Text("Turn on the subscriptions you use. A provider that is off stays out of the Overview and the menu bar; turning one off later keeps its credentials and history.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

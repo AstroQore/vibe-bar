@@ -88,6 +88,25 @@ final class OnboardingWindowController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Bring an open (or minimised) assistant back to the front without
+    /// building one. On a first launch it is the only Dock-visible window,
+    /// so the Dock reopen path asks here before it asks the Workbench.
+    /// Reports whether there was anything to front.
+    @discardableResult
+    func frontExistingWindow() -> Bool {
+        // A minimised window is not "visible" but is still open: it holds
+        // its Dock token, and the Dock click is how it comes back.
+        guard let window, window.isVisible || window.isMiniaturized else { return false }
+        DockActivationController.shared.acquire(.onboarding)
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.makeKeyAndOrderFront(nil)
+        InitialFocusPolicy.clearOnReopen(of: window)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+
     func close() {
         window?.close()
     }
