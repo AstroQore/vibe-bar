@@ -6,10 +6,15 @@ import Foundation
 /// durable record of having been through it is `AppSettings.hasCompletedOnboarding`,
 /// and that key did not exist before the assistant did — so a missing key
 /// reads as `false` for an upgrade as much as for a fresh install. The gate
-/// therefore asks what the install looks like, not just what the key says:
-/// a quota cache under `~/.vibebar/quotas/` or a resolvable Codex / Claude
-/// account means the app has already been doing its job here, and an
-/// existing user is never walked through setup they already did.
+/// therefore asks what the install looks like, not just what the key says —
+/// and it asks only Vibe Bar's own evidence: a quota cache under
+/// `~/.vibebar/quotas/` means the app has already been doing its job here,
+/// and an existing user is never walked through setup they already did.
+///
+/// A Codex or Claude CLI login on the Mac is deliberately *not* evidence.
+/// People who already run those CLIs are exactly who installs Vibe Bar, so
+/// counting their credentials as "prior use" would hide the assistant from
+/// its primary audience on a clean install.
 public enum OnboardingGate {
     public enum Decision: Equatable, Sendable {
         /// A fresh install: open the assistant.
@@ -21,28 +26,22 @@ public enum OnboardingGate {
         case markCompleted
     }
 
-    /// The whole rule, pure. `hasQuotaCaches` and `hasCLIQuotaAccount` are
-    /// the two signs of an install that is not fresh; either one is enough.
+    /// The whole rule, pure. A quota cache is the one sign of an install
+    /// that is not fresh.
     public static func decide(
         hasCompletedOnboarding: Bool,
-        hasQuotaCaches: Bool,
-        hasCLIQuotaAccount: Bool
+        hasQuotaCaches: Bool
     ) -> Decision {
         if hasCompletedOnboarding { return .skip }
-        if hasQuotaCaches || hasCLIQuotaAccount { return .markCompleted }
+        if hasQuotaCaches { return .markCompleted }
         return .show
     }
 
     /// `decide` reduced to the one question the launch path asks.
-    public static func shouldShow(
-        settings: AppSettings,
-        hasQuotaCaches: Bool,
-        hasCLIQuotaAccount: Bool
-    ) -> Bool {
+    public static func shouldShow(settings: AppSettings, hasQuotaCaches: Bool) -> Bool {
         decide(
             hasCompletedOnboarding: settings.hasCompletedOnboarding,
-            hasQuotaCaches: hasQuotaCaches,
-            hasCLIQuotaAccount: hasCLIQuotaAccount
+            hasQuotaCaches: hasQuotaCaches
         ) == .show
     }
 

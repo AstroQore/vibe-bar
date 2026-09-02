@@ -66,17 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// First real launch: open the setup assistant. The decision is
-    /// `OnboardingGate`'s; this only gathers its two signals — a quota cache
-    /// on disk, or a Codex / Claude account the store resolved at init — and
-    /// records completion silently for an install that predates the key.
+    /// `OnboardingGate`'s; this only supplies its one signal — a quota cache
+    /// on disk — and records completion silently for an install that
+    /// predates the key. CLI credentials on the Mac are not consulted: they
+    /// say the user runs Codex or Claude, not that they have run Vibe Bar.
     private func presentOnboardingIfNeeded(environment env: AppEnvironment) {
-        let settings = env.settingsStore.settings
-        let hasCLIQuotaAccount = !env.accountStore.accounts(for: .codex).isEmpty
-            || !env.accountStore.accounts(for: .claude).isEmpty
         switch OnboardingGate.decide(
-            hasCompletedOnboarding: settings.hasCompletedOnboarding,
-            hasQuotaCaches: OnboardingGate.hasQuotaCaches(),
-            hasCLIQuotaAccount: hasCLIQuotaAccount
+            hasCompletedOnboarding: env.settingsStore.settings.hasCompletedOnboarding,
+            hasQuotaCaches: OnboardingGate.hasQuotaCaches()
         ) {
         case .show:
             env.showOnboarding()

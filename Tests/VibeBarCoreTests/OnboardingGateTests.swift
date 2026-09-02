@@ -4,7 +4,8 @@ import XCTest
 /// The first-run assistant must open for a fresh install and never for an
 /// upgrade — and the only thing separating the two is what the install
 /// looks like, because the completion key did not exist before the
-/// assistant did.
+/// assistant did. Only Vibe Bar's own evidence counts: a Codex or Claude
+/// CLI login on the Mac is what its users have *before* they install it.
 final class OnboardingGateTests: XCTestCase {
     private var temporaryDirectory: URL!
 
@@ -20,49 +21,41 @@ final class OnboardingGateTests: XCTestCase {
 
     // MARK: - The rule
 
+    /// A clean install shows the assistant — including, and especially, on a
+    /// Mac that already has Codex or Claude CLI credentials. The gate takes
+    /// no such signal, so there is nothing for those credentials to change.
     func testFreshInstallShows() {
         XCTAssertEqual(
-            OnboardingGate.decide(hasCompletedOnboarding: false, hasQuotaCaches: false, hasCLIQuotaAccount: false),
+            OnboardingGate.decide(hasCompletedOnboarding: false, hasQuotaCaches: false),
             .show
         )
     }
 
     func testCompletedSkipsWhateverTheInstallLooksLike() {
         for caches in [false, true] {
-            for account in [false, true] {
-                XCTAssertEqual(
-                    OnboardingGate.decide(hasCompletedOnboarding: true, hasQuotaCaches: caches, hasCLIQuotaAccount: account),
-                    .skip,
-                    "caches=\(caches) account=\(account)"
-                )
-            }
+            XCTAssertEqual(
+                OnboardingGate.decide(hasCompletedOnboarding: true, hasQuotaCaches: caches),
+                .skip,
+                "caches=\(caches)"
+            )
         }
     }
 
     func testUnsetKeyOnAnExistingInstallMarksCompletedSilently() {
-        // Quota caches alone are proof the app has run here before.
+        // A quota cache is proof the app has run here before, and the only
+        // proof the gate accepts.
         XCTAssertEqual(
-            OnboardingGate.decide(hasCompletedOnboarding: false, hasQuotaCaches: true, hasCLIQuotaAccount: false),
-            .markCompleted
-        )
-        // So is a Codex / Claude account the launch path could already resolve.
-        XCTAssertEqual(
-            OnboardingGate.decide(hasCompletedOnboarding: false, hasQuotaCaches: false, hasCLIQuotaAccount: true),
-            .markCompleted
-        )
-        XCTAssertEqual(
-            OnboardingGate.decide(hasCompletedOnboarding: false, hasQuotaCaches: true, hasCLIQuotaAccount: true),
+            OnboardingGate.decide(hasCompletedOnboarding: false, hasQuotaCaches: true),
             .markCompleted
         )
     }
 
     func testShouldShowReadsTheSettingsKey() {
         var settings = AppSettings.default
-        XCTAssertTrue(OnboardingGate.shouldShow(settings: settings, hasQuotaCaches: false, hasCLIQuotaAccount: false))
-        XCTAssertFalse(OnboardingGate.shouldShow(settings: settings, hasQuotaCaches: true, hasCLIQuotaAccount: false))
-        XCTAssertFalse(OnboardingGate.shouldShow(settings: settings, hasQuotaCaches: false, hasCLIQuotaAccount: true))
+        XCTAssertTrue(OnboardingGate.shouldShow(settings: settings, hasQuotaCaches: false))
+        XCTAssertFalse(OnboardingGate.shouldShow(settings: settings, hasQuotaCaches: true))
         settings.hasCompletedOnboarding = true
-        XCTAssertFalse(OnboardingGate.shouldShow(settings: settings, hasQuotaCaches: false, hasCLIQuotaAccount: false))
+        XCTAssertFalse(OnboardingGate.shouldShow(settings: settings, hasQuotaCaches: false))
     }
 
     // MARK: - The quota-cache probe
