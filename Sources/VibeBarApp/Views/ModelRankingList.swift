@@ -40,6 +40,9 @@ struct ModelRankingList: View {
 
     var body: some View {
         let models = filteredModels(breakdowns)
+        // `total(models)` used to be called inside the loop, so the reduce
+        // ran once per row for a number that is the same for every row.
+        let totalCost = total(models)
         if !models.isEmpty {
             VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
                 HStack(alignment: .firstTextBaseline) {
@@ -55,9 +58,11 @@ struct ModelRankingList: View {
                     .padding(.leading, 4)
                 }
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    // Lazy: the list scrolls to as many models as the user has
+                    // ever run, and only a handful are on screen at once.
+                    LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
-                            row(rank: index + 1, model: model, total: total(models))
+                            row(rank: index + 1, model: model, total: totalCost)
                         }
                     }
                 }
@@ -126,15 +131,26 @@ struct ModelRankingList: View {
                     .foregroundStyle(.tertiary)
                     .frame(width: 32, alignment: .trailing)
             }
-            // Inline share bar so eye-tracking the column is easy.
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.primary.opacity(0.05))
-                    Capsule()
-                        .fill(rankColor(rank).opacity(0.6))
-                        .frame(width: max(2, proxy.size.width * share / 100))
-                }
+            // Inline share bar so eye-tracking the column is easy. Drawn in a
+            // `Canvas` rather than a `GeometryReader` per row: the bar needs
+            // its own width, and a Canvas gets it at draw time instead of
+            // adding a layout container to every row of the list.
+            Canvas { context, size in
+                let track = CGRect(origin: .zero, size: size)
+                context.fill(
+                    Path(roundedRect: track, cornerRadius: min(track.width, track.height) / 2),
+                    with: .color(Color.primary.opacity(0.05))
+                )
+                let fill = CGRect(
+                    x: 0,
+                    y: 0,
+                    width: max(2, size.width * share / 100),
+                    height: size.height
+                )
+                context.fill(
+                    Path(roundedRect: fill, cornerRadius: min(fill.width, fill.height) / 2),
+                    with: .color(rankColor(rank).opacity(0.6))
+                )
             }
             .frame(height: 4)
         }
