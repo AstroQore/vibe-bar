@@ -550,11 +550,13 @@ private struct OverviewWaterfall: View {
     /// called by both the arranged and the balanced path, so the two can never
     /// render a module differently.
     ///
-    /// No module here reads the wall clock, so the Overview starts no periodic
-    /// timer of its own: a page-level tick would re-measure every card in the
-    /// masonry twice a minute. If a clock-consuming module is ever added, hoist
-    /// one `TimelineView` in `body` and pass its date through this factory —
-    /// never a timer per card.
+    /// The Overview starts no periodic timer of its own: a page-level tick
+    /// would re-measure every card in the masonry twice a minute, and the
+    /// masonry session lock would fight it. The two clock-consuming modules —
+    /// the quota cards and Upcoming Resets — each own exactly one `PageClock`
+    /// at *card* level instead, which is one timer per card rather than one
+    /// per bucket row, and none at all while the popover is closed. Never add
+    /// a timer below a card.
     @ViewBuilder
     private func card(
         for descriptor: PageModuleDescriptor,
@@ -1657,7 +1659,13 @@ private struct ProviderDetailView: View {
         // reads the wall clock; they take the tick as plain data so no card
         // owns a timer of its own. `QuotaHistoryChartView` stays `.equatable()`
         // inside `QuotaGroupCard`, so the chart still ignores the tick.
-        TimelineView(.periodic(from: .now, by: 30)) { timeline in
+        //
+        // `PageClock` rather than `TimelineView(.periodic(from: .now, ...))`:
+        // the anchor has to be stable across body passes (otherwise every
+        // re-render re-phases the tick and the forecast memo never hits), and
+        // the popover keeps this tree alive after it closes, so the clock has
+        // to stop while it is hidden.
+        PageClock(interval: 30) { tickDate in
             PageLayoutColumns(
                 page: page,
                 descriptors: descriptors,
@@ -1677,7 +1685,7 @@ private struct ProviderDetailView: View {
                     context: context,
                     density: density,
                     mode: settingsStore.displayMode,
-                    now: timeline.date
+                    now: tickDate
                 )
             }
         }
@@ -2003,7 +2011,22 @@ struct ProviderQuotaCard: View {
             }
 
             if !visibleBuckets.isEmpty {
-                bucketContent(visibleBuckets, accountId: resolvedAccount?.id)
+                // One clock for the whole card. Every bucket row used to own a
+                // `TimelineView(.periodic(from: .now, by: 30))`, which meant N
+                // timers per card, N different tick phases, and therefore N
+                // distinct `now` values reaching `QuotaService.paceForecast` —
+                // the memo there could never hit. The rows take the date as
+                // plain data now, and the shared anchor in `QuotaClockSchedule`
+                // makes every card on the page ask for the same instant.
+                //
+                // Both inputs are resolved *outside* the clock: `visibleBuckets`
+                // re-reads the cached quota and `resolvedAccount` scans the
+                // account store, and neither answer can change on a tick.
+                let buckets = visibleBuckets
+                let bucketAccountId = resolvedAccount?.id
+                PageClock(interval: 30) { tickDate in
+                    bucketContent(buckets, accountId: bucketAccountId, now: tickDate)
+                }
                 if tool == .codex, let credits = resolvedQuota?.resetCredits, credits.availableCount > 0 {
                     ResetCreditsRow(credits: credits, density: density)
                 }
@@ -2108,7 +2131,11 @@ struct ProviderQuotaCard: View {
         )
     }
 
-    private func bucketContent(_ buckets: [QuotaBucket], accountId: String?) -> some View {
+    private func bucketContent(
+        _ buckets: [QuotaBucket],
+        accountId: String?,
+        now: Date
+    ) -> some View {
         let primary = buckets.filter { $0.groupTitle == nil }
         let extras = buckets.filter { $0.groupTitle != nil }
         return VStack(alignment: .leading, spacing: density.bucketGroupSpacing) {
@@ -2119,7 +2146,8 @@ struct ProviderQuotaCard: View {
                         accountId: accountId,
                         bucket: bucket,
                         mode: settingsStore.displayMode,
-                        density: density
+                        density: density,
+                        now: now
                     )
                 }
             }
@@ -2144,7 +2172,8 @@ struct ProviderQuotaCard: View {
                                 accountId: accountId,
                                 bucket: bucket,
                                 mode: settingsStore.displayMode,
-                                density: density
+                                density: density,
+                                now: now
                             )
                         }
                     }
@@ -2243,18 +2272,17 @@ private struct ProviderBucketRow: View {
     let bucket: QuotaBucket
     let mode: DisplayMode
     let density: Theme.Density
+    /// Tick from the enclosing card's single clock. Plain data — this row
+    /// starts no timer, however many buckets the card ends up rendering. The
+    /// visible cadence is unchanged (30 s, minute-granular countdowns); only
+    /// the owner of the clock moved up one level.
+    let now: Date
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        // We only refresh "resets in …" periodically, but we don't repaint
-        // the entire bucket row at that cadence — only the strings that depend
-        // on `now`. The displayed countdown is minute-granular, so 30 seconds
-        // keeps it fresh without making popover open/close fight row updates.
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(now: context.date)
-        }
+        content(now: now)
     }
 
     @ViewBuilder

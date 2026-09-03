@@ -107,13 +107,12 @@ struct UsageActivityView: View {
     }
 
     private func contentHeight(for metrics: HeatmapGridMetrics) -> CGFloat {
-        // bar row + spacing + hour axis (8pt) + spacing + 7 cell rows
+        // bar row + spacing + hour axis (8pt) + spacing + the 7-row cell block
         barRowHeight
             + metrics.cellSpacing
             + 8
             + metrics.cellSpacing
-            + 7 * metrics.cellSide
-            + 6 * metrics.cellSpacing
+            + metrics.gridHeight
     }
 
     // MARK: - Bar row
@@ -195,43 +194,26 @@ struct UsageActivityView: View {
     // MARK: - Heatmap grid
 
     private func heatmapGrid(metrics: HeatmapGridMetrics) -> some View {
-        let maxCell = heatmap.cells.flatMap { $0 }.max() ?? 0
-        return VStack(alignment: .leading, spacing: metrics.cellSpacing) {
-            ForEach(0..<7, id: \.self) { weekday in
-                HStack(spacing: metrics.cellSpacing) {
+        // The weekday gutter stays as seven `Text`s; the 168 cells are one
+        // `Canvas`. The row `HStack`s used to put the label and its 24 cells
+        // on the same baseline, so the label column now carries an explicit
+        // cell-height frame to keep the rows lined up identically.
+        HStack(alignment: .top, spacing: metrics.cellSpacing) {
+            VStack(alignment: .trailing, spacing: metrics.cellSpacing) {
+                ForEach(0..<7, id: \.self) { weekday in
                     Text(weekdayLabels[weekday])
                         .font(.system(size: 9, design: .rounded))
                         .foregroundStyle(.secondary)
-                        .frame(width: metrics.labelWidth, alignment: .trailing)
-                    ForEach(0..<24, id: \.self) { hour in
-                        RoundedRectangle(cornerRadius: metrics.cellCornerRadius, style: .continuous)
-                            .fill(cellColor(weekday: weekday, hour: hour, max: maxCell))
-                            .frame(width: metrics.cellSide, height: metrics.cellSide)
-                            .help(cellTooltip(weekday: weekday, hour: hour))
-                    }
-                    Spacer(minLength: 0)
+                        .frame(width: metrics.labelWidth, height: metrics.cellSide, alignment: .trailing)
                 }
             }
+            UsageHeatmapCanvas(
+                cells: heatmap.cells,
+                metrics: metrics,
+                weekdayLabels: weekdayLabels
+            )
+            Spacer(minLength: 0)
         }
-    }
-
-    private func cellColor(weekday: Int, hour: Int, max: Int) -> Color {
-        let value = heatmap.cells[weekday][hour]
-        guard value > 0, max > 0 else { return Color.primary.opacity(0.05) }
-        let normalized = log1p(Double(value)) / log1p(Double(max))
-        return intensityColor(intensity: normalized)
-    }
-
-    private func cellTooltip(weekday: Int, hour: Int) -> String {
-        let value = heatmap.cells[weekday][hour]
-        let day = weekdayLabels[weekday]
-        let hourStr = UsageHeatmap.formatHourLabel(hour)
-        let label: String
-        if value < 1_000 { label = "\(value) tok" }
-        else if value < 1_000_000 { label = String(format: "%.1fk tok", Double(value) / 1_000) }
-        else if value < 1_000_000_000 { label = String(format: "%.2fM tok", Double(value) / 1_000_000) }
-        else { label = String(format: "%.2fB tok", Double(value) / 1_000_000_000) }
-        return "\(day) \(hourStr) · \(label)"
     }
 
     // MARK: - Legend
@@ -251,5 +233,105 @@ struct UsageActivityView: View {
                 .foregroundStyle(.tertiary)
             Spacer()
         }
+    }
+}
+
+/// The 7 × 24 grid drawn as one `Canvas` instead of 168 `RoundedRectangle`
+/// views with a `.help()` each. This card is instantiated three times while
+/// the popover is open, so the view-per-cell shape cost ~500 view nodes and as
+/// many tooltip nodes just to sit idle. Hit-testing the hover point against
+/// the same geometry the canvas draws with reproduces the per-cell tooltip
+/// from a single string, and keeping the hover state in this leaf means a
+/// mouse move redraws the grid, not the whole card.
+private struct UsageHeatmapCanvas: View {
+    let cells: [[Int]]
+    let metrics: HeatmapGridMetrics
+    let weekdayLabels: [String]
+
+    /// The peak cell, derived once when the grid is built rather than by a
+    /// `flatMap { $0 }.max()` that allocated a fresh 168-element array on
+    /// every body pass.
+    private let maxCell: Int
+
+    @State private var hoveredTooltip: String?
+
+    init(cells: [[Int]], metrics: HeatmapGridMetrics, weekdayLabels: [String]) {
+        self.cells = cells
+        self.metrics = metrics
+        self.weekdayLabels = weekdayLabels
+        var peak = 0
+        for row in cells {
+            for value in row where value > peak { peak = value }
+        }
+        self.maxCell = peak
+    }
+
+    var body: some View {
+        Canvas { context, _ in
+            let step = metrics.cellSide + metrics.cellSpacing
+            for weekday in 0..<min(7, cells.count) {
+                let row = cells[weekday]
+                for hour in 0..<min(24, row.count) {
+                    let rect = CGRect(
+                        x: CGFloat(hour) * step,
+                        y: CGFloat(weekday) * step,
+                        width: metrics.cellSide,
+                        height: metrics.cellSide
+                    )
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: metrics.cellCornerRadius, style: .continuous),
+                        with: .color(cellColor(value: row[hour]))
+                    )
+                }
+            }
+        }
+        .frame(width: metrics.gridWidth, height: metrics.gridHeight)
+        .contentShape(Rectangle())
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                let text = tooltip(at: location)
+                if text != hoveredTooltip { hoveredTooltip = text }
+            case .ended:
+                if hoveredTooltip != nil { hoveredTooltip = nil }
+            }
+        }
+        .help(hoveredTooltip ?? "")
+        // The individual cell views are gone, so the grid speaks for itself.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Token usage by weekday and hour, 7 days by 24 hours")
+    }
+
+    private func cellColor(value: Int) -> Color {
+        guard value > 0, maxCell > 0 else { return Color.primary.opacity(0.05) }
+        let normalized = log1p(Double(value)) / log1p(Double(maxCell))
+        return intensityColor(intensity: normalized)
+    }
+
+    private func tooltip(at point: CGPoint) -> String? {
+        guard let hour = heatmapCellIndex(
+            for: point.x,
+            side: metrics.cellSide,
+            spacing: metrics.cellSpacing,
+            count: 24
+        ), let weekday = heatmapCellIndex(
+            for: point.y,
+            side: metrics.cellSide,
+            spacing: metrics.cellSpacing,
+            count: 7
+        ), weekday < cells.count, hour < cells[weekday].count else { return nil }
+        return cellTooltip(weekday: weekday, hour: hour)
+    }
+
+    private func cellTooltip(weekday: Int, hour: Int) -> String {
+        let value = cells[weekday][hour]
+        let day = weekdayLabels[weekday]
+        let hourStr = UsageHeatmap.formatHourLabel(hour)
+        let label: String
+        if value < 1_000 { label = "\(value) tok" }
+        else if value < 1_000_000 { label = String(format: "%.1fk tok", Double(value) / 1_000) }
+        else if value < 1_000_000_000 { label = String(format: "%.2fM tok", Double(value) / 1_000_000) }
+        else { label = String(format: "%.2fB tok", Double(value) / 1_000_000_000) }
+        return "\(day) \(hourStr) · \(label)"
     }
 }

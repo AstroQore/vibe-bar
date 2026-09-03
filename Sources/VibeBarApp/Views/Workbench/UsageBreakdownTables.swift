@@ -35,16 +35,41 @@ struct UsageBreakdownTables: View {
     private static let periodPageSize = 120
     @State private var visiblePeriodLimit = UsageBreakdownTables.periodPageSize
 
+    /// The active breakdown's rows, derived once per body pass.
+    ///
+    /// Each case is a sort or a filter over the whole result set, and the
+    /// header count, the empty check, the table and its height each used to
+    /// ask the computed property for it again — up to eight derivations of the
+    /// same array per pass, on a page whose row count runs into the hundreds.
+    private enum BreakdownRows {
+        case periods([UsageTrendPoint])
+        case requests
+        case providers([UsageProviderStat])
+        case projects([UsageProjectStat])
+        case models([UsageModelStat])
+    }
+
+    private var activeRows: BreakdownRows {
+        switch model.activeBreakdown {
+        case .periods:   .periods(populatedPeriods)
+        case .requests:  .requests
+        case .providers: .providers(sortedProviders)
+        case .projects:  .projects(sortedProjects)
+        case .models:    .models(sortedModels)
+        }
+    }
+
     var body: some View {
+        let rows = activeRows
         CardShell(density: density, spacing: 12) {
-            header
-            content
+            header(rows)
+            content(rows)
         }
     }
 
     // MARK: - Header
 
-    private var header: some View {
+    private func header(_ rows: BreakdownRows) -> some View {
         HStack(spacing: 10) {
             HStack(spacing: 2) {
                 ForEach(UsageStatsViewModel.Breakdown.allCases) { value in
@@ -94,7 +119,7 @@ struct UsageBreakdownTables: View {
 
             Spacer(minLength: 8)
 
-            Text(countSummary)
+            Text(countSummary(rows))
                 .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
@@ -106,11 +131,11 @@ struct UsageBreakdownTables: View {
         }
     }
 
-    private var countSummary: String {
-        switch model.activeBreakdown {
-        case .periods:
-            return "\(populatedPeriods.count) active \(periodUnit)"
-                + (populatedPeriods.count == 1 ? "" : "s")
+    private func countSummary(_ rows: BreakdownRows) -> String {
+        switch rows {
+        case .periods(let points):
+            return "\(points.count) active \(periodUnit)"
+                + (points.count == 1 ? "" : "s")
         case .requests:
             let loaded = model.requestRows.count
             let total = model.requestTotalCount
@@ -129,13 +154,13 @@ struct UsageBreakdownTables: View {
     // MARK: - Tables
 
     @ViewBuilder
-    private var content: some View {
-        switch model.activeBreakdown {
-        case .periods:
-            if populatedPeriods.isEmpty {
+    private func content(_ rows: BreakdownRows) -> some View {
+        switch rows {
+        case .periods(let points):
+            if points.isEmpty {
                 empty("No active periods in this range")
             } else {
-                periodsTable
+                periodsTable(points)
             }
         case .requests:
             if model.requestRows.isEmpty {
@@ -143,23 +168,23 @@ struct UsageBreakdownTables: View {
             } else {
                 requestsTable
             }
-        case .providers:
-            if sortedProviders.isEmpty {
+        case .providers(let stats):
+            if stats.isEmpty {
                 empty("No provider totals in this range")
             } else {
-                providersTable
+                providersTable(stats)
             }
-        case .projects:
-            if sortedProjects.isEmpty {
+        case .projects(let stats):
+            if stats.isEmpty {
                 empty("No project-attributed Codex or Claude usage in this range")
             } else {
-                projectsTable
+                projectsTable(stats)
             }
-        case .models:
-            if sortedModels.isEmpty {
+        case .models(let stats):
+            if stats.isEmpty {
                 empty("No model totals in this range")
             } else {
-                modelsTable
+                modelsTable(stats)
             }
         }
     }
@@ -167,7 +192,7 @@ struct UsageBreakdownTables: View {
     /// The Period, Provider and Model grids borrow the card's available
     /// width. Their trailing values are never hidden behind a scroller at the
     /// ordinary Workbench width; only their descriptive leading column flexes.
-    private var periodsTable: some View {
+    private func periodsTable(_ points: [UsageTrendPoint]) -> some View {
         GeometryReader { proxy in
             let columns = PeriodColumns(
                 title: periodColumnTitle,
@@ -176,7 +201,7 @@ struct UsageBreakdownTables: View {
             VStack(spacing: 0) {
                 tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
-                    ForEach(populatedPeriods.prefix(visiblePeriodLimit), id: \.bucketStart) { point in
+                    ForEach(points.prefix(visiblePeriodLimit), id: \.bucketStart) { point in
                         let label = period(point.bucketStart)
                         PorcelainUsageRow(
                             accessibilityLabel: periodAccessibilityLabel(point, label: label)
@@ -189,11 +214,11 @@ struct UsageBreakdownTables: View {
                             moneyCell(point.costMicros, columns.cost, emphasis: true)
                         }
                     }
-                    if populatedPeriods.count > visiblePeriodLimit {
+                    if points.count > visiblePeriodLimit {
                         Button {
                             visiblePeriodLimit += Self.periodPageSize
                         } label: {
-                            Text("Show \(min(Self.periodPageSize, populatedPeriods.count - visiblePeriodLimit)) more of \(populatedPeriods.count) periods")
+                            Text("Show \(min(Self.periodPageSize, points.count - visiblePeriodLimit)) more of \(points.count) periods")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity)
@@ -205,7 +230,7 @@ struct UsageBreakdownTables: View {
                 }
             }
         }
-        .frame(height: tableHeight(for: visiblePeriodRowCount))
+        .frame(height: tableHeight(for: visiblePeriodRowCount(points)))
         // Any new result series — bucket size, range, window, or filter
         // change — starts the viewport over; an expanded limit must not
         // carry into a different series.
@@ -222,10 +247,11 @@ struct UsageBreakdownTables: View {
         return "\(model.trend.bucket)|\(model.trend.points.count)|\(first)|\(last)"
     }
 
-    /// Rows the clamped table actually shows, load-more row included.
-    private var visiblePeriodRowCount: Int {
-        let shown = min(populatedPeriods.count, visiblePeriodLimit)
-        return shown + (populatedPeriods.count > visiblePeriodLimit ? 1 : 0)
+    /// Rows the clamped table actually shows, load-more row included. Takes
+    /// the already-filtered periods so the height doesn't re-derive them.
+    private func visiblePeriodRowCount(_ points: [UsageTrendPoint]) -> Int {
+        let shown = min(points.count, visiblePeriodLimit)
+        return shown + (points.count > visiblePeriodLimit ? 1 : 0)
     }
 
     /// Requests intentionally retain a horizontal scroll surface: a request
@@ -318,7 +344,7 @@ struct UsageBreakdownTables: View {
         return min(tableHeight(for: rows), Self.requestsMaxViewportHeight)
     }
 
-    private var providersTable: some View {
+    private func providersTable(_ stats: [UsageProviderStat]) -> some View {
         GeometryReader { proxy in
             let columns = ProviderColumns(
                 contentWidth: proxy.size.width - UsageTableMetrics.horizontalInset * 2
@@ -326,7 +352,7 @@ struct UsageBreakdownTables: View {
             VStack(spacing: 0) {
                 tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
-                    ForEach(sortedProviders) { stat in
+                    ForEach(stats) { stat in
                         let vendor = stat.tool.vendorName
                         PorcelainUsageRow(
                             accessibilityLabel: providerAccessibilityLabel(stat, vendor: vendor)
@@ -340,10 +366,10 @@ struct UsageBreakdownTables: View {
                 }
             }
         }
-        .frame(height: tableHeight(for: sortedProviders.count))
+        .frame(height: tableHeight(for: stats.count))
     }
 
-    private var modelsTable: some View {
+    private func modelsTable(_ stats: [UsageModelStat]) -> some View {
         GeometryReader { proxy in
             let columns = ModelColumns(
                 contentWidth: proxy.size.width - UsageTableMetrics.horizontalInset * 2
@@ -351,7 +377,7 @@ struct UsageBreakdownTables: View {
             VStack(spacing: 0) {
                 tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
-                    ForEach(sortedModels) { stat in
+                    ForEach(stats) { stat in
                         let name = UsageModelNaming.canonicalDisplayName(stat.model)
                         PorcelainUsageRow(
                             accessibilityLabel: modelAccessibilityLabel(stat, name: name)
@@ -366,10 +392,10 @@ struct UsageBreakdownTables: View {
                 }
             }
         }
-        .frame(height: tableHeight(for: sortedModels.count))
+        .frame(height: tableHeight(for: stats.count))
     }
 
-    private var projectsTable: some View {
+    private func projectsTable(_ stats: [UsageProjectStat]) -> some View {
         GeometryReader { proxy in
             let columns = ProviderColumns(
                 contentWidth: proxy.size.width - UsageTableMetrics.horizontalInset * 2
@@ -377,7 +403,7 @@ struct UsageBreakdownTables: View {
             VStack(spacing: 0) {
                 tableHeader(columns.all)
                 LazyVStack(spacing: 0) {
-                    ForEach(sortedProjects) { stat in
+                    ForEach(stats) { stat in
                         PorcelainUsageRow(
                             accessibilityLabel: "\(stat.name), \(stat.requests) requests, "
                                 + "\(UsageFormatting.formatTokens(stat.totalTokens)), "
@@ -392,7 +418,7 @@ struct UsageBreakdownTables: View {
                 }
             }
         }
-        .frame(height: tableHeight(for: sortedProjects.count))
+        .frame(height: tableHeight(for: stats.count))
     }
 
     // MARK: - Cells

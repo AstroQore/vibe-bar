@@ -11,7 +11,16 @@ public enum ProviderPlanDisplay {
             return prefixed(codexDisplayName(rawPlan), brand: "Google AI")
         case .grok:
             return grokDisplayName(rawPlan)
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .cursor:
+            // Cursor left the Misc bucket when it became a dedicated card in
+            // the SpaceXAI family, so it gets its own case rather than
+            // riding on the misc fall-through. `CursorQuotaAdapter`
+            // already normalizes `membershipType` (`ultra` -> `Ultra`,
+            // `free_trial` -> `Free Trial`), so the generic formatter is
+            // still the right one and the rendered names do not change.
+            // No brand prefix: the card is already titled "Cursor".
+            return codexDisplayName(rawPlan)
+        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers feed `plan` straight through. Each adapter
             // is responsible for normalizing the raw API response
             // (e.g. `Pro Coding` → `Pro`) before it reaches this map.

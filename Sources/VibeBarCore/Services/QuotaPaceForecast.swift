@@ -152,23 +152,41 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let windowStart = resetAt.addingTimeInterval(-duration)
         let actual = clamp(bucket.usedPercent, 0, 100)
         let profile = ActivityProfile(heatmap: activityHeatmap, calendar: calendar)
+        let completed = cycles.filter(\.isCompleted)
+        // Build the hour table once, covering everything this pass will ask
+        // about. `weight(from:to:)` grows the table on demand, and the store
+        // hands completed cycles over newest-first, so the previous shape
+        // rebuilt an ever-widening table once per cycle on the way back
+        // through history — quadratic in the number of retained cycles for a
+        // table that only ever needed building once.
+        let span = activitySpan(
+            windowStart: windowStart,
+            evaluationDate: evaluationDate,
+            resetAt: resetAt,
+            cycles: completed
+        )
+        profile.prepare(from: span.start, to: span.end)
         let totalActivity = max(0.001, profile.weight(from: windowStart, to: resetAt))
         let elapsedActivity = clamp(profile.weight(from: windowStart, to: evaluationDate), 0, totalActivity)
         let futureActivity = max(0, totalActivity - elapsedActivity)
         let behavioralProgress = clamp(elapsedActivity / totalActivity, 0, 1)
 
-        let currentPoints = observations
-            .filter {
-                $0.sampledAt >= windowStart.addingTimeInterval(-300)
-                    && $0.sampledAt <= evaluationDate.addingTimeInterval(60)
-            }
-            .sorted { $0.sampledAt < $1.sampledAt }
+        // The observation lane is already in time order everywhere the app
+        // uses it, so the current window is a contiguous slice of it: two
+        // binary searches instead of a `filter { … }.sorted { … }` that copied
+        // every point in the lane.
+        let lane = ObservationLane(observations)
+        let currentLower = lane.lowerBound(windowStart.addingTimeInterval(-300))
+        let currentUpper = lane.upperBound(evaluationDate.addingTimeInterval(60))
+        // A window that has not opened yet (the `1.1 * duration` grace above
+        // admits one) inverts the two bounds; that is an empty slice, exactly
+        // as the old predicate was unsatisfiable there.
+        let currentRanks = currentLower..<max(currentLower, currentUpper)
 
-        let recent = recentSlope(points: currentPoints, profile: profile)
-        let completed = cycles.filter(\.isCompleted)
+        let recent = recentSlope(lane: lane, ranks: currentRanks, profile: profile)
         let historicalAdditions = historicalRemainingUsage(
             cycles: completed,
-            observations: observations,
+            lane: lane,
             currentProgress: behavioralProgress,
             profile: profile
         )
@@ -211,19 +229,22 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let projected = max(actual, rawProjection)
 
         let observationCoverage: Double = {
-            guard let first = currentPoints.first, let last = currentPoints.last else { return 0 }
-            let span = max(0, last.sampledAt.timeIntervalSince(first.sampledAt))
+            guard let firstRank = currentRanks.first, let lastRank = currentRanks.last else { return 0 }
+            let observedSpan = max(
+                0,
+                lane.sampledAt(atRank: lastRank).timeIntervalSince(lane.sampledAt(atRank: firstRank))
+            )
             let elapsed = max(1, evaluationDate.timeIntervalSince(windowStart))
-            let countScore = min(1, Double(currentPoints.count) / 10)
-            let spanScore = min(1, span / elapsed)
+            let countScore = min(1, Double(currentRanks.count) / 10)
+            let spanScore = min(1, observedSpan / elapsed)
             return countScore * 0.65 + spanScore * 0.35
         }()
         let historyCoverage = min(1, Double(completed.count) / 5)
         let freshness: Double = {
-            guard let last = currentPoints.last else { return 0 }
+            guard let lastRank = currentRanks.last else { return 0 }
             let naturalSlot: TimeInterval = rawWindowSeconds <= 6 * 3_600 ? 5 * 60 : 3_600
             return clamp(
-                1 - evaluationDate.timeIntervalSince(last.sampledAt) / max(60, naturalSlot * 3),
+                1 - evaluationDate.timeIntervalSince(lane.sampledAt(atRank: lastRank)) / max(60, naturalSlot * 3),
                 0,
                 1
             )
@@ -301,7 +322,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             targetRemainingPercent: targetRemaining,
             runOutAt: runOutAt,
             completedCycleCount: completed.count,
-            currentObservationCount: currentPoints.count,
+            currentObservationCount: currentRanks.count,
             diagnostics: Diagnostics(
                 recentProjectionUsedPercent: recentProjection,
                 historicalProjectionUsedPercent: historicalProjection,
@@ -325,14 +346,26 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let sampleCount: Int
     }
 
-    private static func recentSlope(points: [FillTimelinePoint], profile: ActivityProfile) -> RecentSlope {
-        guard points.count >= 2 else { return RecentSlope(rate: nil, spread: 0, sampleCount: 0) }
-        let recentPoints = Array(points.suffix(18))
+    private static func recentSlope(
+        lane: ObservationLane,
+        ranks: Range<Int>,
+        profile: ActivityProfile
+    ) -> RecentSlope {
+        guard ranks.count >= 2 else { return RecentSlope(rate: nil, spread: 0, sampleCount: 0) }
+        // The old shape materialised `Array(points.suffix(18))`; the pairs it
+        // walked are the same, addressed by rank instead of copied out.
+        let start = max(ranks.lowerBound, ranks.upperBound - 18)
         var slopes: [Double] = []
-        for pair in zip(recentPoints, recentPoints.dropFirst()) {
-            let delta = pair.1.usedPercent - pair.0.usedPercent
+        slopes.reserveCapacity(ranks.upperBound - start)
+        for rank in (start + 1)..<ranks.upperBound {
+            let earlier = lane.index(atRank: rank - 1)
+            let later = lane.index(atRank: rank)
+            let delta = lane.points[later].usedPercent - lane.points[earlier].usedPercent
             guard delta >= 0, delta <= 45 else { continue }
-            let activity = profile.weight(from: pair.0.sampledAt, to: pair.1.sampledAt)
+            let activity = profile.weight(
+                from: lane.points[earlier].sampledAt,
+                to: lane.points[later].sampledAt
+            )
             guard activity > 0.002 else { continue }
             slopes.append(delta / activity)
         }
@@ -344,13 +377,31 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         )
     }
 
-    private static func historicalRemainingUsage(
+    /// How much more each completed cycle consumed from the point it was as
+    /// far along as the current one.
+    ///
+    /// This used to re-filter the whole observation lane once per cycle. On
+    /// real data — a Claude five-hour bucket retains ~200 completed cycles and
+    /// ~7 300 observations — that is ~1.5 M `FillTimelinePoint` copies per
+    /// call, and the struct carries three `String`s, so each copy is six ARC
+    /// operations. It ran inside a SwiftUI `body`.
+    ///
+    /// Each cycle's observations are a contiguous slice of the time-ordered
+    /// lane, so the same answer comes from one binary search plus a scan
+    /// bounded by that slice: linear in the lane, not in lane × cycles, and
+    /// nothing is copied out of the array.
+    ///
+    /// Internal rather than private so `QuotaPaceForecastEquivalenceTests` can
+    /// pin it against a verbatim copy of the retired algorithm.
+    static func historicalRemainingUsage(
         cycles: [SubscriptionWindowSample],
-        observations: [FillTimelinePoint],
+        lane: ObservationLane,
         currentProgress: Double,
         profile: ActivityProfile
     ) -> [Double] {
-        cycles.compactMap { cycle in
+        var additions: [Double] = []
+        additions.reserveCapacity(cycles.count)
+        for cycleIndex in cycles.indices {
             // `windowStart` tracks what the provider reported, and measurement
             // says to leave it alone. Several buckets refill far more often
             // than their stated window — two Codex weeklies have a median gap
@@ -359,9 +410,9 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             // interval between observed refills, the stored start is right for
             // 86-100% of cycles on every bucket; reconstructing it from the
             // window length instead drops that to 14% on the worst.
-            let cycleStart = cycle.windowStart ?? cycle.firstSeenAt
-            let cycleEnd = cycle.completedAt ?? cycle.windowEnd
-            guard cycleEnd > cycleStart else { return nil }
+            let cycleStart = cycles[cycleIndex].windowStart ?? cycles[cycleIndex].firstSeenAt
+            let cycleEnd = cycles[cycleIndex].completedAt ?? cycles[cycleIndex].windowEnd
+            guard cycleEnd > cycleStart else { continue }
             let total = max(0.001, profile.weight(from: cycleStart, to: cycleEnd))
             // Bounded by the last observation this cycle actually absorbed,
             // not by its end. The observation that detected the refill belongs
@@ -373,18 +424,126 @@ public struct QuotaPaceForecast: Sendable, Equatable {
             // "the last reading that was mine". Without it a 60% → 5% refill
             // contributed 55 points of consumption to a window that had
             // already finished.
-            let observationEnd = cycle.lastSeenAt
-            let matching = observations
-                .filter { $0.sampledAt >= cycleStart && $0.sampledAt <= observationEnd }
-                .map { point -> (distance: Double, used: Double) in
-                    let progress = clamp(profile.weight(from: cycleStart, to: point.sampledAt) / total, 0, 1)
-                    return (abs(progress - currentProgress), point.usedPercent)
+            let observationEnd = cycles[cycleIndex].lastSeenAt
+            var bestDistance = Double.infinity
+            // `min(by:)` kept the *first* element of a tie in the order the
+            // filter produced, which was the lane's own order. Ties are broken
+            // on the original position for exactly that reason, so a caller
+            // that hands `compute` an unsorted lane still gets the old answer.
+            var bestOriginal = Int.max
+            var bestUsed = 0.0
+            var rank = lane.lowerBound(cycleStart)
+            while rank < lane.count {
+                let original = lane.index(atRank: rank)
+                let sampledAt = lane.points[original].sampledAt
+                if sampledAt > observationEnd { break }
+                let progress = clamp(profile.weight(from: cycleStart, to: sampledAt) / total, 0, 1)
+                let distance = abs(progress - currentProgress)
+                if distance < bestDistance || (distance == bestDistance && original < bestOriginal) {
+                    bestDistance = distance
+                    bestOriginal = original
+                    bestUsed = lane.points[original].usedPercent
                 }
-                .min { $0.distance < $1.distance }
-            if let matching, matching.distance <= 0.22 {
-                return max(0, cycle.peakUsedPercent - matching.used)
+                rank += 1
             }
-            return max(0, cycle.peakUsedPercent * (1 - currentProgress))
+            if bestOriginal != Int.max, bestDistance <= 0.22 {
+                additions.append(max(0, cycles[cycleIndex].peakUsedPercent - bestUsed))
+            } else {
+                additions.append(max(0, cycles[cycleIndex].peakUsedPercent * (1 - currentProgress)))
+            }
+        }
+        return additions
+    }
+
+    /// Widest instant range this pass will ask the activity profile about, so
+    /// the hour table can be built once instead of grown per cycle.
+    private static func activitySpan(
+        windowStart: Date,
+        evaluationDate: Date,
+        resetAt: Date,
+        cycles: [SubscriptionWindowSample]
+    ) -> (start: Date, end: Date) {
+        var start = min(windowStart.addingTimeInterval(-300), evaluationDate)
+        var end = max(resetAt, evaluationDate.addingTimeInterval(60))
+        for index in cycles.indices {
+            let cycleStart = cycles[index].windowStart ?? cycles[index].firstSeenAt
+            let cycleEnd = max(cycles[index].completedAt ?? cycles[index].windowEnd, cycles[index].lastSeenAt)
+            if cycleStart < start { start = cycleStart }
+            if cycleEnd > end { end = cycleEnd }
+        }
+        return (start, end)
+    }
+
+    /// A read-only, time-ordered view over one bucket's observation lane.
+    ///
+    /// `QuotaService` keeps every lane sorted ascending by `sampledAt`
+    /// (`applyInitialObservations` sorts, and `UsageFillTimelineStore` returns
+    /// sorted points), so the common case builds no storage at all: `order` is
+    /// `nil` and a rank *is* an index. Only a caller that hands `compute` an
+    /// out-of-order array pays for one permutation — once, not once per cycle.
+    ///
+    /// Callers address points by *rank* (position in time order) and read
+    /// fields through `points[index]`, which borrows the element rather than
+    /// copying it out of the array.
+    struct ObservationLane {
+        let points: [FillTimelinePoint]
+        /// Indices into `points` in time order, or `nil` when `points` is
+        /// already in that order.
+        private let order: [Int]?
+
+        init(_ points: [FillTimelinePoint]) {
+            self.points = points
+            var ascending = true
+            var index = 1
+            while index < points.count {
+                if points[index].sampledAt < points[index - 1].sampledAt {
+                    ascending = false
+                    break
+                }
+                index += 1
+            }
+            guard !ascending else {
+                self.order = nil
+                return
+            }
+            // Ties broken on the original position, so this is the stable
+            // ordering the old `filter { … }.sorted { … }` produced.
+            self.order = points.indices.sorted { lhs, rhs in
+                let left = points[lhs].sampledAt
+                let right = points[rhs].sampledAt
+                if left == right { return lhs < rhs }
+                return left < right
+            }
+        }
+
+        var count: Int { points.count }
+
+        @inline(__always)
+        func index(atRank rank: Int) -> Int { order?[rank] ?? rank }
+
+        @inline(__always)
+        func sampledAt(atRank rank: Int) -> Date { points[index(atRank: rank)].sampledAt }
+
+        /// First rank whose `sampledAt` is at or after `date`.
+        func lowerBound(_ date: Date) -> Int {
+            var low = 0
+            var high = count
+            while low < high {
+                let middle = low + (high - low) / 2
+                if sampledAt(atRank: middle) < date { low = middle + 1 } else { high = middle }
+            }
+            return low
+        }
+
+        /// First rank whose `sampledAt` is strictly after `date`.
+        func upperBound(_ date: Date) -> Int {
+            var low = 0
+            var high = count
+            while low < high {
+                let middle = low + (high - low) / 2
+                if sampledAt(atRank: middle) <= date { low = middle + 1 } else { high = middle }
+            }
+            return low
         }
     }
 
@@ -464,7 +623,16 @@ public struct QuotaPaceForecast: Sendable, Equatable {
 
         init(heatmap: UsageHeatmap?, calendar: Calendar) {
             self.calendar = calendar
-            let maximum = Double(heatmap?.cells.flatMap { $0 }.max() ?? 0)
+            // Scanned rather than `flatMap { $0 }.max()`: the flatten
+            // allocated a 168-element array on a path the forecast runs per
+            // bucket per data generation.
+            var peak = 0
+            if let heatmap {
+                for row in heatmap.cells {
+                    for value in row where value > peak { peak = value }
+                }
+            }
+            let maximum = Double(peak)
             guard let heatmap, heatmap.totalTokens > 0, maximum > 0 else {
                 self.cellWeights = nil
                 return
@@ -480,6 +648,23 @@ public struct QuotaPaceForecast: Sendable, Equatable {
                 }
             }
             self.cellWeights = weights
+        }
+
+        /// Build the hour table once for a span the caller is about to walk.
+        ///
+        /// The table grows on demand, which is right for a single query and
+        /// wrong for a pass that walks two hundred completed cycles from
+        /// newest to oldest: each older cycle fell outside the table and paid
+        /// for a rebuild of everything already covered. A span wider than one
+        /// table is left to the chunked path in `weight(from:to:)`, which is
+        /// what keeps a corrupt stored date from asking for a
+        /// hundred-million-entry array.
+        func prepare(from start: Date, to end: Date) {
+            guard cellWeights != nil else { return }
+            let lower = start.timeIntervalSince1970
+            let upper = end.timeIntervalSince1970
+            guard upper >= lower, upper - lower <= Self.maximumTableSeconds else { return }
+            _ = table(covering: lower, upper)
         }
 
         func weight(from start: Date, to end: Date) -> Double {
