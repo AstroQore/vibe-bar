@@ -1,4 +1,20 @@
 {
+  "common.all": {
+    "comment": "Filter chip or menu entry that selects every item.",
+    "value": "All"
+  },
+  "common.cancel": {
+    "comment": "Button that abandons an action in progress.",
+    "value": "Cancel"
+  },
+  "common.clear": {
+    "comment": "Button that empties a search field or resets a filter.",
+    "value": "Clear"
+  },
+  "common.copy": {
+    "comment": "Button that copies the adjacent value to the clipboard.",
+    "value": "Copy"
+  },
   "common.date.month.1": {
     "comment": "Abbreviated month name used inside an absolute reset time",
     "value": "Jan"
@@ -61,6 +77,18 @@
     "comment": "Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027.",
     "value": "{month} {day}, {year}, {time}"
   },
+  "common.delete": {
+    "comment": "Button that performs a deletion the user has already confirmed.",
+    "value": "Delete"
+  },
+  "common.dismiss": {
+    "comment": "Button that closes a banner without acting on it.",
+    "value": "Dismiss"
+  },
+  "common.done": {
+    "comment": "Button that closes a sheet or leaves an editing mode.",
+    "value": "Done"
+  },
   "common.duration.days": {
     "args": {
       "days": "int"
@@ -113,6 +141,10 @@
   "common.on": {
     "comment": "A toggle's state, read as a value in a summary row",
     "value": "On"
+  },
+  "common.open": {
+    "comment": "Button that opens the selected item in the app that owns it.",
+    "value": "Open"
   },
   "common.openSettings": {
     "comment": "Secondary button on an empty state",

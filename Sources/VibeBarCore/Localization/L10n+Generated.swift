@@ -12,6 +12,22 @@ import Foundation
 
 extension L10n {
     public enum Common {
+        /// `common.all` — All
+        public static var all: String {
+            L10n.string("common.all")
+        }
+        /// `common.cancel` — Cancel
+        public static var cancel: String {
+            L10n.string("common.cancel")
+        }
+        /// `common.clear` — Clear
+        public static var clear: String {
+            L10n.string("common.clear")
+        }
+        /// `common.copy` — Copy
+        public static var copy: String {
+            L10n.string("common.copy")
+        }
         /// `common.date.month.1` — Jan
         public static var dateMonth1: String {
             L10n.string("common.date.month.1")
@@ -68,6 +84,18 @@ extension L10n {
         public static func dateMonthDayYearTime(month: String, day: Int, year: String, time: String) -> String {
             L10n.string("common.date.monthDayYearTime", month, day, year, time)
         }
+        /// `common.delete` — Delete
+        public static var delete: String {
+            L10n.string("common.delete")
+        }
+        /// `common.dismiss` — Dismiss
+        public static var dismiss: String {
+            L10n.string("common.dismiss")
+        }
+        /// `common.done` — Done
+        public static var done: String {
+            L10n.string("common.done")
+        }
         /// `common.duration.days` — {days}d
         public static func durationDays(days: Int) -> String {
             L10n.string("common.duration.days", days)
@@ -103,6 +131,10 @@ extension L10n {
         /// `common.on` — On
         public static var on: String {
             L10n.string("common.on")
+        }
+        /// `common.open` — Open
+        public static var open: String {
+            L10n.string("common.open")
         }
         /// `common.openSettings` — Open Settings
         public static var openSettings: String {
@@ -1625,6 +1657,10 @@ extension L10n {
     /// Every key the catalog defines, for the tests that assert the
     /// shipped `.strings` resolve and that no key is unreachable.
     static let allKeys: [String] = [
+        "common.all",
+        "common.cancel",
+        "common.clear",
+        "common.copy",
         "common.date.month.1",
         "common.date.month.10",
         "common.date.month.11",
@@ -1639,6 +1675,9 @@ extension L10n {
         "common.date.month.9",
         "common.date.monthDayTime",
         "common.date.monthDayYearTime",
+        "common.delete",
+        "common.dismiss",
+        "common.done",
         "common.duration.days",
         "common.duration.daysHours",
         "common.duration.hours",
@@ -1648,6 +1687,7 @@ extension L10n {
         "common.duration.now",
         "common.off",
         "common.on",
+        "common.open",
         "common.openSettings",
         "common.percent",
         "common.refresh",

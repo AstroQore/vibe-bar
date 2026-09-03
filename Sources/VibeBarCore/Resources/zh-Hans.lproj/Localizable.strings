@@ -2,6 +2,18 @@
    Resources/i18n/zh-Hans.json. Do not edit: LocalizationCatalogTests
    regenerates this file and fails on a diff. */
 
+/* Filter chip or menu entry that selects every item. */
+"common.all" = "全部";
+
+/* Button that abandons an action in progress. */
+"common.cancel" = "取消";
+
+/* Button that empties a search field or resets a filter. */
+"common.clear" = "清除";
+
+/* Button that copies the adjacent value to the clipboard. */
+"common.copy" = "复制";
+
 /* Abbreviated month name used inside an absolute reset time */
 "common.date.month.1" = "1月";
 
@@ -44,6 +56,15 @@
 /* Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027. */
 "common.date.monthDayYearTime" = "%3$@年%1$@%2$lld日 %4$@";
 
+/* Button that performs a deletion the user has already confirmed. */
+"common.delete" = "删除";
+
+/* Button that closes a banner without acting on it. */
+"common.dismiss" = "关闭";
+
+/* Button that closes a sheet or leaves an editing mode. */
+"common.done" = "完成";
+
 /* Compact countdown, whole days only */
 "common.duration.days" = "%1$lld 天";
 
@@ -70,6 +91,9 @@
 
 /* A toggle's state, read as a value in a summary row */
 "common.on" = "已开启";
+
+/* Button that opens the selected item in the app that owns it. */
+"common.open" = "打开";
 
 /* Secondary button on an empty state */
 "common.openSettings" = "打开设置";

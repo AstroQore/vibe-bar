@@ -1,4 +1,16 @@
 {
+  "common.all": {
+    "value": "全部"
+  },
+  "common.cancel": {
+    "value": "取消"
+  },
+  "common.clear": {
+    "value": "清除"
+  },
+  "common.copy": {
+    "value": "复制"
+  },
   "common.date.month.1": {
     "value": "1月"
   },
@@ -41,6 +53,15 @@
   "common.date.monthDayYearTime": {
     "value": "{year}年{month}{day}日 {time}"
   },
+  "common.delete": {
+    "value": "删除"
+  },
+  "common.dismiss": {
+    "value": "关闭"
+  },
+  "common.done": {
+    "value": "完成"
+  },
   "common.duration.days": {
     "value": "{days} 天"
   },
@@ -67,6 +88,9 @@
   },
   "common.on": {
     "value": "已开启"
+  },
+  "common.open": {
+    "value": "打开"
   },
   "common.openSettings": {
     "value": "打开设置"
