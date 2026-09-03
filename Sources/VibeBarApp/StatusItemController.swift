@@ -114,8 +114,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Rendered brand-logo images keyed by tool, point size, and appearance —
     /// see `brandAttachment(for:fontSize:font:)`.
     private var brandAttachmentImages: [String: NSImage?] = [:]
-    /// Bridged provider accents for composed blocks wearing `.brand`.
-    private var brandAccentColors: [ToolType: NSColor] = [:]
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -1005,51 +1003,23 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     /// Resolve the quotas the strip names, then plan it.
     ///
-    /// Runs inside the 120 ms throttle, so it resolves each *distinct* field
-    /// exactly once — `quotaRequirements` is the deduplicated list, and a strip
-    /// that mentions one bucket three times still costs one bucket lookup and
-    /// at most one forecast. The forecast is only computed where a block, a
-    /// colour, or a rule reads one, plus the case the field path already pays
-    /// for: an automatic colour under the forecast basis.
+    /// The resolution itself lives in `MenuBarStripResolver` so the editor's
+    /// live preview is looking at the same numbers under the same rules — the
+    /// preview drifting from the bar it is previewing would be worse than
+    /// having no preview.
     private func composedStrip(
         _ composition: MenuBarComposition,
         itemSettings: MenuBarItemSettings,
         settings: AppSettings
     ) -> ComposedStrip {
-        let registry = environment.quotaService.fieldRegistry
-        let requirements = composition.quotaRequirements
-        let wantsForecastColors = settings.menuBarColorBasis == .forecast
         let now = Date()
-        var quotas: [MenuBarQuotaSnapshot] = []
-        quotas.reserveCapacity(requirements.count)
-        for requirement in requirements {
-            guard
-                let field = MenuBarFieldCatalog.field(id: requirement.fieldId, registry: registry),
-                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
-            else { continue }
-            var forecast: MenuBarQuotaSnapshot.Forecast?
-            if requirement.needsForecast || wantsForecastColors,
-               let computed = paceForecast(for: field.tool, bucket: bucket) {
-                forecast = MenuBarQuotaSnapshot.Forecast(
-                    verdict: computed.verdict,
-                    projectedRemainingPercent: computed.projectedRemainingPercent,
-                    runOutAt: computed.runOutAt
-                )
-            }
-            let pace = requirement.needsPace
-                ? UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
-                : nil
-            quotas.append(MenuBarQuotaSnapshot(
-                fieldId: field.id,
-                tool: field.tool,
-                label: label(for: field, bucket: bucket, itemSettings: itemSettings),
-                usedPercent: bucket.usedPercent,
-                displayPercent: bucket.displayPercent(settings.displayMode, tool: field.tool),
-                resetAt: bucket.resetAt,
-                paceDeltaPercent: pace?.deltaPercent,
-                forecast: forecast
-            ))
-        }
+        let quotas = MenuBarStripResolver.snapshots(
+            for: composition,
+            itemSettings: itemSettings,
+            settings: settings,
+            environment: environment,
+            now: now
+        )
         return ComposedStrip(
             plan: composition.plan(
                 quotas: quotas,
@@ -1077,13 +1047,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             let size = composedFontSize(token, baseFontSize: baseFontSize)
             let font = composedFont(token, size: size)
             if let tool = token.logo {
-                let tint = composedColor(token.color, strip: strip, settings: settings)
+                let paint = composedPaint(token.color, strip: strip, settings: settings)
                 if let attachment = brandAttachment(
                     for: tool,
                     fontSize: size,
                     font: font,
-                    tint: tint,
-                    tintKey: Self.tintKey(for: token.color, strip: strip, settings: settings)
+                    tint: MenuBarStripPalette.nsColor(paint),
+                    tintKey: MenuBarStripPalette.cacheKey(paint)
                 ) {
                     attributed.append(attachment)
                 }
@@ -1093,7 +1063,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             attributed.append(NSAttributedString(
                 string: text,
                 attributes: [
-                    .foregroundColor: composedColor(token.color, strip: strip, settings: settings),
+                    .foregroundColor: MenuBarStripPalette.nsColor(
+                        composedPaint(token.color, strip: strip, settings: settings)
+                    ),
                     .font: font
                 ]
             ))
@@ -1123,11 +1095,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             }
             if let tool = token.logo {
                 flush()
+                let paint = composedPaint(token.color, strip: strip, settings: settings)
                 if let image = brandLogoImage(
                     for: tool,
                     side: MenuBarStatusMetrics.twoRowLogoSide,
-                    tint: composedColor(token.color, strip: strip, settings: settings),
-                    tintKey: Self.tintKey(for: token.color, strip: strip, settings: settings)
+                    tint: MenuBarStripPalette.nsColor(paint),
+                    tintKey: MenuBarStripPalette.cacheKey(paint)
                 ) {
                     runs.append(.logo(image))
                 }
@@ -1137,7 +1110,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             pending.append(NSAttributedString(
                 string: text,
                 attributes: [
-                    .foregroundColor: composedColor(token.color, strip: strip, settings: settings),
+                    .foregroundColor: MenuBarStripPalette.nsColor(
+                        composedPaint(token.color, strip: strip, settings: settings)
+                    ),
                     .font: composedFont(token, size: composedFontSize(token, baseFontSize: baseFontSize))
                 ]
             ))
@@ -1186,80 +1161,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             : NSFont.systemFont(ofSize: size, weight: weight)
     }
 
-    /// A composed block's colour. `.quota` goes through exactly the resolver
-    /// the field strip uses, so a block left on `.automatic` is the same
-    /// colour it would have been before the composer existed.
-    private func composedColor(
+    /// A composed block's colour and its cache key, both from the one shared
+    /// palette the editor's preview draws with. Keeping the decision in a
+    /// single place is the only thing stopping the preview and the bar from
+    /// disagreeing about what `.automatic` means.
+    private func composedPaint(
         _ role: MenuBarTokenColorRole,
         strip: ComposedStrip,
         settings: AppSettings
-    ) -> NSColor {
-        switch role {
-        case let .quota(fieldId, basis):
-            guard let quota = strip.quotas.first(where: { $0.fieldId == fieldId }) else {
-                return .labelColor
-            }
-            return Self.nsColor(for: MenuBarPercentColor.resolve(
-                basis: basis,
-                verdict: basis == .forecast ? quota.forecast?.verdict : nil,
-                percent: quota.displayPercent,
-                displayMode: settings.displayMode
-            ))
-        case let .brand(tool):
-            return brandAccentColor(for: tool)
-        case .primary:
-            return .labelColor
-        case .secondary:
-            return .secondaryLabelColor
-        case .tertiary:
-            return .tertiaryLabelColor
-        case let .fixed(hex):
-            guard let parts = MenuBarHexColor.components(hex) else { return .labelColor }
-            return NSColor(srgbRed: parts.r, green: parts.g, blue: parts.b, alpha: parts.a)
-        }
-    }
-
-    /// Stable cache key for a resolved tint. Keyed on the colour's *role*
-    /// rather than the `NSColor`, whose description is not stable for a
-    /// dynamic system colour.
-    private static func tintKey(
-        for role: MenuBarTokenColorRole,
-        strip: ComposedStrip,
-        settings: AppSettings
-    ) -> String {
-        switch role {
-        case let .quota(fieldId, basis):
-            guard let quota = strip.quotas.first(where: { $0.fieldId == fieldId }) else {
-                return "label"
-            }
-            let resolved = MenuBarPercentColor.resolve(
-                basis: basis,
-                verdict: basis == .forecast ? quota.forecast?.verdict : nil,
-                percent: quota.displayPercent,
-                displayMode: settings.displayMode
-            )
-            switch resolved {
-            case .healthy: return "healthy"
-            case .surplus: return "surplus"
-            case .watch: return "watch"
-            case .risk: return "risk"
-            }
-        case let .brand(tool): return "brand.\(tool.rawValue)"
-        case .primary: return "label"
-        case .secondary: return "secondary"
-        case .tertiary: return "tertiary"
-        case let .fixed(hex): return "fixed\(hex)"
-        }
-    }
-
-    /// AppKit twin of the shared provider accent table, cached per tool: the
-    /// composer lets a block wear a provider's brand colour, and the status
-    /// item must not rebuild a bridged colour on every 120 ms render.
-    private func brandAccentColor(for tool: ToolType) -> NSColor {
-        if let cached = brandAccentColors[tool] { return cached }
-        let color = NSColor(Theme.providerAccent(for: tool))
-        brandAccentColors[tool] = color
-        return color
+    ) -> MenuBarStripPaint {
+        MenuBarStripPalette.paint(
+            for: role,
+            quotas: strip.quotas,
+            displayMode: settings.displayMode
+        )
     }
 
     /// The status item always *speaks* one clause per quota window, even when
@@ -1815,28 +1730,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// The whole forecast, not just its verdict: a composed strip can print
     /// the projection and the run-out ETA, which the field path never needed.
     private func paceForecast(for tool: ToolType, bucket: QuotaBucket) -> QuotaPaceForecast? {
-        guard let accountId = environment.account(for: tool)?.id else { return nil }
-        let snapshot = environment.costService.snapshot(for: tool)
-        return environment.quotaService.paceForecast(
-            accountId: accountId,
-            bucket: bucket,
-            activityHeatmap: snapshot?.heatmap,
-            dailyActivity: snapshot?.dailyHistory ?? [],
-            now: Date(),
-            allowsPostResetGrace: true
-        )
+        MenuBarStripResolver.paceForecast(for: tool, bucket: bucket, environment: environment)
     }
 
-    /// AppKit twin of `QuotaForecastPalette`. System colors rather than the
-    /// popover's literal RGB values: the menu bar has to stay legible against
-    /// light, dark, and tinted wallpapers, and these are the exact colors the
-    /// pre-forecast menu bar used.
+    /// AppKit twin of `QuotaForecastPalette`, via the one palette the composed
+    /// strip and its preview also read — the field path and the composer must
+    /// paint an identical percentage identically.
     private static func nsColor(for color: MenuBarPercentColor) -> NSColor {
-        switch color {
-        case .healthy: return NSColor.systemGreen
-        case .surplus: return NSColor.systemBlue
-        case .watch: return NSColor.systemOrange
-        case .risk: return NSColor.systemRed
-        }
+        MenuBarStripPalette.nsColor(.quota(color))
     }
 }

@@ -585,6 +585,144 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertTrue(item.usesComposedStrip)
     }
 
+    // MARK: - Editing
+
+    private func editable() -> MenuBarComposition {
+        composition([
+            MenuBarToken(kind: .text("a")),
+            MenuBarToken(kind: .text("b")),
+            MenuBarToken(kind: .text("c"))
+        ])
+    }
+
+    func testInsertClampsInsteadOfTrapping() {
+        var composed = editable()
+        composed.insert(MenuBarToken(kind: .text("front")), at: -5)
+        composed.insert(MenuBarToken(kind: .text("back")), at: 999)
+        XCTAssertEqual(
+            composed.tokens.map(\.kind),
+            [.text("front"), .text("a"), .text("b"), .text("c"), .text("back")]
+        )
+    }
+
+    func testRemoveReportsWhetherItFoundAnything() {
+        var composed = editable()
+        let id = composed.tokens[1].id
+        XCTAssertTrue(composed.remove(id))
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("a"), .text("c")])
+        XCTAssertFalse(composed.remove(id))
+    }
+
+    func testDuplicateCopiesInPlaceWithAFreshIdentity() {
+        var composed = editable()
+        let source = composed.tokens[1]
+        let copyId = composed.duplicate(source.id)
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("a"), .text("b"), .text("b"), .text("c")])
+        XCTAssertNotNil(copyId)
+        XCTAssertNotEqual(copyId, source.id)
+        XCTAssertEqual(composed.tokens[2].id, copyId)
+        // Two blocks that render identically are still two blocks.
+        XCTAssertEqual(Set(composed.tokens.map(\.id)).count, 4)
+        XCTAssertNil(composed.duplicate(UUID()))
+    }
+
+    func testMoveIsStatedInTermsOfTheResultingList() {
+        var composed = editable()
+        let a = composed.tokens[0].id
+        composed.move(a, to: 2)
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("b"), .text("c"), .text("a")])
+        composed.move(a, to: 0)
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("a"), .text("b"), .text("c")])
+        // Out of range clamps to the ends rather than trapping.
+        composed.move(a, to: 99)
+        XCTAssertEqual(composed.tokens.last?.kind, .text("a"))
+    }
+
+    func testMoveBeforeWorksInBothDragDirections() {
+        var composed = editable()
+        let a = composed.tokens[0].id
+        let c = composed.tokens[2].id
+        // Rightwards: A lands where C was.
+        composed.move(a, before: c)
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("b"), .text("a"), .text("c")])
+        // Leftwards: C lands in front of B.
+        let b = composed.tokens[0].id
+        composed.move(c, before: b)
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("c"), .text("b"), .text("a")])
+        // Dropping a block on itself changes nothing.
+        composed.move(c, before: c)
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("c"), .text("b"), .text("a")])
+    }
+
+    func testLineBreaksStopBeingOfferedAtTheRowCap() {
+        var composed = composition([MenuBarToken(kind: .text("a"))])
+        XCTAssertTrue(composed.canAddLineBreak)
+        composed.append(MenuBarToken(kind: .lineBreak))
+        XCTAssertEqual(composed.lineBreakCount, 1)
+        // One break is two rows, which is all the status item can draw.
+        XCTAssertFalse(composed.canAddLineBreak)
+    }
+
+    // MARK: - Availability
+
+    func testAvailabilitySeparatesSilentBlocksFromDegradedOnes() {
+        let silent = MenuBarToken(kind: .quota(fieldId: "gone.bucket", metric: .displayPercent))
+        let degradedColor = MenuBarToken(
+            kind: .text("Claude"),
+            style: .init(color: .followsQuota(fieldId: "gone.bucket", basis: .actual))
+        )
+        let degradedRule = MenuBarToken(
+            kind: .logo(.claude),
+            visibility: .whenUsedAtLeast(fieldId: "also.gone", percent: 50)
+        )
+        let fine = MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .label))
+        let composed = composition([silent, degradedColor, degradedRule, fine])
+
+        let availability = composed.availability(liveFieldIds: ["claude.five_hour"])
+        XCTAssertEqual(availability.silentTokenIds, [silent.id])
+        XCTAssertEqual(availability.degradedTokenIds, [degradedColor.id, degradedRule.id])
+        XCTAssertEqual(availability.missingFieldIds, ["gone.bucket", "also.gone"])
+        XCTAssertFalse(availability.isFullyAvailable)
+    }
+
+    func testASilentBlockIsNotAlsoReportedAsDegraded() {
+        // One cause, one warning: a quota block whose own bucket is gone would
+        // otherwise light up twice when its colour follows the same bucket.
+        let token = MenuBarToken(
+            kind: .quota(fieldId: "gone.bucket", metric: .displayPercent),
+            style: .init(color: .followsQuota(fieldId: "gone.bucket", basis: .actual))
+        )
+        let availability = composition([token]).availability(liveFieldIds: [])
+        XCTAssertEqual(availability.silentTokenIds, [token.id])
+        XCTAssertTrue(availability.degradedTokenIds.isEmpty)
+        XCTAssertEqual(availability.missingFieldIds, ["gone.bucket"])
+    }
+
+    func testEverythingLiveIsFullyAvailable() {
+        let composed = composition([
+            MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent)),
+            MenuBarToken(kind: .text("x"))
+        ])
+        XCTAssertTrue(composed.availability(liveFieldIds: ["claude.five_hour"]).isFullyAvailable)
+    }
+
+    // MARK: - Truncation
+
+    func testALongTextBlockIsCutShortWithAnEllipsisButStillSpokenInFull() {
+        let long = String(repeating: "x", count: 40)
+        let rendered = plan([MenuBarToken(kind: .text(long))], quotas: [])
+        let drawn = rendered.rows[0].tokens[0].text ?? ""
+        XCTAssertEqual(drawn.count, MenuBarToken.maximumTextLength)
+        XCTAssertTrue(drawn.hasSuffix("…"))
+        XCTAssertEqual(rendered.spokenDescription, long)
+    }
+
+    func testTextAtTheLimitIsLeftAlone() {
+        let exact = String(repeating: "y", count: MenuBarToken.maximumTextLength)
+        let rendered = plan([MenuBarToken(kind: .text(exact))], quotas: [])
+        XCTAssertEqual(rendered.rows[0].tokens[0].text, exact)
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {

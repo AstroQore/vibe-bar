@@ -233,6 +233,23 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         }
     }
 
+    /// How many characters a `.text` or `.separator` block draws before it is
+    /// cut short. The menu bar is shared with every other status item on the
+    /// machine, and a block with no ceiling can push the clock off screen —
+    /// so the ceiling lives here rather than in whichever editor happens to
+    /// be typing into it.
+    public static let maximumTextLength = 24
+
+    /// The drawn form of a block's literal text: at most
+    /// `maximumTextLength` characters, the last of which becomes an ellipsis
+    /// when anything was dropped. Spoken descriptions keep the full string —
+    /// truncation is a drawing constraint, not a change to what the user
+    /// wrote.
+    public static func truncated(_ text: String) -> String {
+        guard text.count > maximumTextLength else { return text }
+        return text.prefix(maximumTextLength - 1) + "…"
+    }
+
     public var id: UUID
     public var kind: Kind
     public var style: Style
@@ -400,6 +417,140 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             }
         }
         return out
+    }
+
+    // MARK: Editing
+    //
+    // List surgery lives here rather than in the editor: the view that drags a
+    // chip should not also be the thing that decides what dropping it means,
+    // and none of this is testable once it is tangled with a gesture.
+
+    public func index(of id: UUID) -> Int? {
+        tokens.firstIndex { $0.id == id }
+    }
+
+    public func token(_ id: UUID) -> MenuBarToken? {
+        tokens.first { $0.id == id }
+    }
+
+    /// Insert at `index`, clamped into range so a drop past either end lands
+    /// at that end instead of trapping.
+    public mutating func insert(_ token: MenuBarToken, at index: Int) {
+        tokens.insert(token, at: Swift.max(0, Swift.min(index, tokens.count)))
+    }
+
+    public mutating func append(_ token: MenuBarToken) {
+        tokens.append(token)
+    }
+
+    @discardableResult
+    public mutating func remove(_ id: UUID) -> Bool {
+        guard let index = index(of: id) else { return false }
+        tokens.remove(at: index)
+        return true
+    }
+
+    /// Copy a block in place, directly after the original. The copy is a new
+    /// block, so it gets a new identity — two blocks that render identically
+    /// are still two blocks the editor can drag apart.
+    /// Returns the copy's id so the editor can select what it just made.
+    @discardableResult
+    public mutating func duplicate(_ id: UUID) -> UUID? {
+        guard let index = index(of: id) else { return nil }
+        var copy = tokens[index]
+        copy.id = UUID()
+        tokens.insert(copy, at: index + 1)
+        return copy.id
+    }
+
+    /// Move `id` so it ends up at `index` in the *resulting* list.
+    ///
+    /// Stated in terms of the result rather than the source array on purpose:
+    /// "insert before element N" changes meaning halfway through a drag once
+    /// the dragged block has been lifted out, which is where reorder
+    /// off-by-ones come from.
+    public mutating func move(_ id: UUID, to index: Int) {
+        guard let from = self.index(of: id) else { return }
+        let token = tokens.remove(at: from)
+        tokens.insert(token, at: Swift.max(0, Swift.min(index, tokens.count)))
+    }
+
+    /// Move `id` to sit immediately before `target`. No-op when they are the
+    /// same block.
+    public mutating func move(_ id: UUID, before target: UUID) {
+        guard id != target, let destination = index(of: target) else { return }
+        let from = index(of: id)
+        // Dragging rightwards past the target lands *on* it once the source
+        // has been lifted out; dragging leftwards lands in front of it.
+        move(id, to: (from.map { $0 < destination } ?? false) ? destination - 1 : destination)
+    }
+
+    public var lineBreakCount: Int {
+        tokens.reduce(0) { $0 + ($1.kind == .lineBreak ? 1 : 0) }
+    }
+
+    /// Whether another row can still be drawn. Past this the editor must stop
+    /// offering a break rather than letting the user build a row that the
+    /// status item silently folds away — see `maximumRows`.
+    public var canAddLineBreak: Bool {
+        lineBreakCount < Self.maximumRows - 1
+    }
+
+    // MARK: Availability
+
+    /// Which blocks are held back by a quota that is not answering right now.
+    ///
+    /// The editor needs this to explain a strip that looks wrong: a block that
+    /// draws nothing looks identical to a block the user mis-configured, and
+    /// only the app knows which quotas the providers are actually returning.
+    public struct Availability: Equatable, Sendable {
+        /// Blocks that draw nothing at all — a quota block whose bucket is
+        /// missing.
+        public var silentTokenIds: Set<UUID>
+        /// Blocks that still draw but lost something: a colour that follows a
+        /// missing quota, or a rule that cannot be evaluated and so no longer
+        /// gates anything.
+        public var degradedTokenIds: Set<UUID>
+        /// Every referenced quota that is not available, in first-reference
+        /// order.
+        public var missingFieldIds: [String]
+
+        public init(
+            silentTokenIds: Set<UUID> = [],
+            degradedTokenIds: Set<UUID> = [],
+            missingFieldIds: [String] = []
+        ) {
+            self.silentTokenIds = silentTokenIds
+            self.degradedTokenIds = degradedTokenIds
+            self.missingFieldIds = missingFieldIds
+        }
+
+        public var isFullyAvailable: Bool { missingFieldIds.isEmpty }
+    }
+
+    public func availability(liveFieldIds: Set<String>) -> Availability {
+        var result = Availability()
+        for token in tokens {
+            if let fieldId = token.quotaFieldId, !liveFieldIds.contains(fieldId) {
+                result.silentTokenIds.insert(token.id)
+                if !result.missingFieldIds.contains(fieldId) {
+                    result.missingFieldIds.append(fieldId)
+                }
+            }
+            for fieldId in [token.style.color.fieldId, token.visibility.fieldId] {
+                guard let fieldId, !liveFieldIds.contains(fieldId) else { continue }
+                // A silent block is already reported; do not also call it
+                // degraded, which would show the user two warnings for one
+                // cause.
+                if !result.silentTokenIds.contains(token.id) {
+                    result.degradedTokenIds.insert(token.id)
+                }
+                if !result.missingFieldIds.contains(fieldId) {
+                    result.missingFieldIds.append(fieldId)
+                }
+            }
+        }
+        return result
     }
 
     // MARK: Seeding
@@ -841,12 +992,18 @@ public extension MenuBarComposition {
         case let .text(text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
-            return TokenContent(text: text, logo: nil, spoken: trimmed.isEmpty ? nil : trimmed)
+            return TokenContent(
+                text: MenuBarToken.truncated(text),
+                logo: nil,
+                // The full string, not the drawn one: a screen reader should
+                // hear what the user wrote.
+                spoken: trimmed.isEmpty ? nil : trimmed
+            )
         case .space:
             return TokenContent(text: " ", logo: nil, spoken: nil)
         case let .separator(separator):
             guard !separator.isEmpty else { return nil }
-            return TokenContent(text: separator, logo: nil, spoken: nil)
+            return TokenContent(text: MenuBarToken.truncated(separator), logo: nil, spoken: nil)
         case .lineBreak:
             return nil
         case let .quota(_, metric):
