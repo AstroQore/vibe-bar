@@ -914,6 +914,10 @@
     "comment": "What the Two rows template does.",
     "value": "Two stacked rows in one status item."
   },
+  "menuBar.composer.text.empty": {
+    "comment": "Shown under the text field when the selected text block has nothing in it.",
+    "value": "An empty text block draws nothing. Type something for it to appear in the menu bar."
+  },
   "menuBar.composer.text.limit": {
     "comment": "Explains that long text is cut short in the bar. Count is the character ceiling.",
     "value": "Blocks longer than {count} characters are cut short with an ellipsis in the bar.",

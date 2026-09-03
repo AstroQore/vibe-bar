@@ -65,4 +65,11 @@ public final class PendingEditQueue: ObservableObject {
     /// Keys still waiting, oldest first. The test seam; nothing in the app
     /// reads it.
     public var pendingKeys: [String] { entries.map(\.key) }
+
+    deinit {
+        // Nothing queued survives the queue. A torn-down editor must not leave
+        // a timer running, and a finished test must not leave one for the next
+        // one to trip over.
+        task?.cancel()
+    }
 }

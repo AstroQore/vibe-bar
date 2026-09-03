@@ -78,11 +78,16 @@ final class PendingEditQueueTests: XCTestCase {
     }
 
     func testAQueuedWriteLandsOnItsOwnAfterTheIdleWindow() async throws {
-        let queue = PendingEditQueue(delay: .milliseconds(20))
+        let queue = PendingEditQueue(delay: .milliseconds(5))
         var written = false
         queue.schedule("color") { written = true }
         XCTAssertFalse(written, "not written while the user may still be moving")
-        try await Task.sleep(for: .milliseconds(200))
+        // Polled rather than slept through: a fixed sleep spends wall time on
+        // a shared test timeline whether or not it is needed, and this suite
+        // runs beside timing-sensitive ones.
+        for _ in 0..<100 where !written {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         XCTAssertTrue(written, "written once the control went quiet")
         XCTAssertTrue(queue.pendingKeys.isEmpty)
     }

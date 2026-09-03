@@ -644,6 +644,9 @@
 /* What the Two rows template does. */
 "menuBar.composer.template.twoRowsDetail" = "在一个状态项中上下显示两行。";
 
+/* Shown under the text field when the selected text block has nothing in it. */
+"menuBar.composer.text.empty" = "空的文字积木不显示任何内容。输入文字后才会出现在菜单栏。";
+
 /* Explains that long text is cut short in the bar. Count is the character ceiling. */
 "menuBar.composer.text.limit" = "超过 %1$lld 个字符的文字积木在菜单栏中会截断并以省略号结尾。";
 

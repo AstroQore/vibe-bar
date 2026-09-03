@@ -282,6 +282,65 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         self.visibility = visibility
     }
 
+    // MARK: Palette
+
+    /// The blocks the palette can add, built in one place.
+    ///
+    /// **A stored string is user-authored, full stop.** Copy that exists to be
+    /// *shown* — a placeholder, a caption, a prompt — must never become a
+    /// block's content, because settings outlive the language that was
+    /// selected when the block was made. A text block added while the app was
+    /// in Chinese used to persist the Chinese placeholder and then render it
+    /// after a switch to English, which is the same defect the seeded labels
+    /// had: a derived name is a reference resolved at render, and only text
+    /// the user actually typed is stored.
+    ///
+    /// Building every palette block here is what makes that checkable rather
+    /// than remembered: `MenuBarCompositionTests` constructs all of them under
+    /// each supported language and asserts the stored values are identical.
+    public static func newText() -> MenuBarToken {
+        // Empty on purpose. The editor shows the placeholder; settings hold
+        // nothing until the user types.
+        MenuBarToken(kind: .text(""), style: .label)
+    }
+
+    public static func newAppIcon() -> MenuBarToken {
+        MenuBarToken(kind: .appIcon, style: .label)
+    }
+
+    public static func newLogo(_ tool: ToolType) -> MenuBarToken {
+        MenuBarToken(kind: .logo(tool), style: .label)
+    }
+
+    public static func newQuota(fieldId: String) -> MenuBarToken {
+        MenuBarToken(kind: .quota(fieldId: fieldId, metric: .displayPercent), style: .percent)
+    }
+
+    public static func newSpace() -> MenuBarToken {
+        MenuBarToken(kind: .space)
+    }
+
+    public static func newSeparator() -> MenuBarToken {
+        // Punctuation, not copy: a middle dot reads the same in every
+        // language the app ships.
+        MenuBarToken(kind: .separator(" · "), style: .divider)
+    }
+
+    public static func newLineBreak() -> MenuBarToken {
+        MenuBarToken(kind: .lineBreak)
+    }
+
+    /// One of each, for the test that pins the invariant above.
+    public static func paletteSamples(
+        tool: ToolType = .claude,
+        fieldId: String = "claude.five_hour"
+    ) -> [MenuBarToken] {
+        [
+            newAppIcon(), newLogo(tool), newText(),
+            newQuota(fieldId: fieldId), newSpace(), newSeparator(), newLineBreak()
+        ]
+    }
+
     /// The quota this token reads, if it is a quota token.
     public var quotaFieldId: String? {
         if case let .quota(fieldId, _) = kind { return fieldId }
@@ -1321,6 +1380,13 @@ public extension MenuBarComposition {
             return TokenContent(text: nil, glyph: .app, spoken: "Vibe Bar")
         case let .text(text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // A text block with nothing in it draws nothing — no reserved gap.
+            // The menu bar is the most width-constrained surface in the app,
+            // and spending pixels on a block that has nothing to say reads as
+            // a rendering fault rather than as an empty field. The block is
+            // still there in the editor, which says so.
+            //
+            // Whitespace the user typed is content: they wanted a gap.
             guard !text.isEmpty else { return nil }
             return TokenContent(
                 text: MenuBarToken.truncated(text),

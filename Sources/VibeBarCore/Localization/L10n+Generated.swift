@@ -889,6 +889,10 @@ extension L10n {
         public static var composerTemplateTwoRowsDetail: String {
             L10n.string("menuBar.composer.template.twoRowsDetail")
         }
+        /// `menuBar.composer.text.empty` — An empty text block draws nothing. Type something for it to appear in the menu bar.
+        public static var composerTextEmpty: String {
+            L10n.string("menuBar.composer.text.empty")
+        }
         /// `menuBar.composer.text.limit` — Blocks longer than {count} characters are cut short with an ellipsis in the bar.
         public static func composerTextLimit(count: Int) -> String {
             L10n.string("menuBar.composer.text.limit", count)
@@ -6341,6 +6345,7 @@ extension L10n {
         "menuBar.composer.template.roomyDetail",
         "menuBar.composer.template.twoRows",
         "menuBar.composer.template.twoRowsDetail",
+        "menuBar.composer.text.empty",
         "menuBar.composer.text.limit",
         "menuBar.composer.text.placeholder",
         "menuBar.composer.warning.degraded",

@@ -1904,6 +1904,116 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertFalse(QuotaGroupLabelLocalizer.isTranslated("GPT-5.3 Codex Spark"))
     }
 
+    // MARK: - Nothing stored depends on the language (review thread 11)
+
+    /// Run `body` with each supported language selected, restoring whatever
+    /// was set before.
+    private func underEachLanguage(_ body: (AppLanguage) -> Void) {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        for language in [AppLanguage.english, .simplifiedChinese] {
+            L10n.languageOverride = language
+            body(language)
+        }
+    }
+
+    func testAddingABlockStoresNothingThatDependsOnTheLanguage() {
+        // A placeholder is prompt copy that happened to be in the field, not
+        // text the user typed. Persisting it froze whichever language was
+        // selected when the block was made — a Chinese placeholder rendered
+        // in an English menu bar forever after.
+        var byLanguage: [AppLanguage: [MenuBarToken.Kind]] = [:]
+        underEachLanguage { language in
+            byLanguage[language] = MenuBarToken.paletteSamples().map(\.kind)
+        }
+        XCTAssertEqual(byLanguage[.english], byLanguage[.simplifiedChinese])
+        // ...and specifically: a fresh text block carries no content at all.
+        XCTAssertEqual(MenuBarToken.newText().kind, .text(""))
+    }
+
+    func testSeedingStoresNothingThatDependsOnTheLanguage() {
+        // The same invariant on the other constructor, so round nine's fix
+        // cannot regress either.
+        var byLanguage: [AppLanguage: [MenuBarToken.Kind]] = [:]
+        underEachLanguage { language in
+            byLanguage[language] = MenuBarComposition
+                .seeded(template: .roomy, from: fieldItem(labels: ["claude.weekly": "C-wk"]))
+                .tokens
+                .map(\.kind)
+        }
+        XCTAssertEqual(byLanguage[.english], byLanguage[.simplifiedChinese])
+    }
+
+    func testEveryStoredStringIsEitherTypedOrAnIdentifier() {
+        // The rule in one assertion: no stored value may equal a catalog
+        // string that differs between the two languages. A value that is the
+        // same in both is either punctuation or a naming-axis identifier, and
+        // those are safe to store.
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        func storedStrings() -> [String] {
+            var seeded = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+            seeded.tokens.append(contentsOf: MenuBarToken.paletteSamples())
+            return seeded.tokens.compactMap { token in
+                switch token.kind {
+                case let .text(value): return value
+                case let .separator(value): return value
+                default: return nil
+                }
+            }
+        }
+
+        L10n.languageOverride = .english
+        let english = storedStrings()
+        L10n.languageOverride = .simplifiedChinese
+        let chinese = storedStrings()
+        XCTAssertEqual(english, chinese)
+        for value in english where !value.isEmpty {
+            XCTAssertFalse(
+                Self.isLocalizedCopy(value),
+                "\(value) is copy that exists to be shown; it must not be stored"
+            )
+        }
+    }
+
+    /// Whether a string is one the catalog renders differently per language —
+    /// which makes it copy, not an identifier.
+    private static func isLocalizedCopy(_ value: String) -> Bool {
+        // Reads the catalog files directly, so it neither depends on nor
+        // touches the selected language — this runs inside a test that has
+        // one set, and nudging a global from a helper is how a suite starts
+        // failing depending on what ran before it.
+        guard let (en, zh) = try? catalogs() else { return false }
+        for (key, english) in en where english == value {
+            if let chinese = zh[key], chinese != english { return true }
+        }
+        return false
+    }
+
+    func testAnEmptyTextBlockDrawsNothing() {
+        // The decision this fix turns on: no reserved gap. The block is in the
+        // editor, which says so; the menu bar spends no width on it.
+        let rendered = plan(
+            [
+                MenuBarToken(kind: .text("before")),
+                MenuBarToken.newText(),
+                MenuBarToken(kind: .text("after"))
+            ],
+            quotas: []
+        )
+        XCTAssertEqual(texts(rendered), [["before", "after"]])
+        XCTAssertEqual(rendered.spokenDescription, "before, after")
+    }
+
+    func testWhitespaceTheUserTypedIsStillContent() {
+        // Spaces are a gap they asked for, not an empty block.
+        let rendered = plan([MenuBarToken(kind: .text("   "))], quotas: [])
+        XCTAssertEqual(texts(rendered), [["   "]])
+        // It says nothing, though — there are no words in it.
+        XCTAssertTrue(rendered.spokenDescription.isEmpty)
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {

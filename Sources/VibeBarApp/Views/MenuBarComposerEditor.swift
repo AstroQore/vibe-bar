@@ -411,17 +411,17 @@ struct MenuBarComposerEditor: View {
             caption(L10n.MenuBar.composerPalette)
             paletteGroup(L10n.MenuBar.composerBlockLogo) {
                 paletteButton(title: L10n.MenuBar.composerBlockAppIcon, icon: "menubar.rectangle") {
-                    add(MenuBarToken(kind: .appIcon, style: .label))
+                    add(.newAppIcon())
                 }
                 ForEach(paletteLogoTools, id: \.self) { tool in
                     paletteButton(title: tool.menuTitle, icon: nil, tool: tool) {
-                        add(MenuBarToken(kind: .logo(tool), style: .label))
+                        add(.newLogo(tool))
                     }
                 }
             }
             paletteGroup(L10n.MenuBar.composerBlockText) {
                 paletteButton(title: L10n.MenuBar.composerBlockText, icon: "textformat") {
-                    add(MenuBarToken(kind: .text(L10n.MenuBar.composerTextPlaceholder), style: .label))
+                    add(.newText())
                 }
             }
             paletteGroup(L10n.MenuBar.composerBlockQuota) {
@@ -429,10 +429,7 @@ struct MenuBarComposerEditor: View {
                     Menu {
                         ForEach(section.options) { option in
                             Button(option.displayTitle) {
-                                add(MenuBarToken(
-                                    kind: .quota(fieldId: option.id, metric: .displayPercent),
-                                    style: .percent
-                                ))
+                                add(.newQuota(fieldId: option.id))
                             }
                         }
                     } label: {
@@ -447,13 +444,13 @@ struct MenuBarComposerEditor: View {
             }
             paletteGroup(L10n.MenuBar.composerBlockStructure) {
                 paletteButton(title: L10n.MenuBar.composerBlockSpace, icon: "space") {
-                    add(MenuBarToken(kind: .space))
+                    add(.newSpace())
                 }
                 paletteButton(title: L10n.MenuBar.composerBlockSeparator, icon: "line.diagonal") {
-                    add(MenuBarToken(kind: .separator(" · "), style: .divider))
+                    add(.newSeparator())
                 }
                 paletteButton(title: L10n.MenuBar.composerBlockNewRow, icon: "return") {
-                    add(MenuBarToken(kind: .lineBreak))
+                    add(.newLineBreak())
                 }
                 // Two rows is all the status item can draw; offering a third
                 // break would build a row the bar silently folds away.
@@ -850,7 +847,7 @@ private struct MenuBarTokenInspector: View {
             HStack(spacing: 8) {
                 Text(L10n.MenuBar.composerBlockText).frame(width: 62, alignment: .leading)
                 DebouncedSettingsTextField(
-                    prompt: L10n.MenuBar.composerBlockText,
+                    prompt: L10n.MenuBar.composerTextPlaceholder,
                     value: Binding(
                         get: { text },
                         set: { value in
@@ -862,9 +859,14 @@ private struct MenuBarTokenInspector: View {
                     )
                 )
             }
-            Text(L10n.MenuBar.composerTextLimit(count: MenuBarToken.maximumTextLength))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text(
+                text.isEmpty
+                    ? L10n.MenuBar.composerTextEmpty
+                    : L10n.MenuBar.composerTextLimit(count: MenuBarToken.maximumTextLength)
+            )
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
         case let .separator(separator):
             HStack(spacing: 8) {
                 Text(L10n.MenuBar.composerBlockSeparator).frame(width: 62, alignment: .leading)

@@ -650,6 +650,9 @@
   "menuBar.composer.template.twoRowsDetail": {
     "value": "在一个状态项中上下显示两行。"
   },
+  "menuBar.composer.text.empty": {
+    "value": "空的文字积木不显示任何内容。输入文字后才会出现在菜单栏。"
+  },
   "menuBar.composer.text.limit": {
     "value": "超过 {count} 个字符的文字积木在菜单栏中会截断并以省略号结尾。"
   },
