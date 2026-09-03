@@ -1,0 +1,80 @@
+{
+  "schema": "vibe-bar-i18n-glossary-v1",
+  "note": "The never-translate list. It is data rather than a paragraph in AGENTS.md so that it travels with the catalog into the shared repository, and so that one file answers the question for the native app, the cross-platform client, the lint, and a human translator. AGENTS.md § 7.1 is the prose behind it: Vibe Bar names a provider on two orthogonal axes, and the values on both axes are identifiers, not copy. Translating one of them does not make the app more Chinese, it makes two surfaces disagree about what a thing is called.",
+  "rules": [
+    "A term listed here is written exactly as spelled here, in every language, including inside a translated sentence.",
+    "A term listed here may appear as a bare string literal in Swift; Scripts/lint_localization.py reads this file and allows it.",
+    "Adding a term is a naming decision. If it is a product, a company, a model, or a wire value, it belongs here. If it is a word the user reads as English prose, it does not.",
+    "Generic window words ('Weekly', '5 Hours') are deliberately NOT here: the contract value stays English, and QuotaGroupLabelLocalizer translates the shown label on top of it."
+  ],
+  "companies": [
+    "OpenAI",
+    "Anthropic",
+    "Google AI",
+    "Google",
+    "SpaceXAI",
+    "xAI",
+    "AstroQore"
+  ],
+  "subProviders": [
+    "ChatGPT Agentic",
+    "ChatGPT",
+    "Claude",
+    "Gemini Web",
+    "Gemini",
+    "AntiGravity",
+    "Antigravity",
+    "Grok",
+    "Cursor",
+    "Grok Bot"
+  ],
+  "harnesses": [
+    "Codex",
+    "Codex CLI",
+    "ChatGPT Work",
+    "Claude Code",
+    "Claude Cowork",
+    "Gemini CLI",
+    "Grok Build",
+    "Cursor",
+    "Grok Bot"
+  ],
+  "products": [
+    "Vibe Bar",
+    "Workbench",
+    "Sparkle",
+    "Keychain",
+    "Terminal",
+    "iTerm2",
+    "Finder",
+    "Safari",
+    "Chrome",
+    "Firefox",
+    "macOS",
+    "MCP",
+    "GitHub"
+  ],
+  "modelFamilies": [
+    "Sonnet",
+    "Opus",
+    "Haiku",
+    "Fable",
+    "Spark",
+    "Codex Spark",
+    "GPT",
+    "Pro",
+    "Ultra",
+    "Free",
+    "Max",
+    "Team",
+    "Enterprise"
+  ],
+  "commands": [
+    "codex login",
+    "claude login",
+    "grok login",
+    "agy",
+    "npm",
+    "brew"
+  ]
+}

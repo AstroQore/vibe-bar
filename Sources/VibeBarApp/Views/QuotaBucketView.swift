@@ -14,18 +14,18 @@ struct QuotaBucketView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                 Spacer(minLength: 8)
-                Text("\(Int(percent.rounded()))%")
+                Text(L10n.Common.percent(value: Int(percent.rounded())))
                     .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
             }
             QuotaBarShape(percent: percent, mode: mode, height: 12)
             HStack {
                 if let s = ResetCountdownFormatter.stringWithAbsoluteTime(from: bucket.resetAt, now: now) {
-                    Text("Resets in \(s)")
+                    Text(L10n.Quota.bucketResetsIn(when: s))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("No reset info")
+                    Text(L10n.Quota.bucketNoResetInfo)
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -39,8 +39,8 @@ struct QuotaBucketView: View {
 
     private func modeCaption(_ mode: DisplayMode) -> String {
         switch mode {
-        case .remaining: return "remaining"
-        case .used: return "used"
+        case .remaining: return L10n.Quota.modeRemaining
+        case .used: return L10n.Quota.modeUsed
         }
     }
 }

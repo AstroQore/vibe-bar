@@ -3,6 +3,10 @@ import PackageDescription
 
 let package = Package(
     name: "VibeBar",
+    // Every localized resource in the package hangs off this: it is the
+    // language `.lproj`-less resources are considered to be in, and the
+    // one `L10n` falls back to when a key is missing from a translation.
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v26)
     ],
@@ -53,13 +57,26 @@ let package = Package(
                 .product(name: "SweetCookieKit", package: "SweetCookieKit")
             ],
             resources: [
-                // Pricing tables: shipped as a bundled JSON so model
-                // rate updates can be merged without a code change.
-                // `PricingResolver` loads this via `Bundle.module` and
-                // a runtime cache under ~/.vibebar/pricing_cache.json
-                // can override it when `PricingRefresher` fetches a
-                // newer copy from the project's GitHub raw URL.
-                .copy("Resources/pricing.json")
+                // Two kinds of resource share this directory.
+                //
+                // `pricing.json` is the model rate table, shipped as a
+                // bundle so rate updates can be merged without a code
+                // change. `PricingResolver` loads it via `Bundle.module`
+                // and a runtime cache under ~/.vibebar/pricing_cache.json
+                // can override it when `PricingRefresher` fetches a newer
+                // copy from the project's GitHub raw URL.
+                //
+                // `<lang>.lproj/Localizable.{strings,stringsdict}` are the
+                // compiled string catalogs `L10n` reads. They are generated
+                // from `Resources/i18n/*.json` by
+                // `Scripts/build_localizations.py` and checked in, so a
+                // clean machine builds Vibe Bar without Python; a test
+                // regenerates them and fails on a diff. `.process` is what
+                // makes SwiftPM keep them under their `.lproj` in the
+                // bundle — Core is where they live because it is the only
+                // target with a bundle of its own, and both targets resolve
+                // strings through Core's `L10n`.
+                .process("Resources")
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

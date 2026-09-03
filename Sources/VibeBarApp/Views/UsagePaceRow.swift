@@ -60,13 +60,13 @@ struct UsagePaceRow: View {
 
     private var etaText: String? {
         if pace.willLastToReset {
-            return "Lasts until reset"
+            return L10n.Quota.paceLastsUntilReset
         }
         guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return nil }
         let target = now.addingTimeInterval(etaSeconds)
         guard let countdown = ResetCountdownFormatter.string(from: target, now: now) else {
             return nil
         }
-        return "Runs out in \(countdown)"
+        return L10n.Quota.paceRunsOutIn(countdown: countdown)
     }
 }

@@ -76,19 +76,19 @@ public struct QuotaPaceForecast: Sendable, Equatable {
 
     public var verdictLabel: String {
         switch verdict {
-        case .enough: "Enough"
-        case .surplus: "Surplus"
-        case .watch: "Watch"
-        case .atRisk: "At risk"
-        case .learning: "Learning"
+        case .enough: L10n.Quota.forecastVerdictEnough
+        case .surplus: L10n.Quota.forecastVerdictSurplus
+        case .watch: L10n.Quota.forecastVerdictWatch
+        case .atRisk: L10n.Quota.forecastVerdictAtRisk
+        case .learning: L10n.Quota.forecastVerdictLearning
         }
     }
 
     public var confidenceLabel: String {
         switch confidence {
-        case .learning: "Learning"
-        case .medium: "Medium confidence"
-        case .high: "High confidence"
+        case .learning: L10n.Quota.forecastConfidenceLearning
+        case .medium: L10n.Quota.forecastConfidenceMedium
+        case .high: L10n.Quota.forecastConfidenceHigh
         }
     }
 
@@ -96,30 +96,30 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let left = Int(projectedRemainingPercent.rounded())
         switch verdict {
         case .enough:
-            return "Forecast \(left)% left at reset"
+            return L10n.Quota.forecastResetEnough(remaining: left)
         case .surplus:
-            return "Likely surplus · forecast \(left)% left"
+            return L10n.Quota.forecastResetSurplus(remaining: left)
         case .watch:
-            return "May run short · forecast \(left)% left"
+            return L10n.Quota.forecastResetWatch(remaining: left)
         case .atRisk:
-            return "Likely to run out before reset"
+            return L10n.Quota.forecastResetAtRisk
         case .learning:
-            return "Learning your pattern · about \(left)% left"
+            return L10n.Quota.forecastResetLearning(remaining: left)
         }
     }
 
     public var guidanceSummary: String {
         let target = Int(targetRemainingPercent.rounded())
         let unused = Int(potentialUnusedPercent.rounded())
-        if verdict == .atRisk { return "Slow down or shift work to another quota" }
-        if verdict == .watch { return "Recent usage is above the safe range" }
+        if verdict == .atRisk { return L10n.Quota.forecastGuidanceAtRisk }
+        if verdict == .watch { return L10n.Quota.forecastGuidanceWatch }
         if verdict == .surplus {
-            return "About \(unused)% likely unused beyond the \(target)% safety target"
+            return L10n.Quota.forecastGuidanceSurplus(unused: unused, target: target)
         }
         if unused >= 3 {
-            return "Target \(target)% left · about \(unused)% available"
+            return L10n.Quota.forecastGuidanceAvailable(target: target, unused: unused)
         }
-        return "Within the \(target)% safety target"
+        return L10n.Quota.forecastGuidanceWithinTarget(target: target)
     }
 
     public static func compute(

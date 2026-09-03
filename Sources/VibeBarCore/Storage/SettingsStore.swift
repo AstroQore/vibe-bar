@@ -5,9 +5,28 @@ import Combine
 public final class SettingsStore: ObservableObject {
     @Published public var settings: AppSettings {
         didSet {
+            // The language override is mirrored on *every* assignment,
+            // including one adopted from another writer's file: a second
+            // client that changed the language is describing the same
+            // preference, and a surface that kept rendering the old one
+            // would be showing a setting the file no longer holds.
+            applyLanguage()
             guard !isAdoptingExternalChange else { return }
             schedulePersist()
         }
+    }
+
+    /// Push `settings.language` into `L10n`, which is what every lookup
+    /// reads.
+    ///
+    /// Here rather than in the App target because Core resolves strings
+    /// too — an adapter's error message, the MCP surface — and because
+    /// this store is the one place the value is ever set. Views re-render
+    /// on their own: the assignment that changed the language already
+    /// published to every `$settings` subscriber, so the same pass that
+    /// redraws the picker redraws the labels around it. No relaunch.
+    private func applyLanguage() {
+        L10n.languageOverride = settings.language
     }
 
     /// Set when a setting this process had changed was replaced by another
@@ -193,6 +212,9 @@ public final class SettingsStore: ObservableObject {
             self.settings = .default
             adoptStartingPosition(writingOver: existing)
         }
+        // `didSet` does not run for assignments made inside `init`, so the
+        // language chosen in a previous session has to be installed here.
+        applyLanguage()
         startWatching(url)
     }
 

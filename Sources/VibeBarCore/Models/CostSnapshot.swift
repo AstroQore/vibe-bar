@@ -630,21 +630,25 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
-        case .today: return "Today"
-        case .yesterday: return "Yesterday"
-        case .week:  return "7 days"
-        case .month: return "30 days"
-        case .all:   return "All"
+        case .today: return L10n.Cost.timeframeToday
+        case .yesterday: return L10n.Cost.timeframeYesterday
+        case .week:  return L10n.Cost.timeframeWeek
+        case .month: return L10n.Cost.timeframeMonth
+        case .all:   return L10n.Cost.timeframeAll
         }
     }
 
+    /// The same timeframes for the five-column summary row, where "30 days"
+    /// does not fit. Chinese abbreviates differently — 30 天 has no shorter
+    /// spelling — so both forms come from the catalog rather than from a
+    /// rule about truncating the long one.
     public var shortLabel: String {
         switch self {
-        case .today: return "Today"
-        case .yesterday: return "Yesterday"
-        case .week:  return "7d"
-        case .month: return "30d"
-        case .all:   return "All"
+        case .today: return L10n.Cost.timeframeToday
+        case .yesterday: return L10n.Cost.timeframeYesterday
+        case .week:  return L10n.Cost.timeframeWeekShort
+        case .month: return L10n.Cost.timeframeMonthShort
+        case .all:   return L10n.Cost.timeframeAll
         }
     }
 

@@ -182,6 +182,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// bound behind a menu that only shows a handful.
     public var pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]]
 
+    /// Which language the app renders in.
+    ///
+    /// `.system` follows macOS and is the default. The explicit cases
+    /// exist because Vibe Bar sits next to terminals and consoles people
+    /// deliberately keep in one language, and sending someone to the
+    /// system-wide control to change only this app is a worse answer.
+    /// `AppEnvironment` mirrors it into `L10n.languageOverride`, which is
+    /// what every `L10n` lookup reads.
+    public var language: AppLanguage
+
     /// Terminal the Sessions page hands a resume command to.
     ///
     /// `.terminal` by default because Terminal.app is the one terminal every
@@ -348,6 +358,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
         miscCookieAutoImportEnabled: Bool = false,
         menuBarColorBasis: MenuBarColorBasis = .forecast,
+        language: AppLanguage = .system,
         preferredTerminal: PreferredTerminal = .terminal,
         sessionBodyIndexingEnabled: Bool = true,
         skillsSyncMethod: SkillSyncMethod = .auto,
@@ -400,6 +411,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
         self.miscCookieAutoImportEnabled = miscCookieAutoImportEnabled
         self.menuBarColorBasis = menuBarColorBasis
+        self.language = language
         self.preferredTerminal = preferredTerminal
         self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
         self.skillsSyncMethod = skillsSyncMethod
@@ -466,6 +478,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case pageLayoutPresets
         case miscCookieAutoImportEnabled
         case menuBarColorBasis
+        case language
         case preferredTerminal
         case sessionBodyIndexingEnabled
         case skillsSyncMethod
@@ -657,9 +670,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.menuBarColorBasis =
             (try? c.decodeIfPresent(MenuBarColorBasis.self, forKey: .menuBarColorBasis))
             ?? Self.default.menuBarColorBasis
-        // `try?` for the same reason as the two above: a raw value from a
-        // downgraded or hand-edited file costs this one preference, not the
-        // rest of the settings.
+        // Absent from every settings file written before this existed, and
+        // `.system` is the right answer for all of them: an upgrade must not
+        // silently pin someone to English because that is what they had been
+        // seeing. `try?` for the same reason as the values around it — a raw
+        // value from a downgraded or hand-edited file costs this one
+        // preference, not the rest of the settings.
+        self.language =
+            (try? c.decodeIfPresent(AppLanguage.self, forKey: .language))
+            ?? Self.default.language
         self.preferredTerminal =
             (try? c.decodeIfPresent(PreferredTerminal.self, forKey: .preferredTerminal))
             ?? Self.default.preferredTerminal
@@ -731,6 +750,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
         try c.encode(miscCookieAutoImportEnabled, forKey: .miscCookieAutoImportEnabled)
         try c.encode(menuBarColorBasis, forKey: .menuBarColorBasis)
+        try c.encode(language, forKey: .language)
         try c.encode(preferredTerminal, forKey: .preferredTerminal)
         try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
         try c.encode(skillsSyncMethod, forKey: .skillsSyncMethod)

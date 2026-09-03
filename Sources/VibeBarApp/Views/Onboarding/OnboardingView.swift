@@ -16,25 +16,26 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .welcome: "Welcome"
-        case .subscriptions: "Subscriptions"
-        case .browserCookies: "Browser cookies"
-        case .apiKeyProviders: "Other plans"
-        case .pricing: "Model pricing"
-        case .launchAtLogin: "Launch at login"
-        case .done: "All set"
+        case .welcome: L10n.Onboarding.stepWelcomeTitle
+        case .subscriptions: L10n.Onboarding.stepSubscriptionsTitle
+        case .browserCookies: L10n.Onboarding.stepBrowserCookiesTitle
+        case .apiKeyProviders: L10n.Onboarding.stepApiKeyProvidersTitle
+        case .pricing: L10n.Onboarding.stepPricingTitle
+        // A login item is a macOS thing; no other client has one to offer.
+        case .launchAtLogin: L10n.Platform.macosLaunchAtLoginTitle
+        case .done: L10n.Onboarding.stepDoneTitle
         }
     }
 
     var subtitle: String {
         switch self {
-        case .welcome: "What Vibe Bar does, in one paragraph."
-        case .subscriptions: "Turn on the plans you pay for."
-        case .browserCookies: "Web quotas come from the session your browser already has."
-        case .apiKeyProviders: "Plans tracked with an API key or a console cookie."
-        case .pricing: "Where the token prices behind the cost numbers come from."
-        case .launchAtLogin: "Keep the readout in your menu bar from the moment you sign in."
-        case .done: "Everything here lives in Settings too."
+        case .welcome: L10n.Onboarding.stepWelcomeSubtitle
+        case .subscriptions: L10n.Onboarding.stepSubscriptionsSubtitle
+        case .browserCookies: L10n.Onboarding.stepBrowserCookiesSubtitle
+        case .apiKeyProviders: L10n.Onboarding.stepApiKeyProvidersSubtitle
+        case .pricing: L10n.Onboarding.stepPricingSubtitle
+        case .launchAtLogin: L10n.Platform.macosLaunchAtLoginSubtitle
+        case .done: L10n.Onboarding.stepDoneSubtitle
         }
     }
 
@@ -159,7 +160,7 @@ struct OnboardingView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Button("Back") {
+            Button(L10n.Onboarding.back) {
                 if let previous = navigation.step.previous {
                     navigation.step = previous
                 }
@@ -170,20 +171,20 @@ struct OnboardingView: View {
             Spacer(minLength: 12)
 
             if navigation.step != .done {
-                Button("Skip for now") {
+                Button(L10n.Onboarding.skip) {
                     environment.finishOnboarding(openPopover: false)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle())
             }
 
             if let next = navigation.step.next {
-                Button("Continue") {
+                Button(L10n.Onboarding.continue) {
                     navigation.step = next
                 }
                 .buttonStyle(WorkbenchPillButtonStyle(prominent: true))
                 .keyboardShortcut(.defaultAction)
             } else {
-                Button("Finish") {
+                Button(L10n.Onboarding.finish) {
                     environment.finishOnboarding(openPopover: true)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle(prominent: true))
@@ -205,7 +206,7 @@ private struct OnboardingStepList: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Setup")
+            Text(L10n.Onboarding.title)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)

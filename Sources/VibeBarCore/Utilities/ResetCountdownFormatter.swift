@@ -1,10 +1,15 @@
 import Foundation
 
 public enum ResetCountdownFormatter {
-    private static let shortMonthNames = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ]
+    /// 1-based month index → its abbreviated name in the current language.
+    /// A `DateFormatter` would also do this, but it would do it with the
+    /// *system* locale, which is not necessarily the language the user
+    /// picked for this app (`AppSettings.language`). One catalog keeps the
+    /// month name and the sentence it sits inside speaking together.
+    static func shortMonthName(_ month: Int) -> String? {
+        guard (1...12).contains(month) else { return nil }
+        return L10n.string("common.date.month.\(month)")
+    }
 
     /// Formats a future reset date as a compact human countdown:
     /// "5d", "2d 4h", "3h 16m", "12m", "<1m", "now".
@@ -12,25 +17,26 @@ public enum ResetCountdownFormatter {
     public static func string(from resetAt: Date?, now: Date = Date()) -> String? {
         guard let resetAt else { return nil }
         let total = Int(resetAt.timeIntervalSince(now).rounded(.toNearestOrAwayFromZero))
-        if total <= 0 { return "now" }
+        if total <= 0 { return L10n.Common.durationNow }
 
         let days = total / 86_400
         let hours = (total % 86_400) / 3_600
         let minutes = (total % 3_600) / 60
 
-        if days >= 2 {
-            return hours > 0 ? "\(days)d \(hours)h" : "\(days)d"
-        }
-        if days == 1 {
-            return hours > 0 ? "1d \(hours)h" : "1d"
+        if days >= 1 {
+            return hours > 0
+                ? L10n.Common.durationDaysHours(days: days, hours: hours)
+                : L10n.Common.durationDays(days: days)
         }
         if hours >= 1 {
-            return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+            return minutes > 0
+                ? L10n.Common.durationHoursMinutes(hours: hours, minutes: minutes)
+                : L10n.Common.durationHours(hours: hours)
         }
         if minutes >= 1 {
-            return "\(minutes)m"
+            return L10n.Common.durationMinutes(minutes: minutes)
         }
-        return "<1m"
+        return L10n.Common.durationLessThanMinute
     }
 
     /// Combines the compact countdown with the concrete local reset time.
@@ -56,7 +62,7 @@ public enum ResetCountdownFormatter {
     /// The concrete local reset time on its own — "17:05" for a same-day
     /// reset, "Aug 17, 17:05" later in the same year, "Aug 17, 2026, 17:05"
     /// beyond it. Returns nil only when the date cannot be decomposed.
-    static func absoluteTime(
+    public static func absoluteTime(
         for resetAt: Date,
         now: Date,
         calendar: Calendar = .current,
@@ -71,14 +77,16 @@ public enum ResetCountdownFormatter {
               let day = components.day,
               let hour = components.hour,
               let minute = components.minute,
-              shortMonthNames.indices.contains(month - 1) else { return nil }
+              let monthName = shortMonthName(month) else { return nil }
         let time = String(format: "%02d:%02d", hour, minute)
         if calendar.isDate(resetAt, inSameDayAs: now) {
             return time
         } else if calendar.component(.year, from: resetAt) == calendar.component(.year, from: now) {
-            return "\(shortMonthNames[month - 1]) \(day), \(time)"
+            return L10n.Common.dateMonthDayTime(month: monthName, day: day, time: time)
         }
-        return "\(shortMonthNames[month - 1]) \(day), \(year), \(time)"
+        return L10n.Common.dateMonthDayYearTime(
+            month: monthName, day: day, year: String(year), time: time
+        )
     }
 
     /// One bucket's reset line, decided here so every surface treats a window
@@ -103,12 +111,15 @@ public enum ResetCountdownFormatter {
         if now.timeIntervalSince(resetAt) > max(0, graceSeconds) {
             return ResetStatus(
                 isExpired: true,
-                label: absolute.map { "reset passed · \($0)" } ?? "reset passed"
+                label: absolute.map { L10n.Quota.resetPassedAt(time: $0) }
+                    ?? L10n.Quota.resetPassed
             )
         }
         guard let countdown = string(from: resetAt, now: now) else { return nil }
+        // The interpunct join is punctuation, not a sentence: both languages
+        // read it the same way, so only the frame around it is translated.
         let detail = absolute.map { "\(countdown) · \($0)" } ?? countdown
-        return ResetStatus(isExpired: false, label: "resets in \(detail)")
+        return ResetStatus(isExpired: false, label: L10n.Quota.resetIn(duration: detail))
     }
 
     /// Whether a bucket's reset already passed, plus the line to render for it.
@@ -125,19 +136,17 @@ public enum ResetCountdownFormatter {
     /// "Updated 10 seconds ago", "Updated 3 minutes ago", "Updated just now",
     /// "Never updated". Date in the future is treated as "just now".
     public static func updatedAgo(from date: Date?, now: Date = Date()) -> String {
-        guard let date else { return "Never updated" }
+        guard let date else { return L10n.Common.updatedNever }
         let interval = Int(now.timeIntervalSince(date))
-        if interval < 5 { return "Updated just now" }
-        if interval < 60 { return "Updated \(interval) seconds ago" }
+        if interval < 5 { return L10n.Common.updatedJustNow }
+        if interval < 60 { return L10n.Common.updatedSecondsAgo(seconds: interval) }
+        // No `== 1` branch: the catalog carries the plural, so English gets
+        // "1 minute" from its `one` category and Chinese — which has only
+        // `other` — never has to pretend the distinction exists.
         let minutes = interval / 60
-        if minutes < 60 {
-            return minutes == 1 ? "Updated 1 minute ago" : "Updated \(minutes) minutes ago"
-        }
+        if minutes < 60 { return L10n.Common.updatedMinutesAgo(minutes: minutes) }
         let hours = minutes / 60
-        if hours < 24 {
-            return hours == 1 ? "Updated 1 hour ago" : "Updated \(hours) hours ago"
-        }
-        let days = hours / 24
-        return days == 1 ? "Updated 1 day ago" : "Updated \(days) days ago"
+        if hours < 24 { return L10n.Common.updatedHoursAgo(hours: hours) }
+        return L10n.Common.updatedDaysAgo(days: hours / 24)
     }
 }
