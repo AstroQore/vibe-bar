@@ -236,6 +236,48 @@ public enum MiscCookieResolver {
         )
     }
 
+    /// `appendBrowserImport` with the reason attached when it fails.
+    ///
+    /// The Settings row uses this so a declined Keychain prompt reads as a
+    /// cooldown with a Retry-now button rather than as "no cookies found".
+    public static func appendBrowserImportOutcome(
+        for spec: Spec,
+        instanceID: String,
+        now: Date = Date()
+    ) -> BatchImportOutcome.Result {
+        let settings = currentSettings(for: spec.tool, instanceID: instanceID)
+        guard SlotFilter(settings: settings) != .none else { return .cookiesDisabled }
+        guard let imported = importFromBrowsers(
+            spec: spec,
+            settings: settings,
+            allowKeychainPrompt: true
+        ) else {
+            return emptyImportReason(now: now)
+        }
+        let slot = MiscCookieSlot(
+            cookieHeader: imported.header,
+            sourceLabel: imported.sourceLabel,
+            importedAt: Date(),
+            origin: .browserImport
+        )
+        guard MiscCookieSlotStore.upsertBrowserImport(
+            slot,
+            for: spec.tool,
+            instanceID: instanceID
+        ) != nil else { return .saveFailed }
+        return .imported(sourceLabel: imported.sourceLabel)
+    }
+
+    /// Why an import that touched no browser came back empty. A cooldown
+    /// recorded *during* this attempt (the user just clicked "Don't Allow")
+    /// counts the same as one that was already running.
+    private static func emptyImportReason(now: Date) -> BatchImportOutcome.Result {
+        guard let cooldown = BrowserCookieAccessGate.activeCooldowns(now: now).first else {
+            return .noSessionFound
+        }
+        return .keychainCooldown(browser: cooldown.browserName, until: cooldown.until)
+    }
+
     /// Legacy alias for callers that haven't migrated to
     /// `appendBrowserImport`. Slot semantics are identical.
     public static func forceBrowserImport(for spec: Spec) -> Resolution? {
@@ -269,6 +311,13 @@ public enum MiscCookieResolver {
             /// The browsers we were allowed to read had no usable
             /// session for this provider's domains.
             case noSessionFound
+            /// Every Chromium-family browser we would have read is inside
+            /// `BrowserCookieAccessGate`'s denial cooldown, so nothing was
+            /// read. Indistinguishable from `.noSessionFound` at the call
+            /// site — which is exactly why it needs its own case: telling
+            /// the user to sign in again cannot fix a declined Keychain
+            /// prompt.
+            case keychainCooldown(browser: String, until: Date)
             /// The provider's source mode bans cookies entirely, so we
             /// never looked.
             case cookiesDisabled
@@ -331,7 +380,7 @@ public enum MiscCookieResolver {
                 return BatchImportOutcome(
                     tool: target.tool,
                     instanceID: target.instanceID,
-                    result: .noSessionFound
+                    result: emptyImportReason(now: Date())
                 )
             }
             let slot = MiscCookieSlot(

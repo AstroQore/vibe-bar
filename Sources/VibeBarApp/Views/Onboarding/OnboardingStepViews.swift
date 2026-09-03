@@ -330,6 +330,10 @@ struct OnboardingBrowserCookiesStep: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+        Text("This button covers the four plans above. The console-cookie plans on the next step have their own one-click batch import later, under Settings → Browser Cookies.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func providerRow(_ tool: ToolType, importing: Bool, saved: Bool, status: String?) -> some View {
@@ -405,6 +409,9 @@ struct OnboardingAPIKeyProvidersStep: View {
                 .help("Show \(instance.tool.menuTitle) on the Misc page")
                 ToolBrandBadge(tool: instance.tool, iconSize: 17, containerSize: 24)
                     .opacity(visible ? 1 : 0.55)
+                // `menuTitle` alone renders both Volcengine plans as
+                // "Volcengine"; the subtitle beside it is what separates
+                // Coding Plan from Agent Plan.
                 Text(instance.displayTitle(fallback: instance.tool.menuTitle))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(visible ? Color.primary : Color.secondary)

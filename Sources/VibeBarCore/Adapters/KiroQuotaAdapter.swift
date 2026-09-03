@@ -50,9 +50,12 @@ public struct KiroQuotaAdapter: QuotaAdapter {
         } catch KiroResponseParser.KiroError.notLoggedIn {
             throw QuotaError.needsLogin
         } catch KiroResponseParser.KiroError.cliFailed {
-            throw QuotaError.noCredential
+            // "Not configured" is what `.noCredential` renders, and it is
+            // wrong twice over here: the user *did* configure the card, and
+            // the actual problem is a CLI that ran but did not answer.
+            throw QuotaError.parseFailure(Self.cliFailedMessage)
         } catch KiroCLIRunner.Error.cliNotFound {
-            throw QuotaError.noCredential
+            throw QuotaError.parseFailure(Self.cliNotFoundMessage)
         } catch KiroCLIRunner.Error.timeout {
             throw QuotaError.network("Kiro CLI timed out.")
         } catch let error as KiroCLIRunner.Error {
@@ -64,12 +67,12 @@ public struct KiroQuotaAdapter: QuotaAdapter {
             case .notLoggedIn:
                 throw QuotaError.needsLogin
             case .cliFailed:
-                throw QuotaError.noCredential
+                throw QuotaError.parseFailure(Self.cliFailedMessage)
             }
         } catch let error as ProcessRunner.Error {
             switch error {
             case .binaryNotFound:
-                throw QuotaError.noCredential
+                throw QuotaError.parseFailure(Self.cliNotFoundMessage)
             case .timedOut:
                 throw QuotaError.network("Kiro CLI timed out.")
             case .launchFailed(let message):
@@ -81,6 +84,12 @@ public struct KiroQuotaAdapter: QuotaAdapter {
             throw QuotaError.parseFailure("Kiro usage output was not recognized.")
         }
     }
+
+    static let cliNotFoundMessage =
+        "kiro-cli is not installed. Install it from kiro.dev, then run `kiro-cli login`."
+
+    static let cliFailedMessage =
+        "kiro-cli ran but returned no usage. Run `kiro-cli login` in Terminal, then probe again."
 }
 
 enum KiroResponseParser {

@@ -98,8 +98,14 @@ public struct VolcengineQuotaAdapter: QuotaAdapter {
             // No `csrfToken` means the user signed in to volcengine.com
             // at the public-website level but never opened the console
             // — the cookie is set by the first console request after
-            // login.
-            throw QuotaError.needsLogin
+            // login. "Needs re-login" sent people back to a sign-in they
+            // had already done; say what actually creates the cookie.
+            // `.credentialRejected` is still a credential state, so the
+            // silent re-import and cached-quota grace period behave
+            // exactly as they did under `.needsLogin`.
+            throw QuotaError.credentialRejected(
+                "The imported Volcengine cookies have no csrfToken. Open the Ark console once in your browser (console.volcengine.com/ark), then re-import."
+            )
         }
 
         let usageData = try await callBFF(
@@ -215,11 +221,16 @@ enum VolcengineResponseParser {
             throw QuotaError.network("Volcengine: \(message)")
         }
 
+        // An account without a Coding Plan gets a well-formed 200 with an
+        // empty Result / QuotaUsage — the single most common way this card
+        // "fails", and almost always because the user bought the Agent
+        // Plan instead. Name the other card rather than blaming the
+        // response format.
         guard let result = envelope.result else {
-            throw QuotaError.parseFailure("Volcengine usage response had no Result block.")
+            throw QuotaError.parseFailure(Self.noCodingPlanMessage)
         }
         guard let usage = result.quotaUsage, !usage.isEmpty else {
-            throw QuotaError.parseFailure("Volcengine usage response had no QuotaUsage entries.")
+            throw QuotaError.parseFailure(Self.noCodingPlanMessage)
         }
 
         var buckets: [QuotaBucket] = []
@@ -228,10 +239,17 @@ enum VolcengineResponseParser {
             buckets.append(bucket)
         }
         guard !buckets.isEmpty else {
-            throw QuotaError.parseFailure("Volcengine usage response had no recognizable Levels.")
+            throw QuotaError.parseFailure(
+                "Volcengine returned Coding Plan windows Vibe Bar does not recognize (expected session, weekly, monthly)."
+            )
         }
         return UsageSnapshot(buckets: buckets)
     }
+
+    /// Shared by both empty-result paths — the message a user with only an
+    /// Agent Plan subscription sees on the Coding Plan card.
+    static let noCodingPlanMessage =
+        "This Volcengine account has no Coding Plan subscription. If you bought the Agent Plan, set up the Volcengine Agent Plan card instead."
 
     static func parsePlanName(data: Data) throws -> String? {
         guard !data.isEmpty else { return nil }

@@ -48,7 +48,30 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
             throw QuotaError.noCredential
         }
 
-        let url = settings.quotaURL
+        let snapshot: ZaiResponseParser.Snapshot
+        do {
+            snapshot = try await fetchSnapshot(url: settings.quotaURL, apiKey: apiKey)
+        } catch let error as QuotaError where Self.isWrongHostSignal(error) && settings.fallbackQuotaURL != nil {
+            // "Auto (try both)": a Global key on the mainland console (or
+            // the reverse) answers 401/403 or an empty body, which is
+            // indistinguishable from a bad key until we have tried the
+            // other host. Only Auto reaches here — an explicitly chosen
+            // region is honoured exactly as picked.
+            guard let fallback = settings.fallbackQuotaURL else { throw error }
+            snapshot = try await fetchSnapshot(url: fallback, apiKey: apiKey)
+        }
+        return AccountQuota(
+            accountId: account.id,
+            tool: .zai,
+            buckets: snapshot.buckets,
+            plan: snapshot.planName,
+            email: account.email,
+            queriedAt: now(),
+            error: nil
+        )
+    }
+
+    private func fetchSnapshot(url: URL, apiKey: String) async throws -> ZaiResponseParser.Snapshot {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -66,7 +89,9 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                throw QuotaError.needsLogin
+                // Z.ai is an API-key card with no login of its own, so
+                // "Needs re-login" pointed at a control that isn't there.
+                throw QuotaError.credentialRejected(Self.rejectedKeyMessage)
             }
             if http.statusCode == 429 {
                 throw QuotaError.rateLimited
@@ -77,23 +102,40 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
             throw QuotaError.parseFailure("Z.ai returned an empty body — confirm the region (Global vs BigModel CN) and the API key.")
         }
 
-        let snapshot = try ZaiResponseParser.parse(data: data, now: now())
-        return AccountQuota(
-            accountId: account.id,
-            tool: .zai,
-            buckets: snapshot.buckets,
-            plan: snapshot.planName,
-            email: account.email,
-            queriedAt: now(),
-            error: nil
-        )
+        return try ZaiResponseParser.parse(data: data, now: now())
     }
+
+    /// Failures that could equally mean "right key, wrong host". Anything
+    /// else (network down, rate limit, a parseable error body) is reported
+    /// as-is rather than retried against the other region.
+    static func isWrongHostSignal(_ error: QuotaError) -> Bool {
+        switch error {
+        case .credentialRejected, .needsLogin:
+            return true
+        case .parseFailure(let message):
+            return message.contains("empty body")
+        case .noCredential, .network, .rateLimited, .notImplemented, .unknown:
+            return false
+        }
+    }
+
+    static let rejectedKeyMessage =
+        "Z.ai rejected the API key. Check the key and the Region picker — z.ai keys work on api.z.ai, open.bigmodel.cn keys on the China mainland host."
 }
 
 // MARK: - Region / endpoint resolution
 
 struct ZaiSettings {
     let quotaURL: URL
+    /// The other region's endpoint, set only when the user left Region on
+    /// "Auto (try both)". An explicit region, an enterprise host, or either
+    /// env override pins exactly one URL and leaves this nil.
+    var fallbackQuotaURL: URL?
+
+    init(quotaURL: URL, fallbackQuotaURL: URL? = nil) {
+        self.quotaURL = quotaURL
+        self.fallbackQuotaURL = fallbackQuotaURL
+    }
 
     static func resolve(
         environment: [String: String],
@@ -128,7 +170,12 @@ struct ZaiSettings {
             return ZaiSettings(quotaURL: region.quotaURL)
         }
 
-        return ZaiSettings(quotaURL: ZaiRegion.global.quotaURL)
+        // No region stored (fresh card, or "Auto" picked explicitly):
+        // start Global and keep the mainland host as the retry.
+        return ZaiSettings(
+            quotaURL: ZaiRegion.global.quotaURL,
+            fallbackQuotaURL: ZaiRegion.bigmodelCN.quotaURL
+        )
     }
 
     static func quotaURL(fromHost host: String) -> URL? {

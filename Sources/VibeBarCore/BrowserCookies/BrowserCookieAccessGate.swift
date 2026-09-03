@@ -85,6 +85,52 @@ public enum BrowserCookieAccessGate {
         SafeLog.info("Browser cookie access denied for \(browser.displayName); cooldown until \(blockedUntil)")
     }
 
+    /// One browser currently inside its denial cooldown.
+    public struct Cooldown: Equatable, Sendable {
+        /// Human-readable browser name, e.g. "Google Chrome".
+        public let browserName: String
+        public let until: Date
+
+        public init(browserName: String, until: Date) {
+            self.browserName = browserName
+            self.until = until
+        }
+    }
+
+    /// When `browser` may be asked for cookies again, or `nil` if it is
+    /// not in a cooldown right now.
+    public static func blockedUntil(_ browser: Browser, now: Date = Date()) -> Date? {
+        lock.withLock { state in
+            loadIfNeeded(&state)
+            guard let blockedUntil = state.deniedUntilByBrowser[browser.rawValue],
+                  blockedUntil > now else { return nil }
+            return blockedUntil
+        }
+    }
+
+    /// Every browser currently suppressed, soonest expiry first.
+    ///
+    /// The import UI needs this because a cooldown looks exactly like "no
+    /// session found" from the outside: the gate short-circuits before
+    /// touching Keychain, so the importer honestly finds nothing and used
+    /// to tell the user to go sign in again — advice that could not
+    /// possibly help.
+    public static func activeCooldowns(now: Date = Date()) -> [Cooldown] {
+        let raw: [String: Date] = lock.withLock { state in
+            loadIfNeeded(&state)
+            return state.deniedUntilByBrowser
+        }
+        return raw
+            .filter { $0.value > now }
+            .map { key, value in
+                Cooldown(
+                    browserName: Browser(rawValue: key)?.displayName ?? key,
+                    until: value
+                )
+            }
+            .sorted { $0.until < $1.until }
+    }
+
     /// Wipe persisted denials. Exposed for the Settings panel "Reset
     /// browser-cookie cooldown" button as well as the test suite.
     public static func reset() {

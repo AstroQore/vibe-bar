@@ -66,7 +66,8 @@ private struct MiscProviderCard: View {
                 quota: environment.quota(for: instance),
                 liveError: quotaService.lastErrorByAccount[accountID],
                 lastUpdated: quotaService.lastUpdatedByAccount[accountID],
-                isCompact: false
+                isCompact: false,
+                instanceID: instance.id
             )
         }
     }
@@ -290,7 +291,8 @@ private struct MiscProviderInstanceStatusRow: View {
                 quota: environment.quota(for: instance),
                 liveError: quotaService.lastErrorByAccount[accountID],
                 lastUpdated: quotaService.lastUpdatedByAccount[accountID],
-                isCompact: true
+                isCompact: true,
+                instanceID: instance.id
             )
         }
         .padding(.leading, 6)
@@ -318,6 +320,10 @@ private struct MiscQuotaBody: View {
     let liveError: QuotaError?
     let lastUpdated: Date?
     let isCompact: Bool
+    /// The instance whose Settings row the buttons should open. Nil on the
+    /// grouped card, whose body is an average over several copies and so
+    /// belongs to no single row.
+    var instanceID: String?
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -422,13 +428,23 @@ private struct MiscQuotaBody: View {
         }
     }
 
+    /// Open Settings on this provider's own row rather than dumping the
+    /// user on whatever page Settings happened to show last.
+    private func openSettings() {
+        if let instanceID {
+            environment.showSettings(.miscProvider(instanceID))
+        } else {
+            environment.showSettingsWindow()
+        }
+    }
+
     private var setupState: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Not configured.")
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             Button {
-                environment.showSettingsWindow()
+                openSettings()
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "gearshape")
@@ -453,7 +469,7 @@ private struct MiscQuotaBody: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Button {
-                environment.showSettingsWindow()
+                openSettings()
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "gearshape")
