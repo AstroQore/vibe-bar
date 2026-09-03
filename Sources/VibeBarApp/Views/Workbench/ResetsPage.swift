@@ -49,6 +49,10 @@ struct ResetsPage: View {
                         laneHeight: 96
                     )
                 }
+                // Draws its own card, so it is inserted bare rather than
+                // wrapped in `box` — a second surface under a card is the one
+                // thing `docs/DESIGN.md` forbids outright.
+                ResetHistoryCompareCard(density: density)
                 cycleGrid(cycles, now: now)
                 HStack(alignment: .top, spacing: 14) {
                     box {
