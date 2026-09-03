@@ -161,6 +161,10 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     public var customLabels: [String: String]
     /// Per-field display style; a missing entry is `.labelAndPercent`.
     public var fieldStyles: [String: MenuBarFieldStyle]
+    /// Draw adjacent selected fields that share one quota group as a single
+    /// entry — `Claude 5%/100%` instead of `5 Hours 5% · Weekly 100%`.
+    /// Opt-in: the un-merged list is what every existing bar already shows.
+    public var mergesGroupWindows: Bool
 
     public var id: MenuBarItemKind { kind }
 
@@ -171,7 +175,8 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         layout: MenuBarLayout = .singleLine,
         selectedFieldIds: [String],
         customLabels: [String: String] = [:],
-        fieldStyles: [String: MenuBarFieldStyle] = [:]
+        fieldStyles: [String: MenuBarFieldStyle] = [:],
+        mergesGroupWindows: Bool = false
     ) {
         self.kind = kind
         self.isVisible = isVisible
@@ -180,6 +185,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         self.selectedFieldIds = selectedFieldIds
         self.customLabels = customLabels
         self.fieldStyles = fieldStyles
+        self.mergesGroupWindows = mergesGroupWindows
     }
 
     public func style(for fieldId: String) -> MenuBarFieldStyle {
@@ -194,6 +200,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         case selectedFieldIds
         case customLabels
         case fieldStyles
+        case mergesGroupWindows
     }
 
     public init(from decoder: Decoder) throws {
@@ -209,6 +216,9 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         // default instead of discarding the settings blob.
         let rawStyles = try c.decodeIfPresent([String: String].self, forKey: .fieldStyles) ?? [:]
         self.fieldStyles = rawStyles.compactMapValues(MenuBarFieldStyle.init(rawValue:))
+        // Absent in every settings file written before group merging existed;
+        // off is the layout those bars were arranged against.
+        self.mergesGroupWindows = try c.decodeIfPresent(Bool.self, forKey: .mergesGroupWindows) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -220,6 +230,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         try c.encode(selectedFieldIds, forKey: .selectedFieldIds)
         try c.encode(customLabels, forKey: .customLabels)
         try c.encode(fieldStyles, forKey: .fieldStyles)
+        try c.encode(mergesGroupWindows, forKey: .mergesGroupWindows)
     }
 }
 

@@ -1385,19 +1385,25 @@ but add for parity so the labels look hand-tuned):**
 
 3. `Sources/VibeBarApp/Views/MiniWindowGroupLabelCatalog.swift` —
    add `.init(id: "claude.<x>", title: "CLAUDE · <X>", defaultLabel: "<X>")`.
-4. `Sources/VibeBarApp/Views/MiniQuotaWindowView.swift` — four switches:
-   `isBranchField`, `MiniBranchCell.defaultTitle` (use `"wk"`),
-   `.groupKey` (→ `"claude.<x>"`), `.defaultGroupTitle` (→ `"<X>"`).
-5. `Sources/VibeBarApp/MiniQuotaWindowController.swift` —
+4. `Sources/VibeBarCore/Models/MenuBarQuotaGrouping.swift` — two
+   switches: `isBranchStyleField` (add the bucket id) and
+   `quotaGroupKey` (→ `"claude.<x>"`). These decide grouping for the mini
+   window, the Settings naming tree, *and* the menu bar's group merge, so
+   they live in Core; `Scripts/generate_quota_naming_contract.py` scrapes
+   both, so rerun it and commit `docs/contracts/quota-naming-v1.json`.
+5. `Sources/VibeBarApp/Views/MiniQuotaWindowView.swift` — two switches:
+   `MiniBranchCell.defaultTitle` (use `"wk"`) and `.defaultGroupTitle`
+   (→ `"<X>"`).
+6. `Sources/VibeBarApp/MiniQuotaWindowController.swift` —
    `miniBranchGroupKey` (→ `"claude.<x>"`), keeps AppKit panel sizing in
    sync with the SwiftUI layout.
 
 **Nice to have:**
 
-6. `Sources/VibeBarCore/Services/MockDataProvider.swift` — add a sample
+7. `Sources/VibeBarCore/Services/MockDataProvider.swift` — add a sample
    `weekly_<x>` bucket to the `.claude` branch so mock mode is
    representative.
-7. `Tests/VibeBarCoreTests/ClaudeParserTests.swift` — extend
+8. `Tests/VibeBarCoreTests/ClaudeParserTests.swift` — extend
    `testEachModelGetsItsOwnGroup` (present) and
    `testWebUsageBucketsIncludeDesignWhenPresent` (null) fixtures.
 

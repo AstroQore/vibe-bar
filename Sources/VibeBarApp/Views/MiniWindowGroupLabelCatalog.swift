@@ -37,61 +37,16 @@ enum MiniWindowGroupLabelCatalog {
 
     /// The L3 group a field belongs to on the quota axis, or nil for a bucket
     /// that sits directly under its SubProvider (Grok Bot's single Weekly).
-    /// Shared by the settings tree and every mini layout, so a bucket is
-    /// grouped identically wherever it appears.
+    /// Shared by the settings tree, every mini layout, and the menu bar's
+    /// group merge, so a bucket is grouped identically wherever it appears —
+    /// the rules themselves live in `VibeBarCore` because the menu bar's merge
+    /// has to be testable without AppKit.
     static func namingGroupKey(for option: MenuBarFieldOption) -> String? {
-        if option.tool == .cursor {
-            if option.bucketId == "grok_bot_weekly" { return nil }
-            return groupKey(tool: .cursor, bucketId: option.bucketId)
-        }
-        if MiniQuotaWindowView.isBranchStyleField(option) {
-            return groupKey(tool: option.tool, bucketId: option.bucketId)
-        }
-        switch option.tool {
-        case .codex: return "codex.all-models"
-        case .claude: return "claude.all-models"
-        case .gemini: return "gemini.all-models"
-        case .grok: return "grok.all-models"
-        default: return nil
-        }
+        MenuBarFieldCatalog.namingGroupKey(for: option)
     }
 
     static func groupKey(tool: ToolType, bucketId: String) -> String {
-        switch bucketId {
-        case "gpt_5_3_codex_spark_five_hour", "gpt_5_3_codex_spark_weekly": return "codex.spark"
-        case "weekly_sonnet": return "claude.sonnet"
-        case "weekly_design": return "claude.design"
-        case "daily_routines": return "claude.routine"
-        case "weekly_opus": return "claude.opus"
-        case "weekly_fable": return "claude.fable"
-        case "weekly_oauth_apps": return "claude.oauth"
-        case "models" where tool == .cursor: return "cursor.models"
-        case "other_models" where tool == .cursor: return "cursor.other-models"
-        default: break
-        }
-        let id = bucketId.lowercased()
-        if tool == .gemini {
-            if id.contains("flash-lite") { return "gemini.flash-lite" }
-            if id.contains("flash") { return "gemini.flash" }
-            if id.contains("pro") { return "gemini.pro" }
-        }
-        if tool == .antigravity {
-            if ["gemini_five_hour", "gemini_weekly"].contains(id) {
-                return "antigravity.gemini-models"
-            }
-            if ["claude_gpt_five_hour", "claude_gpt_weekly"].contains(id) {
-                return "antigravity.claude-gpt-models"
-            }
-            if id.contains("gpt-oss") { return "antigravity.gpt-oss" }
-            if id.contains("claude") { return "antigravity.claude" }
-            if id.contains("flash-lite") { return "antigravity.gemini-flash-lite" }
-            if id.contains("flash") { return "antigravity.gemini-flash" }
-            if id.contains("pro") { return "antigravity.gemini-pro" }
-        }
-        // Discovered buckets: both windows of one runtime quota group
-        // ("gpt_reserve_five_hour" / "gpt_reserve_weekly") share one label
-        // key, so the group renders — and is renamed — as one unit.
-        return "\(tool.rawValue).\(MenuBarFieldCatalog.bucketGroupStem(bucketId))"
+        MenuBarFieldCatalog.quotaGroupKey(tool: tool, bucketId: bucketId)
     }
 
     static func subProviderKey(tool: ToolType, name: String) -> String {

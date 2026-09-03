@@ -797,6 +797,10 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
+            Toggle("Combine a group's windows", isOn: menuItemMergeGroupWindowsBinding(kind))
+            Text("Shows 5 Hours and Weekly as 5%/100% instead of two entries.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             Picker("Display density", selection: popoverDensityBinding()) {
                 ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
             }
@@ -962,6 +966,20 @@ struct SettingsView: View {
             set: { value in
                 var item = settingsStore.settings.menuBarItem(kind)
                 item.layout = value
+                settingsStore.settings.setMenuBarItem(item)
+            }
+        )
+    }
+
+    /// Opt-in group merging. Written only from this toggle — the renderer
+    /// never touches it, so the menu bar's 120 ms redraw can't fan a settings
+    /// write out to every subscriber.
+    private func menuItemMergeGroupWindowsBinding(_ kind: MenuBarItemKind) -> Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.menuBarItem(kind).mergesGroupWindows },
+            set: { value in
+                var item = settingsStore.settings.menuBarItem(kind)
+                item.mergesGroupWindows = value
                 settingsStore.settings.setMenuBarItem(item)
             }
         )

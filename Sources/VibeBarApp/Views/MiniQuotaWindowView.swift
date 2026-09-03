@@ -188,38 +188,11 @@ struct MiniQuotaWindowView: View {
         Self.isBranchStyleField(field)
     }
 
-    /// Static classification shared with the Settings naming tree, which
-    /// needs the same grouped/flat answer without a live bucket in hand.
+    /// Static classification shared with the Settings naming tree and the menu
+    /// bar's group merge, which need the same grouped/flat answer without a
+    /// live bucket in hand. The rules live in `VibeBarCore`.
     static func isBranchStyleField(_ field: MenuBarFieldOption) -> Bool {
-        // Antigravity rows are branch-style because its four quota
-        // lanes are split across the Gemini and Claude/GPT groups.
-        // Gemini USED to be in this carve-out too — that
-        // was a leftover from the per-model CLI adapter. After
-        // PR #57 the Gemini Web parser emits two flat primary
-        // buckets (`five_hour` / `weekly`) with `groupTitle == nil`,
-        // so they need to flow through the primary cell path or
-        // they never reach the mini window at all.
-        if field.tool == .antigravity {
-            return true
-        }
-        // A discovered field is branch-style exactly when its bucket carried
-        // an L3 group title when it was recorded.
-        if field.isDynamic {
-            return field.dynamicGroupTitle != nil
-        }
-        switch field.bucketId {
-        case "gpt_5_3_codex_spark_five_hour",
-             "gpt_5_3_codex_spark_weekly",
-             "weekly_sonnet",
-             "weekly_design",
-             "daily_routines",
-             "weekly_opus",
-             "weekly_fable",
-             "weekly_oauth_apps":
-            return true
-        default:
-            return false
-        }
+        MenuBarFieldCatalog.isBranchStyleField(field)
     }
 
     /// Branch cells in the config's own field order — the user's arrangement,
