@@ -1310,6 +1310,15 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   therefore needs an entry in `PageLayoutDefaultsMigration` — matched on the old
   default's exact signature, recorded once in `AppSettings.appliedLayoutMigrations`,
   and never applied to a layout that has been arranged.
+
+  Two shapes of entry, and the choice is not free. A provider page can be
+  matched *whole* — every card in both columns, no segmentation, the default
+  width split — so its migration moves cards only when nothing on the page has
+  been touched. The Overview cannot: its columns are planner-computed from
+  measured card heights, and the layout editor keeps a hand-dragged arrangement
+  in every mode, so no property of a saved Overview proves nobody arranged it.
+  Do not clear an Overview's segmentation to make a new default derive; move the
+  named cards out of the one named band instead, which needs no such proof.
 - **Dense status history is one drawing surface, not hundreds of views.** Use
   `Canvas` (or an equivalent batched renderer) for uptime strips and avoid one
   Swift Charts instance per quota. These detail pages can display many status

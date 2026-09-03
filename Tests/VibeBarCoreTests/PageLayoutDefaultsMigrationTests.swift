@@ -276,6 +276,112 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         ]
     }
 
+    // MARK: - The Overview's quota band
+
+    private func storedOverview(
+        quotaBand: [PageLayoutModuleID],
+        costBand: [PageLayoutModuleID]
+    ) -> StoredPageLayout {
+        StoredPageLayout(
+            mode: .compact,
+            ratio: .equal,
+            columns: [summaryIDs, []],
+            segments: [summaryIDs, quotaBand, costBand]
+        )
+    }
+
+    private let providerQuotaIDs = [
+        PageLayoutModuleID(rawValue: "overview-quota:codex"),
+        PageLayoutModuleID(rawValue: "overview-quota:claude")
+    ]
+    private let usageMix = PageLayoutModuleID(rawValue: "overview-usage-mix")
+    private let upcomingResets = PageLayoutModuleID(rawValue: "overview-upcoming-resets")
+    private let comparison = PageLayoutModuleID(rawValue: "overview-reset-history-compare")
+
+    func testTheCardsThisReleaseRehomedLeaveAStoredQuotaBand() {
+        // What 1.6.1 pinned there: the provider cards plus everything the
+        // quota phase used to also hold.
+        let layout = storedOverview(
+            quotaBand: [providerQuotaIDs[0], upcomingResets, providerQuotaIDs[1],
+                        comparison, usageMix, .quotaHistoryAll],
+            costBand: [.costAll, .cost(tool: .codex)]
+        )
+        let moved = PageLayoutDefaultsMigration
+            .migratedOverviewQuotaBand([overview: layout])[overview]
+        XCTAssertEqual(
+            moved?.segments[1], providerQuotaIDs,
+            "the quota band keeps only the provider cards, in the order they were in"
+        )
+        XCTAssertEqual(
+            moved?.segments[2],
+            [.costAll, .cost(tool: .codex), upcomingResets, comparison, usageMix,
+             .quotaHistoryAll],
+            "the re-homed cards join the cost band, keeping their relative order"
+        )
+        XCTAssertEqual(moved?.columns, layout.columns, "columns are not touched")
+        XCTAssertEqual(moved?.mode, layout.mode)
+        XCTAssertEqual(moved?.ratio, layout.ratio)
+    }
+
+    func testAQuotaBandThatIsAlreadyJustProviderCardsIsLeftAlone() {
+        let layout = storedOverview(
+            quotaBand: providerQuotaIDs,
+            costBand: [.costAll, usageMix]
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewQuotaBand([overview: layout])[overview],
+            layout
+        )
+    }
+
+    func testARehomedCardOutsideTheQuotaBandIsLeftWhereItIs() {
+        // Usage Mix sitting in the cost band is where it belongs; one in a
+        // band of its own is somebody's arrangement. Neither is this
+        // migration's business.
+        let layout = StoredPageLayout(
+            mode: .manual,
+            ratio: .equal,
+            columns: [summaryIDs, []],
+            segments: [summaryIDs, providerQuotaIDs, [usageMix], [.costAll]]
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewQuotaBand([overview: layout])[overview],
+            layout
+        )
+    }
+
+    func testASingleBandOverviewIsLeftAlone() {
+        let layout = StoredPageLayout(
+            mode: .compact,
+            ratio: .equal,
+            columns: [summaryIDs, []],
+            segments: [providerQuotaIDs + [usageMix]]
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewQuotaBand([overview: layout])[overview],
+            layout
+        )
+    }
+
+    func testWithoutACostBandTheCardsGoToTheLastBand() {
+        let layout = storedOverview(
+            quotaBand: providerQuotaIDs + [usageMix],
+            costBand: [PageLayoutModuleID(rawValue: "heatmap-year:all")]
+        )
+        let moved = PageLayoutDefaultsMigration
+            .migratedOverviewQuotaBand([overview: layout])[overview]
+        XCTAssertEqual(moved?.segments[1], providerQuotaIDs)
+        XCTAssertEqual(moved?.segments[2].last, usageMix)
+    }
+
+    func testAProviderPageIsNeverTouchedByTheQuotaBandMigration() {
+        let layout = previousDefault()
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewQuotaBand([page: layout])[page],
+            layout
+        )
+    }
+
     /// The decision this file records by *not* having an Overview entry.
     ///
     /// A stored segmentation cannot prove the page is untouched — the layout
@@ -287,7 +393,7 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
             mode: .compact,
             ratio: .equal,
             columns: [summaryIDs, []],
-            segments: previousOverviewSegments()
+            segments: [summaryIDs, providerQuotaIDs, [.costAll]]
         )
         let result = PageLayoutDefaultsMigration.migrate(
             layouts: [overview: layout],
@@ -295,7 +401,7 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         )
         XCTAssertEqual(
             result.layouts[overview], layout,
-            "the Overview's saved arrangement is the user's, including its bands"
+            "an Overview whose bands hold nothing this release re-homed is the user's"
         )
     }
 
@@ -336,7 +442,10 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         let result = PageLayoutDefaultsMigration.migrate(layouts: [:], applied: [])
         XCTAssertEqual(
             result.applied,
-            [PageLayoutDefaultsMigration.providerRightColumnIdentifier]
+            [
+                PageLayoutDefaultsMigration.providerRightColumnIdentifier,
+                PageLayoutDefaultsMigration.overviewQuotaBandIdentifier
+            ]
         )
         XCTAssertTrue(result.layouts.isEmpty)
     }
