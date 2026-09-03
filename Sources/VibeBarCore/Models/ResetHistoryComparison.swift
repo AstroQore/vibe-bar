@@ -162,8 +162,15 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     /// last completed column, so reading straight down a column compares
     /// like with like.
     public struct ColumnPlan: Equatable, Sendable {
-        /// Hard ceiling for `all`, so a year of weeklies stays drawable at the
-        /// widths this module actually gets.
+        /// Hard ceiling on the number of *drawn* columns, so a year of weeklies
+        /// stays legible at the widths this module actually gets.
+        ///
+        /// A drawing budget only. Every statistic — the totals, each lane's
+        /// average and wasteful-cycle count, the verdict — is computed over
+        /// every cycle the window covers, because the picker says "All" and
+        /// a headline that quietly meant "the newest 52" would be a lie.
+        /// `ResetHistoryComparison.truncationNote` says so on screen when the
+        /// two numbers differ.
         public static let maximumColumns = 52
 
         public let completedColumnCount: Int
@@ -273,7 +280,9 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// The lane's own window length, in seconds. Always at least
         /// `minimumWindowSeconds`.
         public let windowSeconds: Int
-        /// Completed cycles inside the visible span, oldest first.
+        /// Completed cycles the grid draws, oldest first. Capped at
+        /// `ColumnPlan.maximumColumns`; `windowCycleCount` is how many the
+        /// window actually covers.
         public let cycles: [Cycle]
         /// The cycle running right now, if one is known.
         public let currentCycle: Cycle?
@@ -283,9 +292,19 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// How many cycles that average actually covers — the copy says so
         /// rather than promising "last 4" it does not have.
         public let averagedCycleCount: Int
-        /// Completed cycles in the span that refilled with more than half
-        /// unused.
+        /// Completed cycles in the window that refilled with more than half
+        /// unused. Counted over every cycle the window covers, not only the
+        /// drawn ones.
         public let wastefulCycleCount: Int
+
+        /// Completed cycles the window covers, before the drawing cap. Equal
+        /// to `cycles.count` unless the lane has more history than the grid
+        /// has columns.
+        public let windowCycleCount: Int
+
+        /// True when the grid is showing fewer cycles than the statistics
+        /// were computed from.
+        public var isTruncated: Bool { windowCycleCount > cycles.count }
 
         /// Full quota-axis name: company · SubProvider · group · bucket.
         public var label: String {
@@ -368,6 +387,17 @@ public struct ResetHistoryComparison: Equatable, Sendable {
 
     public var isEmpty: Bool { lanes.isEmpty }
 
+    /// What to say when the grid shows fewer cycles than the numbers describe.
+    ///
+    /// `All` on a three-year retention can reach past the column ceiling. The
+    /// statistics still cover everything — only the drawing is capped — and
+    /// this is the sentence that keeps the two honest with each other.
+    public var truncationNote: String? {
+        guard lanes.contains(where: \.isTruncated) else { return nil }
+        let deepest = lanes.map(\.windowCycleCount).max() ?? 0
+        return "showing the newest \(columns.completedColumnCount) of \(deepest) cycles"
+    }
+
     /// Whole-module screen-reader text. The lanes are a drawing surface, so
     /// this is the only thing VoiceOver gets to read.
     public var accessibilitySummary: String {
@@ -381,7 +411,10 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             return "\(lane.label): \(Lane.percentText(wasted))% wasted on average over \(lane.averagedCycleCount) cycles"
         }.joined(separator: ". ")
         let more = lanes.count > 8 ? " And \(lanes.count - 8) more quotas." : ""
-        return "Reset history comparison, \(window.spokenTitle), bar height is the quota remaining at reset. \(totals.headline). \(verdict) \(laneText).\(more)"
+        // The note comes before the numbers on purpose: it is the caveat on
+        // them, not a footnote to the lane list.
+        let truncation = truncationNote.map { " Grid \($0); the figures cover every one." } ?? ""
+        return "Reset history comparison, \(window.spokenTitle), bar height is the quota remaining at reset.\(truncation) \(totals.headline). \(verdict) \(laneText).\(more)"
     }
 
     // MARK: - Building
@@ -400,12 +433,19 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             return (input, seconds)
         }
 
-        // 2. One lane per qualifying quota, keeping only the newest `limit`
-        //    completed cycles. The cut is per lane and counted in cycles, so
-        //    every row contributes the same number of columns' worth of
-        //    history however far apart its own refills fall.
-        let limit = min(window.cycleLimit ?? ColumnPlan.maximumColumns, ColumnPlan.maximumColumns)
+        // 2. One lane per qualifying quota.
+        //
+        //    Two limits, deliberately different. `retained` is what the window
+        //    means — the newest N cycles, or every recorded one for `all` — and
+        //    every statistic is computed from it. `drawable` is what the grid
+        //    has columns for. Capping the statistics at the drawing budget
+        //    would make "All" quietly mean "the newest 52" in the headline, the
+        //    verdict and the wasteful-cycle counts.
+        let statisticsLimit = window.cycleLimit ?? Int.max
+        let drawLimit = min(statisticsLimit, ColumnPlan.maximumColumns)
         var lanes: [Lane] = []
+        var totalCycleCount = 0
+        var totalUsedSum: Double = 0
         for (input, windowSeconds) in qualifying {
             var completed: [Cycle] = []
             var open: Cycle?
@@ -434,7 +474,10 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                 }
             }
             completed.sort { $0.end < $1.end }
-            completed = Array(completed.suffix(limit))
+            let retained = Array(completed.suffix(statisticsLimit))
+            let drawable = Array(retained.suffix(drawLimit))
+            totalCycleCount += retained.count
+            totalUsedSum += retained.reduce(0) { $0 + $1.usedPercent }
 
             // The live quota is the fallback for the in-progress cycle: a lane
             // whose history holds only closed samples still has one running.
@@ -452,7 +495,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                 )
             }
 
-            let averaged = Array(completed.suffix(averageCycleCount))
+            let averaged = Array(retained.suffix(averageCycleCount))
             let average = averaged.isEmpty
                 ? nil
                 : averaged.reduce(0) { $0 + $1.wastedPercent } / Double(averaged.count)
@@ -467,11 +510,12 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     bucketTitle: input.bucketTitle,
                     accountLabel: input.accountLabel,
                     windowSeconds: windowSeconds,
-                    cycles: completed,
+                    cycles: drawable,
                     currentCycle: open,
                     averageWastedPercent: average,
                     averagedCycleCount: averaged.count,
-                    wastefulCycleCount: completed.count { $0.wastedPercent > wastefulCyclePercent }
+                    wastefulCycleCount: retained.count { $0.wastedPercent > wastefulCyclePercent },
+                    windowCycleCount: retained.count
                 )
             )
         }
@@ -483,13 +527,11 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             hasCurrentColumn: ordered.contains { $0.currentCycle != nil }
         )
 
-        // 4. Header arithmetic and the sentence under it.
-        let allCycles = ordered.flatMap(\.cycles)
+        // 4. Header arithmetic and the sentence under it, over every cycle the
+        //    window covers — not only the ones that fit on the grid.
         let totals = Totals(
-            cycleCount: allCycles.count,
-            usedPercent: allCycles.isEmpty
-                ? 0
-                : allCycles.reduce(0) { $0 + $1.usedPercent } / Double(allCycles.count)
+            cycleCount: totalCycleCount,
+            usedPercent: totalCycleCount == 0 ? 0 : totalUsedSum / Double(totalCycleCount)
         )
 
         return ResetHistoryComparison(

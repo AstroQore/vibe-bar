@@ -957,6 +957,21 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         let y = layout.rowsHeight + 1
         let width = layout.columnWidth(in: size)
         guard width > 0 else { return }
+        // The label column is free on the axis row, which is where the caveat
+        // belongs: the grid is capped, the numbers above it are not.
+        if let note = comparison.truncationNote {
+            context.draw(
+                truncated(
+                    context,
+                    note,
+                    font: .system(size: max(7, layout.captionFontSize - 1), design: .rounded),
+                    color: Color.primary.opacity(0.4),
+                    maxWidth: layout.labelWidth - layout.labelGap
+                ),
+                at: CGPoint(x: 0, y: y),
+                anchor: .topLeading
+            )
+        }
         let total = comparison.columns.totalColumnCount
         // Label the ends and the live column, plus interior ordinals only
         // while they still have room to be read.

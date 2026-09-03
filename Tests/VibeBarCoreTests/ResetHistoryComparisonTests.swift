@@ -148,16 +148,82 @@ final class ResetHistoryComparisonTests: XCTestCase {
         XCTAssertEqual(result.lanes[0].cycles.count, 2)
     }
 
-    func testEveryWindowIsBoundedByTheColumnCeiling() {
+    func testTheColumnCeilingCapsTheGridAndNotTheArithmetic() {
+        // "All" has to keep meaning all. The grid is capped so the bars stay
+        // legible, but the headline, the per-lane counts and the verdict are
+        // computed over every retained cycle — a total that quietly meant "the
+        // newest 52" under a picker that says All would simply be wrong.
+        let ceiling = ResetHistoryComparison.ColumnPlan.maximumColumns
+        let extra = 20
         var samples: [SubscriptionWindowSample] = []
-        for index in 0..<(ResetHistoryComparison.ColumnPlan.maximumColumns + 20) {
+        // The oldest `extra` cycles are the wasteful ones, so they can only
+        // reach the statistics by being counted past the drawing cap.
+        for index in 0..<(ceiling + extra) {
+            let isOldest = index >= ceiling
+            samples.append(
+                sample(
+                    bucketId: "weekly",
+                    endingDaysAgo: Double(7 * (index + 1)),
+                    used: isOldest ? 0 : 100
+                )
+            )
+        }
+        let result = ResetHistoryComparison.build(inputs: [lane(samples: samples)], window: .all, now: now)
+
+        // Drawing: capped.
+        XCTAssertEqual(result.columns.completedColumnCount, ceiling)
+        XCTAssertEqual(result.lanes[0].cycles.count, ceiling)
+
+        // Arithmetic: everything.
+        XCTAssertEqual(result.lanes[0].windowCycleCount, ceiling + extra)
+        XCTAssertTrue(result.lanes[0].isTruncated)
+        XCTAssertEqual(result.totals.cycleCount, ceiling + extra)
+        XCTAssertEqual(result.lanes[0].wastefulCycleCount, extra)
+        XCTAssertEqual(
+            result.totals.usedPercent,
+            100 * Double(ceiling) / Double(ceiling + extra),
+            accuracy: 0.001
+        )
+    }
+
+    func testATruncatedGridSaysSoOnScreenAndToAScreenReader() {
+        let ceiling = ResetHistoryComparison.ColumnPlan.maximumColumns
+        var samples: [SubscriptionWindowSample] = []
+        for index in 0..<(ceiling + 8) {
             samples.append(sample(bucketId: "weekly", endingDaysAgo: Double(7 * (index + 1)), used: 50))
         }
         let result = ResetHistoryComparison.build(inputs: [lane(samples: samples)], window: .all, now: now)
         XCTAssertEqual(
-            result.columns.completedColumnCount,
-            ResetHistoryComparison.ColumnPlan.maximumColumns
+            result.truncationNote,
+            "showing the newest \(ceiling) of \(ceiling + 8) cycles"
         )
+        XCTAssertTrue(result.accessibilitySummary.contains("showing the newest \(ceiling)"))
+        XCTAssertTrue(result.accessibilitySummary.contains("the figures cover every one"))
+    }
+
+    func testAGridThatFitsSaysNothingAboutTruncation() {
+        let result = ResetHistoryComparison.build(
+            inputs: [lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)])],
+            window: .all,
+            now: now
+        )
+        XCTAssertNil(result.truncationNote)
+        XCTAssertFalse(result.lanes[0].isTruncated)
+        XCTAssertEqual(result.lanes[0].windowCycleCount, 1)
+    }
+
+    func testABoundedWindowIsNeverTruncatedByTheCeiling() {
+        // The ceiling only ever bites on `all`; "last 8" is already inside it,
+        // so its statistics and its grid are the same eight cycles.
+        var samples: [SubscriptionWindowSample] = []
+        for index in 0..<30 {
+            samples.append(sample(bucketId: "weekly", endingDaysAgo: Double(7 * (index + 1)), used: 50))
+        }
+        let result = ResetHistoryComparison.build(inputs: [lane(samples: samples)], window: .eight, now: now)
+        XCTAssertEqual(result.lanes[0].cycles.count, 8)
+        XCTAssertEqual(result.lanes[0].windowCycleCount, 8)
+        XCTAssertEqual(result.totals.cycleCount, 8)
+        XCTAssertNil(result.truncationNote)
     }
 
     // MARK: - Ordinal alignment

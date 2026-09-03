@@ -52,21 +52,48 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
     }
 
     func testTheRestOfTheSavedIntentSurvivesTheMove() {
-        var before = previousDefault()
-        before = StoredPageLayout(
+        // Mode and hidden cards ride through: switching a page to Compact does
+        // not move a card, and hiding one says where nothing should go rather
+        // than where anything sits.
+        let before = StoredPageLayout(
             mode: .compact,
             ratio: .narrowWide,
-            columns: before.columns,
-            segments: [[.cost(tool: .grok)]],
+            columns: previousDefault().columns,
             hidden: [PageLayoutModuleID(rawValue: "heatmap-year:grok")]
         )
         let after = try? XCTUnwrap(
             PageLayoutDefaultsMigration.migratedProviderRightColumn([page: before])[page]
         )
+        XCTAssertEqual(after?.columns[0].last, PageLayoutModuleID(rawValue: "quota-group:grok:weekly"))
+        XCTAssertEqual(after?.columns[1].last, .status)
         XCTAssertEqual(after?.mode, .compact)
         XCTAssertEqual(after?.ratio, .narrowWide)
-        XCTAssertEqual(after?.segments, [[.cost(tool: .grok)]])
         XCTAssertEqual(after?.hidden, [PageLayoutModuleID(rawValue: "heatmap-year:grok")])
+    }
+
+    func testAPageCombiningTwoSubProvidersQuotaGroupsStillMatches() {
+        // The Google AI page's left column carries AntiGravity's groups beside
+        // Gemini Web's, so the check cannot pin the quota groups to the page's
+        // own tool.
+        let gemini = PageLayoutPageID.detail(.gemini)
+        let layout = StoredPageLayout(
+            mode: .manual,
+            ratio: .narrowWide,
+            columns: [
+                [
+                    PageLayoutModuleID(rawValue: "quota-group:gemini:weekly"),
+                    PageLayoutModuleID(rawValue: "quota-group:antigravity:gemini_weekly"),
+                    .status
+                ],
+                [PageLayoutModuleID(rawValue: "reset-history-compare:gemini")]
+                    + PageLayoutDefaultsMigration.previousCostTail(.gemini)
+            ]
+        )
+        let after = try? XCTUnwrap(
+            PageLayoutDefaultsMigration.migratedProviderRightColumn([gemini: layout])[gemini]
+        )
+        XCTAssertEqual(after?.columns[0].count, 2)
+        XCTAssertEqual(after?.columns[1].last, .status)
     }
 
     func testAPageWithNoModelRankingPutsTheTableAtTheEnd() {
@@ -109,6 +136,77 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         XCTAssertEqual(
             PageLayoutDefaultsMigration.migratedProviderRightColumn([page: arranged])[page],
             arranged
+        )
+    }
+
+    func testAnUnrelatedCardReorderedIsEnoughToLeaveThePageAlone() {
+        // Both endpoints are still where 1.6.1 put them — status last on the
+        // left, the table first on the right — but the analytics between them
+        // were rearranged. Two endpoints prove nothing about the cards in
+        // between, which is why the whole arrangement is checked.
+        var columns = previousDefault().columns
+        columns[1] = [
+            resetHistory,
+            .cost(tool: .grok),
+            PageLayoutModuleID(rawValue: "cost-history:grok"),
+            PageLayoutModuleID(rawValue: "heatmap-activity:grok"),   // pulled up
+            .modelBreakdown(tool: .grok),
+            PageLayoutModuleID(rawValue: "heatmap-year:grok")
+        ]
+        let arranged = StoredPageLayout(mode: .manual, ratio: .narrowWide, columns: columns)
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedProviderRightColumn([page: arranged])[page],
+            arranged
+        )
+    }
+
+    func testAnExtraCardInAColumnIsEnoughToLeaveThePageAlone() {
+        var columns = previousDefault().columns
+        columns[1].append(PageLayoutModuleID(rawValue: "quota-group:grok:weekly#2"))
+        let arranged = StoredPageLayout(mode: .manual, ratio: .narrowWide, columns: columns)
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedProviderRightColumn([page: arranged])[page],
+            arranged
+        )
+    }
+
+    func testACardDraggedIntoTheLeftColumnIsEnoughToLeaveThePageAlone() {
+        var columns = previousDefault().columns
+        columns[0].insert(PageLayoutModuleID(rawValue: "heatmap-year:grok"), at: 0)
+        columns[1].removeAll { $0 == PageLayoutModuleID(rawValue: "heatmap-year:grok") }
+        let arranged = StoredPageLayout(mode: .manual, ratio: .narrowWide, columns: columns)
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedProviderRightColumn([page: arranged])[page],
+            arranged
+        )
+    }
+
+    func testAChosenSegmentationIsEnoughToLeaveThePageAlone() {
+        // Grouping a page is an explicit act on it, and the bands would be
+        // wrong for the cards after they moved.
+        let grouped = StoredPageLayout(
+            mode: .manual,
+            ratio: .narrowWide,
+            columns: previousDefault().columns,
+            segments: [[.cost(tool: .grok)], [.status]]
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedProviderRightColumn([page: grouped])[page],
+            grouped
+        )
+    }
+
+    func testAChosenWidthSplitIsEnoughToLeaveThePageAlone() {
+        // Picking a ratio is one of the things that materializes a layout, so
+        // a page whose ratio is not the provider default was taken over.
+        let widened = StoredPageLayout(
+            mode: .manual,
+            ratio: .equal,
+            columns: previousDefault().columns
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedProviderRightColumn([page: widened])[page],
+            widened
         )
     }
 
