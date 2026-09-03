@@ -980,6 +980,126 @@ final class MenuBarCompositionTests: XCTestCase {
         )
     }
 
+    // MARK: - Drag commits once (review thread 1)
+
+    func testADragCrossingSeveralChipsLandsWhereOneMoveWould() {
+        // The editor keeps the provisional order in local state and writes it
+        // once on drop. That is only safe if replaying every crossing on a
+        // scratch copy ends where a single move would have — otherwise the one
+        // committed write would not be the arrangement the user watched.
+        let base = composition([
+            MenuBarToken(kind: .text("a")),
+            MenuBarToken(kind: .text("b")),
+            MenuBarToken(kind: .text("c")),
+            MenuBarToken(kind: .text("d"))
+        ])
+        let ids = base.tokens.map(\.id)
+
+        var provisional = base
+        // One drag of "a" that crosses b, then c, then d.
+        provisional.move(ids[0], before: ids[1])
+        provisional.move(ids[0], before: ids[2])
+        provisional.move(ids[0], before: ids[3])
+
+        var single = base
+        single.move(ids[0], to: 2)
+
+        XCTAssertEqual(provisional.tokens.map(\.kind), single.tokens.map(\.kind))
+        XCTAssertEqual(
+            provisional.tokens.map(\.kind),
+            [.text("b"), .text("c"), .text("a"), .text("d")]
+        )
+        // The committed value is the provisional one — one assignment, not one
+        // per crossing.
+        var committed = base
+        committed.tokens = provisional.tokens
+        XCTAssertEqual(committed.tokens.map(\.id), provisional.tokens.map(\.id))
+        // ...and the source of truth was never touched while the drag ran.
+        XCTAssertEqual(base.tokens.map(\.kind), [.text("a"), .text("b"), .text("c"), .text("d")])
+    }
+
+    func testAnAbandonedDragLeavesTheCommittedOrderAlone() {
+        let base = composition([
+            MenuBarToken(kind: .text("a")),
+            MenuBarToken(kind: .text("b")),
+            MenuBarToken(kind: .text("c"))
+        ])
+        var provisional = base
+        // Drag "c" to the front, then walk away without dropping.
+        provisional.move(base.tokens[2].id, before: base.tokens[0].id)
+        XCTAssertEqual(
+            provisional.tokens.map(\.kind),
+            [.text("c"), .text("a"), .text("b")]
+        )
+        XCTAssertNotEqual(provisional.tokens.map(\.kind), base.tokens.map(\.kind))
+        // Dropping the scratch copy is the whole rollback.
+        XCTAssertEqual(base.tokens.map(\.kind), [.text("a"), .text("b"), .text("c")])
+    }
+
+    // MARK: - Requirement-aware preview cache (review thread 2)
+
+    func testSwappingAMetricChangesTheRequirementsThoughTheFieldSetDoesNot() {
+        let percent = composition([
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .displayPercent))
+        ])
+        let pace = composition([
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .pace))
+        ])
+        // The field set is identical, which is why keying a cache on it missed
+        // the edit and left the preview showing nothing for the block.
+        XCTAssertEqual(percent.referencedFieldIds, pace.referencedFieldIds)
+        XCTAssertNotEqual(percent.quotaRequirements, pace.quotaRequirements)
+        XCTAssertEqual(pace.quotaRequirements[0].needsPace, true)
+        XCTAssertEqual(percent.quotaRequirements[0].needsPace, false)
+
+        // Same for a metric that starts needing a forecast.
+        let runsOut = composition([
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .runsOutIn))
+        ])
+        XCTAssertEqual(percent.referencedFieldIds, runsOut.referencedFieldIds)
+        XCTAssertNotEqual(percent.quotaRequirements, runsOut.quotaRequirements)
+    }
+
+    func testAPaceBlockRendersAsSoonAsItsSnapshotCarriesPace() {
+        // What the stale cache produced: a snapshot resolved for a percentage
+        // block has no pace, so the pace block draws nothing.
+        let stale = quota("claude.weekly", label: "Weekly", used: 50, pace: nil)
+        let fresh = quota("claude.weekly", label: "Weekly", used: 50, pace: 12)
+        let tokens = [MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .pace))]
+        XCTAssertTrue(plan(tokens, quotas: [stale]).isEmpty)
+        XCTAssertEqual(texts(plan(tokens, quotas: [fresh])), [["+12%"]])
+    }
+
+    // MARK: - Two-row run gap (review thread 3)
+
+    func testComposedRunsAddNoGapWhileTheBuiltInLayoutStillDoes() {
+        let runs = [10.0, 8.0, 12.0]
+        // A composed row carries the user's configured spacing inside its own
+        // text runs, so the cell adds nothing between them: zero spacing has
+        // to mean zero.
+        XCTAssertEqual(
+            MenuBarStripGeometry.cellWidth(runWidths: runs, gap: 0),
+            30,
+            accuracy: 1e-9
+        )
+        // The built-in two-row layout draws a leading logo and still gets its
+        // fixed gap after it.
+        XCTAssertEqual(
+            MenuBarStripGeometry.cellWidth(runWidths: [8, 20], gap: 2),
+            30,
+            accuracy: 1e-9
+        )
+        // Non-zero spacing is applied once per boundary, never doubled.
+        XCTAssertEqual(
+            MenuBarStripGeometry.cellWidth(runWidths: runs, gap: 3),
+            36,
+            accuracy: 1e-9
+        )
+        // Degenerate shapes stay sane.
+        XCTAssertEqual(MenuBarStripGeometry.cellWidth(runWidths: [], gap: 5), 0)
+        XCTAssertEqual(MenuBarStripGeometry.cellWidth(runWidths: [7], gap: 5), 7)
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {

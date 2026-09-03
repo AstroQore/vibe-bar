@@ -15,6 +15,9 @@ private enum MenuBarStatusMetrics {
     /// `twoRowImage` — text attachments cannot be used at this size.
     static let twoRowLogoSide: CGFloat = 8
     static let twoRowLogoGap: CGFloat = 2
+    /// Ceiling for a composed glyph in a two-row strip: past this it is the
+    /// glyph, not the type, that decides the row height.
+    static let twoRowMaximumGlyphSide: CGFloat = 12
 }
 
 /// One cell of the rasterized two-row status image, drawn left to right.
@@ -31,9 +34,19 @@ private struct TwoRowMenuCell {
     }
 
     var runs: [Run]
+    /// Points inserted between adjacent runs.
+    ///
+    /// The built-in two-row layout draws a leading logo and needs a fixed gap
+    /// after it. A composed row does not: it already carries the user's
+    /// configured spacing inside its own text runs, so adding this again
+    /// double-counts it — zero spacing would still show a gap, and non-zero
+    /// spacing would come out wider in the status item than in the preview
+    /// and the single-row bar.
+    var runGap: CGFloat
 
-    init(runs: [Run]) {
+    init(runs: [Run], runGap: CGFloat = 0) {
         self.runs = runs
+        self.runGap = runGap
     }
 
     init(text: NSAttributedString, logo: NSImage? = nil) {
@@ -41,6 +54,7 @@ private struct TwoRowMenuCell {
         if let logo { runs.append(.logo(logo)) }
         runs.append(.text(text))
         self.runs = runs
+        self.runGap = MenuBarStatusMetrics.twoRowLogoGap
     }
 
     var isEmpty: Bool { runs.isEmpty }
@@ -1167,9 +1181,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             if let glyph = token.glyph {
                 flush()
                 let paint = composedPaint(token.color, strip: strip, settings: settings)
+                // Sized from the block, not from the built-in layout's fixed
+                // 8pt mark: a `.large` logo in a composed row should grow with
+                // the words beside it. Capped at the row band so it cannot be
+                // the thing that overflows the canvas.
+                let side = min(
+                    composedFontSize(token, baseFontSize: baseFontSize) + 1,
+                    MenuBarStatusMetrics.twoRowMaximumGlyphSide
+                )
                 if let image = glyphImage(
                     glyph,
-                    side: MenuBarStatusMetrics.twoRowLogoSide,
+                    side: side,
                     tint: MenuBarStripPalette.nsColor(paint),
                     tintKey: MenuBarStripPalette.cacheKey(paint)
                 ) {
@@ -1189,7 +1211,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             ))
         }
         flush()
-        return TwoRowMenuCell(runs: runs)
+        // The configured spacing already lives inside the text runs above, so
+        // the cell adds nothing between them.
+        return TwoRowMenuCell(runs: runs, runGap: 0)
     }
 
     /// What a composed strip shows when nothing survived.
@@ -1688,30 +1712,32 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     nonisolated private static func cellWidth(_ cell: TwoRowMenuCell) -> CGFloat {
-        var width: CGFloat = 0
-        for (index, run) in cell.runs.enumerated() {
-            if index > 0 { width += MenuBarStatusMetrics.twoRowLogoGap }
+        let runWidths = cell.runs.map { run -> Double in
             switch run {
-            case .logo: width += MenuBarStatusMetrics.twoRowLogoSide
-            case let .text(text): width += text.size().width
+            case let .logo(image): return Double(image.size.width)
+            case let .text(text): return Double(text.size().width)
             }
         }
-        return width
+        return CGFloat(MenuBarStripGeometry.cellWidth(
+            runWidths: runWidths,
+            gap: Double(cell.runGap)
+        ))
     }
 
     /// Tallest text run in the cell; a logo-only cell falls back to the logo
     /// box so its row band does not collapse to nothing.
     nonisolated private static func cellHeight(_ cell: TwoRowMenuCell) -> CGFloat {
-        var height: CGFloat = 0
-        var sawLogo = false
+        var textHeight: CGFloat = 0
+        var glyphHeight: CGFloat = 0
         for run in cell.runs {
             switch run {
-            case .logo: sawLogo = true
-            case let .text(text): height = max(height, text.size().height)
+            case let .logo(image): glyphHeight = max(glyphHeight, image.size.height)
+            case let .text(text): textHeight = max(textHeight, text.size().height)
             }
         }
-        if height == 0, sawLogo { return MenuBarStatusMetrics.twoRowLogoSide }
-        return height
+        // A glyph-only row still needs a band, and a composed glyph sized up
+        // by its block must not be measured as the built-in 8pt mark.
+        return max(textHeight, glyphHeight)
     }
 
     /// Stacked height of a set of row cells, including the deliberate
@@ -1771,22 +1797,22 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 let width = Self.cellWidth(cell)
                 var x = origin.x + floor((columnWidth - width) / 2)
                 for (index, run) in cell.runs.enumerated() {
-                    if index > 0 { x += MenuBarStatusMetrics.twoRowLogoGap }
+                    if index > 0 { x += cell.runGap }
                     switch run {
                     case let .logo(logo):
-                        let side = MenuBarStatusMetrics.twoRowLogoSide
+                        let size = logo.size
                         // Centered in the row's own band, clamped to the
                         // canvas — never handed to the text system, whose
                         // attachment line box would not fit two rows in this
                         // height.
-                        let logoY = max(0, origin.y + floor((rowHeight - side) / 2))
+                        let logoY = max(0, origin.y + floor((rowHeight - size.height) / 2))
                         logo.draw(
-                            in: NSRect(x: x, y: logoY, width: side, height: side),
+                            in: NSRect(x: x, y: logoY, width: size.width, height: size.height),
                             from: .zero,
                             operation: .sourceOver,
                             fraction: 1
                         )
-                        x += side
+                        x += size.width
                     case let .text(text):
                         text.draw(at: NSPoint(x: x, y: origin.y))
                         x += text.size().width

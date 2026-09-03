@@ -1584,3 +1584,23 @@ public enum MenuBarStripFit {
         return Swift.max(minimumScale, availableHeight / contentHeight)
     }
 }
+
+
+/// Geometry shared by the status item's two-row rasterizer and its tests.
+///
+/// A cell is a list of runs — glyphs and text — drawn left to right. The gap
+/// *between* runs belongs to whoever built the cell, and getting that wrong is
+/// invisible until you measure it: the built-in two-row layout draws one
+/// leading logo and needs a fixed gap after it, while a composed row already
+/// carries the user's configured spacing inside its own text runs. Adding the
+/// built-in gap to a composed row double-counts it, so zero spacing still
+/// shows a gap and non-zero spacing comes out wider in the bar than in the
+/// preview.
+public enum MenuBarStripGeometry {
+    /// Total width of a cell: its runs, plus one `gap` between each adjacent
+    /// pair. A composed row passes `gap: 0`.
+    public static func cellWidth(runWidths: [Double], gap: Double) -> Double {
+        guard !runWidths.isEmpty else { return 0 }
+        return runWidths.reduce(0, +) + gap * Double(runWidths.count - 1)
+    }
+}

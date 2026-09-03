@@ -24,6 +24,15 @@ struct MenuBarComposerEditor: View {
 
     @State private var selection: UUID?
     @State private var draggedTokenId: UUID?
+    /// The order the strip *would* have if the drag ended here.
+    ///
+    /// A drag crosses several chips, and writing each crossing through
+    /// `settingsStore.settings` fanned every intermediate order out to every
+    /// settings subscriber and re-rendered the menu bar mid-gesture — exactly
+    /// the per-tick settings write `AGENTS.md` § 7 forbids on an interaction
+    /// path. The reorder is kept here while the drag is live and committed
+    /// once, on drop.
+    @State private var dragComposition: MenuBarComposition?
     @State private var isOverRemoveTarget = false
     @State private var isConfirmingReseed = false
 
@@ -46,8 +55,41 @@ struct MenuBarComposerEditor: View {
     private var item: MenuBarItemSettings { settingsStore.settings.menuBarItem(kind) }
     private var composition: MenuBarComposition { item.composition ?? MenuBarComposition() }
 
+    /// What the editor draws: the provisional order while a drag is in
+    /// flight, the committed one otherwise. The preview follows it too, so the
+    /// user sees the arrangement they are about to get.
+    private var displayedComposition: MenuBarComposition {
+        guard draggedTokenId != nil, let dragComposition else { return composition }
+        return dragComposition
+    }
+
+    /// Everything the cached snapshots are derived from.
+    ///
+    /// Keyed on the *requirements*, not the referenced field ids: switching a
+    /// block from `.displayPercent` to `.pace` leaves the field set identical
+    /// while changing the work the preview needs, and the stale snapshot would
+    /// drop the block until the next quota publication even though the status
+    /// item renders it at once. The display mode and colour basis are in here
+    /// for the same reason — both change what a snapshot holds, and both are
+    /// editable a few controls above this one.
+    private struct SnapshotKey: Equatable {
+        var requirements: [MenuBarQuotaRequirement]
+        var displayMode: DisplayMode
+        var colorBasis: MenuBarColorBasis
+        var customLabels: [String: String]
+    }
+
+    private var snapshotKey: SnapshotKey {
+        SnapshotKey(
+            requirements: composition.quotaRequirements,
+            displayMode: settingsStore.settings.displayMode,
+            colorBasis: settingsStore.settings.menuBarColorBasis,
+            customLabels: item.customLabels
+        )
+    }
+
     var body: some View {
-        let composition = self.composition
+        let composition = displayedComposition
         let plan = composition.plan(
             quotas: snapshots,
             displayMode: settingsStore.settings.displayMode,
@@ -72,10 +114,16 @@ struct MenuBarComposerEditor: View {
             rebuildSnapshots()
         }
         .onReceive(quotaService.$lastSuccessByAccount) { _ in rebuildSnapshots() }
-        // Adding or removing a quota block changes which buckets the preview
-        // needs; editing a word does not. Keying the rebuild on the referenced
-        // set is what keeps a forecast off the typing path.
-        .onChange(of: composition.referencedFieldIds) { _, _ in rebuildSnapshots() }
+        // The same inputs the status item re-renders on. A refresh publishes
+        // the quota first and records the observation in a follow-up task, so
+        // without these the preview's forecast colour would describe the
+        // previous refresh while the bar beside it showed the current one.
+        .onReceive(quotaService.$observationsByAccountBucket) { _ in rebuildSnapshots() }
+        .onReceive(environment.costService.$snapshots) { _ in rebuildSnapshots() }
+        // Changing what the strip asks of a quota rebuilds; editing a word
+        // does not. That is what keeps a forecast off the typing path while
+        // still letting a metric swap show up immediately.
+        .onChange(of: snapshotKey) { _, _ in rebuildSnapshots() }
     }
 
     // MARK: - Template
@@ -136,6 +184,9 @@ struct MenuBarComposerEditor: View {
                         chip(token, availability: availability)
                             .onDrag {
                                 draggedTokenId = token.id
+                                // Snapshot the committed order; every crossing
+                                // reorders this copy, and only the drop writes.
+                                dragComposition = self.composition
                                 return NSItemProvider(object: token.id.uuidString as NSString)
                             }
                             .onDrop(
@@ -143,7 +194,8 @@ struct MenuBarComposerEditor: View {
                                 delegate: MenuBarChipDropDelegate(
                                     target: token.id,
                                     dragged: $draggedTokenId,
-                                    apply: { mutate($0) }
+                                    provisional: $dragComposition,
+                                    commit: { commitDrag() }
                                 )
                             )
                     }
@@ -157,7 +209,8 @@ struct MenuBarComposerEditor: View {
                             delegate: MenuBarChipDropDelegate(
                                 target: nil,
                                 dragged: $draggedTokenId,
-                                apply: { mutate($0) }
+                                provisional: $dragComposition,
+                                commit: { commitDrag() }
                             )
                         )
                 }
@@ -193,7 +246,7 @@ struct MenuBarComposerEditor: View {
                 dragged: $draggedTokenId,
                 isTargeted: $isOverRemoveTarget,
                 selection: $selection,
-                apply: { mutate($0) }
+                remove: { removeDragged($0) }
             )
         )
     }
@@ -510,11 +563,37 @@ struct MenuBarComposerEditor: View {
     // MARK: - Mutations
 
     private func mutate(_ change: (inout MenuBarComposition) -> Void) {
+        // A real edit ends any drag state: the provisional order must never
+        // outlive the arrangement it was based on.
+        dragComposition = nil
+        draggedTokenId = nil
         var updated = item
         var composed = updated.composition ?? MenuBarComposition(isEnabled: true)
         change(&composed)
         updated.composition = composed
         settingsStore.settings.setMenuBarItem(updated)
+    }
+
+    /// The one settings write a completed drag performs.
+    private func commitDrag() {
+        guard let reordered = dragComposition else {
+            draggedTokenId = nil
+            return
+        }
+        let tokens = reordered.tokens
+        // `mutate` clears the drag state before writing.
+        mutate { $0.tokens = tokens }
+    }
+
+    private func removeDragged(_ id: UUID) {
+        if selection == id { selection = nil }
+        // Start from the provisional order when there is one, so a block that
+        // was dragged across the strip and then onto the bin does not
+        // resurrect the intermediate order it passed through.
+        let base = dragComposition ?? composition
+        var tokens = base.tokens
+        tokens.removeAll { $0.id == id }
+        mutate { $0.tokens = tokens }
     }
 
     private func add(_ token: MenuBarToken) {
@@ -896,18 +975,7 @@ private struct MenuBarTokenInspector: View {
         HStack(spacing: 8) {
             Text("Quota").frame(width: 62, alignment: .leading)
             fieldPicker(selected: fieldId) { newId in set(newId, percent) }
-            Stepper(
-                value: Binding(
-                    get: { percent },
-                    set: { set(fieldId, $0) }
-                ),
-                in: 0...100,
-                step: 5
-            ) {
-                Text("\(Int(percent.rounded()))%")
-                    .font(.system(size: 11.5).monospacedDigit())
-                    .frame(width: 42, alignment: .trailing)
-            }
+            DebouncedPercentStepper(percent: percent) { set(fieldId, $0) }
             Spacer(minLength: 0)
         }
     }
@@ -1026,6 +1094,40 @@ private struct MenuBarTokenInspector: View {
     }
 }
 
+/// A percent stepper that writes settings on an idle window rather than on
+/// every repeat.
+///
+/// A held stepper auto-repeats, and each repeat used to publish `AppSettings`
+/// — a fan-out to every subscriber, plus a menu-bar re-render, ten times a
+/// second. Same discipline as `DebouncedSettingsTextField` and the colour
+/// well: the control tracks its own draft and commits once the user stops.
+private struct DebouncedPercentStepper: View {
+    let percent: Double
+    let commit: (Double) -> Void
+
+    @State private var draft: Double = 0
+
+    var body: some View {
+        Stepper(value: $draft, in: 0...100, step: 5) {
+            Text("\(Int(draft.rounded()))%")
+                .font(.system(size: 11.5).monospacedDigit())
+                .frame(width: 42, alignment: .trailing)
+        }
+        .onAppear { draft = percent }
+        // An external write — selecting another block, a reset — replaces a
+        // draft the user is not in the middle of changing.
+        .onChange(of: percent) { _, updated in
+            if updated != draft { draft = updated }
+        }
+        .task(id: draft) {
+            guard draft != percent else { return }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            commit(draft)
+        }
+    }
+}
+
 // MARK: - Drag and drop
 
 /// Reorder onto a chip, or onto the trailing landing strip when `target` is
@@ -1034,21 +1136,21 @@ private struct MenuBarTokenInspector: View {
 private struct MenuBarChipDropDelegate: DropDelegate {
     let target: UUID?
     @Binding var dragged: UUID?
-    let apply: ((inout MenuBarComposition) -> Void) -> Void
+    /// Reordered in place on every crossing. Local state, not settings.
+    @Binding var provisional: MenuBarComposition?
+    let commit: () -> Void
 
     func dropEntered(info: DropInfo) {
-        guard let dragged else { return }
-        apply { composed in
-            if let target {
-                composed.move(dragged, before: target)
-            } else {
-                composed.move(dragged, to: composed.tokens.count)
-            }
+        guard let dragged, provisional != nil else { return }
+        if let target {
+            provisional?.move(dragged, before: target)
+        } else {
+            provisional?.move(dragged, to: provisional?.tokens.count ?? 0)
         }
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        dragged = nil
+        commit()
         return true
     }
 
@@ -1061,20 +1163,16 @@ private struct MenuBarChipRemoveDelegate: DropDelegate {
     @Binding var dragged: UUID?
     @Binding var isTargeted: Bool
     @Binding var selection: UUID?
-    let apply: ((inout MenuBarComposition) -> Void) -> Void
+    let remove: (UUID) -> Void
 
     func dropEntered(info: DropInfo) { isTargeted = true }
 
     func dropExited(info: DropInfo) { isTargeted = false }
 
     func performDrop(info: DropInfo) -> Bool {
-        defer {
-            dragged = nil
-            isTargeted = false
-        }
+        defer { isTargeted = false }
         guard let dragged else { return false }
-        if selection == dragged { selection = nil }
-        apply { $0.remove(dragged) }
+        remove(dragged)
         return true
     }
 
