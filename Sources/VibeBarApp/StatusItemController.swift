@@ -45,6 +45,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// app has to repair. Production always has one.
     private var compactStatusItem: NSStatusItem?
     private var popovers: [MenuBarItemKind: NSPopover] = [:]
+    /// Whether any popover is on screen, published into every popover tree so
+    /// its page-level clocks can stop ticking while it is hidden. The hosting
+    /// controllers stay cached either way — this gates work, not lifetime.
+    private let popoverPresentation = PopoverPresentation()
     private let environment: AppEnvironment
     private let miniWindowController: MiniQuotaWindowController
     private var cancellables: Set<AnyCancellable> = []
@@ -205,6 +209,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 .environmentObject(environment.costService)
                 .environmentObject(environment.remoteProbeService)
                 .environmentObject(environment.pageLayout)
+                .environmentObject(controller.popoverPresentation)
+                // Also handed over as an environment *value*: `PageClock`
+                // reads it that way so a view that ends up in a non-popover
+                // host (mini window, Workbench, Settings) gets the
+                // always-visible default instead of trapping on a missing
+                // `@EnvironmentObject`.
+                .environment(\.popoverPresentation, controller.popoverPresentation)
         )
         return popover
     }
@@ -310,6 +321,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // render pass, and anything that would rather not compete with it (the
         // hidden Claude budget WebView) checks this flag.
         environment.setPopoverVisible(true)
+        popoverPresentation.isShown = true
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
@@ -322,9 +334,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 self.popoverCloseStamps[kind] = Date()
                 break
             }
-            self.environment.setPopoverVisible(
-                self.popovers.values.contains { $0.isShown && $0 !== popover }
-            )
+            let anyOtherShown = self.popovers.values.contains { $0.isShown && $0 !== popover }
+            self.environment.setPopoverVisible(anyOtherShown)
+            self.popoverPresentation.isShown = anyOtherShown
         }
     }
 
@@ -530,6 +542,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // stays until the process exits.
         popover.behavior = .applicationDefined
         environment.setPopoverVisible(true)
+        popoverPresentation.isShown = true
         popover.show(relativeTo: target.rect, of: target.view, preferredEdge: .minY)
         // Key status would hand keyboard focus to the first button;
         // `vibeBarNoInitialFocus()` on the popover root clears that initial

@@ -17,10 +17,14 @@ struct ResetsPage: View {
     @State private var calendarMonthOffset = 0
 
     var body: some View {
-        // One leaf timer for the whole page: countdown text drifts by the
-        // minute; data re-renders arrive with quota refreshes on their own.
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            content(now: context.date)
+        // One timer for the whole page: countdown text drifts by the minute;
+        // data re-renders arrive with quota refreshes on their own. The clock
+        // shares the app-wide phase anchor, so the instant this page asks the
+        // forecast about is the same one every other surface asks about — a
+        // `.now` anchor re-phased on every body pass and defeated the memo.
+        // Ungated: the Workbench window is visible whenever it exists.
+        StableClock(interval: 60) { tickDate in
+            content(now: tickDate)
         }
     }
 

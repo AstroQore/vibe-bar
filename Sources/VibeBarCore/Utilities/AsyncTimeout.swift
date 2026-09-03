@@ -19,18 +19,28 @@ public enum AsyncTimeout {
         operation: @escaping @Sendable () async -> T
     ) async -> Outcome<T> {
         let gate = ResumeGate()
+        let sleeper = SleeperBox()
         return await withCheckedContinuation { (continuation: CheckedContinuation<Outcome<T>, Never>) in
             let work = Task.detached(priority: .utility) {
                 let value = await operation()
-                if gate.claim() { continuation.resume(returning: .completed(value)) }
+                if gate.claim() {
+                    // The operation won the race: stop the sleeper instead of
+                    // leaving a task parked for the rest of the budget. With a
+                    // 300s per-provider budget and a refresh every few minutes
+                    // those sleepers were otherwise permanently resident.
+                    sleeper.cancel()
+                    continuation.resume(returning: .completed(value))
+                }
             }
-            Task.detached {
+            let timer = Task.detached {
                 try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+                guard !Task.isCancelled else { return }
                 if gate.claim() {
                     work.cancel()
                     continuation.resume(returning: .timedOut)
                 }
             }
+            sleeper.adopt(timer)
         }
     }
 }
@@ -48,5 +58,34 @@ private final class ResumeGate: @unchecked Sendable {
         if claimed { return false }
         claimed = true
         return true
+    }
+}
+
+/// Holds the sleeper task so the winning operation can cancel it. The
+/// operation can finish before `adopt` runs (a synchronous-ish operation
+/// resolves inside `withCheckedContinuation`), so a cancel that arrives
+/// first is remembered and applied to whatever is adopted afterwards.
+private final class SleeperBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<Void, Never>?
+    private var cancelled = false
+
+    func adopt(_ task: Task<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        if cancelled {
+            task.cancel()
+        } else {
+            self.task = task
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        let pending = task
+        task = nil
+        cancelled = true
+        lock.unlock()
+        pending?.cancel()
     }
 }
