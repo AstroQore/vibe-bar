@@ -35,9 +35,17 @@ public enum PageLayoutDefaultsMigration {
     /// column to close the wide one.
     public static let providerRightColumnIdentifier = "provider-right-column-v2"
 
-    /// 1.6.2: the Overview's quota phase was split, so the default
-    /// segmentation gained a history band between quota and cost.
-    public static let overviewHistorySegmentIdentifier = "overview-history-segment-v1"
+    // No entry for the Overview's split quota phase, deliberately. Its stored
+    // `columns` are a hand-draggable arrangement in *every* mode — the layout
+    // editor keeps them when the page is switched to Auto or Compact and back
+    // — so a phase-homogeneous three-band segmentation does not establish that
+    // the page is untouched, and clearing it would re-sort those columns under
+    // the new four-band default. Nothing needs the rewrite either: a stored
+    // segmentation has never seen the three moved cards, so
+    // `PageLayoutSegments.resolve` places them at
+    // `min(defaultIndex, count - 1)` and the quota band keeps only the
+    // provider cards. They share the cost band instead of getting their own,
+    // which is the right price for not overruling an arrangement.
 
     /// Module family the reset-history table is registered under.
     static let resetHistoryFamily = "reset-history-compare"
@@ -54,9 +62,6 @@ public enum PageLayoutDefaultsMigration {
         var applied = applied
         if applied.insert(providerRightColumnIdentifier).inserted {
             layouts = migratedProviderRightColumn(layouts)
-        }
-        if applied.insert(overviewHistorySegmentIdentifier).inserted {
-            layouts = migratedOverviewHistorySegment(layouts)
         }
         return (layouts, applied)
     }
@@ -102,99 +107,6 @@ public enum PageLayoutDefaultsMigration {
             )
         }
         return result
-    }
-
-    /// Let a saved Overview whose segmentation is still the old default derive
-    /// the new one.
-    ///
-    /// Unlike a provider page, this migration touches `segments` and never
-    /// `columns`. It cannot check the columns: the Overview's default
-    /// arrangement is computed by `OverviewMasonryPlanner` from *measured card
-    /// heights*, so "the previous default columns" is a different list on every
-    /// Mac and there is no signature to match.
-    ///
-    /// The segmentation, though, is exact. Three bands whose members are all
-    /// old-`.summary`, all old-`.quota`, and all old-`.cost`/`.auxiliary`
-    /// respectively is the old default and nothing else — a hand-grouped page
-    /// puts something somewhere those rules do not. Clearing it means "no
-    /// chosen segmentation", which is what makes the new four-band default
-    /// derive.
-    ///
-    /// Most users need nothing here. A page with no stored segments already
-    /// picks up the new default, and a page *with* them gets the three moved
-    /// cards re-placed by `PageLayoutSegments.resolve`, which sends a module
-    /// the stored segments have never seen to the band its new phase points at.
-    /// This exists for the one case neither covers: a segmentation materialized
-    /// straight from the old defaults, which would otherwise pin the reset and
-    /// history cards inside the quota band forever.
-    public static func migratedOverviewHistorySegment(
-        _ layouts: [PageLayoutPageID: StoredPageLayout]
-    ) -> [PageLayoutPageID: StoredPageLayout] {
-        var result = layouts
-        for (page, layout) in layouts where page.isOverview {
-            guard matchesPreviousOverviewSegmentation(layout) else { continue }
-            result[page] = StoredPageLayout(
-                mode: layout.mode,
-                ratio: layout.ratio,
-                columns: layout.columns,
-                segments: [],
-                hidden: layout.hidden
-            )
-        }
-        return result
-    }
-
-    /// The phase an Overview module carried before the quota band was split.
-    ///
-    /// A frozen snapshot of a past release's `PageModuleCatalog`, which is what
-    /// a migration is. `nil` for anything this table does not recognize, and an
-    /// unrecognized id is enough to refuse the whole page: a card we cannot
-    /// classify may be exactly the one the user placed by hand.
-    enum PreviousOverviewPhase {
-        case summary
-        case quota
-        case costOrAuxiliary
-    }
-
-    static func previousOverviewPhase(_ moduleID: PageLayoutModuleID) -> PreviousOverviewPhase? {
-        let raw = moduleID.rawValue
-        if raw.hasPrefix("overview-summary-") { return .summary }
-        if raw.hasPrefix("overview-quota:") { return .quota }
-        switch raw {
-        case "overview-upcoming-resets",
-             "overview-reset-history-compare",
-             "overview-usage-mix",
-             PageLayoutModuleID.Family.quotaHistoryAll:
-            return .quota
-        case PageLayoutModuleID.Family.costAll:
-            return .costOrAuxiliary
-        default:
-            break
-        }
-        switch moduleID.family {
-        case PageLayoutModuleID.Family.cost,
-             PageLayoutModuleID.Family.modelBreakdown,
-             "heatmap-year",
-             "heatmap-activity":
-            return .costOrAuxiliary
-        default:
-            return nil
-        }
-    }
-
-    /// Are these stored segments exactly the segmentation the old phase
-    /// grouping produced — summary, then quota, then cost with its analytics?
-    static func matchesPreviousOverviewSegmentation(_ layout: StoredPageLayout) -> Bool {
-        // Nothing stored is already handled: the default derives on its own.
-        guard layout.segments.count == 3 else { return false }
-        let expected: [PreviousOverviewPhase] = [.summary, .quota, .costOrAuxiliary]
-        for (band, phase) in zip(layout.segments, expected) {
-            guard !band.isEmpty else { return false }
-            for moduleID in band {
-                guard previousOverviewPhase(moduleID) == phase else { return false }
-            }
-        }
-        return true
     }
 
     /// Is this saved layout, in full, the arrangement 1.6.1 shipped for a
