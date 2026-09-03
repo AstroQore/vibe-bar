@@ -950,8 +950,15 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
     let layout: ResetHistoryCompareLayout
 
     static func == (lhs: ResetHistoryLanesCanvas, rhs: ResetHistoryLanesCanvas) -> Bool {
-        lhs.layout == rhs.layout && lhs.comparison == rhs.comparison
+        lhs.layout == rhs.layout
+            && lhs.comparison == rhs.comparison
+            // `Lane.label` is a computed property — correctly, so it is never
+            // a stored localized string — which means `comparison ==` is
+            // blind to the language while `drawLabels` is not.
+            && lhs.language == rhs.language
     }
+
+    private let language = LanguageStamp.current
 
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in

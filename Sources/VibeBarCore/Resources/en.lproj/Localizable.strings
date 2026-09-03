@@ -764,6 +764,15 @@
 /* Empty-state title while a sync is in flight */
 "popover.machines.checking" = "Checking the Relay…";
 
+/* Badge on a remote machine whose last report is later than expected */
+"popover.machines.freshness.delayed" = "Delayed";
+
+/* Badge on a remote machine reporting on schedule */
+"popover.machines.freshness.live" = "Live";
+
+/* Badge on a remote machine that has not reported for a long time */
+"popover.machines.freshness.stale" = "Stale";
+
 /* Toggle on a remote machine card */
 "popover.machines.includeInTotals" = "Include in totals";
 

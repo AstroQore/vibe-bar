@@ -1096,6 +1096,18 @@
     "comment": "Empty-state title while a sync is in flight",
     "value": "Checking the Relay…"
   },
+  "popover.machines.freshness.delayed": {
+    "comment": "Badge on a remote machine whose last report is later than expected",
+    "value": "Delayed"
+  },
+  "popover.machines.freshness.live": {
+    "comment": "Badge on a remote machine reporting on schedule",
+    "value": "Live"
+  },
+  "popover.machines.freshness.stale": {
+    "comment": "Badge on a remote machine that has not reported for a long time",
+    "value": "Stale"
+  },
   "popover.machines.includeInTotals": {
     "comment": "Toggle on a remote machine card",
     "value": "Include in totals"

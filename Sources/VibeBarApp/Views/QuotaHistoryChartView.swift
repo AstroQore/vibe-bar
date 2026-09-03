@@ -203,6 +203,10 @@ private struct QuotaSeriesSignature: Equatable {
     }
 
     var entries: [Entry]
+    /// `rebuild()` fills `hoverLanes`, whose titles are localized, so the
+    /// language is part of what makes the built state current. Without it a
+    /// language change moved no data and therefore invalidated nothing.
+    var language: LanguageStamp
 }
 
 /// Quota history over time for one group of quotas: what was left, what an even
@@ -281,7 +285,15 @@ struct QuotaHistoryChartView: View, Equatable {
             && lhs.titleOverride == rhs.titleOverride
             && lhs.showsGroupTitle == rhs.showsGroupTitle
             && lhs.isEmbedded == rhs.isEmbedded
+            // The card draws its own title, its legend and its tooltip out of
+            // the catalog. Without this the guard keeps doing its job — and
+            // keeps being wrong the moment the language changes.
+            && lhs.language == rhs.language
     }
+
+    /// Held rather than read inside `==` so the comparison stays a value
+    /// compare; taken when the view is created, which is per render pass.
+    private let language = LanguageStamp.current
 
     @State private var forecastByBucket: [String: [ForecastTimelinePoint]] = [:]
     @State private var seriesByBucket: [String: QuotaHistorySeries] = [:]
@@ -930,7 +942,8 @@ struct QuotaHistoryChartView: View, Equatable {
                     forecastCount: forecasts.count,
                     forecastEnd: forecasts.last?.sampledAt
                 )
-            }
+            },
+            language: .current
         )
     }
 

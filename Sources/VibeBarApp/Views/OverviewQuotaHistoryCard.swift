@@ -62,6 +62,11 @@ private struct OverviewSeriesSignature: Equatable {
     }
 
     var entries: [Entry]
+    /// The entries carry localized titles, so today a language change already
+    /// moves this signature. Stating it outright means the next person to
+    /// make `title` the raw contract value — which is otherwise a reasonable
+    /// thing to do — does not silently freeze the rebuild with it.
+    var language: LanguageStamp
 }
 
 /// What building one lane produced, plus everything that decides whether the
@@ -385,7 +390,8 @@ struct OverviewQuotaHistoryCard: View {
 
     private var seriesSignature: OverviewSeriesSignature {
         OverviewSeriesSignature(
-            entries: candidateLanes.map { signatureEntry(account: $0.account, bucket: $0.bucket) }
+            entries: candidateLanes.map { signatureEntry(account: $0.account, bucket: $0.bucket) },
+            language: .current
         )
     }
 
@@ -706,7 +712,13 @@ private struct OverviewQuotaChartBody: View, Equatable {
             && lhs.initialSpan == rhs.initialSpan
             && lhs.resetToken == rhs.resetToken
             && lhs.curves.elementsEqual(rhs.curves) { $0.id == $1.id }
+            // A curve's `id` is tool|account|bucket, so it cannot notice a
+            // language change — while the legend and the tooltip both draw
+            // `label`, which is localized.
+            && lhs.language == rhs.language
     }
+
+    private let language = LanguageStamp.current
 
     /// Shared across every visible curve, so a provider with nine quotas
     /// cannot starve the rest of the chart of detail. It is a *chart* budget:

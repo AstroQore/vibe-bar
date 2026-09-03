@@ -56,7 +56,12 @@ private struct CostGranularityOption: Identifiable, Equatable {
         return CostChartGranularity.survivesManualSelection(granularity, for: visibleSpan)
     }
 
-    static let all: [CostGranularityOption] = [
+    /// Derived per render rather than cached. As a `static let` this held the
+    /// five labels in whatever language the process launched in; five small
+    /// structs are cheaper to rebuild than a language-keyed cache is to
+    /// reason about. `count` is language-independent, so the control width
+    /// below can still be computed once.
+    static var all: [CostGranularityOption] {[
         CostGranularityOption(mode: .auto, label: L10n.Cost.granularityAuto, granularity: nil),
         CostGranularityOption(
             mode: .manual(.hour),
@@ -78,7 +83,7 @@ private struct CostGranularityOption: Identifiable, Equatable {
             label: CostChartGranularity.month.displayName,
             granularity: .month
         )
-    ]
+    ]}
 }
 
 /// Range presets the navigable cost chart offers.

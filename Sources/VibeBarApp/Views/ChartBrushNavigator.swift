@@ -406,12 +406,15 @@ struct ChartRangePills: View {
         let isSelected: Bool
     }
 
-    private static let spans: [(String, TimeInterval)] = [
+    /// Derived per render rather than cached. A `static let` here held the
+    /// labels in whatever language the process launched in — and four tuples
+    /// are cheaper to rebuild than a language-keyed cache is to reason about.
+    private static var spans: [(String, TimeInterval)] {[
         (L10n.Common.durationHours(hours: 6), 6 * 3_600),
         (L10n.Common.durationHours(hours: 24), 24 * 3_600),
         (L10n.Common.durationDays(days: 3), 3 * 86_400),
         (L10n.Common.durationDays(days: 7), 7 * 86_400)
-    ]
+    ]}
 
     private var options: [Option] {
         guard window.domainSpan > 0 else { return [] }

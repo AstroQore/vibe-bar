@@ -1055,6 +1055,18 @@ extension L10n {
         public static var machinesChecking: String {
             L10n.string("popover.machines.checking")
         }
+        /// `popover.machines.freshness.delayed` — Delayed
+        public static var machinesFreshnessDelayed: String {
+            L10n.string("popover.machines.freshness.delayed")
+        }
+        /// `popover.machines.freshness.live` — Live
+        public static var machinesFreshnessLive: String {
+            L10n.string("popover.machines.freshness.live")
+        }
+        /// `popover.machines.freshness.stale` — Stale
+        public static var machinesFreshnessStale: String {
+            L10n.string("popover.machines.freshness.stale")
+        }
         /// `popover.machines.includeInTotals` — Include in totals
         public static var machinesIncludeInTotals: String {
             L10n.string("popover.machines.includeInTotals")
@@ -5974,6 +5986,9 @@ extension L10n {
         "popover.header.settings",
         "popover.header.updatedLine",
         "popover.machines.checking",
+        "popover.machines.freshness.delayed",
+        "popover.machines.freshness.live",
+        "popover.machines.freshness.stale",
         "popover.machines.includeInTotals",
         "popover.machines.includeInTotalsHelp",
         "popover.machines.labelWithStatus",

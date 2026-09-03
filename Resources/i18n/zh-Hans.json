@@ -770,6 +770,15 @@
   "popover.machines.checking": {
     "value": "正在检查 Relay…"
   },
+  "popover.machines.freshness.delayed": {
+    "value": "延迟"
+  },
+  "popover.machines.freshness.live": {
+    "value": "实时"
+  },
+  "popover.machines.freshness.stale": {
+    "value": "已过期"
+  },
   "popover.machines.includeInTotals": {
     "value": "计入总计"
   },

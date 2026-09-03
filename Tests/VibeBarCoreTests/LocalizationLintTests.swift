@@ -131,6 +131,26 @@ final class LocalizationLintTests: XCTestCase {
                 let right = AppLocale.dateFormatter(template: "MMMd")
             }
 
+            // A stored static holding a catalog value: frozen in whatever
+            // language the process launched in, which no other rule here sees.
+            static let frozenPills: [(String, TimeInterval)] = [
+                (L10n.Common.durationHours(hours: 6), 6 * 3_600),
+                (L10n.Common.durationDays(days: 7), 7 * 86_400)
+            ]
+            static var frozenVar: String = L10n.Common.refresh
+            static let frozenNames = [CostChartGranularity.hour.displayName]
+
+            // …and the shapes that must stay quiet: a computed static derives
+            // per access, and a stored static of non-catalog values is data.
+            static var derivedPills: [String] { [L10n.Common.refresh] }
+            static let widths: [CGFloat] = [32, 64]
+            // A closure defers the lookup to call time, which is how
+            // QuotaGroupLabelLocalizer's table stays correct while looking
+            // exactly like the bug.
+            static let deferred: [String: () -> String] = [
+                "weekly": { L10n.Quota.groupWeekly }
+            ]
+
             private func sectionLabel(_ text: String) -> some View { Text(text) }
         }
         """.write(to: fixture, atomically: true, encoding: .utf8)
@@ -161,6 +181,17 @@ final class LocalizationLintTests: XCTestCase {
         ] {
             XCTAssertTrue(found.contains(expected), "the lint missed \(expected): \(found)")
         }
+
+        // The frozen-static rule: three stored statics hold a catalog value,
+        // and the two beside them that do not must stay quiet. Counted rather
+        // than matched by text so the wording of the finding can change.
+        let frozen = text.split(separator: "\n").filter {
+            $0.contains("frozen at launch language")
+        }
+        XCTAssertEqual(
+            frozen.count, 3,
+            "expected exactly the three stored statics holding a catalog value: \(text)"
+        )
         // The formatting rule reports a reason rather than a literal, so
         // these are matched as substrings of the whole report.
         for expected in [
