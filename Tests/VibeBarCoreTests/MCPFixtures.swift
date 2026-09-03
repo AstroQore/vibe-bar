@@ -18,6 +18,18 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
     private(set) var lastRequestPageSize: Int?
     private(set) var lastSessionQuery: String?
     private(set) var lastSessionLimit: Int?
+    private(set) var lastSessionFilter: SessionQueryFilter?
+    private(set) var lastTranscriptLocator: SessionLocator?
+    private(set) var lastTranscriptWindow: TranscriptWindowRequest?
+
+    /// What `listSessions` claims about paging.
+    var listTotalCount: Int? = 1
+    var listHasMore = false
+    var listNotice: String?
+    /// Whether the fake transcript read saw the whole file.
+    var transcriptReachedEndOfFile = true
+    /// Non-nil makes `sessionTranscript` fail with this message.
+    var transcriptFailure: String?
 
     /// `refreshQuota` is the one method a test drives from two tasks at once,
     /// so its recording is the one that needs a lock.
@@ -302,33 +314,71 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
 
     func searchSessions(
         query: String,
-        providers: [SessionProvider]?,
-        harnesses: [Harness]?,
+        filter: SessionQueryFilter,
         limit: Int
-    ) async throws -> [SessionSearchHit] {
+    ) async throws -> MCPSessionSearchOutcome {
         lastSessionQuery = query
         lastSessionLimit = limit
-        return [
-            SessionSearchHit(
-                summary: Self.sessionSummary,
-                snippet: "the <b>socket</b> server",
-                matchedSeq: 4
-            )
-        ]
+        lastSessionFilter = filter
+        return MCPSessionSearchOutcome(
+            hits: searchHits,
+            notice: searchNotice
+        )
     }
 
+    /// What `searchSessions` hands back. A test that cares about the ranking
+    /// cut empties this and sets `searchNotice`.
+    var searchHits: [SessionSearchHit] = [
+        SessionSearchHit(
+            summary: FakeMCPDataSource.sessionSummary,
+            snippet: "the <b>socket</b> server",
+            matchedSeq: 4
+        )
+    ]
+    var searchNotice: String?
+
     func listSessions(
-        providers: [SessionProvider]?,
-        harnesses: [Harness]?,
-        since: Date?,
+        filter: SessionQueryFilter,
         offset: Int,
         limit: Int
-    ) async throws -> SessionSummaryPage {
-        SessionSummaryPage(
+    ) async throws -> MCPSessionListing {
+        lastSessionFilter = filter
+        return MCPSessionListing(
             summaries: [Self.sessionSummary],
-            totalCount: 1,
+            totalCount: listTotalCount,
             offset: offset,
-            limit: limit
+            limit: limit,
+            hasMore: listHasMore,
+            notice: listNotice
+        )
+    }
+
+    /// The eight messages `sessions.transcript` reads from, seq 0…7.
+    static let transcriptMessages: [SessionMessage] = (0..<8).map { seq in
+        SessionMessage(
+            seq: seq,
+            role: seq.isMultiple(of: 2) ? .user : .assistant,
+            text: "message \(seq)",
+            timestamp: epoch.addingTimeInterval(TimeInterval(seq * 60))
+        )
+    }
+
+    func sessionTranscript(
+        locator: SessionLocator,
+        window: TranscriptWindowRequest
+    ) async throws -> SessionTranscriptResult {
+        lastTranscriptLocator = locator
+        lastTranscriptWindow = window
+        if let transcriptFailure { throw MCPToolFailure(transcriptFailure) }
+        return SessionTranscriptResult(
+            summary: Self.sessionSummary,
+            window: SessionIndexingBounds.window(
+                for: window,
+                in: Self.transcriptMessages,
+                reachedEndOfFile: transcriptReachedEndOfFile,
+                bytesRead: 4_096,
+                fileBytes: 4_096
+            )
         )
     }
 

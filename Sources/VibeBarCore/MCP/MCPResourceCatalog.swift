@@ -159,8 +159,9 @@ public enum MCPResourceCatalog {
         | "how has my spend moved day by day?" | `cost.history` |
         | "show me my usage over time" | `usage.trend` |
         | "what were my last N requests?" | `usage.requests` |
-        | "find my session about X" | `sessions.search` |
-        | "what have I been working on?" | `sessions.list` |
+        | "find my session about X" / "which session was that work in?" | `sessions.search` |
+        | "what have I been working on?" / "what ran in this repo lately?" | `sessions.list` |
+        | "what did that agent actually do?" / "show me the match in context" | `sessions.transcript` |
         | "is Anthropic down?" | `status.get` |
         | "why is this model costing so much?" | `pricing.effective` |
         | "install the Vibe Bar skill" / "add this skill" | `skills.install` |
@@ -186,6 +187,24 @@ public enum MCPResourceCatalog {
         - **Request-level history is about 30 days deep.** Older usage survives as
           daily totals, visible through `usage.summary` and `usage.trend` but not
           through `usage.requests`.
+        - **Read sessions through `sessions.transcript`, not the filesystem.**
+          Every `sessions.*` row carries `sourcePath`, and on a busy Mac that path
+          can be a multi-hundred-megabyte JSONL log. `sessions.transcript` returns
+          bounded windows with a cursor. Treat `sourcePath` as a label — for
+          telling two sessions apart, or for a shell command the *user* runs —
+          not as something to open.
+        - **`sessions.*` share one filter vocabulary with `usage.*`:** `from`,
+          `to`, `models`, `harnesses`. `projectDir` is a case-insensitive
+          substring of the session's working directory. `sessions.list` still
+          accepts `since` as an alias for `from`.
+        - **Search hit → transcript.** A hit's `matchedSeq` is a message index;
+          pass it to `sessions.transcript` as `around` to read that message in
+          context. It always resolves, because a hit can only come from the part
+          of the log the indexer read.
+        - **The index is as fresh as the last sweep.** A session being written
+          right now is searchable up to that sweep, not up to its latest message.
+          Body search also needs Vibe Bar's session body indexing switched on;
+          with it off, titles and project paths still match.
         - **`skills.install` installs; it does not browse.** Name a source —
           `owner/repo`, `owner/repo@branch`, either plus `#<skill>` when the
           repository holds several, a github.com URL, or an absolute local

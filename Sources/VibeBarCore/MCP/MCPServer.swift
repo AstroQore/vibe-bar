@@ -27,6 +27,55 @@ public enum MCPCostHistoryTimeframe: String, Sendable, CaseIterable {
 
 // MARK: - Data source
 
+/// What `sessions.search` came back with.
+///
+/// The notice exists because the host-side filters (`to`, `from`, `models`)
+/// run *after* the index's ranking cut. When a page comes back short and the
+/// cut is the reason, saying so is the difference between "nothing matches"
+/// and "the matches are below the cut" — an agent cannot tell those apart
+/// from an empty array.
+public struct MCPSessionSearchOutcome: Sendable {
+    public var hits: [SessionSearchHit]
+    public var notice: String?
+
+    public init(hits: [SessionSearchHit], notice: String? = nil) {
+        self.hits = hits
+        self.notice = notice
+    }
+}
+
+/// What `sessions.list` came back with.
+///
+/// A plain page when the index answered the whole filter; otherwise the rows
+/// that survived a host-side pass, with `totalCount` withheld rather than
+/// reported as a number that describes a wider set. `AGENTS.md` § 5.1 and
+/// `SessionQueryFilter.isAnsweredEntirelyByTheIndex` say which is which.
+public struct MCPSessionListing: Sendable {
+    public var summaries: [SessionSummary]
+    public var totalCount: Int?
+    public var offset: Int
+    public var limit: Int
+    public var hasMore: Bool
+    /// Set when a host-side filter stopped at its scan cap.
+    public var notice: String?
+
+    public init(
+        summaries: [SessionSummary],
+        totalCount: Int?,
+        offset: Int,
+        limit: Int,
+        hasMore: Bool,
+        notice: String? = nil
+    ) {
+        self.summaries = summaries
+        self.totalCount = totalCount
+        self.offset = offset
+        self.limit = limit
+        self.hasMore = hasMore
+        self.notice = notice
+    }
+}
+
 /// Everything the MCP surface needs from the running app.
 ///
 /// Core owns the protocol shape and every projection; the App supplies one
@@ -53,17 +102,21 @@ public protocol MCPDataSource: AnyObject, Sendable {
 
     func searchSessions(
         query: String,
-        providers: [SessionProvider]?,
-        harnesses: [Harness]?,
+        filter: SessionQueryFilter,
         limit: Int
-    ) async throws -> [SessionSearchHit]
+    ) async throws -> MCPSessionSearchOutcome
     func listSessions(
-        providers: [SessionProvider]?,
-        harnesses: [Harness]?,
-        since: Date?,
+        filter: SessionQueryFilter,
         offset: Int,
         limit: Int
-    ) async throws -> SessionSummaryPage
+    ) async throws -> MCPSessionListing
+    /// One bounded window of one session's messages. Implementations resolve
+    /// `locator` through the session index — never through a path the caller
+    /// supplied — and read off the main actor.
+    func sessionTranscript(
+        locator: SessionLocator,
+        window: TranscriptWindowRequest
+    ) async throws -> SessionTranscriptResult
 
     func serviceStatus(tools: [ToolType]?) async throws -> MCPServiceStatusDTO
     func effectivePricing() async throws -> [EffectiveModelPricingRow]
@@ -239,6 +292,7 @@ public final class MCPServer: @unchecked Sendable {
         case "cost.history":      return try await costHistory(arguments)
         case "sessions.search":   return try await sessionsSearch(arguments)
         case "sessions.list":     return try await sessionsList(arguments)
+        case "sessions.transcript": return try await sessionsTranscript(arguments)
         case "status.get":        return try await statusGet(arguments)
         case "pricing.effective": return try await pricingEffective(arguments)
         case "skills.install":    return try await skillsInstall(arguments)
@@ -350,46 +404,107 @@ public final class MCPServer: @unchecked Sendable {
         return MCPCostHistoryDTO(timeframe: timeframe.rawValue, history: history)
     }
 
+    /// The narrowing both session tools share. `since` is `sessions.list`'s
+    /// original spelling and still works; `from` is the one that matches
+    /// `usage.*`, and wins when a caller passes both.
+    private func sessionFilter(_ arguments: MCPArguments) throws -> SessionQueryFilter {
+        let from = try arguments.optionalDate("from") ?? arguments.optionalDate("since")
+        let to = try arguments.optionalDate("to")
+        if let from, let to, to <= from {
+            throw MCPRPCError.invalidParams("'to' must be after 'from'.")
+        }
+        return SessionQueryFilter(
+            providers: try arguments.optionalEnumList("providers", SessionProvider.self),
+            harnesses: try arguments.optionalEnumList("harnesses", Harness.self),
+            projectDir: try arguments.optionalString("projectDir"),
+            from: from,
+            to: to,
+            models: try arguments.optionalStringList("models")
+        )
+    }
+
     private func sessionsSearch(_ arguments: MCPArguments) async throws -> MCPSessionListDTO {
         let query = try arguments.requiredString("query")
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw MCPRPCError.invalidParams("'query' must not be blank.")
         }
         let limit = try arguments.optionalInt("limit", minimum: 1, maximum: 50) ?? 20
-        let hits = try await dataSource.searchSessions(
+        let outcome = try await dataSource.searchSessions(
             query: query,
-            providers: try arguments.optionalEnumList("providers", SessionProvider.self),
-            harnesses: try arguments.optionalEnumList("harnesses", Harness.self),
+            filter: try sessionFilter(arguments),
             limit: limit
         )
         return MCPSessionListDTO(
             generatedAt: now(),
-            sessions: hits.map {
+            sessions: outcome.hits.map {
                 MCPSessionSummaryDTO(summary: $0.summary, snippet: $0.snippet, matchedSeq: $0.matchedSeq)
             },
             totalCount: nil,
             offset: nil,
-            limit: limit
+            limit: limit,
+            hasMore: nil,
+            notice: outcome.notice
         )
     }
 
     private func sessionsList(_ arguments: MCPArguments) async throws -> MCPSessionListDTO {
         let offset = try arguments.optionalInt("offset", minimum: 0, maximum: 1_000_000) ?? 0
         let limit = try arguments.optionalInt("limit", minimum: 1, maximum: 100) ?? 50
-        let page = try await dataSource.listSessions(
-            providers: try arguments.optionalEnumList("providers", SessionProvider.self),
-            harnesses: try arguments.optionalEnumList("harnesses", Harness.self),
-            since: try arguments.optionalDate("since"),
+        let listing = try await dataSource.listSessions(
+            filter: try sessionFilter(arguments),
             offset: offset,
             limit: limit
         )
         return MCPSessionListDTO(
             generatedAt: now(),
-            sessions: page.summaries.map { MCPSessionSummaryDTO(summary: $0) },
-            totalCount: page.totalCount,
-            offset: page.offset,
-            limit: page.limit
+            sessions: listing.summaries.map { MCPSessionSummaryDTO(summary: $0) },
+            totalCount: listing.totalCount,
+            offset: listing.offset,
+            limit: listing.limit,
+            hasMore: listing.hasMore,
+            notice: listing.notice
         )
+    }
+
+    private func sessionsTranscript(_ arguments: MCPArguments) async throws -> MCPTranscriptDTO {
+        let locator = try Self.locator(arguments)
+        let around = try arguments.optionalInt("around", minimum: 0, maximum: 10_000_000)
+        let request = TranscriptWindowRequest(
+            around: around,
+            radius: try arguments.optionalInt(
+                "radius", minimum: 0, maximum: TranscriptWindowRequest.maximumMessages
+            ) ?? TranscriptWindowRequest.defaultRadius,
+            from: try arguments.optionalInt("from", minimum: 0, maximum: 10_000_000) ?? 0,
+            limit: try arguments.optionalInt(
+                "limit", minimum: 1, maximum: TranscriptWindowRequest.maximumMessages
+            ) ?? TranscriptWindowRequest.defaultLimit,
+            roles: try arguments.optionalEnumList("roles", SessionRole.self).map { Set($0) }
+        )
+        let result = try await dataSource.sessionTranscript(locator: locator, window: request)
+        return MCPTranscriptDTO(generatedAt: now(), result: result)
+    }
+
+    /// `id`, or `sessionId` + `provider`. Named separately from the tool so
+    /// the "which arguments identify a session" rule is one function.
+    static func locator(_ arguments: MCPArguments) throws -> SessionLocator {
+        if let composite = try arguments.optionalString("id") {
+            guard let locator = SessionLocator.parse(compositeID: composite) else {
+                throw MCPRPCError.invalidParams(
+                    "'id' is not a session id. Pass one exactly as sessions.search or "
+                        + "sessions.list returned it, or use 'sessionId' with 'provider'."
+                )
+            }
+            return locator
+        }
+        guard let sessionID = try arguments.optionalString("sessionId") else {
+            throw MCPRPCError.invalidParams(
+                "Name a session: pass 'id', or 'sessionId' with 'provider'."
+            )
+        }
+        guard let provider = try arguments.optionalEnum("provider", SessionProvider.self) else {
+            throw MCPRPCError.invalidParams("'sessionId' needs 'provider' alongside it.")
+        }
+        return SessionLocator(provider: provider, sessionID: sessionID)
     }
 
     private func statusGet(_ arguments: MCPArguments) async throws -> MCPServiceStatusDTO {

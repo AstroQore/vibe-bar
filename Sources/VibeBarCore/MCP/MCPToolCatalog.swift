@@ -20,6 +20,7 @@ public enum MCPToolCatalog {
         costHistory,
         sessionsSearch,
         sessionsList,
+        sessionsTranscript,
         statusGet,
         pricingEffective,
         skillsInstall
@@ -125,6 +126,36 @@ public enum MCPToolCatalog {
                 "description": .string(
                     "Raw vendor model ids to keep, exactly as the provider spelled them "
                         + "(for example 'claude-opus-4-7', not 'Opus')."
+                ),
+                "items": .object(["type": .string("string")])
+            ])
+        ]
+    }
+
+    /// Narrowing shared by `sessions.search` and `sessions.list`.
+    ///
+    /// The names are `usage.*`'s (`from` / `to` / `models` / `harnesses`) on
+    /// purpose: one vocabulary for one concept across the whole surface.
+    private static var sessionFilterProperties: [String: MCPJSON] {
+        [
+            "harnesses": harnessFilter,
+            "providers": stringEnumList(
+                sessionProviderValues,
+                description: "On-disk session stores to read. Prefer 'harnesses' unless you specifically want a store."
+            ),
+            "projectDir": string(
+                "Keep sessions whose working directory contains this text (case-insensitive "
+                    + "substring, so a full absolute path behaves as an exact match and a repo "
+                    + "name matches every checkout of it)."
+            ),
+            "from": string("Inclusive ISO-8601 lower bound on last activity."),
+            "to": string("Exclusive ISO-8601 upper bound on last activity."),
+            "models": .object([
+                "type": .string("array"),
+                "description": .string(
+                    "Raw vendor model ids to keep, exactly as the log spelled them "
+                        + "(for example 'claude-opus-4-7', not 'Opus'). A session whose log never "
+                        + "recorded a model matches no model filter."
                 ),
                 "items": .object(["type": .string("string")])
             ])
@@ -259,22 +290,22 @@ public enum MCPToolCatalog {
         name: "sessions.search",
         title: "Full-text search local agent sessions",
         description: """
-            Search titles, projects and message bodies across every local CLI session Vibe Bar has \
-            indexed. Answers 'find my session about X'. Results carry the matching excerpt with <b> \
-            markers around the hit, plus the on-disk path so the transcript can be opened. Body search \
-            needs Vibe Bar's session body indexing enabled; with it off, titles and projects still match. \
-            Rows are labelled with the harness (the usage axis), not the quota SubProvider.
+            Find a local agent session — yours or another agent's — by what was said in it. Searches \
+            titles, project paths and message bodies across every CLI session Vibe Bar has indexed, and \
+            answers 'which session was the socket-server work in'. Each hit carries 'snippet' (the \
+            matching excerpt, <b> markers around the hit) and 'matchedSeq' (the message index) — pass \
+            that seq to sessions.transcript as 'around' to read the match in context. Also carries \
+            'sessionId' to resume with that CLI and 'projectDir' for where the work happened. Body \
+            search needs Vibe Bar's session body indexing enabled; with it off, titles and projects still \
+            match. The index is as fresh as the last sweep, so a session being written right now is \
+            searchable up to that point. Rows are labelled with the harness (the usage axis), not the \
+            quota SubProvider.
             """,
         inputSchema: object(
-            properties: [
+            properties: sessionFilterProperties.merging([
                 "query": string("Text to look for. Substring matching, so partial words and CJK both work."),
-                "harnesses": harnessFilter,
-                "providers": stringEnumList(
-                    sessionProviderValues,
-                    description: "On-disk session stores to search. Prefer 'harnesses' unless you specifically want a store."
-                ),
                 "limit": integer("Maximum hits, 1–50. Default 20.", minimum: 1, maximum: 50)
-            ],
+            ]) { _, new in new },
             required: ["query"]
         )
     )
@@ -283,19 +314,84 @@ public enum MCPToolCatalog {
         name: "sessions.list",
         title: "List local agent sessions",
         description: """
-            Recent local CLI sessions, newest first, with title, project directory, model, message count \
-            and on-disk path. Use sessions.search when you know what the session was about. Rows are \
+            Recent local agent sessions, newest first, with title, project directory, model, message \
+            count and identity. Answers 'what has been worked on in this repo lately' and 'which session \
+            is that other agent in'. Use sessions.search when you know what the session was about, and \
+            sessions.transcript to read one. 'totalCount' is exact unless a 'to' or 'models' filter is \
+            in play — those are applied after the index query, so trust 'hasMore' instead. Rows are \
             labelled with the harness (the usage axis).
             """,
-        inputSchema: object(properties: [
-            "harnesses": harnessFilter,
-            "providers": stringEnumList(
-                sessionProviderValues,
-                description: "On-disk session stores to list. Prefer 'harnesses' unless you specifically want a store."
+        inputSchema: object(properties: sessionFilterProperties.merging([
+            "since": string(
+                "Deprecated alias for 'from', kept so existing callers keep working. Prefer 'from'."
             ),
-            "since": string("Only sessions last active at or after this ISO-8601 instant."),
             "offset": integer("Rows to skip, for paging. Default 0.", minimum: 0),
             "limit": integer("Rows to return, 1–100. Default 50.", minimum: 1, maximum: 100)
+        ]) { _, new in new })
+    )
+
+    public static let sessionsTranscript = MCPTool(
+        name: "sessions.transcript",
+        title: "Read a window of one session's transcript",
+        description: """
+            Read messages out of one local agent session, in bounded windows. This is how to inspect \
+            another agent's working session — prefer it over opening 'sourcePath' yourself, which on a \
+            busy Mac can be a multi-hundred-megabyte JSONL log.
+
+            Name the session with 'id' (the composite id every sessions.* row carries) or with \
+            'sessionId' plus 'provider'. There is no path argument: reads resolve through Vibe Bar's \
+            index, so only sessions it already discovered can be opened.
+
+            Two window shapes. 'around: <seq>' with 'radius' (default 20) reads a match in context — \
+            pass a search hit's 'matchedSeq' straight in, which always works because anything \
+            sessions.search can find lies inside the indexed head of the log. 'from' plus 'limit' pages \
+            forward; feed the previous response's 'nextFrom' back as 'from'. 'roles' thins a window \
+            (for example just the user's prompts); it does not search past it. Omitting a filter list \
+            means everything; sending an empty one means nothing.
+
+            The response is capped by message count and by a byte budget, and a single long message is \
+            clipped rather than being allowed to fill the answer. When anything is cut, 'truncated' is \
+            true, 'truncationReasons' says which cap bit, and 'notice' is a sentence you can relay. \
+            'totalMessageCount' is absent whenever the read stopped before the end of the log, which a \
+            bounded read usually does — a prefix's count is not the log's count. Use 'hasMore' and \
+            'nextFrom' to keep going.
+            """,
+        inputSchema: object(properties: [
+            "id": string(
+                "Composite session id from a sessions.search / sessions.list row "
+                    + "('<provider>:<sessionId>:<path>'). Use this when you have it."
+            ),
+            "sessionId": string("The session's own id. Needs 'provider' alongside it."),
+            "provider": string(
+                "On-disk store the session lives in. Required with 'sessionId'.",
+                enumValues: sessionProviderValues
+            ),
+            "around": integer(
+                "Centre the window on this message index — a search hit's 'matchedSeq'. Wins over "
+                    + "'from'. The message you name is always in the result: when a cap bites, the "
+                    + "window shrinks towards it rather than dropping it. Only a 'roles' filter it "
+                    + "does not match can exclude it.",
+                minimum: 0
+            ),
+            "radius": integer(
+                "Messages either side of 'around'. Default \(TranscriptWindowRequest.defaultRadius).",
+                minimum: 0,
+                maximum: TranscriptWindowRequest.maximumMessages
+            ),
+            "from": integer(
+                "First message index to return, when 'around' is absent. Default 0.",
+                minimum: 0
+            ),
+            "limit": integer(
+                "Maximum messages, 1–\(TranscriptWindowRequest.maximumMessages). "
+                    + "Default \(TranscriptWindowRequest.defaultLimit).",
+                minimum: 1,
+                maximum: TranscriptWindowRequest.maximumMessages
+            ),
+            "roles": stringEnumList(
+                SessionRole.allCases.map(\.rawValue),
+                description: "Message roles to keep. Omit for all of them."
+            )
         ])
     )
 

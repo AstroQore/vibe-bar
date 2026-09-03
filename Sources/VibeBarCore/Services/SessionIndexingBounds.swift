@@ -131,6 +131,281 @@ public enum SessionIndexingBounds {
         }
     }
 
+    // MARK: - Reading a transcript for an agent
+
+    /// Byte ceiling for one `sessions.transcript` read.
+    ///
+    /// The same number as the viewer's, for the same reason and with the same
+    /// consequence: past this, the answer says so instead of growing. It is
+    /// generous relative to what an agent normally needs, because of a
+    /// property worth stating outright — **`sessions.search` can only return a
+    /// `matchedSeq` that lies inside the indexed head.** The indexer parses at
+    /// most `SessionIndexExcerptPolicy.headParseByteLimit` (8 MiB) of any
+    /// session, so every hit an agent can discover is reachable well inside
+    /// this ceiling. "Read the match in context" therefore always works; only
+    /// "page to the end of a 1 GB log" runs out of room.
+    public static let agentTranscriptByteCeiling: Int64 = 32 * 1024 * 1024
+
+    /// First read size. Most sessions are smaller than this, so the common
+    /// case is one parse of the whole file.
+    static let agentTranscriptInitialByteLimit: Int64 = 1024 * 1024
+
+    /// Read the slice of `fileURL` that `request` asks for.
+    ///
+    /// There is no seek. A message index cannot be turned into a byte offset
+    /// without parsing, because not every line of a rollout produces a
+    /// message — the Codex adapter alone drops most of them. So reaching
+    /// message *N* means parsing from the start until *N* exists, and the
+    /// only bound available is the one this already has: bytes.
+    ///
+    /// What that buys is an *escalating head read* rather than a whole-file
+    /// one. Start at `agentTranscriptInitialByteLimit`; if the parse did not
+    /// reach the requested window and the file has more to give, estimate the
+    /// bytes-per-message from what was just parsed, grow, and retry — up to
+    /// `byteCeiling`. Small sessions cost one parse. A match near the head of
+    /// a huge rollout costs one or two. Only a request that genuinely points
+    /// past the ceiling gets a truncated answer, and it is told why.
+    ///
+    /// This deliberately calls `readTranscript` rather than reimplementing the
+    /// bound: one read path, one cancellation story, one scratch sweep.
+    public static func readTranscriptWindow(
+        adapter: any SessionProviderAdapter,
+        fileURL: URL,
+        request: TranscriptWindowRequest,
+        byteCeiling: Int64 = SessionIndexingBounds.agentTranscriptByteCeiling,
+        scratchDirectory: URL = VibeBarLocalStore.sessionIndexScratchDirectoryURL,
+        isCancelled: () -> Bool = { Task.isCancelled }
+    ) throws -> TranscriptWindow {
+        // A store that cannot be cut at a byte offset cannot be bounded, and
+        // the ceiling above is a promise this function makes to a caller that
+        // may be an agent in a loop. Refuse rather than quietly parsing the
+        // whole thing: a refusal naming the size is something the agent can
+        // act on, a multi-hundred-megabyte parse is a stall it cannot.
+        let size = SessionParsing.fileSize(fileURL)
+        if !headTruncatableProviders.contains(adapter.provider), size > byteCeiling {
+            throw TranscriptReadRefusal.wholeFileOnly(
+                provider: adapter.provider,
+                fileBytes: size,
+                ceilingBytes: byteCeiling
+            )
+        }
+        let needed = request.upperBound
+        var limit = min(agentTranscriptInitialByteLimit, byteCeiling)
+        var read = try readTranscript(
+            adapter: adapter,
+            fileURL: fileURL,
+            headByteLimit: limit,
+            scratchDirectory: scratchDirectory,
+            isCancelled: isCancelled
+        )
+        while read.isHeadTruncated, read.document.messages.count <= needed, limit < byteCeiling {
+            limit = min(byteCeiling, Self.nextByteLimit(after: limit, read: read, needed: needed))
+            read = try readTranscript(
+                adapter: adapter,
+                fileURL: fileURL,
+                headByteLimit: limit,
+                scratchDirectory: scratchDirectory,
+                isCancelled: isCancelled
+            )
+        }
+        return window(
+            for: request,
+            in: read.document.messages,
+            reachedEndOfFile: !read.isHeadTruncated,
+            bytesRead: read.isHeadTruncated ? limit : read.fileByteSize,
+            fileBytes: read.fileByteSize
+        )
+    }
+
+    /// How far to grow the next attempt.
+    ///
+    /// Doubling alone walks up to a deep message in log₂ steps, each one
+    /// re-parsing everything before it. The bytes-per-message the last parse
+    /// just measured is a much better guess, so take whichever is larger and
+    /// give it 50% headroom — messages get longer further into a session.
+    static func nextByteLimit(
+        after limit: Int64,
+        read: BoundedTranscript,
+        needed: Int
+    ) -> Int64 {
+        let doubled = limit * 2
+        let parsed = read.document.messages.count
+        guard parsed > 0 else { return doubled }
+        let perMessage = max(1, limit / Int64(parsed))
+        let estimated = perMessage * Int64(needed + 1) * 3 / 2
+        return max(doubled, estimated)
+    }
+
+    /// Slice, role-filter and budget one window out of the parsed messages.
+    ///
+    /// Split out from the read so the whole windowing contract — bounds,
+    /// caps, cursor, reasons — is testable against a plain array with no
+    /// file, adapter or scratch directory in sight.
+    ///
+    /// The two request shapes are collected in different orders, and that is
+    /// the whole point. `from` reads forward and stops when a cap bites.
+    /// `around` collects **outward from the target**, so a cap shrinks the
+    /// window towards the message the caller asked to see instead of
+    /// truncating the far side of it away.
+    static func window(
+        for request: TranscriptWindowRequest,
+        in messages: [SessionMessage],
+        reachedEndOfFile: Bool,
+        bytesRead: Int64,
+        fileBytes: Int64
+    ) -> TranscriptWindow {
+        var reasons: [TranscriptTruncationReason] = []
+        // The window asked for more than the read could see. Say so rather
+        // than returning an empty slice that reads like "no such messages".
+        if !reachedEndOfFile, messages.count <= request.upperBound {
+            reasons.append(.readCeiling)
+        }
+
+        // `min` matters: a `from` past the end of what was read would other-
+        // wise build a reversed range, which traps rather than returning the
+        // empty window that situation actually calls for.
+        let order = request.around == nil
+            ? Array(min(request.lowerBound, messages.count)..<messages.count)
+            : Self.centredOrder(request: request, messageCount: messages.count)
+
+        var chosen: [Int] = []
+        var spent = 0
+        var hitCap = false
+
+        for index in order {
+            guard index <= request.upperBound, index < messages.count else { continue }
+            let message = messages[index]
+            // A role filter thins the window; it does not extend it — and it
+            // outranks "always include the target", because a caller asking
+            // for user turns only did not ask for an assistant one.
+            if let roles = request.roles, !roles.contains(message.role) { continue }
+            if chosen.count >= request.limit {
+                reasons.append(.messageLimit)
+                hitCap = true
+                break
+            }
+            // Always let the first message through: a response of zero
+            // messages plus "the budget was full" is not an answer.
+            let cost = Self.clipped(message).utf8.count
+            if !chosen.isEmpty, spent + cost > TranscriptWindowRequest.maximumTextBytes {
+                reasons.append(.byteBudget)
+                hitCap = true
+                break
+            }
+            chosen.append(index)
+            spent += cost
+        }
+
+        // Centred collection visits neighbours alternately, so sort back into
+        // reading order before anyone sees it.
+        chosen.sort()
+        var kept: [SessionMessage] = []
+        var truncatedFlags: [Bool] = []
+        var originalBytes: [Int] = []
+        for index in chosen {
+            let message = messages[index]
+            let clipped = Self.clipped(message)
+            if clipped != message.text {
+                if !reasons.contains(.messageText) { reasons.append(.messageText) }
+                truncatedFlags.append(true)
+            } else {
+                truncatedFlags.append(false)
+            }
+            originalBytes.append(message.text.utf8.count)
+            kept.append(SessionMessage(
+                seq: message.seq,
+                role: message.role,
+                text: clipped,
+                timestamp: message.timestamp
+            ))
+        }
+
+        // Where "keep reading" resumes.
+        //
+        // A cursor must always be *past* something this call already looked
+        // at, or a client following the documented loop repeats the identical
+        // page forever. Two ways that used to happen:
+        //
+        // - the read never reached the requested window (`readCeiling`), so
+        //   retrying it would parse the same bytes to the same non-answer;
+        // - every message in the window was filtered out by `roles`, which
+        //   left `chosen` empty and resumed at the window's own start.
+        //
+        // The first gets no cursor. The second resumes after the span that
+        // *was* examined, so the loop makes progress — unless the filter can
+        // never match anything at all, in which case there is nothing to make
+        // progress towards.
+        let examinedEnd = messages.isEmpty
+            ? request.lowerBound
+            : min(request.upperBound, messages.count - 1) + 1
+        let nextFrom: Int?
+        if kept.isEmpty, reasons.contains(.readCeiling) {
+            nextFrom = nil
+        } else if request.roles?.isEmpty == true {
+            // An empty role set selects no role, here and everywhere else.
+            // Paging cannot rescue it.
+            nextFrom = nil
+        } else {
+            let resume = chosen.last.map { $0 + 1 } ?? examinedEnd
+            nextFrom = hitCap || resume < messages.count || !reachedEndOfFile ? resume : nil
+        }
+
+        return TranscriptWindow(
+            messages: kept,
+            textTruncated: truncatedFlags,
+            textBytes: originalBytes,
+            // Only a read that saw the whole file knows the whole count.
+            totalMessageCount: reachedEndOfFile ? messages.count : nil,
+            nextFrom: nextFrom,
+            reasons: reasons,
+            bytesRead: bytesRead,
+            fileBytes: fileBytes
+        )
+    }
+
+    /// Indices to try for an `around` request, nearest the target first.
+    ///
+    /// Target, then one before, one after, two before, two after… Collecting
+    /// in this order is what guarantees the requested message survives every
+    /// cap: it is considered before anything else, so the only thing that can
+    /// exclude it is a `roles` filter it does not match.
+    ///
+    /// Walking outward from a centre also keeps the result contiguous, which
+    /// is why `nextFrom` can stay a single "resume after the last message"
+    /// index rather than a set of holes.
+    ///
+    /// The previous version simply started at `around - radius` and read
+    /// forward, so `around: 500, radius: 100` with the default limit of 40
+    /// returned 400–439 and omitted 500 — the one message the caller named.
+    static func centredOrder(request: TranscriptWindowRequest, messageCount: Int) -> [Int] {
+        guard let around = request.around, messageCount > 0 else { return [] }
+        let lower = request.lowerBound
+        let upper = min(request.upperBound, messageCount - 1)
+        // The target itself has to be inside the readable span. When it is
+        // not, there is no centred window to build: the caller gets the empty
+        // result, and `readCeiling` explains it when the read was the reason.
+        guard lower <= upper, around >= lower, around <= upper else { return [] }
+        var order: [Int] = [around]
+        order.reserveCapacity(upper - lower + 1)
+        var step = 1
+        while true {
+            let before = around - step
+            let after = around + step
+            if before < lower, after > upper { break }
+            if before >= lower { order.append(before) }
+            if after <= upper { order.append(after) }
+            step += 1
+        }
+        return order
+    }
+
+    private static func clipped(_ message: SessionMessage) -> String {
+        SessionParsing.truncate(
+            message.text,
+            limit: TranscriptWindowRequest.maximumMessageTextCharacters
+        )
+    }
+
     /// Streams the first `limit` bytes of `fileURL` into a scratch file.
     /// Constant memory; the caller deletes the copy after parsing. Scratch
     /// lives under `~/.vibebar` because that directory is the only place
