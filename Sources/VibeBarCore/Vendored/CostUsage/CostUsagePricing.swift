@@ -10,6 +10,17 @@ import Foundation
 /// from the earlier hardcoded-dict implementation so every caller
 /// (CostUsageScanner, the cost UI surfaces, tests) keeps working
 /// without modification.
+///
+/// Two shapes exist for every provider:
+///
+/// - the original `…CostUSD(model:…)` entry points, which resolve the
+///   active table themselves — used by the UI and by tests;
+/// - a `models:` / `pricing:` pair that takes the already-resolved table
+///   (or the already-resolved entry) — used by the cost scanner, which
+///   resolves the table once per pass and memoises model normalisation
+///   through `CostPricingContext`. Reading `PricingResolver.active` per
+///   event took a lock and retained five dictionaries, twice, for each of
+///   millions of events.
 public enum CostUsagePricing {
     /// ISO date the pricing tables were last refreshed against
     /// upstream provider docs. Reflects the *currently loaded* data
@@ -44,29 +55,34 @@ public enum CostUsagePricing {
         let dataSet = PricingResolver.active
         switch tool {
         case .codex:
-            guard let pricing = dataSet.providers.codex.models[normalizeCodexModel(model)] else {
+            let models = dataSet.providers.codex.models
+            guard let pricing = models[normalizeCodexModel(model, models: models)] else {
                 return false
             }
             return pricing.thresholdTokens == nil
                 && (pricing.fastMultiplier ?? 1.0) == 1.0
         case .claude:
-            guard let pricing = dataSet.providers.claude.models[normalizeClaudeModel(model)] else {
+            let models = dataSet.providers.claude.models
+            guard let pricing = models[normalizeClaudeModel(model, models: models)] else {
                 return false
             }
             return pricing.thresholdTokens == nil
                 && (pricing.fastMultiplier ?? 1.0) == 1.0
         case .gemini:
-            guard let pricing = dataSet.providers.gemini.models[normalizeGeminiModel(model)] else {
+            let models = dataSet.providers.gemini.models
+            guard let pricing = models[normalizeGeminiModel(model, models: models)] else {
                 return false
             }
             return pricing.thresholdTokens == nil
         case .grok:
-            guard let pricing = dataSet.providers.grok.models[normalizeGrokModel(model)] else {
+            let models = dataSet.providers.grok.models
+            guard let pricing = models[normalizeGrokModel(model, models: models)] else {
                 return false
             }
             return pricing.thresholdTokens == nil
         case .antigravity:
-            return dataSet.providers.antigravity.models[normalizeAntigravityModel(model)] != nil
+            let models = dataSet.providers.antigravity.models
+            return models[normalizeAntigravityModel(model, models: models)] != nil
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
@@ -88,16 +104,57 @@ public enum CostUsagePricing {
         return Double(below) * base + Double(over) * above
     }
 
+    // MARK: - Model-suffix patterns
+    //
+    // Compiled once. `String.range(of:options:.regularExpression)` builds a
+    // fresh ICU matcher on every call, and model normalisation runs at least
+    // once per usage event — millions of times in one cold scan.
+
+    private enum Patterns {
+        static let codexDated = regex(#"-\d{4}-\d{2}-\d{2}$"#)
+        static let claudeVersioned = regex(#"-v\d+:\d+$"#)
+        static let claudeDated = regex(#"-\d{8}$"#)
+        static let geminiDated = regex(#"-(preview-)?\d{2,4}-\d{2}(-\d{2})?$"#)
+        static let geminiRevision = regex(#"-\d{3}$"#)
+        static let grokDated = regex(#"-(beta|preview|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})$"#)
+
+        private static func regex(_ pattern: String) -> NSRegularExpression? {
+            try? NSRegularExpression(pattern: pattern)
+        }
+    }
+
+    /// First match of `regex` in `string`, as a `String` range. Same
+    /// semantics as `string.range(of: pattern, options: .regularExpression)`
+    /// (both go through ICU via `NSRegularExpression`); a pattern that fails
+    /// to compile degrades to "no match", exactly as the string API does.
+    private static func firstMatchRange(
+        _ regex: NSRegularExpression?,
+        in string: String
+    ) -> Range<String.Index>? {
+        guard let regex else { return nil }
+        let full = NSRange(string.startIndex..<string.endIndex, in: string)
+        guard let match = regex.firstMatch(in: string, options: [], range: full) else {
+            return nil
+        }
+        return Range(match.range, in: string)
+    }
+
     // MARK: - Codex
 
     static func normalizeCodexModel(_ raw: String) -> String {
-        let codex = PricingResolver.active.providers.codex.models
+        normalizeCodexModel(raw, models: PricingResolver.active.providers.codex.models)
+    }
+
+    static func normalizeCodexModel(
+        _ raw: String,
+        models codex: [String: PricingDataSet.CodexEntry]
+    ) -> String {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("openai/") {
             trimmed = String(trimmed.dropFirst("openai/".count))
         }
         if codex[trimmed] != nil { return trimmed }
-        if let datedSuffix = trimmed.range(of: #"-\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) {
+        if let datedSuffix = firstMatchRange(Patterns.codexDated, in: trimmed) {
             let base = String(trimmed[..<datedSuffix.lowerBound])
             if codex[base] != nil { return base }
         }
@@ -106,7 +163,7 @@ public enum CostUsagePricing {
 
     static func codexDisplayLabel(model: String) -> String? {
         let codex = PricingResolver.active.providers.codex.models
-        return codex[normalizeCodexModel(model)]?.displayLabel
+        return codex[normalizeCodexModel(model, models: codex)]?.displayLabel
     }
 
     static func codexCostUSD(
@@ -117,7 +174,23 @@ public enum CostUsagePricing {
         isFast: Bool = false
     ) -> Double? {
         let codex = PricingResolver.active.providers.codex.models
-        guard let pricing = codex[normalizeCodexModel(model)] else { return nil }
+        guard let pricing = codex[normalizeCodexModel(model, models: codex)] else { return nil }
+        return codexCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cachedInputTokens: cachedInputTokens,
+            outputTokens: outputTokens,
+            isFast: isFast
+        )
+    }
+
+    static func codexCostUSD(
+        pricing: PricingDataSet.CodexEntry,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int,
+        isFast: Bool
+    ) -> Double {
         let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
         let nonCached = max(0, inputTokens - cached)
         let cachedRate = pricing.cacheRead ?? pricing.input
@@ -143,7 +216,13 @@ public enum CostUsagePricing {
     // MARK: - Claude
 
     static func normalizeClaudeModel(_ raw: String) -> String {
-        let claude = PricingResolver.active.providers.claude.models
+        normalizeClaudeModel(raw, models: PricingResolver.active.providers.claude.models)
+    }
+
+    static func normalizeClaudeModel(
+        _ raw: String,
+        models claude: [String: PricingDataSet.ClaudeEntry]
+    ) -> String {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("anthropic.") {
             trimmed = String(trimmed.dropFirst("anthropic.".count))
@@ -156,10 +235,10 @@ public enum CostUsagePricing {
                 trimmed = tail
             }
         }
-        if let vRange = trimmed.range(of: #"-v\d+:\d+$"#, options: .regularExpression) {
+        if let vRange = firstMatchRange(Patterns.claudeVersioned, in: trimmed) {
             trimmed.removeSubrange(vRange)
         }
-        if let baseRange = trimmed.range(of: #"-\d{8}$"#, options: .regularExpression) {
+        if let baseRange = firstMatchRange(Patterns.claudeDated, in: trimmed) {
             let base = String(trimmed[..<baseRange.lowerBound])
             if claude[base] != nil { return base }
         }
@@ -175,8 +254,25 @@ public enum CostUsagePricing {
         isFast: Bool = false
     ) -> Double? {
         let claude = PricingResolver.active.providers.claude.models
-        guard let pricing = claude[normalizeClaudeModel(model)] else { return nil }
+        guard let pricing = claude[normalizeClaudeModel(model, models: claude)] else { return nil }
+        return claudeCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cacheReadInputTokens: cacheReadInputTokens,
+            cacheCreationInputTokens: cacheCreationInputTokens,
+            outputTokens: outputTokens,
+            isFast: isFast
+        )
+    }
 
+    static func claudeCostUSD(
+        pricing: PricingDataSet.ClaudeEntry,
+        inputTokens: Int,
+        cacheReadInputTokens: Int,
+        cacheCreationInputTokens: Int,
+        outputTokens: Int,
+        isFast: Bool
+    ) -> Double {
         func tiered(_ tokens: Int, base: Double, above: Double?, threshold: Int?) -> Double {
             guard let threshold, let above else { return Double(tokens) * base }
             let below = min(tokens, threshold)
@@ -210,17 +306,23 @@ public enum CostUsagePricing {
     // MARK: - Gemini
 
     static func normalizeGeminiModel(_ raw: String) -> String {
-        let gemini = PricingResolver.active.providers.gemini.models
+        normalizeGeminiModel(raw, models: PricingResolver.active.providers.gemini.models)
+    }
+
+    static func normalizeGeminiModel(
+        _ raw: String,
+        models gemini: [String: PricingDataSet.GeminiEntry]
+    ) -> String {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if trimmed.hasPrefix("models/") {
             trimmed = String(trimmed.dropFirst("models/".count))
         }
         if gemini[trimmed] != nil { return trimmed }
-        if let datedSuffix = trimmed.range(of: #"-(preview-)?\d{2,4}-\d{2}(-\d{2})?$"#, options: .regularExpression) {
+        if let datedSuffix = firstMatchRange(Patterns.geminiDated, in: trimmed) {
             let base = String(trimmed[..<datedSuffix.lowerBound])
             if gemini[base] != nil { return base }
         }
-        if let revSuffix = trimmed.range(of: #"-\d{3}$"#, options: .regularExpression) {
+        if let revSuffix = firstMatchRange(Patterns.geminiRevision, in: trimmed) {
             let base = String(trimmed[..<revSuffix.lowerBound])
             if gemini[base] != nil { return base }
         }
@@ -234,7 +336,7 @@ public enum CostUsagePricing {
 
     static func geminiDisplayLabel(model: String) -> String? {
         let gemini = PricingResolver.active.providers.gemini.models
-        return gemini[normalizeGeminiModel(model)]?.displayLabel
+        return gemini[normalizeGeminiModel(model, models: gemini)]?.displayLabel
     }
 
     static func geminiCostUSD(
@@ -244,8 +346,21 @@ public enum CostUsagePricing {
         outputTokens: Int
     ) -> Double? {
         let gemini = PricingResolver.active.providers.gemini.models
-        guard let pricing = gemini[normalizeGeminiModel(model)] else { return nil }
+        guard let pricing = gemini[normalizeGeminiModel(model, models: gemini)] else { return nil }
+        return geminiCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cacheReadInputTokens: cacheReadInputTokens,
+            outputTokens: outputTokens
+        )
+    }
 
+    static func geminiCostUSD(
+        pricing: PricingDataSet.GeminiEntry,
+        inputTokens: Int,
+        cacheReadInputTokens: Int,
+        outputTokens: Int
+    ) -> Double {
         let cached = min(max(0, cacheReadInputTokens), max(0, inputTokens))
         let nonCached = max(0, inputTokens - cached)
         let output = max(0, outputTokens)
@@ -276,13 +391,19 @@ public enum CostUsagePricing {
     // MARK: - Grok
 
     static func normalizeGrokModel(_ raw: String) -> String {
-        let grok = PricingResolver.active.providers.grok.models
+        normalizeGrokModel(raw, models: PricingResolver.active.providers.grok.models)
+    }
+
+    static func normalizeGrokModel(
+        _ raw: String,
+        models grok: [String: PricingDataSet.GrokEntry]
+    ) -> String {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if trimmed.hasPrefix("xai/") {
             trimmed = String(trimmed.dropFirst("xai/".count))
         }
         if grok[trimmed] != nil { return trimmed }
-        if let datedRange = trimmed.range(of: #"-(beta|preview|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})$"#, options: .regularExpression) {
+        if let datedRange = firstMatchRange(Patterns.grokDated, in: trimmed) {
             let base = String(trimmed[..<datedRange.lowerBound])
             if grok[base] != nil { return base }
         }
@@ -296,7 +417,7 @@ public enum CostUsagePricing {
 
     static func grokDisplayLabel(model: String) -> String? {
         let grok = PricingResolver.active.providers.grok.models
-        return grok[normalizeGrokModel(model)]?.displayLabel
+        return grok[normalizeGrokModel(model, models: grok)]?.displayLabel
     }
 
     static func grokCostUSD(
@@ -306,7 +427,21 @@ public enum CostUsagePricing {
         outputTokens: Int
     ) -> Double? {
         let grok = PricingResolver.active.providers.grok.models
-        guard let pricing = grok[normalizeGrokModel(model)] else { return nil }
+        guard let pricing = grok[normalizeGrokModel(model, models: grok)] else { return nil }
+        return grokCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cachedInputTokens: cachedInputTokens,
+            outputTokens: outputTokens
+        )
+    }
+
+    static func grokCostUSD(
+        pricing: PricingDataSet.GrokEntry,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int
+    ) -> Double {
         let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
         let nonCached = max(0, inputTokens - cached)
         let cachedRate = pricing.cacheRead ?? pricing.input
@@ -331,7 +466,13 @@ public enum CostUsagePricing {
     // MARK: - AntiGravity
 
     static func normalizeAntigravityModel(_ raw: String) -> String {
-        let antigravity = PricingResolver.active.providers.antigravity.models
+        normalizeAntigravityModel(raw, models: PricingResolver.active.providers.antigravity.models)
+    }
+
+    static func normalizeAntigravityModel(
+        _ raw: String,
+        models antigravity: [String: PricingDataSet.AntigravityEntry]
+    ) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if antigravity[trimmed] != nil { return trimmed }
         if trimmed.contains("opus") { return "antigravity-claude-opus" }
@@ -350,7 +491,7 @@ public enum CostUsagePricing {
 
     static func antigravityDisplayLabel(model: String) -> String? {
         let antigravity = PricingResolver.active.providers.antigravity.models
-        return antigravity[normalizeAntigravityModel(model)]?.displayLabel
+        return antigravity[normalizeAntigravityModel(model, models: antigravity)]?.displayLabel
     }
 
     static func antigravityCostUSD(
@@ -361,10 +502,99 @@ public enum CostUsagePricing {
         outputTokens: Int
     ) -> Double? {
         let antigravity = PricingResolver.active.providers.antigravity.models
-        guard let pricing = antigravity[normalizeAntigravityModel(model)] else { return nil }
-        return Double(max(0, inputTokens)) * pricing.input
+        guard let pricing = antigravity[
+            normalizeAntigravityModel(model, models: antigravity)
+        ] else { return nil }
+        return antigravityCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cacheReadInputTokens: cacheReadInputTokens,
+            cacheCreationInputTokens: cacheCreationInputTokens,
+            outputTokens: outputTokens
+        )
+    }
+
+    static func antigravityCostUSD(
+        pricing: PricingDataSet.AntigravityEntry,
+        inputTokens: Int,
+        cacheReadInputTokens: Int,
+        cacheCreationInputTokens: Int,
+        outputTokens: Int
+    ) -> Double {
+        Double(max(0, inputTokens)) * pricing.input
             + Double(max(0, cacheReadInputTokens)) * pricing.cacheRead
             + Double(max(0, cacheCreationInputTokens)) * pricing.cacheCreation
             + Double(max(0, outputTokens)) * pricing.output
+    }
+}
+
+/// One cost scan pass's view of the pricing tables.
+///
+/// Two jobs, both about not repeating work per event:
+///
+/// 1. `PricingResolver.active` is read **once**, at the top of the pass.
+///    Every event in the resulting snapshot is therefore priced against
+///    one consistent table (which `CostUsageService` already arranges at
+///    the pass boundary), and the per-event lock + dictionary retains are
+///    gone.
+/// 2. Model-name normalisation is memoised per provider. A scan sees a
+///    handful of distinct model strings across millions of events, and
+///    normalisation trims, lowercases, and runs suffix regexes.
+///
+/// Deliberately *not* a shared singleton: a pass-scoped memo cannot go
+/// stale when the pricing catalog is swapped, so there is no invalidation
+/// to get wrong. One instance is created per `CostUsageScanner.scan` and
+/// used only from that pass.
+final class CostPricingContext {
+    let dataSet: PricingDataSet
+
+    private var codexNames: [String: String] = [:]
+    private var claudeNames: [String: String] = [:]
+    private var geminiNames: [String: String] = [:]
+    private var grokNames: [String: String] = [:]
+    private var antigravityNames: [String: String] = [:]
+
+    init(dataSet: PricingDataSet = PricingResolver.active) {
+        self.dataSet = dataSet
+    }
+
+    func codexEntry(for model: String) -> PricingDataSet.CodexEntry? {
+        let models = dataSet.providers.codex.models
+        if let hit = codexNames[model] { return models[hit] }
+        let name = CostUsagePricing.normalizeCodexModel(model, models: models)
+        codexNames[model] = name
+        return models[name]
+    }
+
+    func claudeEntry(for model: String) -> PricingDataSet.ClaudeEntry? {
+        let models = dataSet.providers.claude.models
+        if let hit = claudeNames[model] { return models[hit] }
+        let name = CostUsagePricing.normalizeClaudeModel(model, models: models)
+        claudeNames[model] = name
+        return models[name]
+    }
+
+    func geminiEntry(for model: String) -> PricingDataSet.GeminiEntry? {
+        let models = dataSet.providers.gemini.models
+        if let hit = geminiNames[model] { return models[hit] }
+        let name = CostUsagePricing.normalizeGeminiModel(model, models: models)
+        geminiNames[model] = name
+        return models[name]
+    }
+
+    func grokEntry(for model: String) -> PricingDataSet.GrokEntry? {
+        let models = dataSet.providers.grok.models
+        if let hit = grokNames[model] { return models[hit] }
+        let name = CostUsagePricing.normalizeGrokModel(model, models: models)
+        grokNames[model] = name
+        return models[name]
+    }
+
+    func antigravityEntry(for model: String) -> PricingDataSet.AntigravityEntry? {
+        let models = dataSet.providers.antigravity.models
+        if let hit = antigravityNames[model] { return models[hit] }
+        let name = CostUsagePricing.normalizeAntigravityModel(model, models: models)
+        antigravityNames[model] = name
+        return models[name]
     }
 }

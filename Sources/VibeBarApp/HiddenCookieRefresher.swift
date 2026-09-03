@@ -141,6 +141,18 @@ final class HiddenCookieRefresher {
     private var pinnedDelegates: [ObjectIdentifier: NavDelegate] = [:]
     private var pinnedWebViews: [ObjectIdentifier: WKWebView] = [:]
     private var pinnedDataStores: [ObjectIdentifier: WKWebsiteDataStore] = [:]
+    private var pinnedTimeouts: [ObjectIdentifier: Task<Void, Never>] = [:]
+
+    /// Wall-clock budget for one slot, on top of its `postLoadWait`.
+    ///
+    /// Without it the only exit was the navigation callback: a console page
+    /// that never finishes loading, or a web content process that dies
+    /// without reporting, left the continuation parked forever and the
+    /// WKWebView, its delegate and its non-persistent data store pinned in
+    /// the dictionaries below for the life of the app — and the whole
+    /// per-tool refresh coalescer wedged behind it. Mirrors the hard timeout
+    /// `ClaudeRoutineBudgetWebViewFetcher` uses for the same reason.
+    private static let slotTimeoutSeconds: TimeInterval = 45
 
     /// Trigger a silent refresh for `tool`. Iterates the user's
     /// browser-origin cookie slots and refreshes each one. Manual
@@ -167,8 +179,11 @@ final class HiddenCookieRefresher {
             AppSettings.self,
             from: VibeBarLocalStore.settingsURL
         )) ?? .default
+        // Hidden instances have no card, no quota fetch and no user waiting
+        // on them; driving a WKWebView through a full console page load for
+        // one is pure background cost.
         let targets = settings.miscProviderInstances
-            .filter { $0.tool == config.tool }
+            .filter { $0.tool == config.tool && $0.isVisible }
             .flatMap { instance in
                 MiscCookieSlotStore.slots(for: config.tool, instanceID: instance.id)
                     .filter { $0.origin != .manual }
@@ -229,17 +244,14 @@ final class HiddenCookieRefresher {
                                     configuration: webViewConfig)
             webView.customUserAgent = Self.safariUserAgent
             let key = ObjectIdentifier(webView)
+            // Exactly one of {navigation resolved, hard timeout} answers.
+            let gate = SlotResumeGate(continuation)
 
             let delegate = NavDelegate { [weak self] result in
                 Task { @MainActor in
                     guard let self else {
-                        continuation.resume(returning: false)
+                        gate.resume(false)
                         return
-                    }
-                    defer {
-                        self.pinnedDelegates.removeValue(forKey: key)
-                        self.pinnedWebViews.removeValue(forKey: key)
-                        self.pinnedDataStores.removeValue(forKey: key)
                     }
                     switch result {
                     case .finished:
@@ -247,6 +259,10 @@ final class HiddenCookieRefresher {
                         // continuation; the inflight task keeps the
                         // WebView retained until we're done.
                         try? await Task.sleep(nanoseconds: UInt64(config.postLoadWait * 1_000_000_000))
+                        guard !gate.isResumed else {
+                            self.releaseSlot(key)
+                            return
+                        }
                         let captured = await self.captureAndUpdateSlot(
                             config,
                             instanceID: instanceID,
@@ -254,12 +270,14 @@ final class HiddenCookieRefresher {
                             store: dataStore.httpCookieStore,
                             beforeFingerprint: beforeFingerprint
                         )
-                        continuation.resume(returning: captured)
+                        self.releaseSlot(key)
+                        gate.resume(captured)
                     case .failed(let err):
                         SafeLog.warn(
                             "HiddenCookieRefresher load-failed tool=\(config.tool.rawValue) slot=\(slot.id.uuidString.prefix(8)) err=\(err.localizedDescription)"
                         )
-                        continuation.resume(returning: false)
+                        self.releaseSlot(key)
+                        gate.resume(false)
                     }
                 }
             }
@@ -267,11 +285,31 @@ final class HiddenCookieRefresher {
             self.pinnedDelegates[key] = delegate
             self.pinnedWebViews[key] = webView
             self.pinnedDataStores[key] = dataStore
+            let budget = Self.slotTimeoutSeconds + config.postLoadWait
+            self.pinnedTimeouts[key] = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(budget * 1_000_000_000))
+                guard !Task.isCancelled, !gate.isResumed else { return }
+                SafeLog.warn(
+                    "HiddenCookieRefresher timeout tool=\(config.tool.rawValue) slot=\(slot.id.uuidString.prefix(8)) after=\(Int(budget))s"
+                )
+                self?.pinnedWebViews[key]?.stopLoading()
+                self?.releaseSlot(key)
+                gate.resume(false)
+            }
 
             var request = URLRequest(url: config.refreshURL)
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             webView.load(request)
         }
+    }
+
+    /// Drop everything one slot pinned: the WebView, its delegate, its
+    /// non-persistent data store, and its timeout task.
+    private func releaseSlot(_ key: ObjectIdentifier) {
+        pinnedTimeouts.removeValue(forKey: key)?.cancel()
+        pinnedDelegates.removeValue(forKey: key)
+        pinnedWebViews.removeValue(forKey: key)?.navigationDelegate = nil
+        pinnedDataStores.removeValue(forKey: key)
     }
 
     private func captureAndUpdateSlot(_ config: Config,
@@ -383,6 +421,27 @@ extension Notification.Name {
     static let cookiesRefreshed = Notification.Name("com.astroqore.VibeBar.cookiesRefreshed")
 }
 
+/// One-shot resume for a slot's continuation. Both the navigation callback
+/// and the hard timeout can arrive; whichever is first wins and the other is
+/// dropped. Main-actor confined in practice — `@unchecked` only because a
+/// `CheckedContinuation` is not itself `Sendable`.
+private final class SlotResumeGate: @unchecked Sendable {
+    private let continuation: CheckedContinuation<Bool, Never>
+    private var resumed = false
+
+    init(_ continuation: CheckedContinuation<Bool, Never>) {
+        self.continuation = continuation
+    }
+
+    var isResumed: Bool { resumed }
+
+    func resume(_ value: Bool) {
+        guard !resumed else { return }
+        resumed = true
+        continuation.resume(returning: value)
+    }
+}
+
 private final class NavDelegate: NSObject, WKNavigationDelegate {
     enum Outcome { case finished, failed(Error) }
     private let onComplete: (Outcome) -> Void
@@ -391,6 +450,20 @@ private final class NavDelegate: NSObject, WKNavigationDelegate {
     init(onComplete: @escaping (Outcome) -> Void) {
         self.onComplete = onComplete
         super.init()
+    }
+
+    /// A crashed web content process fires no navigation callback at all, so
+    /// without this the slot only ever exited through the hard timeout —
+    /// holding the refresher's per-tool coalescer for the full budget on
+    /// what is already a known failure.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard !resolved else { return }
+        resolved = true
+        onComplete(.failed(NSError(
+            domain: "com.astroqore.VibeBar.HiddenCookieRefresher",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "web content process terminated"]
+        )))
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

@@ -407,6 +407,16 @@ public enum MiscCookieResolver {
     /// which is the caller's signal that a retry is worth a round-trip.
     @discardableResult
     public static func silentReimport(spec: Spec, instanceID: String) -> Bool {
+        // One shared context across silent re-imports, for the reason
+        // `appendBrowserImports` documents: `BrowserDetection` caches its
+        // filesystem probes per instance, so a fresh context re-stats every
+        // browser profile. Refreshed on a TTL so a browser installed after
+        // launch is still discovered, and the lock keeps these sequential —
+        // the objects it holds are not thread-safe, and silent re-imports
+        // arrive from per-provider detached tasks.
+        silentContextLock.lock()
+        defer { silentContextLock.unlock() }
+        let context = sharedSilentContext()
         let settings = currentSettings(for: spec.tool, instanceID: instanceID)
         // Only when browser-origin slots can actually be used. `manualOnly` is
         // an explicit "do not touch my browser" — reading the cookie stores
@@ -429,7 +439,7 @@ public enum MiscCookieResolver {
             spec: spec,
             settings: settings,
             allowKeychainPrompt: false,
-            context: BrowserImportContext(),
+            context: context,
             maxSessions: nil
         )
         guard !sessions.isEmpty else { return false }
@@ -543,6 +553,28 @@ public enum MiscCookieResolver {
     struct BrowserImportResult {
         let header: String
         let sourceLabel: String
+    }
+
+    // MARK: - Shared silent-re-import context
+
+    /// Serialises silent re-imports and guards `silentContext`.
+    private static let silentContextLock = NSLock()
+    private static var silentContext: (context: BrowserImportContext, builtAt: Date)?
+    /// Long enough that a burst of provider re-imports shares one set of
+    /// browser probes, short enough that installing a browser is picked up
+    /// without a relaunch.
+    private static let silentContextTTL: TimeInterval = 10 * 60
+
+    /// Caller must hold `silentContextLock`.
+    private static func sharedSilentContext(now: Date = Date()) -> BrowserImportContext {
+        if let existing = silentContext,
+           now >= existing.builtAt,
+           now.timeIntervalSince(existing.builtAt) < silentContextTTL {
+            return existing.context
+        }
+        let fresh = BrowserImportContext()
+        silentContext = (fresh, now)
+        return fresh
     }
 
     /// What one user-initiated import actually did.

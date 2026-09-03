@@ -234,6 +234,25 @@ public enum VibeBarLocalStore {
         try writeData(data, to: url, base: base)
     }
 
+    /// Compact (`.sortedKeys` only) variant for machine-owned caches.
+    ///
+    /// Deliberately a separate entry point rather than a flag on
+    /// `writeJSON`: `settings.json` is a shared file that Vibe Bar and other
+    /// clients both write, and `docs/contracts/settings-write-v1.md` pins it
+    /// to Foundation's pretty format. Nothing a human reads or another writer
+    /// diffs may come through here — only caches Vibe Bar owns end to end,
+    /// where pretty printing is pure size (and therefore write time).
+    public static func writeCompactJSON<T: Encodable>(_ value: T, to url: URL) throws {
+        try writeCompactJSON(value, to: url, base: baseDirectory)
+    }
+
+    public static func writeCompactJSON<T: Encodable>(_ value: T, to url: URL, base: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(value)
+        try writeData(data, to: url, base: base)
+    }
+
     public static func deleteFile(at url: URL) throws {
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path) else { return }
