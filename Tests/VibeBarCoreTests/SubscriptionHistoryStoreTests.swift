@@ -865,4 +865,343 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
         XCTAssertEqual(samples[0].peakUsedPercent, 75, accuracy: 0.001)
         XCTAssertEqual(samples[0].completionReason, .legacyTimelineMigration)
     }
+
+    // MARK: - Cursor, promoted out of the Misc page
+
+    /// Cursor spent its first weeks as a dedicated card whose reset history
+    /// said "Waiting for the first quota observation" forever, because the
+    /// store's tool whitelist was a literal that the promotion did not touch.
+    func testACursorWeeklyBucketThatRefillsIsRecorded() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let week: TimeInterval = 604_800
+
+        await store.observe(
+            quota(tool: .cursor, buckets: [
+                bucket(id: "grok_bot_weekly", usedPercent: 62,
+                       resetAt: start.addingTimeInterval(week),
+                       rawWindowSeconds: Int(week), groupTitle: "Grok Bot")
+            ], queriedAt: start),
+            now: start,
+            retentionDays: 3_650
+        )
+        let refill = start.addingTimeInterval(week)
+        await store.observe(
+            quota(tool: .cursor, buckets: [
+                bucket(id: "grok_bot_weekly", usedPercent: 3,
+                       resetAt: refill.addingTimeInterval(week),
+                       rawWindowSeconds: Int(week), groupTitle: "Grok Bot")
+            ], queriedAt: refill),
+            now: refill,
+            retentionDays: 3_650
+        )
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
+        XCTAssertEqual(samples.count, 2, "the cycle that refilled plus the one that replaced it")
+        let completed = try XCTUnwrap(samples.first(where: \.isCompleted))
+        XCTAssertEqual(completed.tool, .cursor)
+        XCTAssertEqual(completed.completionReason, .refillDetected)
+        XCTAssertEqual(completed.peakUsedPercent, 62, accuracy: 0.001)
+        XCTAssertEqual(completed.resetKind, .onSchedule)
+    }
+
+    /// Cursor reports a different window length for the same weekly bucket
+    /// from one period to the next (13 h, 156 h and 168 h have all been
+    /// observed). AGENTS.md § 11: a cycle shorter than its stated window is
+    /// usually real, so each cycle keeps the window it was told, and the
+    /// refill is recorded where it was seen rather than where a nominal
+    /// window would have put it.
+    func testACursorCycleKeepsTheShortWindowItWasReported() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let thirteenHours: TimeInterval = 46_800
+        let week: TimeInterval = 604_800
+
+        await store.observe(
+            quota(tool: .cursor, buckets: [
+                bucket(id: "grok_bot_weekly", usedPercent: 80,
+                       resetAt: start.addingTimeInterval(thirteenHours),
+                       rawWindowSeconds: Int(thirteenHours), groupTitle: "Grok Bot")
+            ], queriedAt: start),
+            now: start,
+            retentionDays: 3_650
+        )
+        let refill = start.addingTimeInterval(thirteenHours)
+        await store.observe(
+            quota(tool: .cursor, buckets: [
+                bucket(id: "grok_bot_weekly", usedPercent: 1,
+                       resetAt: refill.addingTimeInterval(week),
+                       rawWindowSeconds: Int(week), groupTitle: "Grok Bot")
+            ], queriedAt: refill),
+            now: refill,
+            retentionDays: 3_650
+        )
+
+        let samples = await store.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
+        let completed = try XCTUnwrap(samples.first(where: \.isCompleted))
+        XCTAssertEqual(
+            completed.rawWindowSeconds, Int(thirteenHours),
+            "the window this cycle reported, not the one the next cycle reported"
+        )
+        XCTAssertEqual(completed.windowEnd, refill, "the refill was moved off where it was seen")
+        let current = try XCTUnwrap(samples.first(where: { !$0.isCompleted }))
+        XCTAssertEqual(current.rawWindowSeconds, Int(week))
+    }
+
+    /// The one-time backfill for a lane that joined `supportedTools` after
+    /// users already had history: it reaches into the retained fill timeline
+    /// for Cursor only, and it runs once.
+    func testTheCursorBackfillImportsFromTheFillTimelineExactlyOnce() async throws {
+        let (store, url, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let week = 604_800
+        // An install from before Cursor was eligible: both older migrations
+        // have already run, so neither of them will run again.
+        let json = """
+        {"schemaVersion":2,"legacyTimelineImported":true,"resetSignalRepairVersion":1,\
+        "samples":[{"accountId":"acct-test","tool":"codex","bucketId":"weekly",\
+        "windowEnd":\(base.timeIntervalSinceReferenceDate),"rawWindowSeconds":\(week),\
+        "peakUsedPercent":40,"lastUsedPercent":40,"observationCount":3,\
+        "firstSeenAt":\(base.timeIntervalSinceReferenceDate),\
+        "lastSeenAt":\(base.timeIntervalSinceReferenceDate),\
+        "completedAt":\(base.timeIntervalSinceReferenceDate),\
+        "completionReason":"refillDetected","resetKind":"onSchedule"}]}
+        """
+        try Data(json.utf8).write(to: url)
+
+        let points = Self.cursorAndCodexRefillPoints(base: base, week: week)
+
+        await store.importLegacyTimeline(points, retentionDays: 3_650)
+        var cursor = await store.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
+        XCTAssertEqual(cursor.count, 1, "the Cursor refill in the fill timeline was not recovered")
+        let recovered = try XCTUnwrap(cursor.first)
+        XCTAssertEqual(recovered.tool, .cursor)
+        XCTAssertEqual(recovered.completionReason, .legacyTimelineMigration)
+        XCTAssertEqual(recovered.peakUsedPercent, 55, accuracy: 0.001)
+        XCTAssertEqual(recovered.resetKind, .onSchedule)
+
+        await store.importLegacyTimeline(points, retentionDays: 3_650)
+        cursor = await store.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
+        XCTAssertEqual(cursor.count, 1, "the backfill ran a second time")
+
+        let codex = await store.samples(accountId: "acct-test", bucketId: "weekly")
+        XCTAssertEqual(
+            codex.count, 1,
+            "a lane the earlier migrations already covered was imported all over again"
+        )
+    }
+
+    /// The version is persisted, not just remembered in memory.
+    func testTheCursorBackfillVersionSurvivesAReopen() async throws {
+        let (store, url, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let week = 604_800
+        let json = """
+        {"schemaVersion":2,"legacyTimelineImported":true,"resetSignalRepairVersion":1,"samples":[]}
+        """
+        try Data(json.utf8).write(to: url)
+        let points = Self.cursorAndCodexRefillPoints(base: base, week: week)
+        await store.importLegacyTimeline(points, retentionDays: 3_650)
+        await store.flushPendingWrites()
+
+        let reopened = SubscriptionHistoryStore(fileURL: url)
+        await reopened.importLegacyTimeline(points, retentionDays: 3_650)
+        let cursor = await reopened.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
+        XCTAssertEqual(cursor.count, 1, "a relaunch replayed the backfill")
+    }
+
+    /// Two clients share this file and the older one re-encodes it without
+    /// the version key it has never heard of, so the flag cannot be the only
+    /// thing standing between a re-run and a doubled chart.
+    func testTheCursorBackfillDoesNotDuplicateWhenItsVersionIsStripped() async throws {
+        let (store, url, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let json = """
+        {"schemaVersion":2,"legacyTimelineImported":true,"resetSignalRepairVersion":1,"samples":[]}
+        """
+        try Data(json.utf8).write(to: url)
+        let points = Self.cursorAndCodexRefillPoints(base: base, week: 604_800)
+        await store.importLegacyTimeline(points, retentionDays: 3_650)
+        await store.flushPendingWrites()
+
+        // What the other client leaves behind.
+        var stored = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        )
+        XCTAssertNotNil(
+            stored["promotedProviderBackfillVersion"],
+            "the backfill did not stamp its version"
+        )
+        stored.removeValue(forKey: "promotedProviderBackfillVersion")
+        try JSONSerialization.data(withJSONObject: stored).write(to: url)
+
+        let reopened = SubscriptionHistoryStore(fileURL: url)
+        await reopened.importLegacyTimeline(points, retentionDays: 3_650)
+        let cursor = await reopened.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
+        XCTAssertEqual(cursor.count, 1, "the same refill was recorded twice")
+    }
+
+    /// A fresh install runs the full legacy import, which already covers
+    /// Cursor — the narrower backfill must not append the same cycles again.
+    func testTheCursorBackfillDoesNotDoubleImportOnAFreshInstall() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let points = Self.cursorAndCodexRefillPoints(base: base, week: 604_800)
+
+        await store.importLegacyTimeline(points, retentionDays: 3_650)
+
+        let cursor = await store.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
+        XCTAssertEqual(cursor.count, 1)
+        let codex = await store.samples(accountId: "acct-test", bucketId: "weekly")
+        XCTAssertEqual(codex.count, 1)
+    }
+
+    /// Nothing recorded yet means nothing to recover.
+    func testTheCursorBackfillIsANoOpWithNoFillPoints() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        await store.importLegacyTimeline([], retentionDays: 3_650)
+        let samples = await store.allSamples()
+        XCTAssertTrue(samples.isEmpty)
+    }
+
+    /// Deriving the whitelist from `supportsDedicatedCard` must not quietly
+    /// let the Misc page in.
+    func testAMiscPageProviderIsStillNotRecorded() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        await store.observe(
+            quota(tool: .kimi, buckets: [
+                bucket(id: "monthly", usedPercent: 20,
+                       resetAt: start.addingTimeInterval(86_400), rawWindowSeconds: 86_400)
+            ], queriedAt: start),
+            now: start,
+            retentionDays: 3_650
+        )
+        let samples = await store.allSamples()
+        XCTAssertTrue(samples.isEmpty, "a Misc-page provider was recorded as a subscription cycle")
+    }
+
+    // MARK: - Per-bucket index
+
+    /// `samples` answers from a per-bucket index rather than by scanning the
+    /// whole file. It must return exactly the lane asked for, in exactly the
+    /// order the whole-file filter produced.
+    func testSamplesReturnTheSameLaneAndOrderAsAWholeFileScan() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let window: TimeInterval = 18_000
+        let lanes: [(String, ToolType)] = [("acct-cursor", .cursor), ("acct-claude", .claude)]
+
+        for step in 0...5 {
+            let moment = start.addingTimeInterval(TimeInterval(step) * window)
+            let used: Double = step % 2 == 0 ? 70 : 2
+            for (account, tool) in lanes {
+                await store.observe(
+                    quota(accountId: account, tool: tool, buckets: [
+                        bucket(id: "alpha", usedPercent: used,
+                               resetAt: moment.addingTimeInterval(window),
+                               rawWindowSeconds: Int(window)),
+                        bucket(id: "beta", usedPercent: used / 2,
+                               resetAt: moment.addingTimeInterval(window),
+                               rawWindowSeconds: Int(window))
+                    ], queriedAt: moment),
+                    now: moment,
+                    retentionDays: 3_650
+                )
+            }
+        }
+
+        let all = await store.allSamples()
+        XCTAssertGreaterThan(all.count, 8, "the fixture stopped exercising several cycles")
+        for (account, _) in lanes {
+            for bucketId in ["alpha", "beta"] {
+                // The whole-file filter this replaced, sorted the same way:
+                // both start from the array in storage order, so an identical
+                // sort input has to produce an identical order.
+                var expected = all.filter { $0.accountId == account && $0.bucketId == bucketId }
+                expected.sort { ($0.completedAt ?? $0.lastSeenAt) > ($1.completedAt ?? $1.lastSeenAt) }
+                let got = await store.samples(accountId: account, bucketId: bucketId)
+                XCTAssertEqual(got, expected, "\(account)/\(bucketId)")
+                XCTAssertFalse(got.isEmpty)
+            }
+        }
+
+        let completedOnly = await store.samples(
+            accountId: "acct-cursor", bucketId: "alpha", includeCurrent: false
+        )
+        XCTAssertTrue(completedOnly.allSatisfy(\.isCompleted))
+        let limited = await store.samples(accountId: "acct-cursor", bucketId: "alpha", limit: 2)
+        XCTAssertEqual(limited.count, 2)
+        let full = await store.samples(accountId: "acct-cursor", bucketId: "alpha")
+        XCTAssertEqual(limited, Array(full.prefix(2)), "the limit dropped the wrong end")
+
+        let missing = await store.samples(accountId: "acct-cursor", bucketId: "nonexistent")
+        XCTAssertTrue(missing.isEmpty)
+    }
+
+    /// Pruning renumbers every surviving sample, so the index has to be
+    /// rebuilt rather than reused.
+    func testSamplesStayCorrectAfterAPruneRenumbersTheStore() async throws {
+        let (store, _, cleanup) = try makeTempStore()
+        defer { cleanup() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let window: TimeInterval = 18_000
+
+        for step in 0...5 {
+            let moment = start.addingTimeInterval(TimeInterval(step) * window)
+            await store.observe(
+                quota(accountId: "acct-cursor", tool: .cursor, buckets: [
+                    bucket(id: "grok_bot_weekly", usedPercent: step % 2 == 0 ? 70 : 2,
+                           resetAt: moment.addingTimeInterval(window),
+                           rawWindowSeconds: Int(window))
+                ], queriedAt: moment),
+                now: moment,
+                retentionDays: 3_650
+            )
+        }
+
+        let last = start.addingTimeInterval(5 * window)
+        await store.prune(retentionDays: 1, now: last.addingTimeInterval(86_400))
+        let survivors = await store.samples(accountId: "acct-cursor", bucketId: "grok_bot_weekly")
+        let all = await store.allSamples()
+        XCTAssertEqual(survivors.count, all.count)
+        XCTAssertTrue(survivors.allSatisfy { $0.bucketId == "grok_bot_weekly" })
+    }
+
+    // MARK: - Shared fixtures
+
+    /// One Cursor refill and one Codex refill in the retained fill timeline.
+    /// The Codex pair is there to prove the backfill leaves lanes the earlier
+    /// migrations already covered alone.
+    private static func cursorAndCodexRefillPoints(base: Date, week: Int) -> [FillTimelinePoint] {
+        let span = TimeInterval(week)
+        func point(
+            _ tool: ToolType, _ bucketId: String, _ used: Double, at date: Date, resetAt: Date
+        ) -> FillTimelinePoint {
+            FillTimelinePoint(
+                accountId: "acct-test", tool: tool, bucketId: bucketId,
+                slotStart: date, usedPercent: used, sampledAt: date,
+                resetAt: resetAt, rawWindowSeconds: week
+            )
+        }
+        return [
+            point(.cursor, "grok_bot_weekly", 55, at: base, resetAt: base.addingTimeInterval(span)),
+            point(.cursor, "grok_bot_weekly", 2, at: base.addingTimeInterval(span),
+                  resetAt: base.addingTimeInterval(2 * span)),
+            point(.cursor, "grok_bot_weekly", 5, at: base.addingTimeInterval(span + 3_600),
+                  resetAt: base.addingTimeInterval(2 * span)),
+            point(.codex, "weekly", 70, at: base, resetAt: base.addingTimeInterval(span)),
+            point(.codex, "weekly", 1, at: base.addingTimeInterval(span),
+                  resetAt: base.addingTimeInterval(2 * span))
+        ]
+    }
 }
