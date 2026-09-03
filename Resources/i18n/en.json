@@ -1780,6 +1780,58 @@
     "comment": "Heatmap title on the SpaceXAI page",
     "value": "When you use SpaceXAI"
   },
+  "workbench.appearance.useDark": {
+    "comment": "Tooltip on the Workbench header button that switches the window to dark",
+    "value": "Use dark appearance"
+  },
+  "workbench.appearance.useLight": {
+    "comment": "Tooltip on the Workbench header button that switches the window to light",
+    "value": "Use light appearance"
+  },
+  "workbench.header.refreshPage": {
+    "comment": "Tooltip on the Workbench header refresh button; page is the current page's title",
+    "value": "Refresh {page}"
+  },
+  "workbench.page.resets.subtitle": {
+    "comment": "Subtitle under the Resets page title",
+    "value": "Cycles, refills, and run-out forecasts"
+  },
+  "workbench.page.resets.title": {
+    "comment": "Workbench sidebar entry and page title for the resets page",
+    "value": "Resets"
+  },
+  "workbench.page.sessions.subtitle": {
+    "comment": "Subtitle under the Sessions page title",
+    "value": "Search and resume local agent sessions"
+  },
+  "workbench.page.sessions.title": {
+    "comment": "Workbench sidebar entry and page title for the session manager",
+    "value": "Sessions"
+  },
+  "workbench.page.settings.subtitle": {
+    "comment": "Subtitle under the Settings page title inside the Workbench window",
+    "value": "Appearance, providers, data, privacy, and sync"
+  },
+  "workbench.page.settings.title": {
+    "comment": "Workbench sidebar entry and page title for Settings",
+    "value": "Settings"
+  },
+  "workbench.page.skills.subtitle": {
+    "comment": "Subtitle under the Skills page title",
+    "value": "One shared skill library · every agent CLI"
+  },
+  "workbench.page.skills.title": {
+    "comment": "Workbench sidebar entry and page title for the skills manager",
+    "value": "Skills"
+  },
+  "workbench.page.usageStats.subtitle": {
+    "comment": "Subtitle under the Usage Stats page title",
+    "value": "Local per-request ledger · all providers"
+  },
+  "workbench.page.usageStats.title": {
+    "comment": "Workbench sidebar entry and page title for the usage statistics page",
+    "value": "Usage Stats"
+  },
   "workbench.placeholder.resets": {
     "comment": "Placeholder body for a Workbench page with no content yet",
     "value": "Cycle, refill and forecast views are on their way."
@@ -1799,5 +1851,142 @@
   "workbench.placeholder.usageStats": {
     "comment": "Placeholder body for a Workbench page with no content yet",
     "value": "Full-window usage and cost analytics are on their way."
+  },
+  "workbench.resets.calendar.dayEntry": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "One refill inside a calendar day cell; lane is a SubProvider name",
+    "value": "{lane} +{percent}%"
+  },
+  "workbench.resets.calendar.futureEntry": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Tooltip for a scheduled reset in the calendar; lane names the quota, time is an absolute date and time",
+    "value": "{lane} — resets {time}, +{percent}% back"
+  },
+  "workbench.resets.calendar.moreEntries": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Footer in a calendar day cell that holds more refills than it can list",
+    "value": "+{count} more"
+  },
+  "workbench.resets.calendar.nextMonth": {
+    "comment": "Tooltip on the reset calendar's forward arrow",
+    "value": "Next month"
+  },
+  "workbench.resets.calendar.pastEntry": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Tooltip for a recorded reset in the calendar; lane names the quota, time is an absolute date and time, percent is how much of the window had been spent when it refilled",
+    "value": "{lane} — reset {time} at {percent}% used"
+  },
+  "workbench.resets.calendar.previousMonth": {
+    "comment": "Tooltip on the reset calendar's back arrow",
+    "value": "Previous month"
+  },
+  "workbench.resets.calendar.title": {
+    "comment": "Card title over the month grid of recorded and scheduled resets",
+    "value": "Reset Calendar"
+  },
+  "workbench.resets.calendar.today": {
+    "comment": "Button that returns the reset calendar to the current month",
+    "value": "Today"
+  },
+  "workbench.resets.cycle.curveHelp": {
+    "comment": "Tooltip on a cycle card's fill curve; bucket is the quota window's label",
+    "value": "Remaining % across the current {bucket} cycle"
+  },
+  "workbench.resets.cycle.headline": {
+    "comment": "Caption beside a cycle card's remaining percentage; bucket is the quota window's label, countdown a compact span",
+    "value": "{bucket} · resets {countdown}"
+  },
+  "workbench.resets.refillHorizon.detail": {
+    "comment": "Caption beside the Refill Horizon card title",
+    "value": "next 7 days · column height = how much comes back"
+  },
+  "workbench.resets.refillHorizon.title": {
+    "comment": "Card title over the seven-day refill lane",
+    "value": "Refill Horizon"
+  },
+  "workbench.resets.risk.badge.atRisk": {
+    "comment": "Compact badge on a run-out risk row when the forecast expects the quota to run out before its reset",
+    "value": "RISK"
+  },
+  "workbench.resets.risk.badge.low": {
+    "comment": "Compact badge on a run-out risk row that is simply low, with a calm forecast",
+    "value": "LOW"
+  },
+  "workbench.resets.risk.badge.out": {
+    "comment": "Compact badge on a run-out risk row whose quota is already spent",
+    "value": "OUT"
+  },
+  "workbench.resets.risk.badge.watch": {
+    "comment": "Compact badge on a run-out risk row whose recent burn is above the safe range",
+    "value": "WATCH"
+  },
+  "workbench.resets.risk.detail": {
+    "comment": "Caption beside the Run-out Risk card title",
+    "value": "ranked by the personal forecast"
+  },
+  "workbench.resets.risk.empty": {
+    "comment": "Empty state of the Run-out Risk list when no quota looks uneasy",
+    "value": "Every bucket is projected to last its cycle."
+  },
+  "workbench.resets.risk.remaining": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Trailing figure on a run-out risk row; countdown is a compact span to the refill",
+    "value": "{percent}% · refills {countdown}"
+  },
+  "workbench.resets.risk.title": {
+    "comment": "Card title over the list of quotas the forecast is uneasy about",
+    "value": "Run-out Risk"
+  },
+  "workbench.resets.subDaily.title": {
+    "comment": "Caption over the twenty-four-hour lane for quotas that refill more than once a day",
+    "value": "NEXT 24 HOURS · SUB-DAILY QUOTAS"
+  },
+  "workbench.status.cachedQuotas": {
+    "comment": "Workbench header status for the Resets page when no refill is scheduled",
+    "value": "cached quotas"
+  },
+  "workbench.status.indexed": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Workbench header status for the Sessions page: how many sessions the local index holds",
+    "value": "{count} indexed"
+  },
+  "workbench.status.installed": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Workbench header status for the Skills page: how many skills are installed",
+    "value": "{count} installed"
+  },
+  "workbench.status.localIndex": {
+    "comment": "Workbench header status for the Sessions page before anything is indexed",
+    "value": "local index"
+  },
+  "workbench.status.localLedger": {
+    "comment": "Workbench header status for the Usage Stats page before the first query",
+    "value": "local ledger"
+  },
+  "workbench.status.nextRefill": {
+    "comment": "Workbench header status for the Resets page; countdown is a compact span",
+    "value": "next refill {countdown}"
+  },
+  "workbench.status.sharedLibrary": {
+    "comment": "Workbench header status for the Skills page before anything is installed",
+    "value": "shared library"
+  },
+  "workbench.status.updated": {
+    "comment": "Workbench header status for the Usage Stats page; time is a clock time",
+    "value": "updated {time}"
   }
 }

@@ -67,6 +67,8 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/TopModelTile.swift",
     "Sources/VibeBarApp/Views/Onboarding/OnboardingView.swift",
     "Sources/VibeBarApp/Views/Workbench/WorkbenchPlaceholderPage.swift",
+    "Sources/VibeBarApp/Views/Workbench/WorkbenchRootView.swift",
+    "Sources/VibeBarApp/Views/Workbench/ResetsPage.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageStatsPage.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageHeroCards.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageCompositionCards.swift",

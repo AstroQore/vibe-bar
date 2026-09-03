@@ -12,11 +12,11 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .usageStats: "Usage Stats"
-        case .sessionManager: "Sessions"
-        case .resets: "Resets"
-        case .skillsManager: "Skills"
-        case .settings: "Settings"
+        case .usageStats: L10n.Workbench.pageUsageStatsTitle
+        case .sessionManager: L10n.Workbench.pageSessionsTitle
+        case .resets: L10n.Workbench.pageResetsTitle
+        case .skillsManager: L10n.Workbench.pageSkillsTitle
+        case .settings: L10n.Workbench.pageSettingsTitle
         }
     }
 
@@ -34,11 +34,11 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .usageStats: "Local per-request ledger · all providers"
-        case .sessionManager: "Search and resume local agent sessions"
-        case .resets: "Cycles, refills, and run-out forecasts"
-        case .skillsManager: "One shared skill library · every agent CLI"
-        case .settings: "Appearance, providers, data, privacy, and sync"
+        case .usageStats: L10n.Workbench.pageUsageStatsSubtitle
+        case .sessionManager: L10n.Workbench.pageSessionsSubtitle
+        case .resets: L10n.Workbench.pageResetsSubtitle
+        case .skillsManager: L10n.Workbench.pageSkillsSubtitle
+        case .settings: L10n.Workbench.pageSettingsSubtitle
         }
     }
 }
@@ -158,20 +158,28 @@ struct WorkbenchRootView: View {
     private var pageStatus: String? {
         switch page {
         case .usageStats:
-            guard let updated = workbench.usageStats.lastUpdatedAt else { return "local ledger" }
-            return "updated " + AppLocale.string(updated, dateStyle: .none, timeStyle: .medium)
+            guard let updated = workbench.usageStats.lastUpdatedAt else {
+                return L10n.Workbench.statusLocalLedger
+            }
+            return L10n.Workbench.statusUpdated(
+                time: AppLocale.string(updated, dateStyle: .none, timeStyle: .medium)
+            )
         case .sessionManager:
             let count = workbench.sessions.totalSessionCount
-            return count == 0 ? "local index" : "\(AppLocale.number(count)) indexed"
+            return count == 0
+                ? L10n.Workbench.statusLocalIndex
+                : L10n.Workbench.statusIndexed(count: count)
         case .resets:
             let next = UpcomingResets.events(environment: environment, now: Date(), horizonDays: 7).first
             guard let next,
                   let countdown = ResetCountdownFormatter.string(from: next.resetAt, now: Date())
-            else { return "cached quotas" }
-            return "next refill \(countdown)"
+            else { return L10n.Workbench.statusCachedQuotas }
+            return L10n.Workbench.statusNextRefill(countdown: countdown)
         case .skillsManager:
             let count = workbench.skills.skills.count
-            return count == 0 ? "shared library" : "\(AppLocale.number(count)) installed"
+            return count == 0
+                ? L10n.Workbench.statusSharedLibrary
+                : L10n.Workbench.statusInstalled(count: count)
         case .settings:
             return settingsDestination.title(settings: settingsStore.settings)
         }
@@ -371,13 +379,15 @@ private struct WorkbenchPageHeader: View {
             }
             WorkbenchHeaderIconButton(
                 systemImage: appearanceIsDark ? "sun.max" : "moon",
-                help: appearanceIsDark ? "Use light appearance" : "Use dark appearance",
+                help: appearanceIsDark
+                    ? L10n.Workbench.appearanceUseLight
+                    : L10n.Workbench.appearanceUseDark,
                 action: onToggleAppearance
             )
             if let onRefresh {
                 WorkbenchHeaderIconButton(
                     systemImage: "arrow.clockwise",
-                    help: "Refresh \(page.title)",
+                    help: L10n.Workbench.headerRefreshPage(page: page.title),
                     action: onRefresh
                 )
             }

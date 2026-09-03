@@ -1157,6 +1157,45 @@
 /* Heatmap title on the SpaceXAI page */
 "usage.whenYouUse.spaceXAI" = "你什么时候用 SpaceXAI";
 
+/* Tooltip on the Workbench header button that switches the window to dark */
+"workbench.appearance.useDark" = "使用深色外观";
+
+/* Tooltip on the Workbench header button that switches the window to light */
+"workbench.appearance.useLight" = "使用浅色外观";
+
+/* Tooltip on the Workbench header refresh button; page is the current page's title */
+"workbench.header.refreshPage" = "刷新%1$@";
+
+/* Subtitle under the Resets page title */
+"workbench.page.resets.subtitle" = "周期、补额与耗尽预测";
+
+/* Workbench sidebar entry and page title for the resets page */
+"workbench.page.resets.title" = "重置";
+
+/* Subtitle under the Sessions page title */
+"workbench.page.sessions.subtitle" = "搜索并恢复本机 agent 会话";
+
+/* Workbench sidebar entry and page title for the session manager */
+"workbench.page.sessions.title" = "会话";
+
+/* Subtitle under the Settings page title inside the Workbench window */
+"workbench.page.settings.subtitle" = "外观、厂商、数据、隐私与同步";
+
+/* Workbench sidebar entry and page title for Settings */
+"workbench.page.settings.title" = "设置";
+
+/* Subtitle under the Skills page title */
+"workbench.page.skills.subtitle" = "一个共享技能库 · 覆盖全部 agent CLI";
+
+/* Workbench sidebar entry and page title for the skills manager */
+"workbench.page.skills.title" = "技能";
+
+/* Subtitle under the Usage Stats page title */
+"workbench.page.usageStats.subtitle" = "本地逐请求账本 · 全部厂商";
+
+/* Workbench sidebar entry and page title for the usage statistics page */
+"workbench.page.usageStats.title" = "用量统计";
+
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.resets" = "周期、补额与预测视图即将上线。";
 
@@ -1171,3 +1210,90 @@
 
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.usageStats" = "完整的用量与费用分析即将上线。";
+
+/* One refill inside a calendar day cell; lane is a SubProvider name */
+"workbench.resets.calendar.dayEntry" = "%1$@ +%2$lld%%";
+
+/* Tooltip for a scheduled reset in the calendar; lane names the quota, time is an absolute date and time */
+"workbench.resets.calendar.futureEntry" = "%1$@ — %2$@ 重置，补回 %3$lld%%";
+
+/* Footer in a calendar day cell that holds more refills than it can list */
+"workbench.resets.calendar.moreEntries" = "另 %1$lld 项";
+
+/* Tooltip on the reset calendar's forward arrow */
+"workbench.resets.calendar.nextMonth" = "下一月";
+
+/* Tooltip for a recorded reset in the calendar; lane names the quota, time is an absolute date and time, percent is how much of the window had been spent when it refilled */
+"workbench.resets.calendar.pastEntry" = "%1$@ — %2$@ 重置，用量 %3$lld%%";
+
+/* Tooltip on the reset calendar's back arrow */
+"workbench.resets.calendar.previousMonth" = "上一月";
+
+/* Card title over the month grid of recorded and scheduled resets */
+"workbench.resets.calendar.title" = "重置日历";
+
+/* Button that returns the reset calendar to the current month */
+"workbench.resets.calendar.today" = "今日";
+
+/* Tooltip on a cycle card's fill curve; bucket is the quota window's label */
+"workbench.resets.cycle.curveHelp" = "当前 %1$@ 周期内的剩余百分比";
+
+/* Caption beside a cycle card's remaining percentage; bucket is the quota window's label, countdown a compact span */
+"workbench.resets.cycle.headline" = "%1$@ · 距重置 %2$@";
+
+/* Caption beside the Refill Horizon card title */
+"workbench.resets.refillHorizon.detail" = "未来 7 天 · 柱高即补回的额度";
+
+/* Card title over the seven-day refill lane */
+"workbench.resets.refillHorizon.title" = "补额展望";
+
+/* Compact badge on a run-out risk row when the forecast expects the quota to run out before its reset */
+"workbench.resets.risk.badge.atRisk" = "有风险";
+
+/* Compact badge on a run-out risk row that is simply low, with a calm forecast */
+"workbench.resets.risk.badge.low" = "偏低";
+
+/* Compact badge on a run-out risk row whose quota is already spent */
+"workbench.resets.risk.badge.out" = "耗尽";
+
+/* Compact badge on a run-out risk row whose recent burn is above the safe range */
+"workbench.resets.risk.badge.watch" = "需关注";
+
+/* Caption beside the Run-out Risk card title */
+"workbench.resets.risk.detail" = "按个人预测排序";
+
+/* Empty state of the Run-out Risk list when no quota looks uneasy */
+"workbench.resets.risk.empty" = "所有额度均预计可支撑到本周期结束。";
+
+/* Trailing figure on a run-out risk row; countdown is a compact span to the refill */
+"workbench.resets.risk.remaining" = "%1$lld%% · 距补额 %2$@";
+
+/* Card title over the list of quotas the forecast is uneasy about */
+"workbench.resets.risk.title" = "耗尽风险";
+
+/* Caption over the twenty-four-hour lane for quotas that refill more than once a day */
+"workbench.resets.subDaily.title" = "未来 24 小时 · 日内配额";
+
+/* Workbench header status for the Resets page when no refill is scheduled */
+"workbench.status.cachedQuotas" = "缓存额度";
+
+/* Workbench header status for the Sessions page: how many sessions the local index holds */
+"workbench.status.indexed" = "已索引 %1$lld";
+
+/* Workbench header status for the Skills page: how many skills are installed */
+"workbench.status.installed" = "已安装 %1$lld";
+
+/* Workbench header status for the Sessions page before anything is indexed */
+"workbench.status.localIndex" = "本地索引";
+
+/* Workbench header status for the Usage Stats page before the first query */
+"workbench.status.localLedger" = "本地账本";
+
+/* Workbench header status for the Resets page; countdown is a compact span */
+"workbench.status.nextRefill" = "下次补额 %1$@";
+
+/* Workbench header status for the Skills page before anything is installed */
+"workbench.status.sharedLibrary" = "共享库";
+
+/* Workbench header status for the Usage Stats page; time is a clock time */
+"workbench.status.updated" = "更新于 %1$@";

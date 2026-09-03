@@ -1630,6 +1630,58 @@ extension L10n {
     }
 
     public enum Workbench {
+        /// `workbench.appearance.useDark` — Use dark appearance
+        public static var appearanceUseDark: String {
+            L10n.string("workbench.appearance.useDark")
+        }
+        /// `workbench.appearance.useLight` — Use light appearance
+        public static var appearanceUseLight: String {
+            L10n.string("workbench.appearance.useLight")
+        }
+        /// `workbench.header.refreshPage` — Refresh {page}
+        public static func headerRefreshPage(page: String) -> String {
+            L10n.string("workbench.header.refreshPage", page)
+        }
+        /// `workbench.page.resets.subtitle` — Cycles, refills, and run-out forecasts
+        public static var pageResetsSubtitle: String {
+            L10n.string("workbench.page.resets.subtitle")
+        }
+        /// `workbench.page.resets.title` — Resets
+        public static var pageResetsTitle: String {
+            L10n.string("workbench.page.resets.title")
+        }
+        /// `workbench.page.sessions.subtitle` — Search and resume local agent sessions
+        public static var pageSessionsSubtitle: String {
+            L10n.string("workbench.page.sessions.subtitle")
+        }
+        /// `workbench.page.sessions.title` — Sessions
+        public static var pageSessionsTitle: String {
+            L10n.string("workbench.page.sessions.title")
+        }
+        /// `workbench.page.settings.subtitle` — Appearance, providers, data, privacy, and sync
+        public static var pageSettingsSubtitle: String {
+            L10n.string("workbench.page.settings.subtitle")
+        }
+        /// `workbench.page.settings.title` — Settings
+        public static var pageSettingsTitle: String {
+            L10n.string("workbench.page.settings.title")
+        }
+        /// `workbench.page.skills.subtitle` — One shared skill library · every agent CLI
+        public static var pageSkillsSubtitle: String {
+            L10n.string("workbench.page.skills.subtitle")
+        }
+        /// `workbench.page.skills.title` — Skills
+        public static var pageSkillsTitle: String {
+            L10n.string("workbench.page.skills.title")
+        }
+        /// `workbench.page.usageStats.subtitle` — Local per-request ledger · all providers
+        public static var pageUsageStatsSubtitle: String {
+            L10n.string("workbench.page.usageStats.subtitle")
+        }
+        /// `workbench.page.usageStats.title` — Usage Stats
+        public static var pageUsageStatsTitle: String {
+            L10n.string("workbench.page.usageStats.title")
+        }
         /// `workbench.placeholder.resets` — Cycle, refill and forecast views are on their way.
         public static var placeholderResets: String {
             L10n.string("workbench.placeholder.resets")
@@ -1649,6 +1701,122 @@ extension L10n {
         /// `workbench.placeholder.usageStats` — Full-window usage and cost analytics are on their way.
         public static var placeholderUsageStats: String {
             L10n.string("workbench.placeholder.usageStats")
+        }
+        /// `workbench.resets.calendar.dayEntry` — {lane} +{percent}%
+        public static func resetsCalendarDayEntry(lane: String, percent: Int) -> String {
+            L10n.string("workbench.resets.calendar.dayEntry", lane, percent)
+        }
+        /// `workbench.resets.calendar.futureEntry` — {lane} — resets {time}, +{percent}% back
+        public static func resetsCalendarFutureEntry(lane: String, time: String, percent: Int) -> String {
+            L10n.string("workbench.resets.calendar.futureEntry", lane, time, percent)
+        }
+        /// `workbench.resets.calendar.moreEntries` — +{count} more
+        public static func resetsCalendarMoreEntries(count: Int) -> String {
+            L10n.string("workbench.resets.calendar.moreEntries", count)
+        }
+        /// `workbench.resets.calendar.nextMonth` — Next month
+        public static var resetsCalendarNextMonth: String {
+            L10n.string("workbench.resets.calendar.nextMonth")
+        }
+        /// `workbench.resets.calendar.pastEntry` — {lane} — reset {time} at {percent}% used
+        public static func resetsCalendarPastEntry(lane: String, time: String, percent: Int) -> String {
+            L10n.string("workbench.resets.calendar.pastEntry", lane, time, percent)
+        }
+        /// `workbench.resets.calendar.previousMonth` — Previous month
+        public static var resetsCalendarPreviousMonth: String {
+            L10n.string("workbench.resets.calendar.previousMonth")
+        }
+        /// `workbench.resets.calendar.title` — Reset Calendar
+        public static var resetsCalendarTitle: String {
+            L10n.string("workbench.resets.calendar.title")
+        }
+        /// `workbench.resets.calendar.today` — Today
+        public static var resetsCalendarToday: String {
+            L10n.string("workbench.resets.calendar.today")
+        }
+        /// `workbench.resets.cycle.curveHelp` — Remaining % across the current {bucket} cycle
+        public static func resetsCycleCurveHelp(bucket: String) -> String {
+            L10n.string("workbench.resets.cycle.curveHelp", bucket)
+        }
+        /// `workbench.resets.cycle.headline` — {bucket} · resets {countdown}
+        public static func resetsCycleHeadline(bucket: String, countdown: String) -> String {
+            L10n.string("workbench.resets.cycle.headline", bucket, countdown)
+        }
+        /// `workbench.resets.refillHorizon.detail` — next 7 days · column height = how much comes back
+        public static var resetsRefillHorizonDetail: String {
+            L10n.string("workbench.resets.refillHorizon.detail")
+        }
+        /// `workbench.resets.refillHorizon.title` — Refill Horizon
+        public static var resetsRefillHorizonTitle: String {
+            L10n.string("workbench.resets.refillHorizon.title")
+        }
+        /// `workbench.resets.risk.badge.atRisk` — RISK
+        public static var resetsRiskBadgeAtRisk: String {
+            L10n.string("workbench.resets.risk.badge.atRisk")
+        }
+        /// `workbench.resets.risk.badge.low` — LOW
+        public static var resetsRiskBadgeLow: String {
+            L10n.string("workbench.resets.risk.badge.low")
+        }
+        /// `workbench.resets.risk.badge.out` — OUT
+        public static var resetsRiskBadgeOut: String {
+            L10n.string("workbench.resets.risk.badge.out")
+        }
+        /// `workbench.resets.risk.badge.watch` — WATCH
+        public static var resetsRiskBadgeWatch: String {
+            L10n.string("workbench.resets.risk.badge.watch")
+        }
+        /// `workbench.resets.risk.detail` — ranked by the personal forecast
+        public static var resetsRiskDetail: String {
+            L10n.string("workbench.resets.risk.detail")
+        }
+        /// `workbench.resets.risk.empty` — Every bucket is projected to last its cycle.
+        public static var resetsRiskEmpty: String {
+            L10n.string("workbench.resets.risk.empty")
+        }
+        /// `workbench.resets.risk.remaining` — {percent}% · refills {countdown}
+        public static func resetsRiskRemaining(percent: Int, countdown: String) -> String {
+            L10n.string("workbench.resets.risk.remaining", percent, countdown)
+        }
+        /// `workbench.resets.risk.title` — Run-out Risk
+        public static var resetsRiskTitle: String {
+            L10n.string("workbench.resets.risk.title")
+        }
+        /// `workbench.resets.subDaily.title` — NEXT 24 HOURS · SUB-DAILY QUOTAS
+        public static var resetsSubDailyTitle: String {
+            L10n.string("workbench.resets.subDaily.title")
+        }
+        /// `workbench.status.cachedQuotas` — cached quotas
+        public static var statusCachedQuotas: String {
+            L10n.string("workbench.status.cachedQuotas")
+        }
+        /// `workbench.status.indexed` — {count} indexed
+        public static func statusIndexed(count: Int) -> String {
+            L10n.string("workbench.status.indexed", count)
+        }
+        /// `workbench.status.installed` — {count} installed
+        public static func statusInstalled(count: Int) -> String {
+            L10n.string("workbench.status.installed", count)
+        }
+        /// `workbench.status.localIndex` — local index
+        public static var statusLocalIndex: String {
+            L10n.string("workbench.status.localIndex")
+        }
+        /// `workbench.status.localLedger` — local ledger
+        public static var statusLocalLedger: String {
+            L10n.string("workbench.status.localLedger")
+        }
+        /// `workbench.status.nextRefill` — next refill {countdown}
+        public static func statusNextRefill(countdown: String) -> String {
+            L10n.string("workbench.status.nextRefill", countdown)
+        }
+        /// `workbench.status.sharedLibrary` — shared library
+        public static var statusSharedLibrary: String {
+            L10n.string("workbench.status.sharedLibrary")
+        }
+        /// `workbench.status.updated` — updated {time}
+        public static func statusUpdated(time: String) -> String {
+            L10n.string("workbench.status.updated", time)
         }
     }
 }
@@ -2054,11 +2222,53 @@ extension L10n {
         "usage.whenYouUse.everything",
         "usage.whenYouUse.googleAI",
         "usage.whenYouUse.spaceXAI",
+        "workbench.appearance.useDark",
+        "workbench.appearance.useLight",
+        "workbench.header.refreshPage",
+        "workbench.page.resets.subtitle",
+        "workbench.page.resets.title",
+        "workbench.page.sessions.subtitle",
+        "workbench.page.sessions.title",
+        "workbench.page.settings.subtitle",
+        "workbench.page.settings.title",
+        "workbench.page.skills.subtitle",
+        "workbench.page.skills.title",
+        "workbench.page.usageStats.subtitle",
+        "workbench.page.usageStats.title",
         "workbench.placeholder.resets",
         "workbench.placeholder.sessionManager",
         "workbench.placeholder.settings",
         "workbench.placeholder.skillsManager",
         "workbench.placeholder.usageStats",
+        "workbench.resets.calendar.dayEntry",
+        "workbench.resets.calendar.futureEntry",
+        "workbench.resets.calendar.moreEntries",
+        "workbench.resets.calendar.nextMonth",
+        "workbench.resets.calendar.pastEntry",
+        "workbench.resets.calendar.previousMonth",
+        "workbench.resets.calendar.title",
+        "workbench.resets.calendar.today",
+        "workbench.resets.cycle.curveHelp",
+        "workbench.resets.cycle.headline",
+        "workbench.resets.refillHorizon.detail",
+        "workbench.resets.refillHorizon.title",
+        "workbench.resets.risk.badge.atRisk",
+        "workbench.resets.risk.badge.low",
+        "workbench.resets.risk.badge.out",
+        "workbench.resets.risk.badge.watch",
+        "workbench.resets.risk.detail",
+        "workbench.resets.risk.empty",
+        "workbench.resets.risk.remaining",
+        "workbench.resets.risk.title",
+        "workbench.resets.subDaily.title",
+        "workbench.status.cachedQuotas",
+        "workbench.status.indexed",
+        "workbench.status.installed",
+        "workbench.status.localIndex",
+        "workbench.status.localLedger",
+        "workbench.status.nextRefill",
+        "workbench.status.sharedLibrary",
+        "workbench.status.updated",
     ]
 
     /// Keys whose value is a plural and therefore lives in the

@@ -1157,6 +1157,45 @@
 /* Heatmap title on the SpaceXAI page */
 "usage.whenYouUse.spaceXAI" = "When you use SpaceXAI";
 
+/* Tooltip on the Workbench header button that switches the window to dark */
+"workbench.appearance.useDark" = "Use dark appearance";
+
+/* Tooltip on the Workbench header button that switches the window to light */
+"workbench.appearance.useLight" = "Use light appearance";
+
+/* Tooltip on the Workbench header refresh button; page is the current page's title */
+"workbench.header.refreshPage" = "Refresh %1$@";
+
+/* Subtitle under the Resets page title */
+"workbench.page.resets.subtitle" = "Cycles, refills, and run-out forecasts";
+
+/* Workbench sidebar entry and page title for the resets page */
+"workbench.page.resets.title" = "Resets";
+
+/* Subtitle under the Sessions page title */
+"workbench.page.sessions.subtitle" = "Search and resume local agent sessions";
+
+/* Workbench sidebar entry and page title for the session manager */
+"workbench.page.sessions.title" = "Sessions";
+
+/* Subtitle under the Settings page title inside the Workbench window */
+"workbench.page.settings.subtitle" = "Appearance, providers, data, privacy, and sync";
+
+/* Workbench sidebar entry and page title for Settings */
+"workbench.page.settings.title" = "Settings";
+
+/* Subtitle under the Skills page title */
+"workbench.page.skills.subtitle" = "One shared skill library · every agent CLI";
+
+/* Workbench sidebar entry and page title for the skills manager */
+"workbench.page.skills.title" = "Skills";
+
+/* Subtitle under the Usage Stats page title */
+"workbench.page.usageStats.subtitle" = "Local per-request ledger · all providers";
+
+/* Workbench sidebar entry and page title for the usage statistics page */
+"workbench.page.usageStats.title" = "Usage Stats";
+
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.resets" = "Cycle, refill and forecast views are on their way.";
 
@@ -1171,3 +1210,90 @@
 
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.usageStats" = "Full-window usage and cost analytics are on their way.";
+
+/* One refill inside a calendar day cell; lane is a SubProvider name */
+"workbench.resets.calendar.dayEntry" = "%1$@ +%2$lld%%";
+
+/* Tooltip for a scheduled reset in the calendar; lane names the quota, time is an absolute date and time */
+"workbench.resets.calendar.futureEntry" = "%1$@ — resets %2$@, +%3$lld%% back";
+
+/* Footer in a calendar day cell that holds more refills than it can list */
+"workbench.resets.calendar.moreEntries" = "+%1$lld more";
+
+/* Tooltip on the reset calendar's forward arrow */
+"workbench.resets.calendar.nextMonth" = "Next month";
+
+/* Tooltip for a recorded reset in the calendar; lane names the quota, time is an absolute date and time, percent is how much of the window had been spent when it refilled */
+"workbench.resets.calendar.pastEntry" = "%1$@ — reset %2$@ at %3$lld%% used";
+
+/* Tooltip on the reset calendar's back arrow */
+"workbench.resets.calendar.previousMonth" = "Previous month";
+
+/* Card title over the month grid of recorded and scheduled resets */
+"workbench.resets.calendar.title" = "Reset Calendar";
+
+/* Button that returns the reset calendar to the current month */
+"workbench.resets.calendar.today" = "Today";
+
+/* Tooltip on a cycle card's fill curve; bucket is the quota window's label */
+"workbench.resets.cycle.curveHelp" = "Remaining %% across the current %1$@ cycle";
+
+/* Caption beside a cycle card's remaining percentage; bucket is the quota window's label, countdown a compact span */
+"workbench.resets.cycle.headline" = "%1$@ · resets %2$@";
+
+/* Caption beside the Refill Horizon card title */
+"workbench.resets.refillHorizon.detail" = "next 7 days · column height = how much comes back";
+
+/* Card title over the seven-day refill lane */
+"workbench.resets.refillHorizon.title" = "Refill Horizon";
+
+/* Compact badge on a run-out risk row when the forecast expects the quota to run out before its reset */
+"workbench.resets.risk.badge.atRisk" = "RISK";
+
+/* Compact badge on a run-out risk row that is simply low, with a calm forecast */
+"workbench.resets.risk.badge.low" = "LOW";
+
+/* Compact badge on a run-out risk row whose quota is already spent */
+"workbench.resets.risk.badge.out" = "OUT";
+
+/* Compact badge on a run-out risk row whose recent burn is above the safe range */
+"workbench.resets.risk.badge.watch" = "WATCH";
+
+/* Caption beside the Run-out Risk card title */
+"workbench.resets.risk.detail" = "ranked by the personal forecast";
+
+/* Empty state of the Run-out Risk list when no quota looks uneasy */
+"workbench.resets.risk.empty" = "Every bucket is projected to last its cycle.";
+
+/* Trailing figure on a run-out risk row; countdown is a compact span to the refill */
+"workbench.resets.risk.remaining" = "%1$lld%% · refills %2$@";
+
+/* Card title over the list of quotas the forecast is uneasy about */
+"workbench.resets.risk.title" = "Run-out Risk";
+
+/* Caption over the twenty-four-hour lane for quotas that refill more than once a day */
+"workbench.resets.subDaily.title" = "NEXT 24 HOURS · SUB-DAILY QUOTAS";
+
+/* Workbench header status for the Resets page when no refill is scheduled */
+"workbench.status.cachedQuotas" = "cached quotas";
+
+/* Workbench header status for the Sessions page: how many sessions the local index holds */
+"workbench.status.indexed" = "%1$lld indexed";
+
+/* Workbench header status for the Skills page: how many skills are installed */
+"workbench.status.installed" = "%1$lld installed";
+
+/* Workbench header status for the Sessions page before anything is indexed */
+"workbench.status.localIndex" = "local index";
+
+/* Workbench header status for the Usage Stats page before the first query */
+"workbench.status.localLedger" = "local ledger";
+
+/* Workbench header status for the Resets page; countdown is a compact span */
+"workbench.status.nextRefill" = "next refill %1$@";
+
+/* Workbench header status for the Skills page before anything is installed */
+"workbench.status.sharedLibrary" = "shared library";
+
+/* Workbench header status for the Usage Stats page; time is a clock time */
+"workbench.status.updated" = "updated %1$@";

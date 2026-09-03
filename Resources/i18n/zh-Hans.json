@@ -1190,6 +1190,45 @@
   "usage.whenYouUse.spaceXAI": {
     "value": "你什么时候用 SpaceXAI"
   },
+  "workbench.appearance.useDark": {
+    "value": "使用深色外观"
+  },
+  "workbench.appearance.useLight": {
+    "value": "使用浅色外观"
+  },
+  "workbench.header.refreshPage": {
+    "value": "刷新{page}"
+  },
+  "workbench.page.resets.subtitle": {
+    "value": "周期、补额与耗尽预测"
+  },
+  "workbench.page.resets.title": {
+    "value": "重置"
+  },
+  "workbench.page.sessions.subtitle": {
+    "value": "搜索并恢复本机 agent 会话"
+  },
+  "workbench.page.sessions.title": {
+    "value": "会话"
+  },
+  "workbench.page.settings.subtitle": {
+    "value": "外观、厂商、数据、隐私与同步"
+  },
+  "workbench.page.settings.title": {
+    "value": "设置"
+  },
+  "workbench.page.skills.subtitle": {
+    "value": "一个共享技能库 · 覆盖全部 agent CLI"
+  },
+  "workbench.page.skills.title": {
+    "value": "技能"
+  },
+  "workbench.page.usageStats.subtitle": {
+    "value": "本地逐请求账本 · 全部厂商"
+  },
+  "workbench.page.usageStats.title": {
+    "value": "用量统计"
+  },
   "workbench.placeholder.resets": {
     "value": "周期、补额与预测视图即将上线。"
   },
@@ -1204,5 +1243,92 @@
   },
   "workbench.placeholder.usageStats": {
     "value": "完整的用量与费用分析即将上线。"
+  },
+  "workbench.resets.calendar.dayEntry": {
+    "value": "{lane} +{percent}%"
+  },
+  "workbench.resets.calendar.futureEntry": {
+    "value": "{lane} — {time} 重置，补回 {percent}%"
+  },
+  "workbench.resets.calendar.moreEntries": {
+    "value": "另 {count} 项"
+  },
+  "workbench.resets.calendar.nextMonth": {
+    "value": "下一月"
+  },
+  "workbench.resets.calendar.pastEntry": {
+    "value": "{lane} — {time} 重置，用量 {percent}%"
+  },
+  "workbench.resets.calendar.previousMonth": {
+    "value": "上一月"
+  },
+  "workbench.resets.calendar.title": {
+    "value": "重置日历"
+  },
+  "workbench.resets.calendar.today": {
+    "value": "今日"
+  },
+  "workbench.resets.cycle.curveHelp": {
+    "value": "当前 {bucket} 周期内的剩余百分比"
+  },
+  "workbench.resets.cycle.headline": {
+    "value": "{bucket} · 距重置 {countdown}"
+  },
+  "workbench.resets.refillHorizon.detail": {
+    "value": "未来 7 天 · 柱高即补回的额度"
+  },
+  "workbench.resets.refillHorizon.title": {
+    "value": "补额展望"
+  },
+  "workbench.resets.risk.badge.atRisk": {
+    "value": "有风险"
+  },
+  "workbench.resets.risk.badge.low": {
+    "value": "偏低"
+  },
+  "workbench.resets.risk.badge.out": {
+    "value": "耗尽"
+  },
+  "workbench.resets.risk.badge.watch": {
+    "value": "需关注"
+  },
+  "workbench.resets.risk.detail": {
+    "value": "按个人预测排序"
+  },
+  "workbench.resets.risk.empty": {
+    "value": "所有额度均预计可支撑到本周期结束。"
+  },
+  "workbench.resets.risk.remaining": {
+    "value": "{percent}% · 距补额 {countdown}"
+  },
+  "workbench.resets.risk.title": {
+    "value": "耗尽风险"
+  },
+  "workbench.resets.subDaily.title": {
+    "value": "未来 24 小时 · 日内配额"
+  },
+  "workbench.status.cachedQuotas": {
+    "value": "缓存额度"
+  },
+  "workbench.status.indexed": {
+    "value": "已索引 {count}"
+  },
+  "workbench.status.installed": {
+    "value": "已安装 {count}"
+  },
+  "workbench.status.localIndex": {
+    "value": "本地索引"
+  },
+  "workbench.status.localLedger": {
+    "value": "本地账本"
+  },
+  "workbench.status.nextRefill": {
+    "value": "下次补额 {countdown}"
+  },
+  "workbench.status.sharedLibrary": {
+    "value": "共享库"
+  },
+  "workbench.status.updated": {
+    "value": "更新于 {time}"
   }
 }
