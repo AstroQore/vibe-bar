@@ -116,17 +116,18 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         allCases.filter { $0.isMisc }
     }
 
-    public static var dedicatedCardProviders: [ToolType] {
+    /// Stored, not computed: SwiftUI `body` reads these on every render, and
+    /// a `var` re-ran `allCases.filter` each time. The membership predicates
+    /// are compile-time switches over a fixed enum, so the answer cannot
+    /// change at runtime.
+    public static let dedicatedCardProviders: [ToolType] =
         allCases.filter { $0.supportsDedicatedCard }
-    }
 
-    public static var partialPrimaryProviders: [ToolType] {
+    public static let partialPrimaryProviders: [ToolType] =
         allCases.filter { $0.isPartialPrimary }
-    }
 
-    public static var costAwareProviders: [ToolType] {
+    public static let costAwareProviders: [ToolType] =
         allCases.filter { $0.supportsTokenCost }
-    }
 
     /// Provider keys exposed by the Workbench usage ledger. Cursor dashboard
     /// events are a source inside the SpaceXAI provider total, matching the
@@ -134,7 +135,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// total — which is exactly the set that can be priced per token, so this
     /// is `costAwareProviders`. It stays a separate name because the two
     /// answer different questions and could diverge again.
-    public static var usageStatsProviders: [ToolType] { costAwareProviders }
+    public static let usageStatsProviders: [ToolType] = costAwareProviders
 
     public static var statusPageProviders: [ToolType] {
         allCases.filter { $0.supportsStatusPage }
@@ -178,9 +179,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
-    public static var miscPageProviders: [ToolType] {
+    public static let miscPageProviders: [ToolType] =
         allCases.filter { $0.isMiscPageProvider }
-    }
 
     /// The two Google AI providers that render side-by-side in the
     /// Overview popover's "Google AI" page.

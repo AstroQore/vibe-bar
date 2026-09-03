@@ -14,6 +14,13 @@ struct CursorSessionResolutionPlan: Sendable {
 /// out, and preserve the existing `misc-cursor` Keychain account during the
 /// move from the Misc page into the SpaceXAI provider family.
 enum CursorSessionResolver {
+    /// Still built by `AccountStore.miscAccountId` even though Cursor is no
+    /// longer a Misc-page provider. The value (`misc-cursor`) is the account
+    /// id already written into `accounts.json`, the Keychain items, the fill
+    /// timeline, the forecast timeline, and the subscription history — the
+    /// helper is a naming accident, not a claim about the tier. Renaming it
+    /// would orphan every one of those caches, so it stays as-is; the tier
+    /// question is answered by `ToolType.supportsDedicatedCard`, not here.
     static let stableAccountID = AccountStore.miscAccountId(for: .cursor)
 
     static func plan(
