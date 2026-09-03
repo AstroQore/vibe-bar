@@ -25,6 +25,9 @@ struct MenuBarComposerEditor: View {
     /// Holds the subscription to the one list of things a composed strip
     /// depends on. Without it the preview drifts a generation behind the bar.
     @StateObject private var inputs = MenuBarStripInputObserver()
+    /// Holds a debounced control's last change until a moment this view can
+    /// observe — see `MenuBarPendingCommit`.
+    @StateObject private var pendingCommit = MenuBarPendingCommit()
     @State private var selection: UUID?
     @State private var draggedTokenId: UUID?
     /// The order the strip *would* have if the drag ended here.
@@ -123,6 +126,11 @@ struct MenuBarComposerEditor: View {
         // does not. That is what keeps a forecast off the typing path while
         // still letting a metric swap show up immediately.
         .onChange(of: snapshotKey) { _, _ in rebuildSnapshots() }
+        // Selecting another block retires the inspector that queued the write,
+        // so spend it first. Deterministic, unlike waiting for that view's
+        // teardown to be delivered.
+        .onChange(of: selection) { _, _ in pendingCommit.flush() }
+        .onDisappear { pendingCommit.flush() }
     }
 
     // MARK: - Template
@@ -504,6 +512,7 @@ struct MenuBarComposerEditor: View {
                     token: token,
                     options: sortedOptions,
                     liveFieldIds: liveFieldIds,
+                    pending: pendingCommit,
                     apply: { updated in
                         mutate { composed in
                             guard let index = composed.index(of: updated.id) else { return }
@@ -591,6 +600,10 @@ struct MenuBarComposerEditor: View {
     // MARK: - Mutations
 
     private func mutate(_ change: (inout MenuBarComposition) -> Void) {
+        // Spend a queued write before making another, so the two cannot land
+        // out of order or overwrite each other. Re-entrant-safe: `flush`
+        // clears the queue before running it.
+        pendingCommit.flush()
         // A real edit ends any drag state: the provisional order must never
         // outlive the arrangement it was based on.
         dragCancelTask?.cancel()
@@ -722,6 +735,7 @@ private struct MenuBarTokenInspector: View {
     let token: MenuBarToken
     let options: [MenuBarFieldOption]
     let liveFieldIds: Set<String>
+    let pending: MenuBarPendingCommit
     let apply: (MenuBarToken) -> Void
 
     @State private var fixedDraft: Color = .accentColor
@@ -908,19 +922,12 @@ private struct MenuBarTokenInspector: View {
             case .fixed:
                 ColorPicker("", selection: $fixedDraft, supportsOpacity: false)
                     .labelsHidden()
-                    // Dragging inside a colour well fires continuously; commit
-                    // on an idle window so a drag is one settings write rather
-                    // than a hundred.
-                    .task(id: fixedDraft) {
-                        try? await Task.sleep(for: .milliseconds(250))
-                        guard !Task.isCancelled else { return }
-                        commitFixedColor()
+                    // Dragging inside a colour well fires continuously, so the
+                    // write is queued rather than made per frame — on the
+                    // editor, which is still around when this control is not.
+                    .onChange(of: fixedDraft) { _, value in
+                        scheduleColorCommit(value)
                     }
-                    // Same removal, same flush: picking a colour and
-                    // immediately selecting another block must not drop it.
-                    // `commitFixedColor` no-ops unless the block is still a
-                    // custom colour, so switching the role away is safe.
-                    .onDisappear(perform: commitFixedColor)
             case let .followsQuota(fieldId, basis):
                 fieldPicker(selected: fieldId) { newId in
                     update { $0.style.color = .followsQuota(fieldId: newId, basis: basis) }
@@ -954,17 +961,25 @@ private struct MenuBarTokenInspector: View {
         fixedDraft = Color(.sRGB, red: parts.r, green: parts.g, blue: parts.b, opacity: parts.a)
     }
 
-    private func commitFixedColor() {
-        guard case .fixed = token.style.color else { return }
-        let resolved = NSColor(fixedDraft).usingColorSpace(.sRGB) ?? NSColor(fixedDraft)
+    /// Queue the colour the well is showing.
+    ///
+    /// Everything the write needs is captured as a value here — the finished
+    /// token and the apply closure — so nothing reads this view's `@State`
+    /// after it has gone away.
+    private func scheduleColorCommit(_ color: Color) {
+        guard case let .fixed(current) = token.style.color else { return }
+        let resolved = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
         let hex = String(
             format: "#%02x%02x%02x",
             Int((resolved.redComponent * 255).rounded()),
             Int((resolved.greenComponent * 255).rounded()),
             Int((resolved.blueComponent * 255).rounded())
         )
-        guard case let .fixed(current) = token.style.color, current != hex else { return }
-        update { $0.style.color = .hex(hex) }
+        guard current != hex else { return }
+        var updated = token
+        updated.style.color = .hex(hex)
+        let apply = self.apply
+        pending.schedule { apply(updated) }
     }
 
     // MARK: Rule
@@ -1046,7 +1061,7 @@ private struct MenuBarTokenInspector: View {
         HStack(spacing: 8) {
             Text("Quota").frame(width: 62, alignment: .leading)
             fieldPicker(selected: fieldId) { newId in set(newId, percent) }
-            DebouncedPercentStepper(percent: percent) { set(fieldId, $0) }
+            DebouncedPercentStepper(percent: percent, pending: pending) { set(fieldId, $0) }
             Spacer(minLength: 0)
         }
     }
@@ -1165,6 +1180,49 @@ private struct MenuBarTokenInspector: View {
     }
 }
 
+/// One queued settings write, owned by something that outlives the control
+/// that queued it.
+///
+/// Debouncing a control means the last change lives in limbo for a moment, and
+/// whatever owns that moment must survive long enough to spend it. Hanging it
+/// off the control itself and flushing in `onDisappear` looks equivalent and
+/// is not: the inspector is `.id(token.id)`, so selecting another block tears
+/// the control down, and a window being destroyed does not reliably deliver
+/// `onDisappear` at all. The editor outlives both, so the editor holds the
+/// pending write and flushes it at moments it can actually observe — a
+/// selection change, any other edit, its own teardown.
+@MainActor
+final class MenuBarPendingCommit: ObservableObject {
+    private var pending: (() -> Void)?
+    private var task: Task<Void, Never>?
+
+    /// Queue `commit`, replacing anything already queued: while the user is
+    /// still dragging or clicking, only the newest value matters.
+    func schedule(
+        after delay: Duration = .milliseconds(250),
+        _ commit: @escaping () -> Void
+    ) {
+        pending = commit
+        task?.cancel()
+        task = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.flush()
+        }
+    }
+
+    /// Write whatever is queued, now. Safe to call when nothing is, and safe
+    /// to re-enter: the queue is cleared before the work runs, so a flush
+    /// triggered from inside a commit finds nothing to do.
+    func flush() {
+        task?.cancel()
+        task = nil
+        let work = pending
+        pending = nil
+        work?()
+    }
+}
+
 /// A percent stepper that writes settings on an idle window rather than on
 /// every repeat.
 ///
@@ -1174,6 +1232,7 @@ private struct MenuBarTokenInspector: View {
 /// well: the control tracks its own draft and commits once the user stops.
 private struct DebouncedPercentStepper: View {
     let percent: Double
+    let pending: MenuBarPendingCommit
     let commit: (Double) -> Void
 
     @State private var draft: Double = 0
@@ -1190,18 +1249,13 @@ private struct DebouncedPercentStepper: View {
         .onChange(of: percent) { _, updated in
             if updated != draft { draft = updated }
         }
-        .task(id: draft) {
-            guard draft != percent else { return }
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            commit(draft)
-        }
-        // The inspector is `.id(token.id)`, so selecting another block removes
-        // this control and cancels the pending commit mid-window. Flush, the
-        // way `DebouncedSettingsTextField` already does, or the last change the
-        // user made is silently lost.
-        .onDisappear {
-            if draft != percent { commit(draft) }
+        // Queued on the editor, not here: this control does not outlive a
+        // selection change, and the value must. Values are captured, never
+        // read back out of `@State` after teardown.
+        .onChange(of: draft) { _, value in
+            guard value != percent else { return }
+            let commit = self.commit
+            pending.schedule { commit(value) }
         }
     }
 }

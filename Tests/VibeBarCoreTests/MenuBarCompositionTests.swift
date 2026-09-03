@@ -1317,6 +1317,78 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(composed.quotaRequirements.first?.needsForecast, true)
     }
 
+    // MARK: - A label is only silenced when its quota speaks (review thread 1)
+
+    private func labelThenQuota(_ metric: MenuBarQuotaMetric) -> [MenuBarToken] {
+        [
+            MenuBarToken(kind: .text("Weekly")),
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: metric))
+        ]
+    }
+
+    func testALabelIsStillSpokenWhenItsQuotaBlockHasNothingToSay() {
+        // The forecast exists but does not predict exhaustion, so `runsOutIn`
+        // renders nothing. The label beside it is then the only content on
+        // screen — silencing it would describe less than the strip shows.
+        let noRunOut = quota(
+            "claude.weekly",
+            label: "Weekly",
+            used: 30,
+            forecast: .init(verdict: .enough, projectedRemainingPercent: 60)
+        )
+        XCTAssertEqual(
+            plan(labelThenQuota(.runsOutIn), quotas: [noRunOut]).spokenDescription,
+            "Weekly"
+        )
+
+        // Same one level down: a quota that is answering, but has no forecast
+        // yet for a forecast metric.
+        let noForecast = quota("claude.weekly", label: "Weekly", used: 30)
+        XCTAssertEqual(
+            plan(labelThenQuota(.forecastPercent), quotas: [noForecast]).spokenDescription,
+            "Weekly"
+        )
+
+        // And a countdown with no reset date behind it.
+        XCTAssertEqual(
+            plan(labelThenQuota(.resetsIn), quotas: [noForecast]).spokenDescription,
+            "Weekly"
+        )
+    }
+
+    func testALabelIsStillSpokenWhenItsQuotaBlockIsHiddenByARule() {
+        let calm = quota("claude.weekly", label: "Weekly", used: 10, display: 10)
+        let rendered = plan(
+            [
+                MenuBarToken(kind: .text("Weekly")),
+                MenuBarToken(
+                    kind: .quota(fieldId: "claude.weekly", metric: .displayPercent),
+                    visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: 90)
+                )
+            ],
+            quotas: [calm]
+        )
+        XCTAssertEqual(texts(rendered), [["Weekly"]])
+        XCTAssertEqual(rendered.spokenDescription, "Weekly")
+    }
+
+    func testALabelIsStillSilencedWhenItsQuotaDoesSpeak() {
+        // The case the coalescing exists for, unchanged.
+        let live = quota(
+            "claude.weekly",
+            label: "Weekly",
+            used: 30,
+            forecast: .init(
+                verdict: .watch,
+                projectedRemainingPercent: 12,
+                runOutAt: reference.addingTimeInterval(3600 * 5)
+            )
+        )
+        let rendered = plan(labelThenQuota(.runsOutIn), quotas: [live])
+        XCTAssertEqual(texts(rendered), [["Weekly", "5h"]])
+        XCTAssertEqual(rendered.spokenDescription, "Weekly runs out in 5h")
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {

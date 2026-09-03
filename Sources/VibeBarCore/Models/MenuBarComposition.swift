@@ -992,7 +992,12 @@ public extension MenuBarComposition {
         // A seeded strip draws `5 Hours` and then `5 Hours 73% used`. That is
         // what the bar has always looked like, so the block keeps drawing —
         // but read aloud it stutters every field name, so it stops speaking.
-        let echoed = Self.labelEchoTokenIds(tokens: tokens, quotas: quotas)
+        let echoed = Self.labelEchoTokenIds(
+            tokens: tokens,
+            quotas: quotas,
+            displayMode: displayMode,
+            now: now
+        )
         var rows: [MenuBarRenderRow] = [MenuBarRenderRow()]
         var spokenRows: [[String]] = [[]]
 
@@ -1069,9 +1074,17 @@ public extension MenuBarComposition {
     /// blocks separated from the quota by nothing but spacing count — a row
     /// break, a logo, or another word in between means the label is doing its
     /// own work and is read out.
+    ///
+    /// The quota block has to actually *say* something for the label to be
+    /// redundant. A `runsOutIn` block whose forecast predicts no exhaustion,
+    /// or a `forecastPercent` block with no forecast yet, renders nothing —
+    /// and then the label beside it is the only content still on screen, so
+    /// silencing it would leave the strip describing less than it shows.
     static func labelEchoTokenIds(
         tokens: [MenuBarToken],
-        quotas: [MenuBarQuotaSnapshot]
+        quotas: [MenuBarQuotaSnapshot],
+        displayMode: DisplayMode,
+        now: Date
     ) -> Set<UUID> {
         var echoed: Set<UUID> = []
         for (index, token) in tokens.enumerated() {
@@ -1083,8 +1096,10 @@ public extension MenuBarComposition {
                 switch tokens[cursor].kind {
                 case .space, .separator:
                     cursor += 1
-                case let .quota(fieldId, _):
+                case let .quota(fieldId, metric):
                     if let quota = quotas.first(where: { $0.fieldId == fieldId }),
+                       isVisible(tokens[cursor].visibility, quotas: quotas),
+                       value(of: metric, in: quota, displayMode: displayMode, now: now) != nil,
                        quota.label.trimmingCharacters(in: .whitespacesAndNewlines)
                            .caseInsensitiveCompare(trimmed) == .orderedSame {
                         echoed.insert(token.id)
