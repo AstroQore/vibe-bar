@@ -194,6 +194,9 @@
 /* Cost card title on a provider page; provider is a SubProvider name and is never translated */
 "cost.provider.title" = "%1$@ 花费";
 
+/* Title of the expanded cost popover; provider is a company name and is never translated */
+"cost.providerFullCharts" = "%1$@ 花费 — 完整图表";
+
 /* Tooltip on the Overview cost card's refresh button */
 "cost.refreshData" = "刷新花费数据";
 
@@ -269,8 +272,14 @@
 /* QuotaError: unclassified failure; reason is the underlying message, untranslated */
 "error.unknownDetail" = "错误：%1$@";
 
+/* Button that folds a provider's credential form away */
+"onboarding.apiKeys.hide" = "收起";
+
 /* Intro paragraph of the API-key providers step */
 "onboarding.apiKeys.intro" = "这些套餐靠 API key 或控制台 cookie 跟踪，而不是 CLI 登录。勾选你有的那些 — 勾选后会在「其他厂商」页得到一张卡片 — 展开某一行即可现在填写凭据。密钥和 cookies 都会存进你的登录 Keychain。";
+
+/* Button that unfolds a provider's credential form */
+"onboarding.apiKeys.setUp" = "设置";
 
 /* Tooltip on a provider checkbox; provider is a SubProvider name and is never translated */
 "onboarding.apiKeys.showOnMiscPage" = "在「其他厂商」页显示 %1$@";
@@ -283,6 +292,9 @@
 
 /* Caption under the batch import button */
 "onboarding.cookies.batchScope" = "这个按钮只覆盖上面四个套餐。下一步的控制台 cookie 套餐有各自的一键批量导入，在「设置 → 浏览器 Cookies」里。";
+
+/* Batch import button in the setup assistant */
+"onboarding.cookies.importAll" = "立即从所有浏览器导入";
 
 /* Button in the setup assistant */
 "onboarding.cookies.importFromBrowser" = "从浏览器导入";
@@ -1055,6 +1067,12 @@
 /* Caption under the total-cost metric */
 "usage.hero.allRequestsPriced" = "全部请求已计价";
 
+/* All-caps section label over the cache hit rate */
+"usage.hero.cacheHit" = "缓存命中率";
+
+/* Caption under the cache hit rate; tokens arrives already formatted, e.g. 12.3M */
+"usage.hero.cacheRead" = "读取 %1$@";
+
 /* Caption under the request-count metric */
 "usage.hero.inSelectedRange" = "所选范围内";
 
@@ -1063,6 +1081,9 @@
 
 /* Caption under the request-count metric */
 "usage.hero.noTrafficInRange" = "所选范围内无流量";
+
+/* All-caps section label over the headline token count. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.hero.realTokens" = "实际 token · 所选范围";
 
 /* All-caps metric label on the Workbench usage hero row */
 "usage.hero.requests" = "请求数";
@@ -1090,6 +1111,18 @@
 
 /* Footer figure; count arrives already grouped by the number formatter */
 "usage.requestCount" = "%1$@ 条请求";
+
+/* Token composition legend: cache read tokens */
+"usage.tokens.cacheRead" = "缓存读取";
+
+/* Token composition legend: cache creation tokens */
+"usage.tokens.cacheWrite" = "缓存写入";
+
+/* Token composition legend: fresh input tokens */
+"usage.tokens.input" = "输入";
+
+/* Token composition legend: output tokens */
+"usage.tokens.output" = "输出";
 
 /* Heatmap title on the Overview, covering every provider at once */
 "usage.whenYouUse.everything" = "你什么时候在用";

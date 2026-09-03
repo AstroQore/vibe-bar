@@ -283,6 +283,10 @@ extension L10n {
         public static func providerTitle(provider: String) -> String {
             L10n.string("cost.provider.title", provider)
         }
+        /// `cost.providerFullCharts` — {provider} Cost — Full Charts
+        public static func providerFullCharts(provider: String) -> String {
+            L10n.string("cost.providerFullCharts", provider)
+        }
         /// `cost.refreshData` — Refresh cost data
         public static var refreshData: String {
             L10n.string("cost.refreshData")
@@ -389,9 +393,17 @@ extension L10n {
     }
 
     public enum Onboarding {
+        /// `onboarding.apiKeys.hide` — Hide
+        public static var apiKeysHide: String {
+            L10n.string("onboarding.apiKeys.hide")
+        }
         /// `onboarding.apiKeys.intro` — These plans are tracked with an API key or a console cookie rather than a CLI login. Tick the ones you have — a ticked provider gets a card on the Misc page — and unfold a row to enter its credential now. Keys and cookies go to your login Keychain.
         public static var apiKeysIntro: String {
             L10n.string("onboarding.apiKeys.intro")
+        }
+        /// `onboarding.apiKeys.setUp` — Set up
+        public static var apiKeysSetUp: String {
+            L10n.string("onboarding.apiKeys.setUp")
         }
         /// `onboarding.apiKeys.showOnMiscPage` — Show {provider} on the Misc page
         public static func apiKeysShowOnMiscPage(provider: String) -> String {
@@ -408,6 +420,10 @@ extension L10n {
         /// `onboarding.cookies.batchScope` — This button covers the four plans above. The console-cookie plans on the next step have their own one-click batch import later, under Settings → Browser Cookies.
         public static var cookiesBatchScope: String {
             L10n.string("onboarding.cookies.batchScope")
+        }
+        /// `onboarding.cookies.importAll` — Import from all browsers now
+        public static var cookiesImportAll: String {
+            L10n.string("onboarding.cookies.importAll")
         }
         /// `onboarding.cookies.importFromBrowser` — Import from browser
         public static var cookiesImportFromBrowser: String {
@@ -1487,6 +1503,14 @@ extension L10n {
         public static var heroAllRequestsPriced: String {
             L10n.string("usage.hero.allRequestsPriced")
         }
+        /// `usage.hero.cacheHit` — CACHE HIT
+        public static var heroCacheHit: String {
+            L10n.string("usage.hero.cacheHit")
+        }
+        /// `usage.hero.cacheRead` — {tokens} read
+        public static func heroCacheRead(tokens: String) -> String {
+            L10n.string("usage.hero.cacheRead", tokens)
+        }
         /// `usage.hero.inSelectedRange` — in selected range
         public static var heroInSelectedRange: String {
             L10n.string("usage.hero.inSelectedRange")
@@ -1498,6 +1522,10 @@ extension L10n {
         /// `usage.hero.noTrafficInRange` — no traffic in range
         public static var heroNoTrafficInRange: String {
             L10n.string("usage.hero.noTrafficInRange")
+        }
+        /// `usage.hero.realTokens` — REAL TOKENS · SELECTED RANGE
+        public static var heroRealTokens: String {
+            L10n.string("usage.hero.realTokens")
         }
         /// `usage.hero.requests` — REQUESTS
         public static var heroRequests: String {
@@ -1538,6 +1566,22 @@ extension L10n {
         /// `usage.requestCount` — {count} requests
         public static func requestCount(count: String) -> String {
             L10n.string("usage.requestCount", count)
+        }
+        /// `usage.tokens.cacheRead` — Cache read
+        public static var tokensCacheRead: String {
+            L10n.string("usage.tokens.cacheRead")
+        }
+        /// `usage.tokens.cacheWrite` — Cache write
+        public static var tokensCacheWrite: String {
+            L10n.string("usage.tokens.cacheWrite")
+        }
+        /// `usage.tokens.input` — In
+        public static var tokensInput: String {
+            L10n.string("usage.tokens.input")
+        }
+        /// `usage.tokens.output` — Out
+        public static var tokensOutput: String {
+            L10n.string("usage.tokens.output")
         }
         /// `usage.whenYouUse.everything` — When you use everything
         public static var whenYouUseEverything: String {
@@ -1648,6 +1692,7 @@ extension L10n {
         "cost.notTracked",
         "cost.openFullCharts",
         "cost.provider.title",
+        "cost.providerFullCharts",
         "cost.refreshData",
         "cost.refreshProvider",
         "cost.spaceXAI.empty",
@@ -1673,11 +1718,14 @@ extension L10n {
         "error.rateLimited",
         "error.unknown",
         "error.unknownDetail",
+        "onboarding.apiKeys.hide",
         "onboarding.apiKeys.intro",
+        "onboarding.apiKeys.setUp",
         "onboarding.apiKeys.showOnMiscPage",
         "onboarding.back",
         "onboarding.continue",
         "onboarding.cookies.batchScope",
+        "onboarding.cookies.importAll",
         "onboarding.cookies.importFromBrowser",
         "onboarding.cookies.importGemini",
         "onboarding.cookies.importGrok",
@@ -1943,9 +1991,12 @@ extension L10n {
         "usage.harnessMix.empty",
         "usage.harnessMix.title",
         "usage.hero.allRequestsPriced",
+        "usage.hero.cacheHit",
+        "usage.hero.cacheRead",
         "usage.hero.inSelectedRange",
         "usage.hero.noPricedRequests",
         "usage.hero.noTrafficInRange",
+        "usage.hero.realTokens",
         "usage.hero.requests",
         "usage.hero.tokenComposition",
         "usage.hero.totalCost",
@@ -1956,6 +2007,10 @@ extension L10n {
         "usage.noHarnessSelected.detail",
         "usage.noHarnessSelected.title",
         "usage.requestCount",
+        "usage.tokens.cacheRead",
+        "usage.tokens.cacheWrite",
+        "usage.tokens.input",
+        "usage.tokens.output",
         "usage.whenYouUse.everything",
         "usage.whenYouUse.googleAI",
         "usage.whenYouUse.spaceXAI",

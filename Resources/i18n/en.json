@@ -308,6 +308,10 @@
     "comment": "Cost card title on a provider page; provider is a SubProvider name and is never translated",
     "value": "{provider} Cost"
   },
+  "cost.providerFullCharts": {
+    "comment": "Title of the expanded cost popover; provider is a company name and is never translated",
+    "value": "{provider} Cost — Full Charts"
+  },
   "cost.refreshData": {
     "comment": "Tooltip on the Overview cost card's refresh button",
     "value": "Refresh cost data"
@@ -411,9 +415,17 @@
     "comment": "QuotaError: unclassified failure; reason is the underlying message, untranslated",
     "value": "Error: {reason}"
   },
+  "onboarding.apiKeys.hide": {
+    "comment": "Button that folds a provider's credential form away",
+    "value": "Hide"
+  },
   "onboarding.apiKeys.intro": {
     "comment": "Intro paragraph of the API-key providers step",
     "value": "These plans are tracked with an API key or a console cookie rather than a CLI login. Tick the ones you have — a ticked provider gets a card on the Misc page — and unfold a row to enter its credential now. Keys and cookies go to your login Keychain."
+  },
+  "onboarding.apiKeys.setUp": {
+    "comment": "Button that unfolds a provider's credential form",
+    "value": "Set up"
   },
   "onboarding.apiKeys.showOnMiscPage": {
     "comment": "Tooltip on a provider checkbox; provider is a SubProvider name and is never translated",
@@ -430,6 +442,10 @@
   "onboarding.cookies.batchScope": {
     "comment": "Caption under the batch import button",
     "value": "This button covers the four plans above. The console-cookie plans on the next step have their own one-click batch import later, under Settings → Browser Cookies."
+  },
+  "onboarding.cookies.importAll": {
+    "comment": "Batch import button in the setup assistant",
+    "value": "Import from all browsers now"
   },
   "onboarding.cookies.importFromBrowser": {
     "comment": "Button in the setup assistant",
@@ -1634,6 +1650,14 @@
     "comment": "Caption under the total-cost metric",
     "value": "all requests priced"
   },
+  "usage.hero.cacheHit": {
+    "comment": "All-caps section label over the cache hit rate",
+    "value": "CACHE HIT"
+  },
+  "usage.hero.cacheRead": {
+    "comment": "Caption under the cache hit rate; tokens arrives already formatted, e.g. 12.3M",
+    "value": "{tokens} read"
+  },
   "usage.hero.inSelectedRange": {
     "comment": "Caption under the request-count metric",
     "value": "in selected range"
@@ -1645,6 +1669,10 @@
   "usage.hero.noTrafficInRange": {
     "comment": "Caption under the request-count metric",
     "value": "no traffic in range"
+  },
+  "usage.hero.realTokens": {
+    "comment": "All-caps section label over the headline token count. English sets it in caps by the copy; Chinese has no case and relies on weight and colour.",
+    "value": "REAL TOKENS · SELECTED RANGE"
   },
   "usage.hero.requests": {
     "comment": "All-caps metric label on the Workbench usage hero row",
@@ -1691,6 +1719,22 @@
   "usage.requestCount": {
     "comment": "Footer figure; count arrives already grouped by the number formatter",
     "value": "{count} requests"
+  },
+  "usage.tokens.cacheRead": {
+    "comment": "Token composition legend: cache read tokens",
+    "value": "Cache read"
+  },
+  "usage.tokens.cacheWrite": {
+    "comment": "Token composition legend: cache creation tokens",
+    "value": "Cache write"
+  },
+  "usage.tokens.input": {
+    "comment": "Token composition legend: fresh input tokens",
+    "value": "In"
+  },
+  "usage.tokens.output": {
+    "comment": "Token composition legend: output tokens",
+    "value": "Out"
   },
   "usage.whenYouUse.everything": {
     "comment": "Heatmap title on the Overview, covering every provider at once",

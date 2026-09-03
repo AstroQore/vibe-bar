@@ -194,6 +194,9 @@
 /* Cost card title on a provider page; provider is a SubProvider name and is never translated */
 "cost.provider.title" = "%1$@ Cost";
 
+/* Title of the expanded cost popover; provider is a company name and is never translated */
+"cost.providerFullCharts" = "%1$@ Cost — Full Charts";
+
 /* Tooltip on the Overview cost card's refresh button */
 "cost.refreshData" = "Refresh cost data";
 
@@ -269,8 +272,14 @@
 /* QuotaError: unclassified failure; reason is the underlying message, untranslated */
 "error.unknownDetail" = "Error: %1$@";
 
+/* Button that folds a provider's credential form away */
+"onboarding.apiKeys.hide" = "Hide";
+
 /* Intro paragraph of the API-key providers step */
 "onboarding.apiKeys.intro" = "These plans are tracked with an API key or a console cookie rather than a CLI login. Tick the ones you have — a ticked provider gets a card on the Misc page — and unfold a row to enter its credential now. Keys and cookies go to your login Keychain.";
+
+/* Button that unfolds a provider's credential form */
+"onboarding.apiKeys.setUp" = "Set up";
 
 /* Tooltip on a provider checkbox; provider is a SubProvider name and is never translated */
 "onboarding.apiKeys.showOnMiscPage" = "Show %1$@ on the Misc page";
@@ -283,6 +292,9 @@
 
 /* Caption under the batch import button */
 "onboarding.cookies.batchScope" = "This button covers the four plans above. The console-cookie plans on the next step have their own one-click batch import later, under Settings → Browser Cookies.";
+
+/* Batch import button in the setup assistant */
+"onboarding.cookies.importAll" = "Import from all browsers now";
 
 /* Button in the setup assistant */
 "onboarding.cookies.importFromBrowser" = "Import from browser";
@@ -1055,6 +1067,12 @@
 /* Caption under the total-cost metric */
 "usage.hero.allRequestsPriced" = "all requests priced";
 
+/* All-caps section label over the cache hit rate */
+"usage.hero.cacheHit" = "CACHE HIT";
+
+/* Caption under the cache hit rate; tokens arrives already formatted, e.g. 12.3M */
+"usage.hero.cacheRead" = "%1$@ read";
+
 /* Caption under the request-count metric */
 "usage.hero.inSelectedRange" = "in selected range";
 
@@ -1063,6 +1081,9 @@
 
 /* Caption under the request-count metric */
 "usage.hero.noTrafficInRange" = "no traffic in range";
+
+/* All-caps section label over the headline token count. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.hero.realTokens" = "REAL TOKENS · SELECTED RANGE";
 
 /* All-caps metric label on the Workbench usage hero row */
 "usage.hero.requests" = "REQUESTS";
@@ -1090,6 +1111,18 @@
 
 /* Footer figure; count arrives already grouped by the number formatter */
 "usage.requestCount" = "%1$@ requests";
+
+/* Token composition legend: cache read tokens */
+"usage.tokens.cacheRead" = "Cache read";
+
+/* Token composition legend: cache creation tokens */
+"usage.tokens.cacheWrite" = "Cache write";
+
+/* Token composition legend: fresh input tokens */
+"usage.tokens.input" = "In";
+
+/* Token composition legend: output tokens */
+"usage.tokens.output" = "Out";
 
 /* Heatmap title on the Overview, covering every provider at once */
 "usage.whenYouUse.everything" = "When you use everything";

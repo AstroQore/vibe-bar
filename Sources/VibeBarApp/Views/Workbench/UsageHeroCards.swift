@@ -67,7 +67,7 @@ struct UsageHeroCards: View {
 
     private var tokensSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("REAL TOKENS · SELECTED RANGE")
+            sectionLabel(L10n.Usage.heroRealTokens)
             Text(UsageFormatting.compactTokens(summary.realTotalTokens))
                 .font(.system(size: density.titleFontSize + 20, weight: .bold, design: .rounded).monospacedDigit())
                 .lineLimit(1)
@@ -79,10 +79,10 @@ struct UsageHeroCards: View {
 
     private var tokenLegend: some View {
         HStack(spacing: 12) {
-            tokenLegendItem("In", value: summary.freshInput, tint: .blue)
-            tokenLegendItem("Out", value: summary.output, tint: .green)
-            tokenLegendItem("Cache write", value: summary.cacheCreation, tint: .orange)
-            tokenLegendItem("Cache read", value: summary.cacheRead, tint: .purple)
+            tokenLegendItem(L10n.Usage.tokensInput, value: summary.freshInput, tint: .blue)
+            tokenLegendItem(L10n.Usage.tokensOutput, value: summary.output, tint: .green)
+            tokenLegendItem(L10n.Usage.tokensCacheWrite, value: summary.cacheCreation, tint: .orange)
+            tokenLegendItem(L10n.Usage.tokensCacheRead, value: summary.cacheRead, tint: .purple)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -143,10 +143,12 @@ struct UsageHeroCards: View {
         HStack(spacing: 11) {
             cacheRing
             VStack(alignment: .leading, spacing: 5) {
-                sectionLabel("CACHE HIT")
+                sectionLabel(L10n.Usage.heroCacheHit)
                 Text(UsageFormatting.formatPercent(summary.cacheHitRate))
                     .font(.system(size: density.titleFontSize, weight: .bold, design: .rounded).monospacedDigit())
-                detailText("\(UsageFormatting.compactTokens(summary.cacheRead)) read")
+                detailText(L10n.Usage.heroCacheRead(
+                    tokens: UsageFormatting.compactTokens(summary.cacheRead)
+                ))
             }
         }
     }

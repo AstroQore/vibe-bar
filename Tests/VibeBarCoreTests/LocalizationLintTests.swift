@@ -74,6 +74,89 @@ final class LocalizationLintTests: XCTestCase {
         }
     }
 
+    /// The lint is trusted, so it needs its own test.
+    ///
+    /// The first version matched regexes anchored to "a literal
+    /// immediately after a known initializer". It reported clean while
+    /// three migrated files still showed English, because that shape misses
+    /// a ternary inside the argument, a call this codebase wrote itself,
+    /// and an argument that wrapped onto the next line. This fixture is one
+    /// of each, plus the things that must *not* be flagged.
+    func testTheScannerCatchesTheShapesThatUsedToSlipPast() throws {
+        guard let python = try locatePython() else {
+            throw XCTSkip("no python3 on PATH; the lint cannot be run here")
+        }
+        let fixture = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("LintFixture-\(UUID().uuidString).swift")
+        try """
+        import SwiftUI
+
+        struct Fixture: View {
+            var body: some View {
+                Text("Plain literal")
+                Label(busy ? "Ternary A" : "Ternary B", systemImage: "safari")
+                sectionLabel("Project helper")
+                Text(
+                    "Wrapped onto its own line"
+                )
+                Button {
+                    act()
+                } label: {
+                    Label(open ? "Fold" : "Unfold", systemImage: open ? "a" : "b")
+                }
+                .help("Modifier literal")
+
+                // Not flagged, each for its own reason:
+                Text(L10n.Common.refresh)
+                Text("OpenAI")
+                Text("·")
+                Image(systemName: "arrow.clockwise")
+                Text("x").tag("weekly")
+                // Text("In a line comment")
+                /* Text("In a block comment") */
+                let path = url.appendingPathComponent("Contents/Resources")
+                let flag = expanded(forGroupName: "Components")
+            }
+
+            private func sectionLabel(_ text: String) -> some View { Text(text) }
+        }
+        """.write(to: fixture, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let process = Process()
+        process.executableURL = python
+        process.arguments = [
+            repositoryRoot.appendingPathComponent("Scripts/lint_localization.py").path,
+            "--scan", fixture.path,
+        ]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+        try process.run()
+        let text = String(
+            data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8
+        ) ?? ""
+        process.waitUntilExit()
+
+        let found = Set(
+            text.split(separator: "\n").compactMap { $0.split(separator: "\t").last }
+                .map(String.init)
+        )
+        for expected in [
+            "Plain literal", "Ternary A", "Ternary B", "Project helper",
+            "Wrapped onto its own line", "Fold", "Unfold", "Modifier literal",
+        ] {
+            XCTAssertTrue(found.contains(expected), "the lint missed \(expected): \(found)")
+        }
+        for ignored in [
+            "safari", "arrow.clockwise", "OpenAI", "·", "weekly", "a", "b",
+            "In a line comment", "In a block comment",
+            "Contents/Resources", "Components",
+        ] {
+            XCTAssertFalse(found.contains(ignored), "the lint flagged \(ignored), which is not copy")
+        }
+    }
+
     private func locatePython() throws -> URL? {
         for candidate in ["/usr/bin/python3", "/opt/homebrew/bin/python3", "/usr/local/bin/python3"] {
             if FileManager.default.isExecutableFile(atPath: candidate) {

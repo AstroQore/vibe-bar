@@ -178,6 +178,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                     externalChangeBanner
                     if selectedSection == .system {
+                    LanguageSettingsSection(density: density)
                     settingsSection("System") {
                         Toggle("Launch at login", isOn: launchAtLoginBinding())
                         Text(launchAtLoginStatusText)

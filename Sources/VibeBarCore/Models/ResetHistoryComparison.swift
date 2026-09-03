@@ -487,9 +487,26 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     /// groups and buckets in the order the popover lists them.
     public let lanes: [Lane]
     public let totals: Totals
+
     /// One plain sentence generated from the data, never a template with a
     /// blank in it. Always non-empty.
-    public let verdict: String
+    ///
+    /// Derived on access rather than stored, because this value is
+    /// localized and the comparison outlives a language change.
+    /// `ResetHistoryCompareView`'s memo is keyed on the inputs, the axis,
+    /// the window and the hour — the things that decide the *numbers* —
+    /// and a stored sentence would survive that key untouched, leaving the
+    /// old language on screen (and inside `accessibilitySummary`) until
+    /// data changed or the hour turned over.
+    ///
+    /// Widening the cache key was the other option and is the worse one: a
+    /// memo that has to enumerate every global the value secretly depends
+    /// on will miss the next one. Keeping every localized string on this
+    /// type computed means the memo only ever has to know about data.
+    /// It costs one pass over `lanes` — a handful of rows, the same order
+    /// as `truncationNote` next to it — and no allocation the sentence
+    /// would not have made anyway.
+    public var verdict: String { Self.verdict(lanes: lanes, totals: totals) }
 
     public var isEmpty: Bool { lanes.isEmpty }
 
@@ -700,8 +717,9 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             )
         }
 
-        // 4. Header arithmetic and the sentence under it, over every cycle the
-        //    window covers — not only the ones that fit on the grid.
+        // 4. Header arithmetic over every cycle the window covers — not only
+        //    the ones that fit on the grid. The sentence under it is derived
+        //    from these on access, so it follows the app's language.
         let totals = Totals(
             cycleCount: totalCycleCount,
             usedPercent: totalCycleCount == 0 ? 0 : totalUsedSum / Double(totalCycleCount)
@@ -713,8 +731,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             now: now,
             grid: grid,
             lanes: ordered,
-            totals: totals,
-            verdict: verdict(lanes: ordered, totals: totals)
+            totals: totals
         )
     }
 

@@ -995,14 +995,39 @@ through the pass and fails on a user-facing literal in one of them that
 does not go through `L10n`; `LocalizationLintTests` runs it on every
 `swift test`. **Add a file to that manifest when you migrate it**, and
 add a name to `_glossary.json` rather than inventing a per-file
-exception.
+exception — `ALLOWED` is empty on purpose.
+
+It scans with a small Swift lexer, not with regexes over a line, and the
+difference is the whole point: a pattern anchored to "a literal
+immediately after a known initializer" misses a ternary inside the
+argument (`Label(busy ? "Importing…" : "Import now", …)`), a helper this
+codebase wrote itself (`sectionLabel("REAL TOKENS")`), and an argument
+that wrapped onto the next line — all three of which shipped past the
+first version while three files were declared clean. The lexer tracks the
+enclosing call and the argument label, the label-producing helpers are
+*derived from the source* so the list cannot go stale, and
+`IDENTIFIER_ARGUMENTS` keeps `systemImage:` and `.tag()` out of it. A
+lint that is trusted and wrong is worse than no lint, so the scanner has
+its own fixture test (`--scan`).
+
+**Never store a localized string.** Derive it. A `let` filled in at
+build time, or a `@State` seeded once, outlives a language change: the
+reset-history verdict was cached behind a key made of the inputs, the
+axis, the window and the hour — none of which moves when the user picks
+another language — and stayed in the old language on screen until the
+data changed. The fix is a computed property, not a wider cache key: a
+memo that has to enumerate every global its value secretly depends on
+will miss the next one. Keep every localized string on a cached type
+computed and the memo only ever has to know about data.
 
 **Language selection.** `AppSettings.language` is `.system` (the
 default), `.english`, or `.simplifiedChinese`; the raw value of an
 explicit case is also its `.lproj` name. `SettingsStore` mirrors it into
 `L10n` on every assignment and once at load, so a change takes effect
 with no relaunch — the same assignment publishes to every `$settings`
-subscriber. `.system` is resolved by matching `Locale.preferredLanguages`
+subscriber. The picker is `LanguageSettingsSection`, mounted in the
+System settings section and again at the head of the setup assistant's
+first step, before any prose the reader may not be able to read. `.system` is resolved by matching `Locale.preferredLanguages`
 on language *and script*, so a per-app choice in System Settings and
 `-AppleLanguages` both work, and a `zh-Hant` reader is deliberately not
 served `zh-Hans`.
@@ -1304,7 +1329,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   with other arguments must position its variable (`%2$#@count@`) or
   Foundation counts the wrong argument and every count reads as plural,
   and an `int` argument is grouped by the locale, so a year renders
-  "2,027" — years, versions and ids are strings. Full rules in § 7.2.
+  "2,027" — years, versions and ids are strings. A localized string is
+  also never *stored*: parked in a `let` or a `@State` it survives a
+  language change behind any cache key that only knows about data. Full
+  rules in § 7.2.
 - **JSONL scanning must be O(n).** See
   `CostUsageScanner.forEachJSONLLine`. Use a moving cursor, not
   `removeSubrange`.

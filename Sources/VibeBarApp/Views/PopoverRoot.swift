@@ -1576,7 +1576,7 @@ private struct CostDetailPopoverContent: View {
                 HStack(alignment: .center) {
                     ProviderSectionTitle(
                         tool: tool,
-                        title: titleOverride ?? "\(tool.vendorName) Cost — Full Charts",
+                        title: titleOverride ?? L10n.Cost.providerFullCharts(provider: tool.vendorName),
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 15,
@@ -1873,7 +1873,7 @@ private struct CostHeaderCard: View {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: titleOverride ?? "\(tool.vendorName) Cost",
+                    title: titleOverride ?? L10n.Cost.providerTitle(provider: tool.vendorName),
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,

@@ -8,9 +8,10 @@ struct OnboardingWelcomeStep: View {
 
     var body: some View {
         // The language picker leads, before any prose the reader may not be
-        // able to read yet. It is the same control the System settings
-        // section mounts (`LanguageSettingsSection`), so a choice made here
-        // is the choice that persists.
+        // able to read yet. This is the same view the System settings
+        // section mounts, writing the same `AppSettings.language`, so a
+        // choice made here is the choice that persists — and someone who
+        // skips the assistant still finds the control in Settings.
         LanguageSettingsSection(density: density)
         CardShell(density: density) {
             Text(L10n.Onboarding.welcomeIntro)
@@ -302,7 +303,12 @@ struct OnboardingBrowserCookiesStep: View {
                 environment.importGeminiBrowserCookies()
                 environment.importGrokBrowserCookies()
             } label: {
-                Label(isImportingAny ? "Importing…" : "Import from all browsers now", systemImage: "safari")
+                Label(
+                    isImportingAny
+                        ? L10n.Onboarding.cookiesImporting
+                        : L10n.Onboarding.cookiesImportAll,
+                    systemImage: "safari"
+                )
             }
             .disabled(isImportingAny)
             Divider()
@@ -431,7 +437,10 @@ struct OnboardingAPIKeyProvidersStep: View {
                         expanded.insert(instance.id)
                     }
                 } label: {
-                    Label(unfolded ? "Hide" : "Set up", systemImage: unfolded ? "chevron.up" : "chevron.down")
+                    Label(
+                        unfolded ? L10n.Onboarding.apiKeysHide : L10n.Onboarding.apiKeysSetUp,
+                        systemImage: unfolded ? "chevron.up" : "chevron.down"
+                    )
                         .font(.caption)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle())
@@ -551,11 +560,27 @@ struct OnboardingLaunchAtLoginStep: View {
 
     @EnvironmentObject private var settingsStore: SettingsStore
     // A demo launch registers nothing with the system and must not read the
-    // real login item either: the captured state is the settings file's.
-    @State private var statusText: String = DemoMode.isEnabled
-        ? L10n.Platform.macosLaunchAtLoginOff
+    // real login item either, so this stays empty in demo mode and
+    // `statusText` derives the line from the settings file instead.
+    @State private var systemStatusText: String = DemoMode.isEnabled
+        ? ""
         : LoginItemController.statusText
     @State private var errorText: String?
+
+    /// Derived rather than stored, for the same reason
+    /// `ResetHistoryComparison.verdict` is: a localized string parked in
+    /// `@State` is written once for the lifetime of the view's identity and
+    /// would still be in the old language after the picker two steps back
+    /// changed it. The system's own status line is not localized by this
+    /// build, so it stays in state where a system read belongs.
+    private var statusText: String {
+        guard !DemoMode.isEnabled else {
+            return settingsStore.settings.launchAtLogin
+                ? L10n.Platform.macosLaunchAtLoginEnabled
+                : L10n.Platform.macosLaunchAtLoginOff
+        }
+        return systemStatusText
+    }
 
     var body: some View {
         CardShell(density: density) {
@@ -583,10 +608,9 @@ struct OnboardingLaunchAtLoginStep: View {
             get: { settingsStore.settings.launchAtLogin },
             set: { enabled in
                 if DemoMode.isEnabled {
+                    // `statusText` reads this back, so there is nothing else
+                    // to keep in step.
                     settingsStore.settings.launchAtLogin = enabled
-                    statusText = enabled
-                        ? L10n.Platform.macosLaunchAtLoginEnabled
-                        : L10n.Platform.macosLaunchAtLoginOff
                     return
                 }
                 do {
@@ -613,7 +637,7 @@ struct OnboardingLaunchAtLoginStep: View {
         @unknown default:
             break
         }
-        statusText = LoginItemController.statusText
+        systemStatusText = LoginItemController.statusText
     }
 }
 
