@@ -67,6 +67,10 @@ final class AppEnvironment: ObservableObject {
     private var browserGeminiCookieImportInFlight = false
     private var browserGrokCookieImportInFlight = false
     private var pricingRefreshTask: Task<Void, Never>?
+    private var costScanTask: Task<Void, Never>?
+    /// Last quota this environment reacted to, per account. See the
+    /// `$lastSuccessByAccount` sink.
+    private var handledQuotaByAccount: [String: AccountQuota] = [:]
     private var webCookiePresenceProbedAt: Date?
     private var webCookiePresenceGeneration: UInt64 = 0
     private var routeHealthProbeGeneration: UInt64 = 0
@@ -224,12 +228,14 @@ final class AppEnvironment: ObservableObject {
             },
             intervalProvider: { [weak settings] in
                 settings?.refreshIntervalSeconds ?? AppSettings.default.refreshIntervalSeconds
-            },
-            onRefreshTriggered: {
-                Task { @MainActor in
-                    await costService.refreshAll()
-                }
             }
+            // Deliberately no `onRefreshTriggered`. Quota refresh is cheap
+            // (in-memory plus a couple of HTTPS calls) and the user can set
+            // it as low as a few minutes; a full cost scan is a filesystem
+            // walk over every session transcript on the machine and takes
+            // minutes on a large history. Chaining them meant the scan ran
+            // essentially back-to-back forever. The cost scan now has its
+            // own fixed cadence — see `scheduleCostScanLoop`.
         )
         self.scheduler = scheduler
 
@@ -267,11 +273,11 @@ final class AppEnvironment: ObservableObject {
             .store(in: &cancellables)
 
         // Cost re-scan is the expensive path (full filesystem walk + JSONL
-        // parse). Only run it when the *data source* actually changes —
-        // mock mode or claude usage mode. The refresh-interval slider has no
-        // effect on what cost data we'd read, so a flurry of slider edits
-        // shouldn't kick off back-to-back full scans. Debounce smooths
-        // multi-step settings transitions too.
+        // parse). Outside its own slow loop, only run it when the *data
+        // source* actually changes — mock mode or claude usage mode. The
+        // refresh-interval slider has no effect on what cost data we'd read,
+        // so a flurry of slider edits shouldn't kick off back-to-back full
+        // scans. Debounce smooths multi-step settings transitions too.
         settings.$settings
             .dropFirst()
             .removeDuplicates {
@@ -375,13 +381,12 @@ final class AppEnvironment: ObservableObject {
         serviceStatus.start()
         remoteProbeService.start()
 
-        // Kick off an initial cost scan in the background. Cost data updates
-        // slowly compared to live quota, so we re-scan only on app relaunch,
-        // data-source settings changes, or the explicit Cost Data rescan button.
-        Task { @MainActor in
-            await costService.applyCostDataSettings()
-            await costService.refreshAll()
-        }
+        // Kick off the cost scan loop: once at launch, then on its own slow
+        // cadence. Cost data updates slowly compared to live quota, and a
+        // scan is far more expensive than a quota refresh, so it also runs on
+        // data-source settings changes and the explicit Cost Data rescan
+        // button — but never on the quota refresh interval.
+        scheduleCostScanLoop()
 
         // Refresh every source immediately and then at the interval selected
         // in Settings. Each source has its own last-known-good cache, so one
@@ -396,15 +401,26 @@ final class AppEnvironment: ObservableObject {
         importGrokBrowserCookiesAndRefreshIfNeeded()
 
         // Push Claude/Codex extras parsed by adapters into CostUsageService.
+        //
+        // Only the accounts whose quota actually changed: the publisher emits
+        // the whole map on every single-account write, so walking all of it
+        // made the work quadratic in account count, and both callees are
+        // idempotent restatements for an unchanged quota anyway.
         service.$lastSuccessByAccount
             .receive(on: RunLoop.main)
             .sink { [weak self] map in
                 guard let self else { return }
-                for (_, quota) in map {
+                for (accountID, quota) in map where self.handledQuotaByAccount[accountID] != quota {
+                    self.handledQuotaByAccount[accountID] = quota
                     if let extras = quota.providerExtras {
                         self.costService.setLiveExtras(extras, for: quota.tool)
                     }
                     self.scheduleClaudeRoutineBudgetPatchIfNeeded(for: quota)
+                }
+                if self.handledQuotaByAccount.contains(where: { map[$0.key] == nil }) {
+                    self.handledQuotaByAccount = self.handledQuotaByAccount.filter {
+                        map[$0.key] != nil
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -412,6 +428,37 @@ final class AppEnvironment: ObservableObject {
 
     deinit {
         pricingRefreshTask?.cancel()
+        costScanTask?.cancel()
+    }
+
+    /// Local cost scans on their own slow cadence, decoupled from the quota
+    /// refresh interval the user controls in Settings.
+    ///
+    /// Fixed rather than configurable on purpose: this is a cost floor, not a
+    /// feature. A full pass walks every session transcript on the machine, so
+    /// the cadence has to stay well above the worst-case pass duration —
+    /// exposing it as a setting would just let it be turned back into the
+    /// permanent-scan behaviour this replaced.
+    private static let costScanIntervalSeconds: TimeInterval = 15 * 60
+
+    private func scheduleCostScanLoop() {
+        costScanTask?.cancel()
+        costScanTask = Task { @MainActor [weak self] in
+            var appliedCostDataSettings = false
+            while !Task.isCancelled {
+                guard let self else { return }
+                if !appliedCostDataSettings {
+                    await self.costService.applyCostDataSettings()
+                    appliedCostDataSettings = true
+                }
+                await self.costService.refreshAll()
+                do {
+                    try await Task.sleep(for: .seconds(Self.costScanIntervalSeconds))
+                } catch {
+                    return
+                }
+            }
+        }
     }
 
     func refreshPricingNow() {
@@ -519,6 +566,10 @@ final class AppEnvironment: ObservableObject {
         // 1h failure cooldowns so the routine WebView probe gets a fresh
         // chance on the very next quota refresh.
         lastRoutineBudgetAttemptByAccount.removeAll()
+        // Same reasoning for the misc-provider cookie re-import: its cooldown
+        // exists to stop *scheduled* refreshes re-reading a signed-out
+        // browser, and this path is the user saying the browser changed.
+        MiscCookieAutoImporter.shared.resetCooldowns()
         scheduler.triggerRefresh()
         serviceStatus.refreshAll()
     }
@@ -545,6 +596,9 @@ final class AppEnvironment: ObservableObject {
     func refresh(_ tool: ToolType) {
         refreshWebCookiePresence()
         recheckPrimaryRouteHealth(provider: tool)
+        // User-initiated: let the cookie re-import run again even if a
+        // scheduled refresh already found the browser signed out.
+        MiscCookieAutoImporter.shared.resetCooldown(for: tool)
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
             claudeUsageMode: settingsStore.claudeUsageMode,
@@ -562,6 +616,9 @@ final class AppEnvironment: ObservableObject {
 
     func refresh(_ instance: MiscProviderInstance) {
         guard let account = account(for: instance) else { return }
+        MiscCookieAutoImporter.shared.resetCooldown(
+            for: instance.tool, instanceID: instance.id
+        )
         Task { @MainActor in
             _ = await quotaService.refresh(account)
         }

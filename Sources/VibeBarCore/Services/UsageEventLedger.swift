@@ -759,6 +759,13 @@ public actor UsageEventLedger: CostUsageEventSink {
             let statement = try prepare(Self.insertEventSQL)
             defer { sqlite3_finalize(statement) }
             for (index, priced) in batch.events.enumerated() {
+                // The scan that feeds this can be abandoned by
+                // `AsyncTimeout`, and a batch can be hundreds of thousands of
+                // rows. Bail before writing more of them — the `ROLLBACK`
+                // below leaves the ledger exactly as it was, and the file's
+                // fingerprint is never recorded, so the next pass re-ingests
+                // the whole batch rather than half of it.
+                if Task.isCancelled { throw CancellationError() }
                 let event = priced.event
                 let day = dayString(for: event.date)
                 // Below the floor the detail rows have already been folded
