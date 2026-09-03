@@ -121,8 +121,12 @@ enum QuotaBucketGrouping {
 }
 
 /// One drawable point of the forecast's uncertainty band.
+///
+/// `id` is the slot in the array, for the same reason `QuotaChartLinePoint`'s
+/// is: a printed id allocated a string per band mark per rebuild and no caller
+/// ever reads it back.
 private struct QuotaBandPoint: Identifiable {
-    let id: String
+    let id: Int
     let seriesKey: String
     let time: Date
     let low: Double
@@ -158,6 +162,31 @@ private struct QuotaHoverReading {
     let buckets: [QuotaHoverBucketReading]
 
     var isEmpty: Bool { buckets.allSatisfy(\.isEmpty) }
+}
+
+/// One overlaid quota, reduced to exactly what the crosshair needs: flat,
+/// ascending copies of its three lines plus how to name and colour it.
+///
+/// The segments are contiguous runs of an already time-sorted array, so
+/// concatenating them keeps the order a binary search needs. Built once per data
+/// change in `rebuild()` and handed to the hover overlay as a plain value, so a
+/// pointer move costs three binary searches per lane and touches none of the
+/// chart's own state. (This is what `BucketLookup` used to be; it moved out of
+/// the chart view because the hover moved out with it.)
+private struct QuotaHoverLane {
+    let id: String
+    let title: String
+    let color: Color
+    let windowSeconds: Int?
+    let actual: [QuotaHistorySample]
+    let pace: [QuotaHistorySample]
+    let forecast: [QuotaHistoryForecastSample]
+}
+
+/// Shared by the legend and by the hover tooltip, which live in two different
+/// views now and have to print a percentage the same way.
+private func quotaPercentLabel(_ value: Double) -> String {
+    "\(Int(value.rounded()))%"
 }
 
 /// Everything that decides the shape of the chart. Rebuilding is keyed on this
@@ -206,6 +235,12 @@ private struct QuotaSeriesSignature: Equatable {
 /// `@EnvironmentObject` at all — an environment read here would bypass the
 /// diff entirely and re-run the body on every unrelated service publish.
 ///
+/// The crosshair is deliberately *not* part of that diff: it lives in
+/// `QuotaChartHoverOverlay`, a child with its own `@State`, so a pointer move
+/// re-renders the overlay and never this body — the marks below it are memoized
+/// on `seriesRevision` and the visible window and are not rebuilt to move a
+/// crosshair one pixel.
+///
 /// The other half of that contract: **this view must never read the current
 /// time**. There is no `now` parameter and no `Date()` anywhere in it — every
 /// "current" reading in the legend comes from the newest recorded sample, so a
@@ -250,14 +285,24 @@ struct QuotaHistoryChartView: View, Equatable {
 
     @State private var forecastByBucket: [String: [ForecastTimelinePoint]] = [:]
     @State private var seriesByBucket: [String: QuotaHistorySeries] = [:]
-    @State private var lookupByBucket: [String: BucketLookup] = [:]
+    /// Flattened lines per bucket, in the shape the hover overlay searches.
+    @State private var hoverLanes: [QuotaHoverLane] = []
     @State private var miniSegments: [[QuotaHistorySample]] = []
     @State private var window: ChartTimeWindow?
     @State private var windowKey: String?
     @State private var initialSpan: TimeInterval = QuotaHistoryChartView.defaultInitialSpan
-    @State private var hoverDate: Date?
-    @State private var panBase: ChartTimeWindow?
-    @State private var magnifyBase: ChartTimeWindow?
+    /// Bumped once per `rebuild()`. The mark plan is keyed on it instead of on
+    /// the series themselves: the series are dictionaries of arrays of arrays,
+    /// and comparing them per body pass is exactly the walk the cache exists to
+    /// avoid. Nothing but `rebuild()` writes `seriesByBucket`, so a counter is
+    /// as correct as a deep compare and O(1).
+    @State private var seriesRevision = 0
+    /// Bumped when a range pill jumps the window — the one case where something
+    /// outside the hover overlay has to drop its crosshair. The hover state
+    /// itself lives in that overlay so a pointer move cannot invalidate this
+    /// view; see `QuotaChartHoverOverlay`.
+    @State private var hoverResetToken = 0
+    @State private var planCache = PlanCache()
 
     /// Hue per bucket inside one group, reused from the accents the rest of the
     /// app already spends: the healthy-quota green, the forecast blue, the
@@ -272,12 +317,24 @@ struct QuotaHistoryChartView: View, Equatable {
     ]
     private static let paceColor = Color.secondary
 
-    /// Marks per line inside the visible window. Beyond this the strokes stop
-    /// gaining detail and start costing frames on a zoomed-out weekly domain —
-    /// so the budget is shared out across however many buckets overlay, and
-    /// then again across the segments each bucket is drawn in.
-    private static let visibleMarkBudget = 520
-    private static let minimumMarkBudget = 140
+    /// Marks the whole plot may draw inside the visible window, across every
+    /// thinned line in it.
+    ///
+    /// This used to be a per-*line* budget, and it under-counted the chart by
+    /// the number of lines it draws: a single-bucket chart strokes four thinned
+    /// layers (observed, forecast, time-only pace, uncertainty band), so 520 per
+    /// line was really ~2 080 marks — twice the project's ~1 000-mark ceiling
+    /// (`AGENTS.md` § 7) on the *smallest* chart this view can render. The
+    /// budget is now the chart's: it is divided by the layers that will actually
+    /// be stroked, and each layer's share is divided again across the segments
+    /// that layer is drawn in.
+    private static let chartMarkBudget = 900
+    /// Floor per layer, so a group overlaying many quotas thins every line hard
+    /// rather than reducing one of them to a stub. It only starts winning past
+    /// ten drawn layers — five overlaid quotas each with a forecast — which no
+    /// real group reaches; past that the chart is deliberately over budget for
+    /// the same reason `ChartMarkBudget` lets segment floors overshoot.
+    private static let minimumMarkBudget = 90
     private static let miniMarkLimit = 160
     /// Past this many reset lines the plot reads as a picket fence rather than
     /// as a set of boundaries, so a zoomed-out five-hour quota drops them.
@@ -285,9 +342,12 @@ struct QuotaHistoryChartView: View, Equatable {
 
     var body: some View {
         let buckets = bucketsWithHistory
-        let drawable = buckets.first.flatMap { first in
-            window.flatMap { $0.domainSpan > 0 ? (first, $0) : nil }
-        }
+        // The first bucket is the primary one (shortest window first), and the
+        // plan reads it back out of `buckets`; all this needs to decide is
+        // whether there is anything drawable at all.
+        let drawable = buckets.isEmpty
+            ? nil
+            : window.flatMap { $0.domainSpan > 0 ? $0 : nil }
 
         Group {
             if isEmbedded {
@@ -297,7 +357,7 @@ struct QuotaHistoryChartView: View, Equatable {
                 if let drawable {
                     VStack(alignment: .leading, spacing: 5) {
                         embeddedHeader
-                        chartBody(buckets: buckets, primary: drawable.0, window: drawable.1)
+                        chartBody(buckets: buckets, window: drawable)
                     }
                     .padding(.top, 5)
                 }
@@ -305,7 +365,7 @@ struct QuotaHistoryChartView: View, Equatable {
                 VStack(alignment: .leading, spacing: density.cardSpacing) {
                     cardHeader
                     if let drawable {
-                        chartBody(buckets: buckets, primary: drawable.0, window: drawable.1)
+                        chartBody(buckets: buckets, window: drawable)
                     } else {
                         emptyNote
                     }
@@ -378,7 +438,6 @@ struct QuotaHistoryChartView: View, Equatable {
     @ViewBuilder
     private func chartBody(
         buckets: [QuotaBucket],
-        primary: QuotaBucket,
         window: ChartTimeWindow
     ) -> some View {
         let binding = Binding<ChartTimeWindow>(
@@ -386,37 +445,17 @@ struct QuotaHistoryChartView: View, Equatable {
             set: { self.window = $0 }
         )
         let visible = window.visibleRange
-        let isSingle = buckets.count == 1
-        // One budget per bucket, shared out across however many segments that
-        // bucket happens to be drawn in.
-        let budget = max(Self.minimumMarkBudget, Self.visibleMarkBudget / max(1, buckets.count))
-        let lines = bucketLines(buckets: buckets, range: visible, budget: budget)
-        let primarySeries = seriesByBucket[primary.id] ?? .empty
-        // Only a single-bucket chart can afford the wall-clock reference and
-        // the uncertainty band: two of them overlaid is mud, and the pace
-        // reading moves into the hover tooltip instead.
-        let pacePoints = isSingle
-            ? linePoints(primarySeries.pace, kind: "pace", range: visible, budget: budget)
-            : []
-        let paceBridges = isSingle
-            ? bridgePoints(
-                primarySeries.pace,
-                time: { $0.time },
-                value: { $0.remainingPercent },
-                kind: "pace",
-                range: visible
-            )
-            : []
-        let bandPoints = isSingle
-            ? forecastBandPoints(primarySeries.forecast, range: visible, budget: budget)
-            : []
-        let resets = resetMarks(primarySeries: primarySeries, range: visible)
+        // Every mark this plot draws, memoized on (series revision, buckets,
+        // visible range). A pan or a zoom is a genuine miss and rebuilds; every
+        // other re-proposal — a forecast landing, a density change, a range
+        // pill clearing the crosshair — reuses what is already laid out.
+        let plan = markPlan(buckets: buckets, range: visible)
 
         VStack(alignment: .leading, spacing: 6) {
             legend(buckets: buckets)
 
             Chart {
-                ForEach(bandPoints) { point in
+                ForEach(plan.band) { point in
                     AreaMark(
                         x: .value("Time", point.time),
                         yStart: .value("Low", point.low),
@@ -425,12 +464,12 @@ struct QuotaHistoryChartView: View, Equatable {
                     )
                     .foregroundStyle(forecastTint(Self.bucketPalette[0]).opacity(0.08))
                 }
-                ForEach(resets, id: \.self) { reset in
+                ForEach(plan.resets, id: \.self) { reset in
                     RuleMark(x: .value("Reset", reset))
                         .foregroundStyle(Color.primary.opacity(0.16))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
-                ForEach(paceBridges) { point in
+                ForEach(plan.paceBridges) { point in
                     LineMark(
                         x: .value("Time", point.time),
                         y: .value("Left", point.value),
@@ -439,7 +478,7 @@ struct QuotaHistoryChartView: View, Equatable {
                     .foregroundStyle(Self.paceColor.opacity(QuotaChartMarks.bridgeOpacity))
                     .lineStyle(QuotaChartMarks.bridgeStroke)
                 }
-                ForEach(pacePoints) { point in
+                ForEach(plan.pace) { point in
                     LineMark(
                         x: .value("Time", point.time),
                         y: .value("Left", point.value),
@@ -448,7 +487,7 @@ struct QuotaHistoryChartView: View, Equatable {
                     .foregroundStyle(Self.paceColor.opacity(0.85))
                     .lineStyle(StrokeStyle(lineWidth: 1.6, dash: [5, 4]))
                 }
-                ForEach(lines) { line in
+                ForEach(plan.lines) { line in
                     ForEach(line.forecastBridges) { point in
                         LineMark(
                             x: .value("Time", point.time),
@@ -459,7 +498,7 @@ struct QuotaHistoryChartView: View, Equatable {
                         .lineStyle(QuotaChartMarks.bridgeStroke)
                     }
                 }
-                ForEach(lines) { line in
+                ForEach(plan.lines) { line in
                     ForEach(line.forecast) { point in
                         LineMark(
                             x: .value("Time", point.time),
@@ -470,7 +509,7 @@ struct QuotaHistoryChartView: View, Equatable {
                         .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, dash: [2, 3.4]))
                     }
                 }
-                ForEach(lines) { line in
+                ForEach(plan.lines) { line in
                     ForEach(line.actualBridges) { point in
                         LineMark(
                             x: .value("Time", point.time),
@@ -481,7 +520,7 @@ struct QuotaHistoryChartView: View, Equatable {
                         .lineStyle(QuotaChartMarks.bridgeStroke)
                     }
                 }
-                ForEach(lines) { line in
+                ForEach(plan.lines) { line in
                     ForEach(line.actual) { point in
                         LineMark(
                             x: .value("Time", point.time),
@@ -522,11 +561,16 @@ struct QuotaHistoryChartView: View, Equatable {
                         .font(.system(size: 9))
                 }
             }
+            // The overlay is a view of its own, not a closure over this body:
+            // it owns the hover state, so a pointer move re-renders the
+            // crosshair and the tooltip and leaves the marks above untouched.
             .chartOverlay { proxy in
-                interactionOverlay(
+                QuotaChartHoverOverlay(
                     proxy: proxy,
-                    buckets: buckets,
-                    primary: primary,
+                    lanes: hoverLanes,
+                    showsBucketTitles: buckets.count > 1,
+                    initialSpan: initialSpan,
+                    resetToken: hoverResetToken,
                     window: binding
                 )
             }
@@ -599,7 +643,7 @@ struct QuotaHistoryChartView: View, Equatable {
     /// shortest-window quota's boundaries are drawn — its sawtooth is the one a
     /// reader is trying to line up, and stacking a second schedule on top of it
     /// just stripes the plot.
-    private func resetMarks(
+    private static func resetMarks(
         primarySeries: QuotaHistorySeries,
         range: ClosedRange<Date>
     ) -> [Date] {
@@ -762,231 +806,6 @@ struct QuotaHistoryChartView: View, Equatable {
         .frame(width: 14, height: 2)
     }
 
-    // MARK: - Hover + gestures
-
-    private func interactionOverlay(
-        proxy: ChartProxy,
-        buckets: [QuotaBucket],
-        primary: QuotaBucket,
-        window: Binding<ChartTimeWindow>
-    ) -> some View {
-        GeometryReader { geometry in
-            let plot = proxy.plotFrame.map { geometry[$0] }
-            let plotMinX = plot?.minX ?? 0
-            let plotWidth = plot?.width ?? geometry.size.width
-            ZStack(alignment: .topLeading) {
-                Rectangle()
-                    .fill(Color.clear)
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let location):
-                            // The overlay also covers the leading axis strip;
-                            // a reading from there would park the crosshair
-                            // outside the plot.
-                            let value = proxy.value(atX: location.x - plotMinX, as: Date.self)
-                            hoverDate = value.flatMap {
-                                window.wrappedValue.visibleRange.contains($0) ? $0 : nil
-                            }
-                        case .ended:
-                            hoverDate = nil
-                        }
-                    }
-                    .gesture(panGesture(window: window, plotWidth: plotWidth))
-                    .simultaneousGesture(
-                        magnifyGesture(window: window, proxy: proxy, plotMinX: plotMinX)
-                    )
-                    .onTapGesture(count: 2) {
-                        window.wrappedValue = window.wrappedValue.jumped(toSpan: initialSpan)
-                        hoverDate = nil
-                    }
-
-                if let hoverDate,
-                   let reading = hoverReading(at: hoverDate, buckets: buckets, primary: primary),
-                   let x = proxy.position(forX: reading.time),
-                   let plot {
-                    // The reading anchors to the nearest sample, which the
-                    // pointer slop can put just outside the visible range —
-                    // clamp so the crosshair stays inside the plot instead of
-                    // drawing into the axis gutter.
-                    let clampedX = min(max(x, 0), plot.width)
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.22))
-                        .frame(width: 1, height: plot.height)
-                        .offset(x: plotMinX + clampedX, y: plot.minY)
-                        .allowsHitTesting(false)
-                    tooltip(reading, showsBucketTitles: buckets.count > 1)
-                        .offset(x: tooltipX(plotMinX: plotMinX, x: clampedX, width: geometry.size.width))
-                        .allowsHitTesting(false)
-                }
-            }
-        }
-    }
-
-    private func panGesture(window: Binding<ChartTimeWindow>, plotWidth: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 3)
-            .onChanged { value in
-                guard plotWidth > 0 else { return }
-                let base = panBase ?? window.wrappedValue
-                if panBase == nil { panBase = base }
-                let secondsPerPoint = base.visibleSpan / TimeInterval(plotWidth)
-                window.wrappedValue = base.panned(
-                    by: -TimeInterval(value.translation.width) * secondsPerPoint
-                )
-            }
-            .onEnded { _ in panBase = nil }
-    }
-
-    private func magnifyGesture(
-        window: Binding<ChartTimeWindow>,
-        proxy: ChartProxy,
-        plotMinX: CGFloat
-    ) -> some Gesture {
-        MagnifyGesture(minimumScaleDelta: 0.01)
-            .onChanged { value in
-                let base = magnifyBase ?? window.wrappedValue
-                if magnifyBase == nil { magnifyBase = base }
-                let anchor = proxy.value(atX: value.startLocation.x - plotMinX, as: Date.self)
-                    ?? base.visibleMidpoint
-                window.wrappedValue = base.zoomed(scale: value.magnification, around: anchor)
-            }
-            .onEnded { _ in magnifyBase = nil }
-    }
-
-    private func tooltipX(plotMinX: CGFloat, x: CGFloat, width: CGFloat) -> CGFloat {
-        let tooltipWidth = Self.tooltipWidth
-        return min(max(plotMinX + x - tooltipWidth / 2, 0), max(0, width - tooltipWidth))
-    }
-
-    private static let tooltipWidth: CGFloat = 178
-
-    private func tooltip(_ reading: QuotaHoverReading, showsBucketTitles: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(Self.tooltipFormatter.string(from: reading.time))
-                .font(.system(size: 10, weight: .semibold))
-            ForEach(reading.buckets) { bucket in
-                if showsBucketTitles {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(bucket.color)
-                            .frame(width: 5, height: 5)
-                        Text(bucket.title)
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.top, 1)
-                }
-                if bucket.isEmpty {
-                    // Deliberately about the *evidence*, not about the quota.
-                    // Nothing here means no sample was taken near this instant
-                    // — the Mac was asleep, the app was quit, a refresh was
-                    // skipped. The window itself was very probably wide open,
-                    // and nothing in a fill lane can tell the two apart, so
-                    // claiming there was no active window was a guess dressed
-                    // up as a reading.
-                    Text("No data recorded")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.7))
-                } else {
-                    if let actual = bucket.actual {
-                        tooltipRow("Quota left", percent(actual), color: bucket.color)
-                    }
-                    if let pace = bucket.pace {
-                        tooltipRow("Pace", percent(pace), color: .white.opacity(0.8))
-                    }
-                    if let forecast = bucket.forecast {
-                        tooltipRow("At reset", percent(forecast), color: bucket.color.opacity(0.75))
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.87)))
-        .foregroundStyle(.white)
-        .frame(width: Self.tooltipWidth, alignment: .leading)
-    }
-
-    private func tooltipRow(_ label: String, _ value: String, color: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(label)
-                .font(.system(size: 9))
-                .foregroundStyle(.white.opacity(0.75))
-            Spacer(minLength: 6)
-            Text(value)
-                .font(.system(size: 9, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(color)
-        }
-    }
-
-    /// Nearest reading on each line, per bucket, or nothing at all for a bucket
-    /// whose coverage does not reach the cursor — a gap is information, not a
-    /// rounding error, so it is never bridged to the closest sample on either
-    /// side. The time label follows the shortest-window quota, which is the one
-    /// sampled most densely.
-    ///
-    /// The tolerance is resolved **per bucket**, not once for the group. The
-    /// buckets overlaid here are sampled at different rhythms — Claude's 5
-    /// Hours is filed into five-minute slots and its Weekly into hourly ones —
-    /// so a single tolerance taken from the shortest window missed the sparse
-    /// lanes on most cursor positions and reported them as having nothing to
-    /// say while their line ran under the crosshair. See `ChartHoverTolerance`.
-    ///
-    /// Binary search rather than a scan: this runs on every pointer move, and a
-    /// densely sampled lane under unlimited retention is tens of thousands of
-    /// samples per bucket.
-    private func hoverReading(
-        at date: Date,
-        buckets: [QuotaBucket],
-        primary: QuotaBucket
-    ) -> QuotaHoverReading? {
-        guard let window else { return nil }
-        var readings: [QuotaHoverBucketReading] = []
-        var anchor: Date?
-        for (index, bucket) in buckets.enumerated() {
-            let tolerance = ChartHoverTolerance.seconds(
-                windowSeconds: bucket.rawWindowSeconds,
-                visibleSpan: window.visibleSpan
-            )
-            let lookup = lookupByBucket[bucket.id] ?? BucketLookup()
-            let actual = ChartSampleSearch.nearest(
-                in: lookup.actual, to: date, tolerance: tolerance, time: { $0.time }
-            )
-            let pace = ChartSampleSearch.nearest(
-                in: lookup.pace, to: date, tolerance: tolerance, time: { $0.time }
-            )
-            let forecast = ChartSampleSearch.nearest(
-                in: lookup.forecast, to: date, tolerance: tolerance, time: { $0.time }
-            )
-            if bucket.id == primary.id {
-                anchor = actual?.time ?? forecast?.time
-            }
-            readings.append(
-                QuotaHoverBucketReading(
-                    id: bucket.id,
-                    title: bucket.title,
-                    color: color(at: index),
-                    actual: actual?.remainingPercent,
-                    pace: pace?.remainingPercent,
-                    forecast: forecast?.remainingPercent
-                )
-            )
-        }
-        return QuotaHoverReading(time: anchor ?? date, buckets: readings)
-    }
-
-    /// Flattened, ascending copies of one bucket's lines.
-    ///
-    /// The segments are contiguous runs of an already time-sorted array, so
-    /// concatenating them keeps the order a binary search needs. Built once per
-    /// data change rather than walked per pointer move.
-    private struct BucketLookup {
-        var actual: [QuotaHistorySample] = []
-        var pace: [QuotaHistorySample] = []
-        var forecast: [QuotaHistoryForecastSample] = []
-    }
-
     // MARK: - Range pills
 
     /// Preset spans, shared with the Overview chart so both surfaces offer the
@@ -1005,7 +824,9 @@ struct QuotaHistoryChartView: View, Equatable {
                     set: { self.window = $0 }
                 ),
                 fontSize: max(9, density.segmentedFontSize - 2),
-                onSelect: { hoverDate = nil }
+                // The crosshair lives in the overlay now, so a pill asks for it
+                // to be dropped instead of clearing it directly.
+                onSelect: { hoverResetToken &+= 1 }
             )
         }
     }
@@ -1118,10 +939,11 @@ struct QuotaHistoryChartView: View, Equatable {
         let buckets = bucketsWithHistory
         guard let primary = buckets.first, let domain = domainRange(buckets: buckets) else {
             seriesByBucket = [:]
-            lookupByBucket = [:]
+            hoverLanes = []
             miniSegments = []
             window = nil
             windowKey = nil
+            seriesRevision &+= 1
             return
         }
 
@@ -1134,17 +956,29 @@ struct QuotaHistoryChartView: View, Equatable {
             )
         }
         seriesByBucket = built
-        lookupByBucket = built.mapValues {
-            BucketLookup(
-                actual: $0.actual.flatMap { $0 },
-                pace: $0.pace.flatMap { $0 },
-                forecast: $0.forecast.flatMap { $0 }
+        // The hover overlay gets its own flattened copy of every lane, in
+        // bucket order, so the crosshair never has to reach back into this
+        // view's state — and so the palette and the titles are resolved once
+        // per data change rather than once per pointer move.
+        hoverLanes = buckets.enumerated().map { index, bucket in
+            let series = built[bucket.id] ?? .empty
+            return QuotaHoverLane(
+                id: bucket.id,
+                title: bucket.title,
+                color: color(at: index),
+                windowSeconds: bucket.rawWindowSeconds,
+                actual: series.actual.flatMap { $0 },
+                pace: series.pace.flatMap { $0 },
+                forecast: series.forecast.flatMap { $0 }
             )
         }
         miniSegments = ChartMarkBudget.thinned(
             built[primary.id]?.actual ?? [],
             budget: Self.miniMarkLimit
         )
+        // Everything the mark plan reads has just been replaced, so invalidate
+        // it with one integer instead of a deep compare of every lane.
+        seriesRevision &+= 1
 
         let minimumSpan = minimumSpan(for: primary)
         initialSpan = Self.defaultInitialSpan
@@ -1234,91 +1068,149 @@ struct QuotaHistoryChartView: View, Equatable {
 
     // MARK: - Mark shaping
 
-    private func bucketLines(
-        buckets: [QuotaBucket],
-        range: ClosedRange<Date>,
-        budget: Int
-    ) -> [QuotaBucketLines] {
-        buckets.enumerated().map { index, bucket in
-            let series = seriesByBucket[bucket.id] ?? .empty
-            let hue = color(at: index)
+    /// Every mark the `Chart` draws at one visible window.
+    ///
+    /// A struct rather than a run of computed properties because the whole set
+    /// is memoized together: the pipeline behind it (clip → allocate budget →
+    /// thin → build marks) walks every lane of the series, and it used to run
+    /// on every body pass — including the one per mouse sample that a hover
+    /// triggered.
+    private struct QuotaChartPlan {
+        var lines: [QuotaBucketLines] = []
+        var pace: [QuotaChartLinePoint] = []
+        var paceBridges: [QuotaChartLinePoint] = []
+        var band: [QuotaBandPoint] = []
+        var resets: [Date] = []
+    }
+
+    /// What the plan was built from. `revision` stands in for the series
+    /// themselves — see `seriesRevision`.
+    private struct PlanKey: Equatable {
+        let revision: Int
+        let bucketIds: [String]
+        let range: ClosedRange<Date>
+    }
+
+    /// Reference box, so a memo hit or update during `body` never dirties view
+    /// state; correctness comes from the key, not from invalidation timing.
+    /// Same pattern (and the same reasoning) as `UsageTrendChartView`.
+    private final class PlanCache {
+        var key: PlanKey?
+        var plan: QuotaChartPlan?
+    }
+
+    private func markPlan(buckets: [QuotaBucket], range: ClosedRange<Date>) -> QuotaChartPlan {
+        let key = PlanKey(
+            revision: seriesRevision,
+            bucketIds: buckets.map(\.id),
+            range: range
+        )
+        if let cached = planCache.plan, planCache.key == key { return cached }
+        let built = Self.buildPlan(key: key, seriesByBucket: seriesByBucket)
+        planCache.key = key
+        planCache.plan = built
+        return built
+    }
+
+    /// Static because the plan must depend on nothing but its key and the
+    /// series: anything it could read off `self` would be a dependency the
+    /// cache does not know about.
+    private static func buildPlan(
+        key: PlanKey,
+        seriesByBucket: [String: QuotaHistorySeries]
+    ) -> QuotaChartPlan {
+        var plan = QuotaChartPlan()
+        guard let primaryId = key.bucketIds.first else { return plan }
+        let range = key.range
+        let primarySeries = seriesByBucket[primaryId] ?? .empty
+        let isSingle = key.bucketIds.count == 1
+
+        // Count the layers that will actually be stroked *before* spending
+        // anything, then give each an equal share of the chart's budget. A
+        // per-line budget silently multiplied by the number of lines, which is
+        // how a one-bucket chart came to draw ~2 080 marks against a ~1 000-mark
+        // ceiling. Layers with nothing recorded are not counted, so a group with
+        // no forecast yet spends the whole budget on the lines it does draw.
+        var layers = 0
+        for id in key.bucketIds {
+            let series = seriesByBucket[id] ?? .empty
+            if !series.actual.isEmpty { layers += 1 }
+            if !series.forecast.isEmpty { layers += 1 }
+        }
+        if isSingle {
+            if !primarySeries.pace.isEmpty { layers += 1 }
+            // The uncertainty band is drawn from the same forecast segments and
+            // costs its own mark per point, so it is a layer of its own.
+            if !primarySeries.forecast.isEmpty { layers += 1 }
+        }
+        let budget = max(minimumMarkBudget, chartMarkBudget / max(1, layers))
+
+        plan.lines = key.bucketIds.enumerated().map { index, id in
+            let series = seriesByBucket[id] ?? .empty
+            let hue = bucketPalette[index % bucketPalette.count]
             return QuotaBucketLines(
-                id: bucket.id,
+                id: id,
                 color: hue,
-                forecastColor: forecastTint(hue),
-                actual: linePoints(
+                forecastColor: forecastTints[hue] ?? hue,
+                actual: QuotaChartMarks.points(
                     series.actual,
                     kind: "actual-\(index)",
                     range: range,
-                    budget: budget
-                ),
-                actualBridges: bridgePoints(
-                    series.actual,
+                    budget: budget,
                     time: { $0.time },
-                    value: { $0.remainingPercent },
-                    kind: "actual-\(index)",
-                    range: range
+                    value: { $0.remainingPercent }
                 ),
-                forecast: forecastLinePoints(
+                actualBridges: QuotaChartMarks.bridges(
+                    series.actual,
+                    kind: "actual-\(index)",
+                    range: range,
+                    time: { $0.time },
+                    value: { $0.remainingPercent }
+                ),
+                forecast: QuotaChartMarks.points(
                     series.forecast,
                     kind: "forecast-\(index)",
                     range: range,
-                    budget: budget
-                ),
-                forecastBridges: bridgePoints(
-                    series.forecast,
+                    budget: budget,
                     time: { $0.time },
-                    value: { $0.remainingPercent },
+                    value: { $0.remainingPercent }
+                ),
+                forecastBridges: QuotaChartMarks.bridges(
+                    series.forecast,
                     kind: "forecast-\(index)",
-                    range: range
+                    range: range,
+                    time: { $0.time },
+                    value: { $0.remainingPercent }
                 )
             )
         }
+
+        // Only a single-bucket chart can afford the wall-clock reference and
+        // the uncertainty band: two of them overlaid is mud, and the pace
+        // reading moves into the hover tooltip instead.
+        if isSingle {
+            plan.pace = QuotaChartMarks.points(
+                primarySeries.pace,
+                kind: "pace",
+                range: range,
+                budget: budget,
+                time: { $0.time },
+                value: { $0.remainingPercent }
+            )
+            plan.paceBridges = QuotaChartMarks.bridges(
+                primarySeries.pace,
+                kind: "pace",
+                range: range,
+                time: { $0.time },
+                value: { $0.remainingPercent }
+            )
+            plan.band = forecastBandPoints(primarySeries.forecast, range: range, budget: budget)
+        }
+        plan.resets = resetMarks(primarySeries: primarySeries, range: range)
+        return plan
     }
 
-    private func bridgePoints<Element>(
-        _ segments: [[Element]],
-        time: (Element) -> Date,
-        value: (Element) -> Double,
-        kind: String,
-        range: ClosedRange<Date>
-    ) -> [QuotaChartLinePoint] {
-        QuotaChartMarks.bridges(segments, kind: kind, range: range, time: time, value: value)
-    }
-
-    private func linePoints(
-        _ segments: [[QuotaHistorySample]],
-        kind: String,
-        range: ClosedRange<Date>,
-        budget: Int
-    ) -> [QuotaChartLinePoint] {
-        QuotaChartMarks.points(
-            segments,
-            kind: kind,
-            range: range,
-            budget: budget,
-            time: { $0.time },
-            value: { $0.remainingPercent }
-        )
-    }
-
-    private func forecastLinePoints(
-        _ segments: [[QuotaHistoryForecastSample]],
-        kind: String,
-        range: ClosedRange<Date>,
-        budget: Int
-    ) -> [QuotaChartLinePoint] {
-        QuotaChartMarks.points(
-            segments,
-            kind: kind,
-            range: range,
-            budget: budget,
-            time: { $0.time },
-            value: { $0.remainingPercent }
-        )
-    }
-
-    private func forecastBandPoints(
+    private static func forecastBandPoints(
         _ segments: [[QuotaHistoryForecastSample]],
         range: ClosedRange<Date>,
         budget: Int
@@ -1334,19 +1226,21 @@ struct QuotaHistoryChartView: View, Equatable {
             budget: budget
         )
         var result: [QuotaBandPoint] = []
+        var nextId = 0
         for (slot, entry) in visible.enumerated() {
             let thinned = ChartSeriesThinning.strided(entry.samples, limit: allowance[slot])
             let key = "band-\(entry.index)"
-            for (offset, sample) in thinned.enumerated() {
+            for sample in thinned {
                 result.append(
                     QuotaBandPoint(
-                        id: "\(key)-\(offset)",
+                        id: nextId,
                         seriesKey: key,
                         time: sample.time,
                         low: min(sample.lowerRemainingPercent, sample.upperRemainingPercent),
                         high: max(sample.lowerRemainingPercent, sample.upperRemainingPercent)
                     )
                 )
+                nextId += 1
             }
         }
         return result
@@ -1392,7 +1286,7 @@ struct QuotaHistoryChartView: View, Equatable {
     }
 
     private func percent(_ value: Double) -> String {
-        "\(Int(value.rounded()))%"
+        quotaPercentLabel(value)
     }
 
     private func scopeNote(buckets: [QuotaBucket], window: ChartTimeWindow) -> String {
@@ -1409,6 +1303,37 @@ struct QuotaHistoryChartView: View, Equatable {
         if seconds < 48 * 3_600 { return "\(Int((seconds / 3_600).rounded()))h" }
         return "\(Int((seconds / 86_400).rounded()))d"
     }
+}
+
+/// Crosshair, tooltip and the plot's own pan / pinch / double-tap gestures.
+///
+/// A view of its own, with its own `@State`, on purpose. `hoverDate` used to sit
+/// on `QuotaHistoryChartView`, which meant every pointer move invalidated that
+/// whole body and re-ran the clip → budget → thin → build pipeline for every
+/// lane before a single pixel of crosshair moved — a full re-plan per mouse
+/// sample against a one-frame (8.3 ms) hover budget. Layered here under
+/// `.chartOverlay`, a pointer move re-renders this view and nothing else: the
+/// marks above keep the layout they already have.
+///
+/// The gesture bases moved down with it for the same reason. Everything the
+/// overlay needs arrives as plain values — `lanes` is built once per data
+/// change, not per frame — plus the window binding the gestures always had to
+/// write through.
+private struct QuotaChartHoverOverlay: View {
+    let proxy: ChartProxy
+    let lanes: [QuotaHoverLane]
+    let showsBucketTitles: Bool
+    let initialSpan: TimeInterval
+    /// Incremented by the chart when a range pill jumps the window — the one
+    /// case where something outside this view has to drop the crosshair.
+    let resetToken: Int
+    @Binding var window: ChartTimeWindow
+
+    @State private var hoverDate: Date?
+    @State private var panBase: ChartTimeWindow?
+    @State private var magnifyBase: ChartTimeWindow?
+
+    private static let tooltipWidth: CGFloat = 178
 
     private static let tooltipFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -1416,4 +1341,216 @@ struct QuotaHistoryChartView: View, Equatable {
         formatter.dateFormat = "MMM d · HH:mm"
         return formatter
     }()
+
+    var body: some View {
+        GeometryReader { geometry in
+            let plot = proxy.plotFrame.map { geometry[$0] }
+            let plotMinX = plot?.minX ?? 0
+            let plotWidth = plot?.width ?? geometry.size.width
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            // The overlay also covers the leading axis strip;
+                            // a reading from there would park the crosshair
+                            // outside the plot.
+                            let value = proxy.value(atX: location.x - plotMinX, as: Date.self)
+                            hoverDate = value.flatMap {
+                                window.visibleRange.contains($0) ? $0 : nil
+                            }
+                        case .ended:
+                            hoverDate = nil
+                        }
+                    }
+                    .gesture(panGesture(plotWidth: plotWidth))
+                    .simultaneousGesture(magnifyGesture(plotMinX: plotMinX))
+                    .onTapGesture(count: 2) {
+                        window = window.jumped(toSpan: initialSpan)
+                        hoverDate = nil
+                    }
+
+                if let hoverDate,
+                   let reading = hoverReading(at: hoverDate),
+                   let x = proxy.position(forX: reading.time),
+                   let plot {
+                    // The reading anchors to the nearest sample, which the
+                    // pointer slop can put just outside the visible range —
+                    // clamp so the crosshair stays inside the plot instead of
+                    // drawing into the axis gutter.
+                    let clampedX = min(max(x, 0), plot.width)
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.22))
+                        .frame(width: 1, height: plot.height)
+                        .offset(x: plotMinX + clampedX, y: plot.minY)
+                        .allowsHitTesting(false)
+                    tooltip(reading)
+                        .offset(
+                            x: tooltipX(
+                                plotMinX: plotMinX,
+                                x: clampedX,
+                                width: geometry.size.width
+                            )
+                        )
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .onChange(of: resetToken) { _, _ in hoverDate = nil }
+    }
+
+    // MARK: - Gestures
+
+    private func panGesture(plotWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 3)
+            .onChanged { value in
+                guard plotWidth > 0 else { return }
+                let base = panBase ?? window
+                if panBase == nil { panBase = base }
+                let secondsPerPoint = base.visibleSpan / TimeInterval(plotWidth)
+                window = base.panned(
+                    by: -TimeInterval(value.translation.width) * secondsPerPoint
+                )
+            }
+            .onEnded { _ in panBase = nil }
+    }
+
+    private func magnifyGesture(plotMinX: CGFloat) -> some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0.01)
+            .onChanged { value in
+                let base = magnifyBase ?? window
+                if magnifyBase == nil { magnifyBase = base }
+                let anchor = proxy.value(atX: value.startLocation.x - plotMinX, as: Date.self)
+                    ?? base.visibleMidpoint
+                window = base.zoomed(scale: value.magnification, around: anchor)
+            }
+            .onEnded { _ in magnifyBase = nil }
+    }
+
+    // MARK: - Reading
+
+    /// Nearest reading on each line, per lane, or nothing at all for a lane
+    /// whose coverage does not reach the cursor — a gap is information, not a
+    /// rounding error, so it is never bridged to the closest sample on either
+    /// side. The time label follows the first lane, which is the shortest-window
+    /// quota and therefore the one sampled most densely.
+    ///
+    /// The tolerance is resolved **per lane**, not once for the group. The
+    /// quotas overlaid here are sampled at different rhythms — Claude's 5 Hours
+    /// is filed into five-minute slots and its Weekly into hourly ones — so a
+    /// single tolerance taken from the shortest window missed the sparse lanes
+    /// on most cursor positions and reported them as having nothing to say
+    /// while their line ran under the crosshair. See `ChartHoverTolerance`.
+    ///
+    /// Binary search rather than a scan: this runs on every pointer move, and a
+    /// densely sampled lane under unlimited retention is tens of thousands of
+    /// samples.
+    private func hoverReading(at date: Date) -> QuotaHoverReading? {
+        guard !lanes.isEmpty else { return nil }
+        var readings: [QuotaHoverBucketReading] = []
+        readings.reserveCapacity(lanes.count)
+        var anchor: Date?
+        for (index, lane) in lanes.enumerated() {
+            let tolerance = ChartHoverTolerance.seconds(
+                windowSeconds: lane.windowSeconds,
+                visibleSpan: window.visibleSpan
+            )
+            let actual = ChartSampleSearch.nearest(
+                in: lane.actual, to: date, tolerance: tolerance, time: { $0.time }
+            )
+            let pace = ChartSampleSearch.nearest(
+                in: lane.pace, to: date, tolerance: tolerance, time: { $0.time }
+            )
+            let forecast = ChartSampleSearch.nearest(
+                in: lane.forecast, to: date, tolerance: tolerance, time: { $0.time }
+            )
+            if index == 0 {
+                anchor = actual?.time ?? forecast?.time
+            }
+            readings.append(
+                QuotaHoverBucketReading(
+                    id: lane.id,
+                    title: lane.title,
+                    color: lane.color,
+                    actual: actual?.remainingPercent,
+                    pace: pace?.remainingPercent,
+                    forecast: forecast?.remainingPercent
+                )
+            )
+        }
+        return QuotaHoverReading(time: anchor ?? date, buckets: readings)
+    }
+
+    // MARK: - Tooltip
+
+    private func tooltipX(plotMinX: CGFloat, x: CGFloat, width: CGFloat) -> CGFloat {
+        let tooltipWidth = Self.tooltipWidth
+        return min(max(plotMinX + x - tooltipWidth / 2, 0), max(0, width - tooltipWidth))
+    }
+
+    private func tooltip(_ reading: QuotaHoverReading) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(Self.tooltipFormatter.string(from: reading.time))
+                .font(.system(size: 10, weight: .semibold))
+            ForEach(reading.buckets) { bucket in
+                if showsBucketTitles {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(bucket.color)
+                            .frame(width: 5, height: 5)
+                        Text(bucket.title)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, 1)
+                }
+                if bucket.isEmpty {
+                    // Deliberately about the *evidence*, not about the quota.
+                    // Nothing here means no sample was taken near this instant
+                    // — the Mac was asleep, the app was quit, a refresh was
+                    // skipped. The window itself was very probably wide open,
+                    // and nothing in a fill lane can tell the two apart, so
+                    // claiming there was no active window was a guess dressed
+                    // up as a reading.
+                    Text("No data recorded")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.7))
+                } else {
+                    if let actual = bucket.actual {
+                        tooltipRow("Quota left", quotaPercentLabel(actual), color: bucket.color)
+                    }
+                    if let pace = bucket.pace {
+                        tooltipRow("Pace", quotaPercentLabel(pace), color: .white.opacity(0.8))
+                    }
+                    if let forecast = bucket.forecast {
+                        tooltipRow(
+                            "At reset",
+                            quotaPercentLabel(forecast),
+                            color: bucket.color.opacity(0.75)
+                        )
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.87)))
+        .foregroundStyle(.white)
+        .frame(width: Self.tooltipWidth, alignment: .leading)
+    }
+
+    private func tooltipRow(_ label: String, _ value: String, color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.75))
+            Spacer(minLength: 6)
+            Text(value)
+                .font(.system(size: 9, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(color)
+        }
+    }
 }

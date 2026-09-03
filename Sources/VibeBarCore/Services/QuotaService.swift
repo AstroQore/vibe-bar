@@ -274,6 +274,43 @@ public final class QuotaService: ObservableObject {
         store(success: quota)
     }
 
+    /// Grid the forecast clock is snapped to.
+    ///
+    /// The forecast answers "how much will be left when this refills" — a
+    /// question whose answer cannot move measurably in five minutes, and whose
+    /// cheapest input (`bucket.usedPercent`) only changes when a refresh
+    /// lands. Countdown labels, run-out ETAs, and the reset strings keep their
+    /// own clocks and are not affected by this.
+    nonisolated public static let paceForecastClockQuantumSeconds: TimeInterval = 300
+
+    /// The forecast clock for `now`, floored to the 5-minute grid.
+    nonisolated public static func quantizedForecastClock(_ now: Date) -> Date {
+        let quantum = paceForecastClockQuantumSeconds
+        return Date(
+            timeIntervalSince1970: (now.timeIntervalSince1970 / quantum).rounded(.down) * quantum
+        )
+    }
+
+    /// Personal pace forecast for one bucket, memoised per data generation.
+    ///
+    /// **`now` is floored to a 5-minute grid** before anything else happens.
+    /// Every render surface used to hand this a clock of its own — a per-row
+    /// `TimelineView(.periodic(from: .now, by: 30))` re-anchors on every body
+    /// pass, `StatusItemController` passed a fresh `Date()` per menu-bar
+    /// render, `MCPController` omitted the parameter entirely — so no two asks
+    /// ever agreed and the memo below never hit. Snapping the clock here fixes
+    /// all of them at once without a call-site change, and the forecast is not
+    /// a value that can move meaningfully inside one grid step. The one
+    /// exception is the reset boundary: if flooring would step back across
+    /// `bucket.resetAt` the exact `now` is used, so "this window is over"
+    /// still happens at the second it happens.
+    ///
+    /// The memo is keyed on the *exact* remaining inputs, so a hit is provably
+    /// the same pure-function call and behaviour cannot drift. It is evicted
+    /// by data generation rather than by age: a refresh replaces the
+    /// observation and cycle arrays wholesale, so entries from the previous
+    /// generation can never match again and are dropped in one go — which also
+    /// stops them retaining thousands of points per bucket.
     public func paceForecast(
         accountId: String,
         bucket: QuotaBucket,
@@ -285,104 +322,112 @@ public final class QuotaService: ObservableObject {
         let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucket.id)
         let observations = observationsByAccountBucket[key] ?? []
         let cycles = historyByAccountBucket[key] ?? []
-        // Render paths ask for this once per bucket per body pass — every
-        // quota-group row, mini-window cell, and the status item — and the
-        // blend walks every stored observation per completed cycle. Between
-        // data changes the inputs are byte-identical (each `TimelineView`
-        // hands every re-render of a tick the same date), so the memo turns
-        // the repeat asks into a handful of COW identity comparisons. Keyed
-        // on the *exact* inputs, never a quantized clock: a hit is provably
-        // the same pure-function call, so behavior cannot drift.
-        if let memos = paceForecastMemo[key] {
-            for memo in memos where memo.matches(
+        let floored = Self.quantizedForecastClock(now)
+        let clock: Date = {
+            guard let resetAt = bucket.resetAt else { return floored }
+            // Only when the floor would put a finished window back inside its
+            // own reset. Costs one un-memoised compute per reset, per bucket.
+            return (resetAt > floored && resetAt <= now) ? now : floored
+        }()
+        let memoKey = PaceForecastMemoKey(now: clock, allowsPostResetGrace: allowsPostResetGrace)
+
+        if var generation = paceForecastMemo[key] {
+            if generation.matchesData(
                 bucket: bucket,
                 observations: observations,
                 cycles: cycles,
                 heatmap: activityHeatmap,
-                dailyActivity: dailyActivity,
-                now: now,
-                allowsPostResetGrace: allowsPostResetGrace
+                dailyActivity: dailyActivity
             ) {
-                return memo.result
+                if let hit = generation.results[memoKey] { return hit }
+                let result = QuotaPaceForecast.compute(
+                    bucket: bucket,
+                    observations: observations,
+                    cycles: cycles,
+                    activityHeatmap: activityHeatmap,
+                    dailyActivity: dailyActivity,
+                    now: clock,
+                    allowsPostResetGrace: allowsPostResetGrace
+                )
+                generation.record(memoKey, result: result)
+                paceForecastMemo[key] = generation
+                return result
             }
         }
+
         let result = QuotaPaceForecast.compute(
             bucket: bucket,
             observations: observations,
             cycles: cycles,
             activityHeatmap: activityHeatmap,
             dailyActivity: dailyActivity,
-            now: now,
+            now: clock,
             allowsPostResetGrace: allowsPostResetGrace
         )
-        var memos = paceForecastMemo[key] ?? []
-        // A refresh replaces the observation/cycle arrays wholesale, so a
-        // memo from the previous data generation can never match again —
-        // but it would keep retaining those arrays (thousands of points per
-        // bucket) for as long as it sat in the list. Keep only memos of the
-        // current generation; the differently-phased `now` values are what
-        // the multi-entry list is for.
-        memos.removeAll { memo in
-            !memo.matchesData(
-                bucket: bucket,
-                observations: observations,
-                cycles: cycles,
-                heatmap: activityHeatmap,
-                dailyActivity: dailyActivity
-            )
-        }
-        memos.append(PaceForecastMemo(
+        var generation = PaceForecastMemo(
             bucket: bucket,
             observations: observations,
             cycles: cycles,
             heatmap: activityHeatmap,
-            dailyActivity: dailyActivity,
-            now: now,
-            allowsPostResetGrace: allowsPostResetGrace,
-            result: result
-        ))
-        // Several surfaces (popover, mini windows, status item) tick on
-        // their own 30 s phases, so keep a few entries per bucket rather
-        // than one; the arrays inside are references to storage the service
-        // already retains, so the memo itself is a few dozen words.
-        if memos.count > Self.paceForecastMemoLimit {
-            memos.removeFirst(memos.count - Self.paceForecastMemoLimit)
-        }
-        paceForecastMemo[key] = memos
+            dailyActivity: dailyActivity
+        )
+        generation.record(memoKey, result: result)
+        paceForecastMemo[key] = generation
         return result
     }
 
+    private struct PaceForecastMemoKey: Hashable {
+        let now: Date
+        let allowsPostResetGrace: Bool
+    }
+
+    /// One data generation's worth of memoised forecasts for one bucket.
     private struct PaceForecastMemo {
         let bucket: QuotaBucket
         let observations: [FillTimelinePoint]
         let cycles: [SubscriptionWindowSample]
         let heatmap: UsageHeatmap?
         let dailyActivity: [DailyCostPoint]
-        let now: Date
-        let allowsPostResetGrace: Bool
-        let result: QuotaPaceForecast?
+        /// Keyed by clock and grace flag. Held alongside `order` so the
+        /// oldest entry can be evicted without sorting.
+        private(set) var results: [PaceForecastMemoKey: QuotaPaceForecast?] = [:]
+        private var order: [PaceForecastMemoKey] = []
 
-        func matches(
+        init(
             bucket: QuotaBucket,
             observations: [FillTimelinePoint],
             cycles: [SubscriptionWindowSample],
             heatmap: UsageHeatmap?,
-            dailyActivity: [DailyCostPoint],
-            now: Date,
-            allowsPostResetGrace: Bool
-        ) -> Bool {
-            self.now == now
-                && self.allowsPostResetGrace == allowsPostResetGrace
-                && matchesData(
-                    bucket: bucket,
-                    observations: observations,
-                    cycles: cycles,
-                    heatmap: heatmap,
-                    dailyActivity: dailyActivity
-                )
+            dailyActivity: [DailyCostPoint]
+        ) {
+            self.bucket = bucket
+            self.observations = observations
+            self.cycles = cycles
+            self.heatmap = heatmap
+            self.dailyActivity = dailyActivity
         }
 
-        /// The time-independent half of `matches` — one data generation.
+        mutating func record(_ memoKey: PaceForecastMemoKey, result: QuotaPaceForecast?) {
+            if results.updateValue(result, forKey: memoKey) == nil {
+                order.append(memoKey)
+            }
+            while order.count > Self.limit {
+                let evicted = order.removeFirst()
+                results.removeValue(forKey: evicted)
+            }
+        }
+
+        /// Distinct clocks retained per bucket per data generation. Generous
+        /// because the surfaces no longer evict each other: the popover, the
+        /// Workbench, every mini window, the status item, and the MCP server
+        /// all land on the same 5-minute grid, and the two
+        /// `allowsPostResetGrace` variants plus a reset-boundary exact clock
+        /// are the only spread left.
+        static let limit = 16
+
+        /// One data generation: the inputs a refresh replaces wholesale.
+        /// Array `==` short-circuits on buffer identity, so the usual answer
+        /// costs a few pointer comparisons.
         func matchesData(
             bucket: QuotaBucket,
             observations: [FillTimelinePoint],
@@ -398,8 +443,7 @@ public final class QuotaService: ObservableObject {
         }
     }
 
-    private static let paceForecastMemoLimit = 4
-    private var paceForecastMemo: [SubscriptionHistoryKey: [PaceForecastMemo]] = [:]
+    private var paceForecastMemo: [SubscriptionHistoryKey: PaceForecastMemo] = [:]
 
     /// The picker's explicit "forget": drop one discovered field from the
     /// registry and persist. The caller removes its own references
@@ -563,22 +607,41 @@ public final class QuotaService: ObservableObject {
         historyByAccountBucket = grouped
     }
 
+    /// Republish every bucket's cycle history for one account.
+    ///
+    /// One actor hop, for the same reason as `refreshObservations`. The
+    /// previous shape awaited `SubscriptionHistoryStore.samples` once per
+    /// bucket, and each of those calls filters and sorts the whole stored
+    /// sample list — a thirty-bucket account paid for thirty suspensions and
+    /// thirty full scans per refresh. `allSamples()` is the same file read
+    /// once; the grouping and the newest-first order are the store's own
+    /// (`completedAt ?? lastSeenAt`), reproduced here so nothing downstream
+    /// sees a different order than it used to.
     private func refreshSubscriptionHistory(for quota: AccountQuota) async {
-        var updates: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
-        for bucket in quota.buckets {
-            let samples = await SubscriptionHistoryStore.shared.samples(
-                accountId: quota.accountId,
-                bucketId: bucket.id
-            )
-            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
-            updates[key] = samples
+        let bucketIds = Set(quota.buckets.map(\.id))
+        guard !bucketIds.isEmpty else { return }
+        let all = await SubscriptionHistoryStore.shared.allSamples()
+        var grouped: [String: [SubscriptionWindowSample]] = [:]
+        for sample in all
+        where sample.accountId == quota.accountId && bucketIds.contains(sample.bucketId) {
+            grouped[sample.bucketId, default: []].append(sample)
+        }
+        for bucketId in grouped.keys {
+            grouped[bucketId]?.sort { Self.sampleSortDate($0) > Self.sampleSortDate($1) }
         }
         // Same one-publish rule as `refreshObservations`.
         var merged = historyByAccountBucket
-        for (key, samples) in updates {
-            merged[key] = samples
+        for bucketId in bucketIds {
+            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucketId)
+            merged[key] = grouped[bucketId] ?? []
         }
         historyByAccountBucket = merged
+    }
+
+    /// The store's own sort key for a cycle, mirrored so the batched read
+    /// above orders exactly like `SubscriptionHistoryStore.samples` did.
+    private nonisolated static func sampleSortDate(_ sample: SubscriptionWindowSample) -> Date {
+        sample.completedAt ?? sample.lastSeenAt
     }
 
     private func store(error: QuotaError, for account: AccountIdentity, now: Date = Date()) {

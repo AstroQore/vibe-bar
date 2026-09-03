@@ -268,10 +268,14 @@ struct UpcomingResetsCard: View {
     @EnvironmentObject private var quotaService: QuotaService
 
     var body: some View {
-        // A leaf timer, one minute: the lane's countdowns drift slowly, and
-        // quota refreshes re-render the card on their own.
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            content(now: context.date)
+        // One clock for the card, one minute: the lane's countdowns drift
+        // slowly, and quota refreshes re-render the card on their own. It is a
+        // `PageClock` rather than a raw `TimelineView(.periodic(from: .now,
+        // ...))` for two reasons — the phase has to survive a body pass so the
+        // date matches what the quota cards ask for, and the Overview stays
+        // hosted after the popover closes, where this must not keep firing.
+        PageClock(interval: 60) { tickDate in
+            content(now: tickDate)
         }
     }
 

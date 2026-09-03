@@ -227,14 +227,20 @@ private struct ComponentGroupBlock: View {
     }
 
     var body: some View {
+        // `aggregateStatus` walks every component and `summaryDays` merges
+        // ~90 days per component through a set and a dictionary; the header,
+        // the icon and the strip each used to ask for them again. One
+        // derivation each per pass, reused below.
+        let status = aggregateStatus
+        let days = summaryDays
         VStack(alignment: .leading, spacing: density.statusComponentSpacing) {
             BorderlessRowButton(action: {
                 withAnimation(.easeInOut(duration: 0.18)) { expanded.toggle() }
             }) {
                 HStack(spacing: 6) {
-                    Image(systemName: statusIcon)
+                    Image(systemName: Self.statusIcon(for: status))
                         .font(.system(size: density.resetCountdownFontSize, weight: .semibold))
-                        .foregroundStyle(componentColor(aggregateStatus))
+                        .foregroundStyle(componentColor(status))
                     Text(title)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))
                         .foregroundStyle(.primary)
@@ -253,8 +259,8 @@ private struct ComponentGroupBlock: View {
                 }
             }
 
-            if !summaryDays.isEmpty {
-                UptimeStrip(days: summaryDays, currentImpact: impact(for: aggregateStatus))
+            if !days.isEmpty {
+                UptimeStrip(days: days, currentImpact: impact(for: status))
                     .frame(height: density.statusStripHeight)
             } else {
                 Capsule()
@@ -311,8 +317,10 @@ private struct ComponentGroupBlock: View {
         }
     }
 
-    private var statusIcon: String {
-        switch aggregateStatus {
+    /// Takes the already-derived status so `body` doesn't recompute the
+    /// aggregate just to pick a glyph.
+    private static func statusIcon(for status: ComponentStatusLevel) -> String {
+        switch status {
         case .operational:         return "checkmark.circle.fill"
         case .underMaintenance:    return "wrench.and.screwdriver.fill"
         case .degradedPerformance: return "exclamationmark.circle.fill"

@@ -23,13 +23,16 @@ struct YearlyContributionHeatmapView: View {
     @State private var measuredGridWidth: CGFloat = 0
     @EnvironmentObject var environment: AppEnvironment
 
-    /// The 365-day walk and the month markers rebuilt only when the history
-    /// (or the day) changes — not on every redraw of the card. A reference
-    /// box on purpose: filling it during `body` must not dirty view state.
+    /// The 365-day walk, the month markers, the quartile thresholds and the
+    /// header total rebuilt only when the history (or the day) changes — not
+    /// on every redraw of the card. A reference box on purpose: filling it
+    /// during `body` must not dirty view state.
     private final class GridCache {
         var historyStamp: GridStamp?
         var columns: [WeekColumn] = []
         var markers: [MonthMarker] = []
+        var thresholds: (p25: Double, p50: Double, p75: Double) = (0, 0, 0)
+        var totalLabel: String?
     }
 
     private struct GridStamp: Equatable {
@@ -42,37 +45,48 @@ struct YearlyContributionHeatmapView: View {
 
     @State private var gridCache = GridCache()
 
-    private func cachedGrid() -> (columns: [WeekColumn], markers: [MonthMarker]) {
+    private typealias CachedGrid = (
+        columns: [WeekColumn],
+        markers: [MonthMarker],
+        thresholds: (p25: Double, p50: Double, p75: Double),
+        totalLabel: String?
+    )
+
+    private func cachedGrid() -> CachedGrid {
         let stamp = GridStamp(
             history: history,
             today: Calendar.current.startOfDay(for: Date()),
             calendarIdentity: "\(Calendar.current.identifier)|\(TimeZone.current.identifier)"
         )
         if gridCache.historyStamp == stamp {
-            return (gridCache.columns, gridCache.markers)
+            return (gridCache.columns, gridCache.markers, gridCache.thresholds, gridCache.totalLabel)
         }
         let columns = makeColumns()
         let markers = monthLabelPositions(columns: columns)
+        let levels = thresholds
+        let total = totalLabel
         gridCache.historyStamp = stamp
         gridCache.columns = columns
         gridCache.markers = markers
-        return (columns, markers)
+        gridCache.thresholds = levels
+        gridCache.totalLabel = total
+        return (columns, markers, levels, total)
     }
 
     var body: some View {
-        // `thresholds` does a sort on the year's non-zero days, and
-        // `cell(...)` is invoked ~365 times — hoisted once per body; the
-        // grid itself is memoized across bodies on the history generation.
-        let (columns, cachedMonthMarkers) = cachedGrid()
+        // Everything derived from the year of history — the week walk, the
+        // month markers, the quartile sort behind `thresholds`, and the
+        // header total — is memoized on the history generation, so a redraw
+        // of the card (hover, resize, refresh tick) costs a stamp compare.
+        let (columns, cachedMonthMarkers, cachedThresholds, cachedTotalLabel) = cachedGrid()
         let metrics = gridMetrics(columnCount: columns.count, measuredWidth: measuredGridWidth)
-        let cachedThresholds = thresholds
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text("\(toolName) — Past Year")
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
-                if let total = totalLabel {
+                if let total = cachedTotalLabel {
                     Text(total)
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
@@ -100,7 +114,7 @@ struct YearlyContributionHeatmapView: View {
                     .foregroundStyle(.tertiary)
                 ForEach(0..<5, id: \.self) { step in
                     RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(color(forLevel: step))
+                        .fill(yearlyLevelColor(step))
                         .frame(width: metrics.cellSize, height: metrics.cellSize)
                 }
                 Text("More")
@@ -121,7 +135,8 @@ struct YearlyContributionHeatmapView: View {
     }
 
     private func gridHeight(for metrics: YearlyGridMetrics) -> CGFloat {
-        12 + cellSpacing + 7 * metrics.cellSize + 6 * cellSpacing
+        // Month label row + the VStack spacing under it + the cell block.
+        12 + cellSpacing + metrics.cellsHeight
     }
 
     private func grid(
@@ -167,28 +182,14 @@ struct YearlyContributionHeatmapView: View {
                         .frame(width: metrics.labelWidth, height: metrics.cellSize)
                     }
                 }
-                HStack(alignment: .top, spacing: metrics.cellSpacing) {
-                    ForEach(columns.indices, id: \.self) { columnIndex in
-                        VStack(spacing: metrics.cellSpacing) {
-                            ForEach(0..<7, id: \.self) { weekday in
-                                cell(at: weekday, columnEntry: columns[columnIndex], metrics: metrics, thresholds: thresholds)
-                            }
-                        }
-                    }
-                }
+                YearlyHeatmapCanvas(
+                    columns: columns,
+                    metrics: metrics,
+                    thresholds: thresholds,
+                    accessibilityLabel: "\(toolName) daily spend over the past year, \(columns.count) weeks"
+                )
             }
         }
-    }
-
-    @ViewBuilder
-    private func cell(at weekday: Int, columnEntry: WeekColumn, metrics: YearlyGridMetrics, thresholds: (p25: Double, p50: Double, p75: Double)) -> some View {
-        let entry = columnEntry.days[weekday]
-        let value = entry?.costUSD ?? 0
-        let level = Self.level(for: value, thresholds: thresholds)
-        RoundedRectangle(cornerRadius: metrics.cellCornerRadius, style: .continuous)
-            .fill(color(forLevel: level))
-            .frame(width: metrics.cellSize, height: metrics.cellSize)
-            .help(tooltip(for: entry))
     }
 
     private func gridMetrics(columnCount: Int, measuredWidth: CGFloat) -> YearlyGridMetrics {
@@ -215,19 +216,6 @@ struct YearlyContributionHeatmapView: View {
         )
     }
 
-    // Static on purpose: `tooltip(for:)` runs once per cell — ~365 times per
-    // body pass — and a fresh `DateFormatter` per call is milliseconds of
-    // pure allocation on every redraw of the card.
-    private static let tooltipFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        // The app runs for weeks; a static formatter must follow a system
-        // time-zone change instead of keeping the one it was born with.
-        formatter.timeZone = .autoupdatingCurrent
-        return formatter
-    }()
-
     private static let monthLabelFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -235,21 +223,6 @@ struct YearlyContributionHeatmapView: View {
         formatter.timeZone = .autoupdatingCurrent
         return formatter
     }()
-
-    private func tooltip(for entry: DailyCostPoint?) -> String {
-        guard let entry else { return "" }
-        let cost: String = entry.costUSD < 0.01 ? "$0.00"
-            : entry.costUSD < 100 ? String(format: "$%.2f", entry.costUSD)
-            : String(format: "$%.0f", entry.costUSD)
-        return "\(Self.tooltipFormatter.string(from: entry.date)) · \(cost)"
-    }
-
-    /// Build week columns for the past 365 days, anchored to the most recent
-    /// Sunday so the grid always ends with the current week aligned right.
-    private struct WeekColumn {
-        let weekStart: Date
-        let days: [DailyCostPoint?]   // exactly 7, indexed by weekday
-    }
 
     private func makeColumns() -> [WeekColumn] {
         let calendar = Calendar.current
@@ -335,30 +308,125 @@ struct YearlyContributionHeatmapView: View {
         let idx = max(0, min(sorted.count - 1, Int(Double(sorted.count - 1) * p)))
         return sorted[idx]
     }
+}
 
-    /// Discrete level 0…4. 0 = no usage, 1…4 increase in saturation.
-    /// Picking levels by quartile means the grid always feels populated even
-    /// for users with little history (no faint pale-blue washout).
-    private static func level(for value: Double, thresholds t: (p25: Double, p50: Double, p75: Double)) -> Int {
-        guard value > 0 else { return 0 }
-        if t.p75 == 0 { return 1 }                 // only one active day
-        if value > t.p75 { return 4 }
-        if value > t.p50 { return 3 }
-        if value > t.p25 { return 2 }
-        return 1
+/// One week of the yearly grid: exactly 7 slots, indexed by weekday. At file
+/// scope so the canvas that draws it can read it too.
+private struct WeekColumn {
+    let weekStart: Date
+    let days: [DailyCostPoint?]   // exactly 7, indexed by weekday
+}
+
+/// The ~365 cells drawn as one `Canvas` instead of one `RoundedRectangle` per
+/// cell with a `.help()` each. Three of these cards are alive while the
+/// popover is open, so the view-per-cell shape cost roughly 1 100 view nodes
+/// and as many tooltip nodes just to sit idle. Hit-testing the hover point
+/// against the same geometry the canvas draws with reproduces the per-cell
+/// tooltip from a single string, and keeping the hover state in this leaf
+/// means a mouse move redraws the grid, not the whole card.
+private struct YearlyHeatmapCanvas: View {
+    let columns: [WeekColumn]
+    let metrics: YearlyGridMetrics
+    let thresholds: (p25: Double, p50: Double, p75: Double)
+    let accessibilityLabel: String
+
+    @State private var hoveredTooltip: String?
+
+    var body: some View {
+        Canvas { context, _ in
+            let step = metrics.cellSize + metrics.cellSpacing
+            for (columnIndex, column) in columns.enumerated() {
+                let x = CGFloat(columnIndex) * step
+                for weekday in 0..<7 {
+                    let value = column.days[weekday]?.costUSD ?? 0
+                    let rect = CGRect(
+                        x: x,
+                        y: CGFloat(weekday) * step,
+                        width: metrics.cellSize,
+                        height: metrics.cellSize
+                    )
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: metrics.cellCornerRadius, style: .continuous),
+                        with: .color(yearlyLevelColor(yearlyLevel(for: value, thresholds: thresholds)))
+                    )
+                }
+            }
+        }
+        .frame(width: metrics.gridWidth, height: metrics.cellsHeight)
+        .contentShape(Rectangle())
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                let text = tooltip(at: location)
+                if text != hoveredTooltip { hoveredTooltip = text }
+            case .ended:
+                if hoveredTooltip != nil { hoveredTooltip = nil }
+            }
+        }
+        .help(hoveredTooltip ?? "")
+        // The individual cell views are gone, so the grid speaks for itself.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
     }
 
-    private func color(forLevel level: Int) -> Color {
-        // GitHub-style palette in cool→warm. Saturation/opacity steps are
-        // chosen so each level is visibly distinct on both light and dark
-        // backgrounds.
-        switch level {
-        case 0: return Color.primary.opacity(0.06)
-        case 1: return Color(red: 0.42, green: 0.60, blue: 0.97).opacity(0.55)
-        case 2: return Color(red: 0.42, green: 0.60, blue: 0.97).opacity(0.85)
-        case 3: return Color(red: 0.97, green: 0.65, blue: 0.30).opacity(0.85)
-        default: return Color(red: 0.97, green: 0.45, blue: 0.18)
-        }
+    private func tooltip(at point: CGPoint) -> String? {
+        guard let column = heatmapCellIndex(
+            for: point.x,
+            side: metrics.cellSize,
+            spacing: metrics.cellSpacing,
+            count: columns.count
+        ), let weekday = heatmapCellIndex(
+            for: point.y,
+            side: metrics.cellSize,
+            spacing: metrics.cellSpacing,
+            count: 7
+        ), let entry = columns[column].days[weekday] else { return nil }
+        return yearlyCellTooltip(for: entry)
+    }
+}
+
+// Static on purpose: the tooltip formatter used to be rebuilt per cell —
+// ~365 times per body pass — and a fresh `DateFormatter` per call is
+// milliseconds of pure allocation on every redraw of the card.
+private let yearlyTooltipFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "MMM d, yyyy"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    // The app runs for weeks; a static formatter must follow a system
+    // time-zone change instead of keeping the one it was born with.
+    formatter.timeZone = .autoupdatingCurrent
+    return formatter
+}()
+
+private func yearlyCellTooltip(for entry: DailyCostPoint) -> String {
+    let cost: String = entry.costUSD < 0.01 ? "$0.00"
+        : entry.costUSD < 100 ? String(format: "$%.2f", entry.costUSD)
+        : String(format: "$%.0f", entry.costUSD)
+    return "\(yearlyTooltipFormatter.string(from: entry.date)) · \(cost)"
+}
+
+/// Discrete level 0…4. 0 = no usage, 1…4 increase in saturation.
+/// Picking levels by quartile means the grid always feels populated even
+/// for users with little history (no faint pale-blue washout).
+private func yearlyLevel(for value: Double, thresholds t: (p25: Double, p50: Double, p75: Double)) -> Int {
+    guard value > 0 else { return 0 }
+    if t.p75 == 0 { return 1 }                 // only one active day
+    if value > t.p75 { return 4 }
+    if value > t.p50 { return 3 }
+    if value > t.p25 { return 2 }
+    return 1
+}
+
+private func yearlyLevelColor(_ level: Int) -> Color {
+    // GitHub-style palette in cool→warm. Saturation/opacity steps are
+    // chosen so each level is visibly distinct on both light and dark
+    // backgrounds.
+    switch level {
+    case 0: return Color.primary.opacity(0.06)
+    case 1: return Color(red: 0.42, green: 0.60, blue: 0.97).opacity(0.55)
+    case 2: return Color(red: 0.42, green: 0.60, blue: 0.97).opacity(0.85)
+    case 3: return Color(red: 0.97, green: 0.65, blue: 0.30).opacity(0.85)
+    default: return Color(red: 0.97, green: 0.45, blue: 0.18)
     }
 }
 
@@ -371,6 +439,12 @@ private struct YearlyGridMetrics {
 
     var gridWidth: CGFloat {
         CGFloat(columnCount) * cellSize + CGFloat(max(0, columnCount - 1)) * cellSpacing
+    }
+
+    /// Height of the 7-row cell block — what the per-column `VStack`s used to
+    /// measure to on their own.
+    var cellsHeight: CGFloat {
+        7 * cellSize + 6 * cellSpacing
     }
 
     var cellCornerRadius: CGFloat {

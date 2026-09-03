@@ -28,8 +28,8 @@ struct MiniQuotaWindowView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     /// Observe the QuotaService directly so the mini window re-renders the
     /// instant a quota refresh lands. Without this the view only redraws on
-    /// a settings change or the inner TimelineView's 30 s tick, which made
-    /// timer- or button-driven refreshes feel laggy compared to the popover.
+    /// a settings change or the panel clock's 30 s tick, which made timer- or
+    /// button-driven refreshes feel laggy compared to the popover.
     @EnvironmentObject var quotaService: QuotaService
 
     private var config: MiniWindowConfig {
@@ -330,23 +330,33 @@ private struct MiniWindowProviderLayout: View {
             contentByTool: contentByTool,
             registry: registry
         )
-        HStack(alignment: .top, spacing: displayMode == .compact ? 8 : 14) {
-            // Positional identity on purpose: an arrangement that interleaves
-            // vendors legally produces two columns named "Google AI", and a
-            // name-keyed ForEach would render the first column's content
-            // twice.
-            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
-                if index > 0 {
-                    MiniProviderDivider(height: displayMode == .compact ? 94 : 131)
-                        .padding(.top, 2)
-                }
-                switch displayMode {
-                case .compact:
-                    MiniCompactL2GroupColumn(group: group, labels: labels)
-                default:
-                    // Only regular and compact reach this layout; the
-                    // alternative modes render their own views.
-                    MiniCompanyGroupColumn(group: group, labels: labels)
+        // One clock for the whole panel. Every ring / bar cell used to own a
+        // `TimelineView(.periodic(from: .now, by: 30))`, so a mini window with
+        // a dozen selected buckets ran a dozen timers on a dozen phases and
+        // handed `QuotaService.paceForecast` a dozen different `now` values —
+        // its memo could not hit once. The cells take the date as plain data
+        // now, and hoisting the tick also keeps `miniProductGroups` above out
+        // of the per-tick path. Mini windows are visible whenever they exist,
+        // so this is an ungated `StableClock`.
+        StableClock(interval: 30) { tickDate in
+            HStack(alignment: .top, spacing: displayMode == .compact ? 8 : 14) {
+                // Positional identity on purpose: an arrangement that
+                // interleaves vendors legally produces two columns named
+                // "Google AI", and a name-keyed ForEach would render the first
+                // column's content twice.
+                ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                    if index > 0 {
+                        MiniProviderDivider(height: displayMode == .compact ? 94 : 131)
+                            .padding(.top, 2)
+                    }
+                    switch displayMode {
+                    case .compact:
+                        MiniCompactL2GroupColumn(group: group, labels: labels, now: tickDate)
+                    default:
+                        // Only regular and compact reach this layout; the
+                        // alternative modes render their own views.
+                        MiniCompanyGroupColumn(group: group, labels: labels, now: tickDate)
+                    }
                 }
             }
         }
@@ -693,6 +703,8 @@ private func miniPrimaryGroupTitle(
 private struct MiniCompanyGroupColumn: View {
     let group: MiniCompanyGroup
     let labels: MiniLabelContext
+    /// Tick from the panel's single clock, passed straight down to the cells.
+    let now: Date
 
     var body: some View {
         VStack(alignment: .center, spacing: 7) {
@@ -713,7 +725,7 @@ private struct MiniCompanyGroupColumn: View {
                         MiniGroupDivider(height: 112)
                             .padding(.top, 4)
                     }
-                    MiniMemberStack(member: member, labels: labels)
+                    MiniMemberStack(member: member, labels: labels, now: now)
                 }
             }
         }
@@ -743,6 +755,7 @@ private struct MiniCompanyGroupColumn: View {
 private struct MiniMemberStack: View {
     let member: MiniL2Member
     let labels: MiniLabelContext
+    let now: Date
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniRingMetrics.subProviderLabelGap) {
@@ -761,11 +774,12 @@ private struct MiniMemberStack: View {
                 if !member.content.primaryCells.isEmpty {
                     MiniPrimaryRingGroup(
                         cells: member.content.primaryCells,
-                        title: primaryGroupTitle
+                        title: primaryGroupTitle,
+                        now: now
                     )
                 }
                 ForEach(branchGroups) { group in
-                    MiniBranchRingGroup(group: group)
+                    MiniBranchRingGroup(group: group, now: now)
                 }
             }
         }
@@ -806,12 +820,13 @@ private struct MiniMemberStack: View {
 private struct MiniPrimaryRingGroup: View {
     let cells: [MiniCell]
     let title: String?
+    let now: Date
 
     var body: some View {
         MiniRingGroupShell(title: title, width: groupWidth) {
             HStack(alignment: .top, spacing: MiniRingMetrics.ringSpacing) {
                 ForEach(cells) { cell in
-                    MiniRingCell(cell: cell)
+                    MiniRingCell(cell: cell, now: now)
                 }
             }
         }
@@ -825,12 +840,13 @@ private struct MiniPrimaryRingGroup: View {
 
 private struct MiniBranchRingGroup: View {
     let group: MiniBranchGroup
+    let now: Date
 
     var body: some View {
         MiniRingGroupShell(title: group.title, width: groupWidth) {
             HStack(alignment: .top, spacing: MiniRingMetrics.ringSpacing) {
                 ForEach(group.cells) { cell in
-                    MiniBranchRingCell(cell: cell)
+                    MiniBranchRingCell(cell: cell, now: now)
                 }
             }
         }
@@ -871,16 +887,16 @@ private struct MiniRingGroupShell<Content: View>: View {
 
 private struct MiniBranchRingCell: View {
     let cell: MiniBranchCell
+    /// Tick from the panel's clock — this cell owns no timer.
+    let now: Date
 
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(now: context.date)
-        }
-        .frame(width: MiniRingMetrics.cellWidth)
+        content(now: now)
+            .frame(width: MiniRingMetrics.cellWidth)
     }
 
     @ViewBuilder
@@ -997,16 +1013,16 @@ private struct MiniGroupDivider: View {
 
 private struct MiniRingCell: View {
     let cell: MiniCell
+    /// Tick from the panel's clock — this cell owns no timer.
+    let now: Date
 
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(now: context.date)
-        }
-        .frame(width: MiniRingMetrics.cellWidth)
+        content(now: now)
+            .frame(width: MiniRingMetrics.cellWidth)
     }
 
     @ViewBuilder
@@ -1159,6 +1175,8 @@ private enum MiniCompactMetrics {
 private struct MiniCompactL2GroupColumn: View {
     let group: MiniCompanyGroup
     let labels: MiniLabelContext
+    /// Tick from the panel's single clock, passed straight down to the cells.
+    let now: Date
 
     var body: some View {
         VStack(alignment: .center, spacing: 5) {
@@ -1179,7 +1197,7 @@ private struct MiniCompactL2GroupColumn: View {
                         MiniGroupDivider(height: 98)
                             .padding(.top, 3)
                     }
-                    MiniCompactMemberStack(member: member, labels: labels)
+                    MiniCompactMemberStack(member: member, labels: labels, now: now)
                 }
             }
         }
@@ -1201,6 +1219,7 @@ private struct MiniCompactL2GroupColumn: View {
 private struct MiniCompactMemberStack: View {
     let member: MiniL2Member
     let labels: MiniLabelContext
+    let now: Date
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniCompactMetrics.subProviderLabelGap) {
@@ -1219,11 +1238,12 @@ private struct MiniCompactMemberStack: View {
                 if !member.content.primaryCells.isEmpty {
                     MiniCompactPrimaryGroup(
                         cells: member.content.primaryCells,
-                        title: primaryGroupTitle
+                        title: primaryGroupTitle,
+                        now: now
                     )
                 }
                 ForEach(branchGroups) { group in
-                    MiniCompactBranchGroup(group: group)
+                    MiniCompactBranchGroup(group: group, now: now)
                 }
             }
         }
@@ -1264,6 +1284,7 @@ private struct MiniCompactMemberStack: View {
 private struct MiniCompactPrimaryGroup: View {
     let cells: [MiniCell]
     let title: String?
+    let now: Date
 
     var body: some View {
         MiniCompactGroupShell(title: title, width: groupWidth) {
@@ -1276,7 +1297,8 @@ private struct MiniCompactPrimaryGroup: View {
                             title: cell.resolvedLabel,
                             bucket: cell.bucket,
                             help: "\(providerTitle(for: cell.tool)) · \(cell.resolvedLabel)"
-                        )
+                        ),
+                        now: now
                     )
                 }
             }
@@ -1291,6 +1313,7 @@ private struct MiniCompactPrimaryGroup: View {
 
 private struct MiniCompactBranchGroup: View {
     let group: MiniBranchGroup
+    let now: Date
 
     var body: some View {
         MiniCompactGroupShell(title: group.title, width: groupWidth) {
@@ -1303,7 +1326,8 @@ private struct MiniCompactBranchGroup: View {
                             title: cell.title,
                             bucket: cell.bucket,
                             help: "\(providerTitle(for: cell.tool)) · \(cell.bucket.groupTitle ?? cell.bucket.shortLabel) · \(cell.bucket.title)"
-                        )
+                        ),
+                        now: now
                     )
                 }
             }
@@ -1353,16 +1377,16 @@ private struct MiniCompactCellData: Identifiable {
 
 private struct MiniCompactBarCell: View {
     let data: MiniCompactCellData
+    /// Tick from the panel's clock — this cell owns no timer.
+    let now: Date
 
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(now: context.date)
-        }
-        .frame(width: MiniCompactMetrics.cellWidth)
+        content(now: now)
+            .frame(width: MiniCompactMetrics.cellWidth)
     }
 
     @ViewBuilder
