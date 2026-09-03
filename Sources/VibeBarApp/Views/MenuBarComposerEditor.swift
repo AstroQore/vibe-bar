@@ -36,6 +36,10 @@ struct MenuBarComposerEditor: View {
     /// path. The reorder is kept here while the drag is live and committed
     /// once, on drop.
     @State private var dragComposition: MenuBarComposition?
+    /// Fires shortly after the pointer leaves every drop target. SwiftUI has
+    /// no "drag cancelled" callback, so a release outside the strip is
+    /// inferred from the pointer leaving and not coming back.
+    @State private var dragCancelTask: Task<Void, Never>?
     @State private var isOverRemoveTarget = false
     @State private var isConfirmingReseed = false
 
@@ -200,6 +204,7 @@ struct MenuBarComposerEditor: View {
                     ForEach(composition.tokens) { token in
                         chip(token, availability: availability)
                             .onDrag {
+                                dragEnteredTarget()
                                 draggedTokenId = token.id
                                 // Snapshot the committed order; every crossing
                                 // reorders this copy, and only the drop writes.
@@ -212,7 +217,9 @@ struct MenuBarComposerEditor: View {
                                     target: token.id,
                                     dragged: $draggedTokenId,
                                     provisional: $dragComposition,
-                                    commit: { commitDrag() }
+                                    commit: { commitDrag() },
+                                    entered: { dragEnteredTarget() },
+                                    exited: { dragLeftTarget() }
                                 )
                             )
                     }
@@ -227,7 +234,9 @@ struct MenuBarComposerEditor: View {
                                 target: nil,
                                 dragged: $draggedTokenId,
                                 provisional: $dragComposition,
-                                commit: { commitDrag() }
+                                commit: { commitDrag() },
+                                entered: { dragEnteredTarget() },
+                                exited: { dragLeftTarget() }
                             )
                         )
                 }
@@ -263,7 +272,9 @@ struct MenuBarComposerEditor: View {
                 dragged: $draggedTokenId,
                 isTargeted: $isOverRemoveTarget,
                 selection: $selection,
-                remove: { removeDragged($0) }
+                remove: { removeDragged($0) },
+                entered: { dragEnteredTarget() },
+                exited: { dragLeftTarget() }
             )
         )
     }
@@ -582,6 +593,8 @@ struct MenuBarComposerEditor: View {
     private func mutate(_ change: (inout MenuBarComposition) -> Void) {
         // A real edit ends any drag state: the provisional order must never
         // outlive the arrangement it was based on.
+        dragCancelTask?.cancel()
+        dragCancelTask = nil
         dragComposition = nil
         draggedTokenId = nil
         var updated = item
@@ -589,6 +602,30 @@ struct MenuBarComposerEditor: View {
         change(&composed)
         updated.composition = composed
         settingsStore.settings.setMenuBarItem(updated)
+    }
+
+    /// The pointer is over a drop target again, so the drag is still live.
+    private func dragEnteredTarget() {
+        dragCancelTask?.cancel()
+        dragCancelTask = nil
+    }
+
+    /// The pointer left a drop target. If it does not come back, the drag was
+    /// released somewhere that accepts nothing and `performDrop` will never
+    /// run — so the provisional order has to go, or the strip keeps showing an
+    /// arrangement no settings write ever matched.
+    ///
+    /// The provisional copy is reset to the committed order rather than
+    /// dropped: the pointer may well come back, and `dropEntered` reorders
+    /// from whatever is here.
+    private func dragLeftTarget() {
+        dragCancelTask?.cancel()
+        dragCancelTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            dragComposition = composition
+            dragCancelTask = nil
+        }
     }
 
     /// The one settings write a completed drag performs.
@@ -689,6 +726,12 @@ private struct MenuBarTokenInspector: View {
 
     @State private var fixedDraft: Color = .accentColor
 
+    /// Whether this block puts anything on screen. A row break does not.
+    private var drawsInk: Bool {
+        if case .lineBreak = token.kind { return false }
+        return true
+    }
+
     private enum ColorChoice: String, CaseIterable, Identifiable {
         case automatic, forecast, followsQuota, brand, primary, secondary, tertiary, fixed
         var id: String { rawValue }
@@ -722,20 +765,25 @@ private struct MenuBarTokenInspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             contentControls
-            Divider().opacity(0.4)
-            colorControls
-            HStack(spacing: 10) {
-                Picker("Size", selection: sizeBinding) {
-                    ForEach(MenuBarToken.SizeStep.allCases, id: \.self) { Text($0.title).tag($0) }
+            // A row break draws no ink, so colour, size and weight would be
+            // controls that quietly do nothing. Its rule still applies — a
+            // conditional break is the whole point of putting one on it.
+            if drawsInk {
+                Divider().opacity(0.4)
+                colorControls
+                HStack(spacing: 10) {
+                    Picker("Size", selection: sizeBinding) {
+                        ForEach(MenuBarToken.SizeStep.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .frame(width: 150)
+                    Picker("Weight", selection: weightBinding) {
+                        ForEach(MenuBarToken.Weight.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .frame(width: 165)
                 }
-                .frame(width: 150)
-                Picker("Weight", selection: weightBinding) {
-                    ForEach(MenuBarToken.Weight.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-                .frame(width: 165)
+                Toggle("Monospaced digits", isOn: monospacedBinding)
+                    .help("Keeps a changing number from shifting the blocks beside it.")
             }
-            Toggle("Monospaced digits", isOn: monospacedBinding)
-                .help("Keeps a changing number from shifting the blocks beside it.")
             Divider().opacity(0.4)
             ruleControls
         }
@@ -816,9 +864,10 @@ private struct MenuBarTokenInspector: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         case .lineBreak:
-            Text("Ends the first row and starts the second.")
+            Text("Ends the first row and starts the second. Give it a rule below to split only when that quota says so.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         case .appIcon:
             Text("Vibe Bar's own icon — what the Icon Only layout shows.")
                 .font(.caption2)
@@ -867,6 +916,11 @@ private struct MenuBarTokenInspector: View {
                         guard !Task.isCancelled else { return }
                         commitFixedColor()
                     }
+                    // Same removal, same flush: picking a colour and
+                    // immediately selecting another block must not drop it.
+                    // `commitFixedColor` no-ops unless the block is still a
+                    // custom colour, so switching the role away is safe.
+                    .onDisappear(perform: commitFixedColor)
             case let .followsQuota(fieldId, basis):
                 fieldPicker(selected: fieldId) { newId in
                     update { $0.style.color = .followsQuota(fieldId: newId, basis: basis) }
@@ -1142,6 +1196,13 @@ private struct DebouncedPercentStepper: View {
             guard !Task.isCancelled else { return }
             commit(draft)
         }
+        // The inspector is `.id(token.id)`, so selecting another block removes
+        // this control and cancels the pending commit mid-window. Flush, the
+        // way `DebouncedSettingsTextField` already does, or the last change the
+        // user made is silently lost.
+        .onDisappear {
+            if draft != percent { commit(draft) }
+        }
     }
 }
 
@@ -1156,8 +1217,13 @@ private struct MenuBarChipDropDelegate: DropDelegate {
     /// Reordered in place on every crossing. Local state, not settings.
     @Binding var provisional: MenuBarComposition?
     let commit: () -> Void
+    let entered: () -> Void
+    let exited: () -> Void
+
+    func dropExited(info: DropInfo) { exited() }
 
     func dropEntered(info: DropInfo) {
+        entered()
         guard let dragged, provisional != nil else { return }
         if let target {
             provisional?.move(dragged, before: target)
@@ -1181,10 +1247,18 @@ private struct MenuBarChipRemoveDelegate: DropDelegate {
     @Binding var isTargeted: Bool
     @Binding var selection: UUID?
     let remove: (UUID) -> Void
+    let entered: () -> Void
+    let exited: () -> Void
 
-    func dropEntered(info: DropInfo) { isTargeted = true }
+    func dropEntered(info: DropInfo) {
+        entered()
+        isTargeted = true
+    }
 
-    func dropExited(info: DropInfo) { isTargeted = false }
+    func dropExited(info: DropInfo) {
+        exited()
+        isTargeted = false
+    }
 
     func performDrop(info: DropInfo) -> Bool {
         defer { isTargeted = false }

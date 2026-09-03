@@ -1002,16 +1002,22 @@ public extension MenuBarComposition {
         }
 
         for token in tokens {
+            // Before the row break, not after it: a row break is a block like
+            // any other, and a conditional one is the point — stay on one row
+            // normally, split to two when a quota goes critical. Checking
+            // visibility afterwards made the strip always split.
+            guard Self.isVisible(token.visibility, quotas: quotas) else { continue }
             if case .lineBreak = token.kind {
                 // Ignored past the second row: a third row cannot be drawn, so
-                // its blocks stay on the second rather than vanishing.
+                // its blocks stay on the second rather than vanishing. A rule
+                // that hides the break simply never opens the row, so honouring
+                // it cannot collide with the cap.
                 if rows.count < Self.maximumRows {
                     rows.append(MenuBarRenderRow())
                     spokenRows.append([])
                 }
                 continue
             }
-            guard Self.isVisible(token.visibility, quotas: quotas) else { continue }
 
             let own = snapshot(token.quotaFieldId)
             guard let content = Self.content(

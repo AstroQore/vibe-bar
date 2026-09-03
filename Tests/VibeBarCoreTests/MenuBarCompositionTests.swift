@@ -1234,6 +1234,89 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(rendered.spokenDescription, "5 Hours")
     }
 
+    // MARK: - A row break obeys its own rule (review thread 1)
+
+    private func conditionalBreakTokens(percent: Double) -> [MenuBarToken] {
+        [
+            MenuBarToken(kind: .text("top")),
+            MenuBarToken(
+                kind: .lineBreak,
+                visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: percent)
+            ),
+            MenuBarToken(kind: .text("bottom"))
+        ]
+    }
+
+    func testAConditionalRowBreakSplitsOnlyWhenItsRuleIsMet() {
+        // The point of a conditional break: one row normally, two when a quota
+        // goes critical. Evaluating visibility after handling the break made it
+        // split unconditionally.
+        let calm = [quota("claude.weekly", label: "Weekly", used: 40, display: 40)]
+        XCTAssertEqual(
+            texts(plan(conditionalBreakTokens(percent: 90), quotas: calm)),
+            [["top", "bottom"]]
+        )
+
+        let critical = [quota("claude.weekly", label: "Weekly", used: 95, display: 95)]
+        XCTAssertEqual(
+            texts(plan(conditionalBreakTokens(percent: 90), quotas: critical)),
+            [["top"], ["bottom"]]
+        )
+    }
+
+    func testAnUnconditionalRowBreakStillAlwaysSplits() {
+        let rendered = plan(
+            [
+                MenuBarToken(kind: .text("top")),
+                MenuBarToken(kind: .lineBreak),
+                MenuBarToken(kind: .text("bottom"))
+            ],
+            quotas: []
+        )
+        XCTAssertEqual(texts(rendered), [["top"], ["bottom"]])
+    }
+
+    func testARowBreakWhoseRuleCannotBeEvaluatedStillSplits() {
+        // Same contract as every other block: a rule the inputs cannot answer
+        // does not suppress. A strip that silently stopped splitting because a
+        // provider went quiet would look broken.
+        let rendered = plan(conditionalBreakTokens(percent: 90), quotas: [])
+        XCTAssertEqual(texts(rendered), [["top"], ["bottom"]])
+    }
+
+    func testAHiddenRowBreakDoesNotSpendTheRowBudget() {
+        // The cap is on rows actually opened, so a break that never fires must
+        // not use up the one split the status item can draw.
+        let calm = [quota("claude.weekly", label: "Weekly", used: 10, display: 10)]
+        let rendered = plan(
+            [
+                MenuBarToken(kind: .text("a")),
+                MenuBarToken(
+                    kind: .lineBreak,
+                    visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: 90)
+                ),
+                MenuBarToken(kind: .text("b")),
+                MenuBarToken(kind: .lineBreak),
+                MenuBarToken(kind: .text("c"))
+            ],
+            quotas: calm
+        )
+        XCTAssertEqual(texts(rendered), [["a", "b"], ["c"]])
+    }
+
+    func testARowBreaksRuleIsPartOfWhatTheStripDependsOn() {
+        // The renderer resolves only the quotas `quotaRequirements` names, so a
+        // rule on a break has to be in there or it could never be evaluated.
+        let composed = composition([
+            MenuBarToken(
+                kind: .lineBreak,
+                visibility: .whenForecast(fieldId: "claude.weekly", verdicts: [.atRisk])
+            )
+        ])
+        XCTAssertEqual(composed.referencedFieldIds, ["claude.weekly"])
+        XCTAssertEqual(composed.quotaRequirements.first?.needsForecast, true)
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {
