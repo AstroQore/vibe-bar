@@ -21,14 +21,14 @@ private enum CostChartMetric: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .cost: "$"
-        case .tokens: "Tok"
+        case .tokens: L10n.Cost.chartMetricTokens
         }
     }
 
     var help: String {
         switch self {
-        case .cost: "Plot spend in dollars"
-        case .tokens: "Plot token volume"
+        case .cost: L10n.Cost.chartMetricCostHelp
+        case .tokens: L10n.Cost.chartMetricTokensHelp
         }
     }
 }
@@ -57,7 +57,7 @@ private struct CostGranularityOption: Identifiable, Equatable {
     }
 
     static let all: [CostGranularityOption] = [
-        CostGranularityOption(mode: .auto, label: "Auto", granularity: nil),
+        CostGranularityOption(mode: .auto, label: L10n.Cost.granularityAuto, granularity: nil),
         CostGranularityOption(
             mode: .manual(.hour),
             label: CostChartGranularity.hour.displayName,
@@ -108,19 +108,19 @@ private enum CostRangePreset: String, CaseIterable, Identifiable {
 
     var shortLabel: String {
         switch self {
-        case .today: "Today"
-        case .week: "7d"
-        case .month: "30d"
-        case .all: "All"
+        case .today: L10n.Cost.timeframeToday
+        case .week: L10n.Cost.timeframeWeekShort
+        case .month: L10n.Cost.timeframeMonthShort
+        case .all: L10n.Cost.timeframeAll
         }
     }
 
     var label: String {
         switch self {
-        case .today: "Today"
-        case .week: "7 days"
-        case .month: "30 days"
-        case .all: "All"
+        case .today: L10n.Cost.timeframeToday
+        case .week: L10n.Cost.timeframeWeek
+        case .month: L10n.Cost.timeframeMonth
+        case .all: L10n.Cost.timeframeAll
         }
     }
 }
@@ -261,7 +261,7 @@ struct CostHistoryView: View {
     private func header(window: ChartTimeWindow?) -> some View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(titleOverride ?? "Cost History")
+                Text(titleOverride ?? L10n.Cost.historyTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 8)
                 metricToggle
@@ -353,10 +353,10 @@ struct CostHistoryView: View {
 
     private var emptyNote: some View {
         VStack(spacing: 4) {
-            Text("Building history…")
+            Text(L10n.Cost.historyBuilding)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.tertiary)
-            Text("Cost samples appear after the next local scan.")
+            Text(L10n.Cost.historyBuildingDetail)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
         }
@@ -389,7 +389,7 @@ struct CostHistoryView: View {
                 window: binding,
                 accent: .accentColor,
                 height: density.chartBrushHeight,
-                accessibilityDescription: "Cost history range navigator"
+                accessibilityDescription: L10n.Cost.historyNavigator
             ) { geometry in
                 miniBars(in: geometry)
             }
@@ -439,8 +439,8 @@ struct CostHistoryView: View {
         .overlay {
             if points.isEmpty {
                 Text(chartMetric == .cost
-                    ? "No cost recorded in this range."
-                    : "No tokens recorded in this range.")
+                    ? L10n.Cost.historyEmptyCost
+                    : L10n.Cost.historyEmptyTokens)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                     .allowsHitTesting(false)
@@ -722,7 +722,7 @@ struct CostHistoryView: View {
                 modelRow(model)
             }
             if point.models.count > 3 {
-                Text("+\(point.models.count - 3) more · click to inspect")
+                Text(L10n.Cost.historyMoreModels(count: point.models.count - 3))
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -743,7 +743,11 @@ struct CostHistoryView: View {
 
             if let point = inspectedPoint {
                 HStack(spacing: 8) {
-                    Text("Models · \(tooltipDate(point.date, granularity: granularity))")
+                    Text(
+                        L10n.Cost.historyModelsAt(
+                            when: tooltipDate(point.date, granularity: granularity)
+                        )
+                    )
                         .font(.system(size: 10, weight: .semibold))
                     Spacer(minLength: 8)
                     Button {
@@ -753,11 +757,11 @@ struct CostHistoryView: View {
                     }
                     .buttonStyle(.vibeBar)
                     .foregroundStyle(.secondary)
-                    .help("Clear model selection")
+                    .help(L10n.Cost.historyClearModelSelection)
                 }
 
                 if point.models.isEmpty {
-                    Text("Model detail is unavailable for this historical period.")
+                    Text(L10n.Cost.historyModelDetailUnavailable)
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -886,13 +890,15 @@ struct CostHistoryView: View {
         resolved: CostResolvedGranularity
     ) -> some View {
         HStack(alignment: .top, spacing: spacing) {
-            metric(label: "Total", value: formatMetric(total))
+            metric(label: L10n.Cost.historyMetricTotal, value: formatMetric(total))
             metric(
-                label: "Avg/\(resolved.granularity.displayName.lowercased())",
+                label: L10n.Cost.historyMetricAverage(
+                    granularity: resolved.granularity.displayName.lowercased()
+                ),
                 value: formatMetric(average)
             )
             metric(
-                label: "Peak",
+                label: L10n.Cost.historyMetricPeak,
                 value: formatMetric(peak),
                 detail: peakDate.map { peakDetail($0, granularity: resolved.granularity) }
             )
@@ -909,7 +915,7 @@ struct CostHistoryView: View {
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             if resolved.hourlyFallback {
-                Text("hourly n/a · showing daily")
+                Text(L10n.Cost.historyHourlyFallback)
                     .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                     .foregroundStyle(.tertiary)
             }
@@ -1089,10 +1095,12 @@ struct CostHistoryView: View {
                 .disabled(!enabled)
                 .help(
                     enabled
-                        ? "Group cost history by \(option.label.lowercased())"
-                        : "\(option.label) needs a different zoom level"
+                        ? L10n.Cost.historyGroupBy(granularity: option.label.lowercased())
+                        : L10n.Cost.historyGranularityDisabled(granularity: option.label)
                 )
-                .accessibilityLabel("Group cost history by \(option.label.lowercased())")
+                .accessibilityLabel(
+                    L10n.Cost.historyGroupBy(granularity: option.label.lowercased())
+                )
             }
         }
         .padding(2)
@@ -1471,16 +1479,20 @@ struct CostHistoryView: View {
             : Self.extentFormatter
         let start = formatter.string(from: window.visibleStart)
         let end = formatter.string(from: window.visibleEnd)
-        return "\(span) · \(start) – \(end)"
+        return L10n.Cost.historyExtentNote(span: span, start: start, end: end)
     }
 
     /// Past this the day-of-month stops disambiguating anything.
     private static let multiYearSpan: TimeInterval = 400 * dayInterval
 
     private static func spanLabel(_ seconds: TimeInterval) -> String {
-        if seconds < 90 * 60 { return "\(max(1, Int((seconds / 60).rounded())))m" }
-        if seconds < 48 * 3_600 { return "\(Int((seconds / 3_600).rounded()))h" }
-        return "\(Int((seconds / 86_400).rounded()))d"
+        if seconds < 90 * 60 {
+            return L10n.Common.durationMinutes(minutes: max(1, Int((seconds / 60).rounded())))
+        }
+        if seconds < 48 * 3_600 {
+            return L10n.Common.durationHours(hours: Int((seconds / 3_600).rounded()))
+        }
+        return L10n.Common.durationDays(days: Int((seconds / 86_400).rounded()))
     }
 
     private func formatCost(_ value: Double) -> String {
@@ -1494,10 +1506,15 @@ struct CostHistoryView: View {
     }
 
     private func formatTokens(_ tokens: Int) -> String {
-        if tokens < 1_000 { return "\(tokens) tok" }
-        if tokens < 1_000_000 { return String(format: "%.1fk tok", Double(tokens) / 1_000) }
-        if tokens < 1_000_000_000 { return String(format: "%.2fM tok", Double(tokens) / 1_000_000) }
-        return String(format: "%.2fB tok", Double(tokens) / 1_000_000_000)
+        let amount: String
+        if tokens < 1_000 { amount = "\(tokens)" }
+        else if tokens < 1_000_000 { amount = String(format: "%.1fk", Double(tokens) / 1_000) }
+        else if tokens < 1_000_000_000 {
+            amount = String(format: "%.2fM", Double(tokens) / 1_000_000)
+        } else {
+            amount = String(format: "%.2fB", Double(tokens) / 1_000_000_000)
+        }
+        return L10n.Usage.activityTokensShort(tokens: amount)
     }
 
     // MARK: - Metric plumbing
@@ -1560,7 +1577,7 @@ struct CostHistoryView: View {
         switch granularity {
         case .hour: Self.hourFormatter.string(from: date)
         case .day: Self.dayFormatter.string(from: date)
-        case .week: "Week of \(Self.dayFormatter.string(from: date))"
+        case .week: L10n.Cost.historyWeekOf(date: Self.dayFormatter.string(from: date))
         case .month: Self.monthFormatter.string(from: date)
         }
     }
@@ -1571,7 +1588,7 @@ struct CostHistoryView: View {
         switch granularity {
         case .hour: Self.peakHourFormatter.string(from: date)
         case .day: Self.extentFormatter.string(from: date)
-        case .week: "wk \(Self.extentFormatter.string(from: date))"
+        case .week: L10n.Cost.historyWeekShortOf(date: Self.extentFormatter.string(from: date))
         case .month: Self.monthFormatter.string(from: date)
         }
     }

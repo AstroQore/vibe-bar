@@ -13,7 +13,7 @@ struct UsageActivityView: View {
     /// derived from `heatmap.tool`.
     var titleOverride: String? = nil
 
-    private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    private var weekdayLabels: [String] { AppLocale.shortWeekdaySymbols }
     private var barRowHeight: CGFloat { density.activityBarHeight }
 
     @State private var measuredGridWidth: CGFloat = 0
@@ -40,7 +40,7 @@ struct UsageActivityView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(titleOverride ?? "When you use \(toolName)")
+            Text(titleOverride ?? L10n.Usage.whenYouUseProvider(provider: toolName))
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
             Spacer()
             if heatmap.totalTokens > 0 {
@@ -70,9 +70,9 @@ struct UsageActivityView: View {
         let cellHourStr = UsageHeatmap.formatHourLabel(cell.hour)
         let dayStr = weekdayLabels[cell.weekday]
         if peakH == cell.hour {
-            return "Peak \(hourStr) · \(dayStr)"
+            return L10n.Usage.activityPeak(hour: hourStr, day: dayStr)
         }
-        return "Peak \(hourStr) · \(dayStr) \(cellHourStr)"
+        return L10n.Usage.activityPeakCell(hour: hourStr, day: dayStr, cellHour: cellHourStr)
     }
 
     // MARK: - Content
@@ -80,7 +80,7 @@ struct UsageActivityView: View {
     @ViewBuilder
     private var content: some View {
         if heatmap.totalTokens == 0 {
-            Text("No data yet")
+            Text(L10n.Cost.noUsageYet)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -220,7 +220,7 @@ struct UsageActivityView: View {
 
     private var legend: some View {
         HStack(spacing: 6) {
-            Text("Quiet")
+            Text(L10n.Usage.activityQuiet)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             ForEach(0..<6, id: \.self) { step in
@@ -228,7 +228,7 @@ struct UsageActivityView: View {
                     .fill(intensityColor(intensity: Double(step) / 5.0))
                     .frame(width: 16, height: 8)
             }
-            Text("Heavy")
+            Text(L10n.Usage.activityHeavy)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -299,7 +299,7 @@ private struct UsageHeatmapCanvas: View {
         .help(hoveredTooltip ?? "")
         // The individual cell views are gone, so the grid speaks for itself.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Token usage by weekday and hour, 7 days by 24 hours")
+        .accessibilityLabel(L10n.Usage.activityA11y)
     }
 
     private func cellColor(value: Int) -> Color {
@@ -327,11 +327,13 @@ private struct UsageHeatmapCanvas: View {
         let value = cells[weekday][hour]
         let day = weekdayLabels[weekday]
         let hourStr = UsageHeatmap.formatHourLabel(hour)
-        let label: String
-        if value < 1_000 { label = "\(value) tok" }
-        else if value < 1_000_000 { label = String(format: "%.1fk tok", Double(value) / 1_000) }
-        else if value < 1_000_000_000 { label = String(format: "%.2fM tok", Double(value) / 1_000_000) }
-        else { label = String(format: "%.2fB tok", Double(value) / 1_000_000_000) }
-        return "\(day) \(hourStr) · \(label)"
+        let amount: String
+        if value < 1_000 { amount = "\(value)" }
+        else if value < 1_000_000 { amount = String(format: "%.1fk", Double(value) / 1_000) }
+        else if value < 1_000_000_000 { amount = String(format: "%.2fM", Double(value) / 1_000_000) }
+        else { amount = String(format: "%.2fB", Double(value) / 1_000_000_000) }
+        return L10n.Usage.activityCellTooltip(
+            day: day, hour: hourStr, tokens: L10n.Usage.activityTokensShort(tokens: amount)
+        )
     }
 }

@@ -19,7 +19,7 @@ struct YearlyContributionHeatmapView: View {
         case .spacious: 2.5
         }
     }
-    private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    private var weekdayLabels: [String] { AppLocale.shortWeekdaySymbols }
     @State private var measuredGridWidth: CGFloat = 0
     @EnvironmentObject var environment: AppEnvironment
 
@@ -83,7 +83,7 @@ struct YearlyContributionHeatmapView: View {
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("\(toolName) — Past Year")
+                Text(L10n.Usage.yearHeatmapTitle(provider: toolName))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let total = cachedTotalLabel {
@@ -109,7 +109,7 @@ struct YearlyContributionHeatmapView: View {
                 }
             }
             HStack(spacing: 6) {
-                Text("Less")
+                Text(L10n.Usage.yearHeatmapLess)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                 ForEach(0..<5, id: \.self) { step in
@@ -117,7 +117,7 @@ struct YearlyContributionHeatmapView: View {
                         .fill(yearlyLevelColor(step))
                         .frame(width: metrics.cellSize, height: metrics.cellSize)
                 }
-                Text("More")
+                Text(L10n.Usage.yearHeatmapMore)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -186,7 +186,9 @@ struct YearlyContributionHeatmapView: View {
                     columns: columns,
                     metrics: metrics,
                     thresholds: thresholds,
-                    accessibilityLabel: "\(toolName) daily spend over the past year, \(columns.count) weeks"
+                    accessibilityLabel: L10n.Usage.yearHeatmapA11y(
+                        provider: toolName, count: columns.count
+                    )
                 )
             }
         }
@@ -283,8 +285,10 @@ struct YearlyContributionHeatmapView: View {
     private var totalLabel: String? {
         let total = history.reduce(0) { $0 + $1.costUSD }
         guard total > 0 else { return nil }
-        if total < 100 { return String(format: "$%.2f total", total) }
-        return String(format: "$%.0f total", total)
+        let amount = total < 100
+            ? String(format: "$%.2f", total)
+            : String(format: "$%.0f", total)
+        return L10n.Usage.yearHeatmapTotal(amount: amount)
     }
 
     /// Per-tool quartile thresholds computed from the history's non-zero days.
@@ -398,7 +402,9 @@ private func yearlyCellTooltip(for entry: DailyCostPoint) -> String {
     let cost: String = entry.costUSD < 0.01 ? "$0.00"
         : entry.costUSD < 100 ? String(format: "$%.2f", entry.costUSD)
         : String(format: "$%.0f", entry.costUSD)
-    return "\(yearlyTooltipFormatter.string(from: entry.date)) · \(cost)"
+    return L10n.Usage.yearHeatmapTooltip(
+        date: yearlyTooltipFormatter.string(from: entry.date), amount: cost
+    )
 }
 
 /// Discrete level 0…4. 0 = no usage, 1…4 increase in saturation.

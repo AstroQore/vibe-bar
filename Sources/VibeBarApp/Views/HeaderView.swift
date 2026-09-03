@@ -47,26 +47,26 @@ struct HeaderView: View {
             }
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
-                help: "Refresh",
+                help: L10n.Common.refresh,
                 rotation: rotation,
                 size: max(11, subtitleFontSize),
                 action: refreshTapped
             )
             BorderlessIconButton(
                 systemImage: "rectangle.on.rectangle",
-                help: "Mini",
+                help: L10n.Popover.headerMini,
                 size: max(11, subtitleFontSize),
                 action: onToggleMiniWindow
             )
             BorderlessIconButton(
                 systemImage: "macwindow",
-                help: "Open Workbench",
+                help: L10n.Popover.headerOpenWorkbench,
                 size: max(11, subtitleFontSize),
                 action: onShowWorkbench
             )
             BorderlessIconButton(
                 systemImage: "gearshape",
-                help: "Settings",
+                help: L10n.Popover.headerSettings,
                 size: max(11, subtitleFontSize),
                 action: onShowSettings
             )
@@ -83,10 +83,10 @@ struct HeaderView: View {
     }
 
     private func updatedSummary(now: Date) -> String {
-        if isRefreshing { return "Refreshing…" }
+        if isRefreshing { return L10n.Popover.headerRefreshing }
         let base = ResetCountdownFormatter.updatedAgo(from: lastUpdated, now: now)
         if let subtitle, !subtitle.isEmpty {
-            return "\(subtitle) · \(base)"
+            return L10n.Popover.headerUpdatedLine(subtitle: subtitle, updated: base)
         }
         return base
     }

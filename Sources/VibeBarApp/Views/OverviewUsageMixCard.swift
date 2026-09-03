@@ -30,10 +30,10 @@ struct OverviewUsageMixCard: View {
 
         var title: String {
             switch self {
-            case .projects: "Projects"
-            case .harnesses: "Harnesses"
-            case .models: "Models"
-            case .flow: "Token Flow"
+            case .projects: L10n.Usage.mixDimensionProjects
+            case .harnesses: L10n.Usage.mixDimensionHarnesses
+            case .models: L10n.Usage.mixDimensionModels
+            case .flow: L10n.Usage.mixDimensionTokenFlow
             }
         }
     }
@@ -87,10 +87,10 @@ struct OverviewUsageMixCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("Usage Mix")
+            Text(L10n.Usage.mixTitle)
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
             Spacer(minLength: 6)
-            Text("Last 30 days")
+            Text(L10n.Usage.mixLastThirtyDays)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             SectionRefreshButton(isRefreshing: costService.isRefreshing || isLoading) {
@@ -178,7 +178,7 @@ struct OverviewUsageMixCard: View {
                         Text(UsageFormatting.compactTokens(total))
                             .font(.system(size: density.bucketTitleFontSize, weight: .bold,
                                           design: .rounded).monospacedDigit())
-                        Text("tokens")
+                        Text(L10n.Usage.mixTokensCaption)
                             .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                             .foregroundStyle(.tertiary)
                     }
@@ -269,13 +269,14 @@ struct OverviewUsageMixCard: View {
         case .flow:
             let summary = snapshot.summary
             raw = [
-                Slice(id: "fresh", label: "Fresh input", detail: nil,
+                Slice(id: "fresh", label: L10n.Usage.mixFlowFreshInput, detail: nil,
                       tokens: summary.freshInput, costMicros: 0,
                       color: Color(red: 0.30, green: 0.78, blue: 0.74)),
-                Slice(id: "cache", label: "Cache", detail: "read + creation",
+                Slice(id: "cache", label: L10n.Usage.mixFlowCache,
+                      detail: L10n.Usage.mixFlowCacheDetail,
                       tokens: summary.cacheRead + summary.cacheCreation, costMicros: 0,
                       color: Color(red: 0.55, green: 0.40, blue: 0.92)),
-                Slice(id: "output", label: "Output", detail: nil,
+                Slice(id: "output", label: L10n.Usage.mixFlowOutput, detail: nil,
                       tokens: summary.output, costMicros: 0,
                       color: Color(red: 0.96, green: 0.62, blue: 0.20)),
             ]
@@ -290,8 +291,8 @@ struct OverviewUsageMixCard: View {
         let tail = sorted.dropFirst(visibleCount)
         let other = Slice(
             id: "other:\(dimension.rawValue)",
-            label: "Other",
-            detail: "\(tail.count) more",
+            label: L10n.Quota.groupOther,
+            detail: L10n.Usage.mixMoreSlices(count: tail.count),
             tokens: tail.reduce(Int64(0)) { $0 + $1.tokens },
             costMicros: tail.reduce(Int64(0)) { $0 + $1.costMicros },
             color: Color.secondary.opacity(0.55)
@@ -307,11 +308,11 @@ struct OverviewUsageMixCard: View {
     }
 
     private var emptyMessage: String {
-        if loadFailed { return "Usage ledger could not be read." }
+        if loadFailed { return L10n.Usage.mixLedgerUnreadable }
         if dimension == .projects {
-            return "Project attribution appears after the next Codex or Claude cost refresh."
+            return L10n.Usage.mixProjectsPending
         }
-        return "No local usage in this range."
+        return L10n.Usage.mixEmpty
     }
 
     @MainActor
