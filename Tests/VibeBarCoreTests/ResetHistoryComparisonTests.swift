@@ -234,6 +234,60 @@ final class ResetHistoryComparisonTests: XCTestCase {
         XCTAssertEqual(result.lanes[0].cycles[0].resetDescription, "")
     }
 
+    // MARK: - History-only lanes
+
+    func testALaneWithNoLiveBucketStillComparesItsRecordedCycles() {
+        // A bucket the provider renamed or withdrew keeps its samples in the
+        // history, and its waste record is exactly the one the user would
+        // otherwise never see again. No live window, no live percent, no
+        // reset time — only what was recorded.
+        let retired = ResetHistoryLaneInput(
+            accountId: "acct",
+            tool: .claude,
+            bucketId: "weekly_opus",
+            company: "Anthropic",
+            subProvider: "Claude",
+            groupTitle: nil,
+            bucketTitle: "Opus · Weekly",
+            liveWindowSeconds: nil,
+            currentUsedPercent: nil,
+            currentResetAt: nil,
+            samples: [
+                sample(bucketId: "weekly_opus", endingDaysAgo: 7, used: 20),
+                sample(bucketId: "weekly_opus", endingDaysAgo: 14, used: 30)
+            ]
+        )
+        let live = lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 95)])
+        let result = ResetHistoryComparison.build(inputs: [retired, live], window: .all, now: now)
+
+        XCTAssertEqual(result.lanes.map(\.id), ["acct.weekly_opus", "acct.weekly"])
+        let lane = result.lanes[0]
+        XCTAssertEqual(lane.cycles.count, 2)
+        XCTAssertEqual(lane.windowSeconds, 7 * 86_400)
+        XCTAssertEqual(lane.label, "Anthropic · Claude · Opus · Weekly")
+        // Nothing is running, so there is no dashed bar to draw.
+        XCTAssertNil(lane.currentCycle)
+        XCTAssertEqual(try XCTUnwrap(lane.averageWastedPercent), 75, accuracy: 0.001)
+    }
+
+    func testAHistoryOnlyFiveHourLaneIsStillExcluded() {
+        // Losing the live bucket must not smuggle a sub-daily lane in through
+        // the sample fallback.
+        let retired = ResetHistoryLaneInput(
+            accountId: "acct",
+            tool: .claude,
+            bucketId: "five_hour_legacy",
+            company: "Anthropic",
+            subProvider: "Claude",
+            bucketTitle: "5 Hours",
+            liveWindowSeconds: nil,
+            samples: [
+                sample(bucketId: "five_hour_legacy", endingDaysAgo: 1, used: 20, windowSeconds: 5 * 3_600)
+            ]
+        )
+        XCTAssertTrue(ResetHistoryComparison.build(inputs: [retired], window: .all, now: now).isEmpty)
+    }
+
     // MARK: - Ordering
 
     func testLanesSortByAverageWasteDescendingAndEmptyLanesSinkToTheBottom() {
@@ -280,6 +334,34 @@ final class ResetHistoryComparisonTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(byWaste.lanes.first?.id, "acct.weekly")
+    }
+
+    func testCompanyOrderingKeepsEachCompanyContiguous() {
+        // The drawing surface emits one heading per run of a company, so a
+        // company appearing in two runs would render two headings for it.
+        let openAI = lane(
+            id: "codex_weekly", tool: .codex, company: "OpenAI", subProvider: "ChatGPT Agentic",
+            samples: [sample(bucketId: "codex_weekly", endingDaysAgo: 7, used: 90)]
+        )
+        let anthropicLeaky = lane(
+            id: "weekly_fable", group: "Fable",
+            samples: [sample(bucketId: "weekly_fable", endingDaysAgo: 7, used: 2)]
+        )
+        let anthropicTight = lane(
+            id: "weekly",
+            samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 99)]
+        )
+        let result = ResetHistoryComparison.build(
+            inputs: [openAI, anthropicLeaky, anthropicTight],
+            ordering: .company,
+            now: now
+        )
+        var runs: [String] = []
+        for lane in result.lanes where runs.last != lane.company {
+            runs.append(lane.company)
+        }
+        XCTAssertEqual(runs, ["OpenAI", "Anthropic"])
+        XCTAssertEqual(Set(runs).count, runs.count)
     }
 
     // MARK: - Labels

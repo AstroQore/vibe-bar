@@ -20,6 +20,15 @@ enum ResetHistoryLanes {
         tools: [ToolType]? = nil
     ) -> [ResetHistoryLaneInput] {
         let settings = environment.settingsStore.settings
+        let history = environment.quotaService.historyByAccountBucket
+        let registry = environment.quotaService.fieldRegistry
+        // Every bucket the history remembers, grouped once. Walking the whole
+        // dictionary per account would be O(accounts x lanes) for an answer
+        // that does not change between accounts.
+        var recordedByAccount: [String: [SubscriptionHistoryKey]] = [:]
+        for key in history.keys {
+            recordedByAccount[key.accountId, default: []].append(key)
+        }
         var out: [ResetHistoryLaneInput] = []
         // Canonical provider order, so the `.company` grouping is the app's
         // own order rather than an alphabetical reshuffle.
@@ -33,9 +42,14 @@ enum ResetHistoryLanes {
             // per account, and each account is its own lane.
             let accounts = environment.accountStore.accounts(for: tool)
             for account in accounts {
-                guard let quota = environment.quotaService.cachedQuota(for: account.id) else { continue }
+                // Not `guard let`: an account with no cached quota can still
+                // have recorded cycles, and dropping it here is exactly how a
+                // renamed bucket used to vanish.
+                let quota = environment.quotaService.cachedQuota(for: account.id)
                 let accountLabel = accounts.count > 1 ? account.displayLabel : nil
-                for bucket in quota.buckets {
+                var liveBucketIds: Set<String> = []
+                for bucket in quota?.buckets ?? [] {
+                    liveBucketIds.insert(bucket.id)
                     let key = SubscriptionHistoryKey(accountId: account.id, bucketId: bucket.id)
                     let subProvider = tool.quotaSubProviderName(bucketID: bucket.id)
                     let trimmed = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -59,13 +73,74 @@ enum ResetHistoryLanes {
                             currentResetAt: bucket.resetAt,
                             // COW: this is a retain, not a copy, which is what
                             // makes the cache's equality check cheap.
-                            samples: environment.quotaService.historyByAccountBucket[key] ?? []
+                            samples: history[key] ?? []
+                        )
+                    )
+                }
+                // Buckets the provider has stopped returning. Their cycles are
+                // still in the history, and a weekly model limit that was
+                // renamed away is precisely the one whose waste record the
+                // user would otherwise never see again. No current cycle:
+                // there is no live bucket to read one from.
+                for key in (recordedByAccount[account.id] ?? []).sorted(by: { $0.bucketId < $1.bucketId }) {
+                    guard !liveBucketIds.contains(key.bucketId),
+                          let samples = history[key], !samples.isEmpty
+                    else { continue }
+                    // Identity comes from the samples themselves: the account
+                    // pins the tool, but a sample records its own, which is
+                    // what names a bucket whose adapter serves two
+                    // SubProviders. A tool outside this page's scope falls
+                    // back to the account's rather than leaking onto it.
+                    let sampleTool = samples[0].tool
+                    let laneTool = (tools?.contains(sampleTool) ?? true) ? sampleTool : tool
+                    out.append(
+                        ResetHistoryLaneInput(
+                            accountId: account.id,
+                            tool: laneTool,
+                            bucketId: key.bucketId,
+                            company: laneTool.vendorName,
+                            subProvider: laneTool.quotaSubProviderName(bucketID: key.bucketId),
+                            groupTitle: nil,
+                            bucketTitle: retiredBucketTitle(
+                                tool: laneTool,
+                                bucketId: key.bucketId,
+                                registry: registry
+                            ),
+                            accountLabel: accountLabel,
+                            liveWindowSeconds: nil,
+                            currentUsedPercent: nil,
+                            currentResetAt: nil,
+                            samples: samples
                         )
                     )
                 }
             }
         }
         return out
+    }
+
+    /// What to call a bucket no live quota carries any more.
+    ///
+    /// The mini-window catalog already names buckets — the static table for
+    /// the ones this build ships with, `QuotaFieldRegistry` for the ones an
+    /// adapter discovered at runtime, which it keeps precisely so a bucket
+    /// survives the provider dropping it. Its titles are already in the
+    /// "group / window" form the lane label wants ("Fable / Weekly"), so the
+    /// group slot stays empty. Only when neither knows the bucket does this
+    /// fall back to the id, spaced out rather than left as a raw token.
+    static func retiredBucketTitle(
+        tool: ToolType,
+        bucketId: String,
+        registry: QuotaFieldRegistry
+    ) -> String {
+        let fieldId = MenuBarFieldCatalog.fieldId(tool: tool, bucketId: bucketId)
+        if let known = MenuBarFieldCatalog.field(id: fieldId, registry: registry) {
+            return known.title
+        }
+        return bucketId
+            .split(whereSeparator: { $0 == "_" || $0 == "-" })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
     }
 }
 
@@ -274,12 +349,27 @@ struct ResetHistoryCompareLayout: Equatable {
     let rowGap: CGFloat = 6
     let labelGap: CGFloat = 8
     let axisHeight: CGFloat = 13
-    let laneCount: Int
     let titleFontSize: CGFloat
     let captionFontSize: CGFloat
     let rangeStart: Date
     let rangeEnd: Date
     let now: Date
+    /// Height of a company heading. Zero unless the rows are grouped, so the
+    /// ungrouped layout is byte-for-byte the one it always was.
+    let headingHeight: CGFloat
+    /// What the surface draws, top to bottom.
+    let rows: [Row]
+    /// Y of each row in `rows`.
+    let rowTops: [CGFloat]
+    /// Y of each lane, indexed by its position in `comparison.lanes`. The
+    /// headings push these down, which is the whole reason the geometry is
+    /// resolved once and shared instead of derived from an index twice.
+    let laneTops: [CGFloat]
+
+    enum Row: Equatable {
+        case heading(String)
+        case lane(Int)
+    }
 
     init(density: Theme.Density, comparison: ResetHistoryComparison) {
         // Two text lines and a bar per row. Deliberately tight: a dozen
@@ -296,22 +386,60 @@ struct ResetHistoryCompareLayout: Equatable {
             rowHeight = 52
             labelWidth = 190
         }
-        laneCount = comparison.lanes.count
         titleFontSize = max(9, density.subtitleFontSize - 0.5)
         captionFontSize = max(8, density.subtitleFontSize - 2)
         rangeStart = comparison.rangeStart
         rangeEnd = comparison.rangeEnd
         now = comparison.now
+
+        let grouped = comparison.ordering == .company
+        let heading = grouped ? max(16, titleFontSize + 8) : 0
+        headingHeight = heading
+        var rows: [Row] = []
+        var rowTops: [CGFloat] = []
+        var laneTops: [CGFloat] = []
+        var y: CGFloat = 0
+        var currentCompany: String?
+        for (index, lane) in comparison.lanes.enumerated() {
+            if grouped, lane.company != currentCompany {
+                currentCompany = lane.company
+                rows.append(.heading(lane.company))
+                rowTops.append(y)
+                y += heading
+            }
+            rows.append(.lane(index))
+            rowTops.append(y)
+            laneTops.append(y)
+            y += rowHeight
+        }
+        self.rows = rows
+        self.rowTops = rowTops
+        self.laneTops = laneTops
+        rowsHeight = y
     }
 
-    var totalHeight: CGFloat { CGFloat(laneCount) * rowHeight + axisHeight }
-    var rowsHeight: CGFloat { CGFloat(laneCount) * rowHeight }
+    /// Total height of the rows, headings included.
+    let rowsHeight: CGFloat
+
+    var totalHeight: CGFloat { rowsHeight + axisHeight }
     var chartX: CGFloat { labelWidth + labelGap }
 
     func chartWidth(in size: CGSize) -> CGFloat { max(20, size.width - chartX) }
-    func rowTop(_ index: Int) -> CGFloat { CGFloat(index) * rowHeight }
-    func trackTop(_ index: Int) -> CGFloat { rowTop(index) + markerBand }
-    func trackBottom(_ index: Int) -> CGFloat { rowTop(index) + rowHeight - rowGap }
+    func laneTop(_ index: Int) -> CGFloat {
+        index >= 0 && index < laneTops.count ? laneTops[index] : 0
+    }
+    func trackTop(_ index: Int) -> CGFloat { laneTop(index) + markerBand }
+    func trackBottom(_ index: Int) -> CGFloat { laneTop(index) + rowHeight - rowGap }
+
+    /// The lane under a pointer, or `nil` over a heading, a gap, or the axis.
+    /// Never `y / rowHeight`: with headings in the stack that arithmetic is
+    /// off by one row per company.
+    func laneIndex(atY y: CGFloat) -> Int? {
+        for (index, top) in laneTops.enumerated() where y >= top && y < top + rowHeight {
+            return index
+        }
+        return nil
+    }
 
     /// Bars per lane the row has room for. Three points is already narrower
     /// than a bar the eye can separate.
@@ -455,8 +583,9 @@ struct ResetHistoryCompareView: View {
         in size: CGSize,
         layout: ResetHistoryCompareLayout
     ) -> Hover? {
-        let index = Int(location.y / layout.rowHeight)
-        guard index >= 0, index < comparison.lanes.count else { return nil }
+        guard let index = layout.laneIndex(atY: location.y),
+              index < comparison.lanes.count
+        else { return nil }
         let lane = comparison.lanes[index]
         var candidates = ResetHistoryComparison.downsampled(
             lane.cycles,
@@ -563,9 +692,21 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             drawGrid(&context, size: size)
-            for (index, lane) in comparison.lanes.enumerated() {
-                drawLabels(&context, lane: lane, index: index)
-                drawLane(&context, lane: lane, index: index, size: size)
+            for (row, top) in zip(layout.rows, layout.rowTops) {
+                switch row {
+                case let .heading(company):
+                    drawHeading(
+                        &context,
+                        company: company,
+                        top: top,
+                        isFirst: top == 0,
+                        size: size
+                    )
+                case let .lane(index):
+                    let lane = comparison.lanes[index]
+                    drawLabels(&context, lane: lane, index: index)
+                    drawLane(&context, lane: lane, index: index, size: size)
+                }
             }
             drawAxis(&context, size: size)
         }
@@ -590,13 +731,44 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         }
     }
 
+    /// One L1 company band: a rule across the full width and the company's
+    /// name over it. Without this the grouped ordering strips the company off
+    /// every row and puts it nowhere — "Gemini Web" and "AntiGravity" sitting
+    /// under no Google AI at all.
+    private func drawHeading(
+        _ context: inout GraphicsContext,
+        company: String,
+        top: CGFloat,
+        isFirst: Bool,
+        size: CGSize
+    ) {
+        if !isFirst {
+            context.fill(
+                Path(CGRect(x: 0, y: top + 1, width: size.width, height: 0.5)),
+                with: .color(Color.primary.opacity(0.12))
+            )
+        }
+        context.draw(
+            truncated(
+                context,
+                company.uppercased(),
+                font: .system(size: max(8, layout.captionFontSize), weight: .bold),
+                color: Color.primary.opacity(0.55),
+                maxWidth: max(20, size.width),
+                tracking: 0.5
+            ),
+            at: CGPoint(x: 0, y: top + layout.headingHeight - 4),
+            anchor: .bottomLeading
+        )
+    }
+
     private func drawLabels(
         _ context: inout GraphicsContext,
         lane: ResetHistoryComparison.Lane,
         index: Int
     ) {
         let maxWidth = layout.labelWidth - layout.labelGap
-        let top = layout.rowTop(index) + layout.markerBand - 2
+        let top = layout.laneTop(index) + layout.markerBand - 2
         // Grouped by company, the heading carries the company; sorted by
         // waste, each row has to name itself in full.
         let title = comparison.ordering == .company ? lane.labelWithoutCompany : lane.label
@@ -701,7 +873,7 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         // fills its track to the top, where a marker would be the same colour
         // as the fill under it.
         if cycle.refilledEarly {
-            let dot = CGRect(x: rect.midX - 1.5, y: layout.rowTop(laneIndex) + 1, width: 3, height: 3)
+            let dot = CGRect(x: rect.midX - 1.5, y: layout.laneTop(laneIndex) + 1, width: 3, height: 3)
             context.fill(Path(ellipseIn: dot), with: .color(accent.opacity(0.8)))
         }
     }
@@ -737,11 +909,14 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         _ string: String,
         font: Font,
         color: Color,
-        maxWidth: CGFloat
+        maxWidth: CGFloat,
+        tracking: CGFloat = 0
     ) -> GraphicsContext.ResolvedText {
         let probe = CGSize(width: 10_000, height: 40)
         func resolve(_ candidate: String) -> GraphicsContext.ResolvedText {
-            context.resolve(Text(candidate).font(font).foregroundStyle(color))
+            context.resolve(
+                Text(candidate).font(font).tracking(tracking).foregroundStyle(color)
+            )
         }
         let full = resolve(string)
         guard maxWidth > 0, full.measure(in: probe).width > maxWidth else { return full }
