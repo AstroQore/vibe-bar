@@ -364,6 +364,55 @@ final class ResetHistoryComparisonTests: XCTestCase {
         )
     }
 
+    // MARK: - Default window
+
+    func testTheDefaultWindowIsTheWidestThatStillDrawsBars() {
+        // A card half the popover wide and one filling the Workbench are the
+        // same module with very different room; one hard-coded default left
+        // one of them sparse or crammed.
+        let minimum = ResetHistoryComparison.minimumComfortableColumnWidth
+        // Twelve cycles plus the live column need thirteen columns.
+        XCTAssertEqual(
+            ResetHistoryComparison.defaultWindow(chartWidth: 13 * minimum),
+            .twelve
+        )
+        // A hair under, and twelve would be hairlines — so eight it is.
+        XCTAssertEqual(
+            ResetHistoryComparison.defaultWindow(chartWidth: 13 * minimum - 1),
+            .eight
+        )
+        XCTAssertEqual(
+            ResetHistoryComparison.defaultWindow(chartWidth: 9 * minimum),
+            .eight
+        )
+        XCTAssertEqual(
+            ResetHistoryComparison.defaultWindow(chartWidth: 9 * minimum - 1),
+            .four
+        )
+    }
+
+    func testTheNarrowestStepIsTheFloorRatherThanUnreadableBars() {
+        // Fewer bars beats bars nobody can read, so the count stops coming
+        // down at the narrowest step instead of inventing a narrower one.
+        XCTAssertEqual(ResetHistoryComparison.defaultWindow(chartWidth: 10), .four)
+        XCTAssertEqual(ResetHistoryComparison.defaultWindow(chartWidth: 0), .four)
+    }
+
+    func testAllIsNeverChosenForYou() {
+        // On a lane with years of history it is exactly the choice that has to
+        // be made on purpose.
+        for width in stride(from: 0.0, through: 4_000.0, by: 37.0) {
+            XCTAssertNotEqual(ResetHistoryComparison.defaultWindow(chartWidth: width), .all)
+        }
+    }
+
+    func testTheOverviewCardWidthPicksTwelveAndANarrowerHostPicksEight() {
+        // The widths this card actually gets: an Overview column at regular
+        // density leaves ~217pt of plot once the label column is taken off.
+        XCTAssertEqual(ResetHistoryComparison.defaultWindow(chartWidth: 217), .twelve)
+        XCTAssertEqual(ResetHistoryComparison.defaultWindow(chartWidth: 160), .eight)
+    }
+
     // MARK: - Picker labels
 
     func testThePickerLabelsCarryTheUnitOfTheirAxis() {
@@ -818,8 +867,57 @@ final class ResetHistoryComparisonTests: XCTestCase {
             samples: [sample(bucketId: "weekly_fable", endingDaysAgo: 7, used: 10)]
         )
         let lane = ResetHistoryComparison.build(inputs: [input], now: now).lanes[0]
+        // The joined form is for prose — the tooltip and the screen reader —
+        // where there is no column to line levels up in.
         XCTAssertEqual(lane.label, "Anthropic · Claude · Fable · Weekly")
-        XCTAssertEqual(lane.labelWithoutCompany, "Claude · Fable · Weekly")
+    }
+
+    func testTheRowLabelIsTwoLevelsAndNeverJoinsThem() {
+        // The complaint: one wrapped string broke wherever the column ran out,
+        // so "ChatGPT Agentic · Weekly" sat on one line and "AntiGravity" over
+        // "Claude and GPT Models · Weekly" on the next, and no two rows agreed
+        // on where the SubProvider ended.
+        let input = lane(
+            id: "gpt_5_3_codex_spark_weekly", tool: .codex, company: "OpenAI",
+            subProvider: "ChatGPT Agentic", group: "GPT-5.3 Codex Spark",
+            bucketTitle: "Weekly",
+            samples: [sample(bucketId: "gpt_5_3_codex_spark_weekly", endingDaysAgo: 7, used: 10)]
+        )
+        let lane = ResetHistoryComparison.build(inputs: [input], now: now).lanes[0]
+        XCTAssertEqual(lane.subProvider, "ChatGPT Agentic")
+        // The group and the bucket are one level, so they stay joined.
+        XCTAssertEqual(lane.bucketLine, "GPT-5.3 Codex Spark · Weekly")
+        XCTAssertFalse(lane.subProvider.contains("·"))
+    }
+
+    func testALaneWithNoGroupPutsOnlyTheBucketOnTheSecondLine() {
+        let input = lane(
+            id: "weekly", company: "OpenAI", subProvider: "ChatGPT Agentic",
+            bucketTitle: "Weekly",
+            samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 10)]
+        )
+        let lane = ResetHistoryComparison.build(inputs: [input], now: now).lanes[0]
+        XCTAssertEqual(lane.subProvider, "ChatGPT Agentic")
+        XCTAssertEqual(lane.bucketLine, "Weekly")
+    }
+
+    func testTheAccountQualifierRidesOnTheSecondLine() {
+        // Line one stays exactly the SubProvider, so two accounts of the same
+        // provider are told apart on line two rather than by widening line one.
+        let input = ResetHistoryLaneInput(
+            accountId: "acct",
+            tool: .gemini,
+            bucketId: "weekly",
+            company: "Google AI",
+            subProvider: "Gemini Web",
+            bucketTitle: "Weekly",
+            accountLabel: "second account",
+            liveWindowSeconds: 7 * 86_400,
+            samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 10)]
+        )
+        let lane = ResetHistoryComparison.build(inputs: [input], now: now).lanes[0]
+        XCTAssertEqual(lane.subProvider, "Gemini Web")
+        XCTAssertEqual(lane.bucketLine, "Weekly · second account")
     }
 
     func testABucketTitleEqualToItsGroupIsNotRepeated() {
@@ -828,10 +926,11 @@ final class ResetHistoryComparisonTests: XCTestCase {
             group: "Weekly", bucketTitle: "Weekly",
             samples: [sample(bucketId: "grok_bot_weekly", endingDaysAgo: 7, used: 10)]
         )
-        XCTAssertEqual(
-            ResetHistoryComparison.build(inputs: [input], now: now).lanes[0].label,
-            "SpaceXAI · Grok Bot · Weekly"
-        )
+        let lane = ResetHistoryComparison.build(inputs: [input], now: now).lanes[0]
+        XCTAssertEqual(lane.label, "SpaceXAI · Grok Bot · Weekly")
+        // …and the row says it once, on the second line.
+        XCTAssertEqual(lane.subProvider, "Grok Bot")
+        XCTAssertEqual(lane.bucketLine, "Weekly")
     }
 
     // MARK: - Verdict
