@@ -43,6 +43,11 @@ final class MCPController: ObservableObject, MCPDataSource {
     /// to open the Workbench, which reads as a bug rather than as an empty
     /// index.
     private var didAttemptSessionBackfill = false
+    /// Built on the first `sessions.transcript` call. See `transcriptRegistry`.
+    private var registryStorage: SessionProviderRegistry?
+    /// Latched once the index is known to hold rows, so `readingSessions`
+    /// stops asking. See `isSessionIndexUnbuilt`.
+    private var didObservePopulatedIndex = false
 
     /// How long a connected client may say nothing before its socket is
     /// closed.
@@ -57,7 +62,7 @@ final class MCPController: ObservableObject, MCPDataSource {
     /// shorter than a day of leaving editors open.
     static let clientIdleTimeout: TimeInterval = 45 * 60
 
-    init(environment: AppEnvironment, socketPath: String = MCPSocketServer.defaultSocketPath) {
+    init(environment: AppEnvironment, socketPath: String = MCPSocketServer.configuredSocketPath) {
         self.environment = environment
         self.socketPath = socketPath
     }
@@ -331,47 +336,293 @@ final class MCPController: ObservableObject, MCPDataSource {
 
     // MARK: - MCPDataSource: sessions
 
+    /// The one door every session read goes through.
+    ///
+    /// `read` runs, and if the index has *never been built* the one-per-process
+    /// backfill runs and `read` is retried. It is a single entry point on
+    /// purpose: the backfill used to be remembered at each call site, and the
+    /// host-side `sessions.list` path was added without it — so a fresh
+    /// install with a `to` or `models` filter returned zero and never scanned.
+    ///
+    /// "Never been built" is asked of the store, not inferred from a zero-row
+    /// result. Inferring it made the door far too eager: an offset past the
+    /// last row, a filter that legitimately matches nothing, an unknown
+    /// transcript id — each of those is an ordinary empty answer, and each
+    /// used to kick off a filesystem-wide sweep of every provider's logs.
+    /// `isEmpty` survives only as a cheap gate on *asking*: rows in hand
+    /// already prove the index is populated, so the count query never runs on
+    /// the common path.
+    private func readingSessions<T>(
+        isEmpty: (T) -> Bool,
+        _ read: (SessionIndexService) async throws -> T
+    ) async throws -> T {
+        let index = try sessionIndexService()
+        let first = try await read(index)
+        guard isEmpty(first) else {
+            didObservePopulatedIndex = true
+            return first
+        }
+        guard await isSessionIndexUnbuilt(), await backfillSessionIndexIfNeeded(index) else {
+            return first
+        }
+        return try await read(index)
+    }
+
+    /// Has the session index never held a row?
+    ///
+    /// One `SELECT COUNT(*)` per process at most: a populated index latches
+    /// the flag and is never asked again, and an unpopulated one is answered
+    /// by the backfill's own one-shot guard.
+    private func isSessionIndexUnbuilt() async -> Bool {
+        if didObservePopulatedIndex { return false }
+        guard let store = environment?.sessionIndex.store else { return false }
+        let count = (try? await store.sessionCount()) ?? 0
+        if count > 0 {
+            didObservePopulatedIndex = true
+            return false
+        }
+        return true
+    }
+
     func searchSessions(
         query: String,
-        providers: [SessionProvider]?,
-        harnesses: [Harness]?,
+        filter: SessionQueryFilter,
+        limit: Int
+    ) async throws -> MCPSessionSearchOutcome {
+        // An explicitly empty list means "nothing" (see
+        // `SessionQueryFilter.matchesNothing`), and nothing is answerable
+        // without touching the index at all.
+        guard !filter.matchesNothing else { return MCPSessionSearchOutcome(hits: []) }
+        // The store ranks and caps, and `to`, `from` and `models` are ours to
+        // apply afterwards (it has no upper time bound and no model column
+        // filter). So the host-side filter runs *after* the ranking cut, and
+        // a query whose top hits are all excluded — searching with an old
+        // `to` bound against a term that matches mostly recent sessions — can
+        // starve a page of matches that exist further down.
+        //
+        // Escalate rather than accept that: ask for more ranked hits until
+        // the page is filled or the store's own ceiling is reached. At most
+        // two passes, and FTS ranking is the fast part of this query.
+        let needsHostFilter = !(filter.isAnsweredEntirelyByTheIndex && filter.from == nil)
+        return try await readingSessions(isEmpty: \.hits.isEmpty) { index in
+            var wanted = needsHostFilter
+                ? min(limit * Self.searchOverFetchFactor, Self.searchOverFetchCap)
+                : limit
+            var matched: [SessionSearchHit] = []
+            var sawEverything = false
+            while true {
+                let hits = try await Self.rankedHits(
+                    index, query: query, filter: filter, limit: wanted
+                )
+                matched = hits.filter { filter.matches($0.summary) }
+                // Fewer hits than asked for means the store had no more to
+                // rank, so nothing is hiding below the cut.
+                sawEverything = hits.count < wanted
+                if matched.count >= limit || sawEverything || wanted >= Self.searchRankingCeiling {
+                    break
+                }
+                wanted = Self.searchRankingCeiling
+            }
+            // Silence is the one wrong answer here: an agent cannot tell
+            // "nothing matches" from "the ranking cut ate the matches".
+            let incomplete = matched.count < limit && !sawEverything
+            return MCPSessionSearchOutcome(
+                hits: Array(matched.prefix(limit)),
+                notice: incomplete
+                    ? "Filters ran after the ranking cut: the top \(wanted) hits for this query "
+                        + "yielded \(matched.count) match(es), and more may exist below the cut. "
+                        + "Narrow 'query', or widen 'from' / 'to' / 'models' / 'projectDir'."
+                    : nil
+            )
+        }
+    }
+
+    /// Over-fetch multiplier and the ceiling on one ranked pass.
+    private static let searchOverFetchFactor = 4
+    private static let searchOverFetchCap = 200
+    /// `SessionIndexStore.search` clamps its own limit here, so asking for
+    /// more than this returns the same rows.
+    private static let searchRankingCeiling = 500
+    /// How many index rows a host-side-filtered `sessions.list` will walk
+    /// before it stops and says so. Eight store pages at 11 000 indexed
+    /// sessions — enough to page deep into a filtered view, bounded enough
+    /// that a pathological filter cannot turn one tool call into a full scan.
+    private static let listScanCap = 4_000
+    private static let listStorePageSize = 500
+
+    private nonisolated static func rankedHits(
+        _ index: SessionIndexService,
+        query: String,
+        filter: SessionQueryFilter,
         limit: Int
     ) async throws -> [SessionSearchHit] {
-        let index = try sessionIndexService()
-        var hits = try await index.search(query, providers: providers, harnesses: harnesses, limit: limit)
-        if hits.isEmpty, await backfillSessionIndexIfNeeded(index) {
-            hits = try await index.search(query, providers: providers, harnesses: harnesses, limit: limit)
-        }
-        return hits
+        try await index.search(
+            query,
+            providers: filter.providers,
+            harnesses: filter.harnesses,
+            projectIncludes: filter.projectIncludes,
+            limit: limit
+        )
     }
 
     func listSessions(
-        providers: [SessionProvider]?,
-        harnesses: [Harness]?,
-        since: Date?,
+        filter: SessionQueryFilter,
+        offset: Int,
+        limit: Int
+    ) async throws -> MCPSessionListing {
+        guard !filter.matchesNothing else {
+            return MCPSessionListing(
+                summaries: [], totalCount: 0, offset: offset, limit: limit, hasMore: false
+            )
+        }
+        // Both paths go through `readingSessions`, so a fresh install
+        // backfills and retries whichever one the filter selected.
+        return try await readingSessions(isEmpty: \.summaries.isEmpty) { index in
+            // Fast path: the index can answer all of it, so its own count and
+            // offset describe exactly the rows returned.
+            if filter.isAnsweredEntirelyByTheIndex {
+                let page = try await Self.storePage(
+                    index, filter: filter, offset: offset, limit: limit
+                )
+                return MCPSessionListing(
+                    summaries: page.summaries,
+                    totalCount: page.totalCount,
+                    offset: page.offset,
+                    limit: page.limit,
+                    hasMore: page.offset + page.summaries.count < page.totalCount
+                )
+            }
+
+            // Host-side path: walk the index in store pages and filter as we
+            // go. `totalCount` is withheld rather than reported — the store's
+            // count describes the rows before `to` / `models` ran.
+            var kept: [SessionSummary] = []
+            var scanned = 0
+            var storeOffset = 0
+            var exhausted = false
+            // One past the last row this page needs, so the loop knows when to
+            // stop instead of draining the index.
+            let needed = offset + limit + 1
+            while kept.count < needed, scanned < Self.listScanCap {
+                let page = try await Self.storePage(
+                    index, filter: filter, offset: storeOffset, limit: Self.listStorePageSize
+                )
+                guard !page.summaries.isEmpty else { exhausted = true; break }
+                scanned += page.summaries.count
+                storeOffset += page.summaries.count
+                kept.append(contentsOf: page.summaries.filter(filter.matches))
+                if storeOffset >= page.totalCount { exhausted = true; break }
+            }
+            let window = Array(kept.dropFirst(offset).prefix(limit))
+            let hasMore = kept.count > offset + window.count || !exhausted
+            return MCPSessionListing(
+                summaries: window,
+                totalCount: exhausted && scanned < Self.listScanCap ? kept.count : nil,
+                offset: offset,
+                limit: limit,
+                hasMore: hasMore,
+                notice: scanned >= Self.listScanCap
+                    ? "Stopped after examining \(scanned) indexed sessions; 'to' and 'models' are "
+                        + "applied after the index query. Narrow 'from', 'projectDir' or 'harnesses' "
+                        + "to see further back."
+                    : nil
+            )
+        }
+    }
+
+    private nonisolated static func storePage(
+        _ index: SessionIndexService,
+        filter: SessionQueryFilter,
         offset: Int,
         limit: Int
     ) async throws -> SessionSummaryPage {
-        let index = try sessionIndexService()
-        var page = try await index.summaryPage(
-            providers: providers,
-            harnesses: harnesses,
-            since: since,
+        try await index.summaryPage(
+            providers: filter.providers,
+            harnesses: filter.harnesses,
+            since: filter.from,
+            projectIncludes: filter.projectIncludes,
             order: .recentFirst,
             offset: offset,
             limit: limit
         )
-        if page.totalCount == 0, await backfillSessionIndexIfNeeded(index) {
-            page = try await index.summaryPage(
-                providers: providers,
-                harnesses: harnesses,
-                since: since,
-                order: .recentFirst,
-                offset: offset,
-                limit: limit
+    }
+
+    // MARK: - MCPDataSource: transcripts
+
+    /// The raw registry, built once. The *bounded* one lives on
+    /// `SharedSessionIndex` and belongs to the indexer; a transcript read
+    /// wants whole messages, bounded by bytes rather than by excerpt policy.
+    private var transcriptRegistry: SessionProviderRegistry {
+        if let registryStorage { return registryStorage }
+        let registry = SessionProviderRegistry.standard(homeDirectory: RealHomeDirectory.path)
+        registryStorage = registry
+        return registry
+    }
+
+    func sessionTranscript(
+        locator: SessionLocator,
+        window: TranscriptWindowRequest
+    ) async throws -> SessionTranscriptResult {
+        let found = try await readingSessions(isEmpty: { $0 == nil }) { index in
+            try await index.summary(provider: locator.provider, sessionID: locator.sessionID)
+        }
+        guard let summary = found else {
+            throw MCPToolFailure(
+                "No indexed \(locator.provider.displayName) session with id '\(locator.sessionID)'. "
+                    + "The index is as fresh as Vibe Bar's last sweep, so a session created moments "
+                    + "ago may not be in it yet. Use sessions.search or sessions.list to get an id."
             )
         }
-        return page
+        guard let adapter = transcriptRegistry.adapter(for: summary.provider) else {
+            throw MCPToolFailure("No reader is registered for \(summary.provider.displayName).")
+        }
+        let scratch = VibeBarLocalStore.sessionIndexScratchDirectoryURL(
+            homeDirectory: RealHomeDirectory.path
+        )
+        // Off the main actor, and off the index actor: the read is the
+        // expensive part and neither of those may wait on it.
+        let read = try await Self.readWindow(
+            adapter: adapter,
+            url: URL(fileURLWithPath: summary.sourcePath),
+            request: window,
+            scratchDirectory: scratch
+        )
+        return SessionTranscriptResult(summary: summary, window: read)
+    }
+
+    /// Same shape as the Workbench's transcript parse: a held detached task
+    /// with its cancellation forwarded, so a client that disconnects mid-read
+    /// actually stops the parse instead of only stopping the wait.
+    private nonisolated static func readWindow(
+        adapter: any SessionProviderAdapter,
+        url: URL,
+        request: TranscriptWindowRequest,
+        scratchDirectory: URL
+    ) async throws -> TranscriptWindow {
+        let handle = Task.detached(priority: .userInitiated) {
+            try SessionIndexingBounds.readTranscriptWindow(
+                adapter: adapter,
+                fileURL: url,
+                request: request,
+                scratchDirectory: scratchDirectory
+            )
+        }
+        return try await withTaskCancellationHandler {
+            do {
+                return try await handle.value
+            } catch is CancellationError {
+                throw MCPToolFailure("The transcript read was cancelled.")
+            } catch {
+                // Never the raw error: a parse failure's description can carry
+                // the path, and this string goes to an agent and into logs.
+                throw MCPToolFailure(
+                    "This session's log could not be read: "
+                        + SafeLog.sanitize(error.localizedDescription)
+                )
+            }
+        } onCancel: {
+            handle.cancel()
+        }
     }
 
     /// The app-wide index, opened on this call if nothing has needed it yet.

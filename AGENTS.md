@@ -512,12 +512,71 @@ and it is documented rather than hidden for that reason.
 
 **Tools.** `quota.get`, `quota.refresh`, `usage.summary`, `usage.trend`,
 `usage.requests`, `cost.snapshot`, `cost.history`, `sessions.search`,
-`sessions.list`, `status.get`, `pricing.effective`, `skills.install`, plus the
+`sessions.list`, `sessions.transcript`, `status.get`, `pricing.effective`,
+`skills.install`, plus the
 `vibebar://naming-spec` and `vibebar://tools` resources. The naming-spec
 resource is **generated** from `ProviderHierarchyCatalog`, `ToolType` and
 `HarnessCatalog` — never transcribe § 7.1 into it by hand, because a stale
 spec teaches a model a label that no longer exists. `MCPResourceCatalogTests`
-enforces that every harness, company and provider key appears.
+enforces that every harness, company and provider key appears, and that
+`vibebar://tools` routes every tool in the catalog — a new tool that nobody
+can find is a new tool nobody will call.
+
+**The session tools are the local session manager.** `sessions.search` finds
+another agent's working session by what was said in it, `sessions.list` by
+project or time, and `sessions.transcript` reads one. They share one filter
+vocabulary with `usage.*` — `from`, `to`, `models`, `harnesses` — plus
+`projectDir`, which is a case-insensitive **substring** of the working
+directory because that is what `SessionIndexStore.summaryPage` implements in
+SQL; a host-side prefix re-filter would leave the store's `totalCount`
+describing a wider set than the rows returned. `to` and `models` are the two
+the store cannot answer, so they run host-side over a bounded scan and the
+count is withheld rather than misreported (`hasMore` stays truthful);
+`SessionQueryFilter.isAnsweredEntirelyByTheIndex` is the one place that rule
+lives. `sessions.list` still accepts its original `since` as an alias for
+`from`.
+
+`sessions.transcript` returns **bounded windows**, never a whole log. It goes
+through `SessionIndexingBounds.readTranscriptWindow`, which is a wrapper
+around the same `readTranscript` the Workbench viewer uses — one read path,
+one cancellation story, one scratch sweep. There is no seek: a message index
+cannot become a byte offset without parsing, because not every line of a
+rollout produces a message. So the reader *escalates* — 1 MiB, then a limit
+estimated from the bytes-per-message it just measured, up to
+`agentTranscriptByteCeiling` (32 MiB) — and stops the moment it has the
+requested window. Two consequences worth knowing: `totalMessageCount` is
+absent whenever the read stopped short of the end (usually), and a window
+that lies past the ceiling comes back empty with a `readCeiling` reason and
+**no** cursor, so a model cannot loop on it. A search hit's `matchedSeq` is
+always reachable, because the indexer only ever read the first
+`SessionIndexExcerptPolicy.headParseByteLimit` (8 MiB) of the log — anything
+findable is inside the window. Responses are capped by message count, by a
+UTF-8 budget, and per message; every cap that bit is named in
+`truncationReasons`.
+
+Reads resolve **through the index**: the tool takes `id` or
+`sessionId` + `provider`, never a path, so an agent can only open files Vibe
+Bar already discovered under a provider's own roots. The parse runs on a held
+detached task off both the main actor and the index actor.
+
+Three refusals are deliberate, because a tool an agent calls in a loop must
+never answer with silence or a stall. A store outside
+`headTruncatableProviders` — Cursor, AntiGravity, Grok, Grok Bot — cannot be
+bounded at all, so above the ceiling `readTranscriptWindow` throws
+`TranscriptReadRefusal.wholeFileOnly` naming the size instead of parsing the
+whole thing. A window whose cursor could not advance (the read never reached
+it, or the role filter can never match) returns **no** cursor rather than one
+that repeats the same page. And `sessions.search` applies its host-side
+filters after the index's ranking cut, so when a page comes back short because
+of that cut it says so in `notice` — an agent cannot otherwise tell "nothing
+matches" from "the cut ate the matches".
+
+The backfill for a never-built index lives behind one door
+(`MCPController.readingSessions`) shared by all three reads, and that door asks
+the store whether it has ever held a row. It must not infer it from a zero-row
+result: an offset past the end, a filter that matches nothing and an unknown id
+are all ordinary empty answers, and treating them as "unbuilt" turned each one
+into a filesystem-wide sweep.
 
 **Privacy.** Everything is read-only except two tools. `quota.refresh`
 is gated on `AppSettings.mcpServer.allowRefreshTools` and throttled to

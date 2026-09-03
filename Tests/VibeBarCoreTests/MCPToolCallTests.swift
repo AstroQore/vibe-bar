@@ -311,6 +311,254 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(result["offset"]?.intValue, 0)
         XCTAssertEqual(result["totalCount"]?.intValue, 1)
         XCTAssertEqual(result["sessions"]?.arrayValue?.count, 1)
+        XCTAssertEqual(result["hasMore"]?.boolValue, false)
+    }
+
+    // MARK: - session filters
+
+    /// One vocabulary across the surface: `sessions.*` narrows with the same
+    /// `from` / `to` / `models` / `harnesses` that `usage.*` uses.
+    func testSessionFiltersReachTheDataSourceOnBothTools() async throws {
+        let arguments = MCPJSON.object([
+            "query": .string("socket"),
+            "harnesses": .array([.string("codex")]),
+            "providers": .array([.string("codex")]),
+            "projectDir": .string("vibe-bar"),
+            "from": .string("2026-01-01T00:00:00Z"),
+            "to": .string("2026-02-01T00:00:00Z"),
+            "models": .array([.string("gpt-5-codex")])
+        ])
+        _ = try await call("sessions.search", arguments)
+        var filter = try XCTUnwrap(source.lastSessionFilter)
+        XCTAssertEqual(filter.harnesses, [.codex])
+        XCTAssertEqual(filter.providers, [.codex])
+        XCTAssertEqual(filter.projectDir, "vibe-bar")
+        XCTAssertEqual(filter.from, Date(timeIntervalSince1970: 1_767_225_600))
+        XCTAssertEqual(filter.to, Date(timeIntervalSince1970: 1_769_904_000))
+        XCTAssertEqual(filter.models, ["gpt-5-codex"])
+
+        var listArguments = arguments
+        if case var .object(fields) = listArguments {
+            fields.removeValue(forKey: "query")
+            listArguments = .object(fields)
+        }
+        _ = try await call("sessions.list", listArguments)
+        filter = try XCTUnwrap(source.lastSessionFilter)
+        XCTAssertEqual(filter.projectDir, "vibe-bar")
+        XCTAssertEqual(filter.models, ["gpt-5-codex"])
+    }
+
+    /// `since` was `sessions.list`'s original spelling. It keeps working, and
+    /// `from` wins when a caller sends both.
+    func testSinceStillWorksAsAnAliasForFrom() async throws {
+        _ = try await call("sessions.list", .object(["since": .string("2026-01-01T00:00:00Z")]))
+        XCTAssertEqual(
+            try XCTUnwrap(source.lastSessionFilter).from,
+            Date(timeIntervalSince1970: 1_767_225_600)
+        )
+        _ = try await call("sessions.list", .object([
+            "since": .string("2020-01-01T00:00:00Z"),
+            "from": .string("2026-01-01T00:00:00Z")
+        ]))
+        XCTAssertEqual(
+            try XCTUnwrap(source.lastSessionFilter).from,
+            Date(timeIntervalSince1970: 1_767_225_600)
+        )
+    }
+
+    func testAnInvertedSessionWindowIsRejected() async throws {
+        let response = try MCPTestSupport.decode(
+            await server.handle(line: MCPTestSupport.call(
+                id: 1,
+                tool: "sessions.list",
+                arguments: .object([
+                    "from": .string("2026-02-01T00:00:00Z"),
+                    "to": .string("2026-01-01T00:00:00Z")
+                ])
+            ))
+        )
+        XCTAssertEqual(response["error"]?["code"]?.intValue, -32_602)
+    }
+
+    /// An empty list reaches the data source as an empty list, not as `nil`.
+    /// That is what lets `SessionQueryFilter` read it as "nothing" — the same
+    /// rule `quota.get`'s `tools: []` follows.
+    func testAnEmptySessionFilterListStaysEmptyRatherThanBecomingUnfiltered() async throws {
+        _ = try await call("sessions.list", .object([
+            "models": .array([]),
+            "harnesses": .array([])
+        ]))
+        let filter = try XCTUnwrap(source.lastSessionFilter)
+        XCTAssertEqual(filter.models, [])
+        XCTAssertEqual(filter.harnesses, [])
+        XCTAssertTrue(filter.matchesNothing)
+
+        _ = try await call("sessions.list", .object([:]))
+        let unfiltered = try XCTUnwrap(source.lastSessionFilter)
+        XCTAssertNil(unfiltered.models)
+        XCTAssertNil(unfiltered.harnesses)
+        XCTAssertFalse(unfiltered.matchesNothing)
+    }
+
+    func testAnEmptyRolesListReachesTheTranscriptWindowAsAnEmptySet() async throws {
+        _ = try await call("sessions.transcript", .object([
+            "sessionId": .string("sess-42"),
+            "provider": .string("claude"),
+            "roles": .array([])
+        ]))
+        XCTAssertEqual(source.lastTranscriptWindow?.roles, [])
+    }
+
+    /// Filters run after the index's ranking cut, so a short page can mean
+    /// "nothing matches" or "the matches are below the cut". An agent cannot
+    /// tell those apart from an empty array, so the payload says which.
+    func testSearchSurfacesTheRankingCutRatherThanReturningASilentEmptyPage() async throws {
+        source.searchHits = []
+        source.searchNotice = "Filters ran after the ranking cut: the top 200 hits for this "
+            + "query yielded 0 match(es), and more may exist below the cut."
+        let result = try await call("sessions.search", .object([
+            "query": .string("socket"),
+            "to": .string("2020-01-01T00:00:00Z")
+        ]))
+        XCTAssertEqual(result["sessions"]?.arrayValue?.count, 0)
+        let notice = try XCTUnwrap(result["notice"]?.stringValue)
+        XCTAssertTrue(notice.contains("below the cut"), notice)
+    }
+
+    func testACompleteSearchCarriesNoNotice() async throws {
+        let result = try await call("sessions.search", .object(["query": .string("socket")]))
+        XCTAssertEqual(result["sessions"]?.arrayValue?.count, 1)
+        XCTAssertNil(result["notice"], "a full page must not be labelled incomplete")
+    }
+
+    func testAHostSideFilterWithholdsTheCountAndSaysWhy() async throws {
+        source.listTotalCount = nil
+        source.listHasMore = true
+        source.listNotice = "Stopped after examining 4000 indexed sessions."
+        let result = try await call("sessions.list", .object(["models": .array([.string("gpt-5")])]))
+        XCTAssertNil(result["totalCount"], "the store's count describes a wider set than the rows")
+        XCTAssertEqual(result["hasMore"]?.boolValue, true)
+        XCTAssertNotNil(result["notice"]?.stringValue)
+    }
+
+    // MARK: - sessions.transcript
+
+    func testTranscriptReadsAWindowAroundAMatch() async throws {
+        let result = try await call("sessions.transcript", .object([
+            "id": .string("claude:sess-42:/Users/example/.claude/projects/x/sess-42.jsonl"),
+            "around": .int(4),
+            "radius": .int(1)
+        ]))
+        XCTAssertEqual(source.lastTranscriptLocator?.provider, .claude)
+        XCTAssertEqual(source.lastTranscriptLocator?.sessionID, "sess-42")
+        XCTAssertEqual(source.lastTranscriptWindow?.around, 4)
+        XCTAssertEqual(source.lastTranscriptWindow?.radius, 1)
+
+        let messages = try XCTUnwrap(result["messages"]?.arrayValue)
+        XCTAssertEqual(messages.compactMap { $0["seq"]?.intValue }, [3, 4, 5])
+        XCTAssertEqual(messages.first?["role"]?.stringValue, "assistant")
+        XCTAssertEqual(messages.first?["text"]?.stringValue, "message 3")
+        XCTAssertEqual(messages.first?["textBytes"]?.intValue, 9)
+        XCTAssertNil(messages.first?["textTruncated"], "absent unless the text was actually cut")
+        XCTAssertEqual(result["firstSeq"]?.intValue, 3)
+        XCTAssertEqual(result["lastSeq"]?.intValue, 5)
+        XCTAssertEqual(result["totalMessageCount"]?.intValue, 8)
+        XCTAssertEqual(result["truncated"]?.boolValue, false)
+        // The session it belongs to travels with it, so a caller that started
+        // from a bare sessionId does not need a second round trip to label it.
+        XCTAssertEqual(result["session"]?["harness"]?.stringValue, "claudeCode")
+    }
+
+    func testTranscriptPagesWithACursor() async throws {
+        let first = try await call("sessions.transcript", .object([
+            "sessionId": .string("sess-42"),
+            "provider": .string("claude"),
+            "from": .int(0),
+            "limit": .int(3)
+        ]))
+        XCTAssertEqual(first["hasMore"]?.boolValue, true)
+        let next = try XCTUnwrap(first["nextFrom"]?.intValue)
+        XCTAssertEqual(next, 3)
+
+        let second = try await call("sessions.transcript", .object([
+            "sessionId": .string("sess-42"),
+            "provider": .string("claude"),
+            "from": .int(Int64(next)),
+            "limit": .int(10)
+        ]))
+        XCTAssertEqual(
+            second["messages"]?.arrayValue?.compactMap { $0["seq"]?.intValue },
+            [3, 4, 5, 6, 7]
+        )
+        XCTAssertEqual(second["hasMore"]?.boolValue, false)
+        XCTAssertNil(second["nextFrom"], "the last page must not hand back a cursor")
+    }
+
+    func testTranscriptRolesThinTheWindow() async throws {
+        let result = try await call("sessions.transcript", .object([
+            "sessionId": .string("sess-42"),
+            "provider": .string("claude"),
+            "from": .int(0),
+            "limit": .int(6),
+            "roles": .array([.string("user")])
+        ]))
+        XCTAssertEqual(
+            result["messages"]?.arrayValue?.compactMap { $0["seq"]?.intValue },
+            [0, 2, 4]
+        )
+    }
+
+    func testTranscriptSaysWhenTheReadStoppedShort() async throws {
+        source.transcriptReachedEndOfFile = false
+        let result = try await call("sessions.transcript", .object([
+            "sessionId": .string("sess-42"),
+            "provider": .string("claude"),
+            "around": .int(500)
+        ]))
+        XCTAssertEqual(result["truncated"]?.boolValue, true)
+        XCTAssertEqual(result["truncationReasons"]?.arrayValue?.compactMap { $0.stringValue },
+                       ["readCeiling"])
+        XCTAssertNil(result["totalMessageCount"])
+        XCTAssertNil(result["nextFrom"], "retrying the identical call would loop")
+        XCTAssertTrue(try XCTUnwrap(result["notice"]?.stringValue).contains("bounded read"))
+    }
+
+    func testTranscriptNeedsASessionAndRejectsNonsenseIds() async throws {
+        for arguments in [
+            MCPJSON.object([:]),
+            .object(["sessionId": .string("sess-42")]),
+            .object(["id": .string("not-a-provider:sess-42:/x")])
+        ] {
+            let response = try MCPTestSupport.decode(
+                await server.handle(line: MCPTestSupport.call(
+                    id: 1, tool: "sessions.transcript", arguments: arguments
+                ))
+            )
+            XCTAssertEqual(
+                response["error"]?["code"]?.intValue, -32_602,
+                "\(arguments) should be an argument error"
+            )
+        }
+    }
+
+    /// An unknown session is a tool failure the model can act on, not a
+    /// protocol error — and the message has to explain the index's freshness
+    /// rather than implying the session does not exist.
+    func testAnUnindexedSessionExplainsTheIndexRatherThanFailingBlankly() async throws {
+        source.transcriptFailure = "No indexed Claude Code session with id 'nope'. "
+            + "The index is as fresh as Vibe Bar's last sweep."
+        let response = try MCPTestSupport.decode(
+            await server.handle(line: MCPTestSupport.call(
+                id: 1,
+                tool: "sessions.transcript",
+                arguments: .object(["sessionId": .string("nope"), "provider": .string("claude")])
+            ))
+        )
+        XCTAssertNil(response["error"], "a missing session is a tool result, not a JSON-RPC error")
+        XCTAssertTrue(MCPTestSupport.isError(response))
+        XCTAssertTrue(
+            try XCTUnwrap(MCPTestSupport.errorText(response)).contains("last sweep")
+        )
     }
 
     // MARK: - status and pricing

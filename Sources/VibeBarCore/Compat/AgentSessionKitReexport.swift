@@ -63,6 +63,27 @@ extension MCPSocketServer {
         VibeBarLocalStore.baseDirectory.appendingPathComponent("mcp.sock").path
     }
 
+    /// Where *this* process should listen.
+    ///
+    /// `VIBEBAR_MCP_SOCKET` moves it, which is what `AGENTS.md` § 5.1 has
+    /// always said the variable is for — "tests (and a second build) can
+    /// point at a temporary socket". Only the stdio bridge honoured it,
+    /// though, so a second build still bound `~/.vibebar/mcp.sock` and took
+    /// it from the copy the user is actually running. Both halves read it
+    /// now, so a development build and the installed app can serve side by
+    /// side.
+    ///
+    /// The directory of a custom path is not created here: the convenience
+    /// initializer below only ever chmods Vibe Bar's own directory, because
+    /// locking down a path it was merely handed is not its business.
+    public static var configuredSocketPath: String {
+        let override = ProcessInfo.processInfo
+            .environment[MCPStdioBridge.socketPathEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let override, !override.isEmpty else { return defaultSocketPath }
+        return override
+    }
+
     /// Bind Vibe Bar's dispatch to a socket.
     ///
     /// Only the app's own directory is created (and forced to 0700). A custom
