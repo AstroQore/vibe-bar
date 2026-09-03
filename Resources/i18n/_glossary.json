@@ -40,19 +40,20 @@
     "Grok Bot"
   ],
   "products": [
+    "Chrome",
+    "Finder",
+    "Firefox",
+    "GitHub",
+    "Keychain",
+    "MCP",
+    "Safari",
+    "Sparkle",
+    "Terminal",
     "Vibe Bar",
     "Workbench",
-    "Sparkle",
-    "Keychain",
-    "Terminal",
+    "agent-session-kit",
     "iTerm2",
-    "Finder",
-    "Safari",
-    "Chrome",
-    "Firefox",
-    "macOS",
-    "MCP",
-    "GitHub"
+    "macOS"
   ],
   "modelFamilies": [
     "Sonnet",

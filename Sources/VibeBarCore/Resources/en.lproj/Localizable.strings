@@ -2,14 +2,23 @@
    Resources/i18n/en.json. Do not edit: LocalizationCatalogTests
    regenerates this file and fails on a diff. */
 
+/* Button that appends an entry to a list */
+"common.add" = "Add";
+
 /* Filter chip or menu entry that selects every item. */
 "common.all" = "All";
+
+/* Picker option and field placeholder meaning 'let Vibe Bar decide' */
+"common.auto" = "Auto";
 
 /* Button that abandons an action in progress. */
 "common.cancel" = "Cancel";
 
 /* Button that empties a search field or resets a filter. */
 "common.clear" = "Clear";
+
+/* Confirmation shown in place of the Copy button */
+"common.copied" = "Copied";
 
 /* Button that copies the adjacent value to the clipboard. */
 "common.copy" = "Copy";
@@ -65,6 +74,9 @@
 /* Button that closes a sheet or leaves an editing mode. */
 "common.done" = "Done";
 
+/* Tooltip on a drag handle */
+"common.dragToReorder" = "Drag to reorder";
+
 /* Compact countdown, whole days only */
 "common.duration.days" = "%1$lldd";
 
@@ -86,6 +98,9 @@
 /* Countdown that has reached zero */
 "common.duration.now" = "now";
 
+/* Field label for a user-chosen name */
+"common.name" = "Name";
+
 /* A toggle's state, read as a value in a summary row */
 "common.off" = "Off";
 
@@ -101,14 +116,26 @@
 /* A whole percentage. Both languages use the sign the same way; the key exists so a language that does not can move it. */
 "common.percent" = "%1$lld%%";
 
+/* Picker label for choosing a provider */
+"common.provider" = "Provider";
+
 /* Generic refresh button and tooltip */
 "common.refresh" = "Refresh";
 
 /* Tooltip on a per-card refresh button */
 "common.refreshSection" = "Refresh this section";
 
+/* Button that takes an item out of a list */
+"common.remove" = "Remove";
+
 /* Button on a failure state */
 "common.retry" = "Retry";
+
+/* Button that retries immediately, skipping a cooldown */
+"common.retryNow" = "Retry now";
+
+/* Button that commits an edited value */
+"common.save" = "Save";
 
 /* Freshness line under five seconds old */
 "common.updated.justNow" = "Updated just now";
@@ -968,6 +995,99 @@
 /* Inline error row; reason is a provider message and is not translated */
 "quota.update.failed" = "Update failed: %1$@";
 
+/* Hint under the Antigravity source picker */
+"settings.antigravityCookieEnabled" = "Antigravity cookie import is enabled — sign in at antigravity.google first.";
+
+/* Hint under the Antigravity source picker */
+"settings.antigravityLocalOnly" = "Antigravity reads the locally running language server. Cookie import is deferred until the Antigravity Cloud endpoint ships.";
+
+/* Picker label */
+"settings.antigravitySource" = "Antigravity source";
+
+/* Current version line; version is a raw version string */
+"settings.appVersion" = "Vibe Bar %1$@";
+
+/* Badge on the version currently compiled in */
+"settings.bundled" = "bundled";
+
+/* Button that probes a company's credentials; company is an L1 company name and is never translated */
+"settings.checkConnections" = "Check %1$@ connections";
+
+/* Button label */
+"settings.checkForUpdates" = "Check for Updates…";
+
+/* Button that queries GitHub for a newer agent-session-kit */
+"settings.checkKitUpdates" = "Check for kit updates";
+
+/* Progress line while an update check runs */
+"settings.checkingGitHub" = "Checking github.com for the newest release…";
+
+/* Button label */
+"settings.clearCostData" = "Clear cost data";
+
+/* Heading over the per-provider connection rows */
+"settings.connectionHealth" = "Connection health";
+
+/* Intro under the Cost Data heading */
+"settings.costDataIntro" = "Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.";
+
+/* Error under the delete-cookies button */
+"settings.couldNotDeleteCookies" = "Could not delete saved cookies.";
+
+/* Error line */
+"settings.couldNotDeleteGeminiCookies" = "Could not delete saved Gemini cookies.";
+
+/* Error line */
+"settings.couldNotDeleteGrokCookies" = "Could not delete saved Grok cookies.";
+
+/* Credential state line */
+"settings.cursorNoSession" = "No usable Cursor.app session — import cursor.com cookies below.";
+
+/* Credential state line */
+"settings.cursorSessionDetected" = "Cursor.app signed-in session detected";
+
+/* Row label */
+"settings.cursorSource" = "Cursor source";
+
+/* Value beside the Cursor source row */
+"settings.cursorSourceValue" = "Cursor.app → Web";
+
+/* Button that clears a provider's stored cookies */
+"settings.deleteCookies" = "Delete cookies";
+
+/* Button label */
+"settings.deleteGeminiCookies" = "Delete Gemini cookies";
+
+/* Button label */
+"settings.deleteGrokCookies" = "Delete Grok cookies";
+
+/* Banner shown when a second client overwrote a setting this one had changed */
+"settings.externalChange.title" = "Another Vibe Bar replaced your change";
+
+/* Confirmation line */
+"settings.geminiCookiesSaved" = "Gemini cookies saved.";
+
+/* Explanation on the Google AI settings page */
+"settings.geminiShared" = "Gemini and Antigravity share the same Google AI subscription quota. Cookie import is the only supported web path — there is no WebView login.";
+
+/* Row label for where Gemini quota is read from */
+"settings.geminiSource" = "Gemini source";
+
+/* Credential state line; the path is never translated */
+"settings.grokAuthDetected" = "~/.grok/auth.json detected";
+
+/* Confirmation line */
+"settings.grokCookiesSaved" = "Grok cookies saved.";
+
+/* Picker label for the retention window */
+"settings.keepHistory" = "Keep history";
+
+/* Caption under the retention picker */
+"settings.keepHistoryDetail" = "Applies to cost history and subscription fill history.";
+
+/* Description of the bundled agent-session-kit component */
+"settings.kitDetail" = "Session discovery, harness naming, and the MCP transport. A separate repository, pinned to an exact tag and compiled into this build.";
+
 /* Caption under the language picker in Settings */
 "settings.language.caption" = "Vibe Bar follows the macOS language unless you pick one here. Provider, model and harness names stay as their owners spell them.";
 
@@ -976,6 +1096,576 @@
 
 /* Settings row label for the in-app language override */
 "settings.language.title" = "Language";
+
+/* Toggle label */
+"settings.mcp.allowRefresh" = "Allow agents to refresh quota";
+
+/* Caption under the refresh toggle; quota.refresh is an MCP tool name and is never translated */
+"settings.mcp.allowRefreshDetail" = "With this on, an agent can ask Vibe Bar to re-fetch quota from your providers. Forced refreshes are rate-limited to one every %1$lld seconds. With it off the read-only tools keep working and quota.refresh reports that refreshing is disabled.";
+
+/* Toggle label */
+"settings.mcp.allowSkills" = "Allow agents to install skills";
+
+/* Caption under the skills toggle; skills.install is an MCP tool name */
+"settings.mcp.allowSkillsDetail" = "With this on, an agent can call skills.install to add a skill from a GitHub repository or a local folder. It goes through the same Skills manager as Workbench → Skills, so it writes only to ~/.agents/skills and the agent skills directories Vibe Bar manages — never over a folder a different skill already holds. With it off the tool reports that installing is disabled.";
+
+/* Caption on a copyable config snippet; the path is never translated */
+"settings.mcp.appendCodexConfig" = "Append to ~/.codex/config.toml.";
+
+/* Sub-heading over the setup instructions */
+"settings.mcp.connectAgent" = "Connect an agent";
+
+/* Row label for the live connection count */
+"settings.mcp.connectedClients" = "Connected clients";
+
+/* Toggle label */
+"settings.mcp.enable" = "Enable the local MCP server";
+
+/* Intro paragraph of the MCP settings section */
+"settings.mcp.intro" = "Vibe Bar can expose this Mac's quota, usage, cost and local agent sessions to your coding agents over MCP. The server listens on a Unix domain socket in your home directory — no network port is opened, and no token is created: the socket's file permissions are the access control.";
+
+/* Row label for when a client last spoke to the server */
+"settings.mcp.lastActivity" = "Last client activity";
+
+/* MCP server state: the socket is accepting connections */
+"settings.mcp.listening" = "Listening";
+
+/* Intro to the manual client configuration snippets; flag is a command-line flag and is never translated */
+"settings.mcp.manualIntro" = "Or configure a client by hand. Every client runs the same command — Vibe Bar's own binary with %1$@, which bridges stdin/stdout to the socket above.";
+
+/* Caption on a copyable config snippet */
+"settings.mcp.mergeCursorConfig" = "Merge into ~/.cursor/mcp.json.";
+
+/* Warning shown when the app runs from a build directory; path is a filesystem path */
+"settings.mcp.movePrompt" = "Vibe Bar is running from %1$@. Move it to /Applications before saving a client config, or the config breaks the next time you rebuild.";
+
+/* MCP server state: the socket is closed */
+"settings.mcp.notListening" = "Not listening";
+
+/* Heading for the generic client snippet */
+"settings.mcp.otherStdioClient" = "Any other stdio client";
+
+/* Caption on the generic client snippet */
+"settings.mcp.otherStdioDetail" = "One entry for the client's own mcpServers map.";
+
+/* Caption over the one-line setup prompt */
+"settings.mcp.quickestPath" = "The quickest path: paste this into any agent and let it configure itself, install the companion skill, and verify the connection.";
+
+/* Caption closing the MCP permissions section */
+"settings.mcp.readOnlyDetail" = "Everything else agents can reach is read-only: quota, token usage, cost, provider status, effective model prices, and the local session index (titles, projects, and — when session body indexing is on — message excerpts). Credentials, cookies and organization ids are never exposed, and email addresses are masked.";
+
+/* Caption on a copyable shell command */
+"settings.mcp.runInTerminal" = "Run in a terminal.";
+
+/* Label for the copyable one-line prompt */
+"settings.mcp.setupPrompt" = "Agent setup prompt";
+
+/* Caption under the setup prompt */
+"settings.mcp.setupPromptDetail" = "One line, works in any agent that can fetch a URL.";
+
+/* Row label for the socket path. The term stays as spelled. */
+"settings.mcp.socket" = "Socket";
+
+/* Caption under the MCP status rows. The quoted phrase is the message another tool prints and stays in English. */
+"settings.mcp.socketLifetime" = "The socket exists only while Vibe Bar is running. Agents configured below report “Vibe Bar is not running” when it is quit, which is the intended behaviour.";
+
+/* Row label for whether the MCP socket is listening. Distinct from status.overview.title, which is a provider's service status. */
+"settings.mcp.status" = "Status";
+
+/* Settings section heading for the local MCP server */
+"settings.mcp.title" = "MCP Server";
+
+/* Sub-heading over the permission toggles */
+"settings.mcp.whatAgentsMayDo" = "What agents may do";
+
+/* Shown when the watchdog is not running */
+"settings.menuBarHealthUnavailable" = "The menu bar health monitor is not attached in this process.";
+
+/* Button in the mini windows settings section */
+"settings.miniWindow.add" = "Add a mini window";
+
+/* Empty state under the add-bucket list */
+"settings.miniWindow.allBucketsIncluded" = "Every known bucket is already in this window.";
+
+/* Tooltip on the dismiss button of a built-in bucket */
+"settings.miniWindow.dismissBuiltIn" = "Dismiss this built-in bucket while the provider is not returning it. It comes back the moment the provider does.";
+
+/* Tooltip on the dismiss button of a runtime-discovered bucket */
+"settings.miniWindow.forgetDiscovered" = "Forget this discovered bucket — drops it from the list and from every window that selected it.";
+
+/* Tooltip on a style toggle; mode is a display-mode name */
+"settings.miniWindow.includeStyle" = "Include %1$@ in the double-click cycle";
+
+/* Tooltip explaining a disabled remove button */
+"settings.miniWindow.lastCannotBeRemoved" = "The last mini window cannot be removed.";
+
+/* Segment label: edit the shared names */
+"settings.miniWindow.namesAllWindows" = "Names: all windows";
+
+/* Segment label: edit only this display style's overrides; mode is a display-mode name */
+"settings.miniWindow.namesThisStyle" = "Only %1$@ here";
+
+/* Segment label: edit only this window's name overrides */
+"settings.miniWindow.namesThisWindow" = "Only “%1$@”";
+
+/* Empty state under the field list */
+"settings.miniWindow.noFieldsSelected" = "No fields selected — tick some above.";
+
+/* Caption over the list of buckets not yet in this window */
+"settings.miniWindow.notInWindow" = "Not in “%1$@” — tick a bucket to add it. Buckets the adapters discover at runtime appear here automatically; a dimmed row is remembered but not in the account's current response, and ✕ dismisses it until the provider returns it.";
+
+/* Badge on a remote machine's row in the mini window preview */
+"settings.miniWindow.offline" = "offline";
+
+/* Button that shows or hides a mini window */
+"settings.miniWindow.openClose" = "Open / Close";
+
+/* Caption over the per-style name fields */
+"settings.miniWindow.overridesStyle" = "Overrides for the %1$@ style of this window only. An empty field inherits the window name, then the shared one — shown as the placeholder.";
+
+/* Caption over the per-window name fields */
+"settings.miniWindow.overridesWindow" = "Name overrides for this window only. An empty field inherits the shared name — shown as the placeholder.";
+
+/* Ordinal badge showing a field's place in the order */
+"settings.miniWindow.position" = "%1$lld";
+
+/* Tooltip on a row's remove control */
+"settings.miniWindow.removeFromWindow" = "Remove from this window";
+
+/* Tooltip on the remove button */
+"settings.miniWindow.removeHelp" = "Remove this mini window";
+
+/* Picker label for the mini window's row density */
+"settings.miniWindow.stripDensity" = "Strip density";
+
+/* Caption over the style cycle picker */
+"settings.miniWindow.styleCycle" = "Double-click on the window cycles its style. Tap a style to include it — the badge is its turn in the cycle. Nothing selected means every style, in this order.";
+
+/* Tooltip on the open/close button */
+"settings.miniWindow.toggleHelp" = "Toggle this mini window on screen";
+
+/* Caption over the mini window field tree */
+"settings.miniWindow.treeDetail" = "One tree for the window — grouped exactly as it folds them (company → SubProvider → quota group → bucket). Drag a row to reorder, ✕ to remove, and rename any level in place. First field renders leftmost (or topmost).";
+
+/* Field placeholder for the AK half of an AK/SK pair */
+"settings.misc.accessKeyId" = "Access Key ID (AKLT…)";
+
+/* Confirmation under an AK/SK field */
+"settings.misc.akSkSaved" = "AK/SK saved in Keychain.";
+
+/* Confirmation under a credential field */
+"settings.misc.apiKeySaved" = "API key saved in Keychain.";
+
+/* Tooltip on the button that forgets a stored workspace id */
+"settings.misc.clearWorkspace" = "Clear saved workspace";
+
+/* Tooltip on the button that adds a second instance of a provider */
+"settings.misc.clone" = "Clone %1$@";
+
+/* Console link row; title is the provider's own page name */
+"settings.misc.consoleLink" = "%1$@ →";
+
+/* Picker label for a provider's edition (Team, Personal, …) */
+"settings.misc.edition" = "Edition";
+
+/* Hint under the GitHub sign-in row */
+"settings.misc.githubSignInHint" = "Sign in with GitHub device flow.";
+
+/* Confirmation under the GitHub sign-in row */
+"settings.misc.githubTokenSaved" = "GitHub device token saved in Keychain.";
+
+/* Caption under the cookie import button */
+"settings.misc.importDetail" = "Adds or refreshes the first signed-in browser profile found; profiles already imported stay stacked, and this provider's quota is the average across every slot listed above. macOS may ask for your login-keychain password once per Chromium-family browser.";
+
+/* Hint under the Kiro row; the commands are never translated */
+"settings.misc.kiroHint" = "Run `kiro-cli login`, then Vibe Bar probes `kiro-cli chat --no-interactive /usage`.";
+
+/* Shown when a provider has no cookie import path */
+"settings.misc.noCookieSpec" = "No cookie spec is registered for %1$@.";
+
+/* Empty state in the cookie slot list */
+"settings.misc.noCookiesYet" = "No cookies imported yet — import from your browser or paste below.";
+
+/* Button that runs a local CLI probe */
+"settings.misc.probe" = "Probe";
+
+/* Field placeholder */
+"settings.misc.prompt.copilotHost" = "GitHub Enterprise host (optional, e.g. github.example.com)";
+
+/* Field placeholder */
+"settings.misc.prompt.dashscope" = "Paste DashScope API key (sk-...) — optional";
+
+/* Field placeholder */
+"settings.misc.prompt.kilo" = "Paste Kilo API key (optional)";
+
+/* Field placeholder */
+"settings.misc.prompt.minimax" = "Paste MiniMax Token Plan API key (sk-cp-... or MINIMAX_CODING_API_KEY)";
+
+/* Field placeholder */
+"settings.misc.prompt.openRouter" = "Paste OpenRouter API key (sk-or-v1-...)";
+
+/* Field placeholder */
+"settings.misc.prompt.openRouterHost" = "OpenRouter API URL (optional, defaults to https://openrouter.ai/api/v1)";
+
+/* Field placeholder */
+"settings.misc.prompt.warp" = "Paste Warp API key (wk-...)";
+
+/* Field placeholder */
+"settings.misc.prompt.workspace" = "Workspace ID or URL (optional, wrk_... or /workspace/wrk_.../go)";
+
+/* Field placeholder; the key prefix is a format example */
+"settings.misc.prompt.zai" = "Paste Z.ai API key (zai-...)";
+
+/* Picker label for a provider's service region */
+"settings.misc.region" = "Region";
+
+/* Tooltip on the button that clears a stored AK/SK pair */
+"settings.misc.removeAkSk" = "Remove stored %1$@ AK/SK";
+
+/* Tooltip on the button that clears a stored key */
+"settings.misc.removeApiKey" = "Remove stored %1$@ API key";
+
+/* Tooltip on a cookie slot's delete button */
+"settings.misc.removeCookieSlot" = "Remove this cookie slot";
+
+/* Tooltip on the button that deletes a cloned instance */
+"settings.misc.removeCopy" = "Remove this %1$@ copy";
+
+/* Destructive button in the remove-copy dialog */
+"settings.misc.removeCopyButton" = "Remove Copy";
+
+/* Confirmation dialog body */
+"settings.misc.removeCopyDetail" = "Its saved credentials are deleted from your Keychain — the API key or AK/SK and every imported cookie slot. This cannot be undone.";
+
+/* Confirmation dialog title */
+"settings.misc.removeCopyTitle" = "Remove this %1$@ copy?";
+
+/* Tooltip on the button that clears the GitHub token */
+"settings.misc.removeGithubToken" = "Remove stored GitHub device token";
+
+/* Tooltip on the rename button of a cloned instance */
+"settings.misc.rename" = "Rename this copy";
+
+/* Field placeholder for the SK half of an AK/SK pair. The term is the provider's own and stays as spelled. */
+"settings.misc.secretAccessKey" = "Secret Access Key";
+
+/* Button that starts a device-flow sign-in */
+"settings.misc.signIn" = "Sign in";
+
+/* Button that opens a WebView login */
+"settings.misc.signInViaWeb" = "Sign in via Web";
+
+/* Caption under the Tencent token plan row */
+"settings.misc.tencentTokenPlanNote" = "Personal Token Plan is currently available only in China mainland (cn-beijing). Clone this row to track Team and Personal together.";
+
+/* Picker label for a provider's plan variant */
+"settings.misc.variant" = "Variant";
+
+/* Button label while a device-flow sign-in is pending */
+"settings.misc.waiting" = "Waiting...";
+
+/* Caption under the workspace field */
+"settings.misc.workspaceNote" = "Only needed when the account owns more than one workspace — otherwise Vibe Bar uses the first one it finds.";
+
+/* Provider state: credentials are missing */
+"settings.needsSetup" = "Needs setup";
+
+/* Connection state before any probe has run */
+"settings.notChecked" = "Not checked";
+
+/* Line under the update-check button */
+"settings.notCheckedYet" = "Not checked. Nothing is fetched until you ask.";
+
+/* Picker label */
+"settings.openRefreshCooldown" = "Minimum open-refresh cooldown";
+
+/* Caption under the cooldown picker */
+"settings.openRefreshDetail" = "Opening the popover refreshes all visible providers at most once per cooldown period.";
+
+/* Link to a company's public status page */
+"settings.openStatusPage" = "Open %1$@ status page";
+
+/* Picker label choosing between remaining and used */
+"settings.percentShows" = "Percent shows";
+
+/* Field label for a user-chosen plan label override */
+"settings.planBadge" = "Plan badge";
+
+/* Caption under the plan badge field */
+"settings.planBadgeDetail" = "Leave blank to use the detected account plan.";
+
+/* Button that appends a blank rate card */
+"settings.pricing.addOverride" = "Add model override";
+
+/* Disclosure heading over the threshold rate fields */
+"settings.pricing.advancedTiers" = "Advanced tiers";
+
+/* Detail beside the local-overrides source */
+"settings.pricing.alwaysWins" = "Always wins";
+
+/* Name of the lowest-priority price source */
+"settings.pricing.bundledFallback" = "Bundled fallback";
+
+/* Rate field label */
+"settings.pricing.cacheReadAbove" = "Cache read above";
+
+/* Rate field label */
+"settings.pricing.cacheWriteAbove" = "Cache write above";
+
+/* Tooltip on a rate card's delete button */
+"settings.pricing.deleteOverride" = "Delete override";
+
+/* Placeholder in the model-name field of a rate card */
+"settings.pricing.exactModelName" = "Exact model name";
+
+/* Rate field label: the multiplier applied to a fast tier */
+"settings.pricing.fastMultiplier" = "Fast multiplier";
+
+/* Rate field label for input tokens beyond the threshold */
+"settings.pricing.inputAbove" = "Input above";
+
+/* Intro under the Model Pricing heading */
+"settings.pricing.intro" = "Catalogs refresh in the background. Higher entries win when the same provider and model name appears more than once.";
+
+/* Settings section heading over the user's own rate cards */
+"settings.pricing.localOverrides" = "Local overrides";
+
+/* Name of the highest-priority price source */
+"settings.pricing.localOverridesName" = "Local overrides";
+
+/* Empty state in the overrides list */
+"settings.pricing.noOverrides" = "No local overrides.";
+
+/* Ordinal badge beside a price source */
+"settings.pricing.number" = "%1$lld";
+
+/* Detail beside the bundled source */
+"settings.pricing.offlineFloor" = "Offline floor";
+
+/* Rate field label for output tokens beyond the threshold */
+"settings.pricing.outputAbove" = "Output above";
+
+/* Intro under the Local overrides heading */
+"settings.pricing.overridesIntro" = "Prices are USD per one million tokens. Leave cache fields empty when the provider does not publish them.";
+
+/* Settings section heading over the price-source list */
+"settings.pricing.priorityHealth" = "Priority and source health";
+
+/* Rate field label: input tokens */
+"settings.pricing.rateInput" = "Input";
+
+/* Rate field label: output tokens */
+"settings.pricing.rateOutput" = "Output";
+
+/* Button that fetches price catalogs immediately */
+"settings.pricing.refreshNow" = "Refresh now";
+
+/* Button label while a price refresh runs */
+"settings.pricing.refreshing" = "Refreshing…";
+
+/* Field label: the token count above which the higher rates apply */
+"settings.pricing.thresholdTokens" = "Threshold tokens";
+
+/* Footer showing when the bundled price table was built; date is a raw stamp */
+"settings.pricingDataDate" = "Pricing data: %1$@";
+
+/* Body of the Privacy section */
+"settings.privacyDetail" = "Tokens are read from local CLI credentials. Saved OpenAI and Claude Web cookies are stored in macOS Keychain, split by browser and WebView source. Legacy plaintext cookie files under ~/.vibebar/cookies are migrated once and deleted. Settings, quota cache, and cost summaries stay under ~/.vibebar.";
+
+/* Toggle label */
+"settings.privacyMode" = "Privacy mode";
+
+/* Caption under the privacy toggle */
+"settings.privacyModeDetail" = "Privacy mode keeps cost data off disk and clears local cost history, snapshots, and scan cache.";
+
+/* Provider state: credentials are usable */
+"settings.ready" = "Ready";
+
+/* Picker label for a background refresh interval */
+"settings.refreshEvery" = "Refresh every";
+
+/* Toggle label */
+"settings.refreshOnPopoverOpen" = "Refresh when the popover opens";
+
+/* Link label */
+"settings.releaseNotes" = "Release notes";
+
+/* Settings section heading. Core is the product term for this Mac's aggregator. */
+"settings.remote.core" = "Remote Core";
+
+/* Settings section heading */
+"settings.remote.costAggregation" = "Cost aggregation";
+
+/* Intro under the cost aggregation heading */
+"settings.remote.costAggregationIntro" = "Choose which remote machines join this Mac's local cost and token totals. Selection and aggregation stay on this Core; the Relay never sees plaintext usage.";
+
+/* Toggle that reveals the control-centre URL field */
+"settings.remote.differentControlCenter" = "Use a different control center";
+
+/* Button that abandons a pending join */
+"settings.remote.discard" = "Discard";
+
+/* Confirmation dialog body */
+"settings.remote.discardPendingDetail" = "Its pairing code is already spent, and the workspace still counts this Mac as its Core. To join again, revoke this Mac in the web control center, then create a fresh code.";
+
+/* Confirmation dialog title */
+"settings.remote.discardPendingTitle" = "Discard this pending join?";
+
+/* Settings section heading, and the destructive button in its dialog */
+"settings.remote.disconnect" = "Disconnect";
+
+/* Button that unpairs this Mac */
+"settings.remote.disconnectButton" = "Disconnect from Workspace…";
+
+/* Confirmation dialog body */
+"settings.remote.disconnectDetail" = "Reconnecting later requires a new pairing code or provisioning file.";
+
+/* Explanation under the Disconnect heading */
+"settings.remote.disconnectIntro" = "Disconnecting removes this Mac's Relay credential from the Keychain and its workspace binding. Probes keep uploading to the Relay until they are revoked there. Usage already decrypted stays in the local ledger.";
+
+/* Confirmation dialog title */
+"settings.remote.disconnectTitle" = "Disconnect from this workspace?";
+
+/* Button that writes this Mac's public identity to a file */
+"settings.remote.exportIdentity" = "Export Core Identity…";
+
+/* Button that reads a provisioning file */
+"settings.remote.importProvisioning" = "Import Provisioning File…";
+
+/* Button that submits a pairing code */
+"settings.remote.join" = "Join";
+
+/* Explanation above the pairing-code field; device is the Mac's name */
+"settings.remote.joinIntro" = "Create a Core code in the Vibe Bar control center, then paste it here. This Mac joins as “%1$@”.";
+
+/* Heading over the pairing-code field */
+"settings.remote.joinWithCode" = "Join with a code";
+
+/* Row label for the last sync time */
+"settings.remote.lastSync" = "Last sync";
+
+/* Second line of a remote machine row; platform and version are raw values */
+"settings.remote.machineDetail" = "%1$@ · Probe %2$@";
+
+/* Empty state in the machine list */
+"settings.remote.machinesAppearAfterImport" = "Machines appear here after their first encrypted batch is imported.";
+
+/* Row label for the machine count */
+"settings.remote.machinesSynced" = "Machines synced";
+
+/* Explanation of the manual pairing flow */
+"settings.remote.manualPairingIntro" = "Pairing runs in three steps: export this Mac's Core identity, register it with your Relay to produce a provisioning file, then import that file here. Importing moves the Relay credential into the macOS Keychain — but the provisioning file itself still contains that credential, so delete the file once the import succeeds.";
+
+/* Explanation shown when no workspace is paired */
+"settings.remote.notConnected" = "This Mac is not connected to a workspace. Remote probes collect normalized usage on your other machines, encrypt it to this Mac's Core keys, and drop it at a Relay — no inbound port is ever opened here.";
+
+/* Caption above the manual pairing buttons */
+"settings.remote.orPairManually" = "Or pair manually.";
+
+/* Explanation of a half-finished join */
+"settings.remote.pendingIntro" = "A previous join was accepted by the control center but never finished saving on this Mac. Its pairing code is already spent, so resume the save instead of requesting a new code.";
+
+/* Settings section heading over the pairing controls */
+"settings.remote.provisioning" = "Provisioning";
+
+/* Row label for the probe count */
+"settings.remote.registeredProbes" = "Registered probes";
+
+/* Row label for the relay URL. The term stays as spelled. */
+"settings.remote.relay" = "Relay";
+
+/* Button that finishes a half-completed join */
+"settings.remote.resumeSaving" = "Resume saving";
+
+/* Button that retries a failed save */
+"settings.remote.retrySaving" = "Retry saving";
+
+/* Sync status line: a translated title and the raw status code */
+"settings.remote.statusWithCode" = "%1$@ · %2$@";
+
+/* Button that pulls remote batches immediately */
+"settings.remote.syncNow" = "Sync now";
+
+/* Row label for the workspace id */
+"settings.remote.workspace" = "Workspace";
+
+/* Link label */
+"settings.repository" = "Repository";
+
+/* Button label */
+"settings.rescanCostLogs" = "Rescan cost logs";
+
+/* Placeholder in the settings sidebar's search field */
+"settings.search" = "Search settings";
+
+/* Settings section heading listing bundled components. Distinct from status.card.components, which are a provider's status-page components. */
+"settings.section.components" = "Components";
+
+/* Settings section heading */
+"settings.section.costData" = "Cost Data";
+
+/* Settings section heading for page layout */
+"settings.section.layout" = "Layout";
+
+/* Settings section heading for the status-item watchdog */
+"settings.section.menuBarHealth" = "Menu Bar Health";
+
+/* Settings section heading */
+"settings.section.miniWindows" = "Mini Windows";
+
+/* Settings section heading for the Overview surface */
+"settings.section.overview" = "Overview";
+
+/* Settings section heading */
+"settings.section.privacy" = "Privacy";
+
+/* Settings section heading for refresh intervals. Distinct from status.overview.refreshing, which says a fetch is in flight. */
+"settings.section.refreshing" = "Refreshing";
+
+/* Settings section heading for login items and the setup assistant. Distinct from settings.language.system, which is a language-picker option meaning 'follow macOS'. */
+"settings.section.system" = "System";
+
+/* Settings section heading for the app updater */
+"settings.section.updates" = "Updates";
+
+/* Button that reopens the first-run assistant */
+"settings.showAssistant" = "Show setup assistant";
+
+/* Caption under the assistant button */
+"settings.showAssistantDetail" = "Walk through subscriptions, browser cookies, API keys, model pricing and login items again. Nothing is reset.";
+
+/* Sidebar group heading over the four core provider pages */
+"settings.sidebar.coreProviders" = "Core Providers";
+
+/* Tooltip on the toggle that turns a misc provider off */
+"settings.sidebar.disableProvider" = "Disable Provider";
+
+/* Tooltip on the toggle that turns a misc provider on */
+"settings.sidebar.enableProvider" = "Enable Provider";
+
+/* Tooltip on the toggle that removes a provider from the Overview */
+"settings.sidebar.hideFromOverview" = "Hide from Overview";
+
+/* Sidebar group heading over the static preference pages */
+"settings.sidebar.settings" = "Settings";
+
+/* Explanation on the SpaceXAI settings page */
+"settings.spaceXAIIntro" = "The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota, plus read-only sessions from its local cache — its cloud runs still add no token/cost rows.";
+
+/* Picker label */
+"settings.updateChannel" = "Update channel";
+
+/* Caption under the update controls */
+"settings.updateCheckDetail" = "Checks the selected channel once a day and asks before installing.";
+
+/* Picker label choosing where a provider's quota is read from */
+"settings.usageSource" = "Usage source";
+
+/* Value beside the Gemini source row */
+"settings.webQuota" = "Web quota";
+
+/* Link to a release's notes; version is a tag name */
+"settings.whatChangedIn" = "What changed in %1$@";
 
 /* Group heading for a provider's status components */
 "status.card.components" = "Components";

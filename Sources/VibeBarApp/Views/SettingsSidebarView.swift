@@ -39,7 +39,7 @@ struct SettingsSidebarView: View {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search settings", text: $searchText)
+                TextField(L10n.Settings.search, text: $searchText)
                     .textFieldStyle(.plain)
             }
             .padding(.horizontal, 10)
@@ -55,7 +55,7 @@ struct SettingsSidebarView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     if searchText.isEmpty || !filteredBasicPages.isEmpty {
-                        sidebarGroup("Settings") {
+                        sidebarGroup(L10n.Settings.sidebarSettings) {
                             ForEach(filteredBasicPages, id: \.rawValue) { page in
                                 staticRow(page)
                             }
@@ -63,7 +63,7 @@ struct SettingsSidebarView: View {
                     }
 
                     if searchText.isEmpty || !filteredCoreProviders.isEmpty {
-                        sidebarGroup("Core Providers") {
+                        sidebarGroup(L10n.Settings.sidebarCoreProviders) {
                             ForEach(filteredCoreProviders, id: \.self) { tool in
                                 coreProviderRow(tool)
                                     .onDrag {
@@ -96,7 +96,7 @@ struct SettingsSidebarView: View {
                     }
 
                     if miscLandingMatchesSearch || !filteredMiscProviders.isEmpty {
-                        sidebarGroup("Misc Providers") {
+                        sidebarGroup(L10n.Popover.tabMisc) {
                             if miscLandingMatchesSearch {
                                 miscLandingRow
                             }
@@ -215,7 +215,7 @@ struct SettingsSidebarView: View {
 
     private var miscLandingMatchesSearch: Bool {
         searchText.isEmpty
-            || "Browser Cookies".localizedCaseInsensitiveContains(searchText)
+            || L10n.Onboarding.doneBrowserCookies.localizedCaseInsensitiveContains(searchText)
             || "Misc Providers".localizedCaseInsensitiveContains(searchText)
     }
 
@@ -261,7 +261,7 @@ struct SettingsSidebarView: View {
             showsDragHandle: true
         )
         .contextMenu {
-            Button(enabled ? "Hide from Overview" : "Show in Overview") {
+            Button(enabled ? L10n.Settings.sidebarHideFromOverview : L10n.Onboarding.subscriptionsShowInOverview) {
                 settingsStore.settings.setCoreProviderVisible(!enabled, for: tool)
             }
         }
@@ -282,7 +282,7 @@ struct SettingsSidebarView: View {
             showsDragHandle: true
         )
         .contextMenu {
-            Button(enabled ? "Disable Provider" : "Enable Provider") {
+            Button(enabled ? L10n.Settings.sidebarDisableProvider : L10n.Settings.sidebarEnableProvider) {
                 settingsStore.settings.setMiscProviderInstanceVisible(!enabled, forID: instance.id)
             }
         }
@@ -291,7 +291,7 @@ struct SettingsSidebarView: View {
     private var miscLandingRow: some View {
         sidebarRow(
             destination: .page(.miscProviders),
-            title: "Browser Cookies",
+            title: L10n.Onboarding.doneBrowserCookies,
             icon: AnyView(
                 Image(systemName: "safari")
                     .font(.system(size: 14, weight: .medium))

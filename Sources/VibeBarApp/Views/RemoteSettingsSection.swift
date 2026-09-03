@@ -51,12 +51,12 @@ struct RemoteSettingsSection: View {
     }
 
     private var aggregationSection: some View {
-        section("Cost aggregation") {
-            Text("Choose which remote machines join this Mac's local cost and token totals. Selection and aggregation stay on this Core; the Relay never sees plaintext usage.")
+        section(L10n.Settings.remoteCostAggregation) {
+            Text(L10n.Settings.remoteCostAggregationIntro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if service.machines.isEmpty {
-                Text("Machines appear here after their first encrypted batch is imported.")
+                Text(L10n.Settings.remoteMachinesAppearAfterImport)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             } else {
@@ -65,7 +65,7 @@ struct RemoteSettingsSection: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(machine.alias)
                                 .font(.caption.weight(.medium))
-                            Text("\(machine.platform) · Probe \(machine.probeVersion)")
+                            Text(L10n.Settings.remoteMachineDetail(platform: machine.platform, version: machine.probeVersion))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -80,26 +80,26 @@ struct RemoteSettingsSection: View {
     // MARK: - Status
 
     private var statusSection: some View {
-        section("Remote Core") {
+        section(L10n.Settings.remoteCore) {
             if service.isConfigured {
-                infoRow("Workspace", service.workspaceID?.uuidString.lowercased() ?? "—")
-                infoRow("Relay", service.relayURL?.absoluteString ?? "—")
-                infoRow("Registered probes", "\(service.registeredProbeCount)")
-                infoRow("Machines synced", "\(service.machines.count)")
-                infoRow("Last sync", lastSyncText)
+                infoRow(L10n.Settings.remoteWorkspace, service.workspaceID?.uuidString.lowercased() ?? "—")
+                infoRow(L10n.Settings.remoteRelay, service.relayURL?.absoluteString ?? "—")
+                infoRow(L10n.Settings.remoteRegisteredProbes, AppLocale.number(service.registeredProbeCount))
+                infoRow(L10n.Settings.remoteMachinesSynced, AppLocale.number(service.machines.count))
+                infoRow(L10n.Settings.remoteLastSync, lastSyncText)
                 if let code = service.lastErrorCode {
-                    Text("\(RemoteSyncStatusCopy.title(for: code)) · \(code)")
+                    Text(L10n.Settings.remoteStatusWithCode(title: RemoteSyncStatusCopy.title(for: code), code: code))
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }
                 Button {
                     Task { await service.refresh() }
                 } label: {
-                    Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+                    Label(L10n.Settings.remoteSyncNow, systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(service.isRefreshing)
             } else {
-                Text("This Mac is not connected to a workspace. Remote probes collect normalized usage on your other machines, encrypt it to this Mac's Core keys, and drop it at a Relay — no inbound port is ever opened here.")
+                Text(L10n.Settings.remoteNotConnected)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -114,15 +114,15 @@ struct RemoteSettingsSection: View {
     // MARK: - Provisioning
 
     private var provisioningSection: some View {
-        section("Provisioning") {
+        section(L10n.Settings.remoteProvisioning) {
             if !service.isConfigured {
                 joinWithCode
                 Divider()
-                Text("Or pair manually.")
+                Text(L10n.Settings.remoteOrPairManually)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
             }
-            Text("Pairing runs in three steps: export this Mac's Core identity, register it with your Relay to produce a provisioning file, then import that file here. Importing moves the Relay credential into the macOS Keychain — but the provisioning file itself still contains that credential, so delete the file once the import succeeds.")
+            Text(L10n.Settings.remoteManualPairingIntro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -130,12 +130,12 @@ struct RemoteSettingsSection: View {
                 Button {
                     exportDescriptor()
                 } label: {
-                    Label("Export Core Identity…", systemImage: "square.and.arrow.up")
+                    Label(L10n.Settings.remoteExportIdentity, systemImage: "square.and.arrow.up")
                 }
                 Button {
                     importProvisioning()
                 } label: {
-                    Label("Import Provisioning File…", systemImage: "square.and.arrow.down")
+                    Label(L10n.Settings.remoteImportProvisioning, systemImage: "square.and.arrow.down")
                 }
             }
 
@@ -167,10 +167,10 @@ struct RemoteSettingsSection: View {
     /// persisted or logged.
     private var joinWithCode: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Join with a code")
+            Text(L10n.Settings.remoteJoinWithCode)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text("Create a Core code in the Vibe Bar control center, then paste it here. This Mac joins as “\(deviceName)”.")
+            Text(L10n.Settings.remoteJoinIntro(device: deviceName))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -181,7 +181,7 @@ struct RemoteSettingsSection: View {
                     .frame(width: 190)
                     .disabled(isJoining)
                     .onSubmit { join() }
-                Button("Join") { join() }
+                Button(L10n.Settings.remoteJoin) { join() }
                     .disabled(isJoining || trimmedJoinCode.isEmpty)
                 if isJoining {
                     ProgressView()
@@ -190,7 +190,7 @@ struct RemoteSettingsSection: View {
                 Spacer(minLength: 0)
             }
 
-            Toggle("Use a different control center", isOn: $showControlURLField)
+            Toggle(L10n.Settings.remoteDifferentControlCenter, isOn: $showControlURLField)
                 .toggleStyle(.checkbox)
                 .font(.caption)
                 .disabled(isJoining)
@@ -210,7 +210,7 @@ struct RemoteSettingsSection: View {
             }
             if pendingEnrollment != nil {
                 if pendingWasRestored {
-                    Text("A previous join was accepted by the control center but never finished saving on this Mac. Its pairing code is already spent, so resume the save instead of requesting a new code.")
+                    Text(L10n.Settings.remotePendingIntro)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -219,21 +219,21 @@ struct RemoteSettingsSection: View {
                         retrySavingEnrollment()
                     } label: {
                         Label(
-                            pendingWasRestored ? "Resume saving" : "Retry saving",
+                            pendingWasRestored ? L10n.Settings.remoteResumeSaving : L10n.Settings.remoteRetrySaving,
                             systemImage: "arrow.clockwise"
                         )
                     }
-                    Button("Discard") { confirmingDiscardPending = true }
+                    Button(L10n.Settings.remoteDiscard) { confirmingDiscardPending = true }
                 }
                 .confirmationDialog(
-                    "Discard this pending join?",
+                    L10n.Settings.remoteDiscardPendingTitle,
                     isPresented: $confirmingDiscardPending,
                     titleVisibility: .visible
                 ) {
-                    Button("Discard", role: .destructive) { discardPendingEnrollment() }
-                    Button("Cancel", role: .cancel) {}
+                    Button(L10n.Settings.remoteDiscard, role: .destructive) { discardPendingEnrollment() }
+                    Button(L10n.Common.cancel, role: .cancel) {}
                 } message: {
-                    Text("Its pairing code is already spent, and the workspace still counts this Mac as its Core. To join again, revoke this Mac in the web control center, then create a fresh code.")
+                    Text(L10n.Settings.remoteDiscardPendingDetail)
                 }
             }
         }
@@ -388,26 +388,26 @@ struct RemoteSettingsSection: View {
     // MARK: - Disconnect
 
     private var disconnectSection: some View {
-        section("Disconnect") {
-            Text("Disconnecting removes this Mac's Relay credential from the Keychain and its workspace binding. Probes keep uploading to the Relay until they are revoked there. Usage already decrypted stays in the local ledger.")
+        section(L10n.Settings.remoteDisconnect) {
+            Text(L10n.Settings.remoteDisconnectIntro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button(role: .destructive) {
                 confirmingDisconnect = true
             } label: {
-                Label("Disconnect from Workspace…", systemImage: "bolt.slash")
+                Label(L10n.Settings.remoteDisconnectButton, systemImage: "bolt.slash")
             }
             .confirmationDialog(
-                "Disconnect from this workspace?",
+                L10n.Settings.remoteDisconnectTitle,
                 isPresented: $confirmingDisconnect,
                 titleVisibility: .visible
             ) {
-                Button("Disconnect", role: .destructive) {
+                Button(L10n.Settings.remoteDisconnect, role: .destructive) {
                     disconnect()
                 }
-                Button("Cancel", role: .cancel) {}
+                Button(L10n.Common.cancel, role: .cancel) {}
             } message: {
-                Text("Reconnecting later requires a new pairing code or provisioning file.")
+                Text(L10n.Settings.remoteDisconnectDetail)
             }
         }
     }

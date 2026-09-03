@@ -144,7 +144,7 @@ struct MiniWindowsSettingsSection: View {
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.vibeBar)
-            .help("Add a mini window")
+            .help(L10n.Settings.miniWindowAdd)
             Spacer(minLength: 0)
         }
         .padding(3)
@@ -172,7 +172,7 @@ struct MiniWindowsSettingsSection: View {
     private func windowDetail(_ config: MiniWindowConfig) -> some View {
         HStack(spacing: 8) {
             DebouncedSettingsTextField(
-                prompt: "Name",
+                prompt: L10n.Common.name,
                 value: Binding(
                     get: { selectedWindow?.name ?? "" },
                     set: { [configID = config.id] value in
@@ -186,23 +186,25 @@ struct MiniWindowsSettingsSection: View {
                 )
             )
             .frame(width: 140)
-            Button("Open / Close") {
+            Button(L10n.Settings.miniWindowOpenClose) {
                 NotificationCenter.default.post(
                     name: .vibeBarToggleMiniWindow,
                     object: nil,
                     userInfo: ["configID": config.id.uuidString]
                 )
             }
-            .help("Toggle this mini window on screen")
+            .help(L10n.Settings.miniWindowToggleHelp)
             Spacer(minLength: 8)
             Button(role: .destructive) {
                 removeWindow(config.id)
             } label: {
-                Label("Remove", systemImage: "trash")
+                Label(L10n.Common.remove, systemImage: "trash")
                     .font(.system(size: 11))
             }
             .disabled(windows.count <= 1)
-            .help(windows.count <= 1 ? "The last mini window cannot be removed." : "Remove this mini window")
+            .help(windows.count <= 1
+                    ? L10n.Settings.miniWindowLastCannotBeRemoved
+                    : L10n.Settings.miniWindowRemoveHelp)
         }
 
         modePicker(config)
@@ -210,7 +212,7 @@ struct MiniWindowsSettingsSection: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         if config.displayMode == .strip {
-            Picker("Strip density", selection: Binding(
+            Picker(L10n.Settings.miniWindowStripDensity, selection: Binding(
                 get: { selectedWindow?.stripDensity ?? .roomy },
                 set: { value in update { $0.stripDensity = value } }
             )) {
@@ -224,39 +226,39 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
 
-        Text("Double-click on the window cycles its style. Tap a style to include it — the badge is its turn in the cycle. Nothing selected means every style, in this order.")
+        Text(L10n.Settings.miniWindowStyleCycle)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         cycleEditor(config)
 
-        Text("One tree for the window — grouped exactly as it folds them (company → SubProvider → quota group → bucket). Drag a row to reorder, ✕ to remove, and rename any level in place. First field renders leftmost (or topmost).")
+        Text(L10n.Settings.miniWindowTreeDetail)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         HStack(spacing: 4) {
-            namingScopeButton(.shared, label: "Names: all windows")
-            namingScopeButton(.window, label: "Only “\(config.name)”")
-            namingScopeButton(.style, label: "Only \(config.displayMode.label) here")
+            namingScopeButton(.shared, label: L10n.Settings.miniWindowNamesAllWindows)
+            namingScopeButton(.window, label: L10n.Settings.miniWindowNamesThisWindow(name: config.name))
+            namingScopeButton(.style, label: L10n.Settings.miniWindowNamesThisStyle(mode: config.displayMode.label))
             Spacer(minLength: 0)
         }
         .padding(3)
         .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.045)))
         if namingScope == .window {
-            Text("Name overrides for this window only. An empty field inherits the shared name — shown as the placeholder.")
+            Text(L10n.Settings.miniWindowOverridesWindow)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         if namingScope == .style {
-            Text("Overrides for the \(config.displayMode.label) style of this window only. An empty field inherits the window name, then the shared one — shown as the placeholder.")
+            Text(L10n.Settings.miniWindowOverridesStyle(mode: config.displayMode.label))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         arrangementList(config)
 
-        Text("Not in “\(config.name)” — tick a bucket to add it. Buckets the adapters discover at runtime appear here automatically; a dimmed row is remembered but not in the account's current response, and ✕ dismisses it until the provider returns it.")
+        Text(L10n.Settings.miniWindowNotInWindow(name: config.name))
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -316,7 +318,7 @@ struct MiniWindowsSettingsSection: View {
                 } label: {
                     HStack(spacing: 5) {
                         if let position {
-                            Text("\(position + 1)")
+                            Text(L10n.Settings.miniWindowPosition(position: position + 1))
                                 .font(.system(size: 8.5, weight: .bold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(Color.accentColor)
                                 .frame(width: 12, height: 12)
@@ -343,7 +345,7 @@ struct MiniWindowsSettingsSection: View {
                     .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
                 .buttonStyle(.vibeBar(cornerRadius: 6))
-                .help("Include \(mode.label) in the double-click cycle")
+                .help(L10n.Settings.miniWindowIncludeStyle(mode: mode.label))
             }
         }
     }
@@ -417,7 +419,7 @@ struct MiniWindowsSettingsSection: View {
         }
         return VStack(alignment: .leading, spacing: 12) {
             if sections.isEmpty {
-                Text("Every known bucket is already in this window.")
+                Text(L10n.Settings.miniWindowAllBucketsIncluded)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -473,8 +475,8 @@ struct MiniWindowsSettingsSection: View {
                 .buttonStyle(.vibeBar)
                 .help(
                     entry.discovered != nil
-                        ? "Forget this discovered bucket — drops it from the list and from every window that selected it."
-                        : "Dismiss this built-in bucket while the provider is not returning it. It comes back the moment the provider does."
+                        ? L10n.Settings.miniWindowForgetDiscovered
+                        : L10n.Settings.miniWindowDismissBuiltIn
                 )
             }
         }
@@ -579,7 +581,7 @@ struct MiniWindowsSettingsSection: View {
     private func arrangementList(_ config: MiniWindowConfig) -> some View {
         let rows = arrangeRows(config)
         if rows.isEmpty {
-            Text("No fields selected — tick some above.")
+            Text(L10n.Settings.miniWindowNoFieldsSelected)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         } else {
@@ -719,7 +721,7 @@ struct MiniWindowsSettingsSection: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             if !isLive {
-                Text("offline")
+                Text(L10n.Settings.miniWindowOffline)
                     .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.tertiary)
             }
@@ -729,7 +731,7 @@ struct MiniWindowsSettingsSection: View {
                 title: row.option.title, defaultLabel: row.option.defaultLabel
             ))
             if let percent {
-                Text("\(Int(percent.rounded()))%")
+                Text(L10n.Common.percent(value: Int(percent.rounded())))
                     .font(.system(size: 10.5, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Theme.barColor(percent: percent, mode: settingsStore.displayMode))
             }
@@ -759,7 +761,7 @@ struct MiniWindowsSettingsSection: View {
                     .frame(width: 16, height: 16)
             }
             .buttonStyle(.vibeBar)
-            .help("Remove from this window")
+            .help(L10n.Settings.miniWindowRemoveFromWindow)
         }
         .padding(.horizontal, 8)
         .padding(.leading, 8)

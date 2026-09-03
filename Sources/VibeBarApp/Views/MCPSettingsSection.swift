@@ -27,27 +27,27 @@ struct MCPSettingsSection: View {
     // MARK: - Status
 
     private var statusSection: some View {
-        section("MCP Server") {
-            Text("Vibe Bar can expose this Mac's quota, usage, cost and local agent sessions to your coding agents over MCP. The server listens on a Unix domain socket in your home directory — no network port is opened, and no token is created: the socket's file permissions are the access control.")
+        section(L10n.Settings.mcpTitle) {
+            Text(L10n.Settings.mcpIntro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Toggle("Enable the local MCP server", isOn: $settingsStore.settings.mcpServer.enabled)
+            Toggle(L10n.Settings.mcpEnable, isOn: $settingsStore.settings.mcpServer.enabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
             if settingsStore.settings.mcpServer.enabled {
-                infoRow("Status", controller.isRunning ? "Listening" : "Not listening")
-                infoRow("Socket", controller.displaySocketPath)
-                infoRow("Connected clients", "\(controller.connectionCount)")
-                infoRow("Last client activity", lastActivityText)
+                infoRow(L10n.Settings.mcpStatus, controller.isRunning ? L10n.Settings.mcpListening : L10n.Settings.mcpNotListening)
+                infoRow(L10n.Settings.mcpSocket, controller.displaySocketPath)
+                infoRow(L10n.Settings.mcpConnectedClients, AppLocale.number(controller.connectionCount))
+                infoRow(L10n.Settings.mcpLastActivity, lastActivityText)
                 if let error = controller.startupError {
                     Text(error)
                         .font(.caption2)
                         .foregroundStyle(.orange)
                         .textSelection(.enabled)
                 }
-                Text("The socket exists only while Vibe Bar is running. Agents configured below report “Vibe Bar is not running” when it is quit, which is the intended behaviour.")
+                Text(L10n.Settings.mcpSocketLifetime)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -62,51 +62,51 @@ struct MCPSettingsSection: View {
     // MARK: - Setup
 
     private var setupSection: some View {
-        section("Connect an agent") {
-            Text("The quickest path: paste this into any agent and let it configure itself, install the companion skill, and verify the connection.")
+        section(L10n.Settings.mcpConnectAgent) {
+            Text(L10n.Settings.mcpQuickestPath)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             copyRow(
-                title: "Agent setup prompt",
-                subtitle: "One line, works in any agent that can fetch a URL.",
+                title: L10n.Settings.mcpSetupPrompt,
+                subtitle: L10n.Settings.mcpSetupPromptDetail,
                 systemImage: "sparkles",
                 value: MCPClientConfig.agentSetupPrompt
             )
 
             Divider()
 
-            Text("Or configure a client by hand. Every client runs the same command — Vibe Bar's own binary with \(MCPStdioBridge.commandLineFlag), which bridges stdin/stdout to the socket above.")
+            Text(L10n.Settings.mcpManualIntro(flag: MCPStdioBridge.commandLineFlag))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             copyRow(
                 title: "Claude Code",
-                subtitle: "Run in a terminal.",
+                subtitle: L10n.Settings.mcpRunInTerminal,
                 systemImage: "terminal",
                 value: MCPClientConfig.claudeCodeCommand(executablePath: executablePath)
             )
             copyRow(
                 title: "Codex CLI",
-                subtitle: "Append to ~/.codex/config.toml.",
+                subtitle: L10n.Settings.mcpAppendCodexConfig,
                 systemImage: "doc.plaintext",
                 value: MCPClientConfig.codexTOML(executablePath: executablePath)
             )
             copyRow(
                 title: "Cursor",
-                subtitle: "Merge into ~/.cursor/mcp.json.",
+                subtitle: L10n.Settings.mcpMergeCursorConfig,
                 systemImage: "curlybraces",
                 value: MCPClientConfig.cursorJSON(executablePath: executablePath)
             )
             copyRow(
-                title: "Any other stdio client",
-                subtitle: "One entry for the client's own mcpServers map.",
+                title: L10n.Settings.mcpOtherStdioClient,
+                subtitle: L10n.Settings.mcpOtherStdioDetail,
                 systemImage: "puzzlepiece.extension",
                 value: MCPClientConfig.genericJSON(executablePath: executablePath)
             )
 
             if !isInstalledInApplications {
-                Text("Vibe Bar is running from \(executablePath). Move it to /Applications before saving a client config, or the config breaks the next time you rebuild.")
+                Text(L10n.Settings.mcpMovePrompt(path: executablePath))
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
@@ -129,32 +129,34 @@ struct MCPSettingsSection: View {
     // MARK: - Behaviour
 
     private var behaviourSection: some View {
-        section("What agents may do") {
+        section(L10n.Settings.mcpWhatAgentsMayDo) {
             Toggle(
-                "Allow agents to refresh quota",
+                L10n.Settings.mcpAllowRefresh,
                 isOn: $settingsStore.settings.mcpServer.allowRefreshTools
             )
             .toggleStyle(.switch)
             .controlSize(.small)
             .disabled(!settingsStore.settings.mcpServer.enabled)
 
-            Text("With this on, an agent can ask Vibe Bar to re-fetch quota from your providers. Forced refreshes are rate-limited to one every \(Int(MCPServer.forcedRefreshMinimumInterval)) seconds. With it off the read-only tools keep working and quota.refresh reports that refreshing is disabled.")
+            Text(L10n.Settings.mcpAllowRefreshDetail(
+                seconds: Int(MCPServer.forcedRefreshMinimumInterval)
+            ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Toggle(
-                "Allow agents to install skills",
+                L10n.Settings.mcpAllowSkills,
                 isOn: $settingsStore.settings.mcpServer.allowSkillInstall
             )
             .toggleStyle(.switch)
             .controlSize(.small)
             .disabled(!settingsStore.settings.mcpServer.enabled)
 
-            Text("With this on, an agent can call skills.install to add a skill from a GitHub repository or a local folder. It goes through the same Skills manager as Workbench → Skills, so it writes only to ~/.agents/skills and the agent skills directories Vibe Bar manages — never over a folder a different skill already holds. With it off the tool reports that installing is disabled.")
+            Text(L10n.Settings.mcpAllowSkillsDetail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text("Everything else agents can reach is read-only: quota, token usage, cost, provider status, effective model prices, and the local session index (titles, projects, and — when session body indexing is on — message excerpts). Credentials, cookies and organization ids are never exposed, and email addresses are masked.")
+            Text(L10n.Settings.mcpReadOnlyDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -181,7 +183,10 @@ struct MCPSettingsSection: View {
                 Button {
                     copy(value, label: title)
                 } label: {
-                    Label(copied == title ? "Copied" : "Copy", systemImage: copied == title ? "checkmark" : systemImage)
+                    Label(
+                        copied == title ? L10n.Common.copied : L10n.Common.copy,
+                        systemImage: copied == title ? "checkmark" : systemImage
+                    )
                 }
                 .controlSize(.small)
             }

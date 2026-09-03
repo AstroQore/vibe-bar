@@ -1,12 +1,21 @@
 {
+  "common.add": {
+    "value": "添加"
+  },
   "common.all": {
     "value": "全部"
+  },
+  "common.auto": {
+    "value": "自动"
   },
   "common.cancel": {
     "value": "取消"
   },
   "common.clear": {
     "value": "清除"
+  },
+  "common.copied": {
+    "value": "已复制"
   },
   "common.copy": {
     "value": "复制"
@@ -62,6 +71,9 @@
   "common.done": {
     "value": "完成"
   },
+  "common.dragToReorder": {
+    "value": "拖动可重新排序"
+  },
   "common.duration.days": {
     "value": "{days} 天"
   },
@@ -83,6 +95,9 @@
   "common.duration.now": {
     "value": "现在"
   },
+  "common.name": {
+    "value": "名称"
+  },
   "common.off": {
     "value": "已关闭"
   },
@@ -98,14 +113,26 @@
   "common.percent": {
     "value": "{value}%"
   },
+  "common.provider": {
+    "value": "厂商"
+  },
   "common.refresh": {
     "value": "刷新"
   },
   "common.refreshSection": {
     "value": "刷新此区块"
   },
+  "common.remove": {
+    "value": "移除"
+  },
   "common.retry": {
     "value": "重试"
+  },
+  "common.retryNow": {
+    "value": "立即重试"
+  },
+  "common.save": {
+    "value": "保存"
   },
   "common.updated.daysAgo": {
     "value": "{days, plural, other {# 天}}前更新"
@@ -992,6 +1019,99 @@
   "quota.update.failed": {
     "value": "更新失败：{reason}"
   },
+  "settings.antigravityCookieEnabled": {
+    "value": "Antigravity 的 cookie 导入已启用 — 请先在 antigravity.google 登录。"
+  },
+  "settings.antigravityLocalOnly": {
+    "value": "Antigravity 读取本机运行的语言服务。cookie 导入将等到 Antigravity Cloud 端点上线后再启用。"
+  },
+  "settings.antigravitySource": {
+    "value": "Antigravity 来源"
+  },
+  "settings.appVersion": {
+    "value": "Vibe Bar {version}"
+  },
+  "settings.bundled": {
+    "value": "内置"
+  },
+  "settings.checkConnections": {
+    "value": "检查 {company} 连接"
+  },
+  "settings.checkForUpdates": {
+    "value": "检查更新…"
+  },
+  "settings.checkKitUpdates": {
+    "value": "检查组件更新"
+  },
+  "settings.checkingGitHub": {
+    "value": "正在向 github.com 查询最新版本…"
+  },
+  "settings.clearCostData": {
+    "value": "清除花费数据"
+  },
+  "settings.connectionHealth": {
+    "value": "连接状态"
+  },
+  "settings.costDataIntro": {
+    "value": "花费根据 ~/.codex/sessions 与 ~/.claude/projects 下的本地 CLI 会话 JSONL 日志计算。网页端与桌面端用量不计入。"
+  },
+  "settings.couldNotDeleteCookies": {
+    "value": "无法删除已保存的 cookies。"
+  },
+  "settings.couldNotDeleteGeminiCookies": {
+    "value": "无法删除已保存的 Gemini cookies。"
+  },
+  "settings.couldNotDeleteGrokCookies": {
+    "value": "无法删除已保存的 Grok cookies。"
+  },
+  "settings.cursorNoSession": {
+    "value": "没有可用的 Cursor.app 会话 — 请在下方导入 cursor.com 的 cookies。"
+  },
+  "settings.cursorSessionDetected": {
+    "value": "已检测到 Cursor.app 的登录会话"
+  },
+  "settings.cursorSource": {
+    "value": "Cursor 来源"
+  },
+  "settings.cursorSourceValue": {
+    "value": "Cursor.app → 网页"
+  },
+  "settings.deleteCookies": {
+    "value": "删除 cookies"
+  },
+  "settings.deleteGeminiCookies": {
+    "value": "删除 Gemini 的 cookies"
+  },
+  "settings.deleteGrokCookies": {
+    "value": "删除 Grok 的 cookies"
+  },
+  "settings.externalChange.title": {
+    "value": "另一个 Vibe Bar 覆盖了此处的修改"
+  },
+  "settings.geminiCookiesSaved": {
+    "value": "Gemini 的 cookies 已保存。"
+  },
+  "settings.geminiShared": {
+    "value": "Gemini 与 Antigravity 共用同一份 Google AI 订阅额度。网页端仅支持 cookie 导入，没有 WebView 登录途径。"
+  },
+  "settings.geminiSource": {
+    "value": "Gemini 来源"
+  },
+  "settings.grokAuthDetected": {
+    "value": "已检测到 ~/.grok/auth.json"
+  },
+  "settings.grokCookiesSaved": {
+    "value": "Grok 的 cookies 已保存。"
+  },
+  "settings.keepHistory": {
+    "value": "保留历史"
+  },
+  "settings.keepHistoryDetail": {
+    "value": "适用于花费历史与订阅填充历史。"
+  },
+  "settings.kitDetail": {
+    "value": "会话发现、harness 命名与 MCP 传输。独立仓库，固定到确切 tag 并编译进本次构建。"
+  },
   "settings.language.caption": {
     "value": "Vibe Bar 默认跟随 macOS 语言，也可以在此单独指定。厂商、模型与 harness 名称保持原始拼写。"
   },
@@ -1000,6 +1120,576 @@
   },
   "settings.language.title": {
     "value": "语言"
+  },
+  "settings.mcp.allowRefresh": {
+    "value": "允许 agent 刷新额度"
+  },
+  "settings.mcp.allowRefreshDetail": {
+    "value": "开启后，agent 可以让 Vibe Bar 重新向厂商拉取额度。强制刷新限流为每 {seconds} 秒一次。关闭后只读工具照常可用，quota.refresh 会报告刷新已禁用。"
+  },
+  "settings.mcp.allowSkills": {
+    "value": "允许 agent 安装 skills"
+  },
+  "settings.mcp.allowSkillsDetail": {
+    "value": "开启后，agent 可以调用 skills.install，从 GitHub 仓库或本地文件夹添加 skill。它走的是与 Workbench → Skills 相同的管理流程，因此只写入 ~/.agents/skills 以及 Vibe Bar 管理的 agent skills 目录 — 绝不覆盖已被其他 skill 占用的文件夹。关闭后该工具会报告安装已禁用。"
+  },
+  "settings.mcp.appendCodexConfig": {
+    "value": "追加到 ~/.codex/config.toml。"
+  },
+  "settings.mcp.connectAgent": {
+    "value": "接入一个 agent"
+  },
+  "settings.mcp.connectedClients": {
+    "value": "已连接客户端"
+  },
+  "settings.mcp.enable": {
+    "value": "启用本地 MCP 服务"
+  },
+  "settings.mcp.intro": {
+    "value": "Vibe Bar 可通过 MCP 向编码 agent 提供本机的额度、用量、花费与本地会话。服务监听 home 目录下的 Unix domain socket — 不开放网络端口，也不创建 token：socket 的文件权限即访问控制。"
+  },
+  "settings.mcp.lastActivity": {
+    "value": "最近一次客户端活动"
+  },
+  "settings.mcp.listening": {
+    "value": "监听中"
+  },
+  "settings.mcp.manualIntro": {
+    "value": "也可手动配置客户端。所有客户端运行同一条命令 — Vibe Bar 自身的可执行文件加 {flag}，它把 stdin/stdout 桥接到上面的 socket。"
+  },
+  "settings.mcp.mergeCursorConfig": {
+    "value": "合并到 ~/.cursor/mcp.json。"
+  },
+  "settings.mcp.movePrompt": {
+    "value": "Vibe Bar 正从 {path} 运行。保存客户端配置前请先移动到 /Applications，否则下次重新构建后配置会失效。"
+  },
+  "settings.mcp.notListening": {
+    "value": "未监听"
+  },
+  "settings.mcp.otherStdioClient": {
+    "value": "其他 stdio 客户端"
+  },
+  "settings.mcp.otherStdioDetail": {
+    "value": "给客户端自己的 mcpServers 映射加一条。"
+  },
+  "settings.mcp.quickestPath": {
+    "value": "最快的方式：把这段粘贴给任意 agent，让它自行完成配置、安装配套 skill 并验证连接。"
+  },
+  "settings.mcp.readOnlyDetail": {
+    "value": "agent 能访问的其余内容均为只读：额度、token 用量、花费、厂商状态、生效模型价格，以及本地会话索引（标题、项目，以及在开启会话正文索引时的消息摘录）。凭据、cookies 与组织 id 从不暴露，邮箱地址会被掩码。"
+  },
+  "settings.mcp.runInTerminal": {
+    "value": "在终端中运行。"
+  },
+  "settings.mcp.setupPrompt": {
+    "value": "Agent 配置提示词"
+  },
+  "settings.mcp.setupPromptDetail": {
+    "value": "一行内容，适用于任何能抓取 URL 的 agent。"
+  },
+  "settings.mcp.socket": {
+    "value": "Socket"
+  },
+  "settings.mcp.socketLifetime": {
+    "value": "socket 仅在 Vibe Bar 运行时存在。退出后，下方配置的 agent 会报告 “Vibe Bar is not running”，这是预期行为。"
+  },
+  "settings.mcp.status": {
+    "value": "状态"
+  },
+  "settings.mcp.title": {
+    "value": "MCP 服务"
+  },
+  "settings.mcp.whatAgentsMayDo": {
+    "value": "agent 的权限范围"
+  },
+  "settings.menuBarHealthUnavailable": {
+    "value": "本进程未接入菜单栏健康监控。"
+  },
+  "settings.miniWindow.add": {
+    "value": "添加迷你窗口"
+  },
+  "settings.miniWindow.allBucketsIncluded": {
+    "value": "已知的 bucket 都已在此窗口中。"
+  },
+  "settings.miniWindow.dismissBuiltIn": {
+    "value": "在厂商未返回该内置 bucket 期间将其隐藏。厂商一旦恢复返回，它便会重新出现。"
+  },
+  "settings.miniWindow.forgetDiscovered": {
+    "value": "忘记这个已发现的 bucket — 将其从列表以及所有选中它的窗口中移除。"
+  },
+  "settings.miniWindow.includeStyle": {
+    "value": "将{mode}纳入双击循环"
+  },
+  "settings.miniWindow.lastCannotBeRemoved": {
+    "value": "最后一个迷你窗口无法移除。"
+  },
+  "settings.miniWindow.namesAllWindows": {
+    "value": "名称：全部窗口"
+  },
+  "settings.miniWindow.namesThisStyle": {
+    "value": "仅此处的{mode}"
+  },
+  "settings.miniWindow.namesThisWindow": {
+    "value": "仅“{name}”"
+  },
+  "settings.miniWindow.noFieldsSelected": {
+    "value": "未选择任何字段 — 请在上方勾选。"
+  },
+  "settings.miniWindow.notInWindow": {
+    "value": "不在“{name}”中 — 勾选 bucket 即可加入。适配器在运行时发现的 bucket 会自动出现在这里；灰显的行表示已记录但不在账号当前响应中，✕ 可将其忽略，直到厂商重新返回。"
+  },
+  "settings.miniWindow.offline": {
+    "value": "离线"
+  },
+  "settings.miniWindow.openClose": {
+    "value": "打开 / 关闭"
+  },
+  "settings.miniWindow.overridesStyle": {
+    "value": "仅对此窗口的{mode}样式生效的覆盖。留空则先继承窗口名称，再继承共享名称 — 以占位文本显示。"
+  },
+  "settings.miniWindow.overridesWindow": {
+    "value": "仅对此窗口生效的名称覆盖。留空则继承共享名称 — 以占位文本显示。"
+  },
+  "settings.miniWindow.position": {
+    "value": "{position}"
+  },
+  "settings.miniWindow.removeFromWindow": {
+    "value": "从此窗口移除"
+  },
+  "settings.miniWindow.removeHelp": {
+    "value": "移除此迷你窗口"
+  },
+  "settings.miniWindow.stripDensity": {
+    "value": "条带密度"
+  },
+  "settings.miniWindow.styleCycle": {
+    "value": "双击窗口可循环切换样式。点选某个样式即将其纳入循环 — 徽标表示它在循环中的次序。未选任何样式即表示按此顺序使用全部样式。"
+  },
+  "settings.miniWindow.toggleHelp": {
+    "value": "在屏幕上显示或隐藏此迷你窗口"
+  },
+  "settings.miniWindow.treeDetail": {
+    "value": "窗口的一棵树 — 按其折叠方式分组（company → SubProvider → 额度组 → bucket）。拖动行可重新排序，✕ 可移除，任一层级均可就地重命名。第一个字段渲染在最左（或最上）。"
+  },
+  "settings.misc.accessKeyId": {
+    "value": "Access Key ID（AKLT…）"
+  },
+  "settings.misc.akSkSaved": {
+    "value": "AK/SK 已保存到 Keychain。"
+  },
+  "settings.misc.apiKeySaved": {
+    "value": "API key 已保存到 Keychain。"
+  },
+  "settings.misc.clearWorkspace": {
+    "value": "清除已保存的工作区"
+  },
+  "settings.misc.clone": {
+    "value": "复制 {provider}"
+  },
+  "settings.misc.consoleLink": {
+    "value": "{title} →"
+  },
+  "settings.misc.edition": {
+    "value": "版本"
+  },
+  "settings.misc.githubSignInHint": {
+    "value": "通过 GitHub 设备流程登录。"
+  },
+  "settings.misc.githubTokenSaved": {
+    "value": "GitHub 设备令牌已保存到 Keychain。"
+  },
+  "settings.misc.importDetail": {
+    "value": "添加或刷新找到的第一个已登录浏览器配置；已导入的配置会保留叠加，该厂商的额度取上方所有槽位的平均值。每个 Chromium 系浏览器，macOS 可能会要求输入一次登录钥匙串密码。"
+  },
+  "settings.misc.kiroHint": {
+    "value": "运行 `kiro-cli login`，之后 Vibe Bar 会探测 `kiro-cli chat --no-interactive /usage`。"
+  },
+  "settings.misc.noCookieSpec": {
+    "value": "{provider} 未注册 cookie 规格。"
+  },
+  "settings.misc.noCookiesYet": {
+    "value": "尚未导入 cookies — 可从浏览器导入或在下方粘贴。"
+  },
+  "settings.misc.probe": {
+    "value": "探测"
+  },
+  "settings.misc.prompt.copilotHost": {
+    "value": "GitHub Enterprise 主机（可选，例如 github.example.com）"
+  },
+  "settings.misc.prompt.dashscope": {
+    "value": "粘贴 DashScope API key（sk-...）— 可选"
+  },
+  "settings.misc.prompt.kilo": {
+    "value": "粘贴 Kilo API key（可选）"
+  },
+  "settings.misc.prompt.minimax": {
+    "value": "粘贴 MiniMax Token Plan API key（sk-cp-... 或 MINIMAX_CODING_API_KEY）"
+  },
+  "settings.misc.prompt.openRouter": {
+    "value": "粘贴 OpenRouter API key（sk-or-v1-...）"
+  },
+  "settings.misc.prompt.openRouterHost": {
+    "value": "OpenRouter API URL（可选，默认为 https://openrouter.ai/api/v1）"
+  },
+  "settings.misc.prompt.warp": {
+    "value": "粘贴 Warp API key（wk-...）"
+  },
+  "settings.misc.prompt.workspace": {
+    "value": "工作区 ID 或 URL（可选，wrk_... 或 /workspace/wrk_.../go）"
+  },
+  "settings.misc.prompt.zai": {
+    "value": "粘贴 Z.ai API key（zai-...）"
+  },
+  "settings.misc.region": {
+    "value": "区域"
+  },
+  "settings.misc.removeAkSk": {
+    "value": "移除已保存的 {provider} AK/SK"
+  },
+  "settings.misc.removeApiKey": {
+    "value": "移除已保存的 {provider} API key"
+  },
+  "settings.misc.removeCookieSlot": {
+    "value": "移除此 cookie 槽位"
+  },
+  "settings.misc.removeCopy": {
+    "value": "移除此 {provider} 副本"
+  },
+  "settings.misc.removeCopyButton": {
+    "value": "移除副本"
+  },
+  "settings.misc.removeCopyDetail": {
+    "value": "其保存的凭据会从 Keychain 中删除 — 包括 API key 或 AK/SK 以及全部已导入的 cookie 槽位。此操作不可撤销。"
+  },
+  "settings.misc.removeCopyTitle": {
+    "value": "是否移除此 {provider} 副本？"
+  },
+  "settings.misc.removeGithubToken": {
+    "value": "移除已保存的 GitHub 设备令牌"
+  },
+  "settings.misc.rename": {
+    "value": "重命名此副本"
+  },
+  "settings.misc.secretAccessKey": {
+    "value": "Secret Access Key"
+  },
+  "settings.misc.signIn": {
+    "value": "登录"
+  },
+  "settings.misc.signInViaWeb": {
+    "value": "通过网页登录"
+  },
+  "settings.misc.tencentTokenPlanNote": {
+    "value": "个人版 Token Plan 目前仅在中国大陆（cn-beijing）提供。复制此行即可同时跟踪团队版与个人版。"
+  },
+  "settings.misc.variant": {
+    "value": "变体"
+  },
+  "settings.misc.waiting": {
+    "value": "等待中…"
+  },
+  "settings.misc.workspaceNote": {
+    "value": "仅当账号拥有多个工作区时才需要填写 — 否则 Vibe Bar 使用找到的第一个。"
+  },
+  "settings.needsSetup": {
+    "value": "需配置"
+  },
+  "settings.notChecked": {
+    "value": "未检查"
+  },
+  "settings.notCheckedYet": {
+    "value": "尚未检查。在主动发起前不会请求任何内容。"
+  },
+  "settings.openRefreshCooldown": {
+    "value": "打开刷新的最小间隔"
+  },
+  "settings.openRefreshDetail": {
+    "value": "每个间隔周期内，打开面板最多刷新一次全部可见厂商。"
+  },
+  "settings.openStatusPage": {
+    "value": "打开 {company} 状态页"
+  },
+  "settings.percentShows": {
+    "value": "百分比显示"
+  },
+  "settings.planBadge": {
+    "value": "套餐标签"
+  },
+  "settings.planBadgeDetail": {
+    "value": "留空则使用自动检测到的账号套餐。"
+  },
+  "settings.pricing.addOverride": {
+    "value": "添加模型覆盖值"
+  },
+  "settings.pricing.advancedTiers": {
+    "value": "高级分档"
+  },
+  "settings.pricing.alwaysWins": {
+    "value": "始终优先"
+  },
+  "settings.pricing.bundledFallback": {
+    "value": "内置兜底"
+  },
+  "settings.pricing.cacheReadAbove": {
+    "value": "阈值以上缓存读取"
+  },
+  "settings.pricing.cacheWriteAbove": {
+    "value": "阈值以上缓存写入"
+  },
+  "settings.pricing.deleteOverride": {
+    "value": "删除覆盖值"
+  },
+  "settings.pricing.exactModelName": {
+    "value": "模型名称（精确匹配）"
+  },
+  "settings.pricing.fastMultiplier": {
+    "value": "快速档倍率"
+  },
+  "settings.pricing.inputAbove": {
+    "value": "阈值以上输入"
+  },
+  "settings.pricing.intro": {
+    "value": "目录在后台刷新。同一厂商与模型名出现多次时，靠前的条目优先。"
+  },
+  "settings.pricing.localOverrides": {
+    "value": "本地覆盖值"
+  },
+  "settings.pricing.localOverridesName": {
+    "value": "本地覆盖值"
+  },
+  "settings.pricing.noOverrides": {
+    "value": "暂无本地覆盖值。"
+  },
+  "settings.pricing.number": {
+    "value": "{number}"
+  },
+  "settings.pricing.offlineFloor": {
+    "value": "离线下限"
+  },
+  "settings.pricing.outputAbove": {
+    "value": "阈值以上输出"
+  },
+  "settings.pricing.overridesIntro": {
+    "value": "价格单位为每百万 token 的美元数。厂商未公布缓存价格时，相应字段留空。"
+  },
+  "settings.pricing.priorityHealth": {
+    "value": "优先级与来源状态"
+  },
+  "settings.pricing.rateInput": {
+    "value": "输入"
+  },
+  "settings.pricing.rateOutput": {
+    "value": "输出"
+  },
+  "settings.pricing.refreshNow": {
+    "value": "立即刷新"
+  },
+  "settings.pricing.refreshing": {
+    "value": "正在刷新…"
+  },
+  "settings.pricing.thresholdTokens": {
+    "value": "分档阈值 token 数"
+  },
+  "settings.pricingDataDate": {
+    "value": "价格数据：{date}"
+  },
+  "settings.privacyDetail": {
+    "value": "token 从本地 CLI 凭据读取。已保存的 OpenAI 与 Claude 网页 cookies 存放在 macOS Keychain 中，按浏览器与 WebView 来源分开。~/.vibebar/cookies 下的旧版明文 cookie 文件会迁移一次并删除。设置、额度缓存与花费汇总保留在 ~/.vibebar 下。"
+  },
+  "settings.privacyMode": {
+    "value": "隐私模式"
+  },
+  "settings.privacyModeDetail": {
+    "value": "隐私模式不将花费数据写入磁盘，并清除本地花费历史、快照与扫描缓存。"
+  },
+  "settings.ready": {
+    "value": "就绪"
+  },
+  "settings.refreshEvery": {
+    "value": "刷新间隔"
+  },
+  "settings.refreshOnPopoverOpen": {
+    "value": "打开面板时刷新"
+  },
+  "settings.releaseNotes": {
+    "value": "发行说明"
+  },
+  "settings.remote.core": {
+    "value": "远程 Core"
+  },
+  "settings.remote.costAggregation": {
+    "value": "花费汇总"
+  },
+  "settings.remote.costAggregationIntro": {
+    "value": "选择哪些远程机器计入本机的花费与 token 总计。选择与汇总均在本 Core 完成；Relay 不会看到明文用量。"
+  },
+  "settings.remote.differentControlCenter": {
+    "value": "使用其他控制台"
+  },
+  "settings.remote.discard": {
+    "value": "丢弃"
+  },
+  "settings.remote.discardPendingDetail": {
+    "value": "该配对码已失效，且工作区仍将本机视为其 Core。如需重新加入，请先在网页控制台吊销本机，再创建新的配对码。"
+  },
+  "settings.remote.discardPendingTitle": {
+    "value": "是否丢弃这次待完成的加入？"
+  },
+  "settings.remote.disconnect": {
+    "value": "断开连接"
+  },
+  "settings.remote.disconnectButton": {
+    "value": "断开与工作区的连接…"
+  },
+  "settings.remote.disconnectDetail": {
+    "value": "日后重新连接需要新的配对码或配置文件。"
+  },
+  "settings.remote.disconnectIntro": {
+    "value": "断开会从 Keychain 移除本机的 Relay 凭据及其工作区绑定。在 Relay 端吊销之前，探针仍会继续上传。已解密的用量保留在本地账本中。"
+  },
+  "settings.remote.disconnectTitle": {
+    "value": "是否断开与该工作区的连接？"
+  },
+  "settings.remote.exportIdentity": {
+    "value": "导出 Core 身份…"
+  },
+  "settings.remote.importProvisioning": {
+    "value": "导入配置文件…"
+  },
+  "settings.remote.join": {
+    "value": "加入"
+  },
+  "settings.remote.joinIntro": {
+    "value": "在 Vibe Bar 控制台创建 Core 配对码，然后粘贴到此处。本机将以“{device}”的名义加入。"
+  },
+  "settings.remote.joinWithCode": {
+    "value": "用配对码加入"
+  },
+  "settings.remote.lastSync": {
+    "value": "最近同步"
+  },
+  "settings.remote.machineDetail": {
+    "value": "{platform} · 探针 {version}"
+  },
+  "settings.remote.machinesAppearAfterImport": {
+    "value": "机器在首批加密数据导入后出现在此。"
+  },
+  "settings.remote.machinesSynced": {
+    "value": "已同步机器"
+  },
+  "settings.remote.manualPairingIntro": {
+    "value": "配对分三步：导出本机 Core 身份，在 Relay 注册以生成配置文件，然后在此导入该文件。导入会把 Relay 凭据移入 macOS Keychain — 但配置文件本身仍包含该凭据，导入成功后请删除该文件。"
+  },
+  "settings.remote.notConnected": {
+    "value": "本机尚未连接到工作区。远程探针在其他机器上采集归一化用量，用本机 Core 的密钥加密后投递到 Relay — 本机不会开放任何入站端口。"
+  },
+  "settings.remote.orPairManually": {
+    "value": "也可手动配对。"
+  },
+  "settings.remote.pendingIntro": {
+    "value": "上一次加入已被控制台接受，但在本机未完成保存。该配对码已失效，请继续保存，而不是重新申请配对码。"
+  },
+  "settings.remote.provisioning": {
+    "value": "配置接入"
+  },
+  "settings.remote.registeredProbes": {
+    "value": "已注册探针"
+  },
+  "settings.remote.relay": {
+    "value": "Relay"
+  },
+  "settings.remote.resumeSaving": {
+    "value": "继续保存"
+  },
+  "settings.remote.retrySaving": {
+    "value": "重试保存"
+  },
+  "settings.remote.statusWithCode": {
+    "value": "{title} · {code}"
+  },
+  "settings.remote.syncNow": {
+    "value": "立即同步"
+  },
+  "settings.remote.workspace": {
+    "value": "工作区"
+  },
+  "settings.repository": {
+    "value": "仓库"
+  },
+  "settings.rescanCostLogs": {
+    "value": "重新扫描花费日志"
+  },
+  "settings.search": {
+    "value": "搜索设置"
+  },
+  "settings.section.components": {
+    "value": "组件"
+  },
+  "settings.section.costData": {
+    "value": "花费数据"
+  },
+  "settings.section.layout": {
+    "value": "布局"
+  },
+  "settings.section.menuBarHealth": {
+    "value": "菜单栏健康"
+  },
+  "settings.section.miniWindows": {
+    "value": "迷你窗口"
+  },
+  "settings.section.overview": {
+    "value": "总览"
+  },
+  "settings.section.privacy": {
+    "value": "隐私"
+  },
+  "settings.section.refreshing": {
+    "value": "刷新"
+  },
+  "settings.section.system": {
+    "value": "系统"
+  },
+  "settings.section.updates": {
+    "value": "更新"
+  },
+  "settings.showAssistant": {
+    "value": "打开设置向导"
+  },
+  "settings.showAssistantDetail": {
+    "value": "重新走一遍订阅、浏览器 cookies、API key、模型价格与登录项。不会重置任何设置。"
+  },
+  "settings.sidebar.coreProviders": {
+    "value": "核心厂商"
+  },
+  "settings.sidebar.disableProvider": {
+    "value": "停用厂商"
+  },
+  "settings.sidebar.enableProvider": {
+    "value": "启用厂商"
+  },
+  "settings.sidebar.hideFromOverview": {
+    "value": "从总览中隐藏"
+  },
+  "settings.sidebar.settings": {
+    "value": "设置"
+  },
+  "settings.spaceXAIIntro": {
+    "value": "SpaceXAI 页面同时包含 Grok 与 Cursor。Grok 读取 `~/.grok/auth.json` 或 grok.com 的 cookies；Cursor 先读 Cursor.app，再读 cursor.com 的 cookie 槽位。Grok Bot 提供额度，以及来自本地缓存的只读会话 — 其云端运行仍不产生 token 或花费记录。"
+  },
+  "settings.updateChannel": {
+    "value": "更新通道"
+  },
+  "settings.updateCheckDetail": {
+    "value": "每天检查一次所选通道，安装前会先询问。"
+  },
+  "settings.usageSource": {
+    "value": "用量来源"
+  },
+  "settings.webQuota": {
+    "value": "网页端额度"
+  },
+  "settings.whatChangedIn": {
+    "value": "{version} 的更新内容"
   },
   "status.card.componentCount": {
     "value": "{count, plural, other {# 个组件}}"

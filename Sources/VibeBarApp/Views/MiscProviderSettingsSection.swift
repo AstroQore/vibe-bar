@@ -28,13 +28,13 @@ struct MiscProviderSettingsSection: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .frame(width: 14)
-                    .help("Drag to reorder")
+                    .help(L10n.Common.dragToReorder)
                 Toggle(isOn: visibilityBinding) {
                     EmptyView()
                 }
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .help("Show \(tool.menuTitle) on the Misc page")
+                .help(L10n.Onboarding.apiKeysShowOnMiscPage(provider: tool.menuTitle))
                 ToolBrandBadge(tool: tool, iconSize: 17, containerSize: 24)
                 Text(tool.menuTitle)
                     .font(.system(size: 13, weight: .semibold))
@@ -50,7 +50,7 @@ struct MiscProviderSettingsSection: View {
                 Spacer(minLength: 8)
                 BorderlessIconButton(
                     systemImage: "doc.on.doc",
-                    help: "Clone \(tool.menuTitle)",
+                    help: L10n.Settings.miscClone(provider: tool.menuTitle),
                     size: 10
                 ) {
                     _ = settingsStore.settings.cloneMiscProviderInstance(id: instanceID)
@@ -58,7 +58,7 @@ struct MiscProviderSettingsSection: View {
                 if !instance.isDefault {
                     BorderlessIconButton(
                         systemImage: "trash",
-                        help: "Remove this \(tool.menuTitle) copy",
+                        help: L10n.Settings.miscRemoveCopy(provider: tool.menuTitle),
                         size: 10
                     ) {
                         isConfirmingRemoval = true
@@ -72,14 +72,14 @@ struct MiscProviderSettingsSection: View {
         // back. A one-click trash icon next to a Clone button is too easy
         // to hit for something irreversible.
         .confirmationDialog(
-            "Remove this \(tool.menuTitle) copy?",
+            L10n.Settings.miscRemoveCopyTitle(provider: tool.menuTitle),
             isPresented: $isConfirmingRemoval,
             titleVisibility: .visible
         ) {
-            Button("Remove Copy", role: .destructive, action: removeClone)
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.Settings.miscRemoveCopyButton, role: .destructive, action: removeClone)
+            Button(L10n.Common.cancel, role: .cancel) {}
         } message: {
-            Text("Its saved credentials are deleted from your Keychain — the API key or AK/SK and every imported cookie slot. This cannot be undone.")
+            Text(L10n.Settings.miscRemoveCopyDetail)
         }
     }
 
@@ -141,7 +141,7 @@ struct MiscProviderCredentialRows: View {
                 ApiKeyField(
                     tool: .zai,
                     instanceID: instanceID,
-                    prompt: "Paste Z.ai API key (zai-...)",
+                    prompt: L10n.Settings.miscPromptZai,
                     helpText: "Find it under API Keys on z.ai (Global) or open.bigmodel.cn (China mainland). Stored in macOS Keychain."
                 )
                 ZaiRegionPicker(instanceID: instanceID)
@@ -149,7 +149,7 @@ struct MiscProviderCredentialRows: View {
         case .copilot:
             VStack(alignment: .leading, spacing: 4) {
                 CopilotDeviceLoginRow(instanceID: instanceID)
-                EnterpriseHostField(tool: .copilot, instanceID: instanceID, prompt: "GitHub Enterprise host (optional, e.g. github.example.com)")
+                EnterpriseHostField(tool: .copilot, instanceID: instanceID, prompt: L10n.Settings.miscPromptCopilotHost)
             }
         case .gemini:
             EmptyView()
@@ -158,7 +158,7 @@ struct MiscProviderCredentialRows: View {
                 ApiKeyField(
                     tool: .alibaba,
                     instanceID: instanceID,
-                    prompt: "Paste DashScope API key (sk-...) — optional",
+                    prompt: L10n.Settings.miscPromptDashscope,
                     helpText: "If you have a DashScope key, paste it here. Otherwise sign in via Web below to use console cookies. Stored in macOS Keychain."
                 )
                 AlibabaRegionPicker(instanceID: instanceID)
@@ -183,7 +183,7 @@ struct MiscProviderCredentialRows: View {
                 ) == .team {
                     AlibabaRegionPicker(instanceID: instanceID)
                 } else {
-                    Text("Personal Token Plan is currently available only in China mainland (cn-beijing). Clone this row to track Team and Personal together.")
+                    Text(L10n.Settings.miscTencentTokenPlanNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -203,7 +203,7 @@ struct MiscProviderCredentialRows: View {
                 ApiKeyField(
                     tool: .minimax,
                     instanceID: instanceID,
-                    prompt: "Paste MiniMax Token Plan API key (sk-cp-... or MINIMAX_CODING_API_KEY)",
+                    prompt: L10n.Settings.miscPromptMinimax,
                     helpText: "Find it under Billing → Token Plan. Stored in macOS Keychain. Env fallback: MINIMAX_CODING_API_KEY, then MINIMAX_API_KEY."
                 )
                 MiniMaxRegionPicker(instanceID: instanceID)
@@ -304,9 +304,9 @@ struct MiscProviderCredentialRows: View {
                 WorkspaceIDField(
                     tool: .openCodeGo,
                     instanceID: instanceID,
-                    prompt: "Workspace ID or URL (optional, wrk_... or /workspace/wrk_.../go)"
+                    prompt: L10n.Settings.miscPromptWorkspace
                 )
-                Text("Only needed when the account owns more than one workspace — otherwise Vibe Bar uses the first one it finds.")
+                Text(L10n.Settings.miscWorkspaceNote)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -314,7 +314,7 @@ struct MiscProviderCredentialRows: View {
             ApiKeyField(
                 tool: .kilo,
                 instanceID: instanceID,
-                prompt: "Paste Kilo API key (optional)",
+                prompt: L10n.Settings.miscPromptKilo,
                 helpText: "From app.kilo.ai → API Keys, and optional: Vibe Bar also reads the auth file `kilo login` writes under ~/.local/share/kilo/. Env fallback: KILO_API_KEY."
             )
         case .kiro:
@@ -330,16 +330,16 @@ struct MiscProviderCredentialRows: View {
                 ApiKeyField(
                     tool: .openRouter,
                     instanceID: instanceID,
-                    prompt: "Paste OpenRouter API key (sk-or-v1-...)",
+                    prompt: L10n.Settings.miscPromptOpenRouter,
                     helpText: "From openrouter.ai → Keys; credit-read access is enough. Stored in macOS Keychain. Env fallback: OPENROUTER_API_KEY."
                 )
-                EnterpriseHostField(tool: .openRouter, instanceID: instanceID, prompt: "OpenRouter API URL (optional, defaults to https://openrouter.ai/api/v1)")
+                EnterpriseHostField(tool: .openRouter, instanceID: instanceID, prompt: L10n.Settings.miscPromptOpenRouterHost)
             }
         case .warp:
             ApiKeyField(
                 tool: .warp,
                 instanceID: instanceID,
-                prompt: "Paste Warp API key (wk-...)",
+                prompt: L10n.Settings.miscPromptWarp,
                 helpText: "Open Warp → Settings → AI → API Keys to mint one. Stored in macOS Keychain. Env fallback: WARP_API_KEY, then WARP_TOKEN."
             )
         case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
@@ -380,7 +380,7 @@ struct MiscProviderSetupNote: View {
                 // either console could be the one holding the credential.
                 ForEach(consoleLinks) { link in
                     Link(destination: link.url) {
-                        Text("\(link.title) →")
+                        Text(L10n.Settings.miscConsoleLink(title: link.title))
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
@@ -457,7 +457,7 @@ struct AlibabaTokenPlanVariantPicker: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
-        Picker("Edition", selection: choiceBinding) {
+        Picker(L10n.Settings.miscEdition, selection: choiceBinding) {
             ForEach(AlibabaTokenPlanVariant.allCases, id: \.rawValue) { choice in
                 Text(choice.displayLabel).tag(choice)
             }
@@ -497,7 +497,7 @@ private struct CopyNameField: View {
             .font(.caption2)
             .frame(width: 120)
             .focused($isFocused)
-            .help("Rename this copy")
+            .help(L10n.Settings.miscRename)
             .onAppear(perform: syncDraft)
             .onSubmit(save)
             .onChange(of: isFocused) { _, focused in
@@ -547,20 +547,20 @@ struct ApiKeyField: View {
                 SecureField(prompt, text: $draft)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(save)
-                Button("Save", action: save)
+                Button(L10n.Common.save, action: save)
                     .disabled(draft.isEmpty)
                 if hasStored {
                     Button(role: .destructive, action: clear) {
                         Image(systemName: "trash")
                     }
-                    .help("Remove stored \(tool.menuTitle) API key")
+                    .help(L10n.Settings.miscRemoveApiKey(provider: tool.menuTitle))
                 }
             }
             HStack(spacing: 4) {
                 Image(systemName: hasStored ? "checkmark.circle.fill" : "info.circle")
                     .foregroundStyle(hasStored ? Color.green : Color.secondary)
                     .font(.caption)
-                Text(hasStored ? "API key saved in Keychain." : helpText)
+                Text(hasStored ? L10n.Settings.miscApiKeySaved : helpText)
                     .font(.caption)
                     .foregroundStyle(hasStored ? .secondary : .tertiary)
             }
@@ -637,26 +637,26 @@ struct AkSkField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TextField("Access Key ID (AKLT…)", text: $akDraft)
+            TextField(L10n.Settings.miscAccessKeyId, text: $akDraft)
                 .textFieldStyle(.roundedBorder)
             HStack(spacing: 6) {
-                SecureField("Secret Access Key", text: $skDraft)
+                SecureField(L10n.Settings.miscSecretAccessKey, text: $skDraft)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(save)
-                Button("Save", action: save)
+                Button(L10n.Common.save, action: save)
                     .disabled(akDraft.isEmpty || skDraft.isEmpty)
                 if hasStored {
                     Button(role: .destructive, action: clear) {
                         Image(systemName: "trash")
                     }
-                    .help("Remove stored \(tool.menuTitle) AK/SK")
+                    .help(L10n.Settings.miscRemoveAkSk(provider: tool.menuTitle))
                 }
             }
             HStack(spacing: 4) {
                 Image(systemName: hasStored ? "checkmark.circle.fill" : "info.circle")
                     .foregroundStyle(hasStored ? Color.green : Color.secondary)
                     .font(.caption)
-                Text(hasStored ? "AK/SK saved in Keychain." : helpText)
+                Text(hasStored ? L10n.Settings.miscAkSkSaved : helpText)
                     .font(.caption)
                     .foregroundStyle(hasStored ? .secondary : .tertiary)
             }
@@ -739,7 +739,7 @@ struct CopilotDeviceLoginRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Label(
-                    hasStoredToken ? "GitHub device token saved in Keychain." : "Sign in with GitHub device flow.",
+                    hasStoredToken ? L10n.Settings.miscGithubTokenSaved : L10n.Settings.miscGithubSignInHint,
                     systemImage: hasStoredToken ? "checkmark.circle.fill" : "person.crop.circle.badge.key"
                 )
                 .font(.caption)
@@ -747,7 +747,7 @@ struct CopilotDeviceLoginRow: View {
 
                 Spacer(minLength: 4)
 
-                Button(isSigningIn ? "Waiting..." : "Sign in") {
+                Button(isSigningIn ? L10n.Settings.miscWaiting : L10n.Settings.miscSignIn) {
                     startLogin()
                 }
                 .buttonStyle(.bordered)
@@ -759,7 +759,7 @@ struct CopilotDeviceLoginRow: View {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
-                    .help("Remove stored GitHub device token")
+                    .help(L10n.Settings.miscRemoveGithubToken)
                 }
             }
 
@@ -860,11 +860,11 @@ struct KiroStatusRow: View {
             Image(systemName: "terminal")
                 .foregroundStyle(.secondary)
                 .font(.caption)
-            Text("Run `kiro-cli login`, then Vibe Bar probes `kiro-cli chat --no-interactive /usage`.")
+            Text(L10n.Settings.miscKiroHint)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 4)
-            Button("Probe", action: probe)
+            Button(L10n.Settings.miscProbe, action: probe)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         }
@@ -927,7 +927,7 @@ struct CookieSourceControls: View {
 
     var body: some View {
         if spec == nil {
-            Text("No cookie spec is registered for \(tool.menuTitle).")
+            Text(L10n.Settings.miscNoCookieSpec(provider: tool.menuTitle))
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else {
@@ -938,7 +938,7 @@ struct CookieSourceControls: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
             if slots.isEmpty {
-                Text("No cookies imported yet — import from your browser or paste below.")
+                Text(L10n.Settings.miscNoCookiesYet)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
@@ -949,10 +949,10 @@ struct CookieSourceControls: View {
                 }
             }
             HStack(alignment: .top, spacing: 6) {
-                Button("Import from browser", action: importNow)
+                Button(L10n.Onboarding.cookiesImportFromBrowser, action: importNow)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                Text("Adds or refreshes the first signed-in browser profile found; profiles already imported stay stacked, and this provider's quota is the average across every slot listed above. macOS may ask for your login-keychain password once per Chromium-family browser.")
+                Text(L10n.Settings.miscImportDetail)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -960,7 +960,7 @@ struct CookieSourceControls: View {
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
                     .textFieldStyle(.roundedBorder)
-                Button("Add", action: saveManual)
+                Button(L10n.Common.add, action: saveManual)
                     .disabled(manualDraft.isEmpty)
             }
             if let keychainCooldown {
@@ -972,7 +972,7 @@ struct CookieSourceControls: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Retry now", action: resetCooldownAndRetry)
+                    Button(L10n.Common.retryNow, action: resetCooldownAndRetry)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
@@ -1176,7 +1176,7 @@ private struct CookieSlotRow: View {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .help("Remove this cookie slot")
+            .help(L10n.Settings.miscRemoveCookieSlot)
         }
         .padding(.vertical, 2)
         .padding(.horizontal, 6)
@@ -1244,7 +1244,7 @@ struct AlibabaRegionPicker: View {
     }
 
     var body: some View {
-        Picker("Region", selection: choiceBinding) {
+        Picker(L10n.Settings.miscRegion, selection: choiceBinding) {
             ForEach(Choice.allCases) { choice in
                 Text(choice.label).tag(choice)
             }
@@ -1278,7 +1278,7 @@ struct TencentTokenPlanVariantPicker: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
-        Picker("Variant", selection: choiceBinding) {
+        Picker(L10n.Settings.miscVariant, selection: choiceBinding) {
             ForEach(TencentTokenPlanVariant.allCases, id: \.rawValue) { choice in
                 Text(choice.displayLabel).tag(choice)
             }
@@ -1325,7 +1325,7 @@ struct ZaiRegionPicker: View {
     }
 
     var body: some View {
-        Picker("Region", selection: choiceBinding) {
+        Picker(L10n.Settings.miscRegion, selection: choiceBinding) {
             ForEach(Choice.allCases) { choice in
                 Text(choice.label).tag(choice)
             }
@@ -1370,7 +1370,7 @@ struct MiniMaxRegionPicker: View {
     }
 
     var body: some View {
-        Picker("Region", selection: choiceBinding) {
+        Picker(L10n.Settings.miscRegion, selection: choiceBinding) {
             ForEach(Choice.allCases) { choice in
                 Text(choice.label).tag(choice)
             }
@@ -1409,7 +1409,7 @@ struct EnterpriseHostField: View {
         HStack(spacing: 6) {
             TextField(prompt, text: $draft, onCommit: save)
                 .textFieldStyle(.roundedBorder)
-            Button("Save", action: save)
+            Button(L10n.Common.save, action: save)
                 .disabled(draft == currentRaw)
         }
         .onAppear { draft = currentRaw }
@@ -1450,14 +1450,14 @@ struct WorkspaceIDField: View {
         HStack(spacing: 6) {
             TextField(prompt, text: $draft, onCommit: save)
                 .textFieldStyle(.roundedBorder)
-            Button("Save", action: save)
+            Button(L10n.Common.save, action: save)
                 .disabled(draft == currentRaw)
             if !currentRaw.isEmpty {
                 Button(role: .destructive, action: clear) {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .help("Clear saved workspace")
+                .help(L10n.Settings.miscClearWorkspace)
             }
         }
         .onAppear { draft = currentRaw }
@@ -1510,7 +1510,7 @@ struct MiscWebLoginRow: View {
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                Button("Sign in via Web") {
+                Button(L10n.Settings.miscSignInViaWeb) {
                     environment.openMiscWebLogin(for: tool, instanceID: instanceID)
                 }
                 .buttonStyle(.bordered)
