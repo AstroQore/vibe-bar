@@ -68,6 +68,40 @@ final class SessionAgentQueryTests: XCTestCase {
         XCTAssertFalse(SessionQueryFilter(models: ["gpt-5-codex"]).matches(summary(model: nil)))
     }
 
+    /// The house rule, and the regression behind it: an omitted list means
+    /// everything, an explicitly empty one means nothing. `models: []` used
+    /// to be skipped entirely, so it matched every session — the exact
+    /// opposite of what the skill documents and of what `quota.get`'s
+    /// `tools: []` already does.
+    func testAnEmptyListFilterMatchesNothingOnEveryDimension() {
+        XCTAssertFalse(SessionQueryFilter(models: []).matches(summary()))
+        XCTAssertFalse(SessionQueryFilter(providers: []).matches(summary()))
+        XCTAssertFalse(SessionQueryFilter(harnesses: []).matches(summary()))
+        // Omitted still means everything.
+        XCTAssertTrue(SessionQueryFilter().matches(summary()))
+    }
+
+    func testMatchesNothingNamesEveryEmptyListUpFront() {
+        XCTAssertTrue(SessionQueryFilter(models: []).matchesNothing)
+        XCTAssertTrue(SessionQueryFilter(providers: []).matchesNothing)
+        XCTAssertTrue(SessionQueryFilter(harnesses: []).matchesNothing)
+        XCTAssertFalse(SessionQueryFilter().matchesNothing)
+        XCTAssertFalse(SessionQueryFilter(models: ["gpt-5"]).matchesNothing)
+        XCTAssertFalse(
+            SessionQueryFilter(projectDir: "").matchesNothing,
+            "an empty string is not an empty list; it simply narrows nothing"
+        )
+    }
+
+    /// The store has no model column filter at all, so *any* `models` list —
+    /// empty included — has to take the host-side path. Treating `[]` as
+    /// index-answerable is how it slipped through as "match everything".
+    func testAnyModelsListForcesTheHostSidePath() {
+        XCTAssertFalse(SessionQueryFilter(models: []).isAnsweredEntirelyByTheIndex)
+        XCTAssertFalse(SessionQueryFilter(models: ["gpt-5"]).isAnsweredEntirelyByTheIndex)
+        XCTAssertTrue(SessionQueryFilter().isAnsweredEntirelyByTheIndex)
+    }
+
     func testTimeWindowIsInclusiveBelowAndExclusiveAbove() {
         let filter = SessionQueryFilter(from: epoch, to: epoch.addingTimeInterval(60))
         XCTAssertTrue(filter.matches(summary(lastActiveAt: epoch)))
@@ -100,10 +134,11 @@ final class SessionAgentQueryTests: XCTestCase {
         )
         XCTAssertFalse(SessionQueryFilter(to: epoch).isAnsweredEntirelyByTheIndex)
         XCTAssertFalse(SessionQueryFilter(models: ["gpt-5"]).isAnsweredEntirelyByTheIndex)
-        XCTAssertTrue(
-            SessionQueryFilter(models: []).isAnsweredEntirelyByTheIndex,
-            "an empty model list narrows nothing here; the store already returns nothing for it"
-        )
+        // This used to assert the opposite, which is what let `models: []`
+        // reach the store unfiltered and match everything. The store has no
+        // model column filter of any kind, so an empty list is no more
+        // answerable there than a populated one.
+        XCTAssertFalse(SessionQueryFilter(models: []).isAnsweredEntirelyByTheIndex)
     }
 
     // MARK: - Locator
@@ -181,13 +216,17 @@ final class SessionAgentQueryTests: XCTestCase {
         XCTAssertFalse(last.hasMore)
     }
 
+    /// This test used to assert the bug: it expected seqs 10–19 for a window
+    /// centred on 50, i.e. ten messages that do not include the one asked
+    /// for. The cap now shrinks the window towards the target instead.
     func testTheMessageLimitTruncatesAWideAroundWindowAndLeavesACursor() {
         let result = window(
             TranscriptWindowRequest(around: 50, radius: 40, limit: 10), in: messages(200)
         )
         XCTAssertEqual(result.messages.count, 10)
-        XCTAssertEqual(result.messages.first?.seq, 10)
-        XCTAssertEqual(result.nextFrom, 20)
+        XCTAssertEqual(result.messages.map(\.seq), Array(45...54))
+        XCTAssertTrue(result.messages.contains { $0.seq == 50 })
+        XCTAssertEqual(result.nextFrom, 55)
         XCTAssertEqual(result.reasons, [.messageLimit])
         XCTAssertTrue(result.notice { "\($0) B" }?.contains("nextFrom") ?? false)
     }
@@ -241,6 +280,98 @@ final class SessionAgentQueryTests: XCTestCase {
         )
         XCTAssertEqual(result.messages.map(\.seq), [0, 2, 4])
         XCTAssertTrue(result.messages.allSatisfy { $0.role == .user })
+    }
+
+    // MARK: - `around` stays centred on its target
+
+    /// The exact regression: `around: 500, radius: 100` with the default
+    /// limit of 40 used to start at 400, fill up, and return 400–439 —
+    /// omitting message 500, the one the caller named. Widening the radius
+    /// made the answer *worse*, which broke the whole search-hit workflow.
+    func testAWideRadiusStillReturnsTheMessageItWasCentredOn() {
+        let result = window(
+            TranscriptWindowRequest(around: 500, radius: 100, limit: 40), in: messages(1_000)
+        )
+        XCTAssertEqual(result.messages.count, 40)
+        XCTAssertTrue(
+            result.messages.contains { $0.seq == 500 },
+            "the requested message must survive every cap; got \(result.messages.map(\.seq))"
+        )
+        // Shrunk towards the target rather than truncated from the left. The
+        // half-message bias goes to the earlier side on purpose: for a search
+        // hit, what led up to the match is usually the more useful context.
+        XCTAssertEqual(result.messages.map(\.seq), Array(480...519))
+        XCTAssertEqual(result.reasons, [.messageLimit])
+        XCTAssertEqual(result.nextFrom, 520)
+    }
+
+    /// Same guarantee under the other cap: a window of large messages must
+    /// spend its byte budget around the target, not before it.
+    func testTheByteBudgetShrinksAnAroundWindowTowardsItsTarget() {
+        let fat = messages(1_000) { _ in String(repeating: "x", count: 6_000) }
+        let result = window(TranscriptWindowRequest(around: 500, radius: 100, limit: 200), in: fat)
+        XCTAssertTrue(
+            result.messages.contains { $0.seq == 500 },
+            "got \(result.messages.map(\.seq))"
+        )
+        XCTAssertTrue(result.reasons.contains(.byteBudget))
+        let bytes = result.messages.reduce(0) { $0 + $1.text.utf8.count }
+        XCTAssertLessThanOrEqual(bytes, TranscriptWindowRequest.maximumTextBytes)
+        // Centred: roughly as many either side of the target.
+        let before = result.messages.filter { $0.seq < 500 }.count
+        let after = result.messages.filter { $0.seq > 500 }.count
+        XCTAssertLessThanOrEqual(abs(before - after), 1)
+    }
+
+    func testACappedAroundWindowIsStillContiguousSoOneCursorDescribesIt() {
+        let result = window(
+            TranscriptWindowRequest(around: 500, radius: 100, limit: 11), in: messages(1_000)
+        )
+        let seqs = result.messages.map(\.seq)
+        XCTAssertEqual(seqs, Array(495...505))
+        XCTAssertEqual(zip(seqs, seqs.dropFirst()).allSatisfy { $1 == $0 + 1 }, true)
+    }
+
+    /// A `roles` filter is the one thing allowed to drop the target: asking
+    /// for user turns only rules out an assistant one.
+    func testARoleFilterMayStillExcludeTheCentredMessage() {
+        // seq 5 is an assistant turn in this fixture.
+        let result = window(
+            TranscriptWindowRequest(around: 5, radius: 2, roles: [.user]), in: messages(100)
+        )
+        XCTAssertEqual(result.messages.map(\.seq), [4, 6])
+        XCTAssertFalse(result.messages.contains { $0.seq == 5 })
+    }
+
+    func testAnAroundWindowNearTheStartClampsWithoutLosingItsTarget() {
+        let result = window(
+            TranscriptWindowRequest(around: 1, radius: 100, limit: 5), in: messages(1_000)
+        )
+        XCTAssertTrue(result.messages.contains { $0.seq == 1 })
+        XCTAssertEqual(result.messages.map(\.seq), [0, 1, 2, 3, 4])
+    }
+
+    /// `from` past the end of what was read must be an empty window, not a
+    /// reversed range.
+    func testAFromBeyondTheReadMessagesIsEmptyRatherThanATrap() {
+        let result = window(TranscriptWindowRequest(from: 500, limit: 10), in: messages(10))
+        XCTAssertTrue(result.messages.isEmpty)
+        XCTAssertNil(result.nextFrom)
+    }
+
+    func testAnAroundSeqBeyondAFullyReadFileIsEmpty() {
+        let result = window(TranscriptWindowRequest(around: 500, radius: 2), in: messages(10))
+        XCTAssertTrue(result.messages.isEmpty)
+        XCTAssertEqual(result.totalMessageCount, 10, "the file was read whole, so the total is known")
+        XCTAssertNil(result.nextFrom)
+    }
+
+    // MARK: - Empty list filters mean nothing
+
+    /// The house rule, on the window side: `roles: []` selects no role.
+    func testAnEmptyRoleSetSelectsNothing() {
+        let result = window(TranscriptWindowRequest(from: 0, limit: 10, roles: []), in: messages(20))
+        XCTAssertTrue(result.messages.isEmpty)
     }
 
     func testAWindowPastTheReadableRegionSaysSoAndOffersNoCursor() {
@@ -352,6 +483,61 @@ final class SessionAgentQueryTests: XCTestCase {
         XCTAssertNil(result.totalMessageCount)
         XCTAssertLessThanOrEqual(result.bytesRead, 64 * 1024)
         XCTAssertLessThan(result.bytesRead, result.fileBytes)
+    }
+
+    // MARK: - One backfill call site
+
+    /// The fresh-install bug this guards: `sessions.list` grew a host-side
+    /// path that simply forgot to trigger the one-time index backfill, so a
+    /// new install answering a `to` or `models` query returned zero forever.
+    ///
+    /// The fix was to hoist it, and the invariant that keeps it fixed is
+    /// structural rather than behavioural — there is exactly one place that
+    /// can start a backfill, so no future read path can be added without
+    /// going through it. A source contract is the honest way to assert that:
+    /// `MCPController` lives in the app target and cannot be constructed
+    /// here.
+    func testEverySessionReadSharesOneBackfillCallSite() throws {
+        let source = try String(
+            contentsOf: repoRoot().appendingPathComponent("Sources/VibeBarApp/MCPController.swift"),
+            encoding: .utf8
+        )
+        let calls = source.components(separatedBy: "await backfillSessionIndexIfNeeded(").count - 1
+        XCTAssertEqual(
+            calls, 1,
+            "Every session read must go through `readingSessions`. A second call site means some "
+                + "path can be added that forgets to backfill — which is exactly how the "
+                + "host-side sessions.list path shipped returning zero on a fresh install."
+        )
+        XCTAssertTrue(
+            source.contains("private func readingSessions<T>"),
+            "the shared entry point should still be the thing that owns the retry"
+        )
+        // And every read actually goes through it.
+        for path in ["searchSessions", "listSessions", "sessionTranscript"] {
+            guard let range = source.range(of: "func \(path)(") else {
+                return XCTFail("\(path) not found in MCPController")
+            }
+            let body = source[range.lowerBound...].prefix(3_000)
+            XCTAssertTrue(
+                body.contains("readingSessions"),
+                "\(path) must read through the shared entry point"
+            )
+        }
+    }
+
+    private func repoRoot() throws -> URL {
+        var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        for _ in 0..<12 {
+            if FileManager.default.fileExists(
+                atPath: dir.appendingPathComponent("Package.swift").path
+            ) { return dir }
+            dir.deleteLastPathComponent()
+        }
+        throw NSError(
+            domain: "SessionAgentQueryTests", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Could not locate repo root from \(#filePath)"]
+        )
     }
 
     func testTheGrowthEstimateBeatsPlainDoubling() {

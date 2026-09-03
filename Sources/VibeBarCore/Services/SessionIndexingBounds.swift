@@ -228,6 +228,12 @@ public enum SessionIndexingBounds {
     /// Split out from the read so the whole windowing contract — bounds,
     /// caps, cursor, reasons — is testable against a plain array with no
     /// file, adapter or scratch directory in sight.
+    ///
+    /// The two request shapes are collected in different orders, and that is
+    /// the whole point. `from` reads forward and stops when a cap bites.
+    /// `around` collects **outward from the target**, so a cap shrinks the
+    /// window towards the message the caller asked to see instead of
+    /// truncating the far side of it away.
     static func window(
         for request: TranscriptWindowRequest,
         in messages: [SessionMessage],
@@ -236,83 +242,83 @@ public enum SessionIndexingBounds {
         fileBytes: Int64
     ) -> TranscriptWindow {
         var reasons: [TranscriptTruncationReason] = []
-        let lower = request.lowerBound
         // The window asked for more than the read could see. Say so rather
         // than returning an empty slice that reads like "no such messages".
         if !reachedEndOfFile, messages.count <= request.upperBound {
             reasons.append(.readCeiling)
         }
 
+        // `min` matters: a `from` past the end of what was read would other-
+        // wise build a reversed range, which traps rather than returning the
+        // empty window that situation actually calls for.
+        let order = request.around == nil
+            ? Array(min(request.lowerBound, messages.count)..<messages.count)
+            : Self.centredOrder(request: request, messageCount: messages.count)
+
+        var chosen: [Int] = []
+        var spent = 0
+        var hitCap = false
+
+        for index in order {
+            guard index <= request.upperBound, index < messages.count else { continue }
+            let message = messages[index]
+            // A role filter thins the window; it does not extend it — and it
+            // outranks "always include the target", because a caller asking
+            // for user turns only did not ask for an assistant one.
+            if let roles = request.roles, !roles.contains(message.role) { continue }
+            if chosen.count >= request.limit {
+                reasons.append(.messageLimit)
+                hitCap = true
+                break
+            }
+            // Always let the first message through: a response of zero
+            // messages plus "the budget was full" is not an answer.
+            let cost = Self.clipped(message).utf8.count
+            if !chosen.isEmpty, spent + cost > TranscriptWindowRequest.maximumTextBytes {
+                reasons.append(.byteBudget)
+                hitCap = true
+                break
+            }
+            chosen.append(index)
+            spent += cost
+        }
+
+        // Centred collection visits neighbours alternately, so sort back into
+        // reading order before anyone sees it.
+        chosen.sort()
         var kept: [SessionMessage] = []
         var truncatedFlags: [Bool] = []
         var originalBytes: [Int] = []
-        var spent = 0
-        var cursor = lower
-        var stoppedEarly = false
-
-        while cursor < messages.count {
-            let message = messages[cursor]
-            if let roles = request.roles, !roles.contains(message.role) {
-                cursor += 1
-                // A role filter thins the window; it does not extend it.
-                if cursor > request.upperBound { break }
-                continue
-            }
-            if kept.count >= request.limit {
-                reasons.append(.messageLimit)
-                stoppedEarly = true
-                break
-            }
-            let full = message.text.utf8.count
-            let clipped = SessionParsing.truncate(
-                message.text,
-                limit: TranscriptWindowRequest.maximumMessageTextCharacters
-            )
-            let cost = clipped.utf8.count
-            // Always allow the first message through: a response of zero
-            // messages plus "the budget was full" is not an answer.
-            if !kept.isEmpty, spent + cost > TranscriptWindowRequest.maximumTextBytes {
-                reasons.append(.byteBudget)
-                stoppedEarly = true
-                break
-            }
+        for index in chosen {
+            let message = messages[index]
+            let clipped = Self.clipped(message)
             if clipped != message.text {
                 if !reasons.contains(.messageText) { reasons.append(.messageText) }
                 truncatedFlags.append(true)
             } else {
                 truncatedFlags.append(false)
             }
-            originalBytes.append(full)
+            originalBytes.append(message.text.utf8.count)
             kept.append(SessionMessage(
                 seq: message.seq,
                 role: message.role,
                 text: clipped,
                 timestamp: message.timestamp
             ))
-            spent += cost
-            cursor += 1
-            if cursor > request.upperBound {
-                stoppedEarly = false
-                break
-            }
         }
 
-        // Where "keep reading" resumes. A window that ran out of budget
-        // resumes at the message it could not fit; one that simply reached
-        // the end of its own span resumes after that span, and only when
-        // there is something past it.
+        // Where "keep reading" resumes: after the last message returned.
         //
         // The exception is a window that returned nothing because the read
-        // never got that far: handing back a cursor there would invite an
-        // agent to retry the identical request forever. It gets `nil` and the
-        // `readCeiling` notice, which is the only useful answer.
+        // never got that far. Handing back a cursor there would invite an
+        // agent to retry the identical request forever, so it gets `nil` and
+        // the `readCeiling` notice, which is the only useful answer.
         let nextFrom: Int?
         if kept.isEmpty, reasons.contains(.readCeiling) {
             nextFrom = nil
-        } else if stoppedEarly || cursor < messages.count || !reachedEndOfFile {
-            nextFrom = cursor
         } else {
-            nextFrom = nil
+            let resume = (chosen.last.map { $0 + 1 }) ?? request.lowerBound
+            nextFrom = hitCap || resume < messages.count || !reachedEndOfFile ? resume : nil
         }
 
         return TranscriptWindow(
@@ -325,6 +331,49 @@ public enum SessionIndexingBounds {
             reasons: reasons,
             bytesRead: bytesRead,
             fileBytes: fileBytes
+        )
+    }
+
+    /// Indices to try for an `around` request, nearest the target first.
+    ///
+    /// Target, then one before, one after, two before, two after… Collecting
+    /// in this order is what guarantees the requested message survives every
+    /// cap: it is considered before anything else, so the only thing that can
+    /// exclude it is a `roles` filter it does not match.
+    ///
+    /// Walking outward from a centre also keeps the result contiguous, which
+    /// is why `nextFrom` can stay a single "resume after the last message"
+    /// index rather than a set of holes.
+    ///
+    /// The previous version simply started at `around - radius` and read
+    /// forward, so `around: 500, radius: 100` with the default limit of 40
+    /// returned 400–439 and omitted 500 — the one message the caller named.
+    static func centredOrder(request: TranscriptWindowRequest, messageCount: Int) -> [Int] {
+        guard let around = request.around, messageCount > 0 else { return [] }
+        let lower = request.lowerBound
+        let upper = min(request.upperBound, messageCount - 1)
+        // The target itself has to be inside the readable span. When it is
+        // not, there is no centred window to build: the caller gets the empty
+        // result, and `readCeiling` explains it when the read was the reason.
+        guard lower <= upper, around >= lower, around <= upper else { return [] }
+        var order: [Int] = [around]
+        order.reserveCapacity(upper - lower + 1)
+        var step = 1
+        while true {
+            let before = around - step
+            let after = around + step
+            if before < lower, after > upper { break }
+            if before >= lower { order.append(before) }
+            if after <= upper { order.append(after) }
+            step += 1
+        }
+        return order
+    }
+
+    private static func clipped(_ message: SessionMessage) -> String {
+        SessionParsing.truncate(
+            message.text,
+            limit: TranscriptWindowRequest.maximumMessageTextCharacters
         )
     }
 

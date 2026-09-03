@@ -333,12 +333,34 @@ final class MCPController: ObservableObject, MCPDataSource {
 
     // MARK: - MCPDataSource: sessions
 
+    /// The one door every session read goes through.
+    ///
+    /// `read` runs, and if it came back empty on an index that has never been
+    /// built, the one-per-process backfill runs and `read` is retried. It is a
+    /// single entry point on purpose: the backfill used to be remembered at
+    /// each call site, and the host-side `sessions.list` path was added
+    /// without it — so a fresh install with a `to` or `models` filter returned
+    /// zero and never scanned. Two places that must both remember something
+    /// is how that happens.
+    private func readingSessions<T>(
+        isEmpty: @escaping (T) -> Bool,
+        _ read: (SessionIndexService) async throws -> T
+    ) async throws -> T {
+        let index = try sessionIndexService()
+        let first = try await read(index)
+        guard isEmpty(first), await backfillSessionIndexIfNeeded(index) else { return first }
+        return try await read(index)
+    }
+
     func searchSessions(
         query: String,
         filter: SessionQueryFilter,
         limit: Int
     ) async throws -> [SessionSearchHit] {
-        let index = try sessionIndexService()
+        // An explicitly empty list means "nothing" (see
+        // `SessionQueryFilter.matchesNothing`), and nothing is answerable
+        // without touching the index at all.
+        guard !filter.matchesNothing else { return [] }
         // The store ranks and caps; `to`, `from` and `models` are ours to
         // apply afterwards (it has no upper time bound and no model column
         // filter). Over-fetch so a narrow filter over a broad query still
@@ -347,9 +369,8 @@ final class MCPController: ObservableObject, MCPDataSource {
         let wanted = filter.isAnsweredEntirelyByTheIndex && filter.from == nil
             ? limit
             : min(limit * Self.searchOverFetchFactor, Self.searchOverFetchCap)
-        var hits = try await Self.rankedHits(index, query: query, filter: filter, limit: wanted)
-        if hits.isEmpty, await backfillSessionIndexIfNeeded(index) {
-            hits = try await Self.rankedHits(index, query: query, filter: filter, limit: wanted)
+        let hits = try await readingSessions(isEmpty: \.isEmpty) { index in
+            try await Self.rankedHits(index, query: query, filter: filter, limit: wanted)
         }
         return Array(hits.filter { filter.matches($0.summary) }.prefix(limit))
     }
@@ -384,57 +405,64 @@ final class MCPController: ObservableObject, MCPDataSource {
         offset: Int,
         limit: Int
     ) async throws -> MCPSessionListing {
-        let index = try sessionIndexService()
-        // Fast path: the index can answer all of it, so its own count and
-        // offset describe exactly the rows returned.
-        if filter.isAnsweredEntirelyByTheIndex {
-            var page = try await Self.storePage(index, filter: filter, offset: offset, limit: limit)
-            if page.totalCount == 0, await backfillSessionIndexIfNeeded(index) {
-                page = try await Self.storePage(index, filter: filter, offset: offset, limit: limit)
-            }
+        guard !filter.matchesNothing else {
             return MCPSessionListing(
-                summaries: page.summaries,
-                totalCount: page.totalCount,
-                offset: page.offset,
-                limit: page.limit,
-                hasMore: page.offset + page.summaries.count < page.totalCount
+                summaries: [], totalCount: 0, offset: offset, limit: limit, hasMore: false
             )
         }
+        // Both paths go through `readingSessions`, so a fresh install
+        // backfills and retries whichever one the filter selected.
+        return try await readingSessions(isEmpty: \.summaries.isEmpty) { index in
+            // Fast path: the index can answer all of it, so its own count and
+            // offset describe exactly the rows returned.
+            if filter.isAnsweredEntirelyByTheIndex {
+                let page = try await Self.storePage(
+                    index, filter: filter, offset: offset, limit: limit
+                )
+                return MCPSessionListing(
+                    summaries: page.summaries,
+                    totalCount: page.totalCount,
+                    offset: page.offset,
+                    limit: page.limit,
+                    hasMore: page.offset + page.summaries.count < page.totalCount
+                )
+            }
 
-        // Host-side path: walk the index in store pages and filter as we go.
-        // `totalCount` is withheld rather than reported — the store's count
-        // describes the rows before `to` / `models` ran.
-        var kept: [SessionSummary] = []
-        var scanned = 0
-        var storeOffset = 0
-        var exhausted = false
-        // One past the last row this page needs, so the loop knows when to
-        // stop instead of draining the index.
-        let needed = offset + limit + 1
-        while kept.count < needed, scanned < Self.listScanCap {
-            let page = try await Self.storePage(
-                index, filter: filter, offset: storeOffset, limit: Self.listStorePageSize
+            // Host-side path: walk the index in store pages and filter as we
+            // go. `totalCount` is withheld rather than reported — the store's
+            // count describes the rows before `to` / `models` ran.
+            var kept: [SessionSummary] = []
+            var scanned = 0
+            var storeOffset = 0
+            var exhausted = false
+            // One past the last row this page needs, so the loop knows when to
+            // stop instead of draining the index.
+            let needed = offset + limit + 1
+            while kept.count < needed, scanned < Self.listScanCap {
+                let page = try await Self.storePage(
+                    index, filter: filter, offset: storeOffset, limit: Self.listStorePageSize
+                )
+                guard !page.summaries.isEmpty else { exhausted = true; break }
+                scanned += page.summaries.count
+                storeOffset += page.summaries.count
+                kept.append(contentsOf: page.summaries.filter(filter.matches))
+                if storeOffset >= page.totalCount { exhausted = true; break }
+            }
+            let window = Array(kept.dropFirst(offset).prefix(limit))
+            let hasMore = kept.count > offset + window.count || !exhausted
+            return MCPSessionListing(
+                summaries: window,
+                totalCount: exhausted && scanned < Self.listScanCap ? kept.count : nil,
+                offset: offset,
+                limit: limit,
+                hasMore: hasMore,
+                notice: scanned >= Self.listScanCap
+                    ? "Stopped after examining \(scanned) indexed sessions; 'to' and 'models' are "
+                        + "applied after the index query. Narrow 'from', 'projectDir' or 'harnesses' "
+                        + "to see further back."
+                    : nil
             )
-            guard !page.summaries.isEmpty else { exhausted = true; break }
-            scanned += page.summaries.count
-            storeOffset += page.summaries.count
-            kept.append(contentsOf: page.summaries.filter(filter.matches))
-            if storeOffset >= page.totalCount { exhausted = true; break }
         }
-        let window = Array(kept.dropFirst(offset).prefix(limit))
-        let hasMore = kept.count > offset + window.count || !exhausted
-        return MCPSessionListing(
-            summaries: window,
-            totalCount: exhausted && scanned < Self.listScanCap ? kept.count : nil,
-            offset: offset,
-            limit: limit,
-            hasMore: hasMore,
-            notice: scanned >= Self.listScanCap
-                ? "Stopped after examining \(scanned) indexed sessions; 'to' and 'models' are "
-                    + "applied after the index query. Narrow 'from', 'projectDir' or 'harnesses' "
-                    + "to see further back."
-                : nil
-        )
     }
 
     private nonisolated static func storePage(
@@ -470,16 +498,10 @@ final class MCPController: ObservableObject, MCPDataSource {
         locator: SessionLocator,
         window: TranscriptWindowRequest
     ) async throws -> SessionTranscriptResult {
-        let index = try sessionIndexService()
-        var summary = try await index.summary(
-            provider: locator.provider, sessionID: locator.sessionID
-        )
-        if summary == nil, await backfillSessionIndexIfNeeded(index) {
-            summary = try await index.summary(
-                provider: locator.provider, sessionID: locator.sessionID
-            )
+        let found = try await readingSessions(isEmpty: { $0 == nil }) { index in
+            try await index.summary(provider: locator.provider, sessionID: locator.sessionID)
         }
-        guard let summary else {
+        guard let summary = found else {
             throw MCPToolFailure(
                 "No indexed \(locator.provider.displayName) session with id '\(locator.sessionID)'. "
                     + "The index is as fresh as Vibe Bar's last sweep, so a session created moments "

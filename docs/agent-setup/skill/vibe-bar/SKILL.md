@@ -161,13 +161,16 @@ call. `sessions.transcript` exists so you never have to.
 shapes:
 
 - **`around: <seq>`** with `radius` (default 20) — a match in context. Pass a
-  search hit's `matchedSeq` directly; it always resolves.
+  search hit's `matchedSeq` directly; it always resolves, and the message you
+  named is always in the result. Widen `radius` freely: when the response caps
+  bite, the window shrinks *towards* your message rather than dropping it.
 - **`from` / `limit`** — paging. Feed the response's `nextFrom` back as `from`
   until `hasMore` is false.
 
 `roles` thins a window (`["user"]` for just the prompts). It does *not* search
 past the window, so "the 20 messages around seq 400, user turns only" stays
-inside 380–420.
+inside 380–420 — and it is the one thing that can exclude the message `around`
+named, since asking for user turns only rules out an assistant one.
 
 Responses are capped three ways — message count, a total byte budget, and per
 message — so one 40 KB tool dump cannot swallow the answer. When a cap bites,

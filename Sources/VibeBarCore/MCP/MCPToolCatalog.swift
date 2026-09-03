@@ -346,7 +346,8 @@ public enum MCPToolCatalog {
             pass a search hit's 'matchedSeq' straight in, which always works because anything \
             sessions.search can find lies inside the indexed head of the log. 'from' plus 'limit' pages \
             forward; feed the previous response's 'nextFrom' back as 'from'. 'roles' thins a window \
-            (for example just the user's prompts); it does not search past it.
+            (for example just the user's prompts); it does not search past it. Omitting a filter list \
+            means everything; sending an empty one means nothing.
 
             The response is capped by message count and by a byte budget, and a single long message is \
             clipped rather than being allowed to fill the answer. When anything is cut, 'truncated' is \
@@ -366,7 +367,10 @@ public enum MCPToolCatalog {
                 enumValues: sessionProviderValues
             ),
             "around": integer(
-                "Centre the window on this message index — a search hit's 'matchedSeq'. Wins over 'from'.",
+                "Centre the window on this message index — a search hit's 'matchedSeq'. Wins over "
+                    + "'from'. The message you name is always in the result: when a cap bites, the "
+                    + "window shrinks towards it rather than dropping it. Only a 'roles' filter it "
+                    + "does not match can exclude it.",
                 minimum: 0
             ),
             "radius": integer(

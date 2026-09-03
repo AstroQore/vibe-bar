@@ -61,6 +61,19 @@ public struct SessionQueryFilter: Sendable, Equatable {
         return [projectDir]
     }
 
+    /// True when this filter can never match anything.
+    ///
+    /// The house rule, stated once: **an omitted list means "everything", an
+    /// explicitly empty list means "nothing"**. `quota.get`'s `tools: []`
+    /// already works that way, the skill documents it, and `SessionIndexStore`
+    /// returns an empty page for `providers: []` / `harnesses: []` — but the
+    /// store has no model column filter at all, so `models: []` could only be
+    /// honoured here. It used to be skipped instead, which quietly turned
+    /// "match nothing" into "match everything".
+    public var matchesNothing: Bool {
+        providers?.isEmpty == true || harnesses?.isEmpty == true || models?.isEmpty == true
+    }
+
     /// True when every part of this filter is something the index can answer
     /// in SQL, so a page's `totalCount` and `offset` describe exactly the rows
     /// that come back.
@@ -68,15 +81,19 @@ public struct SessionQueryFilter: Sendable, Equatable {
     /// `to` and `models` are the two that are not: `summaryPage` has a `since`
     /// but no upper bound, and no model column filter. They are applied here
     /// instead, which means the count has to be withheld rather than reported
-    /// as something it no longer describes.
+    /// as something it no longer describes. Any `models` list counts —
+    /// including an empty one, which the store cannot express.
     public var isAnsweredEntirelyByTheIndex: Bool {
-        to == nil && (models.map(\.isEmpty) ?? true)
+        to == nil && models == nil
     }
 
     /// Does this summary survive the parts of the filter the index did not
     /// apply? Safe to call for the store-native parts too — it re-asserts all
     /// of them, so a caller never has to track which half ran where.
     public func matches(_ summary: SessionSummary) -> Bool {
+        // Every list below is `if let`, never `if let … , !isEmpty`: an empty
+        // list has to fall into the membership test and fail it, which is
+        // what makes "nothing" mean nothing.
         if let providers, !providers.contains(summary.provider) { return false }
         if let harnesses, !harnesses.contains(summary.effectiveHarness) { return false }
         if let needle = projectIncludes.first {
@@ -84,7 +101,7 @@ public struct SessionQueryFilter: Sendable, Equatable {
                   directory.range(of: needle, options: .caseInsensitive) != nil
             else { return false }
         }
-        if let models, !models.isEmpty {
+        if let models {
             guard let model = summary.model, !model.isEmpty else { return false }
             guard models.contains(where: { $0.compare(model, options: .caseInsensitive) == .orderedSame })
             else { return false }
@@ -147,10 +164,14 @@ public struct TranscriptWindowRequest: Sendable, Equatable {
     public var from: Int
     /// Maximum messages to return, before the byte budget has its say.
     public var limit: Int
-    /// Roles to keep. `nil` is every role. Applied *after* the window is
+    /// Roles to keep. `nil` is every role, an empty set is none — the same
+    /// house rule as every other list filter. Applied *after* the window is
     /// taken, so a `roles` filter thins a window rather than scanning for
     /// more matches beyond it — otherwise "the 20 messages around seq 400"
     /// would silently become "the next 20 user messages, wherever they are".
+    ///
+    /// It also outranks `around`'s guarantee to include its target: a caller
+    /// asking for user turns only did not ask for an assistant one.
     public var roles: Set<SessionRole>?
 
     public static let defaultRadius = 20

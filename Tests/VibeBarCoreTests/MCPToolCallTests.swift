@@ -380,6 +380,35 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(response["error"]?["code"]?.intValue, -32_602)
     }
 
+    /// An empty list reaches the data source as an empty list, not as `nil`.
+    /// That is what lets `SessionQueryFilter` read it as "nothing" — the same
+    /// rule `quota.get`'s `tools: []` follows.
+    func testAnEmptySessionFilterListStaysEmptyRatherThanBecomingUnfiltered() async throws {
+        _ = try await call("sessions.list", .object([
+            "models": .array([]),
+            "harnesses": .array([])
+        ]))
+        let filter = try XCTUnwrap(source.lastSessionFilter)
+        XCTAssertEqual(filter.models, [])
+        XCTAssertEqual(filter.harnesses, [])
+        XCTAssertTrue(filter.matchesNothing)
+
+        _ = try await call("sessions.list", .object([:]))
+        let unfiltered = try XCTUnwrap(source.lastSessionFilter)
+        XCTAssertNil(unfiltered.models)
+        XCTAssertNil(unfiltered.harnesses)
+        XCTAssertFalse(unfiltered.matchesNothing)
+    }
+
+    func testAnEmptyRolesListReachesTheTranscriptWindowAsAnEmptySet() async throws {
+        _ = try await call("sessions.transcript", .object([
+            "sessionId": .string("sess-42"),
+            "provider": .string("claude"),
+            "roles": .array([])
+        ]))
+        XCTAssertEqual(source.lastTranscriptWindow?.roles, [])
+    }
+
     func testAHostSideFilterWithholdsTheCountAndSaysWhy() async throws {
         source.listTotalCount = nil
         source.listHasMore = true
