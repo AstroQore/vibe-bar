@@ -919,6 +919,46 @@ extension L10n {
         public static var headerOverviewSubtitle: String {
             L10n.string("popover.header.overviewSubtitle")
         }
+        /// `popover.machines.checking` — Checking the Relay…
+        public static var machinesChecking: String {
+            L10n.string("popover.machines.checking")
+        }
+        /// `popover.machines.includeInTotals` — Include in totals
+        public static var machinesIncludeInTotals: String {
+            L10n.string("popover.machines.includeInTotals")
+        }
+        /// `popover.machines.includeInTotalsHelp` — Add this machine's decrypted usage to Overview and provider cost pages on this Core
+        public static var machinesIncludeInTotalsHelp: String {
+            L10n.string("popover.machines.includeInTotalsHelp")
+        }
+        /// `popover.machines.labelWithStatus` — {label} · {status}
+        public static func machinesLabelWithStatus(label: String, status: String) -> String {
+            L10n.string("popover.machines.labelWithStatus", label, status)
+        }
+        /// `popover.machines.noData` — No remote machine data yet
+        public static var machinesNoData: String {
+            L10n.string("popover.machines.noData")
+        }
+        /// `popover.machines.noDataDetail` — The Relay is connected. A Probe will appear after its first encrypted batch is decrypted and imported.
+        public static var machinesNoDataDetail: String {
+            L10n.string("popover.machines.noDataDetail")
+        }
+        /// `popover.machines.notConfigured` — Remote Core is not configured
+        public static var machinesNotConfigured: String {
+            L10n.string("popover.machines.notConfigured")
+        }
+        /// `popover.machines.notConfiguredDetail` — Create a Core descriptor, provision a workspace-scoped Relay credential, then import the signed provisioning file. No inbound port is required on this Mac.
+        public static var machinesNotConfiguredDetail: String {
+            L10n.string("popover.machines.notConfiguredDetail")
+        }
+        /// `popover.machines.sequence` — seq {value}
+        public static func machinesSequence(value: String) -> String {
+            L10n.string("popover.machines.sequence", value)
+        }
+        /// `popover.machines.thirtyDayCost` — 30-day cost
+        public static var machinesThirtyDayCost: String {
+            L10n.string("popover.machines.thirtyDayCost")
+        }
         /// `popover.refreshGoogleAI` — Refresh Gemini Web + AntiGravity
         public static var refreshGoogleAI: String {
             L10n.string("popover.refreshGoogleAI")
@@ -2428,6 +2468,78 @@ extension L10n {
         /// `settings.remote.statusWithCode` — {title} · {code}
         public static func remoteStatusWithCode(title: String, code: String) -> String {
             L10n.string("settings.remote.statusWithCode", title, code)
+        }
+        /// `settings.remote.sync.busy` — Relay is temporarily busy
+        public static var remoteSyncBusy: String {
+            L10n.string("settings.remote.sync.busy")
+        }
+        /// `settings.remote.sync.connectionFailed` — Relay connection was interrupted
+        public static var remoteSyncConnectionFailed: String {
+            L10n.string("settings.remote.sync.connectionFailed")
+        }
+        /// `settings.remote.sync.hostLookupFailed` — Relay host could not be resolved
+        public static var remoteSyncHostLookupFailed: String {
+            L10n.string("settings.remote.sync.hostLookupFailed")
+        }
+        /// `settings.remote.sync.invalidResponse` — Relay returned an unexpected response
+        public static var remoteSyncInvalidResponse: String {
+            L10n.string("settings.remote.sync.invalidResponse")
+        }
+        /// `settings.remote.sync.networkDetail` — Check this Mac's network or proxy path; existing machine data is still available.
+        public static var remoteSyncNetworkDetail: String {
+            L10n.string("settings.remote.sync.networkDetail")
+        }
+        /// `settings.remote.sync.offline` — This Mac is offline
+        public static var remoteSyncOffline: String {
+            L10n.string("settings.remote.sync.offline")
+        }
+        /// `settings.remote.sync.rejected` — Relay access was rejected
+        public static var remoteSyncRejected: String {
+            L10n.string("settings.remote.sync.rejected")
+        }
+        /// `settings.remote.sync.rejectedDetail` — The workspace credential may have been revoked. Reconnect this Core in Settings.
+        public static var remoteSyncRejectedDetail: String {
+            L10n.string("settings.remote.sync.rejectedDetail")
+        }
+        /// `settings.remote.sync.retryDetail` — Existing machine data is still available. Vibe Bar will retry automatically.
+        public static var remoteSyncRetryDetail: String {
+            L10n.string("settings.remote.sync.retryDetail")
+        }
+        /// `settings.remote.sync.secureConnectionFailed` — Secure Relay connection failed
+        public static var remoteSyncSecureConnectionFailed: String {
+            L10n.string("settings.remote.sync.secureConnectionFailed")
+        }
+        /// `settings.remote.sync.sequenceGap` — Probe history has a sequence gap
+        public static var remoteSyncSequenceGap: String {
+            L10n.string("settings.remote.sync.sequenceGap")
+        }
+        /// `settings.remote.sync.sequenceGapDetail` — A Probe batch is missing from the Relay stream, so later batches were not imported.
+        public static var remoteSyncSequenceGapDetail: String {
+            L10n.string("settings.remote.sync.sequenceGapDetail")
+        }
+        /// `settings.remote.sync.timeout` — Relay connection timed out
+        public static var remoteSyncTimeout: String {
+            L10n.string("settings.remote.sync.timeout")
+        }
+        /// `settings.remote.sync.transportFailed` — Relay transport failed
+        public static var remoteSyncTransportFailed: String {
+            L10n.string("settings.remote.sync.transportFailed")
+        }
+        /// `settings.remote.sync.unknown` — Remote sync needs attention
+        public static var remoteSyncUnknown: String {
+            L10n.string("settings.remote.sync.unknown")
+        }
+        /// `settings.remote.sync.unknownDetail` — No local usage was deleted. Retry now or inspect Remote Core settings for the error code.
+        public static var remoteSyncUnknownDetail: String {
+            L10n.string("settings.remote.sync.unknownDetail")
+        }
+        /// `settings.remote.sync.unverifiedProbe` — A Probe could not be verified
+        public static var remoteSyncUnverifiedProbe: String {
+            L10n.string("settings.remote.sync.unverifiedProbe")
+        }
+        /// `settings.remote.sync.unverifiedProbeDetail` — The current workspace roster does not authorize one of the received batches.
+        public static var remoteSyncUnverifiedProbeDetail: String {
+            L10n.string("settings.remote.sync.unverifiedProbeDetail")
         }
         /// `settings.remote.syncNow` — Sync now
         public static var remoteSyncNow: String {
@@ -5104,6 +5216,16 @@ extension L10n {
         "popover.header.machinesSubtitle",
         "popover.header.miscSubtitle",
         "popover.header.overviewSubtitle",
+        "popover.machines.checking",
+        "popover.machines.includeInTotals",
+        "popover.machines.includeInTotalsHelp",
+        "popover.machines.labelWithStatus",
+        "popover.machines.noData",
+        "popover.machines.noDataDetail",
+        "popover.machines.notConfigured",
+        "popover.machines.notConfiguredDetail",
+        "popover.machines.sequence",
+        "popover.machines.thirtyDayCost",
         "popover.refreshGoogleAI",
         "popover.refreshSpaceXAI",
         "popover.showPage",
@@ -5480,6 +5602,24 @@ extension L10n {
         "settings.remote.resumeSaving",
         "settings.remote.retrySaving",
         "settings.remote.statusWithCode",
+        "settings.remote.sync.busy",
+        "settings.remote.sync.connectionFailed",
+        "settings.remote.sync.hostLookupFailed",
+        "settings.remote.sync.invalidResponse",
+        "settings.remote.sync.networkDetail",
+        "settings.remote.sync.offline",
+        "settings.remote.sync.rejected",
+        "settings.remote.sync.rejectedDetail",
+        "settings.remote.sync.retryDetail",
+        "settings.remote.sync.secureConnectionFailed",
+        "settings.remote.sync.sequenceGap",
+        "settings.remote.sync.sequenceGapDetail",
+        "settings.remote.sync.timeout",
+        "settings.remote.sync.transportFailed",
+        "settings.remote.sync.unknown",
+        "settings.remote.sync.unknownDetail",
+        "settings.remote.sync.unverifiedProbe",
+        "settings.remote.sync.unverifiedProbeDetail",
         "settings.remote.syncNow",
         "settings.remote.workspace",
         "settings.repository",

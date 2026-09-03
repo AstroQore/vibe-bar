@@ -273,6 +273,49 @@ final class LocalizationCatalogTests: XCTestCase {
                        "All Models · Weekly")
     }
 
+    /// A machine-readable identifier inside a translated sentence stays
+    /// as it arrived. The Relay's error codes and per-source statuses are
+    /// wire vocabulary — `network_timeout` is something a person greps for
+    /// and a support thread quotes, not something a translator improves —
+    /// so the copy around them moves and they do not.
+    func testAWireIdentifierSurvivesInsideATranslatedSentence() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        L10n.languageOverride = .simplifiedChinese
+        let line = L10n.Settings.remoteStatusWithCode(
+            title: L10n.Settings.remoteSyncTimeout, code: "network_timeout"
+        )
+        XCTAssertTrue(line.contains("network_timeout"), "the error code was altered: \(line)")
+        XCTAssertTrue(line.contains("Relay 连接超时"), "the sentence stayed English: \(line)")
+        XCTAssertFalse(
+            line.contains("Relay connection timed out"),
+            "the English diagnosis survived into the Chinese pane: \(line)"
+        )
+
+        let capsule = L10n.Popover.machinesLabelWithStatus(label: "Claude", status: "ok")
+        XCTAssertEqual(capsule, "Claude · ok", "a wire status is not copy")
+    }
+
+    /// Every Relay status code this build knows must resolve, and a code it
+    /// does not know must still produce a sentence — an unrecognized code
+    /// arriving from a newer Relay cannot leave the pane blank.
+    func testEveryRemoteSyncStatusResolvesAndTheFallbackIsNotEmpty() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        for language in [AppLanguage.english, .simplifiedChinese] {
+            L10n.languageOverride = language
+            for key in L10n.allKeys where key.hasPrefix("settings.remote.sync.") {
+                let value = L10n.string(key)
+                XCTAssertNotEqual(value, key, "\(key) does not resolve in \(language.rawValue)")
+                XCTAssertFalse(value.isEmpty)
+            }
+            XCTAssertFalse(L10n.Settings.remoteSyncUnknown.isEmpty)
+            XCTAssertFalse(L10n.Settings.remoteSyncUnknownDetail.isEmpty)
+        }
+    }
+
     private func locatePython() throws -> URL? {
         for candidate in ["/usr/bin/python3", "/opt/homebrew/bin/python3", "/usr/local/bin/python3"] {
             if FileManager.default.isExecutableFile(atPath: candidate) {

@@ -112,6 +112,7 @@ MIGRATED = [
     "Sources/VibeBarCore/Models/PrimaryProviderRouteHealth.swift",
     "Sources/VibeBarCore/Models/PrimaryProviderSourcePlanner.swift",
     "Sources/VibeBarCore/Models/UpdateChannel.swift",
+    "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
 ]
 
 

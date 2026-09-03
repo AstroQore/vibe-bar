@@ -668,6 +668,36 @@
   "popover.header.overviewSubtitle": {
     "value": "全部厂商 · 额度与花费"
   },
+  "popover.machines.checking": {
+    "value": "正在检查 Relay…"
+  },
+  "popover.machines.includeInTotals": {
+    "value": "计入总计"
+  },
+  "popover.machines.includeInTotalsHelp": {
+    "value": "把这台机器解密后的用量计入本 Core 的总览与厂商花费页"
+  },
+  "popover.machines.labelWithStatus": {
+    "value": "{label} · {status}"
+  },
+  "popover.machines.noData": {
+    "value": "暂无远程机器数据"
+  },
+  "popover.machines.noDataDetail": {
+    "value": "Relay 已连接。探针会在其首个加密批次被解密并导入后出现。"
+  },
+  "popover.machines.notConfigured": {
+    "value": "尚未配置远程 Core"
+  },
+  "popover.machines.notConfiguredDetail": {
+    "value": "先创建 Core 描述文件，再签发工作区范围的 Relay 凭据，然后导入已签名的配置文件。本机无需开放任何入站端口。"
+  },
+  "popover.machines.sequence": {
+    "value": "序号 {value}"
+  },
+  "popover.machines.thirtyDayCost": {
+    "value": "近 30 天花费"
+  },
   "popover.refreshGoogleAI": {
     "value": "刷新 Gemini Web + AntiGravity"
   },
@@ -1795,6 +1825,60 @@
   },
   "settings.remote.statusWithCode": {
     "value": "{title} · {code}"
+  },
+  "settings.remote.sync.busy": {
+    "value": "Relay 暂时繁忙"
+  },
+  "settings.remote.sync.connectionFailed": {
+    "value": "Relay 连接中断"
+  },
+  "settings.remote.sync.hostLookupFailed": {
+    "value": "无法解析 Relay 主机"
+  },
+  "settings.remote.sync.invalidResponse": {
+    "value": "Relay 返回了预期之外的响应"
+  },
+  "settings.remote.sync.networkDetail": {
+    "value": "请检查本机的网络或代理设置；已有的机器数据仍然可用。"
+  },
+  "settings.remote.sync.offline": {
+    "value": "本机当前离线"
+  },
+  "settings.remote.sync.rejected": {
+    "value": "Relay 拒绝了访问"
+  },
+  "settings.remote.sync.rejectedDetail": {
+    "value": "工作区凭据可能已被吊销，请在设置中重新连接本 Core。"
+  },
+  "settings.remote.sync.retryDetail": {
+    "value": "已有的机器数据仍然可用，Vibe Bar 会自动重试。"
+  },
+  "settings.remote.sync.secureConnectionFailed": {
+    "value": "Relay 安全连接失败"
+  },
+  "settings.remote.sync.sequenceGap": {
+    "value": "探针历史存在序号缺口"
+  },
+  "settings.remote.sync.sequenceGapDetail": {
+    "value": "Relay 流中缺少一个探针批次，因此后续批次未被导入。"
+  },
+  "settings.remote.sync.timeout": {
+    "value": "Relay 连接超时"
+  },
+  "settings.remote.sync.transportFailed": {
+    "value": "Relay 传输失败"
+  },
+  "settings.remote.sync.unknown": {
+    "value": "远程同步需要处理"
+  },
+  "settings.remote.sync.unknownDetail": {
+    "value": "本地用量未被删除。可立即重试，或在「远程 Core」设置中查看错误码。"
+  },
+  "settings.remote.sync.unverifiedProbe": {
+    "value": "有探针无法通过校验"
+  },
+  "settings.remote.sync.unverifiedProbeDetail": {
+    "value": "当前工作区名单未授权收到的某个批次。"
   },
   "settings.remote.syncNow": {
     "value": "立即同步"

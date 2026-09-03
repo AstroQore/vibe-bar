@@ -957,6 +957,46 @@
     "comment": "Subtitle under the Overview page header",
     "value": "All providers · quota & cost"
   },
+  "popover.machines.checking": {
+    "comment": "Empty-state title while a sync is in flight",
+    "value": "Checking the Relay…"
+  },
+  "popover.machines.includeInTotals": {
+    "comment": "Toggle on a remote machine card",
+    "value": "Include in totals"
+  },
+  "popover.machines.includeInTotalsHelp": {
+    "comment": "Tooltip on the include-in-totals toggle",
+    "value": "Add this machine's decrypted usage to Overview and provider cost pages on this Core"
+  },
+  "popover.machines.labelWithStatus": {
+    "comment": "A source label followed by its status; both halves arrive already localized",
+    "value": "{label} · {status}"
+  },
+  "popover.machines.noData": {
+    "comment": "Empty-state title when the Relay is connected but nothing has arrived",
+    "value": "No remote machine data yet"
+  },
+  "popover.machines.noDataDetail": {
+    "comment": "Empty-state body on the Machines page",
+    "value": "The Relay is connected. A Probe will appear after its first encrypted batch is decrypted and imported."
+  },
+  "popover.machines.notConfigured": {
+    "comment": "Empty-state title on the Machines page",
+    "value": "Remote Core is not configured"
+  },
+  "popover.machines.notConfiguredDetail": {
+    "comment": "Empty-state body on the Machines page",
+    "value": "Create a Core descriptor, provision a workspace-scoped Relay credential, then import the signed provisioning file. No inbound port is required on this Mac."
+  },
+  "popover.machines.sequence": {
+    "comment": "The last imported batch's sequence number on a machine card; the number is raw",
+    "value": "seq {value}"
+  },
+  "popover.machines.thirtyDayCost": {
+    "comment": "Metric label on a remote machine card",
+    "value": "30-day cost"
+  },
   "popover.refreshGoogleAI": {
     "comment": "Tooltip on the Google AI page's refresh button; the SubProvider names are never translated",
     "value": "Refresh Gemini Web + AntiGravity"
@@ -2575,6 +2615,78 @@
   "settings.remote.statusWithCode": {
     "comment": "Sync status line: a translated title and the raw status code",
     "value": "{title} · {code}"
+  },
+  "settings.remote.sync.busy": {
+    "comment": "Remote sync status title for HTTP 429/503",
+    "value": "Relay is temporarily busy"
+  },
+  "settings.remote.sync.connectionFailed": {
+    "comment": "Remote sync status title",
+    "value": "Relay connection was interrupted"
+  },
+  "settings.remote.sync.hostLookupFailed": {
+    "comment": "Remote sync status title",
+    "value": "Relay host could not be resolved"
+  },
+  "settings.remote.sync.invalidResponse": {
+    "comment": "Remote sync status title",
+    "value": "Relay returned an unexpected response"
+  },
+  "settings.remote.sync.networkDetail": {
+    "comment": "Remote sync status detail for an offline or DNS failure",
+    "value": "Check this Mac's network or proxy path; existing machine data is still available."
+  },
+  "settings.remote.sync.offline": {
+    "comment": "Remote sync status title. The error code beside it is a machine-readable identifier and stays English.",
+    "value": "This Mac is offline"
+  },
+  "settings.remote.sync.rejected": {
+    "comment": "Remote sync status title for HTTP 401/403",
+    "value": "Relay access was rejected"
+  },
+  "settings.remote.sync.rejectedDetail": {
+    "comment": "Remote sync status detail for HTTP 401/403",
+    "value": "The workspace credential may have been revoked. Reconnect this Core in Settings."
+  },
+  "settings.remote.sync.retryDetail": {
+    "comment": "Remote sync status detail for a transient transport failure",
+    "value": "Existing machine data is still available. Vibe Bar will retry automatically."
+  },
+  "settings.remote.sync.secureConnectionFailed": {
+    "comment": "Remote sync status title",
+    "value": "Secure Relay connection failed"
+  },
+  "settings.remote.sync.sequenceGap": {
+    "comment": "Remote sync status title",
+    "value": "Probe history has a sequence gap"
+  },
+  "settings.remote.sync.sequenceGapDetail": {
+    "comment": "Remote sync status detail",
+    "value": "A Probe batch is missing from the Relay stream, so later batches were not imported."
+  },
+  "settings.remote.sync.timeout": {
+    "comment": "Remote sync status title",
+    "value": "Relay connection timed out"
+  },
+  "settings.remote.sync.transportFailed": {
+    "comment": "Remote sync status title",
+    "value": "Relay transport failed"
+  },
+  "settings.remote.sync.unknown": {
+    "comment": "Remote sync status title for a code this build does not recognize. A new Relay error code must still render a sentence.",
+    "value": "Remote sync needs attention"
+  },
+  "settings.remote.sync.unknownDetail": {
+    "comment": "Remote sync status detail for an unrecognized code",
+    "value": "No local usage was deleted. Retry now or inspect Remote Core settings for the error code."
+  },
+  "settings.remote.sync.unverifiedProbe": {
+    "comment": "Remote sync status title for an invalid signature or unauthorized producer",
+    "value": "A Probe could not be verified"
+  },
+  "settings.remote.sync.unverifiedProbeDetail": {
+    "comment": "Remote sync status detail",
+    "value": "The current workspace roster does not authorize one of the received batches."
   },
   "settings.remote.syncNow": {
     "comment": "Button that pulls remote batches immediately",

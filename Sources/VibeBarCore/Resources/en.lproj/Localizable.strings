@@ -662,6 +662,36 @@
 /* Subtitle under the Overview page header */
 "popover.header.overviewSubtitle" = "All providers · quota & cost";
 
+/* Empty-state title while a sync is in flight */
+"popover.machines.checking" = "Checking the Relay…";
+
+/* Toggle on a remote machine card */
+"popover.machines.includeInTotals" = "Include in totals";
+
+/* Tooltip on the include-in-totals toggle */
+"popover.machines.includeInTotalsHelp" = "Add this machine's decrypted usage to Overview and provider cost pages on this Core";
+
+/* A source label followed by its status; both halves arrive already localized */
+"popover.machines.labelWithStatus" = "%1$@ · %2$@";
+
+/* Empty-state title when the Relay is connected but nothing has arrived */
+"popover.machines.noData" = "No remote machine data yet";
+
+/* Empty-state body on the Machines page */
+"popover.machines.noDataDetail" = "The Relay is connected. A Probe will appear after its first encrypted batch is decrypted and imported.";
+
+/* Empty-state title on the Machines page */
+"popover.machines.notConfigured" = "Remote Core is not configured";
+
+/* Empty-state body on the Machines page */
+"popover.machines.notConfiguredDetail" = "Create a Core descriptor, provision a workspace-scoped Relay credential, then import the signed provisioning file. No inbound port is required on this Mac.";
+
+/* The last imported batch's sequence number on a machine card; the number is raw */
+"popover.machines.sequence" = "seq %1$@";
+
+/* Metric label on a remote machine card */
+"popover.machines.thirtyDayCost" = "30-day cost";
+
 /* Tooltip on the Google AI page's refresh button; the SubProvider names are never translated */
 "popover.refreshGoogleAI" = "Refresh Gemini Web + AntiGravity";
 
@@ -1771,6 +1801,60 @@
 
 /* Sync status line: a translated title and the raw status code */
 "settings.remote.statusWithCode" = "%1$@ · %2$@";
+
+/* Remote sync status title for HTTP 429/503 */
+"settings.remote.sync.busy" = "Relay is temporarily busy";
+
+/* Remote sync status title */
+"settings.remote.sync.connectionFailed" = "Relay connection was interrupted";
+
+/* Remote sync status title */
+"settings.remote.sync.hostLookupFailed" = "Relay host could not be resolved";
+
+/* Remote sync status title */
+"settings.remote.sync.invalidResponse" = "Relay returned an unexpected response";
+
+/* Remote sync status detail for an offline or DNS failure */
+"settings.remote.sync.networkDetail" = "Check this Mac's network or proxy path; existing machine data is still available.";
+
+/* Remote sync status title. The error code beside it is a machine-readable identifier and stays English. */
+"settings.remote.sync.offline" = "This Mac is offline";
+
+/* Remote sync status title for HTTP 401/403 */
+"settings.remote.sync.rejected" = "Relay access was rejected";
+
+/* Remote sync status detail for HTTP 401/403 */
+"settings.remote.sync.rejectedDetail" = "The workspace credential may have been revoked. Reconnect this Core in Settings.";
+
+/* Remote sync status detail for a transient transport failure */
+"settings.remote.sync.retryDetail" = "Existing machine data is still available. Vibe Bar will retry automatically.";
+
+/* Remote sync status title */
+"settings.remote.sync.secureConnectionFailed" = "Secure Relay connection failed";
+
+/* Remote sync status title */
+"settings.remote.sync.sequenceGap" = "Probe history has a sequence gap";
+
+/* Remote sync status detail */
+"settings.remote.sync.sequenceGapDetail" = "A Probe batch is missing from the Relay stream, so later batches were not imported.";
+
+/* Remote sync status title */
+"settings.remote.sync.timeout" = "Relay connection timed out";
+
+/* Remote sync status title */
+"settings.remote.sync.transportFailed" = "Relay transport failed";
+
+/* Remote sync status title for a code this build does not recognize. A new Relay error code must still render a sentence. */
+"settings.remote.sync.unknown" = "Remote sync needs attention";
+
+/* Remote sync status detail for an unrecognized code */
+"settings.remote.sync.unknownDetail" = "No local usage was deleted. Retry now or inspect Remote Core settings for the error code.";
+
+/* Remote sync status title for an invalid signature or unauthorized producer */
+"settings.remote.sync.unverifiedProbe" = "A Probe could not be verified";
+
+/* Remote sync status detail */
+"settings.remote.sync.unverifiedProbeDetail" = "The current workspace roster does not authorize one of the received batches.";
 
 /* Button that pulls remote batches immediately */
 "settings.remote.syncNow" = "Sync now";

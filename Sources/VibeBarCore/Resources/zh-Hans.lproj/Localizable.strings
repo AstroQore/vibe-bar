@@ -662,6 +662,36 @@
 /* Subtitle under the Overview page header */
 "popover.header.overviewSubtitle" = "全部厂商 · 额度与花费";
 
+/* Empty-state title while a sync is in flight */
+"popover.machines.checking" = "正在检查 Relay…";
+
+/* Toggle on a remote machine card */
+"popover.machines.includeInTotals" = "计入总计";
+
+/* Tooltip on the include-in-totals toggle */
+"popover.machines.includeInTotalsHelp" = "把这台机器解密后的用量计入本 Core 的总览与厂商花费页";
+
+/* A source label followed by its status; both halves arrive already localized */
+"popover.machines.labelWithStatus" = "%1$@ · %2$@";
+
+/* Empty-state title when the Relay is connected but nothing has arrived */
+"popover.machines.noData" = "暂无远程机器数据";
+
+/* Empty-state body on the Machines page */
+"popover.machines.noDataDetail" = "Relay 已连接。探针会在其首个加密批次被解密并导入后出现。";
+
+/* Empty-state title on the Machines page */
+"popover.machines.notConfigured" = "尚未配置远程 Core";
+
+/* Empty-state body on the Machines page */
+"popover.machines.notConfiguredDetail" = "先创建 Core 描述文件，再签发工作区范围的 Relay 凭据，然后导入已签名的配置文件。本机无需开放任何入站端口。";
+
+/* The last imported batch's sequence number on a machine card; the number is raw */
+"popover.machines.sequence" = "序号 %1$@";
+
+/* Metric label on a remote machine card */
+"popover.machines.thirtyDayCost" = "近 30 天花费";
+
 /* Tooltip on the Google AI page's refresh button; the SubProvider names are never translated */
 "popover.refreshGoogleAI" = "刷新 Gemini Web + AntiGravity";
 
@@ -1771,6 +1801,60 @@
 
 /* Sync status line: a translated title and the raw status code */
 "settings.remote.statusWithCode" = "%1$@ · %2$@";
+
+/* Remote sync status title for HTTP 429/503 */
+"settings.remote.sync.busy" = "Relay 暂时繁忙";
+
+/* Remote sync status title */
+"settings.remote.sync.connectionFailed" = "Relay 连接中断";
+
+/* Remote sync status title */
+"settings.remote.sync.hostLookupFailed" = "无法解析 Relay 主机";
+
+/* Remote sync status title */
+"settings.remote.sync.invalidResponse" = "Relay 返回了预期之外的响应";
+
+/* Remote sync status detail for an offline or DNS failure */
+"settings.remote.sync.networkDetail" = "请检查本机的网络或代理设置；已有的机器数据仍然可用。";
+
+/* Remote sync status title. The error code beside it is a machine-readable identifier and stays English. */
+"settings.remote.sync.offline" = "本机当前离线";
+
+/* Remote sync status title for HTTP 401/403 */
+"settings.remote.sync.rejected" = "Relay 拒绝了访问";
+
+/* Remote sync status detail for HTTP 401/403 */
+"settings.remote.sync.rejectedDetail" = "工作区凭据可能已被吊销，请在设置中重新连接本 Core。";
+
+/* Remote sync status detail for a transient transport failure */
+"settings.remote.sync.retryDetail" = "已有的机器数据仍然可用，Vibe Bar 会自动重试。";
+
+/* Remote sync status title */
+"settings.remote.sync.secureConnectionFailed" = "Relay 安全连接失败";
+
+/* Remote sync status title */
+"settings.remote.sync.sequenceGap" = "探针历史存在序号缺口";
+
+/* Remote sync status detail */
+"settings.remote.sync.sequenceGapDetail" = "Relay 流中缺少一个探针批次，因此后续批次未被导入。";
+
+/* Remote sync status title */
+"settings.remote.sync.timeout" = "Relay 连接超时";
+
+/* Remote sync status title */
+"settings.remote.sync.transportFailed" = "Relay 传输失败";
+
+/* Remote sync status title for a code this build does not recognize. A new Relay error code must still render a sentence. */
+"settings.remote.sync.unknown" = "远程同步需要处理";
+
+/* Remote sync status detail for an unrecognized code */
+"settings.remote.sync.unknownDetail" = "本地用量未被删除。可立即重试，或在「远程 Core」设置中查看错误码。";
+
+/* Remote sync status title for an invalid signature or unauthorized producer */
+"settings.remote.sync.unverifiedProbe" = "有探针无法通过校验";
+
+/* Remote sync status detail */
+"settings.remote.sync.unverifiedProbeDetail" = "当前工作区名单未授权收到的某个批次。";
 
 /* Button that pulls remote batches immediately */
 "settings.remote.syncNow" = "立即同步";

@@ -4,18 +4,18 @@ import VibeBarCore
 enum RemoteSyncStatusCopy {
     static func title(for code: String) -> String {
         switch code {
-        case "network_offline": return "This Mac is offline"
-        case "network_timeout": return "Relay connection timed out"
-        case "host_lookup_failed": return "Relay host could not be resolved"
-        case "connection_failed": return "Relay connection was interrupted"
-        case "secure_connection_failed": return "Secure Relay connection failed"
-        case "relay_http_401", "relay_http_403": return "Relay access was rejected"
-        case "relay_http_429", "relay_http_503": return "Relay is temporarily busy"
-        case "sequence_gap": return "Probe history has a sequence gap"
-        case "invalid_signature", "unauthorized_producer": return "A Probe could not be verified"
-        case "invalid_response": return "Relay returned an unexpected response"
-        case "sync_failed", "transport_failed": return "Relay transport failed"
-        default: return "Remote sync needs attention"
+        case "network_offline": return L10n.Settings.remoteSyncOffline
+        case "network_timeout": return L10n.Settings.remoteSyncTimeout
+        case "host_lookup_failed": return L10n.Settings.remoteSyncHostLookupFailed
+        case "connection_failed": return L10n.Settings.remoteSyncConnectionFailed
+        case "secure_connection_failed": return L10n.Settings.remoteSyncSecureConnectionFailed
+        case "relay_http_401", "relay_http_403": return L10n.Settings.remoteSyncRejected
+        case "relay_http_429", "relay_http_503": return L10n.Settings.remoteSyncBusy
+        case "sequence_gap": return L10n.Settings.remoteSyncSequenceGap
+        case "invalid_signature", "unauthorized_producer": return L10n.Settings.remoteSyncUnverifiedProbe
+        case "invalid_response": return L10n.Settings.remoteSyncInvalidResponse
+        case "sync_failed", "transport_failed": return L10n.Settings.remoteSyncTransportFailed
+        default: return L10n.Settings.remoteSyncUnknown
         }
     }
 
@@ -23,17 +23,17 @@ enum RemoteSyncStatusCopy {
         switch code {
         case "network_timeout", "connection_failed", "secure_connection_failed",
              "relay_http_429", "relay_http_503":
-            return "Existing machine data is still available. Vibe Bar will retry automatically."
+            return L10n.Settings.remoteSyncRetryDetail
         case "network_offline", "host_lookup_failed":
-            return "Check this Mac's network or proxy path; existing machine data is still available."
+            return L10n.Settings.remoteSyncNetworkDetail
         case "relay_http_401", "relay_http_403":
-            return "The workspace credential may have been revoked. Reconnect this Core in Settings."
+            return L10n.Settings.remoteSyncRejectedDetail
         case "sequence_gap":
-            return "A Probe batch is missing from the Relay stream, so later batches were not imported."
+            return L10n.Settings.remoteSyncSequenceGapDetail
         case "invalid_signature", "unauthorized_producer":
-            return "The current workspace roster does not authorize one of the received batches."
+            return L10n.Settings.remoteSyncUnverifiedProbeDetail
         default:
-            return "No local usage was deleted. Retry now or inspect Remote Core settings for the error code."
+            return L10n.Settings.remoteSyncUnknownDetail
         }
     }
 }
@@ -49,15 +49,15 @@ struct RemoteMachinesPage: View {
             if !service.isConfigured {
                 stateCard(
                     icon: "lock.slash",
-                    title: "Remote Core is not configured",
-                    detail: "Create a Core descriptor, provision a workspace-scoped Relay credential, then import the signed provisioning file. No inbound port is required on this Mac."
+                    title: L10n.Popover.machinesNotConfigured,
+                    detail: L10n.Popover.machinesNotConfiguredDetail
                 )
             } else if service.machines.isEmpty {
                 stateCard(
                     icon: service.isRefreshing ? "arrow.triangle.2.circlepath" : "server.rack",
-                    title: service.isRefreshing ? "Checking the Relay…" : "No remote machine data yet",
+                    title: service.isRefreshing ? L10n.Popover.machinesChecking : L10n.Popover.machinesNoData,
                     detail: service.lastErrorCode.map { RemoteSyncStatusCopy.detail(for: $0) }
-                        ?? "The Relay is connected. A Probe will appear after its first encrypted batch is decrypted and imported."
+                        ?? L10n.Popover.machinesNoDataDetail
                 )
             } else {
                 if let error = service.lastErrorCode {
@@ -112,7 +112,7 @@ struct RemoteMachinesPage: View {
                 Text(machine.alias)
                     .font(.system(size: density.titleFontSize, weight: .semibold))
                     .lineLimit(1)
-                Text("\(machine.platform) · Probe \(machine.probeVersion)")
+                Text(L10n.Settings.remoteMachineDetail(platform: machine.platform, version: machine.probeVersion))
                     .font(.system(size: max(9, density.subtitleFontSize - 1)))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -124,13 +124,13 @@ struct RemoteMachinesPage: View {
 
     private func metrics(_ machine: RemoteMachineSummary) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            metric("Today", Text(machine.todayTokens, format: .number.notation(.compactName)))
+            metric(L10n.Cost.timeframeToday, Text(machine.todayTokens, format: .number.notation(.compactName)))
             metricDivider
-            metric("7 days", Text(machine.last7DaysTokens, format: .number.notation(.compactName)))
+            metric(L10n.Cost.timeframeWeek, Text(machine.last7DaysTokens, format: .number.notation(.compactName)))
             metricDivider
-            metric("30 days", Text(machine.last30DaysTokens, format: .number.notation(.compactName)))
+            metric(L10n.Cost.timeframeMonth, Text(machine.last30DaysTokens, format: .number.notation(.compactName)))
             metricDivider
-            metric("30-day cost", Text(machine.last30DaysCostUSD, format: .currency(code: "USD")))
+            metric(L10n.Popover.machinesThirtyDayCost, Text(machine.last30DaysCostUSD, format: .currency(code: "USD")))
         }
     }
 
@@ -221,25 +221,31 @@ struct RemoteMachinesPage: View {
     private func footer(_ machine: RemoteMachineSummary) -> some View {
         HStack(alignment: .center, spacing: density.statusComponentSpacing) {
             ForEach(machine.sourceStatuses.keys.sorted(), id: \.self) { source in
-                sourceCapsule(source, status: machine.sourceStatuses[source] ?? "error")
+                sourceCapsule(source, status: machine.sourceStatuses[source] ?? Self.unknownSourceStatus)
             }
             Spacer(minLength: 8)
-            Text("seq \(machine.lastSequence)")
+            Text(L10n.Popover.machinesSequence(value: String(machine.lastSequence)))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
-            Toggle("Include in totals", isOn: includedInTotals(machine))
+            Toggle(L10n.Popover.machinesIncludeInTotals, isOn: includedInTotals(machine))
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .font(.system(size: max(9, density.subtitleFontSize - 1)))
                 .fixedSize()
-                .help("Add this machine's decrypted usage to Overview and provider cost pages on this Core")
+                .help(L10n.Popover.machinesIncludeInTotalsHelp)
         }
     }
+
+    /// The Relay's own status vocabulary, not copy. It is compared against
+    /// `"ok"` below and shown beside the source name, so it stays English
+    /// for the same reason the error code does — a machine-readable value
+    /// inside a translated sentence.
+    private static let unknownSourceStatus = "error"
 
     private func sourceCapsule(_ source: String, status: String) -> some View {
         let isHealthy = status == "ok"
         let label = ToolType(rawValue: source)?.menuTitle ?? source.capitalized
-        return Text("\(label) · \(status)")
+        return Text(L10n.Popover.machinesLabelWithStatus(label: label, status: status))
             .font(.system(size: max(8, density.subtitleFontSize - 3), weight: .medium))
             .foregroundStyle(isHealthy ? Color.secondary : Color.orange)
             .lineLimit(1)
@@ -301,7 +307,7 @@ struct RemoteMachinesPage: View {
             Button {
                 Task { await service.refresh() }
             } label: {
-                Label("Retry", systemImage: "arrow.clockwise")
+                Label(L10n.Common.retry, systemImage: "arrow.clockwise")
                     .font(.system(size: max(9, density.segmentedFontSize - 1), weight: .semibold))
                     .padding(.horizontal, 10)
                     .frame(minHeight: 26)
