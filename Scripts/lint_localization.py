@@ -77,6 +77,10 @@ MIGRATED = [
     "Sources/VibeBarCore/Models/CostSnapshot.swift",
     "Sources/VibeBarApp/Views/Onboarding/OnboardingStepViews.swift",
     "Sources/VibeBarApp/Views/LanguageSettingsSection.swift",
+    "Sources/VibeBarApp/Views/Workbench/SessionListView.swift",
+    "Sources/VibeBarApp/Views/Workbench/SessionManagerPage.swift",
+    "Sources/VibeBarApp/Views/Workbench/TranscriptView.swift",
+    "Sources/VibeBarApp/Controllers/SessionManagerModel.swift",
 ]
 
 

@@ -1951,6 +1951,613 @@
     "comment": "Caption over the twenty-four-hour lane for quotas that refill more than once a day",
     "value": "NEXT 24 HOURS · SUB-DAILY QUOTAS"
   },
+  "workbench.sessions.allChip.helpSelected": {
+    "comment": "Tooltip on the lit All chip in the Sessions filter bar",
+    "value": "Click to select no harness"
+  },
+  "workbench.sessions.allChip.helpUnselected": {
+    "comment": "Tooltip on the unlit All chip in the Sessions filter bar",
+    "value": "Click to show sessions from every harness"
+  },
+  "workbench.sessions.allChip.labelSelected": {
+    "comment": "Accessibility label on the lit All chip in the Sessions filter bar",
+    "value": "Select no harness"
+  },
+  "workbench.sessions.allChip.labelUnselected": {
+    "comment": "Accessibility label on the unlit All chip in the Sessions filter bar",
+    "value": "Show every session source"
+  },
+  "workbench.sessions.antigravityNotice": {
+    "comment": "Notice under the transcript Details for an AntiGravity session, explaining why the transcript is partial and cannot be deleted",
+    "value": "AntiGravity stores its turns as an undocumented binary payload, so this transcript is a partial reconstruction and its sessions cannot be deleted from here — the IDE keeps them open."
+  },
+  "workbench.sessions.copyResumeCommand": {
+    "comment": "Sessions row context menu and transcript header: copy the shell line that reopens this session",
+    "value": "Copy resume command"
+  },
+  "workbench.sessions.copySessionID": {
+    "comment": "Tooltip on the session id line in the transcript header, and on the ID row in Details",
+    "value": "Copy session ID"
+  },
+  "workbench.sessions.copySessionIDLabel": {
+    "args": {
+      "id": "string"
+    },
+    "comment": "Accessibility label of the session id copy button. {id} is the identifier itself and is never translated.",
+    "value": "Session ID {id}. Copy"
+  },
+  "workbench.sessions.copySourcePath": {
+    "comment": "Tooltip on the copy button beside the session log's path in Details",
+    "value": "Copy source path"
+  },
+  "workbench.sessions.copyWorkingDirectory": {
+    "comment": "Tooltip on the copy button beside the CWD row in Details",
+    "value": "Copy working directory"
+  },
+  "workbench.sessions.count.sessions": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Sessions filter bar counter when the whole filtered list is on screen",
+    "value": "{count, plural, one {1 session} other {# sessions}}"
+  },
+  "workbench.sessions.count.shownOfTotal": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Sessions filter bar counter when the list is shorter than the index",
+    "value": "{shown} of {total} sessions"
+  },
+  "workbench.sessions.delete.confirm": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Title of the delete confirmation dialog on the Sessions page",
+    "value": "{count, plural, one {Delete this session?} other {Delete # sessions?}}"
+  },
+  "workbench.sessions.delete.countButton": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Destructive button in the Sessions filter bar while sessions are ticked",
+    "value": "Delete {count}"
+  },
+  "workbench.sessions.delete.message": {
+    "comment": "Body of the delete confirmation dialog on the Sessions page",
+    "value": "The session logs are removed from disk. This cannot be undone."
+  },
+  "workbench.sessions.deleteEllipsis": {
+    "comment": "Destructive item in the Sessions row context menu; the ellipsis says a confirmation follows",
+    "value": "Delete…"
+  },
+  "workbench.sessions.details": {
+    "comment": "Button that unfolds the session's facts under the transcript header",
+    "value": "Details"
+  },
+  "workbench.sessions.details.collapsed": {
+    "comment": "Accessibility value of the Details button while the facts are hidden",
+    "value": "Collapsed"
+  },
+  "workbench.sessions.details.expanded": {
+    "comment": "Accessibility value of the Details button while the facts are shown",
+    "value": "Expanded"
+  },
+  "workbench.sessions.empty.indexUnavailableDetail": {
+    "comment": "Sessions list empty state when the SQLite index would not open",
+    "value": "The index under ~/.vibebar could not be opened, so sessions cannot be listed this session."
+  },
+  "workbench.sessions.empty.indexUnavailableTitle": {
+    "comment": "Sessions list empty state title when the SQLite index would not open",
+    "value": "Session index unavailable"
+  },
+  "workbench.sessions.empty.noLogsDetail": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Sessions list empty state when the index is fine but nothing was ever scanned",
+    "value": "No session logs were found on this Mac for any of the {count} harnesses Vibe Bar scans."
+  },
+  "workbench.sessions.empty.noMatchTitle": {
+    "comment": "Sessions list empty state title when filters or search exclude everything",
+    "value": "No sessions match"
+  },
+  "workbench.sessions.empty.scanningDetail": {
+    "comment": "Sessions list empty state while the index scan is still running",
+    "value": "Still scanning the session logs on disk."
+  },
+  "workbench.sessions.empty.searchNoMatchDetail": {
+    "comment": "Sessions list empty state when the search matched nothing",
+    "value": "Nothing in the indexed sessions matches that search."
+  },
+  "workbench.sessions.fact.created": {
+    "comment": "Details row label: when the session was created",
+    "value": "Created"
+  },
+  "workbench.sessions.fact.cwd": {
+    "comment": "Details row label: the session's working directory",
+    "value": "CWD"
+  },
+  "workbench.sessions.fact.id": {
+    "comment": "Details row label: the session identifier",
+    "value": "ID"
+  },
+  "workbench.sessions.fact.lastActive": {
+    "comment": "Details row label: when the session was last written to",
+    "value": "Last active"
+  },
+  "workbench.sessions.fact.source": {
+    "comment": "Details row label: the session log's path on disk",
+    "value": "Source"
+  },
+  "workbench.sessions.filter.company": {
+    "comment": "Sessions filter bar menu that ticks whole companies at once",
+    "value": "Company"
+  },
+  "workbench.sessions.filter.dateRange": {
+    "comment": "Picker inside the Sessions When menu",
+    "value": "Date range"
+  },
+  "workbench.sessions.filter.folders": {
+    "comment": "Sessions filter bar button that opens the project-directory filters",
+    "value": "Folders"
+  },
+  "workbench.sessions.filter.foldersFiltered": {
+    "comment": "Value on the Sessions Folders button while a directory filter is set",
+    "value": "Filtered"
+  },
+  "workbench.sessions.filter.harness": {
+    "comment": "Sessions filter bar menu that ticks individual harnesses",
+    "value": "Harness"
+  },
+  "workbench.sessions.filter.harnessCount": {
+    "args": {
+      "count": "int",
+      "harness": "string"
+    },
+    "comment": "One row of the Sessions Harness menu: the harness name and how many sessions it has. The name is never translated.",
+    "value": "{harness}  {count}"
+  },
+  "workbench.sessions.filter.options": {
+    "comment": "Sessions filter bar menu holding the terminal and index options",
+    "value": "Options"
+  },
+  "workbench.sessions.filter.scope": {
+    "comment": "Sessions filter bar menu that picks which parts of a session the search covers",
+    "value": "Scope"
+  },
+  "workbench.sessions.filter.sort": {
+    "comment": "Sessions filter bar menu that picks the list order",
+    "value": "Sort"
+  },
+  "workbench.sessions.filter.sortGrouped": {
+    "args": {
+      "order": "string"
+    },
+    "comment": "Value on the Sessions Sort menu while Group by project is on. {order} is the chosen order's own label.",
+    "value": "{order} · grouped"
+  },
+  "workbench.sessions.filter.sortHelp": {
+    "comment": "Accessibility label of the Sessions Sort menu",
+    "value": "Choose how the list is ordered"
+  },
+  "workbench.sessions.filter.when": {
+    "comment": "Sessions filter bar menu that picks how far back to list",
+    "value": "When"
+  },
+  "workbench.sessions.filter.whenHelp": {
+    "comment": "Accessibility label of the Sessions When menu",
+    "value": "Choose how far back to list sessions"
+  },
+  "workbench.sessions.find.next": {
+    "comment": "Tooltip on the next-match button in the transcript find bar",
+    "value": "Next match"
+  },
+  "workbench.sessions.find.none": {
+    "comment": "Counter in the transcript find bar when nothing matched",
+    "value": "none"
+  },
+  "workbench.sessions.find.placeholder": {
+    "comment": "Placeholder and accessibility label of the transcript find field",
+    "value": "Find in transcript"
+  },
+  "workbench.sessions.find.previous": {
+    "comment": "Tooltip on the previous-match button in the transcript find bar",
+    "value": "Previous match"
+  },
+  "workbench.sessions.folders.exclude": {
+    "comment": "Field label in the Sessions directory-filter popover",
+    "value": "Exclude paths containing"
+  },
+  "workbench.sessions.folders.excludePlaceholder": {
+    "comment": "Example value in the exclude field of the Sessions directory-filter popover",
+    "value": "/archive, /vendor"
+  },
+  "workbench.sessions.folders.include": {
+    "comment": "Field label in the Sessions directory-filter popover",
+    "value": "Include paths containing"
+  },
+  "workbench.sessions.folders.includePlaceholder": {
+    "comment": "Example value in the include field of the Sessions directory-filter popover",
+    "value": "/project/a, /project/b"
+  },
+  "workbench.sessions.folders.separatorHint": {
+    "comment": "Caption under the Sessions directory-filter fields",
+    "value": "Separate multiple paths with commas, semicolons, or new lines."
+  },
+  "workbench.sessions.folders.title": {
+    "comment": "Title of the Sessions directory-filter popover",
+    "value": "Directory filters"
+  },
+  "workbench.sessions.fraction": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Compact counter used across the Sessions page: index scan progress, how many companies or harnesses are ticked, and which find match is in view",
+    "value": "{shown}/{total}"
+  },
+  "workbench.sessions.groupByProject": {
+    "comment": "Toggle in the Sessions Sort menu",
+    "value": "Group by project"
+  },
+  "workbench.sessions.index.scanning": {
+    "comment": "Sessions filter bar status while a scan is running and its total is not known yet",
+    "value": "scanning…"
+  },
+  "workbench.sessions.index.unavailable": {
+    "comment": "Sessions filter bar status when the SQLite index would not open",
+    "value": "index unavailable"
+  },
+  "workbench.sessions.list.capNotice": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Notice at the foot of the Sessions list when it stops at the loaded-summary ceiling",
+    "value": "Showing the first {shown} of {total} sessions. Narrow the filters or search to reach the rest."
+  },
+  "workbench.sessions.message.copy": {
+    "comment": "Context menu item on a transcript message card",
+    "value": "Copy Message"
+  },
+  "workbench.sessions.message.copyHelp": {
+    "comment": "Tooltip and accessibility label of the copy button on a transcript message card",
+    "value": "Copy this message"
+  },
+  "workbench.sessions.message.showLess": {
+    "comment": "Button that folds a long transcript message back up",
+    "value": "Show less"
+  },
+  "workbench.sessions.message.showMore": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Button that unfolds a long transcript message; {count} is the message's length in characters",
+    "value": "Show more ({count} chars)"
+  },
+  "workbench.sessions.openInTerminal": {
+    "comment": "Sessions row context menu and transcript resume row: run the resume command in a terminal",
+    "value": "Open in Terminal"
+  },
+  "workbench.sessions.options.help": {
+    "comment": "Accessibility label of the Sessions Options menu",
+    "value": "Terminal and index options"
+  },
+  "workbench.sessions.options.indexMessageText": {
+    "comment": "Toggle in the Sessions Options menu that stores message excerpts in the index",
+    "value": "Index message text"
+  },
+  "workbench.sessions.options.openIn": {
+    "comment": "Picker in the Sessions Options menu that chooses where a resume command is sent",
+    "value": "Open in"
+  },
+  "workbench.sessions.options.rebuildIndex": {
+    "comment": "Button in the Sessions Options menu that erases and rescans the index",
+    "value": "Rebuild index…"
+  },
+  "workbench.sessions.outline.empty": {
+    "comment": "Empty state of the transcript outline popover",
+    "value": "This transcript has no user prompts."
+  },
+  "workbench.sessions.outline.heading": {
+    "comment": "Heading of the transcript outline popover",
+    "value": "PROMPTS"
+  },
+  "workbench.sessions.outline.help": {
+    "comment": "Tooltip on the transcript outline button",
+    "value": "Jump to a prompt"
+  },
+  "workbench.sessions.outline.label": {
+    "comment": "Accessibility label of the transcript outline button",
+    "value": "Show the transcript outline"
+  },
+  "workbench.sessions.page.next": {
+    "comment": "Button that moves the transcript to the next page of messages",
+    "value": "Next"
+  },
+  "workbench.sessions.page.previous": {
+    "comment": "Button that moves the transcript to the previous page of messages",
+    "value": "Previous"
+  },
+  "workbench.sessions.project.none": {
+    "comment": "Sessions group heading and footer label for a session with no working directory",
+    "value": "No project"
+  },
+  "workbench.sessions.project.projectless": {
+    "comment": "Sessions group heading, footer label and Details value for a Codex task started without a project",
+    "value": "Projectless"
+  },
+  "workbench.sessions.range.all": {
+    "comment": "Sessions When menu option: no lower bound",
+    "value": "Any time"
+  },
+  "workbench.sessions.range.month": {
+    "comment": "Sessions When menu option: the last thirty days",
+    "value": "30 days"
+  },
+  "workbench.sessions.range.today": {
+    "comment": "Sessions When menu option: since midnight",
+    "value": "Today"
+  },
+  "workbench.sessions.range.week": {
+    "comment": "Sessions When menu option: the last seven days",
+    "value": "7 days"
+  },
+  "workbench.sessions.refreshHelp": {
+    "comment": "Tooltip on the Sessions refresh button",
+    "value": "Rescan the session logs on disk"
+  },
+  "workbench.sessions.resume.heading": {
+    "comment": "Heading above the shell line that reopens a session, in the transcript Details",
+    "value": "RESUME"
+  },
+  "workbench.sessions.resume.none": {
+    "comment": "Shown in the transcript Details when the provider offers no resume command",
+    "value": "This session has no command-line entry point."
+  },
+  "workbench.sessions.role.assistant": {
+    "comment": "Role label on a transcript message card",
+    "value": "Assistant"
+  },
+  "workbench.sessions.role.other": {
+    "comment": "Role label on a transcript message card that is none of the known roles",
+    "value": "Note"
+  },
+  "workbench.sessions.role.system": {
+    "comment": "Role label on a transcript message card",
+    "value": "System"
+  },
+  "workbench.sessions.role.tool": {
+    "comment": "Role label on a transcript message card",
+    "value": "Tool"
+  },
+  "workbench.sessions.role.user": {
+    "comment": "Role label on a transcript message card written by the person",
+    "value": "You"
+  },
+  "workbench.sessions.row.autoReviewsMerged": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Tooltip on the review badge of a Sessions row. Auto Review is Codex's own feature name and stays in English.",
+    "value": "{count, plural, one {1 Auto Review merged} other {# Auto Reviews merged}}"
+  },
+  "workbench.sessions.row.includeInDeletion": {
+    "comment": "Tooltip on a Sessions row checkbox while delete mode is on",
+    "value": "Include this session in the deletion"
+  },
+  "workbench.sessions.row.messageCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How many messages a session holds: the tooltip on the Sessions row badge, and the transcript header line",
+    "value": "{count, plural, one {# message} other {# messages}}"
+  },
+  "workbench.sessions.row.select": {
+    "comment": "Accessibility label of a Sessions row checkbox",
+    "value": "Select this session"
+  },
+  "workbench.sessions.row.showTranscript": {
+    "comment": "Accessibility hint on a Sessions row outside delete mode",
+    "value": "Show this transcript"
+  },
+  "workbench.sessions.row.toggleForDeletion": {
+    "comment": "Accessibility hint on a Sessions row while delete mode is on",
+    "value": "Toggle this session for deletion"
+  },
+  "workbench.sessions.runInHelp": {
+    "args": {
+      "terminal": "string"
+    },
+    "comment": "Tooltip on the buttons that hand a resume command to a terminal. {terminal} is the app's own name.",
+    "value": "Run it in {terminal}"
+  },
+  "workbench.sessions.scope.assistant": {
+    "comment": "Sessions search scope",
+    "value": "Assistant replies"
+  },
+  "workbench.sessions.scope.system": {
+    "comment": "Sessions search scope",
+    "value": "System prompts"
+  },
+  "workbench.sessions.scope.title": {
+    "comment": "Sessions search scope",
+    "value": "Titles and session IDs"
+  },
+  "workbench.sessions.scope.tool": {
+    "comment": "Sessions search scope",
+    "value": "Tool and file operations"
+  },
+  "workbench.sessions.scope.user": {
+    "comment": "Sessions search scope",
+    "value": "User prompts"
+  },
+  "workbench.sessions.search.bodyIndexed": {
+    "comment": "Footer of the Sessions Scope menu while message indexing is on",
+    "value": "Message text is indexed locally."
+  },
+  "workbench.sessions.search.bodyNotIndexed": {
+    "comment": "Footer of the Sessions Scope menu while message indexing is off",
+    "value": "Enable message indexing in Options to search transcript content."
+  },
+  "workbench.sessions.search.clearHelp": {
+    "comment": "Tooltip on the clear button inside the Sessions search field",
+    "value": "Clear the search"
+  },
+  "workbench.sessions.search.placeholder": {
+    "comment": "Placeholder of the Sessions search field",
+    "value": "Search sessions"
+  },
+  "workbench.sessions.selectMode": {
+    "comment": "Button that turns on the Sessions page's delete-selection mode",
+    "value": "Select"
+  },
+  "workbench.sessions.selectModeHelp": {
+    "comment": "Tooltip on the Sessions select-mode button",
+    "value": "Pick sessions to delete"
+  },
+  "workbench.sessions.sort.byProject": {
+    "comment": "Sessions Sort menu option",
+    "value": "By project"
+  },
+  "workbench.sessions.sort.oldestFirst": {
+    "comment": "Sessions Sort menu option",
+    "value": "Oldest first"
+  },
+  "workbench.sessions.sort.recentFirst": {
+    "comment": "Sessions Sort menu option",
+    "value": "Newest first"
+  },
+  "workbench.sessions.toast.bodyIndexDropFailed": {
+    "comment": "Sessions toast after turning message indexing off and the stored excerpts could not be dropped",
+    "value": "Clearing the indexed message text failed."
+  },
+  "workbench.sessions.toast.bodyIndexDropped": {
+    "comment": "Sessions toast after turning message indexing off",
+    "value": "Indexed message text removed."
+  },
+  "workbench.sessions.toast.copied": {
+    "comment": "Sessions toast after a command was put on the pasteboard",
+    "value": "Copied to the clipboard."
+  },
+  "workbench.sessions.toast.copiedWithReason": {
+    "args": {
+      "reason": "string"
+    },
+    "comment": "Sessions toast after a terminal could not be driven and the command went to the pasteboard instead. {reason} is the launcher's own explanation.",
+    "value": "Copied to the clipboard. {reason}"
+  },
+  "workbench.sessions.toast.cwdCopied": {
+    "comment": "Sessions toast after copying a session's working directory",
+    "value": "Working directory copied."
+  },
+  "workbench.sessions.toast.deleted": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Sessions toast after every selected session was deleted",
+    "value": "{count, plural, one {Deleted 1 session.} other {Deleted # sessions.}}"
+  },
+  "workbench.sessions.toast.deletedPartial": {
+    "args": {
+      "deleted": "int",
+      "kept": "int",
+      "reason": "string"
+    },
+    "comment": "Sessions toast after a partial delete. {reason} is the first failure's own message.",
+    "value": "Deleted {deleted}, kept {kept}: {reason}"
+  },
+  "workbench.sessions.toast.indexNotCleared": {
+    "comment": "Sessions toast when a rebuild could not erase the index first",
+    "value": "The session index could not be cleared."
+  },
+  "workbench.sessions.toast.messageCopied": {
+    "comment": "Sessions toast after copying one transcript message",
+    "value": "Message copied."
+  },
+  "workbench.sessions.toast.noResumeCommand": {
+    "comment": "Sessions toast when a session cannot be handed back to a CLI",
+    "value": "This session has no resume command."
+  },
+  "workbench.sessions.toast.openedIn": {
+    "args": {
+      "terminal": "string"
+    },
+    "comment": "Sessions toast after a resume command was handed to a terminal. {terminal} is the app's own name.",
+    "value": "Opened in {terminal}."
+  },
+  "workbench.sessions.toast.sessionIDCopied": {
+    "comment": "Sessions toast after copying a session identifier",
+    "value": "Session ID copied."
+  },
+  "workbench.sessions.toast.sourcePathCopied": {
+    "comment": "Sessions toast after copying a session log's path",
+    "value": "Source path copied."
+  },
+  "workbench.sessions.transcript.autoReviewDivider": {
+    "comment": "Separator inserted in a transcript where a Codex Auto Review child session is merged in. Auto Review is Codex's own feature name and stays in English.",
+    "value": "Auto Review"
+  },
+  "workbench.sessions.transcript.cancelled": {
+    "comment": "Shown in the transcript pane after the reader was cancelled",
+    "value": "Reading this session was stopped. Select it again to reopen it."
+  },
+  "workbench.sessions.transcript.loadAll": {
+    "comment": "Button on the truncation banner that re-reads a very large session with no byte bound",
+    "value": "Load entire transcript"
+  },
+  "workbench.sessions.transcript.loading": {
+    "comment": "Shown in the transcript pane while a session file is being parsed",
+    "value": "Reading the session log…"
+  },
+  "workbench.sessions.transcript.noMessages": {
+    "comment": "Shown in the transcript pane when the log parsed to nothing",
+    "value": "This session's log has no readable messages."
+  },
+  "workbench.sessions.transcript.noReader": {
+    "args": {
+      "provider": "string"
+    },
+    "comment": "Transcript error when no adapter can open this provider's sessions. {provider} is the provider's own name.",
+    "value": "No reader is registered for {provider}."
+  },
+  "workbench.sessions.transcript.pageRange": {
+    "args": {
+      "first": "int",
+      "last": "int",
+      "total": "int"
+    },
+    "comment": "Header of the transcript pager",
+    "value": "Messages {first}–{last} of {total}"
+  },
+  "workbench.sessions.transcript.placeholderDetail": {
+    "comment": "Transcript pane placeholder while no session is selected",
+    "value": "Pick a session on the left to read its transcript, copy its resume command, or hand it back to its CLI."
+  },
+  "workbench.sessions.transcript.placeholderTitle": {
+    "comment": "Transcript pane placeholder title while no session is selected",
+    "value": "No session selected"
+  },
+  "workbench.sessions.transcript.readFailed": {
+    "comment": "Transcript error when the adapter threw and offered no message of its own",
+    "value": "This session's log could not be read."
+  },
+  "workbench.sessions.transcript.truncatedDetail": {
+    "args": {
+      "file": "string",
+      "parsed": "string"
+    },
+    "comment": "Truncation banner detail. Both sizes arrive already formatted as byte counts.",
+    "value": "{parsed} read of {file}. Reading all of it holds the whole transcript in memory."
+  },
+  "workbench.sessions.transcript.truncatedTitle": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Truncation banner title when only a head window of a very large session was parsed",
+    "value": "Showing the first {count, plural, one {# message} other {# messages}} of a very large log"
+  },
   "workbench.status.cachedQuotas": {
     "comment": "Workbench header status for the Resets page when no refill is scheduled",
     "value": "cached quotas"

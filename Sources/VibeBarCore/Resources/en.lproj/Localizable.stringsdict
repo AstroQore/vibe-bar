@@ -195,5 +195,101 @@
 			<string>%1$lld requests</string>
 		</dict>
 	</dict>
+	<key>workbench.sessions.count.sessions</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 session</string>
+			<key>other</key>
+			<string>%1$lld sessions</string>
+		</dict>
+	</dict>
+	<key>workbench.sessions.delete.confirm</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Delete this session?</string>
+			<key>other</key>
+			<string>Delete %1$lld sessions?</string>
+		</dict>
+	</dict>
+	<key>workbench.sessions.row.autoReviewsMerged</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 Auto Review merged</string>
+			<key>other</key>
+			<string>%1$lld Auto Reviews merged</string>
+		</dict>
+	</dict>
+	<key>workbench.sessions.row.messageCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld message</string>
+			<key>other</key>
+			<string>%1$lld messages</string>
+		</dict>
+	</dict>
+	<key>workbench.sessions.toast.deleted</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Deleted 1 session.</string>
+			<key>other</key>
+			<string>Deleted %1$lld sessions.</string>
+		</dict>
+	</dict>
+	<key>workbench.sessions.transcript.truncatedTitle</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Showing the first %1$#@count@ of a very large log</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld message</string>
+			<key>other</key>
+			<string>%1$lld messages</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

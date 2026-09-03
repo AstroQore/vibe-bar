@@ -1307,6 +1307,405 @@
   "workbench.resets.subDaily.title": {
     "value": "未来 24 小时 · 日内配额"
   },
+  "workbench.sessions.allChip.helpSelected": {
+    "value": "点击后不选中任何 harness"
+  },
+  "workbench.sessions.allChip.helpUnselected": {
+    "value": "点击后显示全部 harness 的会话"
+  },
+  "workbench.sessions.allChip.labelSelected": {
+    "value": "不选中任何 harness"
+  },
+  "workbench.sessions.allChip.labelUnselected": {
+    "value": "显示全部会话来源"
+  },
+  "workbench.sessions.antigravityNotice": {
+    "value": "AntiGravity 以未公开的二进制格式保存对话轮次，因此这份对话记录是部分重建的结果，其会话也无法在此删除 — IDE 会一直占用它们。"
+  },
+  "workbench.sessions.copyResumeCommand": {
+    "value": "复制恢复命令"
+  },
+  "workbench.sessions.copySessionID": {
+    "value": "复制会话 ID"
+  },
+  "workbench.sessions.copySessionIDLabel": {
+    "value": "会话 ID {id}。复制"
+  },
+  "workbench.sessions.copySourcePath": {
+    "value": "复制源文件路径"
+  },
+  "workbench.sessions.copyWorkingDirectory": {
+    "value": "复制工作目录"
+  },
+  "workbench.sessions.count.sessions": {
+    "value": "{count, plural, other {# 个会话}}"
+  },
+  "workbench.sessions.count.shownOfTotal": {
+    "value": "{total} 个会话中的 {shown} 个"
+  },
+  "workbench.sessions.delete.confirm": {
+    "value": "{count, plural, other {删除 # 个会话？}}"
+  },
+  "workbench.sessions.delete.countButton": {
+    "value": "删除 {count} 个"
+  },
+  "workbench.sessions.delete.message": {
+    "value": "会话日志将从磁盘上删除，此操作无法撤销。"
+  },
+  "workbench.sessions.deleteEllipsis": {
+    "value": "删除…"
+  },
+  "workbench.sessions.details": {
+    "value": "详情"
+  },
+  "workbench.sessions.details.collapsed": {
+    "value": "已收起"
+  },
+  "workbench.sessions.details.expanded": {
+    "value": "已展开"
+  },
+  "workbench.sessions.empty.indexUnavailableDetail": {
+    "value": "无法打开 ~/.vibebar 下的会话索引，本次运行期间无法列出会话。"
+  },
+  "workbench.sessions.empty.indexUnavailableTitle": {
+    "value": "会话索引不可用"
+  },
+  "workbench.sessions.empty.noLogsDetail": {
+    "value": "这台 Mac 上没有找到 Vibe Bar 扫描的 {count} 个 harness 的任何会话日志。"
+  },
+  "workbench.sessions.empty.noMatchTitle": {
+    "value": "没有匹配的会话"
+  },
+  "workbench.sessions.empty.scanningDetail": {
+    "value": "仍在扫描磁盘上的会话日志。"
+  },
+  "workbench.sessions.empty.searchNoMatchDetail": {
+    "value": "已索引的会话中没有匹配该搜索的内容。"
+  },
+  "workbench.sessions.fact.created": {
+    "value": "创建时间"
+  },
+  "workbench.sessions.fact.cwd": {
+    "value": "工作目录"
+  },
+  "workbench.sessions.fact.id": {
+    "value": "ID"
+  },
+  "workbench.sessions.fact.lastActive": {
+    "value": "最后活动"
+  },
+  "workbench.sessions.fact.source": {
+    "value": "来源文件"
+  },
+  "workbench.sessions.filter.company": {
+    "value": "厂商"
+  },
+  "workbench.sessions.filter.dateRange": {
+    "value": "时间范围"
+  },
+  "workbench.sessions.filter.folders": {
+    "value": "目录"
+  },
+  "workbench.sessions.filter.foldersFiltered": {
+    "value": "已筛选"
+  },
+  "workbench.sessions.filter.harness": {
+    "value": "Harness"
+  },
+  "workbench.sessions.filter.harnessCount": {
+    "value": "{harness}  {count}"
+  },
+  "workbench.sessions.filter.options": {
+    "value": "选项"
+  },
+  "workbench.sessions.filter.scope": {
+    "value": "范围"
+  },
+  "workbench.sessions.filter.sort": {
+    "value": "排序"
+  },
+  "workbench.sessions.filter.sortGrouped": {
+    "value": "{order} · 已分组"
+  },
+  "workbench.sessions.filter.sortHelp": {
+    "value": "选择列表的排序方式"
+  },
+  "workbench.sessions.filter.when": {
+    "value": "时间"
+  },
+  "workbench.sessions.filter.whenHelp": {
+    "value": "选择列出多久以前的会话"
+  },
+  "workbench.sessions.find.next": {
+    "value": "下一处匹配"
+  },
+  "workbench.sessions.find.none": {
+    "value": "无"
+  },
+  "workbench.sessions.find.placeholder": {
+    "value": "在对话记录中查找"
+  },
+  "workbench.sessions.find.previous": {
+    "value": "上一处匹配"
+  },
+  "workbench.sessions.folders.exclude": {
+    "value": "排除包含以下片段的路径"
+  },
+  "workbench.sessions.folders.excludePlaceholder": {
+    "value": "/archive, /vendor"
+  },
+  "workbench.sessions.folders.include": {
+    "value": "仅包含以下片段的路径"
+  },
+  "workbench.sessions.folders.includePlaceholder": {
+    "value": "/project/a, /project/b"
+  },
+  "workbench.sessions.folders.separatorHint": {
+    "value": "多个路径用逗号、分号或换行分隔。"
+  },
+  "workbench.sessions.folders.title": {
+    "value": "目录筛选"
+  },
+  "workbench.sessions.fraction": {
+    "value": "{shown}/{total}"
+  },
+  "workbench.sessions.groupByProject": {
+    "value": "按项目分组"
+  },
+  "workbench.sessions.index.scanning": {
+    "value": "扫描中…"
+  },
+  "workbench.sessions.index.unavailable": {
+    "value": "索引不可用"
+  },
+  "workbench.sessions.list.capNotice": {
+    "value": "当前只显示 {total} 个会话中的前 {shown} 个。缩小筛选范围或使用搜索以查看其余会话。"
+  },
+  "workbench.sessions.message.copy": {
+    "value": "复制消息"
+  },
+  "workbench.sessions.message.copyHelp": {
+    "value": "复制这条消息"
+  },
+  "workbench.sessions.message.showLess": {
+    "value": "收起"
+  },
+  "workbench.sessions.message.showMore": {
+    "value": "展开全部（{count} 字符）"
+  },
+  "workbench.sessions.openInTerminal": {
+    "value": "在 Terminal 中打开"
+  },
+  "workbench.sessions.options.help": {
+    "value": "终端与索引选项"
+  },
+  "workbench.sessions.options.indexMessageText": {
+    "value": "索引消息正文"
+  },
+  "workbench.sessions.options.openIn": {
+    "value": "打开方式"
+  },
+  "workbench.sessions.options.rebuildIndex": {
+    "value": "重建索引…"
+  },
+  "workbench.sessions.outline.empty": {
+    "value": "该对话记录中没有用户提示词。"
+  },
+  "workbench.sessions.outline.heading": {
+    "value": "提示词"
+  },
+  "workbench.sessions.outline.help": {
+    "value": "跳转到某条提示词"
+  },
+  "workbench.sessions.outline.label": {
+    "value": "显示对话记录大纲"
+  },
+  "workbench.sessions.page.next": {
+    "value": "下一页"
+  },
+  "workbench.sessions.page.previous": {
+    "value": "上一页"
+  },
+  "workbench.sessions.project.none": {
+    "value": "无项目"
+  },
+  "workbench.sessions.project.projectless": {
+    "value": "未指定项目"
+  },
+  "workbench.sessions.range.all": {
+    "value": "全部时间"
+  },
+  "workbench.sessions.range.month": {
+    "value": "30 天"
+  },
+  "workbench.sessions.range.today": {
+    "value": "今日"
+  },
+  "workbench.sessions.range.week": {
+    "value": "7 天"
+  },
+  "workbench.sessions.refreshHelp": {
+    "value": "重新扫描磁盘上的会话日志"
+  },
+  "workbench.sessions.resume.heading": {
+    "value": "恢复命令"
+  },
+  "workbench.sessions.resume.none": {
+    "value": "该会话没有命令行入口。"
+  },
+  "workbench.sessions.role.assistant": {
+    "value": "助手"
+  },
+  "workbench.sessions.role.other": {
+    "value": "备注"
+  },
+  "workbench.sessions.role.system": {
+    "value": "系统"
+  },
+  "workbench.sessions.role.tool": {
+    "value": "工具"
+  },
+  "workbench.sessions.role.user": {
+    "value": "用户"
+  },
+  "workbench.sessions.row.autoReviewsMerged": {
+    "value": "已合并 {count, plural, other {# 条}} Auto Review"
+  },
+  "workbench.sessions.row.includeInDeletion": {
+    "value": "将该会话纳入本次删除"
+  },
+  "workbench.sessions.row.messageCount": {
+    "value": "{count, plural, other {# 条消息}}"
+  },
+  "workbench.sessions.row.select": {
+    "value": "选择该会话"
+  },
+  "workbench.sessions.row.showTranscript": {
+    "value": "显示该会话的对话记录"
+  },
+  "workbench.sessions.row.toggleForDeletion": {
+    "value": "切换是否删除该会话"
+  },
+  "workbench.sessions.runInHelp": {
+    "value": "在 {terminal} 中运行"
+  },
+  "workbench.sessions.scope.assistant": {
+    "value": "助手回复"
+  },
+  "workbench.sessions.scope.system": {
+    "value": "系统提示词"
+  },
+  "workbench.sessions.scope.title": {
+    "value": "标题与会话 ID"
+  },
+  "workbench.sessions.scope.tool": {
+    "value": "工具与文件操作"
+  },
+  "workbench.sessions.scope.user": {
+    "value": "用户提示词"
+  },
+  "workbench.sessions.search.bodyIndexed": {
+    "value": "消息正文已在本地建立索引。"
+  },
+  "workbench.sessions.search.bodyNotIndexed": {
+    "value": "在「选项」中开启消息索引后即可搜索对话记录内容。"
+  },
+  "workbench.sessions.search.clearHelp": {
+    "value": "清除搜索内容"
+  },
+  "workbench.sessions.search.placeholder": {
+    "value": "搜索会话"
+  },
+  "workbench.sessions.selectMode": {
+    "value": "选择"
+  },
+  "workbench.sessions.selectModeHelp": {
+    "value": "选择要删除的会话"
+  },
+  "workbench.sessions.sort.byProject": {
+    "value": "按项目"
+  },
+  "workbench.sessions.sort.oldestFirst": {
+    "value": "最早优先"
+  },
+  "workbench.sessions.sort.recentFirst": {
+    "value": "最新优先"
+  },
+  "workbench.sessions.toast.bodyIndexDropFailed": {
+    "value": "清除已索引的消息正文失败。"
+  },
+  "workbench.sessions.toast.bodyIndexDropped": {
+    "value": "已删除已索引的消息正文。"
+  },
+  "workbench.sessions.toast.copied": {
+    "value": "已复制到剪贴板。"
+  },
+  "workbench.sessions.toast.copiedWithReason": {
+    "value": "已复制到剪贴板。{reason}"
+  },
+  "workbench.sessions.toast.cwdCopied": {
+    "value": "工作目录已复制。"
+  },
+  "workbench.sessions.toast.deleted": {
+    "value": "{count, plural, other {已删除 # 个会话。}}"
+  },
+  "workbench.sessions.toast.deletedPartial": {
+    "value": "已删除 {deleted} 个，保留 {kept} 个：{reason}"
+  },
+  "workbench.sessions.toast.indexNotCleared": {
+    "value": "无法清空会话索引。"
+  },
+  "workbench.sessions.toast.messageCopied": {
+    "value": "消息已复制。"
+  },
+  "workbench.sessions.toast.noResumeCommand": {
+    "value": "该会话没有恢复命令。"
+  },
+  "workbench.sessions.toast.openedIn": {
+    "value": "已在 {terminal} 中打开。"
+  },
+  "workbench.sessions.toast.sessionIDCopied": {
+    "value": "会话 ID 已复制。"
+  },
+  "workbench.sessions.toast.sourcePathCopied": {
+    "value": "源文件路径已复制。"
+  },
+  "workbench.sessions.transcript.autoReviewDivider": {
+    "value": "Auto Review"
+  },
+  "workbench.sessions.transcript.cancelled": {
+    "value": "已停止读取该会话。再次选中它即可重新打开。"
+  },
+  "workbench.sessions.transcript.loadAll": {
+    "value": "加载完整对话记录"
+  },
+  "workbench.sessions.transcript.loading": {
+    "value": "正在读取会话日志…"
+  },
+  "workbench.sessions.transcript.noMessages": {
+    "value": "该会话的日志中没有可读消息。"
+  },
+  "workbench.sessions.transcript.noReader": {
+    "value": "没有为 {provider} 注册读取器。"
+  },
+  "workbench.sessions.transcript.pageRange": {
+    "value": "第 {first}–{last} 条消息，共 {total} 条"
+  },
+  "workbench.sessions.transcript.placeholderDetail": {
+    "value": "在左侧选择一个会话，即可阅读其对话记录、复制恢复命令，或把它交回对应的 CLI。"
+  },
+  "workbench.sessions.transcript.placeholderTitle": {
+    "value": "未选择会话"
+  },
+  "workbench.sessions.transcript.readFailed": {
+    "value": "无法读取该会话的日志。"
+  },
+  "workbench.sessions.transcript.truncatedDetail": {
+    "value": "已读取 {file} 中的 {parsed}。完整读取会把整份对话记录留在内存中。"
+  },
+  "workbench.sessions.transcript.truncatedTitle": {
+    "value": "已显示这份超大日志中的前 {count, plural, other {# 条消息}}"
+  },
   "workbench.status.cachedQuotas": {
     "value": "缓存额度"
   },
