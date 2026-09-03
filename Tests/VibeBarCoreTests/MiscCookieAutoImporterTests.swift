@@ -300,6 +300,99 @@ final class MiscCookieAutoImporterTests: XCTestCase {
         XCTAssertEqual(reimportCalls.value, 2)
     }
 
+    /// The cooldown must never outlive the user's intent: pressing Refresh
+    /// after signing back in has to re-read the browser immediately, not in
+    /// six hours. `AppEnvironment`'s user-initiated refresh paths call
+    /// `resetCooldown`, so a card cannot stay stuck on a credential error.
+    func testResetCooldownLetsAUserInitiatedRefreshReimportAgain() async {
+        let slotID = UUID()
+        let reimportCalls = Counter()
+        let importer = MiscCookieAutoImporter(
+            isEnabled: { true },
+            reimport: { _, _ in
+                reimportCalls.increment()
+                return true
+            },
+            resolve: { _, _ in
+                [.init(slotID: slotID, header: "kimi-auth=also-stale", sourceLabel: "Chrome")]
+            }
+        )
+
+        func staleFetch() async {
+            _ = await importer.gatherSlotResults(
+                spec: spec,
+                account: account,
+                resolutions: [.init(slotID: slotID, header: "kimi-auth=stale", sourceLabel: "Chrome")]
+            ) { _ in
+                throw QuotaError.needsLogin
+            }
+        }
+
+        await staleFetch()
+        await staleFetch()
+        XCTAssertEqual(reimportCalls.value, 1, "the scheduled repeat stays inside the cooldown")
+
+        // Whole-tool reset (the per-provider Refresh button).
+        importer.resetCooldown(for: .kimi)
+        await staleFetch()
+        XCTAssertEqual(reimportCalls.value, 2)
+
+        await staleFetch()
+        XCTAssertEqual(reimportCalls.value, 2, "the reset restarts the window, it does not disable it")
+
+        // Per-instance reset (the misc-provider row's Refresh button, which
+        // passes `MiscProviderInstance.id` — the same value the account id
+        // carries with its `misc-` prefix stripped).
+        let instanceID = AccountStore.miscInstanceID(
+            fromAccountID: account.id,
+            fallbackTool: .kimi
+        )
+        XCTAssertEqual(instanceID, "kimi")
+        importer.resetCooldown(for: .kimi, instanceID: instanceID)
+        await staleFetch()
+        XCTAssertEqual(reimportCalls.value, 3)
+
+        // Global reset (reload credentials / the popover Refresh button).
+        importer.resetCooldowns()
+        await staleFetch()
+        XCTAssertEqual(reimportCalls.value, 4)
+    }
+
+    /// A reset aimed at one provider must not clear another provider's window.
+    func testResetCooldownIsScopedToItsProvider() async {
+        let slotID = UUID()
+        let reimportCalls = Counter()
+        let importer = MiscCookieAutoImporter(
+            isEnabled: { true },
+            reimport: { _, _ in
+                reimportCalls.increment()
+                return true
+            },
+            resolve: { _, _ in
+                [.init(slotID: slotID, header: "kimi-auth=also-stale", sourceLabel: "Chrome")]
+            }
+        )
+
+        func staleFetch() async {
+            _ = await importer.gatherSlotResults(
+                spec: spec,
+                account: account,
+                resolutions: [.init(slotID: slotID, header: "kimi-auth=stale", sourceLabel: "Chrome")]
+            ) { _ in
+                throw QuotaError.needsLogin
+            }
+        }
+
+        await staleFetch()
+        importer.resetCooldown(for: .zai)
+        await staleFetch()
+        XCTAssertEqual(reimportCalls.value, 1, "another provider's reset must not clear this one")
+
+        importer.resetCooldown(for: .kimi, instanceID: "some-other-instance")
+        await staleFetch()
+        XCTAssertEqual(reimportCalls.value, 1, "another instance's reset must not clear this one")
+    }
+
     func testMergeKeepsOrderAndUntouchedSlots() {
         let slotA = UUID()
         let slotB = UUID()

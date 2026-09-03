@@ -111,6 +111,27 @@ public struct MiscCookieAutoImporter: Sendable {
         return Self.merge(original: first, retried: retried)
     }
 
+    /// Forget the re-import cooldown for one provider instance, or for every
+    /// instance of `tool` when `instanceID` is `nil`.
+    ///
+    /// The cooldown only ever meant "a *scheduled* refresh should not keep
+    /// re-reading a browser that was signed out a minute ago". A user who
+    /// presses Refresh, signs back in, reloads credentials, or imports a
+    /// cookie by hand is telling us the browser state changed, and the whole
+    /// point of the retry is to pick that up now — not in six hours or after
+    /// a relaunch. Mirrors how `AppEnvironment` drops its routine-budget
+    /// failure cooldowns on the same paths.
+    public func resetCooldown(for tool: ToolType, instanceID: String? = nil) {
+        cooldown.reset(tool: tool, instanceID: instanceID)
+    }
+
+    /// Forget every re-import cooldown. Used by the explicit
+    /// "reload credentials and refresh" path, which is also where the global
+    /// Refresh button lands.
+    public func resetCooldowns() {
+        cooldown.resetAll()
+    }
+
     /// Replace each original result with its retried counterpart,
     /// keeping the original ordering and any slot that wasn't retried.
     static func merge(
@@ -179,11 +200,32 @@ private final class ReimportCooldown: @unchecked Sendable {
     func claim(tool: ToolType, instanceID: String, now: Date = Date()) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        let key = "\(tool.rawValue)\u{0}\(instanceID)"
+        let key = Self.key(tool: tool, instanceID: instanceID)
         if let last = lastAttempt[key], now >= last, now.timeIntervalSince(last) < interval {
             return false
         }
         lastAttempt[key] = now
         return true
+    }
+
+    func reset(tool: ToolType, instanceID: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let instanceID else {
+            let prefix = "\(tool.rawValue)\u{0}"
+            lastAttempt = lastAttempt.filter { !$0.key.hasPrefix(prefix) }
+            return
+        }
+        lastAttempt.removeValue(forKey: Self.key(tool: tool, instanceID: instanceID))
+    }
+
+    func resetAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        lastAttempt.removeAll()
+    }
+
+    private static func key(tool: ToolType, instanceID: String) -> String {
+        "\(tool.rawValue)\u{0}\(instanceID)"
     }
 }

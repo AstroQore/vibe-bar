@@ -876,58 +876,61 @@ public enum CostUsageScanner {
         let model: String
     }
 
-    /// Grok CLI's layout is fixed at
-    /// `<root>/<url-encoded cwd>/<session uuid>/{updates,events}.jsonl`, so
-    /// two directory listings find every stream. The previous recursive
-    /// enumerator walked ~54k entries (every `chat_history.jsonl`,
-    /// `summary.json`, `signals.json`, and any nested artefact) and asked the
-    /// filesystem for symlink/regular-file flags on each one, to end up with
-    /// the same ~2.9k files.
+    /// Grok CLI's normal layout is
+    /// `<root>/<url-encoded cwd>/<session uuid>/{updates,events}.jsonl`, but a
+    /// tree can also hold migrated or legacy entries at other depths, and the
+    /// two shapes coexist.
     ///
-    /// A layout that ever stops matching falls back to the old recursive
-    /// walk rather than silently reporting no Grok usage.
+    /// So this is a depth-first walk that **stops at the first directory that
+    /// is itself a session** — one that holds an `updates.jsonl` /
+    /// `events.jsonl` — and otherwise descends into that directory's
+    /// subdirectories, up to `grokMaxSearchDepth`. In the common tree that
+    /// costs exactly one listing per cwd directory plus one per session and
+    /// never opens a session's contents, where the previous recursive
+    /// enumerator visited all ~54k entries (every `chat_history.jsonl`,
+    /// `summary.json`, `signals.json` and nested artefact) and asked the
+    /// filesystem for symlink / regular-file flags on each. A deeper entry
+    /// alongside standard ones is still found: the old "recurse only when the
+    /// fast walk found nothing" fallback silently dropped it, and the cache
+    /// prune that follows then deleted its previously cached events.
     private static func collectGrokUpdatesFiles(under root: URL) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
-        let keys: [URLResourceKey] = [
-            .isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey,
-            .contentModificationDateKey, .fileSizeKey
-        ]
         var out: [URL] = []
-        let projects = (try? FileManager.default.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        for project in projects {
-            guard (try? project.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true,
-                  let children = try? FileManager.default.contentsOfDirectory(
-                      at: project,
-                      includingPropertiesForKeys: keys,
-                      options: [.skipsHiddenFiles]
-                  )
-            else { continue }
-            // A session directory written straight under the root (no cwd
-            // grouping) is still picked up.
-            if let stream = grokPreferredStream(in: children) {
-                out.append(stream)
-            }
-            for session in children {
-                guard (try? session.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true,
-                      let entries = try? FileManager.default.contentsOfDirectory(
-                          at: session,
-                          includingPropertiesForKeys: keys,
-                          options: [.skipsHiddenFiles]
-                      )
-                else { continue }
-                if let stream = grokPreferredStream(in: entries) {
-                    out.append(stream)
-                }
-            }
-        }
-        if out.isEmpty && !projects.isEmpty {
-            return collectGrokUpdatesFilesRecursively(under: root, keys: keys)
-        }
+        collectGrokStreams(in: root, depth: 0, into: &out)
         return out
+    }
+
+    /// Depth bound on the walk above. The real layout needs 2 (cwd, then
+    /// session); the headroom covers migrated trees without letting a
+    /// pathological directory turn this back into an unbounded sweep.
+    private static let grokMaxSearchDepth = 6
+
+    private static let grokDirectoryKeys: [URLResourceKey] = [
+        .isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey,
+        .contentModificationDateKey, .fileSizeKey
+    ]
+
+    private static func collectGrokStreams(in directory: URL, depth: Int, into out: inout [URL]) {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: grokDirectoryKeys,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        // A directory holding a stream *is* the session; its own contents are
+        // transcript artefacts, not more sessions.
+        if let stream = grokPreferredStream(in: entries) {
+            out.append(stream)
+            return
+        }
+        guard depth < grokMaxSearchDepth else { return }
+        for entry in entries {
+            let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            // Symlinked directories are skipped for the same reason
+            // `collectJSONL` skips symlinked files — they can resolve outside
+            // `~/.grok`, and they are how a walk finds a cycle.
+            guard values?.isDirectory == true, values?.isSymbolicLink != true else { continue }
+            collectGrokStreams(in: entry, depth: depth + 1, into: &out)
+        }
     }
 
     /// Prefer `updates.jsonl` when both streams exist for one session.
@@ -943,34 +946,6 @@ public enum CostUsageScanner {
             events = url
         }
         return events
-    }
-
-    private static func collectGrokUpdatesFilesRecursively(
-        under root: URL,
-        keys: [URLResourceKey]
-    ) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-        var out: [URL] = []
-        for case let url as URL in enumerator
-        where url.lastPathComponent == "updates.jsonl"
-            || url.lastPathComponent == "events.jsonl"
-        {
-            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
-            if values?.isSymbolicLink == true { continue }
-            if values?.isRegularFile == false { continue }
-            // Prefer updates.jsonl when both exist for the same session.
-            if url.lastPathComponent == "events.jsonl" {
-                let sibling = url.deletingLastPathComponent()
-                    .appendingPathComponent("updates.jsonl")
-                if FileManager.default.fileExists(atPath: sibling.path) { continue }
-            }
-            out.append(url)
-        }
-        return out
     }
 
     private static func parseGrokUpdatesFile(file: URL) -> [GrokSnapshot] {

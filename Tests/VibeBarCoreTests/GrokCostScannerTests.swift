@@ -68,9 +68,83 @@ final class GrokCostScannerTests: XCTestCase {
         try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
     }
 
-    /// Discovery walks `<root>/<cwd>/<session>/` directly instead of
-    /// recursively enumerating everything under `~/.grok/sessions`. A layout
-    /// that nests deeper than that must still be found by the fallback.
+    /// Discovery is a bounded depth-first walk that stops at the first
+    /// directory holding a stream, rather than the fixed `<cwd>/<session>`
+    /// walk with a "recurse only if nothing was found" fallback. That
+    /// fallback silently dropped every deeper entry in a *mixed* tree — one
+    /// standard entry made the fast walk non-empty — and the cache prune that
+    /// follows then deleted those sessions' previously cached events.
+    func testMixedStandardAndDeeperLayoutsAreBothFound() async throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let sessions = home
+            .appendingPathComponent(".grok", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+
+        func writeUpdates(at directory: URL, total: Int) throws {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let ms = Int64(now.addingTimeInterval(-3_600).timeIntervalSince1970 * 1000)
+            let line = """
+            {"_meta":{"totalTokens":\(total),"agentTimestampMs":\(ms),"updateType":"AvailableCommandsUpdate"},"payload":{}}
+            """
+            try line.write(
+                to: directory.appendingPathComponent("updates.jsonl"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+
+        // Standard: <sessions>/<cwd>/<session>/updates.jsonl
+        try writeUpdates(
+            at: sessions
+                .appendingPathComponent("cwd-label", isDirectory: true)
+                .appendingPathComponent("standard-session", isDirectory: true),
+            total: 10_000
+        )
+        // Deeper, alongside it and under the *same* cwd directory.
+        try writeUpdates(
+            at: sessions
+                .appendingPathComponent("cwd-label", isDirectory: true)
+                .appendingPathComponent("archived", isDirectory: true)
+                .appendingPathComponent("migrated-session", isDirectory: true),
+            total: 30_000
+        )
+        // Deeper again, under a different cwd directory.
+        try writeUpdates(
+            at: sessions
+                .appendingPathComponent("other-cwd", isDirectory: true)
+                .appendingPathComponent("extra-level", isDirectory: true)
+                .appendingPathComponent("legacy-session", isDirectory: true),
+            total: 5_000
+        )
+        // Session artefacts must not be mistaken for further sessions: a
+        // subdirectory of a session directory is never descended into.
+        let noise = sessions
+            .appendingPathComponent("cwd-label", isDirectory: true)
+            .appendingPathComponent("standard-session", isDirectory: true)
+            .appendingPathComponent("attachments", isDirectory: true)
+        try FileManager.default.createDirectory(at: noise, withIntermediateDirectories: true)
+        try "{}".write(
+            to: noise.appendingPathComponent("updates.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let snapshot = await CostUsageScanner.scan(
+            tool: .grok,
+            homeDirectory: home.path,
+            now: now
+        )
+        XCTAssertEqual(
+            snapshot?.jsonlFilesFound, 3,
+            "the standard entry and both deeper entries, and nothing inside a session"
+        )
+        // First-row totals are the floor, so each session contributes its own.
+        XCTAssertEqual(snapshot?.allTimeTokens, 45_000)
+    }
+
     func testDeeperNestingStillFindsUpdatesFiles() async throws {
         let home = try makeTempHome()
         defer { cleanup(home) }

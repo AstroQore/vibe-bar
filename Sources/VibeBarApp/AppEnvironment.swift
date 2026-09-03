@@ -566,6 +566,10 @@ final class AppEnvironment: ObservableObject {
         // 1h failure cooldowns so the routine WebView probe gets a fresh
         // chance on the very next quota refresh.
         lastRoutineBudgetAttemptByAccount.removeAll()
+        // Same reasoning for the misc-provider cookie re-import: its cooldown
+        // exists to stop *scheduled* refreshes re-reading a signed-out
+        // browser, and this path is the user saying the browser changed.
+        MiscCookieAutoImporter.shared.resetCooldowns()
         scheduler.triggerRefresh()
         serviceStatus.refreshAll()
     }
@@ -592,6 +596,9 @@ final class AppEnvironment: ObservableObject {
     func refresh(_ tool: ToolType) {
         refreshWebCookiePresence()
         recheckPrimaryRouteHealth(provider: tool)
+        // User-initiated: let the cookie re-import run again even if a
+        // scheduled refresh already found the browser signed out.
+        MiscCookieAutoImporter.shared.resetCooldown(for: tool)
         accountStore.reload(
             codexUsageMode: settingsStore.settings.codexUsageMode,
             claudeUsageMode: settingsStore.claudeUsageMode,
@@ -609,6 +616,9 @@ final class AppEnvironment: ObservableObject {
 
     func refresh(_ instance: MiscProviderInstance) {
         guard let account = account(for: instance) else { return }
+        MiscCookieAutoImporter.shared.resetCooldown(
+            for: instance.tool, instanceID: instance.id
+        )
         Task { @MainActor in
             _ = await quotaService.refresh(account)
         }
