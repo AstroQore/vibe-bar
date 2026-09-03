@@ -260,6 +260,7 @@ enum ResetHistoryLanes {
 final class ResetHistoryComparisonCache {
     private struct Key: Equatable {
         let inputs: [ResetHistoryLaneInput]
+        let axis: ResetHistoryAxis
         let window: ResetHistoryComparison.Window
         let hour: Double
     }
@@ -269,6 +270,7 @@ final class ResetHistoryComparisonCache {
 
     func comparison(
         inputs: [ResetHistoryLaneInput],
+        axis: ResetHistoryAxis,
         window: ResetHistoryComparison.Window,
         now: Date = Date()
     ) -> ResetHistoryComparison {
@@ -276,10 +278,11 @@ final class ResetHistoryComparisonCache {
         // build, so it is quantized to the hour. This module starts no timer
         // of its own: the next quota refresh redraws it.
         let hour = (now.timeIntervalSinceReferenceDate / 3_600).rounded(.down) * 3_600
-        let candidate = Key(inputs: inputs, window: window, hour: hour)
+        let candidate = Key(inputs: inputs, axis: axis, window: window, hour: hour)
         if let key, key == candidate, let value { return value }
         let built = ResetHistoryComparison.build(
             inputs: inputs,
+            axis: axis,
             window: window,
             now: Date(timeIntervalSinceReferenceDate: hour)
         )
@@ -296,12 +299,15 @@ final class ResetHistoryComparisonCache {
 ///
 /// Two decisions carry the design.
 ///
-/// **Columns are cycle ordinals, not dates.** Quotas refill on their own
-/// schedules, so a shared calendar axis put every row's bars in different
-/// places and made two rows impossible to read against each other. Here the
-/// newest completed cycle of every quota sits in the same column, the one
-/// before it in the column to its left; a row with less history is
-/// right-aligned into the grid and starts further right.
+/// **Two axes, and the reader picks.** On `Cycles` the columns are ordinals:
+/// the newest completed cycle of every quota sits in the same column, the one
+/// before it in the column to its left, and a row with less history is
+/// right-aligned into the grid. Quotas refill on unrelated schedules, so that
+/// is the only layout in which two rows can be read against each other. On
+/// `Time` each cycle sits where it actually happened, which is the only layout
+/// that shows two quotas running dry in the same week — or a lane that stopped
+/// refilling in March. The choice persists in `AppSettings`, one setting for
+/// every surface that draws the module.
 ///
 /// **The bar is what was left, not what was spent.** The question is "am I
 /// wasting quota", so a tall bar is a cycle that expired mostly unused and an
@@ -327,9 +333,20 @@ struct ResetHistoryCompareCard: View {
     @State private var window: ResetHistoryComparison.Window = .eight
     @State private var cache = ResetHistoryComparisonCache()
 
+    /// Persisted, not `@State`: switching the Overview's copy switches the
+    /// provider pages' and the Workbench's too, which is what a reader who
+    /// changed their mind about the layout means.
+    private var axis: ResetHistoryAxis { settingsStore.settings.resetHistoryCompareAxis }
+
+    private func setAxis(_ next: ResetHistoryAxis) {
+        guard settingsStore.settings.resetHistoryCompareAxis != next else { return }
+        settingsStore.settings.resetHistoryCompareAxis = next
+    }
+
     var body: some View {
         let comparison = cache.comparison(
             inputs: ResetHistoryLanes.inputs(environment: environment, tools: tools),
+            axis: axis,
             window: window
         )
         CardShell(density: density, spacing: 8) {
@@ -355,23 +372,57 @@ struct ResetHistoryCompareCard: View {
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 .lineLimit(1)
             Spacer(minLength: 6)
-            Text("cycles")
-                .font(.system(size: max(8, density.subtitleFontSize - 2.5)))
-                .foregroundStyle(.quaternary)
+            axisPicker
             windowPicker
         }
     }
 
-    /// How many cycles back the table reaches. The same hand-drawn segment
-    /// pill the cost card's metric switch uses, so the two read as one control
-    /// family.
+    /// Cycles or Time. Words rather than glyphs: the difference between an
+    /// ordinal grid and a calendar is not something an icon carries, and this
+    /// control changes what the whole chart measures.
+    private var axisPicker: some View {
+        HStack(spacing: 1) {
+            ForEach(ResetHistoryAxis.allCases, id: \.self) { option in
+                Button {
+                    setAxis(option)
+                } label: {
+                    Text(option.title)
+                        .font(.system(size: max(8.5, density.segmentedFontSize - 1.5), weight: .semibold))
+                        .foregroundStyle(axis == option ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .frame(minHeight: 17)
+                        .contentShape(Rectangle())
+                        .background {
+                            if axis == option {
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Color.primary.opacity(0.12))
+                            }
+                        }
+                }
+                .buttonStyle(.vibeBar(cornerRadius: 5))
+                .help(option.help)
+                .accessibilityLabel(option.help)
+                .accessibilityAddTraits(axis == option ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
+    }
+
+    /// How far back the comparison reaches, in whichever unit the axis counts.
+    /// The same hand-drawn segment pill the cost card's metric switch uses, so
+    /// the two read as one control family.
     private var windowPicker: some View {
         HStack(spacing: 1) {
             ForEach(ResetHistoryComparison.Window.allCases, id: \.self) { option in
                 Button {
                     window = option
                 } label: {
-                    Text(option.shortTitle)
+                    Text(option.shortTitle(for: axis))
                         .font(.system(size: max(8.5, density.segmentedFontSize - 1.5), weight: .semibold, design: .rounded))
                         .foregroundStyle(window == option ? Color.primary : Color.secondary)
                         .lineLimit(1)
@@ -386,8 +437,8 @@ struct ResetHistoryCompareCard: View {
                         }
                 }
                 .buttonStyle(.vibeBar(cornerRadius: 5))
-                .help("Compare the \(option.spokenTitle)")
-                .accessibilityLabel("Compare the \(option.spokenTitle)")
+                .help("Compare the \(option.spokenTitle(for: axis))")
+                .accessibilityLabel("Compare the \(option.spokenTitle(for: axis))")
                 // The fill is the only sighted cue for which span is showing;
                 // VoiceOver needs the selection stated outright.
                 .accessibilityAddTraits(window == option ? [.isSelected] : [])
@@ -439,7 +490,10 @@ struct ResetHistoryCompareLayout: Equatable {
     /// a particular name needs the second one.
     let titleLineLimit = 2
     let now: Date
-    let columns: ResetHistoryComparison.ColumnPlan
+    /// Which grid the bars sit on. Everything above this line — heading
+    /// heights, label block, track height, row rhythm — is identical for both,
+    /// so flipping the axis moves bars without reflowing a single label.
+    let grid: ResetHistoryComparison.Grid
     /// Height of a company heading.
     let headingHeight: CGFloat
     /// What the surface draws, top to bottom.
@@ -476,7 +530,7 @@ struct ResetHistoryCompareLayout: Equatable {
         captionFontSize = max(8, density.subtitleFontSize - 2)
         titleLineHeight = titleFontSize + 3
         now = comparison.now
-        columns = comparison.columns
+        grid = comparison.grid
 
         // Two label lines plus the caption, or the bar track, whichever is
         // taller. Uniform per density: this is a table, and a table's rows
@@ -529,10 +583,61 @@ struct ResetHistoryCompareLayout: Equatable {
         return nil
     }
 
+    /// The cycle axis's column plan; an empty one on the time axis.
+    var columns: ResetHistoryComparison.ColumnPlan {
+        guard case let .cycles(plan) = grid else {
+            return ResetHistoryComparison.ColumnPlan(completedColumnCount: 0, hasCurrentColumn: false)
+        }
+        return plan
+    }
+
+    var span: ResetHistoryComparison.TimeSpan? {
+        guard case let .time(span) = grid else { return nil }
+        return span
+    }
+
     func columnWidth(in size: CGSize) -> CGFloat {
         guard columns.totalColumnCount > 0 else { return 0 }
         return chartWidth(in: size) / CGFloat(columns.totalColumnCount)
     }
+
+    // MARK: Time axis
+
+    func x(for date: Date, in size: CGSize) -> CGFloat {
+        guard let span else { return chartX }
+        return chartX + chartWidth(in: size) * CGFloat(span.fraction(of: date))
+    }
+
+    /// A cycle's rectangle on the time axis, clamped to the plot. `nil` when
+    /// the cycle falls entirely outside the visible span.
+    func timeBarRect(
+        _ cycle: ResetHistoryComparison.Cycle,
+        laneIndex: Int,
+        in size: CGSize
+    ) -> CGRect? {
+        guard span != nil else { return nil }
+        let left = x(for: cycle.start, in: size)
+        let right = x(for: cycle.end, in: size)
+        let minX = chartX
+        let maxX = chartX + chartWidth(in: size)
+        guard right > minX, left < maxX else { return nil }
+        let clampedLeft = max(minX, left)
+        let clampedRight = min(maxX, right)
+        // One point of air between neighbours, and never thinner than a bar
+        // the eye can find.
+        return CGRect(
+            x: clampedLeft,
+            y: trackTop(laneIndex),
+            width: max(2, clampedRight - clampedLeft - 1),
+            height: trackHeight
+        )
+    }
+
+    /// Bars a lane may draw on the time axis before they stop being separable.
+    /// Three points is already narrower than the eye can split.
+    func timeDrawBudget(in size: CGSize) -> Int { max(4, Int(chartWidth(in: size) / 3)) }
+
+    // MARK: Cycle axis
 
     /// One bar's rectangle. Identical x for the same column on every row —
     /// that identity is the alignment the table is built on.
@@ -570,7 +675,9 @@ struct ResetHistoryCompareView: View {
     private struct Hover: Equatable {
         let laneIndex: Int
         let cycleID: String
-        let column: Int
+        /// Cycle axis only; `nil` on the time axis, where the bar's rectangle
+        /// comes from the cycle's own dates instead of a column index.
+        let column: Int?
         let point: CGPoint
     }
 
@@ -582,12 +689,7 @@ struct ResetHistoryCompareView: View {
                 ZStack(alignment: .topLeading) {
                     ResetHistoryLanesCanvas(comparison: comparison, layout: layout)
                         .equatable()
-                    if let hover,
-                       let rect = layout.barRect(
-                           column: hover.column,
-                           laneIndex: hover.laneIndex,
-                           in: proxy.size
-                       ) {
+                    if let hover, let rect = hoveredRect(hover, in: proxy.size, layout: layout) {
                         RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                             .stroke(Color.primary.opacity(0.5), lineWidth: 1)
                             .frame(width: rect.width + 2, height: rect.height + 2)
@@ -633,6 +735,9 @@ struct ResetHistoryCompareView: View {
                 }
                 Text("bar height = remaining at reset")
             }
+            // What the x position means, which is the one thing the axis
+            // toggle changes about how to read the chart.
+            Text(comparison.axis == .cycle ? "one column per cycle" : "placed by date")
             HStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .stroke(Color.secondary, style: StrokeStyle(lineWidth: 0.8, dash: [2, 1.5]))
@@ -658,30 +763,60 @@ struct ResetHistoryCompareView: View {
         in size: CGSize,
         layout: ResetHistoryCompareLayout
     ) -> Hover? {
-        // `>= chartX` matters: a pointer over the label column would otherwise
-        // truncate to column 0 and light up a bar it is nowhere near.
+        // `>= chartX` matters on both axes: a pointer over the label column
+        // would otherwise resolve to the leftmost bar it is nowhere near.
         guard let index = layout.laneIndex(atY: location.y),
               index < comparison.lanes.count,
-              location.x >= layout.chartX,
-              layout.columnWidth(in: size) > 0
+              location.x >= layout.chartX
         else { return nil }
-        let column = Int((location.x - layout.chartX) / layout.columnWidth(in: size))
-        guard column >= 0, column < comparison.columns.totalColumnCount else { return nil }
         let lane = comparison.lanes[index]
-        if column == comparison.columns.currentColumn, let current = lane.currentCycle {
-            return Hover(laneIndex: index, cycleID: current.id, column: column, point: location)
+        switch comparison.grid {
+        case let .cycles(plan):
+            guard layout.columnWidth(in: size) > 0 else { return nil }
+            let column = Int((location.x - layout.chartX) / layout.columnWidth(in: size))
+            guard column >= 0, column < plan.totalColumnCount else { return nil }
+            if column == plan.currentColumn, let current = lane.currentCycle {
+                return Hover(laneIndex: index, cycleID: current.id, column: column, point: location)
+            }
+            let offset = column - plan.column(ofCycleAt: 0, inLaneWithCycleCount: lane.cycles.count)
+            guard offset >= 0, offset < lane.cycles.count else { return nil }
+            return Hover(
+                laneIndex: index,
+                cycleID: lane.cycles[offset].id,
+                column: column,
+                point: location
+            )
+        case .time:
+            // The same thinned set the canvas drew, so the tooltip can never
+            // describe a bar that is not on screen.
+            var candidates = ResetHistoryComparison.downsampled(
+                lane.cycles,
+                limit: layout.timeDrawBudget(in: size)
+            )
+            if let current = lane.currentCycle { candidates.append(current) }
+            // Reverse order matches the draw order: the current cycle is
+            // painted last and is therefore the one on top.
+            for cycle in candidates.reversed() {
+                guard let rect = layout.timeBarRect(cycle, laneIndex: index, in: size) else { continue }
+                if location.x >= rect.minX - 1, location.x <= rect.maxX + 1 {
+                    return Hover(laneIndex: index, cycleID: cycle.id, column: nil, point: location)
+                }
+            }
+            return nil
         }
-        let offset = column - comparison.columns.column(
-            ofCycleAt: 0,
-            inLaneWithCycleCount: lane.cycles.count
-        )
-        guard offset >= 0, offset < lane.cycles.count else { return nil }
-        return Hover(
-            laneIndex: index,
-            cycleID: lane.cycles[offset].id,
-            column: column,
-            point: location
-        )
+    }
+
+    /// The hovered bar's rectangle, resolved the way its axis resolves bars.
+    private func hoveredRect(
+        _ hover: Hover,
+        in size: CGSize,
+        layout: ResetHistoryCompareLayout
+    ) -> CGRect? {
+        if let column = hover.column {
+            return layout.barRect(column: column, laneIndex: hover.laneIndex, in: size)
+        }
+        guard let cycle = cycle(for: hover) else { return nil }
+        return layout.timeBarRect(cycle, laneIndex: hover.laneIndex, in: size)
     }
 
     private func cycle(for hover: Hover) -> ResetHistoryComparison.Cycle? {
@@ -782,12 +917,17 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
     }
 
     /// Column separators behind every row, and the live column marked off from
-    /// the completed ones.
+    /// the completed ones — or, on the time axis, the date rules and a *now*
+    /// hairline.
     private func drawGrid(_ context: inout GraphicsContext, size: CGSize) {
+        guard case let .cycles(plan) = comparison.grid else {
+            drawTimeGrid(&context, size: size)
+            return
+        }
         let width = layout.columnWidth(in: size)
         guard width > 0 else { return }
-        for column in 1..<max(1, comparison.columns.totalColumnCount) {
-            let isCurrentBoundary = column == comparison.columns.currentColumn
+        for column in 1..<max(1, plan.totalColumnCount) {
+            let isCurrentBoundary = column == plan.currentColumn
             context.fill(
                 Path(CGRect(x: layout.chartX + CGFloat(column) * width, y: 0, width: 0.5, height: layout.rowsHeight)),
                 with: .color(Color.primary.opacity(isCurrentBoundary ? 0.22 : 0.06))
@@ -889,27 +1029,69 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
             return
         }
         let accent = Theme.providerAccent(for: lane.tool)
-        for (offset, cycle) in lane.cycles.enumerated() {
-            let column = comparison.columns.column(
-                ofCycleAt: offset,
-                inLaneWithCycleCount: lane.cycles.count
-            )
-            drawBar(&context, cycle: cycle, column: column, laneIndex: index, accent: accent, size: size)
+        switch comparison.grid {
+        case let .cycles(plan):
+            for (offset, cycle) in lane.cycles.enumerated() {
+                let column = plan.column(ofCycleAt: offset, inLaneWithCycleCount: lane.cycles.count)
+                guard let rect = layout.barRect(column: column, laneIndex: index, in: size) else { continue }
+                drawBar(&context, cycle: cycle, in: rect, laneIndex: index, accent: accent)
+            }
+            if let current = lane.currentCycle, let column = plan.currentColumn,
+               let rect = layout.barRect(column: column, laneIndex: index, in: size) {
+                drawBar(&context, cycle: current, in: rect, laneIndex: index, accent: accent)
+            }
+        case .time:
+            // Thinned before drawing: the time axis has no column ceiling, so
+            // a year of weeklies on a short row is a bar every two pixels.
+            // Endpoints and the wasteful cycles are what survive the cut.
+            for cycle in ResetHistoryComparison.downsampled(
+                lane.cycles,
+                limit: layout.timeDrawBudget(in: size)
+            ) {
+                guard let rect = layout.timeBarRect(cycle, laneIndex: index, in: size) else { continue }
+                drawBar(&context, cycle: cycle, in: rect, laneIndex: index, accent: accent)
+            }
+            if let current = lane.currentCycle,
+               let rect = layout.timeBarRect(current, laneIndex: index, in: size) {
+                drawBar(&context, cycle: current, in: rect, laneIndex: index, accent: accent)
+            }
         }
-        if let current = lane.currentCycle, let column = comparison.columns.currentColumn {
-            drawBar(&context, cycle: current, column: column, laneIndex: index, accent: accent, size: size)
+    }
+
+    /// Date rules across the plot and the *now* hairline — the same idiom the
+    /// refill-horizon lane uses.
+    private func drawTimeGrid(_ context: inout GraphicsContext, size: CGSize) {
+        guard let span = layout.span else { return }
+        for tick in Self.timeTicks(span) {
+            context.fill(
+                Path(CGRect(x: layout.x(for: tick, in: size), y: 0, width: 0.5, height: layout.rowsHeight)),
+                with: .color(Color.primary.opacity(0.07))
+            )
+        }
+        let nowX = layout.x(for: min(span.end, layout.now), in: size)
+        if nowX >= layout.chartX, nowX <= layout.chartX + layout.chartWidth(in: size) {
+            context.fill(
+                Path(CGRect(x: nowX - 0.5, y: 0, width: 1, height: layout.rowsHeight)),
+                with: .color(Color.primary.opacity(0.28))
+            )
+        }
+    }
+
+    /// Six evenly spaced dates across the visible span.
+    static func timeTicks(_ span: ResetHistoryComparison.TimeSpan) -> [Date] {
+        let count = 5
+        return (0...count).map { index in
+            span.start.addingTimeInterval(span.duration * Double(index) / Double(count))
         }
     }
 
     private func drawBar(
         _ context: inout GraphicsContext,
         cycle: ResetHistoryComparison.Cycle,
-        column: Int,
+        in rect: CGRect,
         laneIndex: Int,
-        accent: Color,
-        size: CGSize
+        accent: Color
     ) {
-        guard let rect = layout.barRect(column: column, laneIndex: laneIndex, in: size) else { return }
         let radius = min(2.5, rect.width / 2)
         // The track is the whole quota; the fill is the part of it that was
         // still there when the window refilled. A cycle spent to the last
@@ -950,37 +1132,27 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         }
     }
 
-    /// How many cycles back each column is, and `now` for the live one.
-    /// Deliberately not dates: the columns are ordinals, and each cycle's own
-    /// dates are in its tooltip.
+    /// The axis caption row: how many cycles back each column is on the cycle
+    /// axis (dates live in the tooltips there, because the columns are
+    /// ordinals), and real dates on the time axis.
     private func drawAxis(_ context: inout GraphicsContext, size: CGSize) {
         let y = layout.rowsHeight + 1
+        drawTruncationNote(&context, y: y)
+        guard case let .cycles(plan) = comparison.grid else {
+            drawTimeAxis(&context, size: size, y: y)
+            return
+        }
         let width = layout.columnWidth(in: size)
         guard width > 0 else { return }
-        // The label column is free on the axis row, which is where the caveat
-        // belongs: the grid is capped, the numbers above it are not.
-        if let note = comparison.truncationNote {
-            context.draw(
-                truncated(
-                    context,
-                    note,
-                    font: .system(size: max(7, layout.captionFontSize - 1), design: .rounded),
-                    color: Color.primary.opacity(0.4),
-                    maxWidth: layout.labelWidth - layout.labelGap
-                ),
-                at: CGPoint(x: 0, y: y),
-                anchor: .topLeading
-            )
-        }
-        let total = comparison.columns.totalColumnCount
+        let total = plan.totalColumnCount
         // Label the ends and the live column, plus interior ordinals only
         // while they still have room to be read.
         let stride = max(1, Int((28 / max(width, 1)).rounded(.up)))
         for column in 0..<total {
-            let isCurrent = column == comparison.columns.currentColumn
-            let isEdge = column == 0 || column == comparison.columns.completedColumnCount - 1
+            let isCurrent = column == plan.currentColumn
+            let isEdge = column == 0 || column == plan.completedColumnCount - 1
             guard isCurrent || isEdge || column % stride == 0,
-                  let label = comparison.columns.axisLabel(forColumn: column)
+                  let label = plan.axisLabel(forColumn: column)
             else { continue }
             let text = context.resolve(
                 Text(label)
@@ -994,6 +1166,45 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
                 layout.chartX + layout.chartWidth(in: size) - measured
             )
             context.draw(text, at: CGPoint(x: clamped, y: y), anchor: .topLeading)
+        }
+    }
+
+    /// Dates under the time axis, kept inside the plot at both ends.
+    private func drawTimeAxis(_ context: inout GraphicsContext, size: CGSize, y: CGFloat) {
+        guard let span = layout.span else { return }
+        let chartWidth = layout.chartWidth(in: size)
+        for tick in Self.timeTicks(span) {
+            let tickX = layout.x(for: tick, in: size)
+            guard tickX >= layout.chartX - 1, tickX <= layout.chartX + chartWidth else { continue }
+            let text = context.resolve(
+                Text(ResetHistoryCompareFormatters.axis.string(from: tick))
+                    .font(.system(size: max(7, layout.captionFontSize - 1), design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.4))
+            )
+            let measured = text.measure(in: CGSize(width: 80, height: 20)).width
+            let clamped = min(
+                max(tickX - measured / 2, layout.chartX),
+                layout.chartX + chartWidth - measured
+            )
+            context.draw(text, at: CGPoint(x: clamped, y: y), anchor: .topLeading)
+        }
+    }
+
+    /// The label column is free on the axis row, which is where the caveat
+    /// belongs: the grid is capped, the numbers above it are not.
+    private func drawTruncationNote(_ context: inout GraphicsContext, y: CGFloat) {
+        if let note = comparison.truncationNote {
+            context.draw(
+                truncated(
+                    context,
+                    note,
+                    font: .system(size: max(7, layout.captionFontSize - 1), design: .rounded),
+                    color: Color.primary.opacity(0.4),
+                    maxWidth: layout.labelWidth - layout.labelGap
+                ),
+                at: CGPoint(x: 0, y: y),
+                anchor: .topLeading
+            )
         }
     }
 
@@ -1083,6 +1294,13 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
 }
 
 private enum ResetHistoryCompareFormatters {
+    static let axis: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+
     static let tooltip: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

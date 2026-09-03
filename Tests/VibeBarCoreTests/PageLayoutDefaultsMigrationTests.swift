@@ -300,6 +300,33 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.appliedLayoutMigrations, settings.appliedLayoutMigrations)
     }
 
+    func testTheResetHistoryAxisRoundTripsThroughSettings() throws {
+        // A user-facing control, so it round-trips through `AppSettings` like
+        // every other one (`AGENTS.md` § 11).
+        var settings = AppSettings.default
+        settings.resetHistoryCompareAxis = .time
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.resetHistoryCompareAxis, .time)
+    }
+
+    func testSettingsWrittenBeforeTheAxisToggleDecodeToCycles() throws {
+        // An upgrade must not silently re-lay-out a module the user was
+        // reading yesterday.
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+        XCTAssertEqual(decoded.resetHistoryCompareAxis, .cycle)
+        XCTAssertEqual(AppSettings.default.resetHistoryCompareAxis, .cycle)
+    }
+
+    func testAnUnknownAxisInTheSettingsFileFallsBackToCycles() throws {
+        // A value written by a newer build must cost the axis, not the file.
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"resetHistoryCompareAxis":"spiral"}"#.utf8)
+        )
+        XCTAssertEqual(decoded.resetHistoryCompareAxis, .cycle)
+    }
+
     func testSettingsWrittenBeforeMigrationsExistedDecodeToNoneApplied() throws {
         // Which is what makes the first launch on this build run them.
         let decoded = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
