@@ -446,6 +446,9 @@
 /* A block showing words the user typed. */
 "menuBar.composer.block.text" = "Text";
 
+/* Chip label for a block written by a newer version of the app that this one cannot draw. */
+"menuBar.composer.block.unsupported" = "From a newer version";
+
 /* Caption over the reorderable list of blocks. */
 "menuBar.composer.blocks" = "Blocks — drag to reorder";
 
@@ -652,6 +655,9 @@
 
 /* Starting content of a newly added text block, before the user types over it. */
 "menuBar.composer.text.placeholder" = "Label";
+
+/* Explains an unsupported block: it is kept so an upgrade restores it, and only removal applies. */
+"menuBar.composer.unsupported.detail" = "This block was made by a newer version of Vibe Bar. It is kept exactly as it was and will work again after an update; until then it draws nothing.";
 
 /* Shown on a block whose colour or rule points at a quota that is not being returned. */
 "menuBar.composer.warning.degraded" = "This block still draws, but a colour or a rule on it points at a quota that is not being returned right now.";

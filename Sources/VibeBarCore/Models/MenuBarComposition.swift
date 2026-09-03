@@ -109,6 +109,13 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         case appIcon
         /// Ends the current row and starts the next one. Never draws.
         case lineBreak
+        /// A block written by a build that knew something this one does not —
+        /// a kind it has never heard of, or a provider added after it shipped.
+        /// Kept exactly as found and handed back on the next save, because the
+        /// alternative is deleting a block the user made and never telling
+        /// them. Draws nothing and says nothing; the editor labels it and lets
+        /// it be removed.
+        case unsupported(JSONValue)
     }
 
     /// How the block looks. Colour is the interesting axis: any block — a
@@ -130,6 +137,28 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
             self.size = size
             self.weight = weight
             self.monospacedDigits = monospacedDigits
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case color, size, weight, monospacedDigits
+        }
+
+        /// Every field degrades to its default.
+        ///
+        /// This decoder is hand-written for one reason: the synthesized one
+        /// throws when it meets a `SizeStep` or `Weight` a newer build wrote,
+        /// and `LossyMenuBarToken` turns a throw into a *dropped block* — so
+        /// running a newer build and going back deleted the user's blocks, and
+        /// the next save wrote that deletion to disk. A block that comes back
+        /// a little plainer can be fixed in a second; a block that is gone
+        /// cannot be recovered at all.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.color = (try? c.decode(ColorSource.self, forKey: .color)) ?? .automatic
+            self.size = (try? c.decode(SizeStep.self, forKey: .size)) ?? .regular
+            self.weight = (try? c.decode(Weight.self, forKey: .weight)) ?? .medium
+            self.monospacedDigits =
+                (try? c.decode(Bool.self, forKey: .monospacedDigits)) ?? false
         }
 
         /// What today's percentages wear: automatic colour, semibold,
@@ -342,6 +371,22 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
     }
 
     /// The quota this token reads, if it is a quota token.
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, style, visibility
+    }
+
+    /// Same reasoning as `Style`: everything except the block's own identity
+    /// degrades rather than taking the block down. `kind` is the exception —
+    /// a block whose kind this build cannot read is preserved verbatim
+    /// instead, see `Kind.unsupported`.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        self.kind = try c.decode(Kind.self, forKey: .kind)
+        self.style = (try? c.decode(Style.self, forKey: .style)) ?? Style()
+        self.visibility = (try? c.decode(Visibility.self, forKey: .visibility)) ?? .always
+    }
+
     public var quotaFieldId: String? {
         if case let .quota(fieldId, _) = kind { return fieldId }
         return nil
@@ -407,7 +452,11 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         /// Multiplier on the layout's base font size.
         public var fontScale: Double {
             switch self {
-            case .compact: return 0.95
+            // 1.0, not 0.95: Compact's smallness is its *face* — the 9pt one
+            // the built-in compact layout draws at — and scaling that down
+            // again would make the seeded strip smaller than the strip it is
+            // meant to reproduce. See `MenuBarStripGeometry.face`.
+            case .compact: return 1.0
             case .roomy: return 1.0
             case .twoColumn: return 1.0
             }
@@ -960,9 +1009,12 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         // rather than taking the whole settings file down with it.
         let stored = try c.decodeIfPresent([LossyMenuBarToken].self, forKey: .tokens) ?? []
         self.tokens = stored.compactMap(\.value)
-        self.fontScale = try c.decodeIfPresent(Double.self, forKey: .fontScale)
+        // `try?`, not `try`: a malformed number here used to throw, and the
+        // item's own decoder catches that into `composition = nil` — losing
+        // every block over one bad scalar.
+        self.fontScale = (try? c.decode(Double.self, forKey: .fontScale))
             .map { $0.clamped(to: Self.fontScaleRange) }
-        self.tokenSpacing = try c.decodeIfPresent(Double.self, forKey: .tokenSpacing)
+        self.tokenSpacing = (try? c.decode(Double.self, forKey: .tokenSpacing))
             .map { $0.clamped(to: Self.tokenSpacingRange) }
     }
 
@@ -1402,6 +1454,10 @@ public extension MenuBarComposition {
             return TokenContent(text: MenuBarToken.truncated(separator), glyph: nil, spoken: nil)
         case .lineBreak:
             return nil
+        case .unsupported:
+            // Nothing to draw: this build does not know what it is. It is on
+            // the strip only so the next save hands it back.
+            return nil
         case let .quota(_, metric):
             // A bucket the provider is not returning right now takes its block
             // off the strip and leaves everything else alone.
@@ -1592,31 +1648,47 @@ extension MenuBarToken.Kind: Codable {
     }
 
     public init(from decoder: Decoder) throws {
+        // Anything unreadable is preserved rather than thrown, which is what
+        // stops `LossyMenuBarToken` from turning it into a deletion. Covers a
+        // discriminator this build lacks *and* a payload it cannot parse — a
+        // `.logo` naming a provider added after this version, most likely.
+        if let known = try? Self.known(from: decoder) {
+            self = known
+            return
+        }
+        self = .unsupported(try JSONValue(from: decoder))
+    }
+
+    private static func known(from decoder: Decoder) throws -> Self {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         switch try c.decode(Discriminator.self, forKey: .type) {
         case .logo:
-            self = .logo(try c.decode(ToolType.self, forKey: .tool))
+            return .logo(try c.decode(ToolType.self, forKey: .tool))
         case .text:
-            self = .text(try c.decode(String.self, forKey: .text))
+            return .text(try c.decode(String.self, forKey: .text))
         case .quota:
-            self = .quota(
+            return .quota(
                 fieldId: try c.decode(String.self, forKey: .fieldId),
                 // An unknown metric from a newer build reads as the plain
                 // percentage rather than dropping the block.
                 metric: (try? c.decode(MenuBarQuotaMetric.self, forKey: .metric)) ?? .displayPercent
             )
         case .space:
-            self = .space
+            return .space
         case .separator:
-            self = .separator(try c.decode(String.self, forKey: .text))
+            return .separator(try c.decode(String.self, forKey: .text))
         case .lineBreak:
-            self = .lineBreak
+            return .lineBreak
         case .appIcon:
-            self = .appIcon
+            return .appIcon
         }
     }
 
     public func encode(to encoder: Encoder) throws {
+        if case let .unsupported(raw) = self {
+            try raw.encode(to: encoder)
+            return
+        }
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
         case let .logo(tool):
@@ -1638,6 +1710,8 @@ extension MenuBarToken.Kind: Codable {
             try c.encode(Discriminator.lineBreak, forKey: .type)
         case .appIcon:
             try c.encode(Discriminator.appIcon, forKey: .type)
+        case .unsupported:
+            break  // handled above, before the keyed container is opened
         }
     }
 }
@@ -1875,21 +1949,25 @@ public enum MenuBarCountdownClock {
 /// cropped or the two rows overlapped. Shrinking the type is the honest
 /// answer: the strip stays legible and nothing is silently cut off.
 public enum MenuBarStripFit {
-    /// Below this the type is too small to read, so the strip accepts being
-    /// tight rather than becoming a smudge.
-    public static let minimumScale: Double = 0.55
+    /// The smallest face the strip is willing to draw at. Nothing enforces it
+    /// in `scale` — it is the *property* the supported ranges are chosen to
+    /// respect, and `MenuBarCompositionTests` asserts that every supported
+    /// combination stays above it. A floor applied inside the arithmetic is
+    /// what let two rows keep overflowing: it made the numbers look reasonable
+    /// while the rows were still cropped.
+    public static let legibleFontSize: Double = 6
 
-    /// Uniform font scale that makes `contentHeight` fit `availableHeight`.
-    /// Returns 1 when it already fits.
-    public static func scale(
-        contentHeight: Double,
-        availableHeight: Double,
-        minimumScale: Double = MenuBarStripFit.minimumScale
-    ) -> Double {
+    /// Uniform font scale that makes `contentHeight` fit `availableHeight`,
+    /// exactly. Returns 1 when it already fits.
+    ///
+    /// No floor. A scale that does not fit is not a fit — the canvas is capped
+    /// afterwards regardless, so returning something too large just moves the
+    /// cropping one step later and hides it.
+    public static func scale(contentHeight: Double, availableHeight: Double) -> Double {
         guard contentHeight > 0, availableHeight > 0, contentHeight > availableHeight else {
             return 1
         }
-        return Swift.max(minimumScale, availableHeight / contentHeight)
+        return availableHeight / contentHeight
     }
 }
 
@@ -1915,6 +1993,54 @@ public enum MenuBarStripGeometry {
     /// Past this a glyph, rather than the type, decides a two-row band's
     /// height.
     public static let maximumTwoRowGlyphSide: Double = 12
+
+    /// The two-row canvas as the status bar usually presents it: a 22pt bar
+    /// less the rasterizer's 2pt inset and 1pt of padding each side. The App
+    /// reads the real thickness at draw time; these exist so the fit property
+    /// can be asserted against the shape users actually get.
+    public static let nominalTwoRowAvailableHeight: Double = 18
+    public static let nominalTwoRowFontSize: Double = 9
+    public static let nominalTwoRowLineSpacing: Double = -2
+    public static let nominalLineHeightRatio: Double = 1.2
+
+    /// Which face a composed strip is drawn at. The point sizes belong to
+    /// AppKit; the *choice* belongs here, so the status item and the preview
+    /// cannot disagree about it.
+    public enum Face: Equatable, Sendable {
+        /// The small system face the single-line status item draws at.
+        case system
+        /// The 9pt face the built-in Compact and two-row layouts draw at.
+        case compact
+    }
+
+    /// One decision, the way glyph size is one decision.
+    ///
+    /// Two rows always go through the rasterizer, which draws at the compact
+    /// face whatever the template says. A single row follows the layout its
+    /// template was seeded from: the Compact template reproduces the built-in
+    /// compact renderer, and that renderer uses the 9pt face — drawing a
+    /// compact seed at the system face instead made it noticeably larger than
+    /// the strip it was meant to reproduce.
+    public static func face(
+        template: MenuBarComposition.Template,
+        rowCount: Int
+    ) -> Face {
+        if rowCount >= 2 { return .compact }
+        return template == .compact ? .compact : .system
+    }
+
+    /// Stacked height of a set of rows, from the type metrics rather than a
+    /// measurement. The status item measures its real attributed strings; the
+    /// preview and the tests estimate with this, so both apply the same rule.
+    public static func twoRowContentHeight(
+        rowFontSizes: [Double],
+        lineSpacing: Double,
+        lineHeightRatio: Double
+    ) -> Double {
+        guard !rowFontSizes.isEmpty else { return 0 }
+        return rowFontSizes.reduce(0) { $0 + $1 * lineHeightRatio }
+            + lineSpacing * Double(rowFontSizes.count - 1)
+    }
 
     /// The glyph box for a block drawn at `fontSize` in a strip of
     /// `rowCount` rows.

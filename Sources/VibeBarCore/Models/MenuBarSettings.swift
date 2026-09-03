@@ -270,7 +270,12 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         self.kind = try c.decode(MenuBarItemKind.self, forKey: .kind)
         self.isVisible = try c.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
         self.showTitle = try c.decodeIfPresent(Bool.self, forKey: .showTitle) ?? true
-        self.layout = try c.decodeIfPresent(MenuBarLayout.self, forKey: .layout)
+        // `try?`: an unknown layout from a newer build used to throw, and
+        // `LossyMenuBarItem` turns that into a dropped item — which discards
+        // the field selection, every rename, every per-field style *and* the
+        // composed strip, replacing the lot with defaults. One unreadable
+        // enum must cost at most that enum.
+        self.layout = (try? c.decode(MenuBarLayout.self, forKey: .layout))
             ?? (kind == .compact ? .iconOnly : .singleLine)
         self.selectedFieldIds = try c.decodeIfPresent([String].self, forKey: .selectedFieldIds) ?? []
         self.customLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]

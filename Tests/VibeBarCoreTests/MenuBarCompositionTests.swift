@@ -977,52 +977,100 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 20, availableHeight: 0), 1)
     }
 
-    func testTwoLargeRowsAtTheTopScaleAreShrunkToFitRatherThanCropped() {
-        // The extreme the editor can actually produce: the composition's top
-        // font scale (1.6) times the `.large` step (1.2) on the 9pt two-row
-        // face, two rows tucked by the -2pt line spacing, in the ~18pt of
-        // canvas the status bar leaves after padding.
-        let composed = MenuBarComposition(
-            isEnabled: true,
-            template: .twoColumn,
-            tokens: [
-                MenuBarToken(kind: .text("top"), style: .init(size: .large)),
-                MenuBarToken(kind: .lineBreak),
-                MenuBarToken(kind: .text("bottom"), style: .init(size: .large))
-            ],
-            fontScale: 1.6
-        )
-        let rendered = composed.plan(
-            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
-        )
-        let tokenScale = rendered.rows[0].tokens[0].fontScale
-        XCTAssertEqual(tokenScale, 1.6 * 1.2, accuracy: 1e-9)
+    func testEverySupportedTwoRowCombinationFitsTheCanvas() {
+        // The property, not a constant. The previous test asserted the content
+        // fit *or* the floor had bitten, which is a tautology — and it passed
+        // while the rows stayed cropped. At the top composition scale with two
+        // Large blocks the content is ~39.5pt for 18pt of canvas, needing
+        // ~0.46; the old 0.55 floor left ~21.7pt for the canvas cap to crop.
+        let available = MenuBarStripGeometry.nominalTwoRowAvailableHeight
+        let base = MenuBarStripGeometry.nominalTwoRowFontSize
+        let scales = [
+            MenuBarComposition.fontScaleRange.lowerBound,
+            1.0,
+            1.3,
+            MenuBarComposition.fontScaleRange.upperBound
+        ]
+        for compositionScale in scales {
+            for first in MenuBarToken.SizeStep.allCases {
+                for second in MenuBarToken.SizeStep.allCases {
+                    let rows = [first, second].map {
+                        base * compositionScale * $0.multiplier
+                    }
+                    let content = MenuBarStripGeometry.twoRowContentHeight(
+                        rowFontSizes: rows,
+                        lineSpacing: MenuBarStripGeometry.nominalTwoRowLineSpacing,
+                        lineHeightRatio: MenuBarStripGeometry.nominalLineHeightRatio
+                    )
+                    let fit = MenuBarStripFit.scale(
+                        contentHeight: content,
+                        availableHeight: available
+                    )
+                    let label = "scale \(compositionScale), \(first)/\(second)"
 
-        // Text is roughly 1.2x its point size tall, which is what makes two
-        // enlarged rows overflow.
-        let rowHeight = 9.0 * tokenScale * 1.2
-        let contentHeight = rowHeight * 2 - 2
-        let available = 18.0
-        XCTAssertGreaterThan(contentHeight, available, "the extreme must actually overflow")
-
-        let fit = MenuBarStripFit.scale(contentHeight: contentHeight, availableHeight: available)
-        XCTAssertLessThan(fit, 1)
-        XCTAssertGreaterThanOrEqual(fit, MenuBarStripFit.minimumScale)
-        // Shrinking by the returned factor brings it inside the canvas — or,
-        // when the floor bites, at least stops it growing.
-        XCTAssertLessThanOrEqual(
-            contentHeight * fit,
-            max(available, contentHeight * MenuBarStripFit.minimumScale) + 1e-9
-        )
+                    // 1. It fits, so nothing is left for the canvas cap to crop.
+                    XCTAssertLessThanOrEqual(
+                        content * fit, available + 1e-9,
+                        "does not fit at \(label)"
+                    )
+                    // 2. Fitting never turns legible type into a smudge —
+                    //    what the floor was reaching for, and got wrong by
+                    //    applying it inside the arithmetic instead of asking
+                    //    about the result. A face that was already tiny
+                    //    because someone hand-edited `fontScale` down is their
+                    //    choice, not something fitting did to them.
+                    for row in rows where row >= MenuBarStripFit.legibleFontSize {
+                        XCTAssertGreaterThanOrEqual(
+                            row * fit, MenuBarStripFit.legibleFontSize,
+                            "fitting made it illegible at \(label)"
+                        )
+                    }
+                }
+            }
+        }
     }
 
-    func testTheShrinkFloorKeepsTypeLegible() {
-        // An absurd overflow is clamped rather than reduced to a smudge.
-        XCTAssertEqual(
-            MenuBarStripFit.scale(contentHeight: 400, availableHeight: 18),
-            MenuBarStripFit.minimumScale,
-            accuracy: 1e-9
+    func testTheWorstSupportedCombinationReallyDoesOverflow() {
+        // Guards the test above from passing because nothing overflows.
+        let base = MenuBarStripGeometry.nominalTwoRowFontSize
+        let worst = base * MenuBarComposition.fontScaleRange.upperBound
+            * MenuBarToken.SizeStep.large.multiplier
+        let content = MenuBarStripGeometry.twoRowContentHeight(
+            rowFontSizes: [worst, worst],
+            lineSpacing: MenuBarStripGeometry.nominalTwoRowLineSpacing,
+            lineHeightRatio: MenuBarStripGeometry.nominalLineHeightRatio
         )
+        XCTAssertGreaterThan(content, MenuBarStripGeometry.nominalTwoRowAvailableHeight)
+    }
+
+    func testEveryConfigurationTheEditorCanProduceIsLegible() {
+        // What the UI can actually reach: the template defaults, which no
+        // control overrides, times the three size steps.
+        for template in MenuBarComposition.Template.allCases {
+            for step in MenuBarToken.SizeStep.allCases {
+                let row = MenuBarStripGeometry.nominalTwoRowFontSize
+                    * template.fontScale * step.multiplier
+                let content = MenuBarStripGeometry.twoRowContentHeight(
+                    rowFontSizes: [row, row],
+                    lineSpacing: MenuBarStripGeometry.nominalTwoRowLineSpacing,
+                    lineHeightRatio: MenuBarStripGeometry.nominalLineHeightRatio
+                )
+                let fit = MenuBarStripFit.scale(
+                    contentHeight: content,
+                    availableHeight: MenuBarStripGeometry.nominalTwoRowAvailableHeight
+                )
+                XCTAssertGreaterThanOrEqual(
+                    row * fit, MenuBarStripFit.legibleFontSize,
+                    "\(template)/\(step)"
+                )
+            }
+        }
+    }
+
+    func testAStripThatFitsIsNotScaledAtAll() {
+        XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 16, availableHeight: 18), 1)
+        XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 18, availableHeight: 18), 1)
+        XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 0, availableHeight: 18), 1)
     }
 
     // MARK: - Drag commits once (review thread 1)
@@ -2014,6 +2062,167 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertTrue(rendered.spokenDescription.isEmpty)
     }
 
+    // MARK: - A downgrade must not delete blocks (review thread 12)
+
+    /// A token as a newer build might have written it.
+    private func tokenJSON(
+        id: String = "11111111-1111-1111-1111-111111111111",
+        kind: String = #"{"type":"text","text":"keep"}"#,
+        size: String = #""regular""#,
+        weight: String = #""medium""#,
+        color: String = #"{"type":"tertiary"}"#,
+        monospacedDigits: Bool = true
+    ) -> String {
+        """
+        {"id":"\(id)","kind":\(kind),
+         "style":{"color":\(color),"size":\(size),"weight":\(weight),
+                  "monospacedDigits":\(monospacedDigits)},
+         "visibility":{"type":"always"}}
+        """
+    }
+
+    private func decodeComposition(tokens: [String]) throws -> MenuBarComposition {
+        let json = #"{"isEnabled":true,"template":"roomy","tokens":["#
+            + tokens.joined(separator: ",") + "]}"
+        return try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
+    }
+
+    func testAnUnknownSizeOrWeightKeepsTheBlock() throws {
+        // The named bug: the synthesized `Style` decoder threw on a value a
+        // newer build wrote, `LossyMenuBarToken` turned that into a dropped
+        // block, and the next save wrote the deletion to disk.
+        let composed = try decodeComposition(tokens: [
+            tokenJSON(size: #""colossal""#),
+            tokenJSON(id: "22222222-2222-2222-2222-222222222222", weight: #""ultrablack""#)
+        ])
+        XCTAssertEqual(composed.tokens.count, 2, "neither block may be dropped")
+        XCTAssertEqual(composed.tokens[0].kind, .text("keep"))
+        XCTAssertEqual(composed.tokens[1].kind, .text("keep"))
+        // Only the attribute this build cannot read falls back. Catching the
+        // failure a level up would keep the block but reset its whole style,
+        // silently discarding the colour and weight the user chose.
+        XCTAssertEqual(composed.tokens[0].style.size, .regular, "the unreadable one")
+        XCTAssertEqual(composed.tokens[0].style.weight, .medium, "kept as written")
+        XCTAssertEqual(composed.tokens[0].style.color, .tertiary, "kept as written")
+        XCTAssertTrue(composed.tokens[0].style.monospacedDigits, "kept as written")
+        XCTAssertEqual(composed.tokens[1].style.weight, .medium, "the unreadable one")
+        XCTAssertEqual(composed.tokens[1].style.color, .tertiary, "kept as written")
+        XCTAssertEqual(composed.tokens[1].style.size, .regular)
+    }
+
+    func testAnUnknownBlockKindIsKeptVerbatimRatherThanDeleted() throws {
+        let composed = try decodeComposition(tokens: [
+            tokenJSON(),
+            tokenJSON(
+                id: "33333333-3333-3333-3333-333333333333",
+                kind: #"{"type":"sparkline","fieldId":"claude.weekly","window":"7d"}"#
+            )
+        ])
+        XCTAssertEqual(composed.tokens.count, 2)
+        guard case .unsupported = composed.tokens[1].kind else {
+            return XCTFail("expected the unknown block to be preserved")
+        }
+        // Draws nothing, says nothing...
+        let rendered = composed.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+        )
+        XCTAssertEqual(texts(rendered), [["keep"]])
+        XCTAssertEqual(rendered.spokenDescription, "keep")
+
+        // ...and goes back out unchanged, so a newer build finds it again.
+        let reencoded = try JSONEncoder().encode(composed)
+        let raw = try JSONSerialization.jsonObject(with: reencoded) as? [String: Any]
+        let rawTokens = raw?["tokens"] as? [[String: Any]]
+        let preserved = (rawTokens?[1]["kind"] as? [String: Any]) ?? [:]
+        XCTAssertEqual(preserved["type"] as? String, "sparkline")
+        XCTAssertEqual(preserved["fieldId"] as? String, "claude.weekly")
+        XCTAssertEqual(preserved["window"] as? String, "7d")
+    }
+
+    func testAProviderThisBuildDoesNotKnowKeepsItsBlock() throws {
+        // The realistic instance: a logo naming a provider added after this
+        // version shipped. `ToolType` gains cases regularly.
+        let composed = try decodeComposition(tokens: [
+            tokenJSON(kind: #"{"type":"logo","tool":"someFutureProvider"}"#)
+        ])
+        XCTAssertEqual(composed.tokens.count, 1)
+        guard case .unsupported = composed.tokens[0].kind else {
+            return XCTFail("expected the block to be preserved")
+        }
+    }
+
+    func testAnUnknownLayoutKeepsTheWholeMenuBarItem() throws {
+        // Worse than the named bug, found by applying the same lens: an
+        // unreadable `layout` threw, `LossyMenuBarItem` dropped the item, and
+        // the field selection, every rename, every per-field style and the
+        // composed strip went with it.
+        let json = """
+        {"kind":"compact","isVisible":true,"showTitle":false,"layout":"notchIsland",
+         "selectedFieldIds":["claude.five_hour"],"customLabels":{"claude.five_hour":"C5"},
+         "fieldStyles":{"claude.five_hour":"logoAndPercent"},"mergesGroupWindows":true}
+        """
+        let item = try JSONDecoder().decode(MenuBarItemSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(item.selectedFieldIds, ["claude.five_hour"])
+        XCTAssertEqual(item.customLabels, ["claude.five_hour": "C5"])
+        XCTAssertEqual(item.style(for: "claude.five_hour"), .logoAndPercent)
+        XCTAssertTrue(item.mergesGroupWindows)
+        XCTAssertEqual(item.layout, .iconOnly, "only the unreadable enum falls back")
+    }
+
+    func testAMalformedScalarKeepsTheStrip() throws {
+        // One bad number used to throw out of the composition decoder, which
+        // the item catches into `composition = nil` — every block gone.
+        let json = #"{"isEnabled":true,"template":"roomy","fontScale":"wide","tokens":["#
+            + tokenJSON() + "]}"
+        let composed = try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
+        XCTAssertEqual(composed.tokens.count, 1)
+        XCTAssertNil(composed.fontScale)
+        XCTAssertEqual(composed.effectiveFontScale, MenuBarComposition.Template.roomy.fontScale)
+    }
+
+    func testOneUnreadableRegistryEntryDoesNotDiscardTheRest() throws {
+        // `QuotaService` loads this with `try? … ?? .empty`, so a decoder that
+        // threw on one row silently emptied the whole registry — and the next
+        // refresh rewrote the file without any of it, losing precisely the
+        // rows the keep set exists to protect.
+        let json = """
+        {"fields":[
+          {"tool":"claude","bucketId":"weekly_new","title":"Weekly","groupTitle":"New",
+           "shortLabel":"New","firstSeen":0,"lastSeen":0},
+          {"tool":"someFutureProvider","bucketId":"weekly","title":"Weekly",
+           "shortLabel":"Weekly","firstSeen":0,"lastSeen":0}
+        ]}
+        """
+        let registry = try JSONDecoder().decode(QuotaFieldRegistry.self, from: Data(json.utf8))
+        XCTAssertEqual(registry.fields.count, 1, "only the unreadable row is dropped")
+        XCTAssertEqual(registry.fields.first?.bucketId, "weekly_new")
+    }
+
+    // MARK: - A template draws at its renderer's face (review thread 2)
+
+    func testEachTemplateAsksForTheFaceItsRendererUses() {
+        // Compact's seed is one row, and the built-in compact renderer draws
+        // at the 9pt face — asking for the system face made the seeded strip
+        // noticeably larger than the strip it reproduced.
+        XCTAssertEqual(MenuBarStripGeometry.face(template: .compact, rowCount: 1), .compact)
+        XCTAssertEqual(MenuBarStripGeometry.face(template: .roomy, rowCount: 1), .system)
+        // Two rows always go through the rasterizer, whatever the template.
+        for template in MenuBarComposition.Template.allCases {
+            XCTAssertEqual(
+                MenuBarStripGeometry.face(template: template, rowCount: 2),
+                .compact,
+                "\(template) at two rows"
+            )
+        }
+    }
+
+    func testCompactDoesNotScaleItsFaceDownAgain() {
+        // Its smallness is the face, not a multiplier applied to a larger one.
+        for template in MenuBarComposition.Template.allCases {
+            XCTAssertEqual(template.fontScale, 1.0, "\(template)")
+        }
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {
@@ -2079,7 +2288,11 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(restored.composition?.tokens.last?.kind, .text("tail"))
     }
 
-    func testAnUnreadableBlockDropsWithoutTakingTheStripDown() throws {
+    func testAnUnreadableBlockIsKeptRatherThanDroppedFromTheStrip() throws {
+        // This used to assert the block was dropped. Dropping is a silent,
+        // permanent deletion the moment the settings file is saved again, so
+        // an unreadable block is now preserved verbatim instead — see
+        // `MenuBarToken.Kind.unsupported`.
         let json = """
         {"isEnabled":true,"template":"roomy","tokens":[
           {"id":"11111111-1111-1111-1111-111111111111",
@@ -2093,7 +2306,16 @@ final class MenuBarCompositionTests: XCTestCase {
         ]}
         """
         let decoded = try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
-        XCTAssertEqual(decoded.tokens.map(\.kind), [.text("keep")])
+        XCTAssertEqual(decoded.tokens.count, 2)
+        XCTAssertEqual(decoded.tokens[0].kind, .text("keep"))
+        guard case .unsupported = decoded.tokens[1].kind else {
+            return XCTFail("the unreadable block should be preserved")
+        }
+        // It contributes nothing to the strip either way.
+        let rendered = decoded.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+        )
+        XCTAssertEqual(texts(rendered), [["keep"]])
     }
 
     func testUnreadableStyleAndRuleDegradeInsteadOfFailing() throws {

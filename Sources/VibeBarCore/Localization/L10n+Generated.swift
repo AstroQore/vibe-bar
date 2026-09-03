@@ -625,6 +625,10 @@ extension L10n {
         public static var composerBlockText: String {
             L10n.string("menuBar.composer.block.text")
         }
+        /// `menuBar.composer.block.unsupported` — From a newer version
+        public static var composerBlockUnsupported: String {
+            L10n.string("menuBar.composer.block.unsupported")
+        }
         /// `menuBar.composer.blocks` — Blocks — drag to reorder
         public static var composerBlocks: String {
             L10n.string("menuBar.composer.blocks")
@@ -900,6 +904,10 @@ extension L10n {
         /// `menuBar.composer.text.placeholder` — Label
         public static var composerTextPlaceholder: String {
             L10n.string("menuBar.composer.text.placeholder")
+        }
+        /// `menuBar.composer.unsupported.detail` — This block was made by a newer version of Vibe Bar. It is kept exactly as it was and will work again after an update; until then it draws nothing.
+        public static var composerUnsupportedDetail: String {
+            L10n.string("menuBar.composer.unsupported.detail")
         }
         /// `menuBar.composer.warning.degraded` — This block still draws, but a colour or a rule on it points at a quota that is not being returned right now.
         public static var composerWarningDegraded: String {
@@ -6279,6 +6287,7 @@ extension L10n {
         "menuBar.composer.block.space",
         "menuBar.composer.block.structure",
         "menuBar.composer.block.text",
+        "menuBar.composer.block.unsupported",
         "menuBar.composer.blocks",
         "menuBar.composer.blocks.empty",
         "menuBar.composer.colour.automatic",
@@ -6348,6 +6357,7 @@ extension L10n {
         "menuBar.composer.text.empty",
         "menuBar.composer.text.limit",
         "menuBar.composer.text.placeholder",
+        "menuBar.composer.unsupported.detail",
         "menuBar.composer.warning.degraded",
         "menuBar.composer.warning.missing",
         "menuBar.composer.warning.silent",

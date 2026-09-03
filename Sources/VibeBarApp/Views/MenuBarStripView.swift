@@ -38,8 +38,13 @@ enum MenuBarStripMetrics {
     /// item measures its real attributed strings.
     static let lineHeightRatio: CGFloat = 1.2
 
-    static func baseFontSize(rowCount: Int) -> CGFloat {
-        rowCount >= 2 ? twoRowFontSize : singleRowFontSize
+    /// The face the status item would draw this strip at. The choice lives in
+    /// `MenuBarStripGeometry.face`; this only spells the point sizes.
+    static func baseFontSize(template: MenuBarComposition.Template, rowCount: Int) -> CGFloat {
+        switch MenuBarStripGeometry.face(template: template, rowCount: rowCount) {
+        case .system: return singleRowFontSize
+        case .compact: return twoRowFontSize
+        }
     }
 
     /// Height the rasterized image actually has for content, after padding.
@@ -54,10 +59,11 @@ enum MenuBarStripMetrics {
     /// the size it will actually be drawn.
     static func estimatedFitScale(rows: [MenuBarRenderRow], baseFontSize: CGFloat) -> CGFloat {
         guard rows.count >= 2 else { return 1 }
-        let heights = rows.map { row in
-            baseFontSize * (row.tokens.map(\.fontScale).max() ?? 1) * lineHeightRatio
-        }
-        let content = heights.reduce(0, +) + twoRowLineSpacing * CGFloat(rows.count - 1)
+        let content = CGFloat(MenuBarStripGeometry.twoRowContentHeight(
+            rowFontSizes: rows.map { Double(baseFontSize) * ($0.tokens.map(\.fontScale).max() ?? 1) },
+            lineSpacing: Double(twoRowLineSpacing),
+            lineHeightRatio: Double(lineHeightRatio)
+        ))
         return CGFloat(MenuBarStripFit.scale(
             contentHeight: Double(content),
             availableHeight: Double(twoRowAvailableHeight())
@@ -539,6 +545,8 @@ struct MenuBarStripPreview: View {
     let plan: MenuBarRenderPlan
     let quotas: [MenuBarQuotaSnapshot]
     let displayMode: DisplayMode
+    /// Which face the bar will use — see `MenuBarStripGeometry.face`.
+    let template: MenuBarComposition.Template
     var highlighted: UUID?
 
     var body: some View {
@@ -554,7 +562,7 @@ struct MenuBarStripPreview: View {
         // fit. The preview does all three, or it is previewing a strip the
         // user will never see.
         let rows = plan.rows.filter { !$0.isEmpty }
-        let base = MenuBarStripMetrics.baseFontSize(rowCount: rows.count)
+        let base = MenuBarStripMetrics.baseFontSize(template: template, rowCount: rows.count)
         let fit = MenuBarStripMetrics.estimatedFitScale(rows: rows, baseFontSize: base)
         return MenuBarStripView(
             plan: plan,

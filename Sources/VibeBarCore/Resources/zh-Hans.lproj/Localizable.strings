@@ -446,6 +446,9 @@
 /* A block showing words the user typed. */
 "menuBar.composer.block.text" = "文字";
 
+/* Chip label for a block written by a newer version of the app that this one cannot draw. */
+"menuBar.composer.block.unsupported" = "来自更新版本";
+
 /* Caption over the reorderable list of blocks. */
 "menuBar.composer.blocks" = "积木 · 拖动可重新排序";
 
@@ -652,6 +655,9 @@
 
 /* Starting content of a newly added text block, before the user types over it. */
 "menuBar.composer.text.placeholder" = "标签";
+
+/* Explains an unsupported block: it is kept so an upgrade restores it, and only removal applies. */
+"menuBar.composer.unsupported.detail" = "此积木由更新版本的 Vibe Bar 创建，将原样保留，更新后可恢复显示；在此之前不显示任何内容。";
 
 /* Shown on a block whose colour or rule points at a quota that is not being returned. */
 "menuBar.composer.warning.degraded" = "此积木仍会显示，但其颜色或显示条件指向的额度当前未返回数据。";

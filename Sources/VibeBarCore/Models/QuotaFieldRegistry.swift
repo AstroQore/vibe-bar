@@ -53,6 +53,33 @@ public struct QuotaFieldRegistry: Codable, Equatable, Sendable {
         self.fields = fields
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case fields
+    }
+
+    /// Lossy per entry.
+    ///
+    /// The synthesized decoder threw on the first entry it could not read — a
+    /// `ToolType` a newer build added, most likely — and `QuotaService` loads
+    /// this with `try? … ?? .empty`, so one unreadable row discarded *every*
+    /// remembered field. The next refresh then rewrote the file without them,
+    /// which is a silent, permanent loss of exactly the rows the keep set
+    /// exists to protect: buckets the user selected that the provider is not
+    /// returning right now.
+    ///
+    /// Dropping a single unreadable entry is right, and is the one place in
+    /// this model where it is: the registry is a record of what adapters
+    /// returned, not something the user authored, and an entry for a provider
+    /// this build has no `ToolType` for cannot be fetched or drawn. The next
+    /// build that understands it rediscovers it from a live response.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let stored = try container.decodeIfPresent(
+            [LossyDiscoveredQuotaField].self, forKey: .fields
+        ) ?? []
+        self.fields = stored.compactMap(\.value)
+    }
+
     public static let empty = QuotaFieldRegistry()
 
     public func field(id: String) -> DiscoveredQuotaField? {
@@ -264,5 +291,15 @@ public extension MenuBarFieldCatalog {
             }
         }
         return stem.isEmpty ? bucketId : stem
+    }
+}
+
+
+/// Tolerant wrapper: one entry this build cannot read must not cost the rest.
+private struct LossyDiscoveredQuotaField: Decodable {
+    let value: DiscoveredQuotaField?
+
+    init(from decoder: Decoder) throws {
+        self.value = try? DiscoveredQuotaField(from: decoder)
     }
 }

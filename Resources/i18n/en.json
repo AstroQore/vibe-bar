@@ -650,6 +650,10 @@
     "comment": "A block showing words the user typed.",
     "value": "Text"
   },
+  "menuBar.composer.block.unsupported": {
+    "comment": "Chip label for a block written by a newer version of the app that this one cannot draw.",
+    "value": "From a newer version"
+  },
   "menuBar.composer.blocks": {
     "comment": "Caption over the reorderable list of blocks.",
     "value": "Blocks — drag to reorder"
@@ -928,6 +932,10 @@
   "menuBar.composer.text.placeholder": {
     "comment": "Starting content of a newly added text block, before the user types over it.",
     "value": "Label"
+  },
+  "menuBar.composer.unsupported.detail": {
+    "comment": "Explains an unsupported block: it is kept so an upgrade restores it, and only removal applies.",
+    "value": "This block was made by a newer version of Vibe Bar. It is kept exactly as it was and will work again after an update; until then it draws nothing."
   },
   "menuBar.composer.warning.degraded": {
     "comment": "Shown on a block whose colour or rule points at a quota that is not being returned.",

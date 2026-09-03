@@ -1048,7 +1048,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let rows = strip.plan.rows.filter { !$0.isEmpty }
         if rows.count >= 2 {
             let capped = Array(rows.prefix(MenuBarComposition.maximumRows))
-            let base = MenuBarStatusMetrics.twoRowFontSize
+            let base = MenuBarStripMetrics.baseFontSize(
+                template: composition.template,
+                rowCount: capped.count
+            )
             var cells = capped.map {
                 composedCell(row: $0, strip: strip, settings: settings, baseFontSize: base)
             }
@@ -1082,13 +1085,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // rather than an empty status item nobody can find to click. No
             // title in front of it: in custom mode the title is a block the
             // user may have deleted, so reviving it here would be a surprise.
+            // Not always the system face: a strip seeded from the Compact
+            // layout has to be drawn at the face that layout draws at, or the
+            // seed is visibly bigger than the strip it reproduced.
+            let base = MenuBarStripMetrics.baseFontSize(
+                template: composition.template,
+                rowCount: max(1, rows.count)
+            )
             button.attributedTitle = rows.isEmpty
-                ? Self.composedPlaceholder(fontSize: NSFont.smallSystemFontSize)
+                ? Self.composedPlaceholder(fontSize: base)
                 : composedAttributedRow(
                     rows[0],
                     strip: strip,
                     settings: settings,
-                    baseFontSize: NSFont.smallSystemFontSize
+                    baseFontSize: base
                 )
             item.length = NSStatusItem.variableLength
         }

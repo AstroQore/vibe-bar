@@ -452,6 +452,9 @@
   "menuBar.composer.block.text": {
     "value": "文字"
   },
+  "menuBar.composer.block.unsupported": {
+    "value": "来自更新版本"
+  },
   "menuBar.composer.blocks": {
     "value": "积木 · 拖动可重新排序"
   },
@@ -658,6 +661,9 @@
   },
   "menuBar.composer.text.placeholder": {
     "value": "标签"
+  },
+  "menuBar.composer.unsupported.detail": {
+    "value": "此积木由更新版本的 Vibe Bar 创建，将原样保留，更新后可恢复显示；在此之前不显示任何内容。"
   },
   "menuBar.composer.warning.degraded": {
     "value": "此积木仍会显示，但其颜色或显示条件指向的额度当前未返回数据。"

@@ -205,6 +205,7 @@ struct MenuBarComposerEditor: View {
                         plan: plan,
                         quotas: snapshots,
                         displayMode: settingsStore.settings.displayMode,
+                        template: composition.template,
                         highlighted: selection
                     )
                     Text(L10n.MenuBar.composerPreviewGrounds)
@@ -369,6 +370,7 @@ struct MenuBarComposerEditor: View {
         case .separator: return "line.diagonal"
         case .lineBreak: return "return"
         case .appIcon: return "menubar.rectangle"
+        case .unsupported: return "questionmark.square.dashed"
         }
     }
 
@@ -391,6 +393,8 @@ struct MenuBarComposerEditor: View {
             return L10n.MenuBar.composerBlockNewRow
         case .appIcon:
             return L10n.MenuBar.composerBlockAppIcon
+        case .unsupported:
+            return L10n.MenuBar.composerBlockUnsupported
         }
     }
 
@@ -776,8 +780,10 @@ private struct MenuBarTokenInspector: View {
 
     /// Whether this block puts anything on screen. A row break does not.
     private var drawsInk: Bool {
-        if case .lineBreak = token.kind { return false }
-        return true
+        switch token.kind {
+        case .lineBreak, .unsupported: return false
+        default: return true
+        }
     }
 
     private enum ColorChoice: String, CaseIterable, Identifiable {
@@ -925,6 +931,11 @@ private struct MenuBarTokenInspector: View {
             Text(L10n.MenuBar.composerAppIconDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        case .unsupported:
+            Text(L10n.MenuBar.composerUnsupportedDetail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
