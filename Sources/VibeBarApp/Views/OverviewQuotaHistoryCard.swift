@@ -168,9 +168,9 @@ struct OverviewQuotaHistoryCard: View {
                 )
                 .equatable()
             } else if curves.isEmpty {
-                note("Quota history builds up as refreshes come in.")
+                note(L10n.Quota.historyBuildingUp)
             } else {
-                note("Every curve is hidden — pick one from the menu above.")
+                note(L10n.Quota.historyAllCurvesHidden)
             }
         }
         .padding(density.cardPadding)
@@ -191,9 +191,9 @@ struct OverviewQuotaHistoryCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("Quota history")
+            Text(L10n.Quota.historyTitle)
                 .font(.system(size: density.titleFontSize, weight: .semibold))
-            Text("All providers")
+            Text(L10n.Cost.allProviders)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 8)
@@ -224,17 +224,20 @@ struct OverviewQuotaHistoryCard: View {
 
     private var curvePicker: some View {
         Menu {
-            Button("Show all curves") { setHidden([]) }
+            Button(L10n.Quota.historyShowAllCurves) { setHidden([]) }
             if visibleCurves.count > 1 {
-                Button("Show only the busiest") { showOnlyBusiest() }
+                Button(L10n.Quota.historyShowBusiest) { showOnlyBusiest() }
             }
             Divider()
             ForEach(curvesByTool, id: \.0) { tool, toolCurves in
                 Section(displayTitle(for: tool)) {
                     ForEach(toolCurves) { curve in
                         Toggle(isOn: binding(for: curve)) {
-                            Text(curve.accountQualifier.map { "\(curve.bucketTitle) · \($0)" }
-                                ?? curve.bucketTitle)
+                            Text(
+                                curve.accountQualifier
+                                    .map { "\(curve.bucketTitle) · \($0)" }
+                                    ?? curve.bucketTitle
+                            )
                         }
                     }
                 }
@@ -261,13 +264,15 @@ struct OverviewQuotaHistoryCard: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Choose which quota curves to show")
+        .accessibilityLabel(L10n.Quota.historyCurvePickerA11y)
     }
 
     private var selectionSummary: String {
         let shown = visibleCurves.count
         let total = curves.count
-        return shown == total ? "All \(total)" : "\(shown) of \(total)"
+        return shown == total
+            ? L10n.Quota.historyCurvesAll(total: total)
+            : L10n.Quota.historyCurvesSome(shown: shown, total: total)
     }
 
     private func binding(for curve: OverviewQuotaCurve) -> Binding<Bool> {
@@ -588,11 +593,17 @@ struct OverviewQuotaHistoryCard: View {
     /// Claude titles six different quotas "Weekly" and only the group name
     /// tells them apart, so the group wins when there is one — matching the
     /// section headings in Subscription Utilization.
+    ///
+    /// Both halves go through `QuotaGroupLabelLocalizer`, because this is
+    /// where the label is composed: a generic window word is translated and a
+    /// model name ("Sonnet") comes back exactly as the contract spells it.
     private func bucketTitle(_ bucket: QuotaBucket) -> String {
+        let title = QuotaGroupLabelLocalizer.display(bucket.title)
         guard let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
               !group.isEmpty
-        else { return bucket.title }
-        return group == bucket.title ? group : "\(group) \(bucket.title)"
+        else { return title }
+        guard group != bucket.title else { return QuotaGroupLabelLocalizer.display(group) }
+        return "\(QuotaGroupLabelLocalizer.display(group)) \(title)"
     }
 
     /// Short, non-identifying account hint. Aliases are the user's own words so
@@ -837,7 +848,7 @@ private struct OverviewQuotaChartBody: View, Equatable {
                     AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
                     AxisValueLabel {
                         if let raw = value.as(Double.self) {
-                            Text("\(Int(raw))%")
+                            Text(L10n.Common.percent(value: Int(raw)))
                                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                         }
                     }
@@ -869,7 +880,7 @@ private struct OverviewQuotaChartBody: View, Equatable {
                 window: binding,
                 accent: Color.secondary,
                 height: density.chartBrushHeight,
-                accessibilityDescription: "All-providers quota history range navigator"
+                accessibilityDescription: L10n.Quota.historyNavigatorAllProviders
             ) { geometry in
                 miniPaths(in: geometry)
             }
@@ -951,16 +962,25 @@ private struct OverviewQuotaChartBody: View, Equatable {
 
     private var scopeNote: String {
         let providers = Set(curves.map(\.tool)).count
-        let curveWord = curves.count == 1 ? "curve" : "curves"
-        let providerWord = providers == 1 ? "provider" : "providers"
-        return "\(curves.count) \(curveWord) · \(providers) \(providerWord) · showing "
-            + "\(Self.spanLabel(window.visibleSpan)) of \(Self.spanLabel(window.domainSpan)) recorded"
+        let scope = [
+            L10n.Quota.historyCurveCount(count: curves.count),
+            L10n.Quota.historyProviderCount(count: providers),
+        ].joined(separator: " · ")
+        return L10n.Quota.historyScopeNote(
+            scope: scope,
+            visible: Self.spanLabel(window.visibleSpan),
+            total: Self.spanLabel(window.domainSpan)
+        )
     }
 
     private static func spanLabel(_ seconds: TimeInterval) -> String {
-        if seconds < 90 * 60 { return "\(max(1, Int((seconds / 60).rounded())))m" }
-        if seconds < 48 * 3_600 { return "\(Int((seconds / 3_600).rounded()))h" }
-        return "\(Int((seconds / 86_400).rounded()))d"
+        if seconds < 90 * 60 {
+            return L10n.Common.durationMinutes(minutes: max(1, Int((seconds / 60).rounded())))
+        }
+        if seconds < 48 * 3_600 {
+            return L10n.Common.durationHours(hours: Int((seconds / 3_600).rounded()))
+        }
+        return L10n.Common.durationDays(days: Int((seconds / 86_400).rounded()))
     }
 }
 
@@ -1085,7 +1105,7 @@ private struct OverviewQuotaHoverOverlay: View {
                 // Same wording as the per-group chart's empty row, and for the
                 // same reason: an absent sample says the app was not watching,
                 // not that the quota was between windows.
-                Text("No data recorded")
+                Text(L10n.Common.noData)
                     .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.7))
             } else {
@@ -1100,7 +1120,7 @@ private struct OverviewQuotaHoverOverlay: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 6)
-                        Text("\(Int(reading.value.rounded()))%")
+                        Text(L10n.Common.percent(value: Int(reading.value.rounded())))
                             .font(
                                 .system(size: 9, weight: .semibold, design: .rounded)
                                     .monospacedDigit()
@@ -1108,7 +1128,11 @@ private struct OverviewQuotaHoverOverlay: View {
                     }
                 }
                 if readings.count > Self.tooltipRowLimit {
-                    Text("+\(readings.count - Self.tooltipRowLimit) more")
+                    Text(
+                        L10n.Quota.historyMoreReadings(
+                            count: readings.count - Self.tooltipRowLimit
+                        )
+                    )
                         .font(.system(size: 9))
                         .foregroundStyle(.white.opacity(0.55))
                 }

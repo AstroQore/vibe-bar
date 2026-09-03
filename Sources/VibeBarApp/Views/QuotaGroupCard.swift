@@ -517,7 +517,7 @@ struct QuotaGroupCard: View {
     private var percentageAxis: some View {
         HStack(spacing: 0) {
             ForEach([0, 25, 50, 75, 100], id: \.self) { value in
-                Text("\(value)%")
+                Text(L10n.Common.percent(value: value))
                     .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: true, vertical: false)
@@ -587,16 +587,16 @@ struct QuotaGroupCard: View {
             referenceLegendItem(
                 color: .secondary,
                 markerStyle: .timePace,
-                label: "Time-only pace",
-                value: "\(Int(timeExpected.rounded()))% \(mode == .remaining ? "left" : "used")"
+                label: L10n.Quota.forecastMetricTimePace,
+                value: modeValue(percent: Int(timeExpected.rounded()))
             )
         }
         if let forecastExpected, let forecastColor {
             referenceLegendItem(
                 color: forecastColor,
                 markerStyle: .forecast,
-                label: "Forecast at reset",
-                value: "\(Int(forecastExpected.rounded()))% \(mode == .remaining ? "left" : "used")"
+                label: L10n.Quota.forecastMetricForecastAtReset,
+                value: modeValue(percent: Int(forecastExpected.rounded()))
             )
         }
     }
@@ -614,7 +614,7 @@ struct QuotaGroupCard: View {
     ) -> some View {
         HStack(spacing: 5) {
             referenceMarker(style: markerStyle, color: color)
-            Text("\(label) \(value)")
+            Text(L10n.Quota.forecastLegendItem(label: label, value: value))
                 .font(.system(size: max(8, density.subtitleFontSize - 1), weight: .medium))
                 .foregroundStyle(color)
                 .fixedSize(horizontal: true, vertical: false)
@@ -674,7 +674,7 @@ struct QuotaGroupCard: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text("How this forecast was calculated")
+                    Text(L10n.Quota.forecastExplainTitle)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))
                     Spacer(minLength: 6)
                     Image(systemName: "chevron.right")
@@ -685,7 +685,11 @@ struct QuotaGroupCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.vibeBar)
-            .accessibilityLabel(isExpanded ? "Hide forecast calculation" : "Show forecast calculation")
+            .accessibilityLabel(
+                isExpanded
+                    ? L10n.Quota.forecastExplainHide
+                    : L10n.Quota.forecastExplainShow
+            )
 
             if isExpanded {
                 LazyVGrid(
@@ -724,7 +728,7 @@ struct QuotaGroupCard: View {
                         )
                     }
                 }
-                Text("Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage.")
+                Text(L10n.Quota.forecastExplainFooter)
                     .font(.system(size: max(8, density.subtitleFontSize - 1)))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -747,27 +751,37 @@ struct QuotaGroupCard: View {
         pace: UsagePace?
     ) -> [ForecastMetric] {
         let diagnostics = forecast.diagnostics
-        let timePaceValue = pace.map { quotaValue(fromUsed: $0.expectedUsedPercent, suffix: "expected now") } ?? "Unavailable"
-        let timePaceDetail = pace.map { "\($0.stageSummary) by wall clock" } ?? "Needs reset time and window length"
+        let timePaceValue = pace
+            .map { atNow(quotaValue(fromUsed: $0.expectedUsedPercent)) }
+            ?? L10n.Quota.forecastMetricUnavailable
+        let timePaceDetail = pace
+            .map { L10n.Quota.forecastMetricTimePaceDetail(stage: $0.stageSummary) }
+            ?? L10n.Quota.forecastMetricTimePaceMissing
         let recentValue = diagnostics.recentProjectionUsedPercent
-            .map { quotaValue(fromUsed: $0, suffix: "at reset") } ?? "Learning"
+            .map { atReset(quotaValue(fromUsed: $0)) }
+            ?? L10n.Quota.forecastConfidenceLearning
         let recentDetail = diagnostics.recentSampleCount > 0
-            ? "\(diagnostics.recentSampleCount) recent intervals"
-            : "Needs at least two useful observations"
+            ? L10n.Quota.forecastMetricRecentIntervals(count: diagnostics.recentSampleCount)
+            : L10n.Quota.forecastMetricRecentMissing
         let historyValue = diagnostics.historicalProjectionUsedPercent
-            .map { quotaValue(fromUsed: $0, suffix: "at reset") } ?? "No comparison yet"
+            .map { atReset(quotaValue(fromUsed: $0)) }
+            ?? L10n.Quota.forecastMetricNoComparison
         let historyDetail = diagnostics.comparableCycleCount > 0
-            ? "\(diagnostics.comparableCycleCount) comparable reset cycles"
-            : "Completed cycles will appear here"
+            ? L10n.Quota.forecastMetricComparableCycles(count: diagnostics.comparableCycleCount)
+            : L10n.Quota.forecastMetricCyclesPending
         let activityDetail = diagnostics.activityCoveragePercent > 0
-            ? "weekday and hour weighted"
-            : "wall-clock fallback until habits exist"
+            ? L10n.Quota.forecastMetricActivityWeighted
+            : L10n.Quota.forecastMetricActivityFallback
         let trendValue = diagnostics.hasActivityTrendBaseline
-            ? String(format: "%.2f× activity", diagnostics.activityTrendMultiplier)
-            : "No baseline yet"
+            ? L10n.Quota.forecastMetricTrendMultiplier(
+                multiplier: diagnostics.activityTrendMultiplier.formatted(
+                    .number.precision(.fractionLength(2)).locale(AppLocale.current)
+                )
+            )
+            : L10n.Quota.forecastMetricTrendMissing
         let trendDetail = diagnostics.hasActivityTrendBaseline
-            ? "last 7 days versus prior 21 days"
-            : "needs prior daily activity"
+            ? L10n.Quota.forecastMetricTrendDetail
+            : L10n.Quota.forecastMetricTrendDetailMissing
         let range = mode == .used
             ? forecast.projectedUsedLowerPercent...forecast.projectedUsedUpperPercent
             : forecast.projectedRemainingRange
@@ -776,79 +790,113 @@ struct QuotaGroupCard: View {
         return [
             ForecastMetric(
                 id: "time",
-                label: "Time-only pace",
+                label: L10n.Quota.forecastMetricTimePace,
                 value: timePaceValue,
                 detail: timePaceDetail
             ),
             ForecastMetric(
                 id: "plan",
-                label: "Personal plan now",
+                label: L10n.Quota.forecastMetricPlan,
                 value: quotaValue(fromUsed: forecast.plannedUsedPercent),
-                detail: "activity timing + \(whole(forecast.targetRemainingPercent))% safety target"
+                detail: L10n.Quota.forecastMetricPlanDetail(
+                    target: whole(forecast.targetRemainingPercent)
+                )
             ),
             ForecastMetric(
                 id: "recent",
-                label: "Recent burn",
+                label: L10n.Quota.forecastMetricRecentBurn,
                 value: recentValue,
                 detail: recentDetail
             ),
             ForecastMetric(
                 id: "history",
-                label: "Reset history",
+                label: L10n.Quota.resetHistoryTitle,
                 value: historyValue,
                 detail: historyDetail
             ),
             ForecastMetric(
                 id: "activity",
-                label: "Activity timing",
-                value: "\(whole(diagnostics.behavioralProgressPercent))% elapsed",
+                label: L10n.Quota.forecastMetricActivityTiming,
+                value: L10n.Quota.forecastMetricElapsed(
+                    percent: whole(diagnostics.behavioralProgressPercent)
+                ),
                 detail: activityDetail
             ),
             ForecastMetric(
                 id: "trend",
-                label: "Recent trend",
+                label: L10n.Quota.forecastMetricRecentTrend,
                 value: trendValue,
                 detail: trendDetail
             ),
             ForecastMetric(
                 id: "forecast",
-                label: "Forecast at reset",
+                label: L10n.Quota.forecastMetricForecastAtReset,
                 value: quotaValue(fromUsed: forecast.projectedUsedPercent),
                 detail: mode == .used
-                    ? "\(whole(forecast.projectedRemainingPercent))% expected left"
-                    : "\(whole(forecast.projectedUsedPercent))% expected used"
+                    ? L10n.Quota.forecastMetricExpectedLeft(
+                        percent: whole(forecast.projectedRemainingPercent)
+                    )
+                    : L10n.Quota.forecastMetricExpectedUsed(
+                        percent: whole(forecast.projectedUsedPercent)
+                    )
             ),
             ForecastMetric(
                 id: "range",
-                label: "Forecast range",
-                value: "\(whole(range.lowerBound))–\(whole(range.upperBound))% \(mode == .used ? "used" : "left")",
-                detail: "uncertainty interval"
+                label: L10n.Quota.forecastMetricForecastRange,
+                value: mode == .used
+                    ? L10n.Quota.forecastMetricRangeUsed(
+                        lower: whole(range.lowerBound), upper: whole(range.upperBound)
+                    )
+                    : L10n.Quota.forecastMetricRangeLeft(
+                        lower: whole(range.lowerBound), upper: whole(range.upperBound)
+                    ),
+                detail: L10n.Quota.forecastMetricUncertaintyInterval
             ),
             ForecastMetric(
                 id: "target",
-                label: "Safety target",
+                label: L10n.Quota.forecastMetricSafetyTarget,
                 value: mode == .remaining
-                    ? "\(whole(forecast.targetRemainingPercent))% left"
-                    : "\(whole(100 - forecast.targetRemainingPercent))% used",
-                detail: unused >= 3 ? "\(unused)% capacity above target" : "inside the target range"
+                    ? L10n.Quota.forecastValueLeft(
+                        percent: whole(forecast.targetRemainingPercent)
+                    )
+                    : L10n.Quota.forecastValueUsed(
+                        percent: whole(100 - forecast.targetRemainingPercent)
+                    ),
+                detail: unused >= 3
+                    ? L10n.Quota.forecastMetricAboveTarget(percent: unused)
+                    : L10n.Quota.forecastMetricInsideTarget
             ),
             ForecastMetric(
                 id: "evidence",
-                label: "Evidence",
-                value: "\(forecast.currentObservationCount) obs · \(forecast.completedCycleCount) cycles",
-                detail: "\(forecast.confidenceLabel) · score \(whole(forecast.confidenceScore * 100))%"
+                label: L10n.Quota.forecastMetricEvidence,
+                value: L10n.Quota.forecastMetricEvidenceValue(
+                    observations: forecast.currentObservationCount,
+                    cycles: forecast.completedCycleCount
+                ),
+                detail: L10n.Quota.forecastMetricEvidenceDetail(
+                    confidence: forecast.confidenceLabel,
+                    score: whole(forecast.confidenceScore * 100)
+                )
             ),
             ForecastMetric(
                 id: "coverage",
-                label: "Coverage",
-                value: "obs \(whole(diagnostics.observationCoveragePercent))% · history \(whole(diagnostics.historyCoveragePercent))%",
-                detail: "fresh \(whole(diagnostics.freshnessPercent))% · habits \(whole(diagnostics.activityCoveragePercent))%"
+                label: L10n.Quota.forecastMetricCoverage,
+                value: L10n.Quota.forecastMetricCoverageValue(
+                    observations: whole(diagnostics.observationCoveragePercent),
+                    history: whole(diagnostics.historyCoveragePercent)
+                ),
+                detail: L10n.Quota.forecastMetricCoverageDetail(
+                    fresh: whole(diagnostics.freshnessPercent),
+                    habits: whole(diagnostics.activityCoveragePercent)
+                )
             ),
             ForecastMetric(
                 id: "behavior",
-                label: "Behavior fallback",
-                value: quotaValue(fromUsed: diagnostics.behavioralProjectionUsedPercent, suffix: "at reset"),
-                detail: "used when stronger evidence is sparse"
+                label: L10n.Quota.forecastMetricBehaviorFallback,
+                value: atReset(
+                    quotaValue(fromUsed: diagnostics.behavioralProjectionUsedPercent)
+                ),
+                detail: L10n.Quota.forecastMetricBehaviorDetail
             ),
         ]
     }
@@ -866,10 +914,24 @@ struct QuotaGroupCard: View {
         }
     }
 
-    private func quotaValue(fromUsed used: Double, suffix: String? = nil) -> String {
-        let base = "\(whole(displayedPercent(fromUsed: used)))% \(mode == .used ? "used" : "left")"
-        guard let suffix else { return base }
-        return "\(base) \(suffix)"
+    private func quotaValue(fromUsed used: Double) -> String {
+        modeValue(percent: whole(displayedPercent(fromUsed: used)))
+    }
+
+    /// "42% used" / "42% left", in whichever direction the card is showing.
+    private func modeValue(percent: Int) -> String {
+        switch mode {
+        case .used: L10n.Quota.forecastValueUsed(percent: percent)
+        case .remaining: L10n.Quota.forecastValueLeft(percent: percent)
+        }
+    }
+
+    private func atReset(_ value: String) -> String {
+        L10n.Quota.forecastValueAtReset(value: value)
+    }
+
+    private func atNow(_ value: String) -> String {
+        L10n.Quota.forecastValueExpectedNow(value: value)
     }
 
     private func historySeries(for item: QuotaGroupModule.Row) -> FillTimelineSeries? {
@@ -885,16 +947,14 @@ struct QuotaGroupCard: View {
     }
 
     private func percentLabel(used: Double) -> String {
-        switch mode {
-        case .used:      return "\(Int(used.rounded()))% used"
-        case .remaining: return "\(Int((100 - used).rounded()))% left"
-        }
+        modeValue(percent: whole(displayedPercent(fromUsed: used)))
     }
 
     private func etaText(pace: UsagePace) -> String {
-        if pace.willLastToReset { return "lasts until reset" }
+        if pace.willLastToReset { return L10n.Quota.paceLastsUntilReset }
         guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "—" }
         let target = now.addingTimeInterval(etaSeconds)
-        return ResetCountdownFormatter.string(from: target, now: now).map { "runs out in \($0)" } ?? "—"
+        return ResetCountdownFormatter.string(from: target, now: now)
+            .map { L10n.Quota.paceRunsOutIn(countdown: $0) } ?? "—"
     }
 }

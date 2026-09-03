@@ -92,11 +92,11 @@ struct FillTimelineChart: View {
         let cycles = visibleCycles(series: series, limit: maxCycles(forWidth: stripWidth))
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Reset history")
+                Text(L10n.Quota.resetHistoryTitle)
                     .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
-                Text("Each bar is one quota cycle")
+                Text(L10n.Quota.resetHistoryBarIsOneCycle)
                     .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
                     .foregroundStyle(.quaternary)
             }
@@ -149,7 +149,7 @@ struct FillTimelineChart: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Theme.barTrack.opacity(0.45))
                 .overlay {
-                    Text("Waiting for the first quota observation")
+                    Text(L10n.Quota.awaitingFirstObservation)
                         .font(.system(size: max(8, density.subtitleFontSize - 3)))
                         .foregroundStyle(.tertiary)
                 }
@@ -266,11 +266,7 @@ struct FillTimelineChart: View {
     private func earlyRefillNote(_ cycles: [SubscriptionWindowSample]) -> some View {
         let early = cycles.filter(\.refilledEarly).count
         if early > 0 {
-            Text(
-                early == 1
-                    ? "1 cycle refilled before the window was up"
-                    : "\(early) cycles refilled before the window was up"
-            )
+            Text(L10n.Quota.resetHistoryEarlyRefillCount(count: early))
             .font(.system(size: max(7.5, density.subtitleFontSize - 4), design: .rounded))
             .foregroundStyle(.quaternary)
         }
@@ -278,35 +274,42 @@ struct FillTimelineChart: View {
 
     /// What the provider did to the clock, when it did anything unusual. The
     /// two early shapes mean opposite things, so the caption says which.
-    private func resetDescription(_ cycle: SubscriptionWindowSample) -> String {
+    private func resetDescription(_ cycle: SubscriptionWindowSample) -> String? {
         switch cycle.resetKind {
-        case .earlyClockRestarted: " · refilled early, next window restarted"
-        case .earlyClockUnchanged: " · refilled early, next reset unchanged"
-        case .earlyUnclear: " · refilled early, onto a different schedule"
-        case .onSchedule, .unobserved, nil: ""
+        case .earlyClockRestarted: L10n.Quota.resetHistoryResetEarlyClockRestarted
+        case .earlyClockUnchanged: L10n.Quota.resetHistoryResetEarlyClockUnchanged
+        case .earlyUnclear: L10n.Quota.resetHistoryResetEarlyUnclear
+        case .onSchedule, .unobserved, nil: nil
         }
     }
 
     private func caption(_ cycles: [SubscriptionWindowSample]) -> String {
         guard !cycles.isEmpty else {
-            return "A cycle is recorded when the quota refills"
+            return L10n.Quota.cycleRecordedOnRefill
         }
         let index = hoveredIndex.map { min(max(0, $0), cycles.count - 1) } ?? cycles.count - 1
         let cycle = cycles[index]
         let used = Int(cycle.peakUsedPercent.rounded())
         let left = Int(cycle.remainingPercentAtReset.rounded())
-        if let completedAt = cycle.completedAt {
-            let samplingGap = completedAt.timeIntervalSince(cycle.lastSeenAt)
-            let gapText: String
-            if samplingGap >= 60,
-               let duration = ResetCountdownFormatter.string(from: completedAt, now: cycle.lastSeenAt) {
-                gapText = " · last seen \(duration) before reset"
-            } else {
-                gapText = ""
-            }
-            return "\(Self.timestampFormatter.string(from: completedAt)) reset · \(used)% used · \(left)% left\(resetDescription(cycle))\(gapText)"
+        guard let completedAt = cycle.completedAt else {
+            return L10n.Quota.resetHistoryCurrentCycleCaption(used: used, left: left)
         }
-        return "Current cycle · \(used)% used so far · \(left)% left"
+        // Each note is a whole localized clause; the caption is those clauses
+        // in a list, never an English sentence assembled from fragments.
+        var parts = [
+            L10n.Quota.resetHistoryCycleCaption(
+                time: Self.timestampFormatter.string(from: completedAt),
+                used: used,
+                left: left
+            )
+        ]
+        if let note = resetDescription(cycle) { parts.append(note) }
+        let samplingGap = completedAt.timeIntervalSince(cycle.lastSeenAt)
+        if samplingGap >= 60,
+           let duration = ResetCountdownFormatter.string(from: completedAt, now: cycle.lastSeenAt) {
+            parts.append(L10n.Quota.resetHistoryLastSeenBefore(duration: duration))
+        }
+        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -319,7 +322,11 @@ struct FillTimelineChart: View {
                     Text(axisLabel(cycles[cycles.count / 2]))
                     Spacer()
                 }
-                Text(cycles.last?.isCompleted == false ? "Current" : axisLabel(cycles[cycles.count - 1]))
+                Text(
+                    cycles.last?.isCompleted == false
+                        ? L10n.Quota.resetHistoryAxisCurrent
+                        : axisLabel(cycles[cycles.count - 1])
+                )
             }
             .font(.system(size: max(7.5, density.subtitleFontSize - 4), design: .rounded))
             .foregroundStyle(.tertiary)
