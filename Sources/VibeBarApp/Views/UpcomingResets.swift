@@ -30,10 +30,10 @@ struct UpcomingResetEvent: Identifiable {
         // SubProvider is a name, the L3 group and bucket may be generic
         // window words the reader should meet in their own language.
         if let groupTitle {
-            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.display(groupTitle))"
-                + " · \(QuotaGroupLabelLocalizer.display(bucketTitle))"
+            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.displayComposed(groupTitle))"
+                + " · \(QuotaGroupLabelLocalizer.displayComposed(bucketTitle))"
         } else {
-            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.display(bucketTitle))"
+            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.displayComposed(bucketTitle))"
         }
         if let accountLabel {
             base += " · \(accountLabel)"

@@ -15,10 +15,10 @@ public enum CostChartGranularity: String, CaseIterable, Sendable, Identifiable {
 
     public var displayName: String {
         switch self {
-        case .hour: "Hour"
-        case .day: "Day"
-        case .week: "Week"
-        case .month: "Month"
+        case .hour: L10n.Cost.granularityHour
+        case .day: L10n.Cost.granularityDay
+        case .week: L10n.Cost.granularityWeek
+        case .month: L10n.Cost.granularityMonth
         }
     }
 

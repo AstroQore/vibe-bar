@@ -29,16 +29,19 @@ struct CodexBarProviderBridgeCard: View {
                 .background(Circle().fill(Color.accentColor.opacity(0.12)))
                 .overlay(Circle().stroke(Color.accentColor.opacity(0.35), lineWidth: 0.7))
             VStack(alignment: .leading, spacing: 2) {
-                Text("CodexBar Bridge")
+                Text(L10n.Quota.bridgeTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                Text(snapshot?.version.map { "CodexBar \($0) · read-only" } ?? "Additional providers · read-only")
+                Text(
+                    snapshot?.version.map { L10n.Quota.bridgeSubtitleVersion(version: $0) }
+                        ?? L10n.Quota.bridgeSubtitle
+                )
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 4)
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
-                help: "Refresh CodexBar providers",
+                help: L10n.Quota.bridgeRefresh,
                 size: density.subtitleFontSize
             ) {
                 Task { await refresh() }
@@ -69,7 +72,7 @@ struct CodexBarProviderBridgeCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 10)
         } else {
-            Text("No enabled CodexBar-only provider returned a quota window. Overlapping providers remain on Vibe Bar's native cards.")
+            Text(L10n.Quota.bridgeEmpty)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +108,7 @@ struct CodexBarProviderBridgeCard: View {
                     .font(.system(size: max(9, density.subtitleFontSize - 1)))
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                Text("\(Int(percent.rounded()))%")
+                Text(L10n.Common.percent(value: Int(percent.rounded())))
                     .font(.system(size: density.subtitleFontSize, weight: .semibold,
                                   design: .rounded).monospacedDigit())
                     .foregroundStyle(Theme.barColor(percent: percent, mode: mode))
@@ -116,7 +119,7 @@ struct CodexBarProviderBridgeCard: View {
                 height: max(3, density.bucketBarHeight - 1)
             )
             if let countdown = ResetCountdownFormatter.stringWithAbsoluteTime(from: window.resetAt) {
-                Text("Resets \(countdown)")
+                Text(L10n.Quota.bucketResetsIn(when: countdown))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }

@@ -45,6 +45,76 @@
 			<string>%1$lld 分钟</string>
 		</dict>
 	</dict>
+	<key>quota.forecast.metric.comparableCycles</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@可比重置周期</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个</string>
+		</dict>
+	</dict>
+	<key>quota.forecast.metric.recentIntervals</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@近期区间</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 段</string>
+		</dict>
+	</dict>
+	<key>quota.history.curveCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@曲线</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 条</string>
+		</dict>
+	</dict>
+	<key>quota.history.providerCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@厂商</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 家</string>
+		</dict>
+	</dict>
+	<key>quota.misc.independentCopies</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@独立配置</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 份</string>
+		</dict>
+	</dict>
 	<key>quota.perModelLimits</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -71,6 +141,20 @@
 			<string>lld</string>
 			<key>other</key>
 			<string>%1$lld 张</string>
+		</dict>
+	</dict>
+	<key>quota.resetHistory.earlyRefillCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@在窗口结束前补额</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个周期</string>
 		</dict>
 	</dict>
 	<key>quota.resetHistory.lane.wasteSummary</key>
@@ -309,6 +393,20 @@
 			<string>lld</string>
 			<key>other</key>
 			<string>%1$lld 家厂商</string>
+		</dict>
+	</dict>
+	<key>usage.yearHeatmap.a11y</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@ 过去一年的每日花费，共 %2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%2$lld 周</string>
 		</dict>
 	</dict>
 	<key>workbench.sessions.count.sessions</key>

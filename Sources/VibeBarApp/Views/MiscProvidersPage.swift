@@ -93,7 +93,7 @@ private struct MiscProviderCard: View {
             Spacer(minLength: 4)
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
-                help: "Refresh \(tool.menuTitle)",
+                help: L10n.Quota.miscRefreshProvider(provider: tool.menuTitle),
                 size: density.subtitleFontSize
             ) {
                 environment.refresh(instance)
@@ -196,7 +196,7 @@ private struct MiscProviderGroupCard: View {
                 Text(group.tool.menuTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
-                Text("\(group.instances.count) independent copies")
+                Text(L10n.Quota.miscIndependentCopies(count: group.instances.count))
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -204,7 +204,7 @@ private struct MiscProviderGroupCard: View {
             Spacer(minLength: 4)
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
-                help: "Refresh \(group.tool.menuTitle) copies",
+                help: L10n.Quota.miscRefreshCopies(provider: group.tool.menuTitle),
                 size: density.subtitleFontSize
             ) {
                 for instance in group.instances {
@@ -278,7 +278,7 @@ private struct MiscProviderInstanceStatusRow: View {
                 Spacer(minLength: 4)
                 BorderlessIconButton(
                     systemImage: "arrow.clockwise",
-                    help: "Refresh \(refreshTitle)",
+                    help: L10n.Quota.miscRefreshProvider(provider: refreshTitle),
                     size: max(9, density.subtitleFontSize - 1)
                 ) {
                     environment.refresh(instance)
@@ -341,7 +341,9 @@ private struct MiscQuotaBody: View {
                         .foregroundStyle(.tertiary)
                 }
                 if let visibleError {
-                    compactErrorText("Update failed: \(visibleError.userFacingMessage)")
+                    compactErrorText(
+                        L10n.Quota.updateFailed(reason: visibleError.userFacingMessage)
+                    )
                 }
             }
         } else if let visibleError, visibleError != .noCredential {
@@ -380,13 +382,13 @@ private struct MiscQuotaBody: View {
         }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text(bucket.title)
+                Text(QuotaGroupLabelLocalizer.displayComposed(bucket.title))
                     .font(.system(
                         size: density.bucketTitleFontSize - (isCompact ? 2 : 1),
                         weight: .medium
                     ))
                 Spacer()
-                Text("\(Int(percent.rounded()))%")
+                Text(L10n.Common.percent(value: Int(percent.rounded())))
                     .font(.system(
                         size: density.bucketPercentFontSize - (isCompact ? 2 : 0),
                         weight: .semibold
@@ -416,12 +418,12 @@ private struct MiscQuotaBody: View {
                 )
             }
             if let group = bucket.groupTitle, !group.isEmpty, group != bucket.title {
-                Text(group)
+                Text(QuotaGroupLabelLocalizer.displayComposed(group))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
             if let countdown = ResetCountdownFormatter.stringWithAbsoluteTime(from: bucket.resetAt) {
-                Text("Resets \(countdown)")
+                Text(L10n.Quota.bucketResetsIn(when: countdown))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
@@ -440,7 +442,7 @@ private struct MiscQuotaBody: View {
 
     private var setupState: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Not configured.")
+            Text(L10n.Quota.miscNotConfigured)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             Button {
@@ -448,7 +450,7 @@ private struct MiscQuotaBody: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "gearshape")
-                    Text("Set up in Settings")
+                    Text(L10n.Quota.miscSetUpInSettings)
                 }
                 .font(.system(size: density.subtitleFontSize, weight: .medium))
             }
@@ -473,7 +475,7 @@ private struct MiscQuotaBody: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "gearshape")
-                    Text("Open Settings")
+                    Text(L10n.Common.openSettings)
                 }
                 .font(.system(size: density.resetCountdownFontSize))
             }

@@ -101,6 +101,9 @@
 /* Field label for a user-chosen name */
 "common.name" = "Name";
 
+/* A chart tooltip row for a moment nothing was recorded — the app was not watching, rather than the value being zero */
+"common.noData" = "No data recorded";
+
 /* A toggle's state, read as a value in a summary row */
 "common.off" = "Off";
 
@@ -149,6 +152,15 @@
 /* Scope name for the combined cost card */
 "cost.allProviders" = "All providers";
 
+/* Tooltip on the cost chart's dollar option */
+"cost.chart.metricCostHelp" = "Plot spend in dollars";
+
+/* Segmented-control label that plots token volume instead of spend; the dollar option is the '$' sign and needs no key */
+"cost.chart.metricTokens" = "Tok";
+
+/* Tooltip on the cost chart's token option */
+"cost.chart.metricTokensHelp" = "Plot token volume";
+
 /* Empty cost history */
 "cost.empty.antigravity" = "No Antigravity conversation token metadata found yet.";
 
@@ -182,8 +194,80 @@
 /* Card title; the company name is never translated */
 "cost.googleAI.title" = "Google AI Cost";
 
+/* Cost chart bucket width that follows the visible span instead of being pinned */
+"cost.granularity.auto" = "Auto";
+
+/* Cost chart bucket width: one bar per day */
+"cost.granularity.day" = "Day";
+
+/* Cost chart bucket width: one bar per hour */
+"cost.granularity.hour" = "Hour";
+
+/* Cost chart bucket width: one bar per calendar month */
+"cost.granularity.month" = "Month";
+
+/* Cost chart bucket width: one bar per week */
+"cost.granularity.week" = "Week";
+
 /* Card title on the Overview */
 "cost.history.allProviders" = "All Providers Cost History";
+
+/* Empty state of the cost history chart before the first samples exist */
+"cost.history.building" = "Building history…";
+
+/* Second line of the cost history chart's empty state */
+"cost.history.buildingDetail" = "Cost samples appear after the next local scan.";
+
+/* Tooltip on the button that closes the model breakdown panel */
+"cost.history.clearModelSelection" = "Clear model selection";
+
+/* Overlay on the cost chart when the visible range holds no spend */
+"cost.history.emptyCost" = "No cost recorded in this range.";
+
+/* Overlay on the cost chart when the visible range holds no tokens */
+"cost.history.emptyTokens" = "No tokens recorded in this range.";
+
+/* Caption naming the visible span of the cost chart and the dates at its ends */
+"cost.history.extentNote" = "%1$@ · %2$@ – %3$@";
+
+/* Tooltip on a bucket-width button the current zoom level cannot draw */
+"cost.history.granularityDisabled" = "%1$@ needs a different zoom level";
+
+/* Tooltip on a bucket-width button in the cost chart */
+"cost.history.groupBy" = "Group cost history by %1$@";
+
+/* Note under the cost chart when hourly buckets were asked for but only daily ones exist that far back */
+"cost.history.hourlyFallback" = "hourly n/a · showing daily";
+
+/* Summary figure under the cost chart: the per-bucket average; granularity is the bucket width */
+"cost.history.metricAverage" = "Avg/%1$@";
+
+/* Summary figure under the cost chart: the largest single bucket */
+"cost.history.metricPeak" = "Peak";
+
+/* Summary figure under the cost chart: the visible range's total */
+"cost.history.metricTotal" = "Total";
+
+/* Shown in the model breakdown panel for a bucket old enough that per-model rows were not kept */
+"cost.history.modelDetailUnavailable" = "Model detail is unavailable for this historical period.";
+
+/* Heading of the model breakdown panel; when is the bucket the user clicked */
+"cost.history.modelsAt" = "Models · %1$@";
+
+/* Last row of a cost-chart tooltip, standing in for the models it could not fit */
+"cost.history.moreModels" = "+%1$lld more · click to inspect";
+
+/* Accessibility label for the range navigator under the cost history chart */
+"cost.history.navigator" = "Cost history range navigator";
+
+/* Title of the navigable cost history chart */
+"cost.history.title" = "Cost History";
+
+/* Cost chart tooltip heading for a weekly bucket; date is the week's first day */
+"cost.history.weekOf" = "Week of %1$@";
+
+/* Compact form of the weekly bucket label, used under the peak figure */
+"cost.history.weekShortOf" = "wk %1$@";
 
 /* All-caps metric label: the most expensive day on record */
 "cost.metric.peakDay" = "PEAK DAY";
@@ -656,14 +740,38 @@
 /* Subtitle under the Machines page header */
 "popover.header.machinesSubtitle" = "End-to-end encrypted remote usage";
 
+/* Tooltip on the popover header button that opens the floating mini window */
+"popover.header.mini" = "Mini";
+
 /* Subtitle under the Misc Providers page header */
 "popover.header.miscSubtitle" = "Usage-only · sign in or paste a key";
+
+/* Tooltip on the popover header button that opens the Workbench window */
+"popover.header.openWorkbench" = "Open Workbench";
 
 /* Subtitle under the Overview page header */
 "popover.header.overviewSubtitle" = "All providers · quota & cost";
 
+/* Popover header caption while a refresh is in flight */
+"popover.header.refreshing" = "Refreshing…";
+
+/* Tooltip on the popover header's gear button */
+"popover.header.settings" = "Settings";
+
+/* Popover header caption: the page's own subtitle followed by how long ago the data was updated */
+"popover.header.updatedLine" = "%1$@ · %2$@";
+
 /* Empty-state title while a sync is in flight */
 "popover.machines.checking" = "Checking the Relay…";
+
+/* Badge on a remote machine whose last report is later than expected */
+"popover.machines.freshness.delayed" = "Delayed";
+
+/* Badge on a remote machine reporting on schedule */
+"popover.machines.freshness.live" = "Live";
+
+/* Badge on a remote machine that has not reported for a long time */
+"popover.machines.freshness.stale" = "Stale";
 
 /* Toggle on a remote machine card */
 "popover.machines.includeInTotals" = "Include in totals";
@@ -713,11 +821,32 @@
 /* Popover tab. The other tabs are company names (OpenAI, Anthropic, Google AI, SpaceXAI) and are never translated. */
 "popover.tab.overview" = "Overview";
 
+/* Placeholder inside an empty reset-history strip, before any quota reading has landed */
+"quota.awaitingFirstObservation" = "Waiting for the first quota observation";
+
+/* Empty state of the CodexBar bridge card when every bridged provider is one Vibe Bar already reads natively */
+"quota.bridge.empty" = "No enabled CodexBar-only provider returned a quota window. Overlapping providers remain on Vibe Bar's native cards.";
+
+/* Tooltip on the CodexBar bridge card's refresh button */
+"quota.bridge.refresh" = "Refresh CodexBar providers";
+
+/* Subtitle of the CodexBar bridge card before its version is known */
+"quota.bridge.subtitle" = "Additional providers · read-only";
+
+/* Subtitle of the CodexBar bridge card once the installed version is known */
+"quota.bridge.subtitleVersion" = "CodexBar %1$@ · read-only";
+
+/* Title of the card listing quota read from a CodexBar install; CodexBar is a product name */
+"quota.bridge.title" = "CodexBar Bridge";
+
 /* Caption under a quota bar when the provider reported no reset time */
 "quota.bucket.noResetInfo" = "No reset info";
 
 /* Caption under a quota bar; when is a countdown, sometimes with an absolute time */
 "quota.bucket.resetsIn" = "Resets in %1$@";
+
+/* Caption under an empty reset-history strip explaining when a cycle is recorded */
+"quota.cycleRecordedOnRefill" = "A cycle is recorded when the quota refills";
 
 /* Empty state body; command is a CLI name such as codex or claude and is never translated */
 "quota.empty.needsLogin.detail" = "Run `%1$@ login` in your terminal, then refresh.";
@@ -758,6 +887,18 @@
 /* Forecast confidence level */
 "quota.forecast.confidence.medium" = "Medium confidence";
 
+/* Footnote under the forecast metric grid explaining what token history is and is not used for */
+"quota.forecast.explain.footer" = "Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage.";
+
+/* Accessibility label on the disclosure button while the grid is open */
+"quota.forecast.explain.hide" = "Hide forecast calculation";
+
+/* Accessibility label on the disclosure button while the grid is closed */
+"quota.forecast.explain.show" = "Show forecast calculation";
+
+/* Disclosure button that opens the forecast's metric grid */
+"quota.forecast.explain.title" = "How this forecast was calculated";
+
 /* What to do about an at-risk forecast */
 "quota.forecast.guidance.atRisk" = "Slow down or shift work to another quota";
 
@@ -781,6 +922,120 @@
 
 /* Remaining-mode guidance when nothing needs saying */
 "quota.forecast.guidance.withinTarget" = "Within the %1$lld%% safety target";
+
+/* One reference marker in the quota bar legend: its name followed by the figure it marks */
+"quota.forecast.legend.item" = "%1$@ %2$@";
+
+/* Detail under the safety target metric when the forecast leaves capacity above it */
+"quota.forecast.metric.aboveTarget" = "%1$lld%% capacity above target";
+
+/* Detail under the activity timing metric before any habits exist */
+"quota.forecast.metric.activityFallback" = "wall-clock fallback until habits exist";
+
+/* Forecast metric: how far through the window the user's own working rhythm says we are */
+"quota.forecast.metric.activityTiming" = "Activity timing";
+
+/* Detail under the activity timing metric when weekday and hour habits are known */
+"quota.forecast.metric.activityWeighted" = "weekday and hour weighted";
+
+/* Detail under the behavior fallback metric */
+"quota.forecast.metric.behaviorDetail" = "used when stronger evidence is sparse";
+
+/* Forecast metric: the projection used when stronger inputs are missing */
+"quota.forecast.metric.behaviorFallback" = "Behavior fallback";
+
+/* Forecast metric: how completely each input covers the window */
+"quota.forecast.metric.coverage" = "Coverage";
+
+/* Detail under the coverage metric: freshness of the data and how well habits are known */
+"quota.forecast.metric.coverageDetail" = "fresh %1$lld%% · habits %2$lld%%";
+
+/* Value of the coverage metric: observation and reset-history coverage */
+"quota.forecast.metric.coverageValue" = "obs %1$lld%% · history %2$lld%%";
+
+/* Detail under the reset-history metric before any cycle has completed */
+"quota.forecast.metric.cyclesPending" = "Completed cycles will appear here";
+
+/* Value of the activity timing metric: share of the window already behind us */
+"quota.forecast.metric.elapsed" = "%1$lld%% elapsed";
+
+/* Forecast metric: how much data the projection stands on */
+"quota.forecast.metric.evidence" = "Evidence";
+
+/* Detail under the evidence metric; confidence is the forecast's own confidence label */
+"quota.forecast.metric.evidenceDetail" = "%1$@ · score %2$lld%%";
+
+/* Value of the evidence metric: observations in this cycle and completed cycles behind it */
+"quota.forecast.metric.evidenceValue" = "%1$lld obs · %2$lld cycles";
+
+/* Detail under the forecast metric while the card shows used percentages */
+"quota.forecast.metric.expectedLeft" = "%1$lld%% expected left";
+
+/* Detail under the forecast metric while the card shows remaining percentages */
+"quota.forecast.metric.expectedUsed" = "%1$lld%% expected used";
+
+/* Forecast metric and bar legend entry: the projected figure at the next reset */
+"quota.forecast.metric.forecastAtReset" = "Forecast at reset";
+
+/* Forecast metric: the spread the projection considers plausible */
+"quota.forecast.metric.forecastRange" = "Forecast range";
+
+/* Detail under the safety target metric when the forecast sits inside it */
+"quota.forecast.metric.insideTarget" = "inside the target range";
+
+/* Value of the reset-history metric before any cycle can be compared */
+"quota.forecast.metric.noComparison" = "No comparison yet";
+
+/* Forecast metric: where the personal plan says usage should be right now */
+"quota.forecast.metric.plan" = "Personal plan now";
+
+/* Detail under the personal plan metric: what the plan is built from */
+"quota.forecast.metric.planDetail" = "activity timing + %1$lld%% safety target";
+
+/* Value of the forecast range metric in Remaining mode */
+"quota.forecast.metric.rangeLeft" = "%1$lld–%2$lld%% left";
+
+/* Value of the forecast range metric in Used mode */
+"quota.forecast.metric.rangeUsed" = "%1$lld–%2$lld%% used";
+
+/* Forecast metric: the projection from the most recent intervals alone */
+"quota.forecast.metric.recentBurn" = "Recent burn";
+
+/* Detail under the recent burn metric when there is not enough recent data */
+"quota.forecast.metric.recentMissing" = "Needs at least two useful observations";
+
+/* Forecast metric: whether recent activity is above or below the earlier baseline */
+"quota.forecast.metric.recentTrend" = "Recent trend";
+
+/* Forecast metric: the share of the quota the user wants to still hold at reset */
+"quota.forecast.metric.safetyTarget" = "Safety target";
+
+/* Forecast metric: the projection that only knows how much of the window has elapsed */
+"quota.forecast.metric.timePace" = "Time-only pace";
+
+/* Detail under the time-only pace metric; stage is the pace summary such as '5% in deficit' */
+"quota.forecast.metric.timePaceDetail" = "%1$@ by wall clock";
+
+/* Detail under the time-only pace metric when the bucket reports no window */
+"quota.forecast.metric.timePaceMissing" = "Needs reset time and window length";
+
+/* Detail under the recent trend metric: the two spans being compared */
+"quota.forecast.metric.trendDetail" = "last 7 days versus prior 21 days";
+
+/* Detail under the recent trend metric when the earlier span has no activity */
+"quota.forecast.metric.trendDetailMissing" = "needs prior daily activity";
+
+/* Value of the recent trend metric before a baseline exists */
+"quota.forecast.metric.trendMissing" = "No baseline yet";
+
+/* Value of the recent trend metric; multiplier is a decimal already formatted at the call site */
+"quota.forecast.metric.trendMultiplier" = "%1$@× activity";
+
+/* Value of a forecast metric whose inputs the bucket does not report */
+"quota.forecast.metric.unavailable" = "Unavailable";
+
+/* Detail under the forecast range metric */
+"quota.forecast.metric.uncertaintyInterval" = "uncertainty interval";
 
 /* One-line forecast summary */
 "quota.forecast.reset.atRisk" = "Likely to run out before reset";
@@ -826,6 +1081,12 @@
 
 /* Use-up line when no ETA can be derived */
 "quota.forecast.useUp.uncertain" = "Use-up time uncertain · may run short before reset";
+
+/* A quota figure qualified as the projection for the next reset; value is one of the used/left figures */
+"quota.forecast.value.atReset" = "%1$@ at reset";
+
+/* A quota figure qualified as where usage should stand at this moment */
+"quota.forecast.value.expectedNow" = "%1$@ expected now";
 
 /* The forecast figure in Remaining mode, used inside the status line */
 "quota.forecast.value.left" = "%1$lld%% left";
@@ -911,6 +1172,57 @@
 /* Quota group: a weekly credit balance rather than a percentage */
 "quota.group.weeklyCredits" = "Weekly Credits";
 
+/* Empty state of the all-providers quota history chart when every curve has been switched off */
+"quota.history.allCurvesHidden" = "Every curve is hidden — pick one from the menu above.";
+
+/* Empty state of the quota history chart before enough refreshes have landed */
+"quota.history.buildingUp" = "Quota history builds up as refreshes come in.";
+
+/* Accessibility label for the quota history curve picker */
+"quota.history.curvePickerA11y" = "Choose which quota curves to show";
+
+/* Curve picker summary when nothing is hidden */
+"quota.history.curvesAll" = "All %1$lld";
+
+/* Curve picker summary when some curves are hidden */
+"quota.history.curvesSome" = "%1$lld of %2$lld";
+
+/* Legend entry marking the dotted projection line on the quota history chart */
+"quota.history.forecastLegend" = "forecast";
+
+/* Scope note when a group holds more quotas than the note can name; names are the ones it did name */
+"quota.history.moreBuckets" = "%1$@ +%2$lld";
+
+/* Last row of a crowded chart tooltip, standing in for the readings it could not fit */
+"quota.history.moreReadings" = "+%1$lld more";
+
+/* Accessibility label for the range navigator under the all-providers quota chart */
+"quota.history.navigatorAllProviders" = "All-providers quota history range navigator";
+
+/* Accessibility label for the range navigator under a single provider's quota chart */
+"quota.history.navigatorProvider" = "Quota history range navigator";
+
+/* Footer under a quota history chart; scope names what the chart covers, visible and total are compact spans such as 7d */
+"quota.history.scopeNote" = "%1$@ · showing %2$@ of %3$@ recorded";
+
+/* Menu item that puts every quota curve back on the chart */
+"quota.history.showAllCurves" = "Show all curves";
+
+/* Menu item that leaves only the most-used quota curves on the chart */
+"quota.history.showBusiest" = "Show only the busiest";
+
+/* Title of the quota history chart card */
+"quota.history.title" = "Quota history";
+
+/* Tooltip row on the quota history chart: the projection for the next reset */
+"quota.history.tooltipAtReset" = "At reset";
+
+/* Tooltip row on the quota history chart: where the wall clock said usage should be */
+"quota.history.tooltipPace" = "Pace";
+
+/* Tooltip row on the quota history chart: the recorded remaining quota */
+"quota.history.tooltipQuotaLeft" = "Quota left";
+
 /* What to do when no credential is stored */
 "quota.login.claude" = "Run claude login, then refresh.";
 
@@ -926,17 +1238,89 @@
 /* Fallback for a misc provider; provider is a SubProvider name */
 "quota.login.misc" = "Configure %1$@ in Settings → Misc Providers.";
 
+/* Mini window forecast line while the forecast is still learning the usage pattern */
+"quota.mini.forecastLearning" = "learning · %1$lld%% left";
+
+/* Narrow form of the mini window learning forecast line */
+"quota.mini.forecastLearningCompact" = "~%1$lld%% left";
+
+/* Mini window forecast line for a quota that is comfortably ahead */
+"quota.mini.forecastLeft" = "%1$lld%% left";
+
+/* Narrow form of the mini window forecast line for a quota that is comfortably ahead */
+"quota.mini.forecastLeftCompact" = "left %1$lld%%";
+
+/* Mini window forecast line for a quota that may, rather than will, be exhausted before reset */
+"quota.mini.forecastMayRunOut" = "may run out %1$@";
+
+/* Mini window forecast line for a quota expected to finish its window well under target */
+"quota.mini.forecastSurplus" = "surplus · %1$lld%% left";
+
+/* Narrow form of the mini window surplus forecast line */
+"quota.mini.forecastSurplusCompact" = "surplus %1$lld%%";
+
+/* Tooltip on the mini focus layout's button that pages to the next provider */
+"quota.mini.nextProvider" = "Next provider";
+
+/* Mini window placeholder when none of the selected fields has a live reading yet */
+"quota.mini.noLiveData" = "No selected fields have live data";
+
+/* Mini focus layout's page counter when there are too many providers for dots */
+"quota.mini.pageIndicator" = "%1$lld/%2$lld";
+
+/* Empty state of the mini window's refill rail; only the user's selected fields are considered */
+"quota.mini.railEmpty" = "Nothing selected refills in the next seven days.";
+
+/* Heading of the mini window's refill rail, naming how far ahead it looks */
+"quota.mini.railTitle" = "QUOTA RESETS · NEXT %1$lld DAYS";
+
+/* Mini window caption for when a bucket refills; countdown is a compact span */
+"quota.mini.resets" = "resets %1$@";
+
+/* Tooltip on a mini window row; subProvider and row are names, percent the current reading */
+"quota.mini.rowHelp" = "%1$@ — %2$@: %3$lld%%";
+
+/* Body of a misc provider card that has no credential yet */
+"quota.misc.notConfigured" = "Not configured.";
+
+/* Tooltip on the refresh button of a misc provider that has several configured copies */
+"quota.misc.refreshCopies" = "Refresh %1$@ copies";
+
+/* Tooltip on the refresh button of a misc provider's card */
+"quota.misc.refreshProvider" = "Refresh %1$@";
+
+/* Button on an unconfigured misc provider card that opens its settings */
+"quota.misc.setUpInSettings" = "Set up in Settings";
+
 /* Caption saying the bar shows what is left */
 "quota.mode.remaining" = "remaining";
 
 /* Caption saying the bar shows what has been spent */
 "quota.mode.used" = "used";
 
+/* Pace summary when usage is running ahead of the linear expectation */
+"quota.pace.deficit" = "%1$lld%% in deficit";
+
+/* Compact form of the pace summary for the mini window when usage runs ahead of the linear expectation */
+"quota.pace.deficitShort" = "%1$lld%% deficit";
+
 /* Legacy elapsed-time pace ETA on a Misc provider card */
 "quota.pace.lastsUntilReset" = "Lasts until reset";
 
+/* Pace summary when usage matches the linear expectation */
+"quota.pace.onTrack" = "On pace";
+
+/* Pace summary when usage is running behind the linear expectation */
+"quota.pace.reserve" = "%1$lld%% in reserve";
+
+/* Compact form of the pace summary for the mini window when usage runs behind the linear expectation */
+"quota.pace.reserveShort" = "%1$lld%% reserve";
+
 /* Legacy elapsed-time pace ETA on a Misc provider card */
 "quota.pace.runsOutIn" = "Runs out in %1$@";
+
+/* Compact projection in the mini window: when the quota is estimated to be exhausted */
+"quota.pace.runsOutShort" = "out %1$@";
 
 /* Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time */
 "quota.reset.in" = "resets in %1$@";
@@ -980,11 +1364,32 @@
 /* Tooltip on the Time axis option */
 "quota.resetHistory.axis.timeHelp" = "Each cycle where it actually happened, on a shared calendar";
 
+/* Axis label for the cycle that has not reset yet */
+"quota.resetHistory.axisCurrent" = "Current";
+
 /* Caption on a completed column: how many cycles back it is. The leading character is a minus sign, not a hyphen. */
 "quota.resetHistory.axisCyclesBack" = "−%1$lld";
 
 /* Caption on the live column of the reset-history grid */
 "quota.resetHistory.axisNow" = "now";
+
+/* Caption beside the reset-history strip's title */
+"quota.resetHistory.barIsOneCycle" = "Each bar is one quota cycle";
+
+/* Empty state of the reset history comparison before any weekly or longer quota is known */
+"quota.resetHistory.compareEmpty" = "Nothing to compare yet — weekly and longer quotas appear here once a provider reports one.";
+
+/* Title of the card that puts every weekly-and-longer quota's reset history side by side */
+"quota.resetHistory.compareTitle" = "Reset History Compare";
+
+/* Tooltip on a window button in the reset history comparison; window is the spoken span such as 'last 8 weeks' */
+"quota.resetHistory.compareWindow" = "Compare the %1$@";
+
+/* Caption for the cycle still running in the reset-history strip */
+"quota.resetHistory.currentCycleCaption" = "Current cycle · %1$lld%% used so far · %2$lld%% left";
+
+/* Caption for one completed cycle in the reset-history strip; time is the reset moment */
+"quota.resetHistory.cycleCaption" = "%1$@ reset · %2$lld%% used · %3$lld%% left";
 
 /* Empty-state copy for a lane */
 "quota.resetHistory.lane.emptyState" = "No completed cycles yet — a cycle is recorded when the quota refills";
@@ -998,6 +1403,21 @@
 /* One lane inside the screen-reader summary */
 "quota.resetHistory.lane.spokenWaste" = "%1$@: %2$@%% wasted on average over %3$lld cycles";
 
+/* Note appended to a cycle caption when the last reading predates the reset by a while */
+"quota.resetHistory.lastSeenBefore" = "last seen %1$@ before reset";
+
+/* Legend entry explaining what a bar's height means in the reset history comparison */
+"quota.resetHistory.legend.barHeight" = "bar height = remaining at reset";
+
+/* Legend entry for the time axis: bars sit where they happened on a calendar */
+"quota.resetHistory.legend.byDate" = "placed by date";
+
+/* Legend entry for the cycle axis: columns are cycles, not dates */
+"quota.resetHistory.legend.perCycle" = "one column per cycle";
+
+/* Legend entry for the dot marking a cycle that refilled before its window was up */
+"quota.resetHistory.legend.refilledEarly" = "refilled early";
+
 /* What the provider did to the clock on an early refill. This shape means a whole window lies ahead, so the extra capacity is usable. */
 "quota.resetHistory.reset.earlyClockRestarted" = "refilled early, next window restarted";
 
@@ -1006,6 +1426,12 @@
 
 /* An early refill that matches neither shape */
 "quota.resetHistory.reset.earlyUnclear" = "refilled early, onto a different schedule";
+
+/* Lane label for history kept from an account that is no longer signed in */
+"quota.resetHistory.retiredAccount" = "Signed-out account";
+
+/* Lane label for one of several signed-out accounts on the same provider */
+"quota.resetHistory.retiredAccountNumbered" = "Signed-out account %1$lld";
 
 /* Spoken window name */
 "quota.resetHistory.spoken.allCycles" = "every recorded cycle";
@@ -1033,6 +1459,18 @@
 
 /* Card title on a provider detail page */
 "quota.resetHistory.title" = "Reset History";
+
+/* Tooltip figures for a finished cycle in the reset history comparison */
+"quota.resetHistory.tooltip.completed" = "%1$lld%% left at reset · %2$lld%% used";
+
+/* Tooltip figures for the cycle still running */
+"quota.resetHistory.tooltip.current" = "Current cycle · %1$lld%% left now · %2$lld%% used so far";
+
+/* Tooltip line naming the span a finished cycle covered */
+"quota.resetHistory.tooltip.range" = "%1$@ → %2$@ reset";
+
+/* Tooltip line naming the span of the cycle still running and when it is due to reset */
+"quota.resetHistory.tooltip.rangeDue" = "%1$@ → %2$@ reset due";
 
 /* Header arithmetic when nothing has closed */
 "quota.resetHistory.totals.none" = "No completed cycles in this window";
@@ -1093,6 +1531,15 @@
 
 /* Inline error row; reason is a provider message and is not translated */
 "quota.update.failed" = "Update failed: %1$@";
+
+/* Window progress line for a window measured in whole days */
+"quota.window.dayOfDays" = "Day %1$lld of %2$lld · %3$@";
+
+/* Window progress line for a sub-day window; window is its length, elapsed how much of it is gone */
+"quota.window.elapsedOfWindow" = "%1$@ of %2$@ · %3$@";
+
+/* Window progress line once the reset time has passed but no refresh has landed; value is the used/left figure */
+"quota.window.resetsSoon" = "Resets soon · %1$@";
 
 /* Hint under the Antigravity source picker */
 "settings.antigravityCookieEnabled" = "Antigravity cookie import is enabled — sign in at antigravity.google first.";
@@ -2222,6 +2669,27 @@
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "Status";
 
+/* Accessibility label for the 7 by 24 activity grid */
+"usage.activity.a11y" = "Token usage by weekday and hour, 7 days by 24 hours";
+
+/* Tooltip on one cell of the activity grid */
+"usage.activity.cellTooltip" = "%1$@ %2$@ · %3$@";
+
+/* High end of the activity grid's intensity legend */
+"usage.activity.heavy" = "Heavy";
+
+/* Caption naming the busiest hour of the activity card when the peak hour and peak cell agree */
+"usage.activity.peak" = "Peak %1$@ · %2$@";
+
+/* Caption naming the busiest hour overall and the busiest single cell when they differ */
+"usage.activity.peakCell" = "Peak %1$@ · %2$@ %3$@";
+
+/* Low end of the activity grid's intensity legend */
+"usage.activity.quiet" = "Quiet";
+
+/* A token count in the activity grid's tooltip; the number is already abbreviated at the call site */
+"usage.activity.tokensShort" = "%1$@ tok";
+
 /* Tab over the Usage Stats breakdown table: one row per model. */
 "usage.breakdown.models" = "Models";
 
@@ -2236,6 +2704,21 @@
 
 /* Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests. */
 "usage.breakdown.requests" = "Requests";
+
+/* Accessibility label for the brush strip under a pannable chart */
+"usage.chartNavigator.label" = "Chart range navigator";
+
+/* Accessibility value of the chart range navigator; both ends are already formatted dates */
+"usage.chartNavigator.range" = "%1$@ to %2$@";
+
+/* Accessibility action that returns a chart to its whole domain */
+"usage.chartNavigator.showFullRange" = "Show Full Range";
+
+/* Accessibility action on the chart range navigator */
+"usage.chartNavigator.zoomIn" = "Zoom In";
+
+/* Accessibility action on the chart range navigator */
+"usage.chartNavigator.zoomOut" = "Zoom Out";
 
 /* Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled. */
 "usage.filters.allHarnesses" = "All harnesses";
@@ -2366,14 +2849,41 @@
 /* Empty state when the local per-request ledger could not be opened */
 "usage.ledgerUnavailable.title" = "Usage ledger unavailable";
 
+/* Usage Mix dimension: which local CLI or app produced the tokens; the harness names themselves are not translated */
+"usage.mix.dimension.harnesses" = "Harnesses";
+
+/* Usage Mix dimension: which model the tokens were spent on */
+"usage.mix.dimension.models" = "Models";
+
+/* Usage Mix dimension: which working directory the tokens came from */
+"usage.mix.dimension.projects" = "Projects";
+
 /* Unit under the total in the middle of a donut card. */
 "usage.mix.donutUnit" = "tokens";
+
+/* Token Flow slice: cached tokens */
+"usage.mix.flow.cache" = "Cache";
+
+/* Detail under the cache slice, naming the two cache token kinds it sums */
+"usage.mix.flow.cacheDetail" = "read + creation";
+
+/* Token Flow slice: input tokens that were not served from cache */
+"usage.mix.flow.freshInput" = "Fresh input";
+
+/* Token Flow slice: tokens the model produced */
+"usage.mix.flow.output" = "Output";
 
 /* Caption under the Harness Mix donut title. */
 "usage.mix.harness.subtitle" = "where requests ran";
 
 /* Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title. */
 "usage.mix.harness.title" = "Harness Mix";
+
+/* Scope caption beside the Usage Mix title */
+"usage.mix.lastThirtyDays" = "Last 30 days";
+
+/* Usage Mix empty state when the per-request ledger could not be opened */
+"usage.mix.ledgerUnreadable" = "Usage ledger could not be read.";
 
 /* Empty state inside the Model Mix donut card. */
 "usage.mix.model.empty" = "No model traffic in this range";
@@ -2404,6 +2914,9 @@
 
 /* Donut card on the Usage Stats distribution wall: tokens by L1 company. */
 "usage.mix.provider.title" = "Provider Mix";
+
+/* Title of the Overview card that splits recent tokens by project, harness, model or token kind */
+"usage.mix.title" = "Usage Mix";
 
 /* Empty state inside the Token Flow donut card. */
 "usage.mix.tokenFlow.empty" = "No token traffic in this range";
@@ -2603,8 +3116,26 @@
 /* Heatmap title on the Google AI page */
 "usage.whenYouUse.googleAI" = "When you use Google AI";
 
+/* Title of the weekday-by-hour activity card for one provider */
+"usage.whenYouUse.provider" = "When you use %1$@";
+
 /* Heatmap title on the SpaceXAI page */
 "usage.whenYouUse.spaceXAI" = "When you use SpaceXAI";
+
+/* Low end of the past-year grid's intensity legend */
+"usage.yearHeatmap.less" = "Less";
+
+/* High end of the past-year grid's intensity legend */
+"usage.yearHeatmap.more" = "More";
+
+/* Title of the past-year contribution grid; provider is a name and is not translated */
+"usage.yearHeatmap.title" = "%1$@ — Past Year";
+
+/* Tooltip on one day of the past-year grid */
+"usage.yearHeatmap.tooltip" = "%1$@ · %2$@";
+
+/* Caption beside the past-year grid's title; amount is already formatted currency */
+"usage.yearHeatmap.total" = "%1$@ total";
 
 /* Tooltip on the Workbench header button that switches the window to dark */
 "workbench.appearance.useDark" = "Use dark appearance";

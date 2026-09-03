@@ -29,14 +29,23 @@ public extension UsageHeatmap {
         return best.value > 0 ? (best.weekday, best.hour) : nil
     }
 
-    /// 12-hour formatter for a 0..23 hour index — "12am", "3am", "12pm", "3pm".
-    /// Used in peak labels, axis ticks, and cell tooltips so the merged
-    /// activity card never mixes 12h and 24h styles.
+    /// Fixed reference zone for the hour-only formatter below.
+    private static let utc = TimeZone(secondsFromGMT: 0) ?? .current
+
+    /// A 0..23 hour index as the app's language writes a clock hour —
+    /// "3 PM" in English, "15时" in Chinese. Used in peak labels, axis ticks
+    /// and cell tooltips, so the merged activity card never mixes styles.
     static func formatHourLabel(_ hour: Int) -> String {
-        switch hour {
-        case 0:  return "12am"
-        case 12: return "12pm"
-        default: return hour < 12 ? "\(hour)am" : "\(hour - 12)pm"
-        }
+        // A wall-clock hour with no date behind it, spelled the way the
+        // app's language spells one: "3 PM" in English, "15时" in Chinese.
+        // The reference day is fixed and UTC so only the hour survives.
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = Self.utc
+        let components = DateComponents(
+            year: 2_000, month: 1, day: 1, hour: max(0, min(23, hour))
+        )
+        guard let date = calendar.date(from: components) else { return "" }
+        return AppLocale.dateFormatter(template: "j", timeZone: Self.utc)
+            .string(from: date)
     }
 }

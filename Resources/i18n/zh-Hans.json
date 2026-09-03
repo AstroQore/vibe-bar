@@ -98,6 +98,9 @@
   "common.name": {
     "value": "名称"
   },
+  "common.noData": {
+    "value": "无记录数据"
+  },
   "common.off": {
     "value": "已关闭"
   },
@@ -155,6 +158,15 @@
   "cost.allProviders": {
     "value": "全部厂商"
   },
+  "cost.chart.metricCostHelp": {
+    "value": "按美元绘制花费"
+  },
+  "cost.chart.metricTokens": {
+    "value": "Tok"
+  },
+  "cost.chart.metricTokensHelp": {
+    "value": "按 token 数量绘制"
+  },
   "cost.empty.antigravity": {
     "value": "暂未发现 Antigravity 会话的 token 元数据。"
   },
@@ -188,8 +200,80 @@
   "cost.googleAI.title": {
     "value": "Google AI 花费"
   },
+  "cost.granularity.auto": {
+    "value": "自动"
+  },
+  "cost.granularity.day": {
+    "value": "天"
+  },
+  "cost.granularity.hour": {
+    "value": "小时"
+  },
+  "cost.granularity.month": {
+    "value": "月"
+  },
+  "cost.granularity.week": {
+    "value": "周"
+  },
   "cost.history.allProviders": {
     "value": "全部厂商花费历史"
+  },
+  "cost.history.building": {
+    "value": "正在积累历史…"
+  },
+  "cost.history.buildingDetail": {
+    "value": "下一次本机扫描后会出现花费样本。"
+  },
+  "cost.history.clearModelSelection": {
+    "value": "清除模型选择"
+  },
+  "cost.history.emptyCost": {
+    "value": "所选范围内没有花费记录。"
+  },
+  "cost.history.emptyTokens": {
+    "value": "所选范围内没有 token 记录。"
+  },
+  "cost.history.extentNote": {
+    "value": "{span} · {start} – {end}"
+  },
+  "cost.history.granularityDisabled": {
+    "value": "{granularity}需要不同的缩放级别"
+  },
+  "cost.history.groupBy": {
+    "value": "按{granularity}聚合花费历史"
+  },
+  "cost.history.hourlyFallback": {
+    "value": "无按小时数据 · 改按天显示"
+  },
+  "cost.history.metricAverage": {
+    "value": "平均/{granularity}"
+  },
+  "cost.history.metricPeak": {
+    "value": "峰值"
+  },
+  "cost.history.metricTotal": {
+    "value": "合计"
+  },
+  "cost.history.modelDetailUnavailable": {
+    "value": "该历史区间没有保留按模型的明细。"
+  },
+  "cost.history.modelsAt": {
+    "value": "模型 · {when}"
+  },
+  "cost.history.moreModels": {
+    "value": "另有 {count} 项 · 点击查看"
+  },
+  "cost.history.navigator": {
+    "value": "花费历史范围导航"
+  },
+  "cost.history.title": {
+    "value": "花费历史"
+  },
+  "cost.history.weekOf": {
+    "value": "{date} 当周"
+  },
+  "cost.history.weekShortOf": {
+    "value": "{date} 当周"
   },
   "cost.metric.peakDay": {
     "value": "单日最高"
@@ -662,14 +746,38 @@
   "popover.header.machinesSubtitle": {
     "value": "端到端加密的远程用量"
   },
+  "popover.header.mini": {
+    "value": "迷你窗口"
+  },
   "popover.header.miscSubtitle": {
     "value": "仅用量 · 登录或粘贴密钥"
+  },
+  "popover.header.openWorkbench": {
+    "value": "打开 Workbench"
   },
   "popover.header.overviewSubtitle": {
     "value": "全部厂商 · 额度与花费"
   },
+  "popover.header.refreshing": {
+    "value": "正在刷新…"
+  },
+  "popover.header.settings": {
+    "value": "设置"
+  },
+  "popover.header.updatedLine": {
+    "value": "{subtitle} · {updated}"
+  },
   "popover.machines.checking": {
     "value": "正在检查 Relay…"
+  },
+  "popover.machines.freshness.delayed": {
+    "value": "延迟"
+  },
+  "popover.machines.freshness.live": {
+    "value": "实时"
+  },
+  "popover.machines.freshness.stale": {
+    "value": "已过期"
   },
   "popover.machines.includeInTotals": {
     "value": "计入总计"
@@ -719,11 +827,32 @@
   "popover.tab.overview": {
     "value": "总览"
   },
+  "quota.awaitingFirstObservation": {
+    "value": "等待首次额度观测"
+  },
+  "quota.bridge.empty": {
+    "value": "没有仅存在于 CodexBar 的厂商返回额度窗口。重叠的厂商仍显示在 Vibe Bar 自己的卡片上。"
+  },
+  "quota.bridge.refresh": {
+    "value": "刷新 CodexBar 厂商"
+  },
+  "quota.bridge.subtitle": {
+    "value": "额外厂商 · 只读"
+  },
+  "quota.bridge.subtitleVersion": {
+    "value": "CodexBar {version} · 只读"
+  },
+  "quota.bridge.title": {
+    "value": "CodexBar 桥接"
+  },
   "quota.bucket.noResetInfo": {
     "value": "无重置信息"
   },
   "quota.bucket.resetsIn": {
     "value": "距重置 {when}"
+  },
+  "quota.cycleRecordedOnRefill": {
+    "value": "额度补满时记录一个周期"
   },
   "quota.empty.needsLogin.detail": {
     "value": "在终端中运行 `{command} login`，然后刷新。"
@@ -764,6 +893,18 @@
   "quota.forecast.confidence.medium": {
     "value": "中等置信度"
   },
+  "quota.forecast.explain.footer": {
+    "value": "消耗量来自额度观测值。Token 历史只用于推断惯常工作时段的权重，不会换算成额度用量。"
+  },
+  "quota.forecast.explain.hide": {
+    "value": "隐藏预测计算过程"
+  },
+  "quota.forecast.explain.show": {
+    "value": "显示预测计算过程"
+  },
+  "quota.forecast.explain.title": {
+    "value": "该预测的计算方式"
+  },
   "quota.forecast.guidance.atRisk": {
     "value": "降低使用速度，或将任务转移至其他额度"
   },
@@ -787,6 +928,126 @@
   },
   "quota.forecast.guidance.withinTarget": {
     "value": "仍在 {target}% 的安全余量之内"
+  },
+  "quota.forecast.legend.item": {
+    "value": "{label} {value}"
+  },
+  "quota.forecast.metric.aboveTarget": {
+    "value": "高于目标 {percent}% 的额度"
+  },
+  "quota.forecast.metric.activityFallback": {
+    "value": "形成习惯数据前按自然时间兜底"
+  },
+  "quota.forecast.metric.activityTiming": {
+    "value": "活跃时段"
+  },
+  "quota.forecast.metric.activityWeighted": {
+    "value": "按星期与小时加权"
+  },
+  "quota.forecast.metric.behaviorDetail": {
+    "value": "在更强证据不足时使用"
+  },
+  "quota.forecast.metric.behaviorFallback": {
+    "value": "行为兜底"
+  },
+  "quota.forecast.metric.comparableCycles": {
+    "value": "{count, plural, other {# 个}}可比重置周期"
+  },
+  "quota.forecast.metric.coverage": {
+    "value": "覆盖度"
+  },
+  "quota.forecast.metric.coverageDetail": {
+    "value": "新鲜度 {fresh}% · 习惯 {habits}%"
+  },
+  "quota.forecast.metric.coverageValue": {
+    "value": "观测 {observations}% · 历史 {history}%"
+  },
+  "quota.forecast.metric.cyclesPending": {
+    "value": "完整周期会显示在这里"
+  },
+  "quota.forecast.metric.elapsed": {
+    "value": "已过 {percent}%"
+  },
+  "quota.forecast.metric.evidence": {
+    "value": "依据"
+  },
+  "quota.forecast.metric.evidenceDetail": {
+    "value": "{confidence} · 评分 {score}%"
+  },
+  "quota.forecast.metric.evidenceValue": {
+    "value": "{observations} 次观测 · {cycles} 个周期"
+  },
+  "quota.forecast.metric.expectedLeft": {
+    "value": "预计剩余 {percent}%"
+  },
+  "quota.forecast.metric.expectedUsed": {
+    "value": "预计已用 {percent}%"
+  },
+  "quota.forecast.metric.forecastAtReset": {
+    "value": "重置时预测"
+  },
+  "quota.forecast.metric.forecastRange": {
+    "value": "预测区间"
+  },
+  "quota.forecast.metric.insideTarget": {
+    "value": "在目标区间内"
+  },
+  "quota.forecast.metric.noComparison": {
+    "value": "尚无可比数据"
+  },
+  "quota.forecast.metric.plan": {
+    "value": "当前个人计划"
+  },
+  "quota.forecast.metric.planDetail": {
+    "value": "活跃时段 + {target}% 安全余量目标"
+  },
+  "quota.forecast.metric.rangeLeft": {
+    "value": "剩余 {lower}–{upper}%"
+  },
+  "quota.forecast.metric.rangeUsed": {
+    "value": "已用 {lower}–{upper}%"
+  },
+  "quota.forecast.metric.recentBurn": {
+    "value": "近期消耗"
+  },
+  "quota.forecast.metric.recentIntervals": {
+    "value": "{count, plural, other {# 段}}近期区间"
+  },
+  "quota.forecast.metric.recentMissing": {
+    "value": "至少需要两次有效观测"
+  },
+  "quota.forecast.metric.recentTrend": {
+    "value": "近期趋势"
+  },
+  "quota.forecast.metric.safetyTarget": {
+    "value": "安全余量目标"
+  },
+  "quota.forecast.metric.timePace": {
+    "value": "纯时间进度"
+  },
+  "quota.forecast.metric.timePaceDetail": {
+    "value": "按自然时间：{stage}"
+  },
+  "quota.forecast.metric.timePaceMissing": {
+    "value": "需要重置时间与窗口长度"
+  },
+  "quota.forecast.metric.trendDetail": {
+    "value": "最近 7 天对比之前 21 天"
+  },
+  "quota.forecast.metric.trendDetailMissing": {
+    "value": "需要更早的每日活跃数据"
+  },
+  "quota.forecast.metric.trendMissing": {
+    "value": "尚无基线"
+  },
+  "quota.forecast.metric.trendMultiplier": {
+    "value": "活跃度 {multiplier}×"
+  },
+  "quota.forecast.metric.unavailable": {
+    "value": "不可用"
+  },
+  "quota.forecast.metric.uncertaintyInterval": {
+    "value": "不确定区间"
   },
   "quota.forecast.reset.atRisk": {
     "value": "很可能在重置前耗尽"
@@ -832,6 +1093,12 @@
   },
   "quota.forecast.useUp.uncertain": {
     "value": "耗尽时间不确定 · 可能在重置前不足"
+  },
+  "quota.forecast.value.atReset": {
+    "value": "重置时{value}"
+  },
+  "quota.forecast.value.expectedNow": {
+    "value": "当前预期{value}"
   },
   "quota.forecast.value.left": {
     "value": "剩余 {percent}%"
@@ -917,6 +1184,63 @@
   "quota.group.weeklyCredits": {
     "value": "每周额度"
   },
+  "quota.history.allCurvesHidden": {
+    "value": "所有曲线均已隐藏 — 请从上方菜单中选择。"
+  },
+  "quota.history.buildingUp": {
+    "value": "额度历史会随刷新逐步积累。"
+  },
+  "quota.history.curveCount": {
+    "value": "{count, plural, other {# 条}}曲线"
+  },
+  "quota.history.curvePickerA11y": {
+    "value": "选择要显示的额度曲线"
+  },
+  "quota.history.curvesAll": {
+    "value": "全部 {total}"
+  },
+  "quota.history.curvesSome": {
+    "value": "{total} 中的 {shown}"
+  },
+  "quota.history.forecastLegend": {
+    "value": "预测"
+  },
+  "quota.history.moreBuckets": {
+    "value": "{names} +{count}"
+  },
+  "quota.history.moreReadings": {
+    "value": "另有 {count} 项"
+  },
+  "quota.history.navigatorAllProviders": {
+    "value": "全部厂商额度历史范围导航"
+  },
+  "quota.history.navigatorProvider": {
+    "value": "额度历史范围导航"
+  },
+  "quota.history.providerCount": {
+    "value": "{count, plural, other {# 家}}厂商"
+  },
+  "quota.history.scopeNote": {
+    "value": "{scope} · 已记录 {total}，显示 {visible}"
+  },
+  "quota.history.showAllCurves": {
+    "value": "显示全部曲线"
+  },
+  "quota.history.showBusiest": {
+    "value": "仅显示最活跃的"
+  },
+  "quota.history.title": {
+    "value": "额度历史"
+  },
+  "quota.history.tooltipAtReset": {
+    "value": "重置时"
+  },
+  "quota.history.tooltipPace": {
+    "value": "进度"
+  },
+  "quota.history.tooltipQuotaLeft": {
+    "value": "剩余额度"
+  },
   "quota.login.claude": {
     "value": "运行 claude login，然后刷新。"
   },
@@ -932,17 +1256,92 @@
   "quota.login.misc": {
     "value": "在「设置 → 其他厂商」中配置 {provider}。"
   },
+  "quota.mini.forecastLearning": {
+    "value": "学习中 · 剩余 {percent}%"
+  },
+  "quota.mini.forecastLearningCompact": {
+    "value": "约剩余 {percent}%"
+  },
+  "quota.mini.forecastLeft": {
+    "value": "剩余 {percent}%"
+  },
+  "quota.mini.forecastLeftCompact": {
+    "value": "剩余 {percent}%"
+  },
+  "quota.mini.forecastMayRunOut": {
+    "value": "可能 {countdown}耗尽"
+  },
+  "quota.mini.forecastSurplus": {
+    "value": "盈余 · 剩余 {percent}%"
+  },
+  "quota.mini.forecastSurplusCompact": {
+    "value": "盈余 {percent}%"
+  },
+  "quota.mini.nextProvider": {
+    "value": "下一个厂商"
+  },
+  "quota.mini.noLiveData": {
+    "value": "所选字段暂无实时数据"
+  },
+  "quota.mini.pageIndicator": {
+    "value": "{index}/{total}"
+  },
+  "quota.mini.railEmpty": {
+    "value": "所选项目在未来 7 天内没有补额。"
+  },
+  "quota.mini.railTitle": {
+    "value": "额度重置 · 未来 {days} 天"
+  },
+  "quota.mini.resets": {
+    "value": "{countdown}重置"
+  },
+  "quota.mini.rowHelp": {
+    "value": "{subProvider} — {row}：{percent}%"
+  },
+  "quota.misc.independentCopies": {
+    "value": "{count, plural, other {# 份}}独立配置"
+  },
+  "quota.misc.notConfigured": {
+    "value": "尚未配置。"
+  },
+  "quota.misc.refreshCopies": {
+    "value": "刷新 {provider} 的全部副本"
+  },
+  "quota.misc.refreshProvider": {
+    "value": "刷新 {provider}"
+  },
+  "quota.misc.setUpInSettings": {
+    "value": "在设置中配置"
+  },
   "quota.mode.remaining": {
     "value": "剩余"
   },
   "quota.mode.used": {
     "value": "已用"
   },
+  "quota.pace.deficit": {
+    "value": "超支 {percent}%"
+  },
+  "quota.pace.deficitShort": {
+    "value": "超支 {percent}%"
+  },
   "quota.pace.lastsUntilReset": {
     "value": "可用到重置"
   },
+  "quota.pace.onTrack": {
+    "value": "进度正常"
+  },
+  "quota.pace.reserve": {
+    "value": "结余 {percent}%"
+  },
+  "quota.pace.reserveShort": {
+    "value": "结余 {percent}%"
+  },
   "quota.pace.runsOutIn": {
     "value": "{countdown}后耗尽"
+  },
+  "quota.pace.runsOutShort": {
+    "value": "{countdown}耗尽"
   },
   "quota.perModelLimits": {
     "value": "{count, plural, other {# 个}}按模型的限额 · 打开 {provider} 查看详情"
@@ -992,11 +1391,35 @@
   "quota.resetHistory.axis.timeHelp": {
     "value": "按实际发生时间排布在同一条日历上"
   },
+  "quota.resetHistory.axisCurrent": {
+    "value": "当前"
+  },
   "quota.resetHistory.axisCyclesBack": {
     "value": "−{count}"
   },
   "quota.resetHistory.axisNow": {
     "value": "现在"
+  },
+  "quota.resetHistory.barIsOneCycle": {
+    "value": "每根柱条代表一个额度周期"
+  },
+  "quota.resetHistory.compareEmpty": {
+    "value": "暂无可对比的数据 — 厂商上报按周或更长周期的额度后会显示在此。"
+  },
+  "quota.resetHistory.compareTitle": {
+    "value": "重置历史对比"
+  },
+  "quota.resetHistory.compareWindow": {
+    "value": "对比{window}"
+  },
+  "quota.resetHistory.currentCycleCaption": {
+    "value": "当前周期 · 已用 {used}% · 剩余 {left}%"
+  },
+  "quota.resetHistory.cycleCaption": {
+    "value": "{time} 重置 · 已用 {used}% · 剩余 {left}%"
+  },
+  "quota.resetHistory.earlyRefillCount": {
+    "value": "{count, plural, other {# 个周期}}在窗口结束前补额"
   },
   "quota.resetHistory.lane.emptyState": {
     "value": "尚无完整周期 — 额度补满时才会记录一个周期"
@@ -1013,6 +1436,21 @@
   "quota.resetHistory.lane.wasteSummary": {
     "value": "平均浪费 {percent}% · 最近 {count, plural, other {# 个周期}}"
   },
+  "quota.resetHistory.lastSeenBefore": {
+    "value": "重置前 {duration}最后一次观测"
+  },
+  "quota.resetHistory.legend.barHeight": {
+    "value": "柱高 = 重置时剩余"
+  },
+  "quota.resetHistory.legend.byDate": {
+    "value": "按日期排布"
+  },
+  "quota.resetHistory.legend.perCycle": {
+    "value": "每个周期一列"
+  },
+  "quota.resetHistory.legend.refilledEarly": {
+    "value": "提前补额"
+  },
   "quota.resetHistory.reset.earlyClockRestarted": {
     "value": "提前补额，下一周期重新计时"
   },
@@ -1021,6 +1459,12 @@
   },
   "quota.resetHistory.reset.earlyUnclear": {
     "value": "提前补额，重置节奏已改变"
+  },
+  "quota.resetHistory.retiredAccount": {
+    "value": "已登出的账号"
+  },
+  "quota.resetHistory.retiredAccountNumbered": {
+    "value": "已登出的账号 {number}"
   },
   "quota.resetHistory.spoken.allCycles": {
     "value": "全部已记录周期"
@@ -1048,6 +1492,18 @@
   },
   "quota.resetHistory.title": {
     "value": "重置历史"
+  },
+  "quota.resetHistory.tooltip.completed": {
+    "value": "重置时剩余 {left}% · 已用 {used}%"
+  },
+  "quota.resetHistory.tooltip.current": {
+    "value": "当前周期 · 当前剩余 {left}% · 已用 {used}%"
+  },
+  "quota.resetHistory.tooltip.range": {
+    "value": "{start} → {end} 重置"
+  },
+  "quota.resetHistory.tooltip.rangeDue": {
+    "value": "{start} → {end} 预计重置"
   },
   "quota.resetHistory.totals.headline": {
     "value": "已用 {used}% · 浪费 {wasted}% · {count, plural, other {# 个周期}}"
@@ -1117,6 +1573,15 @@
   },
   "quota.update.failed": {
     "value": "更新失败：{reason}"
+  },
+  "quota.window.dayOfDays": {
+    "value": "第 {day}/{total} 天 · {value}"
+  },
+  "quota.window.elapsedOfWindow": {
+    "value": "{window} 已过 {elapsed} · {value}"
+  },
+  "quota.window.resetsSoon": {
+    "value": "即将重置 · {value}"
   },
   "settings.antigravityCookieEnabled": {
     "value": "Antigravity 的 cookie 导入已启用 — 请先在 antigravity.google 登录。"
@@ -2249,6 +2714,27 @@
   "status.overview.title": {
     "value": "状态"
   },
+  "usage.activity.a11y": {
+    "value": "按星期与小时划分的 token 用量，7 天 × 24 小时"
+  },
+  "usage.activity.cellTooltip": {
+    "value": "{day} {hour} · {tokens}"
+  },
+  "usage.activity.heavy": {
+    "value": "繁忙"
+  },
+  "usage.activity.peak": {
+    "value": "高峰 {hour} · {day}"
+  },
+  "usage.activity.peakCell": {
+    "value": "高峰 {hour} · {day} {cellHour}"
+  },
+  "usage.activity.quiet": {
+    "value": "清闲"
+  },
+  "usage.activity.tokensShort": {
+    "value": "{tokens} tok"
+  },
   "usage.breakdown.models": {
     "value": "模型"
   },
@@ -2263,6 +2749,21 @@
   },
   "usage.breakdown.requests": {
     "value": "请求"
+  },
+  "usage.chartNavigator.label": {
+    "value": "图表范围导航"
+  },
+  "usage.chartNavigator.range": {
+    "value": "{start} 至 {end}"
+  },
+  "usage.chartNavigator.showFullRange": {
+    "value": "显示完整范围"
+  },
+  "usage.chartNavigator.zoomIn": {
+    "value": "放大"
+  },
+  "usage.chartNavigator.zoomOut": {
+    "value": "缩小"
   },
   "usage.filters.allHarnesses": {
     "value": "全部 harness"
@@ -2402,14 +2903,41 @@
   "usage.ledgerUnavailable.title": {
     "value": "用量账本不可用"
   },
+  "usage.mix.dimension.harnesses": {
+    "value": "Harness"
+  },
+  "usage.mix.dimension.models": {
+    "value": "模型"
+  },
+  "usage.mix.dimension.projects": {
+    "value": "项目"
+  },
   "usage.mix.donutUnit": {
     "value": "token"
+  },
+  "usage.mix.flow.cache": {
+    "value": "缓存"
+  },
+  "usage.mix.flow.cacheDetail": {
+    "value": "读取 + 写入"
+  },
+  "usage.mix.flow.freshInput": {
+    "value": "新增输入"
+  },
+  "usage.mix.flow.output": {
+    "value": "输出"
   },
   "usage.mix.harness.subtitle": {
     "value": "请求的运行位置"
   },
   "usage.mix.harness.title": {
     "value": "Harness 分布"
+  },
+  "usage.mix.lastThirtyDays": {
+    "value": "最近 30 天"
+  },
+  "usage.mix.ledgerUnreadable": {
+    "value": "无法读取用量账本。"
   },
   "usage.mix.model.empty": {
     "value": "所选范围内没有模型流量"
@@ -2443,6 +2971,9 @@
   },
   "usage.mix.provider.title": {
     "value": "厂商分布"
+  },
+  "usage.mix.title": {
+    "value": "用量构成"
   },
   "usage.mix.tokenFlow.empty": {
     "value": "所选范围内没有 token 流量"
@@ -2666,8 +3197,29 @@
   "usage.whenYouUse.googleAI": {
     "value": "Google AI 使用时段"
   },
+  "usage.whenYouUse.provider": {
+    "value": "{provider} 使用时段"
+  },
   "usage.whenYouUse.spaceXAI": {
     "value": "SpaceXAI 使用时段"
+  },
+  "usage.yearHeatmap.a11y": {
+    "value": "{provider} 过去一年的每日花费，共 {count, plural, other {# 周}}"
+  },
+  "usage.yearHeatmap.less": {
+    "value": "较少"
+  },
+  "usage.yearHeatmap.more": {
+    "value": "较多"
+  },
+  "usage.yearHeatmap.title": {
+    "value": "{provider} — 过去一年"
+  },
+  "usage.yearHeatmap.tooltip": {
+    "value": "{date} · {amount}"
+  },
+  "usage.yearHeatmap.total": {
+    "value": "合计 {amount}"
   },
   "workbench.appearance.useDark": {
     "value": "使用深色外观"

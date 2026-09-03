@@ -60,7 +60,7 @@ struct ChartBrushNavigator<Mini: View>: View {
     /// purpose — the visible handle is a hairline, but a 10pt reach makes it
     /// catchable with a trackpad.
     var handleHitWidth: CGFloat = 10
-    var accessibilityDescription: String = "Chart range navigator"
+    var accessibilityDescription: String = L10n.Usage.chartNavigatorLabel
     @ViewBuilder var mini: (ChartBrushGeometry) -> Mini
 
     /// Which edge (if any) the in-flight drag grabbed. Classified once at the
@@ -119,13 +119,13 @@ struct ChartBrushNavigator<Mini: View>: View {
                 break
             }
         }
-        .accessibilityAction(named: "Zoom In") {
+        .accessibilityAction(named: L10n.Usage.chartNavigatorZoomIn) {
             window = window.zoomed(scale: 1.6, around: window.visibleMidpoint)
         }
-        .accessibilityAction(named: "Zoom Out") {
+        .accessibilityAction(named: L10n.Usage.chartNavigatorZoomOut) {
             window = window.zoomed(scale: 0.625, around: window.visibleMidpoint)
         }
-        .accessibilityAction(named: "Show Full Range") {
+        .accessibilityAction(named: L10n.Usage.chartNavigatorShowFullRange) {
             window = window.jumped(toSpan: window.domainSpan)
         }
     }
@@ -133,7 +133,7 @@ struct ChartBrushNavigator<Mini: View>: View {
     private var accessibilityRangeValue: String {
         let start = AppLocale.string(window.visibleStart, dateStyle: .medium, timeStyle: .short)
         let end = AppLocale.string(window.visibleEnd, dateStyle: .medium, timeStyle: .short)
-        return "\(start) to \(end)"
+        return L10n.Usage.chartNavigatorRange(start: start, end: end)
     }
 
     // MARK: - Overlay pieces
@@ -406,12 +406,15 @@ struct ChartRangePills: View {
         let isSelected: Bool
     }
 
-    private static let spans: [(String, TimeInterval)] = [
-        ("6h", 6 * 3_600),
-        ("24h", 24 * 3_600),
-        ("3d", 3 * 86_400),
-        ("7d", 7 * 86_400)
-    ]
+    /// Derived per render rather than cached. A `static let` here held the
+    /// labels in whatever language the process launched in — and four tuples
+    /// are cheaper to rebuild than a language-keyed cache is to reason about.
+    private static var spans: [(String, TimeInterval)] {[
+        (L10n.Common.durationHours(hours: 6), 6 * 3_600),
+        (L10n.Common.durationHours(hours: 24), 24 * 3_600),
+        (L10n.Common.durationDays(days: 3), 3 * 86_400),
+        (L10n.Common.durationDays(days: 7), 7 * 86_400)
+    ]}
 
     private var options: [Option] {
         guard window.domainSpan > 0 else { return [] }
@@ -427,7 +430,14 @@ struct ChartRangePills: View {
                         && abs(window.visibleSpan - span) <= span * 0.03
                 )
             }
-        result.append(Option(id: "all", label: "All", span: nil, isSelected: window.coversDomain))
+        result.append(
+            Option(
+                id: "all",
+                label: L10n.Cost.timeframeAll,
+                span: nil,
+                isSelected: window.coversDomain
+            )
+        )
         return result
     }
 

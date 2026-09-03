@@ -101,6 +101,9 @@
 /* Field label for a user-chosen name */
 "common.name" = "名称";
 
+/* A chart tooltip row for a moment nothing was recorded — the app was not watching, rather than the value being zero */
+"common.noData" = "无记录数据";
+
 /* A toggle's state, read as a value in a summary row */
 "common.off" = "已关闭";
 
@@ -149,6 +152,15 @@
 /* Scope name for the combined cost card */
 "cost.allProviders" = "全部厂商";
 
+/* Tooltip on the cost chart's dollar option */
+"cost.chart.metricCostHelp" = "按美元绘制花费";
+
+/* Segmented-control label that plots token volume instead of spend; the dollar option is the '$' sign and needs no key */
+"cost.chart.metricTokens" = "Tok";
+
+/* Tooltip on the cost chart's token option */
+"cost.chart.metricTokensHelp" = "按 token 数量绘制";
+
 /* Empty cost history */
 "cost.empty.antigravity" = "暂未发现 Antigravity 会话的 token 元数据。";
 
@@ -182,8 +194,80 @@
 /* Card title; the company name is never translated */
 "cost.googleAI.title" = "Google AI 花费";
 
+/* Cost chart bucket width that follows the visible span instead of being pinned */
+"cost.granularity.auto" = "自动";
+
+/* Cost chart bucket width: one bar per day */
+"cost.granularity.day" = "天";
+
+/* Cost chart bucket width: one bar per hour */
+"cost.granularity.hour" = "小时";
+
+/* Cost chart bucket width: one bar per calendar month */
+"cost.granularity.month" = "月";
+
+/* Cost chart bucket width: one bar per week */
+"cost.granularity.week" = "周";
+
 /* Card title on the Overview */
 "cost.history.allProviders" = "全部厂商花费历史";
+
+/* Empty state of the cost history chart before the first samples exist */
+"cost.history.building" = "正在积累历史…";
+
+/* Second line of the cost history chart's empty state */
+"cost.history.buildingDetail" = "下一次本机扫描后会出现花费样本。";
+
+/* Tooltip on the button that closes the model breakdown panel */
+"cost.history.clearModelSelection" = "清除模型选择";
+
+/* Overlay on the cost chart when the visible range holds no spend */
+"cost.history.emptyCost" = "所选范围内没有花费记录。";
+
+/* Overlay on the cost chart when the visible range holds no tokens */
+"cost.history.emptyTokens" = "所选范围内没有 token 记录。";
+
+/* Caption naming the visible span of the cost chart and the dates at its ends */
+"cost.history.extentNote" = "%1$@ · %2$@ – %3$@";
+
+/* Tooltip on a bucket-width button the current zoom level cannot draw */
+"cost.history.granularityDisabled" = "%1$@需要不同的缩放级别";
+
+/* Tooltip on a bucket-width button in the cost chart */
+"cost.history.groupBy" = "按%1$@聚合花费历史";
+
+/* Note under the cost chart when hourly buckets were asked for but only daily ones exist that far back */
+"cost.history.hourlyFallback" = "无按小时数据 · 改按天显示";
+
+/* Summary figure under the cost chart: the per-bucket average; granularity is the bucket width */
+"cost.history.metricAverage" = "平均/%1$@";
+
+/* Summary figure under the cost chart: the largest single bucket */
+"cost.history.metricPeak" = "峰值";
+
+/* Summary figure under the cost chart: the visible range's total */
+"cost.history.metricTotal" = "合计";
+
+/* Shown in the model breakdown panel for a bucket old enough that per-model rows were not kept */
+"cost.history.modelDetailUnavailable" = "该历史区间没有保留按模型的明细。";
+
+/* Heading of the model breakdown panel; when is the bucket the user clicked */
+"cost.history.modelsAt" = "模型 · %1$@";
+
+/* Last row of a cost-chart tooltip, standing in for the models it could not fit */
+"cost.history.moreModels" = "另有 %1$lld 项 · 点击查看";
+
+/* Accessibility label for the range navigator under the cost history chart */
+"cost.history.navigator" = "花费历史范围导航";
+
+/* Title of the navigable cost history chart */
+"cost.history.title" = "花费历史";
+
+/* Cost chart tooltip heading for a weekly bucket; date is the week's first day */
+"cost.history.weekOf" = "%1$@ 当周";
+
+/* Compact form of the weekly bucket label, used under the peak figure */
+"cost.history.weekShortOf" = "%1$@ 当周";
 
 /* All-caps metric label: the most expensive day on record */
 "cost.metric.peakDay" = "单日最高";
@@ -656,14 +740,38 @@
 /* Subtitle under the Machines page header */
 "popover.header.machinesSubtitle" = "端到端加密的远程用量";
 
+/* Tooltip on the popover header button that opens the floating mini window */
+"popover.header.mini" = "迷你窗口";
+
 /* Subtitle under the Misc Providers page header */
 "popover.header.miscSubtitle" = "仅用量 · 登录或粘贴密钥";
+
+/* Tooltip on the popover header button that opens the Workbench window */
+"popover.header.openWorkbench" = "打开 Workbench";
 
 /* Subtitle under the Overview page header */
 "popover.header.overviewSubtitle" = "全部厂商 · 额度与花费";
 
+/* Popover header caption while a refresh is in flight */
+"popover.header.refreshing" = "正在刷新…";
+
+/* Tooltip on the popover header's gear button */
+"popover.header.settings" = "设置";
+
+/* Popover header caption: the page's own subtitle followed by how long ago the data was updated */
+"popover.header.updatedLine" = "%1$@ · %2$@";
+
 /* Empty-state title while a sync is in flight */
 "popover.machines.checking" = "正在检查 Relay…";
+
+/* Badge on a remote machine whose last report is later than expected */
+"popover.machines.freshness.delayed" = "延迟";
+
+/* Badge on a remote machine reporting on schedule */
+"popover.machines.freshness.live" = "实时";
+
+/* Badge on a remote machine that has not reported for a long time */
+"popover.machines.freshness.stale" = "已过期";
 
 /* Toggle on a remote machine card */
 "popover.machines.includeInTotals" = "计入总计";
@@ -713,11 +821,32 @@
 /* Popover tab. The other tabs are company names (OpenAI, Anthropic, Google AI, SpaceXAI) and are never translated. */
 "popover.tab.overview" = "总览";
 
+/* Placeholder inside an empty reset-history strip, before any quota reading has landed */
+"quota.awaitingFirstObservation" = "等待首次额度观测";
+
+/* Empty state of the CodexBar bridge card when every bridged provider is one Vibe Bar already reads natively */
+"quota.bridge.empty" = "没有仅存在于 CodexBar 的厂商返回额度窗口。重叠的厂商仍显示在 Vibe Bar 自己的卡片上。";
+
+/* Tooltip on the CodexBar bridge card's refresh button */
+"quota.bridge.refresh" = "刷新 CodexBar 厂商";
+
+/* Subtitle of the CodexBar bridge card before its version is known */
+"quota.bridge.subtitle" = "额外厂商 · 只读";
+
+/* Subtitle of the CodexBar bridge card once the installed version is known */
+"quota.bridge.subtitleVersion" = "CodexBar %1$@ · 只读";
+
+/* Title of the card listing quota read from a CodexBar install; CodexBar is a product name */
+"quota.bridge.title" = "CodexBar 桥接";
+
 /* Caption under a quota bar when the provider reported no reset time */
 "quota.bucket.noResetInfo" = "无重置信息";
 
 /* Caption under a quota bar; when is a countdown, sometimes with an absolute time */
 "quota.bucket.resetsIn" = "距重置 %1$@";
+
+/* Caption under an empty reset-history strip explaining when a cycle is recorded */
+"quota.cycleRecordedOnRefill" = "额度补满时记录一个周期";
 
 /* Empty state body; command is a CLI name such as codex or claude and is never translated */
 "quota.empty.needsLogin.detail" = "在终端中运行 `%1$@ login`，然后刷新。";
@@ -758,6 +887,18 @@
 /* Forecast confidence level */
 "quota.forecast.confidence.medium" = "中等置信度";
 
+/* Footnote under the forecast metric grid explaining what token history is and is not used for */
+"quota.forecast.explain.footer" = "消耗量来自额度观测值。Token 历史只用于推断惯常工作时段的权重，不会换算成额度用量。";
+
+/* Accessibility label on the disclosure button while the grid is open */
+"quota.forecast.explain.hide" = "隐藏预测计算过程";
+
+/* Accessibility label on the disclosure button while the grid is closed */
+"quota.forecast.explain.show" = "显示预测计算过程";
+
+/* Disclosure button that opens the forecast's metric grid */
+"quota.forecast.explain.title" = "该预测的计算方式";
+
 /* What to do about an at-risk forecast */
 "quota.forecast.guidance.atRisk" = "降低使用速度，或将任务转移至其他额度";
 
@@ -781,6 +922,120 @@
 
 /* Remaining-mode guidance when nothing needs saying */
 "quota.forecast.guidance.withinTarget" = "仍在 %1$lld%% 的安全余量之内";
+
+/* One reference marker in the quota bar legend: its name followed by the figure it marks */
+"quota.forecast.legend.item" = "%1$@ %2$@";
+
+/* Detail under the safety target metric when the forecast leaves capacity above it */
+"quota.forecast.metric.aboveTarget" = "高于目标 %1$lld%% 的额度";
+
+/* Detail under the activity timing metric before any habits exist */
+"quota.forecast.metric.activityFallback" = "形成习惯数据前按自然时间兜底";
+
+/* Forecast metric: how far through the window the user's own working rhythm says we are */
+"quota.forecast.metric.activityTiming" = "活跃时段";
+
+/* Detail under the activity timing metric when weekday and hour habits are known */
+"quota.forecast.metric.activityWeighted" = "按星期与小时加权";
+
+/* Detail under the behavior fallback metric */
+"quota.forecast.metric.behaviorDetail" = "在更强证据不足时使用";
+
+/* Forecast metric: the projection used when stronger inputs are missing */
+"quota.forecast.metric.behaviorFallback" = "行为兜底";
+
+/* Forecast metric: how completely each input covers the window */
+"quota.forecast.metric.coverage" = "覆盖度";
+
+/* Detail under the coverage metric: freshness of the data and how well habits are known */
+"quota.forecast.metric.coverageDetail" = "新鲜度 %1$lld%% · 习惯 %2$lld%%";
+
+/* Value of the coverage metric: observation and reset-history coverage */
+"quota.forecast.metric.coverageValue" = "观测 %1$lld%% · 历史 %2$lld%%";
+
+/* Detail under the reset-history metric before any cycle has completed */
+"quota.forecast.metric.cyclesPending" = "完整周期会显示在这里";
+
+/* Value of the activity timing metric: share of the window already behind us */
+"quota.forecast.metric.elapsed" = "已过 %1$lld%%";
+
+/* Forecast metric: how much data the projection stands on */
+"quota.forecast.metric.evidence" = "依据";
+
+/* Detail under the evidence metric; confidence is the forecast's own confidence label */
+"quota.forecast.metric.evidenceDetail" = "%1$@ · 评分 %2$lld%%";
+
+/* Value of the evidence metric: observations in this cycle and completed cycles behind it */
+"quota.forecast.metric.evidenceValue" = "%1$lld 次观测 · %2$lld 个周期";
+
+/* Detail under the forecast metric while the card shows used percentages */
+"quota.forecast.metric.expectedLeft" = "预计剩余 %1$lld%%";
+
+/* Detail under the forecast metric while the card shows remaining percentages */
+"quota.forecast.metric.expectedUsed" = "预计已用 %1$lld%%";
+
+/* Forecast metric and bar legend entry: the projected figure at the next reset */
+"quota.forecast.metric.forecastAtReset" = "重置时预测";
+
+/* Forecast metric: the spread the projection considers plausible */
+"quota.forecast.metric.forecastRange" = "预测区间";
+
+/* Detail under the safety target metric when the forecast sits inside it */
+"quota.forecast.metric.insideTarget" = "在目标区间内";
+
+/* Value of the reset-history metric before any cycle can be compared */
+"quota.forecast.metric.noComparison" = "尚无可比数据";
+
+/* Forecast metric: where the personal plan says usage should be right now */
+"quota.forecast.metric.plan" = "当前个人计划";
+
+/* Detail under the personal plan metric: what the plan is built from */
+"quota.forecast.metric.planDetail" = "活跃时段 + %1$lld%% 安全余量目标";
+
+/* Value of the forecast range metric in Remaining mode */
+"quota.forecast.metric.rangeLeft" = "剩余 %1$lld–%2$lld%%";
+
+/* Value of the forecast range metric in Used mode */
+"quota.forecast.metric.rangeUsed" = "已用 %1$lld–%2$lld%%";
+
+/* Forecast metric: the projection from the most recent intervals alone */
+"quota.forecast.metric.recentBurn" = "近期消耗";
+
+/* Detail under the recent burn metric when there is not enough recent data */
+"quota.forecast.metric.recentMissing" = "至少需要两次有效观测";
+
+/* Forecast metric: whether recent activity is above or below the earlier baseline */
+"quota.forecast.metric.recentTrend" = "近期趋势";
+
+/* Forecast metric: the share of the quota the user wants to still hold at reset */
+"quota.forecast.metric.safetyTarget" = "安全余量目标";
+
+/* Forecast metric: the projection that only knows how much of the window has elapsed */
+"quota.forecast.metric.timePace" = "纯时间进度";
+
+/* Detail under the time-only pace metric; stage is the pace summary such as '5% in deficit' */
+"quota.forecast.metric.timePaceDetail" = "按自然时间：%1$@";
+
+/* Detail under the time-only pace metric when the bucket reports no window */
+"quota.forecast.metric.timePaceMissing" = "需要重置时间与窗口长度";
+
+/* Detail under the recent trend metric: the two spans being compared */
+"quota.forecast.metric.trendDetail" = "最近 7 天对比之前 21 天";
+
+/* Detail under the recent trend metric when the earlier span has no activity */
+"quota.forecast.metric.trendDetailMissing" = "需要更早的每日活跃数据";
+
+/* Value of the recent trend metric before a baseline exists */
+"quota.forecast.metric.trendMissing" = "尚无基线";
+
+/* Value of the recent trend metric; multiplier is a decimal already formatted at the call site */
+"quota.forecast.metric.trendMultiplier" = "活跃度 %1$@×";
+
+/* Value of a forecast metric whose inputs the bucket does not report */
+"quota.forecast.metric.unavailable" = "不可用";
+
+/* Detail under the forecast range metric */
+"quota.forecast.metric.uncertaintyInterval" = "不确定区间";
 
 /* One-line forecast summary */
 "quota.forecast.reset.atRisk" = "很可能在重置前耗尽";
@@ -826,6 +1081,12 @@
 
 /* Use-up line when no ETA can be derived */
 "quota.forecast.useUp.uncertain" = "耗尽时间不确定 · 可能在重置前不足";
+
+/* A quota figure qualified as the projection for the next reset; value is one of the used/left figures */
+"quota.forecast.value.atReset" = "重置时%1$@";
+
+/* A quota figure qualified as where usage should stand at this moment */
+"quota.forecast.value.expectedNow" = "当前预期%1$@";
 
 /* The forecast figure in Remaining mode, used inside the status line */
 "quota.forecast.value.left" = "剩余 %1$lld%%";
@@ -911,6 +1172,57 @@
 /* Quota group: a weekly credit balance rather than a percentage */
 "quota.group.weeklyCredits" = "每周额度";
 
+/* Empty state of the all-providers quota history chart when every curve has been switched off */
+"quota.history.allCurvesHidden" = "所有曲线均已隐藏 — 请从上方菜单中选择。";
+
+/* Empty state of the quota history chart before enough refreshes have landed */
+"quota.history.buildingUp" = "额度历史会随刷新逐步积累。";
+
+/* Accessibility label for the quota history curve picker */
+"quota.history.curvePickerA11y" = "选择要显示的额度曲线";
+
+/* Curve picker summary when nothing is hidden */
+"quota.history.curvesAll" = "全部 %1$lld";
+
+/* Curve picker summary when some curves are hidden */
+"quota.history.curvesSome" = "%2$lld 中的 %1$lld";
+
+/* Legend entry marking the dotted projection line on the quota history chart */
+"quota.history.forecastLegend" = "预测";
+
+/* Scope note when a group holds more quotas than the note can name; names are the ones it did name */
+"quota.history.moreBuckets" = "%1$@ +%2$lld";
+
+/* Last row of a crowded chart tooltip, standing in for the readings it could not fit */
+"quota.history.moreReadings" = "另有 %1$lld 项";
+
+/* Accessibility label for the range navigator under the all-providers quota chart */
+"quota.history.navigatorAllProviders" = "全部厂商额度历史范围导航";
+
+/* Accessibility label for the range navigator under a single provider's quota chart */
+"quota.history.navigatorProvider" = "额度历史范围导航";
+
+/* Footer under a quota history chart; scope names what the chart covers, visible and total are compact spans such as 7d */
+"quota.history.scopeNote" = "%1$@ · 已记录 %3$@，显示 %2$@";
+
+/* Menu item that puts every quota curve back on the chart */
+"quota.history.showAllCurves" = "显示全部曲线";
+
+/* Menu item that leaves only the most-used quota curves on the chart */
+"quota.history.showBusiest" = "仅显示最活跃的";
+
+/* Title of the quota history chart card */
+"quota.history.title" = "额度历史";
+
+/* Tooltip row on the quota history chart: the projection for the next reset */
+"quota.history.tooltipAtReset" = "重置时";
+
+/* Tooltip row on the quota history chart: where the wall clock said usage should be */
+"quota.history.tooltipPace" = "进度";
+
+/* Tooltip row on the quota history chart: the recorded remaining quota */
+"quota.history.tooltipQuotaLeft" = "剩余额度";
+
 /* What to do when no credential is stored */
 "quota.login.claude" = "运行 claude login，然后刷新。";
 
@@ -926,17 +1238,89 @@
 /* Fallback for a misc provider; provider is a SubProvider name */
 "quota.login.misc" = "在「设置 → 其他厂商」中配置 %1$@。";
 
+/* Mini window forecast line while the forecast is still learning the usage pattern */
+"quota.mini.forecastLearning" = "学习中 · 剩余 %1$lld%%";
+
+/* Narrow form of the mini window learning forecast line */
+"quota.mini.forecastLearningCompact" = "约剩余 %1$lld%%";
+
+/* Mini window forecast line for a quota that is comfortably ahead */
+"quota.mini.forecastLeft" = "剩余 %1$lld%%";
+
+/* Narrow form of the mini window forecast line for a quota that is comfortably ahead */
+"quota.mini.forecastLeftCompact" = "剩余 %1$lld%%";
+
+/* Mini window forecast line for a quota that may, rather than will, be exhausted before reset */
+"quota.mini.forecastMayRunOut" = "可能 %1$@耗尽";
+
+/* Mini window forecast line for a quota expected to finish its window well under target */
+"quota.mini.forecastSurplus" = "盈余 · 剩余 %1$lld%%";
+
+/* Narrow form of the mini window surplus forecast line */
+"quota.mini.forecastSurplusCompact" = "盈余 %1$lld%%";
+
+/* Tooltip on the mini focus layout's button that pages to the next provider */
+"quota.mini.nextProvider" = "下一个厂商";
+
+/* Mini window placeholder when none of the selected fields has a live reading yet */
+"quota.mini.noLiveData" = "所选字段暂无实时数据";
+
+/* Mini focus layout's page counter when there are too many providers for dots */
+"quota.mini.pageIndicator" = "%1$lld/%2$lld";
+
+/* Empty state of the mini window's refill rail; only the user's selected fields are considered */
+"quota.mini.railEmpty" = "所选项目在未来 7 天内没有补额。";
+
+/* Heading of the mini window's refill rail, naming how far ahead it looks */
+"quota.mini.railTitle" = "额度重置 · 未来 %1$lld 天";
+
+/* Mini window caption for when a bucket refills; countdown is a compact span */
+"quota.mini.resets" = "%1$@重置";
+
+/* Tooltip on a mini window row; subProvider and row are names, percent the current reading */
+"quota.mini.rowHelp" = "%1$@ — %2$@：%3$lld%%";
+
+/* Body of a misc provider card that has no credential yet */
+"quota.misc.notConfigured" = "尚未配置。";
+
+/* Tooltip on the refresh button of a misc provider that has several configured copies */
+"quota.misc.refreshCopies" = "刷新 %1$@ 的全部副本";
+
+/* Tooltip on the refresh button of a misc provider's card */
+"quota.misc.refreshProvider" = "刷新 %1$@";
+
+/* Button on an unconfigured misc provider card that opens its settings */
+"quota.misc.setUpInSettings" = "在设置中配置";
+
 /* Caption saying the bar shows what is left */
 "quota.mode.remaining" = "剩余";
 
 /* Caption saying the bar shows what has been spent */
 "quota.mode.used" = "已用";
 
+/* Pace summary when usage is running ahead of the linear expectation */
+"quota.pace.deficit" = "超支 %1$lld%%";
+
+/* Compact form of the pace summary for the mini window when usage runs ahead of the linear expectation */
+"quota.pace.deficitShort" = "超支 %1$lld%%";
+
 /* Legacy elapsed-time pace ETA on a Misc provider card */
 "quota.pace.lastsUntilReset" = "可用到重置";
 
+/* Pace summary when usage matches the linear expectation */
+"quota.pace.onTrack" = "进度正常";
+
+/* Pace summary when usage is running behind the linear expectation */
+"quota.pace.reserve" = "结余 %1$lld%%";
+
+/* Compact form of the pace summary for the mini window when usage runs behind the linear expectation */
+"quota.pace.reserveShort" = "结余 %1$lld%%";
+
 /* Legacy elapsed-time pace ETA on a Misc provider card */
 "quota.pace.runsOutIn" = "%1$@后耗尽";
+
+/* Compact projection in the mini window: when the quota is estimated to be exhausted */
+"quota.pace.runsOutShort" = "%1$@耗尽";
 
 /* Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time */
 "quota.reset.in" = "距重置 %1$@";
@@ -980,11 +1364,32 @@
 /* Tooltip on the Time axis option */
 "quota.resetHistory.axis.timeHelp" = "按实际发生时间排布在同一条日历上";
 
+/* Axis label for the cycle that has not reset yet */
+"quota.resetHistory.axisCurrent" = "当前";
+
 /* Caption on a completed column: how many cycles back it is. The leading character is a minus sign, not a hyphen. */
 "quota.resetHistory.axisCyclesBack" = "−%1$lld";
 
 /* Caption on the live column of the reset-history grid */
 "quota.resetHistory.axisNow" = "现在";
+
+/* Caption beside the reset-history strip's title */
+"quota.resetHistory.barIsOneCycle" = "每根柱条代表一个额度周期";
+
+/* Empty state of the reset history comparison before any weekly or longer quota is known */
+"quota.resetHistory.compareEmpty" = "暂无可对比的数据 — 厂商上报按周或更长周期的额度后会显示在此。";
+
+/* Title of the card that puts every weekly-and-longer quota's reset history side by side */
+"quota.resetHistory.compareTitle" = "重置历史对比";
+
+/* Tooltip on a window button in the reset history comparison; window is the spoken span such as 'last 8 weeks' */
+"quota.resetHistory.compareWindow" = "对比%1$@";
+
+/* Caption for the cycle still running in the reset-history strip */
+"quota.resetHistory.currentCycleCaption" = "当前周期 · 已用 %1$lld%% · 剩余 %2$lld%%";
+
+/* Caption for one completed cycle in the reset-history strip; time is the reset moment */
+"quota.resetHistory.cycleCaption" = "%1$@ 重置 · 已用 %2$lld%% · 剩余 %3$lld%%";
 
 /* Empty-state copy for a lane */
 "quota.resetHistory.lane.emptyState" = "尚无完整周期 — 额度补满时才会记录一个周期";
@@ -998,6 +1403,21 @@
 /* One lane inside the screen-reader summary */
 "quota.resetHistory.lane.spokenWaste" = "%1$@：%3$lld 个周期平均浪费 %2$@%%";
 
+/* Note appended to a cycle caption when the last reading predates the reset by a while */
+"quota.resetHistory.lastSeenBefore" = "重置前 %1$@最后一次观测";
+
+/* Legend entry explaining what a bar's height means in the reset history comparison */
+"quota.resetHistory.legend.barHeight" = "柱高 = 重置时剩余";
+
+/* Legend entry for the time axis: bars sit where they happened on a calendar */
+"quota.resetHistory.legend.byDate" = "按日期排布";
+
+/* Legend entry for the cycle axis: columns are cycles, not dates */
+"quota.resetHistory.legend.perCycle" = "每个周期一列";
+
+/* Legend entry for the dot marking a cycle that refilled before its window was up */
+"quota.resetHistory.legend.refilledEarly" = "提前补额";
+
 /* What the provider did to the clock on an early refill. This shape means a whole window lies ahead, so the extra capacity is usable. */
 "quota.resetHistory.reset.earlyClockRestarted" = "提前补额，下一周期重新计时";
 
@@ -1006,6 +1426,12 @@
 
 /* An early refill that matches neither shape */
 "quota.resetHistory.reset.earlyUnclear" = "提前补额，重置节奏已改变";
+
+/* Lane label for history kept from an account that is no longer signed in */
+"quota.resetHistory.retiredAccount" = "已登出的账号";
+
+/* Lane label for one of several signed-out accounts on the same provider */
+"quota.resetHistory.retiredAccountNumbered" = "已登出的账号 %1$lld";
 
 /* Spoken window name */
 "quota.resetHistory.spoken.allCycles" = "全部已记录周期";
@@ -1033,6 +1459,18 @@
 
 /* Card title on a provider detail page */
 "quota.resetHistory.title" = "重置历史";
+
+/* Tooltip figures for a finished cycle in the reset history comparison */
+"quota.resetHistory.tooltip.completed" = "重置时剩余 %1$lld%% · 已用 %2$lld%%";
+
+/* Tooltip figures for the cycle still running */
+"quota.resetHistory.tooltip.current" = "当前周期 · 当前剩余 %1$lld%% · 已用 %2$lld%%";
+
+/* Tooltip line naming the span a finished cycle covered */
+"quota.resetHistory.tooltip.range" = "%1$@ → %2$@ 重置";
+
+/* Tooltip line naming the span of the cycle still running and when it is due to reset */
+"quota.resetHistory.tooltip.rangeDue" = "%1$@ → %2$@ 预计重置";
 
 /* Header arithmetic when nothing has closed */
 "quota.resetHistory.totals.none" = "该区间内无完整周期";
@@ -1093,6 +1531,15 @@
 
 /* Inline error row; reason is a provider message and is not translated */
 "quota.update.failed" = "更新失败：%1$@";
+
+/* Window progress line for a window measured in whole days */
+"quota.window.dayOfDays" = "第 %1$lld/%2$lld 天 · %3$@";
+
+/* Window progress line for a sub-day window; window is its length, elapsed how much of it is gone */
+"quota.window.elapsedOfWindow" = "%2$@ 已过 %1$@ · %3$@";
+
+/* Window progress line once the reset time has passed but no refresh has landed; value is the used/left figure */
+"quota.window.resetsSoon" = "即将重置 · %1$@";
 
 /* Hint under the Antigravity source picker */
 "settings.antigravityCookieEnabled" = "Antigravity 的 cookie 导入已启用 — 请先在 antigravity.google 登录。";
@@ -2222,6 +2669,27 @@
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "状态";
 
+/* Accessibility label for the 7 by 24 activity grid */
+"usage.activity.a11y" = "按星期与小时划分的 token 用量，7 天 × 24 小时";
+
+/* Tooltip on one cell of the activity grid */
+"usage.activity.cellTooltip" = "%1$@ %2$@ · %3$@";
+
+/* High end of the activity grid's intensity legend */
+"usage.activity.heavy" = "繁忙";
+
+/* Caption naming the busiest hour of the activity card when the peak hour and peak cell agree */
+"usage.activity.peak" = "高峰 %1$@ · %2$@";
+
+/* Caption naming the busiest hour overall and the busiest single cell when they differ */
+"usage.activity.peakCell" = "高峰 %1$@ · %2$@ %3$@";
+
+/* Low end of the activity grid's intensity legend */
+"usage.activity.quiet" = "清闲";
+
+/* A token count in the activity grid's tooltip; the number is already abbreviated at the call site */
+"usage.activity.tokensShort" = "%1$@ tok";
+
 /* Tab over the Usage Stats breakdown table: one row per model. */
 "usage.breakdown.models" = "模型";
 
@@ -2236,6 +2704,21 @@
 
 /* Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests. */
 "usage.breakdown.requests" = "请求";
+
+/* Accessibility label for the brush strip under a pannable chart */
+"usage.chartNavigator.label" = "图表范围导航";
+
+/* Accessibility value of the chart range navigator; both ends are already formatted dates */
+"usage.chartNavigator.range" = "%1$@ 至 %2$@";
+
+/* Accessibility action that returns a chart to its whole domain */
+"usage.chartNavigator.showFullRange" = "显示完整范围";
+
+/* Accessibility action on the chart range navigator */
+"usage.chartNavigator.zoomIn" = "放大";
+
+/* Accessibility action on the chart range navigator */
+"usage.chartNavigator.zoomOut" = "缩小";
 
 /* Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled. */
 "usage.filters.allHarnesses" = "全部 harness";
@@ -2366,14 +2849,41 @@
 /* Empty state when the local per-request ledger could not be opened */
 "usage.ledgerUnavailable.title" = "用量账本不可用";
 
+/* Usage Mix dimension: which local CLI or app produced the tokens; the harness names themselves are not translated */
+"usage.mix.dimension.harnesses" = "Harness";
+
+/* Usage Mix dimension: which model the tokens were spent on */
+"usage.mix.dimension.models" = "模型";
+
+/* Usage Mix dimension: which working directory the tokens came from */
+"usage.mix.dimension.projects" = "项目";
+
 /* Unit under the total in the middle of a donut card. */
 "usage.mix.donutUnit" = "token";
+
+/* Token Flow slice: cached tokens */
+"usage.mix.flow.cache" = "缓存";
+
+/* Detail under the cache slice, naming the two cache token kinds it sums */
+"usage.mix.flow.cacheDetail" = "读取 + 写入";
+
+/* Token Flow slice: input tokens that were not served from cache */
+"usage.mix.flow.freshInput" = "新增输入";
+
+/* Token Flow slice: tokens the model produced */
+"usage.mix.flow.output" = "输出";
 
 /* Caption under the Harness Mix donut title. */
 "usage.mix.harness.subtitle" = "请求的运行位置";
 
 /* Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title. */
 "usage.mix.harness.title" = "Harness 分布";
+
+/* Scope caption beside the Usage Mix title */
+"usage.mix.lastThirtyDays" = "最近 30 天";
+
+/* Usage Mix empty state when the per-request ledger could not be opened */
+"usage.mix.ledgerUnreadable" = "无法读取用量账本。";
 
 /* Empty state inside the Model Mix donut card. */
 "usage.mix.model.empty" = "所选范围内没有模型流量";
@@ -2404,6 +2914,9 @@
 
 /* Donut card on the Usage Stats distribution wall: tokens by L1 company. */
 "usage.mix.provider.title" = "厂商分布";
+
+/* Title of the Overview card that splits recent tokens by project, harness, model or token kind */
+"usage.mix.title" = "用量构成";
 
 /* Empty state inside the Token Flow donut card. */
 "usage.mix.tokenFlow.empty" = "所选范围内没有 token 流量";
@@ -2603,8 +3116,26 @@
 /* Heatmap title on the Google AI page */
 "usage.whenYouUse.googleAI" = "Google AI 使用时段";
 
+/* Title of the weekday-by-hour activity card for one provider */
+"usage.whenYouUse.provider" = "%1$@ 使用时段";
+
 /* Heatmap title on the SpaceXAI page */
 "usage.whenYouUse.spaceXAI" = "SpaceXAI 使用时段";
+
+/* Low end of the past-year grid's intensity legend */
+"usage.yearHeatmap.less" = "较少";
+
+/* High end of the past-year grid's intensity legend */
+"usage.yearHeatmap.more" = "较多";
+
+/* Title of the past-year contribution grid; provider is a name and is not translated */
+"usage.yearHeatmap.title" = "%1$@ — 过去一年";
+
+/* Tooltip on one day of the past-year grid */
+"usage.yearHeatmap.tooltip" = "%1$@ · %2$@";
+
+/* Caption beside the past-year grid's title; amount is already formatted currency */
+"usage.yearHeatmap.total" = "合计 %1$@";
 
 /* Tooltip on the Workbench header button that switches the window to dark */
 "workbench.appearance.useDark" = "使用深色外观";

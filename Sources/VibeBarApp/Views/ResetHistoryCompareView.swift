@@ -171,8 +171,8 @@ enum ResetHistoryLanes {
                 // Numbered only when a provider has more than one former
                 // identity, so the ordinary case reads plainly.
                 let label = accountIds.count > 1
-                    ? "Signed-out account \(position + 1)"
-                    : "Signed-out account"
+                    ? L10n.Quota.resetHistoryRetiredAccountNumbered(number: position + 1)
+                    : L10n.Quota.resetHistoryRetiredAccount
                 for key in (accounts[accountId] ?? []).sorted(by: { $0.bucketId < $1.bucketId }) {
                     guard let samples = history[key], !samples.isEmpty else { continue }
                     out.append(
@@ -381,7 +381,7 @@ struct ResetHistoryCompareCard: View {
                     cardWidth = width
                 }
             if comparison.isEmpty {
-                Text("Nothing to compare yet — weekly and longer quotas appear here once a provider reports one.")
+                Text(L10n.Quota.resetHistoryCompareEmpty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 14)
@@ -392,7 +392,7 @@ struct ResetHistoryCompareCard: View {
         }
     }
 
-    private var title: String { titleOverride ?? "Reset History Compare" }
+    private var title: String { titleOverride ?? L10n.Quota.resetHistoryCompareTitle }
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -465,8 +465,10 @@ struct ResetHistoryCompareCard: View {
                         }
                 }
                 .buttonStyle(.vibeBar(cornerRadius: 5))
-                .help("Compare the \(option.spokenTitle(for: axis))")
-                .accessibilityLabel("Compare the \(option.spokenTitle(for: axis))")
+                .help(L10n.Quota.resetHistoryCompareWindow(window: option.spokenTitle(for: axis)))
+                .accessibilityLabel(
+                    L10n.Quota.resetHistoryCompareWindow(window: option.spokenTitle(for: axis))
+                )
                 // The fill is the only sighted cue for which span is showing;
                 // VoiceOver needs the selection stated outright.
                 .accessibilityAddTraits(window == option ? [.isSelected] : [])
@@ -773,22 +775,26 @@ struct ResetHistoryCompareView: View {
                         .fill(Color.secondary)
                         .frame(width: 6, height: 6)
                 }
-                Text("bar height = remaining at reset")
+                Text(L10n.Quota.resetHistoryLegendBarHeight)
             }
             // What the x position means, which is the one thing the axis
             // toggle changes about how to read the chart.
-            Text(comparison.axis == .cycle ? "one column per cycle" : "placed by date")
+            Text(
+                comparison.axis == .cycle
+                    ? L10n.Quota.resetHistoryLegendPerCycle
+                    : L10n.Quota.resetHistoryLegendByDate
+            )
             HStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .stroke(Color.secondary, style: StrokeStyle(lineWidth: 0.8, dash: [2, 1.5]))
                     .frame(width: 6, height: 9)
-                Text("now")
+                Text(L10n.Quota.resetHistoryAxisNow)
             }
             HStack(spacing: 3) {
                 Circle()
                     .fill(Color.secondary)
                     .frame(width: 3, height: 3)
-                Text("refilled early")
+                Text(L10n.Quota.resetHistoryLegendRefilledEarly)
             }
             Spacer(minLength: 0)
         }
@@ -888,8 +894,14 @@ struct ResetHistoryCompareView: View {
                 .foregroundStyle(.secondary)
             Text(
                 cycle.isCompleted
-                    ? "\(Int(cycle.wastedPercent.rounded()))% left at reset · \(Int(cycle.usedPercent.rounded()))% used"
-                    : "Current cycle · \(Int(cycle.wastedPercent.rounded()))% left now · \(Int(cycle.usedPercent.rounded()))% used so far"
+                    ? L10n.Quota.resetHistoryTooltipCompleted(
+                        left: Int(cycle.wastedPercent.rounded()),
+                        used: Int(cycle.usedPercent.rounded())
+                    )
+                    : L10n.Quota.resetHistoryTooltipCurrent(
+                        left: Int(cycle.wastedPercent.rounded()),
+                        used: Int(cycle.usedPercent.rounded())
+                    )
             )
             .font(.system(size: 9, design: .rounded).monospacedDigit())
             .foregroundStyle(.primary.opacity(0.85))
@@ -919,7 +931,9 @@ struct ResetHistoryCompareView: View {
     private func dateRange(_ cycle: ResetHistoryComparison.Cycle) -> String {
         let start = ResetHistoryCompareFormatters.tooltip.string(from: cycle.start)
         let end = ResetHistoryCompareFormatters.tooltip.string(from: cycle.end)
-        return cycle.isCompleted ? "\(start) → \(end) reset" : "\(start) → \(end) reset due"
+        return cycle.isCompleted
+            ? L10n.Quota.resetHistoryTooltipRange(start: start, end: end)
+            : L10n.Quota.resetHistoryTooltipRangeDue(start: start, end: end)
     }
 }
 
@@ -936,8 +950,15 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
     let layout: ResetHistoryCompareLayout
 
     static func == (lhs: ResetHistoryLanesCanvas, rhs: ResetHistoryLanesCanvas) -> Bool {
-        lhs.layout == rhs.layout && lhs.comparison == rhs.comparison
+        lhs.layout == rhs.layout
+            && lhs.comparison == rhs.comparison
+            // `Lane.label` is a computed property — correctly, so it is never
+            // a stored localized string — which means `comparison ==` is
+            // blind to the language while `drawLabels` is not.
+            && lhs.language == rhs.language
     }
+
+    private let language = LanguageStamp.current
 
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in

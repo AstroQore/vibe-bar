@@ -372,12 +372,12 @@ private struct MiniCell: Identifiable {
         if let bucket,
            let group = bucket.groupTitle,
            group.caseInsensitiveCompare(subProviderName) == .orderedSame {
-            return bucket.title
+            return QuotaGroupLabelLocalizer.displayComposed(bucket.title)
         }
         if let bucket, field.defaultLabel != bucket.shortLabel {
-            return bucket.shortLabel
+            return QuotaGroupLabelLocalizer.displayComposed(bucket.shortLabel)
         }
-        return field.defaultLabel
+        return QuotaGroupLabelLocalizer.displayComposed(field.defaultLabel)
     }
 }
 
@@ -402,7 +402,13 @@ private struct MiniBranchCell: Identifiable {
         return defaultTitle
     }
 
+    /// The contract label, with the generic window words translated on the
+    /// way to the screen; a model-named bucket comes back untouched.
     private var defaultTitle: String {
+        QuotaGroupLabelLocalizer.displayComposed(contractTitle)
+    }
+
+    private var contractTitle: String {
         switch bucket.id {
         case "gpt_5_3_codex_spark_five_hour": return "5 Hours"
         case "gpt_5_3_codex_spark_weekly": return "Weekly"
@@ -445,6 +451,10 @@ private struct MiniBranchCell: Identifiable {
     }
 
     var defaultGroupTitle: String {
+        QuotaGroupLabelLocalizer.displayComposed(contractGroupTitle)
+    }
+
+    private var contractGroupTitle: String {
         if let label = MiniWindowGroupLabelCatalog.defaultLabel(for: groupKey) {
             return label
         }
@@ -563,15 +573,26 @@ func miniForecastPlan(_ forecast: QuotaPaceForecast, mode: DisplayMode) -> Doubl
 func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact: Bool = false) -> String {
     if let runOutAt = forecast.runOutAt,
        let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
-        return forecast.verdict == .watch ? "may run out \(countdown)" : "out \(countdown)"
+        return forecast.verdict == .watch
+            ? L10n.Quota.miniForecastMayRunOut(countdown: countdown)
+            : L10n.Quota.paceRunsOutShort(countdown: countdown)
     }
     let left = Int(forecast.projectedRemainingPercent.rounded())
     switch forecast.verdict {
-    case .enough: return compact ? "left \(left)%" : "\(left)% left"
-    case .surplus: return compact ? "surplus \(left)%" : "surplus · \(left)% left"
-    case .watch: return "watch"
-    case .atRisk: return "risk"
-    case .learning: return compact ? "~\(left)% left" : "learning · \(left)% left"
+    case .enough:
+        return compact
+            ? L10n.Quota.miniForecastLeftCompact(percent: left)
+            : L10n.Quota.miniForecastLeft(percent: left)
+    case .surplus:
+        return compact
+            ? L10n.Quota.miniForecastSurplusCompact(percent: left)
+            : L10n.Quota.miniForecastSurplus(percent: left)
+    case .watch: return L10n.Quota.forecastVerdictWatch
+    case .atRisk: return L10n.Quota.forecastVerdictAtRisk
+    case .learning:
+        return compact
+            ? L10n.Quota.miniForecastLearningCompact(percent: left)
+            : L10n.Quota.miniForecastLearning(percent: left)
     }
 }
 
@@ -925,7 +946,7 @@ private struct MiniBranchRingCell: View {
                 .frame(height: MiniRingMetrics.resetHeight, alignment: .center)
         }
         .frame(width: MiniRingMetrics.cellWidth)
-        .help("\(providerTitle(for: cell.tool)) · \(cell.bucket.groupTitle ?? cell.bucket.shortLabel) · \(cell.bucket.title)")
+        .help(miniCellHelp(tool: cell.tool, bucket: cell.bucket))
     }
 
     private func centerText(percent: Double) -> String {
@@ -934,7 +955,7 @@ private struct MiniBranchRingCell: View {
             if label.contains("/") { return label }
             if cell.bucket.title.contains("--") { return "--" }
         }
-        return "\(Int(percent.rounded()))%"
+        return L10n.Common.percent(value: Int(percent.rounded()))
     }
 
     private func resetText(now: Date) -> String {
@@ -952,7 +973,8 @@ private struct MiniBranchRingCell: View {
             if pace.willLastToReset { return pace.stageSummary }
             guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "" }
             let target = now.addingTimeInterval(etaSeconds)
-            return ResetCountdownFormatter.string(from: target, now: now).map { "out \($0)" } ?? ""
+            return ResetCountdownFormatter.string(from: target, now: now)
+                .map { L10n.Quota.paceRunsOutShort(countdown: $0) } ?? ""
         }
     }
 
@@ -1065,7 +1087,8 @@ private struct MiniRingCell: View {
             }
             guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "" }
             let target = now.addingTimeInterval(etaSeconds)
-            return ResetCountdownFormatter.string(from: target, now: now).map { "out \($0)" } ?? ""
+            return ResetCountdownFormatter.string(from: target, now: now)
+                .map { L10n.Quota.paceRunsOutShort(countdown: $0) } ?? ""
         }
     }
 
@@ -1103,7 +1126,7 @@ private struct MiniRingCell: View {
                 size: MiniRingMetrics.ringSize,
                 lineWidth: MiniRingMetrics.ringLineWidth
             ) {
-                Text("\(Int(percent.rounded()))%")
+                Text(L10n.Common.percent(value: Int(percent.rounded())))
                     .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(color)
                     .minimumScaleFactor(0.7)
@@ -1269,7 +1292,7 @@ private struct MiniCompactPrimaryGroup: View {
                             tool: cell.tool,
                             title: cell.resolvedLabel,
                             bucket: cell.bucket,
-                            help: "\(providerTitle(for: cell.tool)) · \(cell.resolvedLabel)"
+                            help: miniCellHelp(tool: cell.tool, label: cell.resolvedLabel)
                         ),
                         now: now
                     )
@@ -1298,7 +1321,7 @@ private struct MiniCompactBranchGroup: View {
                             tool: cell.tool,
                             title: cell.title,
                             bucket: cell.bucket,
-                            help: "\(providerTitle(for: cell.tool)) · \(cell.bucket.groupTitle ?? cell.bucket.shortLabel) · \(cell.bucket.title)"
+                            help: miniCellHelp(tool: cell.tool, bucket: cell.bucket)
                         ),
                         now: now
                     )
@@ -1434,7 +1457,7 @@ private struct MiniCompactBarCell: View {
             if label.contains("/") { return label }
             if bucket.title.contains("--") { return "--" }
         }
-        return "\(Int(percent.rounded()))%"
+        return L10n.Common.percent(value: Int(percent.rounded()))
     }
 
     private func resetText(now: Date) -> String {
@@ -1446,18 +1469,17 @@ private struct MiniCompactBarCell: View {
         guard let pace else { return "" }
         switch pace.stage {
         case .onTrack:
-            return "On pace"
+            return L10n.Quota.paceOnTrack
         case .slightlyBehind, .behind, .farBehind:
-            return pace.stageSummary
-                .replacingOccurrences(of: " in reserve", with: " reserve")
+            return pace.stageSummaryCompact
         case .slightlyAhead, .ahead, .farAhead:
             if pace.willLastToReset {
-                return pace.stageSummary
-                    .replacingOccurrences(of: " in deficit", with: " deficit")
+                return pace.stageSummaryCompact
             }
             guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "" }
             let target = now.addingTimeInterval(etaSeconds)
-            return ResetCountdownFormatter.string(from: target, now: now).map { "out \($0)" } ?? ""
+            return ResetCountdownFormatter.string(from: target, now: now)
+                .map { L10n.Quota.paceRunsOutShort(countdown: $0) } ?? ""
         }
     }
 
@@ -1570,4 +1592,18 @@ struct RingGauge<CenterLabel: View>: View {
         }
         .frame(width: size, height: size)
     }
+}
+
+/// Provider · label, where the label has already been resolved (and, where it
+/// is a generic window word, translated) by the cell that owns it.
+private func miniCellHelp(tool: ToolType, label: String) -> String {
+    "\(providerTitle(for: tool)) · \(label)"
+}
+
+/// Provider · group · bucket, with the generic window words translated and
+/// every name left exactly as its owner spells it.
+private func miniCellHelp(tool: ToolType, bucket: QuotaBucket) -> String {
+    let group = QuotaGroupLabelLocalizer.displayComposed(bucket.groupTitle ?? bucket.shortLabel)
+    let title = QuotaGroupLabelLocalizer.displayComposed(bucket.title)
+    return "\(providerTitle(for: tool)) · \(group) · \(title)"
 }

@@ -38,6 +38,18 @@ enum RemoteSyncStatusCopy {
     }
 }
 
+/// A compact token count and a dollar amount in the *app's* language rather
+/// than the process locale — "1.2K" against "1.2万". A bare
+/// `.number.notation(.compactName)` asks `Locale.current`, which is the
+/// machine's language and not `AppSettings.language`.
+private var tokenFormat: IntegerFormatStyle<Int> {
+    .number.notation(.compactName).locale(AppLocale.current)
+}
+
+private var costFormat: FloatingPointFormatStyle<Double>.Currency {
+    .currency(code: "USD").locale(AppLocale.current)
+}
+
 struct RemoteMachinesPage: View {
     let density: Theme.Density
 
@@ -124,13 +136,16 @@ struct RemoteMachinesPage: View {
 
     private func metrics(_ machine: RemoteMachineSummary) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            metric(L10n.Cost.timeframeToday, Text(machine.todayTokens, format: .number.notation(.compactName)))
+            metric(L10n.Cost.timeframeToday, Text(machine.todayTokens, format: tokenFormat))
             metricDivider
-            metric(L10n.Cost.timeframeWeek, Text(machine.last7DaysTokens, format: .number.notation(.compactName)))
+            metric(L10n.Cost.timeframeWeek, Text(machine.last7DaysTokens, format: tokenFormat))
             metricDivider
-            metric(L10n.Cost.timeframeMonth, Text(machine.last30DaysTokens, format: .number.notation(.compactName)))
+            metric(L10n.Cost.timeframeMonth, Text(machine.last30DaysTokens, format: tokenFormat))
             metricDivider
-            metric(L10n.Popover.machinesThirtyDayCost, Text(machine.last30DaysCostUSD, format: .currency(code: "USD")))
+            metric(
+                L10n.Popover.machinesThirtyDayCost,
+                Text(machine.last30DaysCostUSD, format: costFormat)
+            )
         }
     }
 
@@ -190,7 +205,7 @@ struct RemoteMachinesPage: View {
                     .lineLimit(1)
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(usage.tokens, format: .number.notation(.compactName))
+                Text(usage.tokens, format: tokenFormat)
                     .font(.system(
                         size: density.subtitleFontSize,
                         weight: .semibold,
@@ -198,7 +213,7 @@ struct RemoteMachinesPage: View {
                     ).monospacedDigit())
                     .foregroundStyle(accent ?? Color.primary)
                 if usage.costUSD > 0 {
-                    Text(usage.costUSD, format: .currency(code: "USD"))
+                    Text(usage.costUSD, format: costFormat)
                         .font(.system(
                             size: max(8, density.subtitleFontSize - 2),
                             design: .rounded
@@ -267,13 +282,13 @@ struct RemoteMachinesPage: View {
         let color: Color
         switch freshness {
         case .live:
-            label = "Live"
+            label = L10n.Popover.machinesFreshnessLive
             color = .green
         case .delayed:
-            label = "Delayed"
+            label = L10n.Popover.machinesFreshnessDelayed
             color = .orange
         case .stale:
-            label = "Stale"
+            label = L10n.Popover.machinesFreshnessStale
             color = .red
         }
         return HStack(spacing: 5) {

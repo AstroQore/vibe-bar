@@ -144,6 +144,10 @@ extension L10n {
         public static var name: String {
             L10n.string("common.name")
         }
+        /// `common.noData` — No data recorded
+        public static var noData: String {
+            L10n.string("common.noData")
+        }
         /// `common.off` — Off
         public static var off: String {
             L10n.string("common.off")
@@ -223,6 +227,18 @@ extension L10n {
         public static var allProviders: String {
             L10n.string("cost.allProviders")
         }
+        /// `cost.chart.metricCostHelp` — Plot spend in dollars
+        public static var chartMetricCostHelp: String {
+            L10n.string("cost.chart.metricCostHelp")
+        }
+        /// `cost.chart.metricTokens` — Tok
+        public static var chartMetricTokens: String {
+            L10n.string("cost.chart.metricTokens")
+        }
+        /// `cost.chart.metricTokensHelp` — Plot token volume
+        public static var chartMetricTokensHelp: String {
+            L10n.string("cost.chart.metricTokensHelp")
+        }
         /// `cost.empty.antigravity` — No Antigravity conversation token metadata found yet.
         public static var emptyAntigravity: String {
             L10n.string("cost.empty.antigravity")
@@ -267,9 +283,105 @@ extension L10n {
         public static var googleAITitle: String {
             L10n.string("cost.googleAI.title")
         }
+        /// `cost.granularity.auto` — Auto
+        public static var granularityAuto: String {
+            L10n.string("cost.granularity.auto")
+        }
+        /// `cost.granularity.day` — Day
+        public static var granularityDay: String {
+            L10n.string("cost.granularity.day")
+        }
+        /// `cost.granularity.hour` — Hour
+        public static var granularityHour: String {
+            L10n.string("cost.granularity.hour")
+        }
+        /// `cost.granularity.month` — Month
+        public static var granularityMonth: String {
+            L10n.string("cost.granularity.month")
+        }
+        /// `cost.granularity.week` — Week
+        public static var granularityWeek: String {
+            L10n.string("cost.granularity.week")
+        }
         /// `cost.history.allProviders` — All Providers Cost History
         public static var historyAllProviders: String {
             L10n.string("cost.history.allProviders")
+        }
+        /// `cost.history.building` — Building history…
+        public static var historyBuilding: String {
+            L10n.string("cost.history.building")
+        }
+        /// `cost.history.buildingDetail` — Cost samples appear after the next local scan.
+        public static var historyBuildingDetail: String {
+            L10n.string("cost.history.buildingDetail")
+        }
+        /// `cost.history.clearModelSelection` — Clear model selection
+        public static var historyClearModelSelection: String {
+            L10n.string("cost.history.clearModelSelection")
+        }
+        /// `cost.history.emptyCost` — No cost recorded in this range.
+        public static var historyEmptyCost: String {
+            L10n.string("cost.history.emptyCost")
+        }
+        /// `cost.history.emptyTokens` — No tokens recorded in this range.
+        public static var historyEmptyTokens: String {
+            L10n.string("cost.history.emptyTokens")
+        }
+        /// `cost.history.extentNote` — {span} · {start} – {end}
+        public static func historyExtentNote(span: String, start: String, end: String) -> String {
+            L10n.string("cost.history.extentNote", span, start, end)
+        }
+        /// `cost.history.granularityDisabled` — {granularity} needs a different zoom level
+        public static func historyGranularityDisabled(granularity: String) -> String {
+            L10n.string("cost.history.granularityDisabled", granularity)
+        }
+        /// `cost.history.groupBy` — Group cost history by {granularity}
+        public static func historyGroupBy(granularity: String) -> String {
+            L10n.string("cost.history.groupBy", granularity)
+        }
+        /// `cost.history.hourlyFallback` — hourly n/a · showing daily
+        public static var historyHourlyFallback: String {
+            L10n.string("cost.history.hourlyFallback")
+        }
+        /// `cost.history.metricAverage` — Avg/{granularity}
+        public static func historyMetricAverage(granularity: String) -> String {
+            L10n.string("cost.history.metricAverage", granularity)
+        }
+        /// `cost.history.metricPeak` — Peak
+        public static var historyMetricPeak: String {
+            L10n.string("cost.history.metricPeak")
+        }
+        /// `cost.history.metricTotal` — Total
+        public static var historyMetricTotal: String {
+            L10n.string("cost.history.metricTotal")
+        }
+        /// `cost.history.modelDetailUnavailable` — Model detail is unavailable for this historical period.
+        public static var historyModelDetailUnavailable: String {
+            L10n.string("cost.history.modelDetailUnavailable")
+        }
+        /// `cost.history.modelsAt` — Models · {when}
+        public static func historyModelsAt(when: String) -> String {
+            L10n.string("cost.history.modelsAt", when)
+        }
+        /// `cost.history.moreModels` — +{count} more · click to inspect
+        public static func historyMoreModels(count: Int) -> String {
+            L10n.string("cost.history.moreModels", count)
+        }
+        /// `cost.history.navigator` — Cost history range navigator
+        public static var historyNavigator: String {
+            L10n.string("cost.history.navigator")
+        }
+        /// `cost.history.title` — Cost History
+        public static var historyTitle: String {
+            L10n.string("cost.history.title")
+        }
+        /// `cost.history.weekOf` — Week of {date}
+        public static func historyWeekOf(date: String) -> String {
+            L10n.string("cost.history.weekOf", date)
+        }
+        /// `cost.history.weekShortOf` — wk {date}
+        public static func historyWeekShortOf(date: String) -> String {
+            L10n.string("cost.history.weekShortOf", date)
         }
         /// `cost.metric.peakDay` — PEAK DAY
         public static var metricPeakDay: String {
@@ -911,17 +1023,49 @@ extension L10n {
         public static var headerMachinesSubtitle: String {
             L10n.string("popover.header.machinesSubtitle")
         }
+        /// `popover.header.mini` — Mini
+        public static var headerMini: String {
+            L10n.string("popover.header.mini")
+        }
         /// `popover.header.miscSubtitle` — Usage-only · sign in or paste a key
         public static var headerMiscSubtitle: String {
             L10n.string("popover.header.miscSubtitle")
+        }
+        /// `popover.header.openWorkbench` — Open Workbench
+        public static var headerOpenWorkbench: String {
+            L10n.string("popover.header.openWorkbench")
         }
         /// `popover.header.overviewSubtitle` — All providers · quota & cost
         public static var headerOverviewSubtitle: String {
             L10n.string("popover.header.overviewSubtitle")
         }
+        /// `popover.header.refreshing` — Refreshing…
+        public static var headerRefreshing: String {
+            L10n.string("popover.header.refreshing")
+        }
+        /// `popover.header.settings` — Settings
+        public static var headerSettings: String {
+            L10n.string("popover.header.settings")
+        }
+        /// `popover.header.updatedLine` — {subtitle} · {updated}
+        public static func headerUpdatedLine(subtitle: String, updated: String) -> String {
+            L10n.string("popover.header.updatedLine", subtitle, updated)
+        }
         /// `popover.machines.checking` — Checking the Relay…
         public static var machinesChecking: String {
             L10n.string("popover.machines.checking")
+        }
+        /// `popover.machines.freshness.delayed` — Delayed
+        public static var machinesFreshnessDelayed: String {
+            L10n.string("popover.machines.freshness.delayed")
+        }
+        /// `popover.machines.freshness.live` — Live
+        public static var machinesFreshnessLive: String {
+            L10n.string("popover.machines.freshness.live")
+        }
+        /// `popover.machines.freshness.stale` — Stale
+        public static var machinesFreshnessStale: String {
+            L10n.string("popover.machines.freshness.stale")
         }
         /// `popover.machines.includeInTotals` — Include in totals
         public static var machinesIncludeInTotals: String {
@@ -990,6 +1134,30 @@ extension L10n {
     }
 
     public enum Quota {
+        /// `quota.awaitingFirstObservation` — Waiting for the first quota observation
+        public static var awaitingFirstObservation: String {
+            L10n.string("quota.awaitingFirstObservation")
+        }
+        /// `quota.bridge.empty` — No enabled CodexBar-only provider returned a quota window. Overlapping providers remain on Vibe Bar's native cards.
+        public static var bridgeEmpty: String {
+            L10n.string("quota.bridge.empty")
+        }
+        /// `quota.bridge.refresh` — Refresh CodexBar providers
+        public static var bridgeRefresh: String {
+            L10n.string("quota.bridge.refresh")
+        }
+        /// `quota.bridge.subtitle` — Additional providers · read-only
+        public static var bridgeSubtitle: String {
+            L10n.string("quota.bridge.subtitle")
+        }
+        /// `quota.bridge.subtitleVersion` — CodexBar {version} · read-only
+        public static func bridgeSubtitleVersion(version: String) -> String {
+            L10n.string("quota.bridge.subtitleVersion", version)
+        }
+        /// `quota.bridge.title` — CodexBar Bridge
+        public static var bridgeTitle: String {
+            L10n.string("quota.bridge.title")
+        }
         /// `quota.bucket.noResetInfo` — No reset info
         public static var bucketNoResetInfo: String {
             L10n.string("quota.bucket.noResetInfo")
@@ -997,6 +1165,10 @@ extension L10n {
         /// `quota.bucket.resetsIn` — Resets in {when}
         public static func bucketResetsIn(when: String) -> String {
             L10n.string("quota.bucket.resetsIn", when)
+        }
+        /// `quota.cycleRecordedOnRefill` — A cycle is recorded when the quota refills
+        public static var cycleRecordedOnRefill: String {
+            L10n.string("quota.cycleRecordedOnRefill")
         }
         /// `quota.empty.needsLogin.detail` — Run `{command} login` in your terminal, then refresh.
         public static func emptyNeedsLoginDetail(command: String) -> String {
@@ -1050,6 +1222,22 @@ extension L10n {
         public static var forecastConfidenceMedium: String {
             L10n.string("quota.forecast.confidence.medium")
         }
+        /// `quota.forecast.explain.footer` — Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage.
+        public static var forecastExplainFooter: String {
+            L10n.string("quota.forecast.explain.footer")
+        }
+        /// `quota.forecast.explain.hide` — Hide forecast calculation
+        public static var forecastExplainHide: String {
+            L10n.string("quota.forecast.explain.hide")
+        }
+        /// `quota.forecast.explain.show` — Show forecast calculation
+        public static var forecastExplainShow: String {
+            L10n.string("quota.forecast.explain.show")
+        }
+        /// `quota.forecast.explain.title` — How this forecast was calculated
+        public static var forecastExplainTitle: String {
+            L10n.string("quota.forecast.explain.title")
+        }
         /// `quota.forecast.guidance.atRisk` — Slow down or shift work to another quota
         public static var forecastGuidanceAtRisk: String {
             L10n.string("quota.forecast.guidance.atRisk")
@@ -1081,6 +1269,166 @@ extension L10n {
         /// `quota.forecast.guidance.withinTarget` — Within the {target}% safety target
         public static func forecastGuidanceWithinTarget(target: Int) -> String {
             L10n.string("quota.forecast.guidance.withinTarget", target)
+        }
+        /// `quota.forecast.legend.item` — {label} {value}
+        public static func forecastLegendItem(label: String, value: String) -> String {
+            L10n.string("quota.forecast.legend.item", label, value)
+        }
+        /// `quota.forecast.metric.aboveTarget` — {percent}% capacity above target
+        public static func forecastMetricAboveTarget(percent: Int) -> String {
+            L10n.string("quota.forecast.metric.aboveTarget", percent)
+        }
+        /// `quota.forecast.metric.activityFallback` — wall-clock fallback until habits exist
+        public static var forecastMetricActivityFallback: String {
+            L10n.string("quota.forecast.metric.activityFallback")
+        }
+        /// `quota.forecast.metric.activityTiming` — Activity timing
+        public static var forecastMetricActivityTiming: String {
+            L10n.string("quota.forecast.metric.activityTiming")
+        }
+        /// `quota.forecast.metric.activityWeighted` — weekday and hour weighted
+        public static var forecastMetricActivityWeighted: String {
+            L10n.string("quota.forecast.metric.activityWeighted")
+        }
+        /// `quota.forecast.metric.behaviorDetail` — used when stronger evidence is sparse
+        public static var forecastMetricBehaviorDetail: String {
+            L10n.string("quota.forecast.metric.behaviorDetail")
+        }
+        /// `quota.forecast.metric.behaviorFallback` — Behavior fallback
+        public static var forecastMetricBehaviorFallback: String {
+            L10n.string("quota.forecast.metric.behaviorFallback")
+        }
+        /// `quota.forecast.metric.comparableCycles` — {count, plural, one {1 comparable reset cycle} other {# comparable reset cycles}}
+        public static func forecastMetricComparableCycles(count: Int) -> String {
+            L10n.string("quota.forecast.metric.comparableCycles", count)
+        }
+        /// `quota.forecast.metric.coverage` — Coverage
+        public static var forecastMetricCoverage: String {
+            L10n.string("quota.forecast.metric.coverage")
+        }
+        /// `quota.forecast.metric.coverageDetail` — fresh {fresh}% · habits {habits}%
+        public static func forecastMetricCoverageDetail(fresh: Int, habits: Int) -> String {
+            L10n.string("quota.forecast.metric.coverageDetail", fresh, habits)
+        }
+        /// `quota.forecast.metric.coverageValue` — obs {observations}% · history {history}%
+        public static func forecastMetricCoverageValue(observations: Int, history: Int) -> String {
+            L10n.string("quota.forecast.metric.coverageValue", observations, history)
+        }
+        /// `quota.forecast.metric.cyclesPending` — Completed cycles will appear here
+        public static var forecastMetricCyclesPending: String {
+            L10n.string("quota.forecast.metric.cyclesPending")
+        }
+        /// `quota.forecast.metric.elapsed` — {percent}% elapsed
+        public static func forecastMetricElapsed(percent: Int) -> String {
+            L10n.string("quota.forecast.metric.elapsed", percent)
+        }
+        /// `quota.forecast.metric.evidence` — Evidence
+        public static var forecastMetricEvidence: String {
+            L10n.string("quota.forecast.metric.evidence")
+        }
+        /// `quota.forecast.metric.evidenceDetail` — {confidence} · score {score}%
+        public static func forecastMetricEvidenceDetail(confidence: String, score: Int) -> String {
+            L10n.string("quota.forecast.metric.evidenceDetail", confidence, score)
+        }
+        /// `quota.forecast.metric.evidenceValue` — {observations} obs · {cycles} cycles
+        public static func forecastMetricEvidenceValue(observations: Int, cycles: Int) -> String {
+            L10n.string("quota.forecast.metric.evidenceValue", observations, cycles)
+        }
+        /// `quota.forecast.metric.expectedLeft` — {percent}% expected left
+        public static func forecastMetricExpectedLeft(percent: Int) -> String {
+            L10n.string("quota.forecast.metric.expectedLeft", percent)
+        }
+        /// `quota.forecast.metric.expectedUsed` — {percent}% expected used
+        public static func forecastMetricExpectedUsed(percent: Int) -> String {
+            L10n.string("quota.forecast.metric.expectedUsed", percent)
+        }
+        /// `quota.forecast.metric.forecastAtReset` — Forecast at reset
+        public static var forecastMetricForecastAtReset: String {
+            L10n.string("quota.forecast.metric.forecastAtReset")
+        }
+        /// `quota.forecast.metric.forecastRange` — Forecast range
+        public static var forecastMetricForecastRange: String {
+            L10n.string("quota.forecast.metric.forecastRange")
+        }
+        /// `quota.forecast.metric.insideTarget` — inside the target range
+        public static var forecastMetricInsideTarget: String {
+            L10n.string("quota.forecast.metric.insideTarget")
+        }
+        /// `quota.forecast.metric.noComparison` — No comparison yet
+        public static var forecastMetricNoComparison: String {
+            L10n.string("quota.forecast.metric.noComparison")
+        }
+        /// `quota.forecast.metric.plan` — Personal plan now
+        public static var forecastMetricPlan: String {
+            L10n.string("quota.forecast.metric.plan")
+        }
+        /// `quota.forecast.metric.planDetail` — activity timing + {target}% safety target
+        public static func forecastMetricPlanDetail(target: Int) -> String {
+            L10n.string("quota.forecast.metric.planDetail", target)
+        }
+        /// `quota.forecast.metric.rangeLeft` — {lower}–{upper}% left
+        public static func forecastMetricRangeLeft(lower: Int, upper: Int) -> String {
+            L10n.string("quota.forecast.metric.rangeLeft", lower, upper)
+        }
+        /// `quota.forecast.metric.rangeUsed` — {lower}–{upper}% used
+        public static func forecastMetricRangeUsed(lower: Int, upper: Int) -> String {
+            L10n.string("quota.forecast.metric.rangeUsed", lower, upper)
+        }
+        /// `quota.forecast.metric.recentBurn` — Recent burn
+        public static var forecastMetricRecentBurn: String {
+            L10n.string("quota.forecast.metric.recentBurn")
+        }
+        /// `quota.forecast.metric.recentIntervals` — {count, plural, one {1 recent interval} other {# recent intervals}}
+        public static func forecastMetricRecentIntervals(count: Int) -> String {
+            L10n.string("quota.forecast.metric.recentIntervals", count)
+        }
+        /// `quota.forecast.metric.recentMissing` — Needs at least two useful observations
+        public static var forecastMetricRecentMissing: String {
+            L10n.string("quota.forecast.metric.recentMissing")
+        }
+        /// `quota.forecast.metric.recentTrend` — Recent trend
+        public static var forecastMetricRecentTrend: String {
+            L10n.string("quota.forecast.metric.recentTrend")
+        }
+        /// `quota.forecast.metric.safetyTarget` — Safety target
+        public static var forecastMetricSafetyTarget: String {
+            L10n.string("quota.forecast.metric.safetyTarget")
+        }
+        /// `quota.forecast.metric.timePace` — Time-only pace
+        public static var forecastMetricTimePace: String {
+            L10n.string("quota.forecast.metric.timePace")
+        }
+        /// `quota.forecast.metric.timePaceDetail` — {stage} by wall clock
+        public static func forecastMetricTimePaceDetail(stage: String) -> String {
+            L10n.string("quota.forecast.metric.timePaceDetail", stage)
+        }
+        /// `quota.forecast.metric.timePaceMissing` — Needs reset time and window length
+        public static var forecastMetricTimePaceMissing: String {
+            L10n.string("quota.forecast.metric.timePaceMissing")
+        }
+        /// `quota.forecast.metric.trendDetail` — last 7 days versus prior 21 days
+        public static var forecastMetricTrendDetail: String {
+            L10n.string("quota.forecast.metric.trendDetail")
+        }
+        /// `quota.forecast.metric.trendDetailMissing` — needs prior daily activity
+        public static var forecastMetricTrendDetailMissing: String {
+            L10n.string("quota.forecast.metric.trendDetailMissing")
+        }
+        /// `quota.forecast.metric.trendMissing` — No baseline yet
+        public static var forecastMetricTrendMissing: String {
+            L10n.string("quota.forecast.metric.trendMissing")
+        }
+        /// `quota.forecast.metric.trendMultiplier` — {multiplier}× activity
+        public static func forecastMetricTrendMultiplier(multiplier: String) -> String {
+            L10n.string("quota.forecast.metric.trendMultiplier", multiplier)
+        }
+        /// `quota.forecast.metric.unavailable` — Unavailable
+        public static var forecastMetricUnavailable: String {
+            L10n.string("quota.forecast.metric.unavailable")
+        }
+        /// `quota.forecast.metric.uncertaintyInterval` — uncertainty interval
+        public static var forecastMetricUncertaintyInterval: String {
+            L10n.string("quota.forecast.metric.uncertaintyInterval")
         }
         /// `quota.forecast.reset.atRisk` — Likely to run out before reset
         public static var forecastResetAtRisk: String {
@@ -1141,6 +1489,14 @@ extension L10n {
         /// `quota.forecast.useUp.uncertain` — Use-up time uncertain · may run short before reset
         public static var forecastUseUpUncertain: String {
             L10n.string("quota.forecast.useUp.uncertain")
+        }
+        /// `quota.forecast.value.atReset` — {value} at reset
+        public static func forecastValueAtReset(value: String) -> String {
+            L10n.string("quota.forecast.value.atReset", value)
+        }
+        /// `quota.forecast.value.expectedNow` — {value} expected now
+        public static func forecastValueExpectedNow(value: String) -> String {
+            L10n.string("quota.forecast.value.expectedNow", value)
         }
         /// `quota.forecast.value.left` — {percent}% left
         public static func forecastValueLeft(percent: Int) -> String {
@@ -1254,6 +1610,82 @@ extension L10n {
         public static var groupWeeklyCredits: String {
             L10n.string("quota.group.weeklyCredits")
         }
+        /// `quota.history.allCurvesHidden` — Every curve is hidden — pick one from the menu above.
+        public static var historyAllCurvesHidden: String {
+            L10n.string("quota.history.allCurvesHidden")
+        }
+        /// `quota.history.buildingUp` — Quota history builds up as refreshes come in.
+        public static var historyBuildingUp: String {
+            L10n.string("quota.history.buildingUp")
+        }
+        /// `quota.history.curveCount` — {count, plural, one {1 curve} other {# curves}}
+        public static func historyCurveCount(count: Int) -> String {
+            L10n.string("quota.history.curveCount", count)
+        }
+        /// `quota.history.curvePickerA11y` — Choose which quota curves to show
+        public static var historyCurvePickerA11y: String {
+            L10n.string("quota.history.curvePickerA11y")
+        }
+        /// `quota.history.curvesAll` — All {total}
+        public static func historyCurvesAll(total: Int) -> String {
+            L10n.string("quota.history.curvesAll", total)
+        }
+        /// `quota.history.curvesSome` — {shown} of {total}
+        public static func historyCurvesSome(shown: Int, total: Int) -> String {
+            L10n.string("quota.history.curvesSome", shown, total)
+        }
+        /// `quota.history.forecastLegend` — forecast
+        public static var historyForecastLegend: String {
+            L10n.string("quota.history.forecastLegend")
+        }
+        /// `quota.history.moreBuckets` — {names} +{count}
+        public static func historyMoreBuckets(names: String, count: Int) -> String {
+            L10n.string("quota.history.moreBuckets", names, count)
+        }
+        /// `quota.history.moreReadings` — +{count} more
+        public static func historyMoreReadings(count: Int) -> String {
+            L10n.string("quota.history.moreReadings", count)
+        }
+        /// `quota.history.navigatorAllProviders` — All-providers quota history range navigator
+        public static var historyNavigatorAllProviders: String {
+            L10n.string("quota.history.navigatorAllProviders")
+        }
+        /// `quota.history.navigatorProvider` — Quota history range navigator
+        public static var historyNavigatorProvider: String {
+            L10n.string("quota.history.navigatorProvider")
+        }
+        /// `quota.history.providerCount` — {count, plural, one {1 provider} other {# providers}}
+        public static func historyProviderCount(count: Int) -> String {
+            L10n.string("quota.history.providerCount", count)
+        }
+        /// `quota.history.scopeNote` — {scope} · showing {visible} of {total} recorded
+        public static func historyScopeNote(scope: String, visible: String, total: String) -> String {
+            L10n.string("quota.history.scopeNote", scope, visible, total)
+        }
+        /// `quota.history.showAllCurves` — Show all curves
+        public static var historyShowAllCurves: String {
+            L10n.string("quota.history.showAllCurves")
+        }
+        /// `quota.history.showBusiest` — Show only the busiest
+        public static var historyShowBusiest: String {
+            L10n.string("quota.history.showBusiest")
+        }
+        /// `quota.history.title` — Quota history
+        public static var historyTitle: String {
+            L10n.string("quota.history.title")
+        }
+        /// `quota.history.tooltipAtReset` — At reset
+        public static var historyTooltipAtReset: String {
+            L10n.string("quota.history.tooltipAtReset")
+        }
+        /// `quota.history.tooltipPace` — Pace
+        public static var historyTooltipPace: String {
+            L10n.string("quota.history.tooltipPace")
+        }
+        /// `quota.history.tooltipQuotaLeft` — Quota left
+        public static var historyTooltipQuotaLeft: String {
+            L10n.string("quota.history.tooltipQuotaLeft")
+        }
         /// `quota.login.claude` — Run claude login, then refresh.
         public static var loginClaude: String {
             L10n.string("quota.login.claude")
@@ -1274,6 +1706,82 @@ extension L10n {
         public static func loginMisc(provider: String) -> String {
             L10n.string("quota.login.misc", provider)
         }
+        /// `quota.mini.forecastLearning` — learning · {percent}% left
+        public static func miniForecastLearning(percent: Int) -> String {
+            L10n.string("quota.mini.forecastLearning", percent)
+        }
+        /// `quota.mini.forecastLearningCompact` — ~{percent}% left
+        public static func miniForecastLearningCompact(percent: Int) -> String {
+            L10n.string("quota.mini.forecastLearningCompact", percent)
+        }
+        /// `quota.mini.forecastLeft` — {percent}% left
+        public static func miniForecastLeft(percent: Int) -> String {
+            L10n.string("quota.mini.forecastLeft", percent)
+        }
+        /// `quota.mini.forecastLeftCompact` — left {percent}%
+        public static func miniForecastLeftCompact(percent: Int) -> String {
+            L10n.string("quota.mini.forecastLeftCompact", percent)
+        }
+        /// `quota.mini.forecastMayRunOut` — may run out {countdown}
+        public static func miniForecastMayRunOut(countdown: String) -> String {
+            L10n.string("quota.mini.forecastMayRunOut", countdown)
+        }
+        /// `quota.mini.forecastSurplus` — surplus · {percent}% left
+        public static func miniForecastSurplus(percent: Int) -> String {
+            L10n.string("quota.mini.forecastSurplus", percent)
+        }
+        /// `quota.mini.forecastSurplusCompact` — surplus {percent}%
+        public static func miniForecastSurplusCompact(percent: Int) -> String {
+            L10n.string("quota.mini.forecastSurplusCompact", percent)
+        }
+        /// `quota.mini.nextProvider` — Next provider
+        public static var miniNextProvider: String {
+            L10n.string("quota.mini.nextProvider")
+        }
+        /// `quota.mini.noLiveData` — No selected fields have live data
+        public static var miniNoLiveData: String {
+            L10n.string("quota.mini.noLiveData")
+        }
+        /// `quota.mini.pageIndicator` — {index}/{total}
+        public static func miniPageIndicator(index: Int, total: Int) -> String {
+            L10n.string("quota.mini.pageIndicator", index, total)
+        }
+        /// `quota.mini.railEmpty` — Nothing selected refills in the next seven days.
+        public static var miniRailEmpty: String {
+            L10n.string("quota.mini.railEmpty")
+        }
+        /// `quota.mini.railTitle` — QUOTA RESETS · NEXT {days} DAYS
+        public static func miniRailTitle(days: Int) -> String {
+            L10n.string("quota.mini.railTitle", days)
+        }
+        /// `quota.mini.resets` — resets {countdown}
+        public static func miniResets(countdown: String) -> String {
+            L10n.string("quota.mini.resets", countdown)
+        }
+        /// `quota.mini.rowHelp` — {subProvider} — {row}: {percent}%
+        public static func miniRowHelp(subProvider: String, row: String, percent: Int) -> String {
+            L10n.string("quota.mini.rowHelp", subProvider, row, percent)
+        }
+        /// `quota.misc.independentCopies` — {count, plural, one {1 independent copy} other {# independent copies}}
+        public static func miscIndependentCopies(count: Int) -> String {
+            L10n.string("quota.misc.independentCopies", count)
+        }
+        /// `quota.misc.notConfigured` — Not configured.
+        public static var miscNotConfigured: String {
+            L10n.string("quota.misc.notConfigured")
+        }
+        /// `quota.misc.refreshCopies` — Refresh {provider} copies
+        public static func miscRefreshCopies(provider: String) -> String {
+            L10n.string("quota.misc.refreshCopies", provider)
+        }
+        /// `quota.misc.refreshProvider` — Refresh {provider}
+        public static func miscRefreshProvider(provider: String) -> String {
+            L10n.string("quota.misc.refreshProvider", provider)
+        }
+        /// `quota.misc.setUpInSettings` — Set up in Settings
+        public static var miscSetUpInSettings: String {
+            L10n.string("quota.misc.setUpInSettings")
+        }
         /// `quota.mode.remaining` — remaining
         public static var modeRemaining: String {
             L10n.string("quota.mode.remaining")
@@ -1282,13 +1790,37 @@ extension L10n {
         public static var modeUsed: String {
             L10n.string("quota.mode.used")
         }
+        /// `quota.pace.deficit` — {percent}% in deficit
+        public static func paceDeficit(percent: Int) -> String {
+            L10n.string("quota.pace.deficit", percent)
+        }
+        /// `quota.pace.deficitShort` — {percent}% deficit
+        public static func paceDeficitShort(percent: Int) -> String {
+            L10n.string("quota.pace.deficitShort", percent)
+        }
         /// `quota.pace.lastsUntilReset` — Lasts until reset
         public static var paceLastsUntilReset: String {
             L10n.string("quota.pace.lastsUntilReset")
         }
+        /// `quota.pace.onTrack` — On pace
+        public static var paceOnTrack: String {
+            L10n.string("quota.pace.onTrack")
+        }
+        /// `quota.pace.reserve` — {percent}% in reserve
+        public static func paceReserve(percent: Int) -> String {
+            L10n.string("quota.pace.reserve", percent)
+        }
+        /// `quota.pace.reserveShort` — {percent}% reserve
+        public static func paceReserveShort(percent: Int) -> String {
+            L10n.string("quota.pace.reserveShort", percent)
+        }
         /// `quota.pace.runsOutIn` — Runs out in {countdown}
         public static func paceRunsOutIn(countdown: String) -> String {
             L10n.string("quota.pace.runsOutIn", countdown)
+        }
+        /// `quota.pace.runsOutShort` — out {countdown}
+        public static func paceRunsOutShort(countdown: String) -> String {
+            L10n.string("quota.pace.runsOutShort", countdown)
         }
         /// `quota.perModelLimits` — {count, plural, one {1 per-model limit} other {# per-model limits}} · open {provider} for details
         public static func perModelLimits(count: Int, provider: String) -> String {
@@ -1354,6 +1886,10 @@ extension L10n {
         public static var resetHistoryAxisTimeHelp: String {
             L10n.string("quota.resetHistory.axis.timeHelp")
         }
+        /// `quota.resetHistory.axisCurrent` — Current
+        public static var resetHistoryAxisCurrent: String {
+            L10n.string("quota.resetHistory.axisCurrent")
+        }
         /// `quota.resetHistory.axisCyclesBack` — −{count}
         public static func resetHistoryAxisCyclesBack(count: Int) -> String {
             L10n.string("quota.resetHistory.axisCyclesBack", count)
@@ -1361,6 +1897,34 @@ extension L10n {
         /// `quota.resetHistory.axisNow` — now
         public static var resetHistoryAxisNow: String {
             L10n.string("quota.resetHistory.axisNow")
+        }
+        /// `quota.resetHistory.barIsOneCycle` — Each bar is one quota cycle
+        public static var resetHistoryBarIsOneCycle: String {
+            L10n.string("quota.resetHistory.barIsOneCycle")
+        }
+        /// `quota.resetHistory.compareEmpty` — Nothing to compare yet — weekly and longer quotas appear here once a provider reports one.
+        public static var resetHistoryCompareEmpty: String {
+            L10n.string("quota.resetHistory.compareEmpty")
+        }
+        /// `quota.resetHistory.compareTitle` — Reset History Compare
+        public static var resetHistoryCompareTitle: String {
+            L10n.string("quota.resetHistory.compareTitle")
+        }
+        /// `quota.resetHistory.compareWindow` — Compare the {window}
+        public static func resetHistoryCompareWindow(window: String) -> String {
+            L10n.string("quota.resetHistory.compareWindow", window)
+        }
+        /// `quota.resetHistory.currentCycleCaption` — Current cycle · {used}% used so far · {left}% left
+        public static func resetHistoryCurrentCycleCaption(used: Int, left: Int) -> String {
+            L10n.string("quota.resetHistory.currentCycleCaption", used, left)
+        }
+        /// `quota.resetHistory.cycleCaption` — {time} reset · {used}% used · {left}% left
+        public static func resetHistoryCycleCaption(time: String, used: Int, left: Int) -> String {
+            L10n.string("quota.resetHistory.cycleCaption", time, used, left)
+        }
+        /// `quota.resetHistory.earlyRefillCount` — {count, plural, one {1 cycle refilled before the window was up} other {# cycles refilled before the window was up}}
+        public static func resetHistoryEarlyRefillCount(count: Int) -> String {
+            L10n.string("quota.resetHistory.earlyRefillCount", count)
         }
         /// `quota.resetHistory.lane.emptyState` — No completed cycles yet — a cycle is recorded when the quota refills
         public static var resetHistoryLaneEmptyState: String {
@@ -1382,6 +1946,26 @@ extension L10n {
         public static func resetHistoryLaneWasteSummary(percent: String, count: Int) -> String {
             L10n.string("quota.resetHistory.lane.wasteSummary", percent, count)
         }
+        /// `quota.resetHistory.lastSeenBefore` — last seen {duration} before reset
+        public static func resetHistoryLastSeenBefore(duration: String) -> String {
+            L10n.string("quota.resetHistory.lastSeenBefore", duration)
+        }
+        /// `quota.resetHistory.legend.barHeight` — bar height = remaining at reset
+        public static var resetHistoryLegendBarHeight: String {
+            L10n.string("quota.resetHistory.legend.barHeight")
+        }
+        /// `quota.resetHistory.legend.byDate` — placed by date
+        public static var resetHistoryLegendByDate: String {
+            L10n.string("quota.resetHistory.legend.byDate")
+        }
+        /// `quota.resetHistory.legend.perCycle` — one column per cycle
+        public static var resetHistoryLegendPerCycle: String {
+            L10n.string("quota.resetHistory.legend.perCycle")
+        }
+        /// `quota.resetHistory.legend.refilledEarly` — refilled early
+        public static var resetHistoryLegendRefilledEarly: String {
+            L10n.string("quota.resetHistory.legend.refilledEarly")
+        }
         /// `quota.resetHistory.reset.earlyClockRestarted` — refilled early, next window restarted
         public static var resetHistoryResetEarlyClockRestarted: String {
             L10n.string("quota.resetHistory.reset.earlyClockRestarted")
@@ -1393,6 +1977,14 @@ extension L10n {
         /// `quota.resetHistory.reset.earlyUnclear` — refilled early, onto a different schedule
         public static var resetHistoryResetEarlyUnclear: String {
             L10n.string("quota.resetHistory.reset.earlyUnclear")
+        }
+        /// `quota.resetHistory.retiredAccount` — Signed-out account
+        public static var resetHistoryRetiredAccount: String {
+            L10n.string("quota.resetHistory.retiredAccount")
+        }
+        /// `quota.resetHistory.retiredAccountNumbered` — Signed-out account {number}
+        public static func resetHistoryRetiredAccountNumbered(number: Int) -> String {
+            L10n.string("quota.resetHistory.retiredAccountNumbered", number)
         }
         /// `quota.resetHistory.spoken.allCycles` — every recorded cycle
         public static var resetHistorySpokenAllCycles: String {
@@ -1429,6 +2021,22 @@ extension L10n {
         /// `quota.resetHistory.title` — Reset History
         public static var resetHistoryTitle: String {
             L10n.string("quota.resetHistory.title")
+        }
+        /// `quota.resetHistory.tooltip.completed` — {left}% left at reset · {used}% used
+        public static func resetHistoryTooltipCompleted(left: Int, used: Int) -> String {
+            L10n.string("quota.resetHistory.tooltip.completed", left, used)
+        }
+        /// `quota.resetHistory.tooltip.current` — Current cycle · {left}% left now · {used}% used so far
+        public static func resetHistoryTooltipCurrent(left: Int, used: Int) -> String {
+            L10n.string("quota.resetHistory.tooltip.current", left, used)
+        }
+        /// `quota.resetHistory.tooltip.range` — {start} → {end} reset
+        public static func resetHistoryTooltipRange(start: String, end: String) -> String {
+            L10n.string("quota.resetHistory.tooltip.range", start, end)
+        }
+        /// `quota.resetHistory.tooltip.rangeDue` — {start} → {end} reset due
+        public static func resetHistoryTooltipRangeDue(start: String, end: String) -> String {
+            L10n.string("quota.resetHistory.tooltip.rangeDue", start, end)
         }
         /// `quota.resetHistory.totals.headline` — {used}% used · {wasted}% wasted · {count, plural, one {1 cycle} other {# cycles}}
         public static func resetHistoryTotalsHeadline(used: String, wasted: String, count: Int) -> String {
@@ -1521,6 +2129,18 @@ extension L10n {
         /// `quota.update.failed` — Update failed: {reason}
         public static func updateFailed(reason: String) -> String {
             L10n.string("quota.update.failed", reason)
+        }
+        /// `quota.window.dayOfDays` — Day {day} of {total} · {value}
+        public static func windowDayOfDays(day: Int, total: Int, value: String) -> String {
+            L10n.string("quota.window.dayOfDays", day, total, value)
+        }
+        /// `quota.window.elapsedOfWindow` — {elapsed} of {window} · {value}
+        public static func windowElapsedOfWindow(elapsed: String, window: String, value: String) -> String {
+            L10n.string("quota.window.elapsedOfWindow", elapsed, window, value)
+        }
+        /// `quota.window.resetsSoon` — Resets soon · {value}
+        public static func windowResetsSoon(value: String) -> String {
+            L10n.string("quota.window.resetsSoon", value)
         }
     }
 
@@ -3039,6 +3659,34 @@ extension L10n {
     }
 
     public enum Usage {
+        /// `usage.activity.a11y` — Token usage by weekday and hour, 7 days by 24 hours
+        public static var activityA11y: String {
+            L10n.string("usage.activity.a11y")
+        }
+        /// `usage.activity.cellTooltip` — {day} {hour} · {tokens}
+        public static func activityCellTooltip(day: String, hour: String, tokens: String) -> String {
+            L10n.string("usage.activity.cellTooltip", day, hour, tokens)
+        }
+        /// `usage.activity.heavy` — Heavy
+        public static var activityHeavy: String {
+            L10n.string("usage.activity.heavy")
+        }
+        /// `usage.activity.peak` — Peak {hour} · {day}
+        public static func activityPeak(hour: String, day: String) -> String {
+            L10n.string("usage.activity.peak", hour, day)
+        }
+        /// `usage.activity.peakCell` — Peak {hour} · {day} {cellHour}
+        public static func activityPeakCell(hour: String, day: String, cellHour: String) -> String {
+            L10n.string("usage.activity.peakCell", hour, day, cellHour)
+        }
+        /// `usage.activity.quiet` — Quiet
+        public static var activityQuiet: String {
+            L10n.string("usage.activity.quiet")
+        }
+        /// `usage.activity.tokensShort` — {tokens} tok
+        public static func activityTokensShort(tokens: String) -> String {
+            L10n.string("usage.activity.tokensShort", tokens)
+        }
         /// `usage.breakdown.models` — Models
         public static var breakdownModels: String {
             L10n.string("usage.breakdown.models")
@@ -3058,6 +3706,26 @@ extension L10n {
         /// `usage.breakdown.requests` — Requests
         public static var breakdownRequests: String {
             L10n.string("usage.breakdown.requests")
+        }
+        /// `usage.chartNavigator.label` — Chart range navigator
+        public static var chartNavigatorLabel: String {
+            L10n.string("usage.chartNavigator.label")
+        }
+        /// `usage.chartNavigator.range` — {start} to {end}
+        public static func chartNavigatorRange(start: String, end: String) -> String {
+            L10n.string("usage.chartNavigator.range", start, end)
+        }
+        /// `usage.chartNavigator.showFullRange` — Show Full Range
+        public static var chartNavigatorShowFullRange: String {
+            L10n.string("usage.chartNavigator.showFullRange")
+        }
+        /// `usage.chartNavigator.zoomIn` — Zoom In
+        public static var chartNavigatorZoomIn: String {
+            L10n.string("usage.chartNavigator.zoomIn")
+        }
+        /// `usage.chartNavigator.zoomOut` — Zoom Out
+        public static var chartNavigatorZoomOut: String {
+            L10n.string("usage.chartNavigator.zoomOut")
         }
         /// `usage.filters.allHarnesses` — All harnesses
         public static var filtersAllHarnesses: String {
@@ -3243,9 +3911,37 @@ extension L10n {
         public static var ledgerUnavailableTitle: String {
             L10n.string("usage.ledgerUnavailable.title")
         }
+        /// `usage.mix.dimension.harnesses` — Harnesses
+        public static var mixDimensionHarnesses: String {
+            L10n.string("usage.mix.dimension.harnesses")
+        }
+        /// `usage.mix.dimension.models` — Models
+        public static var mixDimensionModels: String {
+            L10n.string("usage.mix.dimension.models")
+        }
+        /// `usage.mix.dimension.projects` — Projects
+        public static var mixDimensionProjects: String {
+            L10n.string("usage.mix.dimension.projects")
+        }
         /// `usage.mix.donutUnit` — tokens
         public static var mixDonutUnit: String {
             L10n.string("usage.mix.donutUnit")
+        }
+        /// `usage.mix.flow.cache` — Cache
+        public static var mixFlowCache: String {
+            L10n.string("usage.mix.flow.cache")
+        }
+        /// `usage.mix.flow.cacheDetail` — read + creation
+        public static var mixFlowCacheDetail: String {
+            L10n.string("usage.mix.flow.cacheDetail")
+        }
+        /// `usage.mix.flow.freshInput` — Fresh input
+        public static var mixFlowFreshInput: String {
+            L10n.string("usage.mix.flow.freshInput")
+        }
+        /// `usage.mix.flow.output` — Output
+        public static var mixFlowOutput: String {
+            L10n.string("usage.mix.flow.output")
         }
         /// `usage.mix.harness.subtitle` — where requests ran
         public static var mixHarnessSubtitle: String {
@@ -3254,6 +3950,14 @@ extension L10n {
         /// `usage.mix.harness.title` — Harness Mix
         public static var mixHarnessTitle: String {
             L10n.string("usage.mix.harness.title")
+        }
+        /// `usage.mix.lastThirtyDays` — Last 30 days
+        public static var mixLastThirtyDays: String {
+            L10n.string("usage.mix.lastThirtyDays")
+        }
+        /// `usage.mix.ledgerUnreadable` — Usage ledger could not be read.
+        public static var mixLedgerUnreadable: String {
+            L10n.string("usage.mix.ledgerUnreadable")
         }
         /// `usage.mix.model.empty` — No model traffic in this range
         public static var mixModelEmpty: String {
@@ -3298,6 +4002,10 @@ extension L10n {
         /// `usage.mix.provider.title` — Provider Mix
         public static var mixProviderTitle: String {
             L10n.string("usage.mix.provider.title")
+        }
+        /// `usage.mix.title` — Usage Mix
+        public static var mixTitle: String {
+            L10n.string("usage.mix.title")
         }
         /// `usage.mix.tokenFlow.empty` — No token traffic in this range
         public static var mixTokenFlowEmpty: String {
@@ -3595,9 +4303,37 @@ extension L10n {
         public static var whenYouUseGoogleAI: String {
             L10n.string("usage.whenYouUse.googleAI")
         }
+        /// `usage.whenYouUse.provider` — When you use {provider}
+        public static func whenYouUseProvider(provider: String) -> String {
+            L10n.string("usage.whenYouUse.provider", provider)
+        }
         /// `usage.whenYouUse.spaceXAI` — When you use SpaceXAI
         public static var whenYouUseSpaceXAI: String {
             L10n.string("usage.whenYouUse.spaceXAI")
+        }
+        /// `usage.yearHeatmap.a11y` — {provider} daily spend over the past year, {count, plural, one {1 week} other {# weeks}}
+        public static func yearHeatmapA11y(provider: String, count: Int) -> String {
+            L10n.string("usage.yearHeatmap.a11y", provider, count)
+        }
+        /// `usage.yearHeatmap.less` — Less
+        public static var yearHeatmapLess: String {
+            L10n.string("usage.yearHeatmap.less")
+        }
+        /// `usage.yearHeatmap.more` — More
+        public static var yearHeatmapMore: String {
+            L10n.string("usage.yearHeatmap.more")
+        }
+        /// `usage.yearHeatmap.title` — {provider} — Past Year
+        public static func yearHeatmapTitle(provider: String) -> String {
+            L10n.string("usage.yearHeatmap.title", provider)
+        }
+        /// `usage.yearHeatmap.tooltip` — {date} · {amount}
+        public static func yearHeatmapTooltip(date: String, amount: String) -> String {
+            L10n.string("usage.yearHeatmap.tooltip", date, amount)
+        }
+        /// `usage.yearHeatmap.total` — {amount} total
+        public static func yearHeatmapTotal(amount: String) -> String {
+            L10n.string("usage.yearHeatmap.total", amount)
         }
     }
 
@@ -5026,6 +5762,7 @@ extension L10n {
         "common.duration.minutes",
         "common.duration.now",
         "common.name",
+        "common.noData",
         "common.off",
         "common.on",
         "common.open",
@@ -5045,6 +5782,9 @@ extension L10n {
         "common.updated.never",
         "common.updated.secondsAgo",
         "cost.allProviders",
+        "cost.chart.metricCostHelp",
+        "cost.chart.metricTokens",
+        "cost.chart.metricTokensHelp",
         "cost.empty.antigravity",
         "cost.empty.claude",
         "cost.empty.codex",
@@ -5056,7 +5796,31 @@ extension L10n {
         "cost.gemini.emptyTitle",
         "cost.googleAI.empty",
         "cost.googleAI.title",
+        "cost.granularity.auto",
+        "cost.granularity.day",
+        "cost.granularity.hour",
+        "cost.granularity.month",
+        "cost.granularity.week",
         "cost.history.allProviders",
+        "cost.history.building",
+        "cost.history.buildingDetail",
+        "cost.history.clearModelSelection",
+        "cost.history.emptyCost",
+        "cost.history.emptyTokens",
+        "cost.history.extentNote",
+        "cost.history.granularityDisabled",
+        "cost.history.groupBy",
+        "cost.history.hourlyFallback",
+        "cost.history.metricAverage",
+        "cost.history.metricPeak",
+        "cost.history.metricTotal",
+        "cost.history.modelDetailUnavailable",
+        "cost.history.modelsAt",
+        "cost.history.moreModels",
+        "cost.history.navigator",
+        "cost.history.title",
+        "cost.history.weekOf",
+        "cost.history.weekShortOf",
         "cost.metric.peakDay",
         "cost.metric.peakTokenDay",
         "cost.metric.sevenDay",
@@ -5214,9 +5978,17 @@ extension L10n {
         "platform.macos.menuBar.showInMenuBar",
         "platform.macos.menuBar.showTitleText",
         "popover.header.machinesSubtitle",
+        "popover.header.mini",
         "popover.header.miscSubtitle",
+        "popover.header.openWorkbench",
         "popover.header.overviewSubtitle",
+        "popover.header.refreshing",
+        "popover.header.settings",
+        "popover.header.updatedLine",
         "popover.machines.checking",
+        "popover.machines.freshness.delayed",
+        "popover.machines.freshness.live",
+        "popover.machines.freshness.stale",
         "popover.machines.includeInTotals",
         "popover.machines.includeInTotalsHelp",
         "popover.machines.labelWithStatus",
@@ -5233,8 +6005,15 @@ extension L10n {
         "popover.tab.misc",
         "popover.tab.miscShort",
         "popover.tab.overview",
+        "quota.awaitingFirstObservation",
+        "quota.bridge.empty",
+        "quota.bridge.refresh",
+        "quota.bridge.subtitle",
+        "quota.bridge.subtitleVersion",
+        "quota.bridge.title",
         "quota.bucket.noResetInfo",
         "quota.bucket.resetsIn",
+        "quota.cycleRecordedOnRefill",
         "quota.empty.needsLogin.detail",
         "quota.empty.needsLogin.headline",
         "quota.empty.network.detail",
@@ -5248,6 +6027,10 @@ extension L10n {
         "quota.forecast.confidence.high",
         "quota.forecast.confidence.learning",
         "quota.forecast.confidence.medium",
+        "quota.forecast.explain.footer",
+        "quota.forecast.explain.hide",
+        "quota.forecast.explain.show",
+        "quota.forecast.explain.title",
         "quota.forecast.guidance.atRisk",
         "quota.forecast.guidance.available",
         "quota.forecast.guidance.surplus",
@@ -5256,6 +6039,46 @@ extension L10n {
         "quota.forecast.guidance.usedWithinTarget",
         "quota.forecast.guidance.watch",
         "quota.forecast.guidance.withinTarget",
+        "quota.forecast.legend.item",
+        "quota.forecast.metric.aboveTarget",
+        "quota.forecast.metric.activityFallback",
+        "quota.forecast.metric.activityTiming",
+        "quota.forecast.metric.activityWeighted",
+        "quota.forecast.metric.behaviorDetail",
+        "quota.forecast.metric.behaviorFallback",
+        "quota.forecast.metric.comparableCycles",
+        "quota.forecast.metric.coverage",
+        "quota.forecast.metric.coverageDetail",
+        "quota.forecast.metric.coverageValue",
+        "quota.forecast.metric.cyclesPending",
+        "quota.forecast.metric.elapsed",
+        "quota.forecast.metric.evidence",
+        "quota.forecast.metric.evidenceDetail",
+        "quota.forecast.metric.evidenceValue",
+        "quota.forecast.metric.expectedLeft",
+        "quota.forecast.metric.expectedUsed",
+        "quota.forecast.metric.forecastAtReset",
+        "quota.forecast.metric.forecastRange",
+        "quota.forecast.metric.insideTarget",
+        "quota.forecast.metric.noComparison",
+        "quota.forecast.metric.plan",
+        "quota.forecast.metric.planDetail",
+        "quota.forecast.metric.rangeLeft",
+        "quota.forecast.metric.rangeUsed",
+        "quota.forecast.metric.recentBurn",
+        "quota.forecast.metric.recentIntervals",
+        "quota.forecast.metric.recentMissing",
+        "quota.forecast.metric.recentTrend",
+        "quota.forecast.metric.safetyTarget",
+        "quota.forecast.metric.timePace",
+        "quota.forecast.metric.timePaceDetail",
+        "quota.forecast.metric.timePaceMissing",
+        "quota.forecast.metric.trendDetail",
+        "quota.forecast.metric.trendDetailMissing",
+        "quota.forecast.metric.trendMissing",
+        "quota.forecast.metric.trendMultiplier",
+        "quota.forecast.metric.unavailable",
+        "quota.forecast.metric.uncertaintyInterval",
         "quota.forecast.reset.atRisk",
         "quota.forecast.reset.enough",
         "quota.forecast.reset.learning",
@@ -5271,6 +6094,8 @@ extension L10n {
         "quota.forecast.useUp.estimated",
         "quota.forecast.useUp.lastsUntilReset",
         "quota.forecast.useUp.uncertain",
+        "quota.forecast.value.atReset",
+        "quota.forecast.value.expectedNow",
         "quota.forecast.value.left",
         "quota.forecast.value.used",
         "quota.forecast.verdict.atRisk",
@@ -5299,15 +6124,59 @@ extension L10n {
         "quota.group.otherModels",
         "quota.group.weekly",
         "quota.group.weeklyCredits",
+        "quota.history.allCurvesHidden",
+        "quota.history.buildingUp",
+        "quota.history.curveCount",
+        "quota.history.curvePickerA11y",
+        "quota.history.curvesAll",
+        "quota.history.curvesSome",
+        "quota.history.forecastLegend",
+        "quota.history.moreBuckets",
+        "quota.history.moreReadings",
+        "quota.history.navigatorAllProviders",
+        "quota.history.navigatorProvider",
+        "quota.history.providerCount",
+        "quota.history.scopeNote",
+        "quota.history.showAllCurves",
+        "quota.history.showBusiest",
+        "quota.history.title",
+        "quota.history.tooltipAtReset",
+        "quota.history.tooltipPace",
+        "quota.history.tooltipQuotaLeft",
         "quota.login.claude",
         "quota.login.codex",
         "quota.login.cursor",
         "quota.login.grok",
         "quota.login.misc",
+        "quota.mini.forecastLearning",
+        "quota.mini.forecastLearningCompact",
+        "quota.mini.forecastLeft",
+        "quota.mini.forecastLeftCompact",
+        "quota.mini.forecastMayRunOut",
+        "quota.mini.forecastSurplus",
+        "quota.mini.forecastSurplusCompact",
+        "quota.mini.nextProvider",
+        "quota.mini.noLiveData",
+        "quota.mini.pageIndicator",
+        "quota.mini.railEmpty",
+        "quota.mini.railTitle",
+        "quota.mini.resets",
+        "quota.mini.rowHelp",
+        "quota.misc.independentCopies",
+        "quota.misc.notConfigured",
+        "quota.misc.refreshCopies",
+        "quota.misc.refreshProvider",
+        "quota.misc.setUpInSettings",
         "quota.mode.remaining",
         "quota.mode.used",
+        "quota.pace.deficit",
+        "quota.pace.deficitShort",
         "quota.pace.lastsUntilReset",
+        "quota.pace.onTrack",
+        "quota.pace.reserve",
+        "quota.pace.reserveShort",
         "quota.pace.runsOutIn",
+        "quota.pace.runsOutShort",
         "quota.perModelLimits",
         "quota.reset.in",
         "quota.reset.passed",
@@ -5324,16 +6193,31 @@ extension L10n {
         "quota.resetHistory.axis.cycleHelp",
         "quota.resetHistory.axis.time",
         "quota.resetHistory.axis.timeHelp",
+        "quota.resetHistory.axisCurrent",
         "quota.resetHistory.axisCyclesBack",
         "quota.resetHistory.axisNow",
+        "quota.resetHistory.barIsOneCycle",
+        "quota.resetHistory.compareEmpty",
+        "quota.resetHistory.compareTitle",
+        "quota.resetHistory.compareWindow",
+        "quota.resetHistory.currentCycleCaption",
+        "quota.resetHistory.cycleCaption",
+        "quota.resetHistory.earlyRefillCount",
         "quota.resetHistory.lane.emptyState",
         "quota.resetHistory.lane.noCycles",
         "quota.resetHistory.lane.spokenNoCycles",
         "quota.resetHistory.lane.spokenWaste",
         "quota.resetHistory.lane.wasteSummary",
+        "quota.resetHistory.lastSeenBefore",
+        "quota.resetHistory.legend.barHeight",
+        "quota.resetHistory.legend.byDate",
+        "quota.resetHistory.legend.perCycle",
+        "quota.resetHistory.legend.refilledEarly",
         "quota.resetHistory.reset.earlyClockRestarted",
         "quota.resetHistory.reset.earlyClockUnchanged",
         "quota.resetHistory.reset.earlyUnclear",
+        "quota.resetHistory.retiredAccount",
+        "quota.resetHistory.retiredAccountNumbered",
         "quota.resetHistory.spoken.allCycles",
         "quota.resetHistory.spoken.allTime",
         "quota.resetHistory.spoken.eightCycles",
@@ -5343,6 +6227,10 @@ extension L10n {
         "quota.resetHistory.spoken.twelveCycles",
         "quota.resetHistory.spoken.twelveWeeks",
         "quota.resetHistory.title",
+        "quota.resetHistory.tooltip.completed",
+        "quota.resetHistory.tooltip.current",
+        "quota.resetHistory.tooltip.range",
+        "quota.resetHistory.tooltip.rangeDue",
         "quota.resetHistory.totals.headline",
         "quota.resetHistory.totals.none",
         "quota.resetHistory.truncation",
@@ -5366,6 +6254,9 @@ extension L10n {
         "quota.upcoming.resetsAt",
         "quota.upcoming.title",
         "quota.update.failed",
+        "quota.window.dayOfDays",
+        "quota.window.elapsedOfWindow",
+        "quota.window.resetsSoon",
         "settings.antigravityCookieEnabled",
         "settings.antigravityLocalOnly",
         "settings.antigravitySource",
@@ -5743,11 +6634,23 @@ extension L10n {
         "status.overview.partialOutage",
         "status.overview.refreshing",
         "status.overview.title",
+        "usage.activity.a11y",
+        "usage.activity.cellTooltip",
+        "usage.activity.heavy",
+        "usage.activity.peak",
+        "usage.activity.peakCell",
+        "usage.activity.quiet",
+        "usage.activity.tokensShort",
         "usage.breakdown.models",
         "usage.breakdown.periods",
         "usage.breakdown.projects",
         "usage.breakdown.providers",
         "usage.breakdown.requests",
+        "usage.chartNavigator.label",
+        "usage.chartNavigator.range",
+        "usage.chartNavigator.showFullRange",
+        "usage.chartNavigator.zoomIn",
+        "usage.chartNavigator.zoomOut",
         "usage.filters.allHarnesses",
         "usage.filters.allHarnessesHelpEvery",
         "usage.filters.allHarnessesHelpNone",
@@ -5794,9 +6697,18 @@ extension L10n {
         "usage.hero.unpricedHelp",
         "usage.ledgerUnavailable.detail",
         "usage.ledgerUnavailable.title",
+        "usage.mix.dimension.harnesses",
+        "usage.mix.dimension.models",
+        "usage.mix.dimension.projects",
         "usage.mix.donutUnit",
+        "usage.mix.flow.cache",
+        "usage.mix.flow.cacheDetail",
+        "usage.mix.flow.freshInput",
+        "usage.mix.flow.output",
         "usage.mix.harness.subtitle",
         "usage.mix.harness.title",
+        "usage.mix.lastThirtyDays",
+        "usage.mix.ledgerUnreadable",
         "usage.mix.model.empty",
         "usage.mix.model.subtitle",
         "usage.mix.model.title",
@@ -5808,6 +6720,7 @@ extension L10n {
         "usage.mix.provider.empty",
         "usage.mix.provider.subtitle",
         "usage.mix.provider.title",
+        "usage.mix.title",
         "usage.mix.tokenFlow.empty",
         "usage.mix.tokenFlow.subtitle",
         "usage.mix.tokenFlow.title",
@@ -5882,7 +6795,14 @@ extension L10n {
         "usage.trend.tokensChartLabel",
         "usage.whenYouUse.everything",
         "usage.whenYouUse.googleAI",
+        "usage.whenYouUse.provider",
         "usage.whenYouUse.spaceXAI",
+        "usage.yearHeatmap.a11y",
+        "usage.yearHeatmap.less",
+        "usage.yearHeatmap.more",
+        "usage.yearHeatmap.title",
+        "usage.yearHeatmap.tooltip",
+        "usage.yearHeatmap.total",
         "workbench.appearance.useDark",
         "workbench.appearance.useLight",
         "workbench.header.refreshPage",
@@ -6237,8 +7157,14 @@ extension L10n {
         "common.updated.daysAgo",
         "common.updated.hoursAgo",
         "common.updated.minutesAgo",
+        "quota.forecast.metric.comparableCycles",
+        "quota.forecast.metric.recentIntervals",
+        "quota.history.curveCount",
+        "quota.history.providerCount",
+        "quota.misc.independentCopies",
         "quota.perModelLimits",
         "quota.resetCredits.available",
+        "quota.resetHistory.earlyRefillCount",
         "quota.resetHistory.lane.wasteSummary",
         "quota.resetHistory.totals.headline",
         "quota.resetHistory.verdict.leaky",
@@ -6256,6 +7182,7 @@ extension L10n {
         "usage.table.projectCount",
         "usage.table.statRow",
         "usage.trend.accessibilitySummary",
+        "usage.yearHeatmap.a11y",
         "workbench.sessions.count.sessions",
         "workbench.sessions.delete.confirm",
         "workbench.sessions.row.autoReviewsMerged",

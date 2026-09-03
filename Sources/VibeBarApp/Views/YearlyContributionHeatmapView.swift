@@ -19,7 +19,7 @@ struct YearlyContributionHeatmapView: View {
         case .spacious: 2.5
         }
     }
-    private let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    private var weekdayLabels: [String] { AppLocale.shortWeekdaySymbols }
     @State private var measuredGridWidth: CGFloat = 0
     @EnvironmentObject var environment: AppEnvironment
 
@@ -32,7 +32,10 @@ struct YearlyContributionHeatmapView: View {
         var columns: [WeekColumn] = []
         var markers: [MonthMarker] = []
         var thresholds: (p25: Double, p50: Double, p75: Double) = (0, 0, 0)
-        var totalLabel: String?
+        /// The *number*, not the sentence. "{amount} total" is a rendering of
+        /// this and is derived at draw time, so a language change needs no
+        /// cache entry of its own.
+        var total: Double?
     }
 
     private struct GridStamp: Equatable {
@@ -41,6 +44,10 @@ struct YearlyContributionHeatmapView: View {
         /// The walk groups by `Calendar.current`; a calendar or zone change
         /// mid-flight must invalidate even when today's start looks equal.
         let calendarIdentity: String
+        /// The month markers are localized month *names*, so the language is
+        /// part of what makes this cache entry valid — for exactly the same
+        /// reason the calendar identity is.
+        let language: LanguageStamp
     }
 
     @State private var gridCache = GridCache()
@@ -49,27 +56,28 @@ struct YearlyContributionHeatmapView: View {
         columns: [WeekColumn],
         markers: [MonthMarker],
         thresholds: (p25: Double, p50: Double, p75: Double),
-        totalLabel: String?
+        total: Double?
     )
 
     private func cachedGrid() -> CachedGrid {
         let stamp = GridStamp(
             history: history,
             today: Calendar.current.startOfDay(for: Date()),
-            calendarIdentity: "\(Calendar.current.identifier)|\(TimeZone.current.identifier)"
+            calendarIdentity: "\(Calendar.current.identifier)|\(TimeZone.current.identifier)",
+            language: .current
         )
         if gridCache.historyStamp == stamp {
-            return (gridCache.columns, gridCache.markers, gridCache.thresholds, gridCache.totalLabel)
+            return (gridCache.columns, gridCache.markers, gridCache.thresholds, gridCache.total)
         }
         let columns = makeColumns()
         let markers = monthLabelPositions(columns: columns)
         let levels = thresholds
-        let total = totalLabel
+        let total = totalSpend
         gridCache.historyStamp = stamp
         gridCache.columns = columns
         gridCache.markers = markers
         gridCache.thresholds = levels
-        gridCache.totalLabel = total
+        gridCache.total = total
         return (columns, markers, levels, total)
     }
 
@@ -78,15 +86,15 @@ struct YearlyContributionHeatmapView: View {
         // month markers, the quartile sort behind `thresholds`, and the
         // header total — is memoized on the history generation, so a redraw
         // of the card (hover, resize, refresh tick) costs a stamp compare.
-        let (columns, cachedMonthMarkers, cachedThresholds, cachedTotalLabel) = cachedGrid()
+        let (columns, cachedMonthMarkers, cachedThresholds, cachedTotal) = cachedGrid()
         let metrics = gridMetrics(columnCount: columns.count, measuredWidth: measuredGridWidth)
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("\(toolName) — Past Year")
+                Text(L10n.Usage.yearHeatmapTitle(provider: toolName))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
-                if let total = cachedTotalLabel {
+                if let total = totalLabel(cachedTotal) {
                     Text(total)
                         .font(.system(size: density.subtitleFontSize))
                         .foregroundStyle(.secondary)
@@ -109,7 +117,7 @@ struct YearlyContributionHeatmapView: View {
                 }
             }
             HStack(spacing: 6) {
-                Text("Less")
+                Text(L10n.Usage.yearHeatmapLess)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                 ForEach(0..<5, id: \.self) { step in
@@ -117,7 +125,7 @@ struct YearlyContributionHeatmapView: View {
                         .fill(yearlyLevelColor(step))
                         .frame(width: metrics.cellSize, height: metrics.cellSize)
                 }
-                Text("More")
+                Text(L10n.Usage.yearHeatmapMore)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -186,7 +194,9 @@ struct YearlyContributionHeatmapView: View {
                     columns: columns,
                     metrics: metrics,
                     thresholds: thresholds,
-                    accessibilityLabel: "\(toolName) daily spend over the past year, \(columns.count) weeks"
+                    accessibilityLabel: L10n.Usage.yearHeatmapA11y(
+                        provider: toolName, count: columns.count
+                    )
                 )
             }
         }
@@ -280,11 +290,21 @@ struct YearlyContributionHeatmapView: View {
         return markers
     }
 
-    private var totalLabel: String? {
+    /// The figure behind the header caption. Data, so it is what the grid
+    /// cache holds.
+    private var totalSpend: Double? {
         let total = history.reduce(0) { $0 + $1.costUSD }
-        guard total > 0 else { return nil }
-        if total < 100 { return String(format: "$%.2f total", total) }
-        return String(format: "$%.0f total", total)
+        return total > 0 ? total : nil
+    }
+
+    /// The caption itself, derived from the cached figure at draw time — the
+    /// sentence is a rendering of the number, not another thing to cache.
+    private func totalLabel(_ total: Double?) -> String? {
+        guard let total else { return nil }
+        let amount = total < 100
+            ? String(format: "$%.2f", total)
+            : String(format: "$%.0f", total)
+        return L10n.Usage.yearHeatmapTotal(amount: amount)
     }
 
     /// Per-tool quartile thresholds computed from the history's non-zero days.
@@ -398,7 +418,9 @@ private func yearlyCellTooltip(for entry: DailyCostPoint) -> String {
     let cost: String = entry.costUSD < 0.01 ? "$0.00"
         : entry.costUSD < 100 ? String(format: "$%.2f", entry.costUSD)
         : String(format: "$%.0f", entry.costUSD)
-    return "\(yearlyTooltipFormatter.string(from: entry.date)) · \(cost)"
+    return L10n.Usage.yearHeatmapTooltip(
+        date: yearlyTooltipFormatter.string(from: entry.date), amount: cost
+    )
 }
 
 /// Discrete level 0…4. 0 = no usage, 1…4 increase in saturation.

@@ -112,6 +112,26 @@ MIGRATED = [
     "Sources/VibeBarCore/Models/PrimaryProviderRouteHealth.swift",
     "Sources/VibeBarCore/Models/PrimaryProviderSourcePlanner.swift",
     "Sources/VibeBarCore/Models/UpdateChannel.swift",
+    "Sources/VibeBarApp/Views/HeaderView.swift",
+    "Sources/VibeBarApp/Views/QuotaGroupCard.swift",
+    "Sources/VibeBarApp/Views/QuotaHistoryChartView.swift",
+    "Sources/VibeBarApp/Views/OverviewQuotaHistoryCard.swift",
+    "Sources/VibeBarApp/Views/OverviewUsageMixCard.swift",
+    "Sources/VibeBarApp/Views/ResetHistoryCompareView.swift",
+    "Sources/VibeBarApp/Views/FillTimelineChart.swift",
+    "Sources/VibeBarApp/Views/CostHistoryView.swift",
+    "Sources/VibeBarApp/Views/ChartBrushNavigator.swift",
+    "Sources/VibeBarApp/Views/UsageActivityView.swift",
+    "Sources/VibeBarApp/Views/YearlyContributionHeatmapView.swift",
+    "Sources/VibeBarApp/Views/MiniQuotaWindowView.swift",
+    "Sources/VibeBarCore/Services/UsagePace.swift",
+    "Sources/VibeBarCore/Services/SubscriptionWindowProgress.swift",
+    "Sources/VibeBarCore/Models/CostChartGranularity.swift",
+    "Sources/VibeBarCore/Models/UsageHeatmap+Activity.swift",
+    "Sources/VibeBarApp/Views/MiniWindowAltLayouts.swift",
+    "Sources/VibeBarApp/Views/MiscProvidersPage.swift",
+    "Sources/VibeBarApp/Views/CodexBarProviderBridgeCard.swift",
+    "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
 ]
 
@@ -412,7 +432,12 @@ def derived_helpers(files) -> set:
             tail = source[index:index + 80]
             if "String" in parameters and VIEW_RETURNS.search(tail):
                 helpers.add(match.group(1))
-    return helpers
+    # A function *named* for an identifier builds identity, not copy, however
+    # much its signature looks like a label helper's. `OverviewQuotaCurve.id`
+    # takes three strings and returns one, so inferring from the shape alone
+    # made every `id("blank-\(n)")` in the manifest a finding. These are the
+    # same names `IDENTIFIER_ARGUMENTS` already trusts as an argument label.
+    return helpers - IDENTIFIER_ARGUMENTS
 
 
 LETTER = re.compile(r"[A-Za-z一-鿿]")
@@ -546,6 +571,92 @@ def formatting_findings(relative, source: str):
                 joined.count("\n", 0, match.start()) + 1,
                 "a number/percent/currency style without .locale(AppLocale.current)",
             ))
+    found += frozen_language_findings(joined)
+    return found
+
+
+# A stored `static` whose value comes out of the catalog is frozen in whatever
+# language the process launched in. `let` is the whole bug — the initializer
+# runs once, lazily, and never again — and `var` with an `=` is the same
+# storage. A computed `static var { ... }` is the fix and is deliberately not
+# matched, which is why this looks for the `=` rather than for the keyword.
+FROZEN_STATIC = re.compile(
+    r"\bstatic\s+(?:let|var)\s+[A-Za-z_]\w*\s*(?::[^=\n]+)?=", re.M
+)
+
+
+def _references_catalog_eagerly(initializer: str) -> bool:
+    """A catalog reference in `initializer` that runs when the static does.
+
+    Brace depth is the whole test: inside `{ ... }` the expression is a
+    closure body that runs per call, which is exactly how
+    `QuotaGroupLabelLocalizer.table` stays correct while looking like the bug.
+    """
+    depth = 0
+    index = 0
+    while index < len(initializer):
+        character = initializer[index]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            if initializer.startswith("L10n.", index):
+                return True
+            if initializer.startswith(".displayName", index):
+                return True
+        index += 1
+    return False
+
+
+def frozen_language_findings(source: str):
+    """A `static let` holding a localized value: frozen at launch language.
+
+    `AppLocale` learned this once already — twenty `static let` formatters
+    kept the language they were built in until relaunch — and the same defect
+    reappears wherever a cache holds a *string* out of the catalog. Two of
+    those shipped in this batch (the chart's duration pills, the cost chart's
+    bucket-width labels) and neither was visible to any other rule here.
+
+    The span searched is the initializer, balanced by braces and brackets as
+    well as parentheses, because the values that actually do this are array
+    and dictionary literals spanning many lines.
+    """
+    found = []
+    opening = {"(": ")", "[": "]", "{": "}"}
+    for match in FROZEN_STATIC.finditer(source):
+        index = match.end()
+        # Walk to the end of the initializer: to the matching close of
+        # whatever bracket it opens with, or to the end of the line.
+        while index < len(source) and source[index] in " \t":
+            index += 1
+        end = index
+        if index < len(source) and source[index] in opening:
+            depth = 0
+            while end < len(source):
+                if source[end] in opening:
+                    depth += 1
+                elif source[end] in opening.values():
+                    depth -= 1
+                    if depth == 0:
+                        end += 1
+                        break
+                end += 1
+        else:
+            end = source.find("\n", index)
+            end = len(source) if end == -1 else end
+        initializer = source[index:end]
+        # A value wrapped in a closure is *deferred*, not frozen:
+        # `["weekly": { L10n.Quota.groupWeekly }]` resolves on every call and
+        # is the fix, not the bug. So only a catalog reference that is
+        # evaluated eagerly — outside any braces — counts.
+        if not _references_catalog_eagerly(initializer):
+            continue
+        found.append((
+            source.count("\n", 0, match.start()) + 1,
+            "a stored static holding a localized value — frozen at launch "
+            "language; derive it, or memoize on LanguageStamp",
+        ))
     return found
 
 

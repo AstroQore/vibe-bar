@@ -28,7 +28,7 @@ struct MiniEntry: Identifiable {
         if let customLabel, !customLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return customLabel
         }
-        return bucket.title
+        return QuotaGroupLabelLocalizer.displayComposed(bucket.title)
     }
 
     /// Row label for list-style layouts: always the quota-axis path, with a
@@ -38,7 +38,7 @@ struct MiniEntry: Identifiable {
     /// group made every row identical.
     var rowLabel: String {
         if let groupLabel {
-            return "\(groupLabel) · \(bucketDisplayName)"
+            return "\(QuotaGroupLabelLocalizer.displayComposed(groupLabel)) · \(bucketDisplayName)"
         }
         return bucketDisplayName
     }
@@ -162,7 +162,7 @@ private func remainingPercent(_ entry: MiniEntry) -> Double {
 
 private struct MiniEmptyHint: View {
     var body: some View {
-        Text("No selected fields have live data")
+        Text(L10n.Quota.miniNoLiveData)
             .font(.system(size: 10, weight: .medium, design: .rounded))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -318,7 +318,7 @@ struct MiniLedgerLayout: View {
                 }
             }
             .frame(height: 4)
-            Text("\(Int(percent.rounded()))%")
+            Text(L10n.Common.percent(value: Int(percent.rounded())))
                 .font(.system(size: 10.5, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(color)
                 .frame(width: 34, alignment: .trailing)
@@ -331,7 +331,7 @@ struct MiniLedgerLayout: View {
         }
         .padding(.leading, MiniLedgerMetrics.rowIndent)
         .frame(height: MiniLedgerMetrics.rowHeight)
-        .help("\(providerTitle(for: entry.tool)) · \(entry.bucket.groupTitle ?? entry.subProviderDisplayName) · \(entry.bucket.title)")
+        .help(miniEntryHelp(entry))
     }
 }
 
@@ -497,11 +497,17 @@ struct MiniStripLayout: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-            Text("\(Int(percent.rounded()))%")
+            Text(L10n.Common.percent(value: Int(percent.rounded())))
                 .font(.system(size: 10.5, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(color)
         }
-        .help("\(entry.subProviderDisplayName) — \(entry.rowLabel): \(Int(percent.rounded()))%")
+        .help(
+            L10n.Quota.miniRowHelp(
+                subProvider: entry.subProviderDisplayName,
+                row: entry.rowLabel,
+                percent: Int(percent.rounded())
+            )
+        )
     }
 
     /// The menu bar's single-line style, one cell per bucket: full label
@@ -518,12 +524,18 @@ struct MiniStripLayout: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-            Text("\(Int(percent.rounded()))%")
+            Text(L10n.Common.percent(value: Int(percent.rounded())))
                 .font(.system(size: size, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(color)
         }
         .frame(width: width, alignment: .leading)
-        .help("\(entry.subProviderDisplayName) — \(entry.rowLabel): \(Int(percent.rounded()))%")
+        .help(
+            L10n.Quota.miniRowHelp(
+                subProvider: entry.subProviderDisplayName,
+                row: entry.rowLabel,
+                percent: Int(percent.rounded())
+            )
+        )
     }
 }
 
@@ -622,7 +634,7 @@ struct MiniTileLayout: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                     HStack(spacing: 6) {
-                        Text("\(Int(percent.rounded()))%")
+                        Text(L10n.Common.percent(value: Int(percent.rounded())))
                             .font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(color)
                         GeometryReader { proxy in
@@ -642,7 +654,7 @@ struct MiniTileLayout: View {
             .padding(.leading, 4)
         }
         .frame(width: MiniTileMetrics.tileWidth, height: MiniTileMetrics.tileHeight)
-        .help("\(providerTitle(for: entry.tool)) · \(entry.rowLabel) · \(entry.bucket.title)")
+        .help(miniTileHelp(entry))
     }
 }
 
@@ -705,7 +717,7 @@ struct MiniFocusLayout: View {
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary.opacity(0.86))
                 }
-                Text("\(headline.subProviderDisplayName.uppercased()) · \(headline.rowLabel.uppercased())")
+                Text(miniFocusPath(headline))
                     .font(.system(size: 8, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
                     .tracking(1.2)
@@ -720,7 +732,7 @@ struct MiniFocusLayout: View {
                     size: MiniFocusMetrics.ringSize,
                     lineWidth: MiniFocusMetrics.ringLineWidth
                 ) {
-                    Text("\(Int(percent.rounded()))%")
+                    Text(L10n.Common.percent(value: Int(percent.rounded())))
                         .font(.system(size: 19, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(color)
                 }
@@ -744,7 +756,11 @@ struct MiniFocusLayout: View {
                                 .onTapGesture { pageIndex = dot }
                         }
                     } else {
-                        Text("\(index + 1)/\(pages.count)")
+                        Text(
+                            L10n.Quota.miniPageIndicator(
+                                index: index + 1, total: pages.count
+                            )
+                        )
                             .font(.system(size: 8.5, weight: .semibold, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -757,7 +773,7 @@ struct MiniFocusLayout: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.vibeBar)
-                        .help("Next provider")
+                        .help(L10n.Quota.miniNextProvider)
                     }
                 }
                 .padding(.top, 3)
@@ -776,7 +792,11 @@ struct MiniFocusLayout: View {
                     Text(entry.rowLabel)
                         .font(.system(size: 8.5, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
-                    Text("\(Int(entryPercent(entry, mode: mode).rounded()))%")
+                    Text(
+                        L10n.Common.percent(
+                            value: Int(entryPercent(entry, mode: mode).rounded())
+                        )
+                    )
                         .font(.system(size: 8.5, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(entryColor(entry, mode: mode))
                 }
@@ -791,7 +811,7 @@ struct MiniFocusLayout: View {
         guard let countdown = ResetCountdownFormatter.string(from: entry.bucket.resetAt, now: now) else {
             return " "
         }
-        return "resets \(countdown)"
+        return L10n.Quota.miniResets(countdown: countdown)
     }
 }
 
@@ -852,13 +872,13 @@ struct MiniRailLayout: View {
     private func content(now: Date) -> some View {
         let events = events(now: now)
         VStack(spacing: 4) {
-            Text("QUOTA RESETS · NEXT \(Int(MiniRailMetrics.horizonDays)) DAYS")
+            Text(L10n.Quota.miniRailTitle(days: Int(MiniRailMetrics.horizonDays)))
                 .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.6)
                 .padding(.top, 12)
             if events.isEmpty {
-                Text("Nothing selected refills in the next seven days.")
+                Text(L10n.Quota.miniRailEmpty)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                     .frame(maxHeight: .infinity)
@@ -894,7 +914,7 @@ struct MiniRailLayout: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Spacer(minLength: 6)
-            Text("+\(Int(event.gainPercent.rounded()))%")
+            Text(L10n.Quota.upcomingGain(gain: Int(event.gainPercent.rounded())))
                 .font(.system(size: 9.5, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
             Text(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—")
@@ -914,4 +934,28 @@ private extension Array {
             Array(self[$0..<Swift.min($0 + size, count)])
         }
     }
+}
+
+/// Provider · group · bucket for a mini entry's tooltip, with the generic
+/// window words translated and every name left as its owner spells it.
+private func miniEntryHelp(_ entry: MiniEntry) -> String {
+    let group = QuotaGroupLabelLocalizer.displayComposed(
+        entry.bucket.groupTitle ?? entry.subProviderDisplayName
+    )
+    let title = QuotaGroupLabelLocalizer.displayComposed(entry.bucket.title)
+    return "\(providerTitle(for: entry.tool)) · \(group) · \(title)"
+}
+
+/// Provider · row · bucket for a tile's tooltip. A named helper rather than an
+/// interpolation at the call site: the join happens once, and every part that
+/// can be a generic window word goes through the localizer on the way.
+private func miniTileHelp(_ entry: MiniEntry) -> String {
+    let title = QuotaGroupLabelLocalizer.displayComposed(entry.bucket.title)
+    return "\(providerTitle(for: entry.tool)) · \(entry.rowLabel) · \(title)"
+}
+
+/// SubProvider · row, upper-cased, for the focus layout's path line. The
+/// case change is applied to the resolved labels, never to a catalog key.
+private func miniFocusPath(_ entry: MiniEntry) -> String {
+    "\(entry.subProviderDisplayName.uppercased()) · \(entry.rowLabel.uppercased())"
 }

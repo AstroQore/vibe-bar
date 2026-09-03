@@ -20,47 +20,52 @@ public enum SubscriptionWindowProgress {
         now: Date = Date()
     ) -> String {
         let displayedPercent = displayMode == .used ? usedPercent : 100 - usedPercent
-        let pct = formatPercent(displayedPercent)
-        let unit = displayMode == .used ? "used" : "left"
+        let value = modeValue(displayedPercent, displayMode: displayMode)
         guard let resetAt, let rawWindowSeconds, rawWindowSeconds > 0 else {
-            return "\(pct) \(unit)"
+            return value
         }
 
         let windowSeconds = TimeInterval(rawWindowSeconds)
         let remaining = resetAt.timeIntervalSince(now)
         if remaining <= 0 {
-            return "Resets soon · \(pct) \(unit)"
+            return L10n.Quota.windowResetsSoon(value: value)
         }
         let elapsed = max(0, min(windowSeconds, windowSeconds - remaining))
 
         if rawWindowSeconds >= 86_400 {
             let totalDays = max(1, Int((windowSeconds / 86_400).rounded()))
             let dayNumber = clamp(Int(elapsed / 86_400) + 1, lower: 1, upper: totalDays)
-            return "Day \(dayNumber) of \(totalDays) · \(pct) \(unit)"
+            return L10n.Quota.windowDayOfDays(day: dayNumber, total: totalDays, value: value)
         }
 
         let totalLabel = rawWindowSeconds == 18_000
-            ? "5 Hours"
+            ? L10n.Quota.groupFiveHours
             : formatShortDuration(windowSeconds)
         let elapsedLabel = formatShortDuration(elapsed)
-        return "\(elapsedLabel) of \(totalLabel) · \(pct) \(unit)"
+        return L10n.Quota.windowElapsedOfWindow(
+            elapsed: elapsedLabel, window: totalLabel, value: value
+        )
     }
 
     private static func clamp(_ value: Int, lower: Int, upper: Int) -> Int {
         min(max(value, lower), upper)
     }
 
-    private static func formatPercent(_ value: Double) -> String {
-        let v = value.isFinite ? max(0, min(100, value)) : 0
-        return "\(Int(v.rounded()))%"
+    /// "42% used" / "42% left" — the same pair the forecast surfaces read.
+    private static func modeValue(_ value: Double, displayMode: DisplayMode) -> String {
+        let percent = Int((value.isFinite ? max(0, min(100, value)) : 0).rounded())
+        switch displayMode {
+        case .used: return L10n.Quota.forecastValueUsed(percent: percent)
+        case .remaining: return L10n.Quota.forecastValueLeft(percent: percent)
+        }
     }
 
     private static func formatShortDuration(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds.rounded()))
         let hours = total / 3_600
         let minutes = (total % 3_600) / 60
-        if hours == 0 { return "\(minutes)m" }
-        if minutes == 0 { return "\(hours)h" }
-        return "\(hours)h \(minutes)m"
+        if hours == 0 { return L10n.Common.durationMinutes(minutes: minutes) }
+        if minutes == 0 { return L10n.Common.durationHours(hours: hours) }
+        return L10n.Common.durationHoursMinutes(hours: hours, minutes: minutes)
     }
 }
