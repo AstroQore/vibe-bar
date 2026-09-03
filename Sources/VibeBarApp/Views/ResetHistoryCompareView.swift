@@ -92,31 +92,134 @@ enum ResetHistoryLanes {
                     // SubProviders. A tool outside this page's scope falls
                     // back to the account's rather than leaking onto it.
                     let sampleTool = samples[0].tool
-                    let laneTool = (tools?.contains(sampleTool) ?? true) ? sampleTool : tool
                     out.append(
-                        ResetHistoryLaneInput(
+                        retiredLane(
                             accountId: account.id,
-                            tool: laneTool,
                             bucketId: key.bucketId,
-                            company: laneTool.vendorName,
-                            subProvider: laneTool.quotaSubProviderName(bucketID: key.bucketId),
-                            groupTitle: nil,
-                            bucketTitle: retiredBucketTitle(
-                                tool: laneTool,
-                                bucketId: key.bucketId,
-                                registry: registry
-                            ),
+                            tool: (tools?.contains(sampleTool) ?? true) ? sampleTool : tool,
                             accountLabel: accountLabel,
-                            liveWindowSeconds: nil,
-                            currentUsedPercent: nil,
-                            currentResetAt: nil,
-                            samples: samples
+                            samples: samples,
+                            registry: registry
+                        )
+                    )
+                }
+            }
+        }
+        out.append(
+            contentsOf: signedOutAccountLanes(
+                environment: environment,
+                settings: settings,
+                tools: tools,
+                history: history,
+                recordedByAccount: recordedByAccount,
+                registry: registry
+            )
+        )
+        return out
+    }
+
+    /// Lanes for accounts `AccountStore` no longer lists.
+    ///
+    /// Signing out of a provider, or switching to a different account, removes
+    /// the identity while `QuotaService` goes on hydrating its retained
+    /// samples — and the Workbench's reset calendar goes on reading them
+    /// straight out of `historyByAccountBucket`. Discovering only from the
+    /// detected accounts therefore made the same completed cycles visible on
+    /// one surface and absent from the comparison next to it.
+    ///
+    /// The identity is reconstructed from the samples, which carry the tool;
+    /// the account id is a privacy-preserving hash and never becomes copy, so
+    /// former accounts are labelled positionally instead.
+    @MainActor
+    private static func signedOutAccountLanes(
+        environment: AppEnvironment,
+        settings: AppSettings,
+        tools: [ToolType]?,
+        history: [SubscriptionHistoryKey: [SubscriptionWindowSample]],
+        recordedByAccount: [String: [SubscriptionHistoryKey]],
+        registry: QuotaFieldRegistry
+    ) -> [ResetHistoryLaneInput] {
+        // Detected across every provider, not just the in-scope ones: an
+        // account that is live under a filtered-out tool has not been signed
+        // out of, and must not reappear here as a ghost.
+        let detected = Set(
+            ToolType.dedicatedCardProviders.flatMap { tool in
+                environment.accountStore.accounts(for: tool).map(\.id)
+            }
+        )
+        var keysByTool: [ToolType: [String: [SubscriptionHistoryKey]]] = [:]
+        for (accountId, keys) in recordedByAccount where !detected.contains(accountId) {
+            for key in keys {
+                guard let first = history[key]?.first else { continue }
+                keysByTool[first.tool, default: [:]][accountId, default: []].append(key)
+            }
+        }
+        guard !keysByTool.isEmpty else { return [] }
+
+        var out: [ResetHistoryLaneInput] = []
+        // Canonical provider order again, so these lanes carry the same
+        // company precedence as the live ones.
+        for tool in ToolType.dedicatedCardProviders {
+            if let tools {
+                guard tools.contains(tool) else { continue }
+            } else {
+                guard settings.isCoreProviderVisible(tool) else { continue }
+            }
+            guard let accounts = keysByTool[tool] else { continue }
+            let accountIds = accounts.keys.sorted()
+            for (position, accountId) in accountIds.enumerated() {
+                // Numbered only when a provider has more than one former
+                // identity, so the ordinary case reads plainly.
+                let label = accountIds.count > 1
+                    ? "Signed-out account \(position + 1)"
+                    : "Signed-out account"
+                for key in (accounts[accountId] ?? []).sorted(by: { $0.bucketId < $1.bucketId }) {
+                    guard let samples = history[key], !samples.isEmpty else { continue }
+                    out.append(
+                        retiredLane(
+                            accountId: accountId,
+                            bucketId: key.bucketId,
+                            tool: tool,
+                            accountLabel: label,
+                            samples: samples,
+                            registry: registry
                         )
                     )
                 }
             }
         }
         return out
+    }
+
+    /// One lane no live bucket backs any more — a withdrawn bucket, or one
+    /// belonging to an account that has been signed out of.
+    ///
+    /// `isRetired` rather than merely leaving the live fields nil: the last
+    /// sample of a bucket nothing observes again never closes, and without the
+    /// flag it would render as a dashed current cycle forever.
+    private static func retiredLane(
+        accountId: String,
+        bucketId: String,
+        tool: ToolType,
+        accountLabel: String?,
+        samples: [SubscriptionWindowSample],
+        registry: QuotaFieldRegistry
+    ) -> ResetHistoryLaneInput {
+        ResetHistoryLaneInput(
+            accountId: accountId,
+            tool: tool,
+            bucketId: bucketId,
+            company: tool.vendorName,
+            subProvider: tool.quotaSubProviderName(bucketID: bucketId),
+            groupTitle: nil,
+            bucketTitle: retiredBucketTitle(tool: tool, bucketId: bucketId, registry: registry),
+            accountLabel: accountLabel,
+            liveWindowSeconds: nil,
+            currentUsedPercent: nil,
+            currentResetAt: nil,
+            isRetired: true,
+            samples: samples
+        )
     }
 
     /// What to call a bucket no live quota carries any more.

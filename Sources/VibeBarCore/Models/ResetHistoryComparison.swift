@@ -34,6 +34,16 @@ public struct ResetHistoryLaneInput: Equatable, Sendable, Identifiable {
     /// history has no open sample of its own.
     public var currentUsedPercent: Double?
     public var currentResetAt: Date?
+    /// No live bucket backs this lane any more — the provider stopped
+    /// returning it, or the account it belonged to is gone.
+    ///
+    /// It is not the same question as "are the live fields nil", and the
+    /// difference is a bar on screen. A cycle closes only when another
+    /// observation arrives, so a withdrawn bucket keeps its last *open*
+    /// sample forever. Without this flag `build` would read that stale sample
+    /// as the current cycle and draw a dashed "Current" bar for a quota that
+    /// stopped existing months ago.
+    public var isRetired: Bool
     public var samples: [SubscriptionWindowSample]
 
     public var id: String { "\(accountId).\(bucketId)" }
@@ -50,6 +60,7 @@ public struct ResetHistoryLaneInput: Equatable, Sendable, Identifiable {
         liveWindowSeconds: Int? = nil,
         currentUsedPercent: Double? = nil,
         currentResetAt: Date? = nil,
+        isRetired: Bool = false,
         samples: [SubscriptionWindowSample]
     ) {
         self.accountId = accountId
@@ -63,6 +74,7 @@ public struct ResetHistoryLaneInput: Equatable, Sendable, Identifiable {
         self.liveWindowSeconds = liveWindowSeconds
         self.currentUsedPercent = currentUsedPercent
         self.currentResetAt = currentResetAt
+        self.isRetired = isRetired
         self.samples = samples
     }
 }
@@ -352,6 +364,10 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         for (input, windowSeconds) in qualifying {
             var completed: [Cycle] = []
             var open: Cycle?
+            // A retired lane has no present tense. Its last open sample was
+            // never closed because nothing observed it again, and the live
+            // quota that would have closed it is gone.
+            let hasCurrentCycle = !input.isRetired
             for sample in input.samples {
                 let start = cycleStart(sample, windowSeconds: windowSeconds)
                 // A cycle ends when the refill was noticed, which is not always
@@ -371,7 +387,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     guard cycle.end >= rangeStart else { continue }
                     completed.append(cycle)
                     latestEnd = max(latestEnd, cycle.end)
-                } else if open == nil || cycle.end > open!.end {
+                } else if hasCurrentCycle, open == nil || cycle.end > open!.end {
                     open = cycle
                 }
             }
@@ -379,7 +395,8 @@ public struct ResetHistoryComparison: Equatable, Sendable {
 
             // The live quota is the fallback for the in-progress cycle: a lane
             // whose history holds only closed samples still has one running.
-            if open == nil,
+            if hasCurrentCycle,
+               open == nil,
                let used = input.currentUsedPercent,
                let resetAt = input.currentResetAt {
                 open = Cycle(

@@ -252,6 +252,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
             liveWindowSeconds: nil,
             currentUsedPercent: nil,
             currentResetAt: nil,
+            isRetired: true,
             samples: [
                 sample(bucketId: "weekly_opus", endingDaysAgo: 7, used: 20),
                 sample(bucketId: "weekly_opus", endingDaysAgo: 14, used: 30)
@@ -270,6 +271,100 @@ final class ResetHistoryComparisonTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(lane.averageWastedPercent), 75, accuracy: 0.001)
     }
 
+    func testARetiredLaneNeverShowsACurrentCycleFromItsStaleOpenSample() {
+        // A cycle closes only when another observation arrives, so a bucket
+        // the provider withdrew — or one whose account was signed out of —
+        // keeps its last open sample forever. Reading that as the present
+        // tense would draw a dashed "Current" bar for a quota that stopped
+        // existing months ago.
+        let retired = ResetHistoryLaneInput(
+            accountId: "acct",
+            tool: .claude,
+            bucketId: "weekly_opus",
+            company: "Anthropic",
+            subProvider: "Claude",
+            bucketTitle: "Opus · Weekly",
+            liveWindowSeconds: nil,
+            isRetired: true,
+            samples: [
+                sample(bucketId: "weekly_opus", endingDaysAgo: 14, used: 30),
+                // Never closed: nothing observed this bucket again.
+                sample(bucketId: "weekly_opus", endingDaysAgo: 7, used: 45, completed: false)
+            ]
+        )
+        let result = ResetHistoryComparison.build(inputs: [retired], window: .all, now: now)
+        XCTAssertEqual(result.lanes.count, 1)
+        XCTAssertNil(result.lanes[0].currentCycle)
+        // The open sample is not a completed cycle either, so it contributes
+        // nothing to the waste arithmetic.
+        XCTAssertEqual(result.lanes[0].cycles.count, 1)
+        XCTAssertEqual(result.totals.cycleCount, 1)
+    }
+
+    func testARetiredLaneIgnoresLiveQuotaFieldsEvenIfTheyAreSupplied() {
+        // Belt and braces: the flag, not the nil-ness of the live fields, is
+        // what decides whether a lane has a present tense.
+        let retired = ResetHistoryLaneInput(
+            accountId: "acct",
+            tool: .claude,
+            bucketId: "weekly",
+            company: "Anthropic",
+            subProvider: "Claude",
+            bucketTitle: "Weekly",
+            liveWindowSeconds: 7 * 86_400,
+            currentUsedPercent: 40,
+            currentResetAt: now.addingTimeInterval(2 * 86_400),
+            isRetired: true,
+            samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 30)]
+        )
+        XCTAssertNil(
+            ResetHistoryComparison.build(inputs: [retired], window: .all, now: now).lanes[0].currentCycle
+        )
+    }
+
+    func testALiveLaneStillTakesItsCurrentCycleFromAnOpenSample() {
+        // The guard must not cost a live lane its dashed bar.
+        let live = lane(samples: [
+            sample(bucketId: "weekly", endingDaysAgo: 7, used: 80),
+            sample(bucketId: "weekly", endingDaysAgo: -2, used: 25, completed: false)
+        ])
+        let result = ResetHistoryComparison.build(inputs: [live], window: .all, now: now)
+        XCTAssertEqual(result.lanes[0].currentCycle?.usedPercent, 25)
+    }
+
+    func testASignedOutAccountsLanesCompareAlongsideTheLiveOnes() {
+        // The discovery path that produces these lives in the app target, so
+        // what is pinned here is the contract it relies on: a lane whose
+        // account no longer exists is an ordinary retired lane, sorts by its
+        // own waste, and carries the label that says whose it was.
+        let signedOut = ResetHistoryLaneInput(
+            accountId: "former",
+            tool: .claude,
+            bucketId: "weekly",
+            company: "Anthropic",
+            subProvider: "Claude",
+            bucketTitle: "Weekly",
+            accountLabel: "Signed-out account",
+            liveWindowSeconds: nil,
+            isRetired: true,
+            samples: [
+                sample(bucketId: "weekly", endingDaysAgo: 14, used: 5),
+                sample(bucketId: "weekly", endingDaysAgo: 21, used: 5)
+            ]
+        )
+        let live = lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 92)])
+        let result = ResetHistoryComparison.build(inputs: [live, signedOut], window: .all, now: now)
+
+        XCTAssertEqual(result.lanes.map(\.id), ["former.weekly", "acct.weekly"])
+        XCTAssertEqual(result.lanes[0].label, "Anthropic · Claude · Weekly · Signed-out account")
+        XCTAssertEqual(result.lanes[0].cycles.count, 2)
+        XCTAssertNil(result.lanes[0].currentCycle)
+        // Both accounts' cycles count toward the header arithmetic; hiding the
+        // signed-out one is what made the totals disagree with the Workbench
+        // reset calendar, which reads the same history directly.
+        XCTAssertEqual(result.totals.cycleCount, 3)
+    }
+
     func testAHistoryOnlyFiveHourLaneIsStillExcluded() {
         // Losing the live bucket must not smuggle a sub-daily lane in through
         // the sample fallback.
@@ -281,6 +376,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
             subProvider: "Claude",
             bucketTitle: "5 Hours",
             liveWindowSeconds: nil,
+            isRetired: true,
             samples: [
                 sample(bucketId: "five_hour_legacy", endingDaysAgo: 1, used: 20, windowSeconds: 5 * 3_600)
             ]
