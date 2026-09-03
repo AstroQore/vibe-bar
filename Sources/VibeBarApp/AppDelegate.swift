@@ -229,6 +229,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateNow
     }
 
+    /// Fold each timeline database's WAL back into its main file on the way
+    /// out. Writes are committed per observation, so nothing is lost without
+    /// this — but the `-wal` / `-shm` sidecars otherwise survive every launch,
+    /// and `flushPendingWrites` had no production caller at all.
+    ///
+    /// Blocking briefly is the point: after this returns the process is gone.
+    /// The stores are plain actors on the global pool, so the wait cannot
+    /// deadlock against the main actor, and the timeout keeps a wedged
+    /// checkpoint from holding up quit.
+    func applicationWillTerminate(_ notification: Notification) {
+        let done = DispatchSemaphore(value: 0)
+        Task.detached(priority: .userInitiated) {
+            await UsageFillTimelineStore.shared.flushPendingWrites()
+            await UsageForecastTimelineStore.shared.flushPendingWrites()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 1.5)
+    }
+
     private func handleRemoteCommandLine() -> Bool {
         let arguments = ProcessInfo.processInfo.arguments
         let commands = ["--remote-identity-descriptor", "--install-remote-provisioning"]

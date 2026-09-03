@@ -36,6 +36,13 @@ public actor UsageForecastTimelineStore {
     private var database: TimelineSQLite?
     private var openAttempted = false
     private var sidecarPermissionsSet = false
+    /// When retention was last enforced. The prune is a full-table
+    /// `DELETE ... WHERE slot_start < CASE …` — not sargable, so SQLite scans
+    /// every row — and it used to run on every dirty observation, i.e. once
+    /// per quota refresh per account. Retention horizons are measured in
+    /// days; once an hour discards exactly the same rows.
+    private var lastPrunedAt: Date?
+    private static let pruneInterval: TimeInterval = 60 * 60
 
     private static let databaseSchemaVersion: Int32 = 1
     /// Highest legacy JSON schema this build can import.
@@ -112,8 +119,9 @@ public actor UsageForecastTimelineStore {
             db.bindOptionalInt(upsert, 10, forecast.rawWindowSeconds)
             if sqlite3_step(upsert) == SQLITE_DONE { dirty = true }
         }
-        if dirty {
+        if dirty, shouldPrune(now: now) {
             prune(db, retentionDays: retentionDays, now: now)
+            lastPrunedAt = now
         }
         db.exec("COMMIT")
         setSidecarPermissionsIfNeeded()
@@ -156,6 +164,7 @@ public actor UsageForecastTimelineStore {
         database = nil
         openAttempted = false
         sidecarPermissionsSet = false
+        lastPrunedAt = nil
         removeDatabaseFiles()
         if let legacyJSONURL {
             try? FileManager.default.removeItem(at: legacyJSONURL)
@@ -305,6 +314,13 @@ public actor UsageForecastTimelineStore {
     /// Window-aware retention, evaluated in SQL. The horizon depends only on
     /// which of the four slot classes a point's window falls into, so four
     /// cutoffs bound the whole table — see `UsageTimelineSlotPolicy`.
+    private func shouldPrune(now: Date) -> Bool {
+        guard let lastPrunedAt else { return true }
+        // A clock that jumped backwards must not park the prune indefinitely.
+        guard now >= lastPrunedAt else { return true }
+        return now.timeIntervalSince(lastPrunedAt) >= Self.pruneInterval
+    }
+
     private func prune(_ db: TimelineSQLite, retentionDays: Int, now: Date) {
         let statement = db.prepare("""
             DELETE FROM forecast_points WHERE slot_start <

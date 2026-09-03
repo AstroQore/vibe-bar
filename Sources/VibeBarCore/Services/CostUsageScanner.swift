@@ -27,17 +27,19 @@ public enum CostUsageScanner {
         retentionDays: Int? = nil,
         eventSink: (any CostUsageEventSink)? = nil
     ) async -> CostSnapshot? {
+        // One pricing snapshot for the whole pass — see `CostPricingContext`.
+        let pricing = CostPricingContext()
         switch tool {
         case .codex:
-            return await scanCodex(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, eventSink: eventSink)
+            return await scanCodex(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .claude:
-            return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, eventSink: eventSink)
+            return await scanClaude(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .gemini:
-            return await scanGemini(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, eventSink: eventSink)
+            return await scanGemini(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .grok:
-            return await scanGrok(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, eventSink: eventSink)
+            return await scanGrok(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .antigravity:
-            return await scanAntigravity(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, eventSink: eventSink)
+            return await scanAntigravity(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose token-level cost data through
             // any documented public protocol. The cost-history pipeline
@@ -54,6 +56,7 @@ public enum CostUsageScanner {
         homeDirectory: String,
         now: Date,
         retentionDays: Int?,
+        pricing: CostPricingContext,
         eventSink: (any CostUsageEventSink)? = nil
     ) async -> CostSnapshot {
         let roots = [
@@ -66,82 +69,113 @@ public enum CostUsageScanner {
         // to every codex event in this scan (mirrors ccusage).
         let codexFastTier = codexFastServiceTier(homeDirectory: homeDirectory)
         var aggregator = CostAggregator(tool: .codex, now: now)
-        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays)
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays
+        )
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
         for file in files {
+            if Task.isCancelled {
+                CostUsageScanCacheStore.shared.checkin(
+                    cache, homeDirectory: homeDirectory, tool: .codex,
+                    retentionDays: retentionDays, persist: false
+                )
+                return aggregator.snapshot(jsonlFilesFound: files.count)
+            }
             let (mtime, size) = fileFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
-                let retained = retainedEvents(cached, cutoff: cutoff)
-                if retained.count != cached.count {
-                    cache.store(retained, for: file.path, mtime: mtime, size: size)
-                }
-                var priced: [PricedUsageEvent] = []
-                priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
-                for event in retained {
-                    let optionalCost = costUSDIfPriceable(tool: .codex, event: event, codexFastTier: codexFastTier)
-                    let cost = optionalCost ?? 0
-                    if eventSink != nil {
-                        priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+                let priced: [PricedUsageEvent] = autoreleasepool {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    if retained.count != cached.count {
+                        cache.store(retained, for: file.path, mtime: mtime, size: size)
                     }
-                    aggregator.add(at: event.date, model: event.model, input: event.input,
-                                   output: event.output, cache: event.cache, costUSD: cost)
+                    var priced: [PricedUsageEvent] = []
+                    priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
+                    for event in retained {
+                        let optionalCost = costUSDIfPriceable(
+                            tool: .codex, event: event, pricing: pricing, codexFastTier: codexFastTier
+                        )
+                        let cost = optionalCost ?? 0
+                        if eventSink != nil {
+                            priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+                        }
+                        aggregator.add(at: event.date, model: event.model, input: event.input,
+                                       output: event.output, cache: event.cache, costUSD: cost)
+                    }
+                    return priced
                 }
                 await emit(eventSink, tool: .codex, file: file, mtime: mtime, size: size, events: priced)
                 continue
             }
 
-            let (raw, originator, projectPath) = parseCodexFile(file: file)
-            let harness = codexHarness(originator: originator)
-            // Delta from one snapshot to the next is what was used in that interval.
-            var previous: CodexEvent.Totals? = nil
-            var parsed: [CostUsageScanCache.ParsedEvent] = []
-            var priced: [PricedUsageEvent] = []
-            parsed.reserveCapacity(raw.count)
-            for event in raw {
-                let delta: CodexEvent.Totals
-                if let previous {
-                    delta = CodexEvent.Totals(
-                        input: max(0, event.totals.input - previous.input),
-                        cached: max(0, event.totals.cached - previous.cached),
-                        output: max(0, event.totals.output - previous.output)
+            let outcome: (priced: [PricedUsageEvent], didRead: Bool) = autoreleasepool {
+                let (raw, originator, projectPath, didRead) = parseCodexFile(file: file)
+                let harness = codexHarness(originator: originator)
+                // Delta from one snapshot to the next is what was used in that interval.
+                var previous: CodexEvent.Totals? = nil
+                var parsed: [CostUsageScanCache.ParsedEvent] = []
+                var priced: [PricedUsageEvent] = []
+                parsed.reserveCapacity(raw.count)
+                for event in raw {
+                    let delta: CodexEvent.Totals
+                    if let previous {
+                        delta = CodexEvent.Totals(
+                            input: max(0, event.totals.input - previous.input),
+                            cached: max(0, event.totals.cached - previous.cached),
+                            output: max(0, event.totals.output - previous.output)
+                        )
+                    } else {
+                        delta = event.totals
+                    }
+                    previous = event.totals
+                    if delta.isEmpty { continue }
+                    let optionalCost = pricing.codexEntry(for: event.model).map {
+                        CostUsagePricing.codexCostUSD(
+                            pricing: $0,
+                            inputTokens: delta.input,
+                            cachedInputTokens: delta.cached,
+                            outputTokens: delta.output,
+                            isFast: codexFastTier
+                        )
+                    }
+                    let cost = optionalCost ?? 0
+                    let parsedEvent = CostUsageScanCache.ParsedEvent(
+                        date: event.date,
+                        model: event.model,
+                        input: max(0, delta.input - delta.cached),
+                        output: delta.output,
+                        cache: delta.cached,
+                        harness: harness,
+                        projectPath: projectPath
                     )
-                } else {
-                    delta = event.totals
+                    guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
+                    parsed.append(parsedEvent)
+                    if eventSink != nil {
+                        priced.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
+                    }
+                    aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                                   input: parsedEvent.input, output: parsedEvent.output,
+                                   cache: parsedEvent.cache, costUSD: cost)
                 }
-                previous = event.totals
-                if delta.isEmpty { continue }
-                let optionalCost = CostUsagePricing.codexCostUSD(
-                    model: event.model,
-                    inputTokens: delta.input,
-                    cachedInputTokens: delta.cached,
-                    outputTokens: delta.output,
-                    isFast: codexFastTier
-                )
-                let cost = optionalCost ?? 0
-                let parsedEvent = CostUsageScanCache.ParsedEvent(
-                    date: event.date,
-                    model: event.model,
-                    input: max(0, delta.input - delta.cached),
-                    output: delta.output,
-                    cache: delta.cached,
-                    harness: harness,
-                    projectPath: projectPath
-                )
-                guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
-                parsed.append(parsedEvent)
-                if eventSink != nil {
-                    priced.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
+                // Only a file we actually read describes its own contents.
+                // Caching `[]` against a live fingerprint after a failed read
+                // (a locked / vanished / unreadable rollout) used to zero that
+                // session permanently: the next pass sees a matching
+                // fingerprint and replays the empty result. `scanGemini` has
+                // always guarded this; codex now does too.
+                if didRead {
+                    cache.store(parsed, for: file.path, mtime: mtime, size: size)
                 }
-                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
-                               input: parsedEvent.input, output: parsedEvent.output,
-                               cache: parsedEvent.cache, costUSD: cost)
+                return (priced, didRead)
             }
-            cache.store(parsed, for: file.path, mtime: mtime, size: size)
-            await emit(eventSink, tool: .codex, file: file, mtime: mtime, size: size, events: priced)
+            if outcome.didRead {
+                await emit(eventSink, tool: .codex, file: file, mtime: mtime, size: size, events: outcome.priced)
+            }
         }
         cache.prune(known: Set(files.map(\.path)))
-        cache.save(homeDirectory: homeDirectory, tool: .codex)
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays
+        )
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
@@ -157,65 +191,71 @@ public enum CostUsageScanner {
         let totals: Totals
     }
 
-    /// Returns the file's token events plus its `session_meta` originator and
-    /// project cwd.
-    /// Both come out of the *same* single pass — the header is the first
-    /// line, so reading it costs nothing and keeps the scan O(n).
-    private static func parseCodexFile(file: URL) -> ([CodexEvent], String?, String?) {
+    /// Returns the file's token events plus its `session_meta` originator,
+    /// project cwd, and whether the file could actually be read.
+    /// The first three come out of the *same* single pass — the header is the
+    /// first line, so reading it costs nothing and keeps the scan O(n).
+    private static func parseCodexFile(file: URL) -> ([CodexEvent], String?, String?, Bool) {
         var events: [CodexEvent] = []
         var originator: String?
         var projectPath: String?
         var currentModel = "gpt-5"
         var runningTotals = CodexEvent.Totals(input: 0, cached: 0, output: 0)
         let didRead = forEachJSONLLine(in: file) { lineData in
-            guard !lineData.isEmpty else { return }
-            guard lineData.contains(asciiSequence: "token_count") ||
-                    lineData.contains(asciiSequence: "model") ||
-                    lineData.contains(asciiSequence: "originator") else { return }
-            guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+            // Every line allocates a `JSONSerialization` object graph of
+            // autoreleased Foundation values. Without a pool per line they
+            // accumulate for the whole file — and, on the detached scan task,
+            // for the whole pass.
+            autoreleasepool {
+                guard !lineData.isEmpty else { return }
+                guard lineData.contains(asciiSequence: "token_count") ||
+                        lineData.contains(asciiSequence: "model") ||
+                        lineData.contains(asciiSequence: "originator") else { return }
+                guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
 
-            if originator == nil,
-               obj["type"] as? String == "session_meta",
-               let payload = obj["payload"] as? [String: Any] {
-                originator = normalizedNonEmpty(payload["originator"] as? String)
-                projectPath = UsageProjectIdentity.normalizedPath(payload["cwd"] as? String)
-            }
-            if let payload = obj["payload"] as? [String: Any] {
-                if let m = payload["model"] as? String { currentModel = m }
-                if let info = payload["info"] as? [String: Any],
-                   let m = info["model"] as? String ?? info["model_name"] as? String {
-                    currentModel = m
+                if originator == nil,
+                   obj["type"] as? String == "session_meta",
+                   let payload = obj["payload"] as? [String: Any] {
+                    originator = normalizedNonEmpty(payload["originator"] as? String)
+                    projectPath = UsageProjectIdentity.normalizedPath(payload["cwd"] as? String)
                 }
-            }
-            if let m = obj["model"] as? String { currentModel = m }
+                if let payload = obj["payload"] as? [String: Any] {
+                    if let m = payload["model"] as? String { currentModel = m }
+                    if let info = payload["info"] as? [String: Any],
+                       let m = info["model"] as? String ?? info["model_name"] as? String {
+                        currentModel = m
+                    }
+                }
+                if let m = obj["model"] as? String { currentModel = m }
 
-            guard obj["type"] as? String == "event_msg",
-                  let payload = obj["payload"] as? [String: Any],
-                  payload["type"] as? String == "token_count",
-                  let info = payload["info"] as? [String: Any]
-            else { return }
-            let totals: CodexEvent.Totals
-            if let total = info["total_token_usage"] as? [String: Any] {
-                totals = CodexEvent.Totals(
-                    input: anyInt(total["input_tokens"]),
-                    cached: anyInt(total["cached_input_tokens"] ?? total["cache_read_input_tokens"]),
-                    output: anyInt(total["output_tokens"])
-                )
-                runningTotals = totals
-            } else if let last = info["last_token_usage"] as? [String: Any] {
-                runningTotals = CodexEvent.Totals(
-                    input: runningTotals.input + max(0, anyInt(last["input_tokens"])),
-                    cached: runningTotals.cached + max(0, anyInt(last["cached_input_tokens"] ?? last["cache_read_input_tokens"])),
-                    output: runningTotals.output + max(0, anyInt(last["output_tokens"]))
-                )
-                totals = runningTotals
-            } else {
-                return
+                guard obj["type"] as? String == "event_msg",
+                      let payload = obj["payload"] as? [String: Any],
+                      payload["type"] as? String == "token_count",
+                      let info = payload["info"] as? [String: Any]
+                else { return }
+                let totals: CodexEvent.Totals
+                if let total = info["total_token_usage"] as? [String: Any] {
+                    totals = CodexEvent.Totals(
+                        input: anyInt(total["input_tokens"]),
+                        cached: anyInt(total["cached_input_tokens"] ?? total["cache_read_input_tokens"]),
+                        output: anyInt(total["output_tokens"])
+                    )
+                    runningTotals = totals
+                } else if let last = info["last_token_usage"] as? [String: Any] {
+                    runningTotals = CodexEvent.Totals(
+                        input: runningTotals.input + max(0, anyInt(last["input_tokens"])),
+                        cached: runningTotals.cached + max(0, anyInt(last["cached_input_tokens"] ?? last["cache_read_input_tokens"])),
+                        output: runningTotals.output + max(0, anyInt(last["output_tokens"]))
+                    )
+                    totals = runningTotals
+                } else {
+                    return
+                }
+                let timestamp = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
+                events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals))
             }
-            let timestamp = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
-            events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals))
         }
-        return didRead ? (events, originator, projectPath) : ([], originator, projectPath)
+        return didRead ? (events, originator, projectPath, true) : ([], originator, projectPath, false)
     }
 
     // MARK: - Claude
@@ -224,6 +264,7 @@ public enum CostUsageScanner {
         homeDirectory: String,
         now: Date,
         retentionDays: Int?,
+        pricing: CostPricingContext,
         eventSink: (any CostUsageEventSink)? = nil
     ) async -> CostSnapshot {
         let projectsRoot = URL(fileURLWithPath: homeDirectory).appendingPathComponent(".claude/projects")
@@ -233,95 +274,120 @@ public enum CostUsageScanner {
             + collectJSONL(under: altRoot)
             + collectClaudeCoworkJSONL(under: coworkRoot)
         var aggregator = CostAggregator(tool: .claude, now: now)
-        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .claude, retentionDays: retentionDays)
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .claude, retentionDays: retentionDays
+        )
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
         var allEvents: [CostUsageScanCache.ParsedEvent] = []
 
         for file in files {
+            if Task.isCancelled {
+                CostUsageScanCacheStore.shared.checkin(
+                    cache, homeDirectory: homeDirectory, tool: .claude,
+                    retentionDays: retentionDays, persist: false
+                )
+                return aggregator.snapshot(jsonlFilesFound: files.count)
+            }
             let (mtime, size) = fileFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
-                let retained = retainedEvents(cached, cutoff: cutoff)
-                if retained.count != cached.count {
-                    cache.store(retained, for: file.path, mtime: mtime, size: size)
+                let retained: [CostUsageScanCache.ParsedEvent] = autoreleasepool {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    if retained.count != cached.count {
+                        cache.store(retained, for: file.path, mtime: mtime, size: size)
+                    }
+                    allEvents.append(contentsOf: retained)
+                    return retained
                 }
-                allEvents.append(contentsOf: retained)
-                await emitClaude(eventSink, file: file, mtime: mtime, size: size, events: retained)
+                await emitClaude(eventSink, file: file, mtime: mtime, size: size, events: retained, pricing: pricing)
                 continue
             }
 
-            let sourceKey = CostUsageScanCache.entryKey(for: file.path)
-            let pathRole = claudePathRole(file: file)
-            let harness = claudeHarness(file: file)
-            var keyedRows: [String: CostUsageScanCache.ParsedEvent] = [:]
-            var unkeyedRows: [CostUsageScanCache.ParsedEvent] = []
-            let didRead = forEachJSONLLine(in: file) { lineData in
-                guard !lineData.isEmpty,
-                      lineData.contains(asciiSequence: "assistant"),
-                      lineData.contains(asciiSequence: "usage")
-                else { return }
-                guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any],
-                      obj["type"] as? String == "assistant",
-                      let message = obj["message"] as? [String: Any],
-                      let usage = message["usage"] as? [String: Any]
-                else { return }
+            let outcome: (parsed: [CostUsageScanCache.ParsedEvent], didRead: Bool) = autoreleasepool {
+                let sourceKey = CostUsageScanCache.entryKey(for: file.path)
+                let pathRole = claudePathRole(file: file)
+                let harness = claudeHarness(file: file)
+                var keyedRows: [String: CostUsageScanCache.ParsedEvent] = [:]
+                var unkeyedRows: [CostUsageScanCache.ParsedEvent] = []
+                let didRead = forEachJSONLLine(in: file) { lineData in
+                    // See `parseCodexFile`: one pool per line keeps the
+                    // per-line JSON graph from accumulating for the pass.
+                    autoreleasepool {
+                        guard !lineData.isEmpty,
+                              lineData.contains(asciiSequence: "assistant"),
+                              lineData.contains(asciiSequence: "usage")
+                        else { return }
+                        guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any],
+                              obj["type"] as? String == "assistant",
+                              let message = obj["message"] as? [String: Any],
+                              let usage = message["usage"] as? [String: Any]
+                        else { return }
 
-                let model = (message["model"] as? String) ?? "claude-sonnet-4-5"
-                let input = anyInt(usage["input_tokens"])
-                let cacheRead = anyInt(usage["cache_read_input_tokens"])
-                let cacheCreation = anyInt(usage["cache_creation_input_tokens"])
-                let output = anyInt(usage["output_tokens"])
-                if input == 0, cacheRead == 0, cacheCreation == 0, output == 0 { return }
-                // Per-message billing tier. Claude Code writes
-                // `usage.speed` ("standard"/"fast"); `service_tier` is a
-                // fallback. A fast/priority value applies the model's
-                // fast-tier multiplier at costing time.
-                let serviceTier = (usage["speed"] as? String) ?? (usage["service_tier"] as? String)
-                let date = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
-                let messageId = message["id"] as? String
-                let requestId = obj["requestId"] as? String
-                let sessionId = obj["sessionId"] as? String
-                    ?? obj["session_id"] as? String
-                    ?? (obj["metadata"] as? [String: Any])?["sessionId"] as? String
-                    ?? (message["metadata"] as? [String: Any])?["sessionId"] as? String
-                let parsedEvent = CostUsageScanCache.ParsedEvent(
-                    date: date,
-                    model: model,
-                    input: input,
-                    output: output,
-                    cache: cacheRead + cacheCreation,
-                    cacheCreation: cacheCreation,
-                    sessionId: sessionId,
-                    messageId: messageId,
-                    requestId: requestId,
-                    isSidechain: anyBool(obj["isSidechain"]),
-                    pathRole: pathRole,
-                    sourceKey: sourceKey,
-                    serviceTier: serviceTier,
-                    harness: harness,
-                    projectPath: UsageProjectIdentity.normalizedPath(obj["cwd"] as? String)
+                        let model = (message["model"] as? String) ?? "claude-sonnet-4-5"
+                        let input = anyInt(usage["input_tokens"])
+                        let cacheRead = anyInt(usage["cache_read_input_tokens"])
+                        let cacheCreation = anyInt(usage["cache_creation_input_tokens"])
+                        let output = anyInt(usage["output_tokens"])
+                        if input == 0, cacheRead == 0, cacheCreation == 0, output == 0 { return }
+                        // Per-message billing tier. Claude Code writes
+                        // `usage.speed` ("standard"/"fast"); `service_tier` is a
+                        // fallback. A fast/priority value applies the model's
+                        // fast-tier multiplier at costing time.
+                        let serviceTier = (usage["speed"] as? String) ?? (usage["service_tier"] as? String)
+                        let date = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
+                        let messageId = message["id"] as? String
+                        let requestId = obj["requestId"] as? String
+                        let sessionId = obj["sessionId"] as? String
+                            ?? obj["session_id"] as? String
+                            ?? (obj["metadata"] as? [String: Any])?["sessionId"] as? String
+                            ?? (message["metadata"] as? [String: Any])?["sessionId"] as? String
+                        let parsedEvent = CostUsageScanCache.ParsedEvent(
+                            date: date,
+                            model: model,
+                            input: input,
+                            output: output,
+                            cache: cacheRead + cacheCreation,
+                            cacheCreation: cacheCreation,
+                            sessionId: sessionId,
+                            messageId: messageId,
+                            requestId: requestId,
+                            isSidechain: anyBool(obj["isSidechain"]),
+                            pathRole: pathRole,
+                            sourceKey: sourceKey,
+                            serviceTier: serviceTier,
+                            harness: harness,
+                            projectPath: UsageProjectIdentity.normalizedPath(obj["cwd"] as? String)
+                        )
+                        guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
+                        if let messageId, let requestId {
+                            keyedRows["\(messageId)\u{0}\(requestId)"] = parsedEvent
+                        } else {
+                            unkeyedRows.append(parsedEvent)
+                        }
+                    }
+                }
+                // Same rule as codex: a file that could not be read must not
+                // be cached as empty against its live fingerprint, or the
+                // next pass replays the empty result forever.
+                guard didRead else { return ([], false) }
+                let parsed = keyedRows.keys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
+                cache.store(parsed, for: file.path, mtime: mtime, size: size)
+                allEvents.append(contentsOf: parsed)
+                return (parsed, true)
+            }
+            if outcome.didRead {
+                await emitClaude(
+                    eventSink, file: file, mtime: mtime, size: size,
+                    events: outcome.parsed, pricing: pricing
                 )
-                guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
-                if let messageId, let requestId {
-                    keyedRows["\(messageId)\u{0}\(requestId)"] = parsedEvent
-                } else {
-                    unkeyedRows.append(parsedEvent)
-                }
             }
-            guard didRead else {
-                cache.store([], for: file.path, mtime: mtime, size: size)
-                await emitClaude(eventSink, file: file, mtime: mtime, size: size, events: [])
-                continue
-            }
-            let parsed = keyedRows.keys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
-            cache.store(parsed, for: file.path, mtime: mtime, size: size)
-            allEvents.append(contentsOf: parsed)
-            await emitClaude(eventSink, file: file, mtime: mtime, size: size, events: parsed)
         }
         cache.prune(known: Set(files.map(\.path)))
-        cache.save(homeDirectory: homeDirectory, tool: .claude)
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .claude, retentionDays: retentionDays
+        )
         let deduped = deduplicateClaudeEvents(allEvents)
         for event in deduped {
-            let cost = costUSD(tool: .claude, event: event)
+            let cost = costUSD(tool: .claude, event: event, pricing: pricing)
             aggregator.add(
                 at: event.date,
                 model: event.model,
@@ -365,6 +431,7 @@ public enum CostUsageScanner {
         homeDirectory: String,
         now: Date,
         retentionDays: Int?,
+        pricing: CostPricingContext,
         eventSink: (any CostUsageEventSink)? = nil
     ) async -> CostSnapshot {
         let telemetryCandidates = geminiTelemetryFileCandidates(homeDirectory: homeDirectory)
@@ -373,45 +440,68 @@ public enum CostUsageScanner {
         let chatFiles = chatCandidates // chat enumerator only returns existing files
         let allFiles = telemetryFiles + chatFiles
         var aggregator = CostAggregator(tool: .gemini, now: now)
-        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .gemini, retentionDays: retentionDays)
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .gemini, retentionDays: retentionDays
+        )
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
         for file in allFiles {
+            if Task.isCancelled {
+                CostUsageScanCacheStore.shared.checkin(
+                    cache, homeDirectory: homeDirectory, tool: .gemini,
+                    retentionDays: retentionDays, persist: false
+                )
+                return aggregator.snapshot(jsonlFilesFound: allFiles.count)
+            }
             let (mtime, size) = fileFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
-                let retained = retainedEvents(cached, cutoff: cutoff)
-                if retained.count != cached.count {
-                    cache.store(retained, for: file.path, mtime: mtime, size: size)
-                }
-                var priced: [PricedUsageEvent] = []
-                priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
-                for event in retained {
-                    let optionalCost = costUSDIfPriceable(tool: .gemini, event: event)
-                    if eventSink != nil {
-                        priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+                let priced: [PricedUsageEvent] = autoreleasepool {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    if retained.count != cached.count {
+                        cache.store(retained, for: file.path, mtime: mtime, size: size)
                     }
-                    aggregator.add(at: event.date, model: event.model, input: event.input,
-                                   output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
+                    var priced: [PricedUsageEvent] = []
+                    priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
+                    for event in retained {
+                        let optionalCost = costUSDIfPriceable(tool: .gemini, event: event, pricing: pricing)
+                        if eventSink != nil {
+                            priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+                        }
+                        aggregator.add(at: event.date, model: event.model, input: event.input,
+                                       output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
+                    }
+                    return priced
                 }
                 await emit(eventSink, tool: .gemini, file: file, mtime: mtime, size: size, events: priced)
                 continue
             }
 
-            let isChatFile = file.path.contains("/chats/")
-            let priced: [PricedUsageEvent]
-            let didRead: Bool
-            if isChatFile {
-                (priced, didRead) = parseGeminiChatFile(file: file, cutoff: cutoff, aggregator: &aggregator)
-            } else {
-                (priced, didRead) = parseGeminiTelemetryFile(file: file, now: now, cutoff: cutoff, aggregator: &aggregator)
+            let outcome: ([PricedUsageEvent], Bool) = autoreleasepool {
+                let isChatFile = file.path.contains("/chats/")
+                let priced: [PricedUsageEvent]
+                let didRead: Bool
+                if isChatFile {
+                    (priced, didRead) = parseGeminiChatFile(
+                        file: file, cutoff: cutoff, pricing: pricing, aggregator: &aggregator
+                    )
+                } else {
+                    (priced, didRead) = parseGeminiTelemetryFile(
+                        file: file, now: now, cutoff: cutoff, pricing: pricing, aggregator: &aggregator
+                    )
+                }
+                if didRead {
+                    cache.store(priced.map(\.event), for: file.path, mtime: mtime, size: size)
+                }
+                return (priced, didRead)
             }
-            if didRead {
-                cache.store(priced.map(\.event), for: file.path, mtime: mtime, size: size)
-                await emit(eventSink, tool: .gemini, file: file, mtime: mtime, size: size, events: priced)
+            if outcome.1 {
+                await emit(eventSink, tool: .gemini, file: file, mtime: mtime, size: size, events: outcome.0)
             }
         }
         cache.prune(known: Set(allFiles.map(\.path)))
-        cache.save(homeDirectory: homeDirectory, tool: .gemini)
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .gemini, retentionDays: retentionDays
+        )
         return aggregator.snapshot(jsonlFilesFound: allFiles.count)
     }
 
@@ -424,57 +514,62 @@ public enum CostUsageScanner {
         file: URL,
         now: Date,
         cutoff: Date?,
+        pricing: CostPricingContext,
         aggregator: inout CostAggregator
     ) -> ([PricedUsageEvent], Bool) {
         var parsed: [PricedUsageEvent] = []
         let fileMTimeFallback = fileMTime(file) ?? now
         let didRead = forEachJSONLLine(in: file) { lineData in
-            guard !lineData.isEmpty,
-                  lineData.contains(asciiSequence: "gemini_cli")
-            else { return }
-            guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
-            guard isGeminiApiResponse(raw) else { return }
-            let attributes = geminiAttributes(raw)
-            let model = (attributes["model"] as? String)
-                ?? (attributes["gen_ai.request.model"] as? String)
-                ?? (attributes["gen_ai.response.model"] as? String)
-                ?? "gemini-unknown"
-            let input = anyInt(attributes["input_token_count"]
-                               ?? attributes["gen_ai.usage.input_tokens"]
-                               ?? attributes["prompt_token_count"])
-            let cached = anyInt(attributes["cached_content_token_count"]
-                                ?? attributes["gen_ai.usage.cached_tokens"])
-            let output = anyInt(attributes["output_token_count"]
-                                ?? attributes["gen_ai.usage.output_tokens"]
-                                ?? attributes["candidates_token_count"])
-            if input == 0, cached == 0, output == 0 { return }
-            let timestamp = geminiTimestamp(raw) ?? fileMTimeFallback
-            let promptId = attributes["prompt_id"] as? String
-                ?? attributes["gen_ai.prompt_id"] as? String
-            let sessionId = attributes["session.id"] as? String
-                ?? attributes["session_id"] as? String
-            let inputNonCached = max(0, input - cached)
-            let parsedEvent = CostUsageScanCache.ParsedEvent(
-                date: timestamp,
-                model: model,
-                input: inputNonCached,
-                output: output,
-                cache: cached,
-                sessionId: sessionId,
-                messageId: promptId,
-                harness: .geminiCLI
-            )
-            guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
-            let optionalCost = CostUsagePricing.geminiCostUSD(
-                model: model,
-                inputTokens: input,
-                cacheReadInputTokens: cached,
-                outputTokens: output
-            )
-            parsed.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
-            aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
-                           input: parsedEvent.input, output: parsedEvent.output,
-                           cache: parsedEvent.cache, costUSD: optionalCost ?? 0)
+            autoreleasepool {
+                guard !lineData.isEmpty,
+                      lineData.contains(asciiSequence: "gemini_cli")
+                else { return }
+                guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+                guard isGeminiApiResponse(raw) else { return }
+                let attributes = geminiAttributes(raw)
+                let model = (attributes["model"] as? String)
+                    ?? (attributes["gen_ai.request.model"] as? String)
+                    ?? (attributes["gen_ai.response.model"] as? String)
+                    ?? "gemini-unknown"
+                let input = anyInt(attributes["input_token_count"]
+                                   ?? attributes["gen_ai.usage.input_tokens"]
+                                   ?? attributes["prompt_token_count"])
+                let cached = anyInt(attributes["cached_content_token_count"]
+                                    ?? attributes["gen_ai.usage.cached_tokens"])
+                let output = anyInt(attributes["output_token_count"]
+                                    ?? attributes["gen_ai.usage.output_tokens"]
+                                    ?? attributes["candidates_token_count"])
+                if input == 0, cached == 0, output == 0 { return }
+                let timestamp = geminiTimestamp(raw) ?? fileMTimeFallback
+                let promptId = attributes["prompt_id"] as? String
+                    ?? attributes["gen_ai.prompt_id"] as? String
+                let sessionId = attributes["session.id"] as? String
+                    ?? attributes["session_id"] as? String
+                let inputNonCached = max(0, input - cached)
+                let parsedEvent = CostUsageScanCache.ParsedEvent(
+                    date: timestamp,
+                    model: model,
+                    input: inputNonCached,
+                    output: output,
+                    cache: cached,
+                    sessionId: sessionId,
+                    messageId: promptId,
+                    harness: .geminiCLI
+                )
+                guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
+                let optionalCost = pricing.geminiEntry(for: model).map {
+                    CostUsagePricing.geminiCostUSD(
+                        pricing: $0,
+                        inputTokens: input,
+                        cacheReadInputTokens: cached,
+                        outputTokens: output
+                    )
+                }
+                parsed.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
+                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                               input: parsedEvent.input, output: parsedEvent.output,
+                               cache: parsedEvent.cache, costUSD: optionalCost ?? 0)
+            }
         }
         return (parsed, didRead)
     }
@@ -489,57 +584,62 @@ public enum CostUsageScanner {
     private static func parseGeminiChatFile(
         file: URL,
         cutoff: Date?,
+        pricing: CostPricingContext,
         aggregator: inout CostAggregator
     ) -> ([PricedUsageEvent], Bool) {
         var parsed: [PricedUsageEvent] = []
         var sessionIdFromHeader: String? = nil
         let didRead = forEachJSONLLine(in: file) { lineData in
-            guard !lineData.isEmpty,
-                  lineData.contains(asciiSequence: "\"tokens\"")
-                    || lineData.contains(asciiSequence: "\"sessionId\"")
-            else { return }
-            guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
-            if let sid = raw["sessionId"] as? String, sessionIdFromHeader == nil {
-                sessionIdFromHeader = sid
+            autoreleasepool {
+                guard !lineData.isEmpty,
+                      lineData.contains(asciiSequence: "\"tokens\"")
+                        || lineData.contains(asciiSequence: "\"sessionId\"")
+                else { return }
+                guard let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+                if let sid = raw["sessionId"] as? String, sessionIdFromHeader == nil {
+                    sessionIdFromHeader = sid
+                }
+                guard raw["type"] as? String == "gemini",
+                      let tokens = raw["tokens"] as? [String: Any]
+                else { return }
+                let model = (raw["model"] as? String) ?? "gemini-unknown"
+                let inputTotal = anyInt(tokens["input"])
+                let cached = anyInt(tokens["cached"])
+                let output = anyInt(tokens["output"])
+                let thoughts = anyInt(tokens["thoughts"])
+                let tool = anyInt(tokens["tool"])
+                if inputTotal == 0, cached == 0, output == 0, thoughts == 0, tool == 0 { return }
+                let timestamp = (raw["timestamp"] as? String).flatMap(parseISO)
+                    ?? fileMTime(file) ?? Date()
+                let inputNonCached = max(0, inputTotal - cached)
+                // Gemini bills reasoning ("thoughts") and tool tokens at
+                // output rates, so fold them into output for cost — matches
+                // the CLI's own usage page totals.
+                let outputBilled = output + thoughts + tool
+                let parsedEvent = CostUsageScanCache.ParsedEvent(
+                    date: timestamp,
+                    model: model,
+                    input: inputNonCached,
+                    output: outputBilled,
+                    cache: cached,
+                    sessionId: sessionIdFromHeader,
+                    messageId: raw["id"] as? String,
+                    harness: .geminiCLI
+                )
+                guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
+                let optionalCost = pricing.geminiEntry(for: model).map {
+                    CostUsagePricing.geminiCostUSD(
+                        pricing: $0,
+                        inputTokens: inputTotal,
+                        cacheReadInputTokens: cached,
+                        outputTokens: outputBilled
+                    )
+                }
+                parsed.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
+                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                               input: parsedEvent.input, output: parsedEvent.output,
+                               cache: parsedEvent.cache, costUSD: optionalCost ?? 0)
             }
-            guard raw["type"] as? String == "gemini",
-                  let tokens = raw["tokens"] as? [String: Any]
-            else { return }
-            let model = (raw["model"] as? String) ?? "gemini-unknown"
-            let inputTotal = anyInt(tokens["input"])
-            let cached = anyInt(tokens["cached"])
-            let output = anyInt(tokens["output"])
-            let thoughts = anyInt(tokens["thoughts"])
-            let tool = anyInt(tokens["tool"])
-            if inputTotal == 0, cached == 0, output == 0, thoughts == 0, tool == 0 { return }
-            let timestamp = (raw["timestamp"] as? String).flatMap(parseISO)
-                ?? fileMTime(file) ?? Date()
-            let inputNonCached = max(0, inputTotal - cached)
-            // Gemini bills reasoning ("thoughts") and tool tokens at
-            // output rates, so fold them into output for cost — matches
-            // the CLI's own usage page totals.
-            let outputBilled = output + thoughts + tool
-            let parsedEvent = CostUsageScanCache.ParsedEvent(
-                date: timestamp,
-                model: model,
-                input: inputNonCached,
-                output: outputBilled,
-                cache: cached,
-                sessionId: sessionIdFromHeader,
-                messageId: raw["id"] as? String,
-                harness: .geminiCLI
-            )
-            guard isRetained(parsedEvent.date, cutoff: cutoff) else { return }
-            let optionalCost = CostUsagePricing.geminiCostUSD(
-                model: model,
-                inputTokens: inputTotal,
-                cacheReadInputTokens: cached,
-                outputTokens: outputBilled
-            )
-            parsed.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
-            aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
-                           input: parsedEvent.input, output: parsedEvent.output,
-                           cache: parsedEvent.cache, costUSD: optionalCost ?? 0)
         }
         return (parsed, didRead)
     }
@@ -558,7 +658,10 @@ public enum CostUsageScanner {
             let chats = tmp.appendingPathComponent(project).appendingPathComponent("chats")
             guard let entries = try? FileManager.default.contentsOfDirectory(
                 at: chats,
-                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+                includingPropertiesForKeys: [
+                    .isRegularFileKey, .isSymbolicLinkKey,
+                    .contentModificationDateKey, .fileSizeKey
+                ],
                 options: [.skipsHiddenFiles]
             ) else { continue }
             for url in entries
@@ -670,76 +773,94 @@ public enum CostUsageScanner {
         homeDirectory: String,
         now: Date,
         retentionDays: Int?,
+        pricing: CostPricingContext,
         eventSink: (any CostUsageEventSink)? = nil
     ) async -> CostSnapshot {
         let root = URL(fileURLWithPath: homeDirectory)
             .appendingPathComponent(".grok/sessions")
         let files = collectGrokUpdatesFiles(under: root)
         var aggregator = CostAggregator(tool: .grok, now: now)
-        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .grok, retentionDays: retentionDays)
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .grok, retentionDays: retentionDays
+        )
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
 
         for file in files {
+            if Task.isCancelled {
+                CostUsageScanCacheStore.shared.checkin(
+                    cache, homeDirectory: homeDirectory, tool: .grok,
+                    retentionDays: retentionDays, persist: false
+                )
+                return aggregator.snapshot(jsonlFilesFound: files.count)
+            }
             let (mtime, size) = grokFingerprint(file)
             if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
-                let retained = retainedEvents(cached, cutoff: cutoff)
-                if retained.count != cached.count {
-                    cache.store(retained, for: file.path, mtime: mtime, size: size)
-                }
-                var priced: [PricedUsageEvent] = []
-                priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
-                for event in retained {
-                    let optionalCost = costUSDIfPriceable(tool: .grok, event: event)
-                    if eventSink != nil {
-                        priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+                let priced: [PricedUsageEvent] = autoreleasepool {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    if retained.count != cached.count {
+                        cache.store(retained, for: file.path, mtime: mtime, size: size)
                     }
-                    aggregator.add(at: event.date, model: event.model, input: event.input,
-                                   output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
+                    var priced: [PricedUsageEvent] = []
+                    priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
+                    for event in retained {
+                        let optionalCost = costUSDIfPriceable(tool: .grok, event: event, pricing: pricing)
+                        if eventSink != nil {
+                            priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+                        }
+                        aggregator.add(at: event.date, model: event.model, input: event.input,
+                                       output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
+                    }
+                    return priced
                 }
                 await emit(eventSink, tool: .grok, file: file, mtime: mtime, size: size, events: priced)
                 continue
             }
 
-            let raw = parseGrokUpdatesFile(file: file)
-            var parsed: [CostUsageScanCache.ParsedEvent] = []
-            var priced: [PricedUsageEvent] = []
-            parsed.reserveCapacity(raw.count)
-            var previousTotal: Int? = nil
-            for snapshot in raw {
-                let delta: Int
-                if let previousTotal {
-                    delta = max(0, snapshot.totalTokens - previousTotal)
-                } else {
-                    delta = max(0, snapshot.totalTokens)
+            let priced: [PricedUsageEvent] = autoreleasepool {
+                let raw = parseGrokUpdatesFile(file: file)
+                var parsed: [CostUsageScanCache.ParsedEvent] = []
+                var priced: [PricedUsageEvent] = []
+                parsed.reserveCapacity(raw.count)
+                var previousTotal: Int? = nil
+                for snapshot in raw {
+                    let delta: Int
+                    if let previousTotal {
+                        delta = max(0, snapshot.totalTokens - previousTotal)
+                    } else {
+                        delta = max(0, snapshot.totalTokens)
+                    }
+                    previousTotal = snapshot.totalTokens
+                    guard delta > 0 else { continue }
+                    let inputTokens = Int((Double(delta) * 0.7).rounded())
+                    let outputTokens = max(0, delta - inputTokens)
+                    let parsedEvent = CostUsageScanCache.ParsedEvent(
+                        date: snapshot.date,
+                        model: snapshot.model,
+                        input: inputTokens,
+                        output: outputTokens,
+                        cache: 0,
+                        sessionId: snapshot.sessionId,
+                        harness: .grokBuild
+                    )
+                    guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
+                    parsed.append(parsedEvent)
+                    let optionalCost = costUSDIfPriceable(tool: .grok, event: parsedEvent, pricing: pricing)
+                    if eventSink != nil {
+                        priced.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
+                    }
+                    aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
+                                   input: parsedEvent.input, output: parsedEvent.output,
+                                   cache: parsedEvent.cache, costUSD: optionalCost ?? 0)
                 }
-                previousTotal = snapshot.totalTokens
-                guard delta > 0 else { continue }
-                let inputTokens = Int((Double(delta) * 0.7).rounded())
-                let outputTokens = max(0, delta - inputTokens)
-                let parsedEvent = CostUsageScanCache.ParsedEvent(
-                    date: snapshot.date,
-                    model: snapshot.model,
-                    input: inputTokens,
-                    output: outputTokens,
-                    cache: 0,
-                    sessionId: snapshot.sessionId,
-                    harness: .grokBuild
-                )
-                guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
-                parsed.append(parsedEvent)
-                let optionalCost = costUSDIfPriceable(tool: .grok, event: parsedEvent)
-                if eventSink != nil {
-                    priced.append(PricedUsageEvent(event: parsedEvent, costUSD: optionalCost))
-                }
-                aggregator.add(at: parsedEvent.date, model: parsedEvent.model,
-                               input: parsedEvent.input, output: parsedEvent.output,
-                               cache: parsedEvent.cache, costUSD: optionalCost ?? 0)
+                cache.store(parsed, for: file.path, mtime: mtime, size: size)
+                return priced
             }
-            cache.store(parsed, for: file.path, mtime: mtime, size: size)
             await emit(eventSink, tool: .grok, file: file, mtime: mtime, size: size, events: priced)
         }
         cache.prune(known: Set(files.map(\.path)))
-        cache.save(homeDirectory: homeDirectory, tool: .grok)
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .grok, retentionDays: retentionDays
+        )
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
@@ -755,30 +876,76 @@ public enum CostUsageScanner {
         let model: String
     }
 
+    /// Grok CLI's normal layout is
+    /// `<root>/<url-encoded cwd>/<session uuid>/{updates,events}.jsonl`, but a
+    /// tree can also hold migrated or legacy entries at other depths, and the
+    /// two shapes coexist.
+    ///
+    /// So this is a depth-first walk that **stops at the first directory that
+    /// is itself a session** — one that holds an `updates.jsonl` /
+    /// `events.jsonl` — and otherwise descends into that directory's
+    /// subdirectories, up to `grokMaxSearchDepth`. In the common tree that
+    /// costs exactly one listing per cwd directory plus one per session and
+    /// never opens a session's contents, where the previous recursive
+    /// enumerator visited all ~54k entries (every `chat_history.jsonl`,
+    /// `summary.json`, `signals.json` and nested artefact) and asked the
+    /// filesystem for symlink / regular-file flags on each. A deeper entry
+    /// alongside standard ones is still found: the old "recurse only when the
+    /// fast walk found nothing" fallback silently dropped it, and the cache
+    /// prune that follows then deleted its previously cached events.
     private static func collectGrokUpdatesFiles(under root: URL) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
         var out: [URL] = []
-        for case let url as URL in enumerator
-        where url.lastPathComponent == "updates.jsonl"
-            || url.lastPathComponent == "events.jsonl"
-        {
+        collectGrokStreams(in: root, depth: 0, into: &out)
+        return out
+    }
+
+    /// Depth bound on the walk above. The real layout needs 2 (cwd, then
+    /// session); the headroom covers migrated trees without letting a
+    /// pathological directory turn this back into an unbounded sweep.
+    private static let grokMaxSearchDepth = 6
+
+    private static let grokDirectoryKeys: [URLResourceKey] = [
+        .isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey,
+        .contentModificationDateKey, .fileSizeKey
+    ]
+
+    private static func collectGrokStreams(in directory: URL, depth: Int, into out: inout [URL]) {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: grokDirectoryKeys,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        // A directory holding a stream *is* the session; its own contents are
+        // transcript artefacts, not more sessions.
+        if let stream = grokPreferredStream(in: entries) {
+            out.append(stream)
+            return
+        }
+        guard depth < grokMaxSearchDepth else { return }
+        for entry in entries {
+            let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            // Symlinked directories are skipped for the same reason
+            // `collectJSONL` skips symlinked files — they can resolve outside
+            // `~/.grok`, and they are how a walk finds a cycle.
+            guard values?.isDirectory == true, values?.isSymbolicLink != true else { continue }
+            collectGrokStreams(in: entry, depth: depth + 1, into: &out)
+        }
+    }
+
+    /// Prefer `updates.jsonl` when both streams exist for one session.
+    private static func grokPreferredStream(in entries: [URL]) -> URL? {
+        var events: URL?
+        for url in entries {
+            let name = url.lastPathComponent
+            guard name == "updates.jsonl" || name == "events.jsonl" else { continue }
             let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
             if values?.isSymbolicLink == true { continue }
             if values?.isRegularFile == false { continue }
-            // Prefer updates.jsonl when both exist for the same session.
-            if url.lastPathComponent == "events.jsonl" {
-                let sibling = url.deletingLastPathComponent()
-                    .appendingPathComponent("updates.jsonl")
-                if FileManager.default.fileExists(atPath: sibling.path) { continue }
-            }
-            out.append(url)
+            if name == "updates.jsonl" { return url }
+            events = url
         }
-        return out
+        return events
     }
 
     private static func parseGrokUpdatesFile(file: URL) -> [GrokSnapshot] {
@@ -788,49 +955,51 @@ public enum CostUsageScanner {
         let modelTimeline = grokModelTimeline(in: sessionDirectory)
         let fallbackModel = grokSessionModel(in: sessionDirectory) ?? "grok-build"
         let didRead = forEachJSONLLine(in: file) { lineData in
-            guard !lineData.isEmpty,
-                  lineData.contains(asciiSequence: "totalTokens")
-            else { return }
-            guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
-            let params = obj["params"] as? [String: Any]
-            let meta = (obj["_meta"] as? [String: Any])
-                ?? (params?["_meta"] as? [String: Any])
-            guard let meta else { return }
-            let total = anyInt(meta["totalTokens"])
-            guard total >= 0 else { return }
-            let timestamp: Date
-            if let ms = meta["agentTimestampMs"] as? Double {
-                timestamp = Date(timeIntervalSince1970: ms / 1000)
-            } else if let ms = meta["agentTimestampMs"] as? Int {
-                timestamp = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
-            } else if let s = meta["agentTimestampMs"] as? String, let ms = Double(s) {
-                timestamp = Date(timeIntervalSince1970: ms / 1000)
-            } else if let iso = obj["timestamp"] as? String, let d = parseISO(iso) {
-                timestamp = d
-            } else {
-                timestamp = fileMTime(file) ?? Date()
+            autoreleasepool {
+                guard !lineData.isEmpty,
+                      lineData.contains(asciiSequence: "totalTokens")
+                else { return }
+                guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
+                let params = obj["params"] as? [String: Any]
+                let meta = (obj["_meta"] as? [String: Any])
+                    ?? (params?["_meta"] as? [String: Any])
+                guard let meta else { return }
+                let total = anyInt(meta["totalTokens"])
+                guard total >= 0 else { return }
+                let timestamp: Date
+                if let ms = meta["agentTimestampMs"] as? Double {
+                    timestamp = Date(timeIntervalSince1970: ms / 1000)
+                } else if let ms = meta["agentTimestampMs"] as? Int {
+                    timestamp = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
+                } else if let s = meta["agentTimestampMs"] as? String, let ms = Double(s) {
+                    timestamp = Date(timeIntervalSince1970: ms / 1000)
+                } else if let iso = obj["timestamp"] as? String, let d = parseISO(iso) {
+                    timestamp = d
+                } else {
+                    timestamp = fileMTime(file) ?? Date()
+                }
+                let sessionId = firstNonEmptyString(
+                    params?["sessionId"],
+                    obj["sessionId"],
+                    meta["sessionId"]
+                ) ?? fallbackSessionId
+                let model = grokModel(
+                    at: timestamp,
+                    timeline: modelTimeline,
+                    fallback: firstNonEmptyString(
+                        meta["model_id"],
+                        meta["modelId"],
+                        obj["model_id"],
+                        obj["modelId"]
+                    ) ?? fallbackModel
+                )
+                events.append(GrokSnapshot(
+                    date: timestamp,
+                    model: model,
+                    totalTokens: total,
+                    sessionId: sessionId
+                ))
             }
-            let sessionId = firstNonEmptyString(
-                params?["sessionId"],
-                obj["sessionId"],
-                meta["sessionId"]
-            ) ?? fallbackSessionId
-            let model = grokModel(
-                at: timestamp,
-                timeline: modelTimeline,
-                fallback: firstNonEmptyString(
-                    meta["model_id"],
-                    meta["modelId"],
-                    obj["model_id"],
-                    obj["modelId"]
-                ) ?? fallbackModel
-            )
-            events.append(GrokSnapshot(
-                date: timestamp,
-                model: model,
-                totalTokens: total,
-                sessionId: sessionId
-            ))
         }
         // Stable order: sessions written by Grok CLI are append-only but we
         // still sort by timestamp to absorb out-of-order writes.
@@ -850,10 +1019,16 @@ public enum CostUsageScanner {
         var seen: Set<String> = []
         for sibling in siblings where !seen.contains(sibling.path) {
             seen.insert(sibling.path)
-            guard FileManager.default.fileExists(atPath: sibling.path) else { continue }
-            let (mtime, size) = fileFingerprint(sibling)
-            if mtime > latest { latest = mtime }
-            totalSize += size
+            // One `resourceValues` per sibling: it answers "does this exist"
+            // and "what are its mtime/size" together, where the previous
+            // `fileExists` + `attributesOfItem` pair cost two syscall rounds
+            // (the second including a per-file xattr listing) for four
+            // siblings of every session.
+            guard let values = try? sibling.resourceValues(
+                forKeys: [.contentModificationDateKey, .fileSizeKey]
+            ) else { continue }
+            if let mtime = values.contentModificationDate, mtime > latest { latest = mtime }
+            totalSize += Int64(values.fileSize ?? 0)
         }
         return (latest, totalSize)
     }
@@ -863,21 +1038,23 @@ public enum CostUsageScanner {
         guard FileManager.default.fileExists(atPath: eventsFile.path) else { return [] }
         var changes: [GrokModelChange] = []
         _ = forEachJSONLLine(in: eventsFile) { lineData in
-            guard !lineData.isEmpty,
-                  lineData.contains(asciiSequence: "model")
-            else { return }
-            guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any],
-                  let model = firstNonEmptyString(
-                    obj["model_id"],
-                    obj["modelId"],
-                    obj["current_model_id"],
-                    obj["currentModelId"]
-                  )
-            else { return }
-            guard let date = firstDate(from: obj["ts"], obj["timestamp"], obj["createdAt"]) else {
-                return
+            autoreleasepool {
+                guard !lineData.isEmpty,
+                      lineData.contains(asciiSequence: "model")
+                else { return }
+                guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any],
+                      let model = firstNonEmptyString(
+                        obj["model_id"],
+                        obj["modelId"],
+                        obj["current_model_id"],
+                        obj["currentModelId"]
+                      )
+                else { return }
+                guard let date = firstDate(from: obj["ts"], obj["timestamp"], obj["createdAt"]) else {
+                    return
+                }
+                changes.append(GrokModelChange(date: date, model: model))
             }
-            changes.append(GrokModelChange(date: date, model: model))
         }
         return changes.sorted { $0.date < $1.date }
     }
@@ -996,6 +1173,7 @@ public enum CostUsageScanner {
         homeDirectory: String,
         now: Date,
         retentionDays: Int?,
+        pricing: CostPricingContext,
         eventSink: (any CostUsageEventSink)? = nil
     ) async -> CostSnapshot {
         let roots = antigravityConversationDirs.map {
@@ -1003,7 +1181,9 @@ public enum CostUsageScanner {
         }
         let cascades = collectAntigravityCascades(under: roots)
         var aggregator = CostAggregator(tool: .antigravity, now: now)
-        var cache = CostUsageScanCache.load(homeDirectory: homeDirectory, tool: .antigravity, retentionDays: retentionDays)
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .antigravity, retentionDays: retentionDays
+        )
         let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
         let shouldReparseDatabases =
             cache.antigravityDBParserVersion != antigravityDBParserVersion
@@ -1022,6 +1202,13 @@ public enum CostUsageScanner {
         var completedRequiredDatabaseReparses = true
 
         for cascade in cascades {
+            if Task.isCancelled {
+                CostUsageScanCacheStore.shared.checkin(
+                    cache, homeDirectory: homeDirectory, tool: .antigravity,
+                    retentionDays: retentionDays, persist: false
+                )
+                return aggregator.snapshot(jsonlFilesFound: fileCount)
+            }
             // 1. Prefer the offline `.db` decode.
             var handledByDB = false
             for dbFile in cascade.dbFiles {
@@ -1035,7 +1222,8 @@ public enum CostUsageScanner {
                         cache.store(retained, for: dbFile.path, mtime: mtime, size: size)
                     }
                     let priced = aggregateAntigravity(
-                        retained, labels: labels, into: &aggregator, collecting: eventSink != nil
+                        retained, labels: labels, pricing: pricing,
+                        into: &aggregator, collecting: eventSink != nil
                     )
                     await emit(eventSink, tool: .antigravity, file: dbFile, mtime: mtime, size: size, events: priced)
                     if !cached.isEmpty { handledByDB = true }
@@ -1046,7 +1234,8 @@ public enum CostUsageScanner {
                     let parsed = antigravityEvents(fromDB: turns, sessionId: cascade.id, cutoff: cutoff)
                     cache.store(parsed, for: dbFile.path, mtime: mtime, size: size)
                     let priced = aggregateAntigravity(
-                        parsed, labels: labels, into: &aggregator, collecting: eventSink != nil
+                        parsed, labels: labels, pricing: pricing,
+                        into: &aggregator, collecting: eventSink != nil
                     )
                     await emit(eventSink, tool: .antigravity, file: dbFile, mtime: mtime, size: size, events: priced)
                     handledByDB = true
@@ -1063,7 +1252,8 @@ public enum CostUsageScanner {
                     if let cached {
                         let retained = retainedEvents(cached, cutoff: cutoff)
                         let priced = aggregateAntigravity(
-                            retained, labels: labels, into: &aggregator, collecting: eventSink != nil
+                            retained, labels: labels, pricing: pricing,
+                            into: &aggregator, collecting: eventSink != nil
                         )
                         // Stale fingerprint: the cached rows did not come
                         // from the file as it exists right now, so record
@@ -1097,7 +1287,8 @@ public enum CostUsageScanner {
                         cache.store(retained, for: pbFile.path, mtime: mtime, size: size)
                     }
                     let priced = aggregateAntigravity(
-                        retained, labels: labels, into: &aggregator, collecting: eventSink != nil
+                        retained, labels: labels, pricing: pricing,
+                        into: &aggregator, collecting: eventSink != nil
                     )
                     await emit(eventSink, tool: .antigravity, file: pbFile, mtime: mtime, size: size, events: priced)
                     continue
@@ -1118,7 +1309,8 @@ public enum CostUsageScanner {
                     )
                     cache.store(parsed, for: pbFile.path, mtime: mtime, size: size)
                     let priced = aggregateAntigravity(
-                        parsed, labels: labels, into: &aggregator, collecting: eventSink != nil
+                        parsed, labels: labels, pricing: pricing,
+                        into: &aggregator, collecting: eventSink != nil
                     )
                     await emit(eventSink, tool: .antigravity, file: pbFile, mtime: mtime, size: size, events: priced)
                     continue
@@ -1128,7 +1320,7 @@ public enum CostUsageScanner {
                 //    while Antigravity is closed.
                 if let stale = cache.lastKnownEvents(for: pbFile.path) {
                     let priced = aggregateAntigravity(
-                        retainedEvents(stale, cutoff: cutoff), labels: labels,
+                        retainedEvents(stale, cutoff: cutoff), labels: labels, pricing: pricing,
                         into: &aggregator, collecting: eventSink != nil
                     )
                     // Sentinel size: these rows predate the file's current
@@ -1145,7 +1337,9 @@ public enum CostUsageScanner {
         if !shouldReparseDatabases || completedRequiredDatabaseReparses {
             cache.antigravityDBParserVersion = antigravityDBParserVersion
         }
-        cache.save(homeDirectory: homeDirectory, tool: .antigravity)
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .antigravity, retentionDays: retentionDays
+        )
         return aggregator.snapshot(jsonlFilesFound: fileCount)
     }
 
@@ -1181,7 +1375,10 @@ public enum CostUsageScanner {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            includingPropertiesForKeys: [
+                .isRegularFileKey, .isSymbolicLinkKey,
+                .contentModificationDateKey, .fileSizeKey
+            ],
             options: [.skipsHiddenFiles]
         ) else { return [] }
         return entries.filter { url in
@@ -1281,6 +1478,7 @@ public enum CostUsageScanner {
     private static func aggregateAntigravity(
         _ events: [CostUsageScanCache.ParsedEvent],
         labels: AntigravityModelLabelStore,
+        pricing: CostPricingContext,
         into aggregator: inout CostAggregator,
         collecting: Bool = false
     ) -> [PricedUsageEvent] {
@@ -1309,7 +1507,7 @@ public enum CostUsageScanner {
                 harness: event.harness ?? .antigravity,
                 projectPath: event.projectPath
             )
-            let optionalCost = costUSDIfPriceable(tool: .antigravity, event: resolved)
+            let optionalCost = costUSDIfPriceable(tool: .antigravity, event: resolved, pricing: pricing)
             if collecting {
                 priced.append(PricedUsageEvent(event: resolved, costUSD: optionalCost))
             }
@@ -1372,33 +1570,46 @@ public enum CostUsageScanner {
         return tier == "fast" || tier == "priority"
     }
 
-    private static func costUSD(tool: ToolType, event: CostUsageScanCache.ParsedEvent, codexFastTier: Bool = false) -> Double {
-        costUSDIfPriceable(tool: tool, event: event, codexFastTier: codexFastTier) ?? 0
+    private static func costUSD(
+        tool: ToolType,
+        event: CostUsageScanCache.ParsedEvent,
+        pricing: CostPricingContext,
+        codexFastTier: Bool = false
+    ) -> Double {
+        costUSDIfPriceable(
+            tool: tool, event: event, pricing: pricing, codexFastTier: codexFastTier
+        ) ?? 0
     }
 
     /// Same pricing math as `costUSD`, but keeps the pricing table's `nil`
     /// instead of collapsing it to `0`. A `nil` means "this model / provider
     /// has no rate we can apply", which the usage ledger records as an
     /// unpriced request rather than as a free one.
+    ///
+    /// `pricing` carries the pass's already-resolved table plus its model
+    /// normalisation memo; see `CostPricingContext`.
     private static func costUSDIfPriceable(
         tool: ToolType,
         event: CostUsageScanCache.ParsedEvent,
+        pricing: CostPricingContext,
         codexFastTier: Bool = false
     ) -> Double? {
         switch tool {
         case .codex:
+            guard let entry = pricing.codexEntry(for: event.model) else { return nil }
             return CostUsagePricing.codexCostUSD(
-                model: event.model,
+                pricing: entry,
                 inputTokens: event.input + event.cache,
                 cachedInputTokens: event.cache,
                 outputTokens: event.output,
                 isFast: codexFastTier
             )
         case .claude:
+            guard let entry = pricing.claudeEntry(for: event.model) else { return nil }
             let cacheCreation = max(0, event.cacheCreation ?? 0)
             let cacheRead = max(0, event.cache - cacheCreation)
             return CostUsagePricing.claudeCostUSD(
-                model: event.model,
+                pricing: entry,
                 inputTokens: event.input,
                 cacheReadInputTokens: cacheRead,
                 cacheCreationInputTokens: cacheCreation,
@@ -1406,24 +1617,27 @@ public enum CostUsageScanner {
                 isFast: eventIsFast(event)
             )
         case .gemini:
+            guard let entry = pricing.geminiEntry(for: event.model) else { return nil }
             return CostUsagePricing.geminiCostUSD(
-                model: event.model,
+                pricing: entry,
                 inputTokens: event.input + event.cache,
                 cacheReadInputTokens: event.cache,
                 outputTokens: event.output
             )
         case .grok:
+            guard let entry = pricing.grokEntry(for: event.model) else { return nil }
             return CostUsagePricing.grokCostUSD(
-                model: event.model,
+                pricing: entry,
                 inputTokens: event.input + event.cache,
                 cachedInputTokens: event.cache,
                 outputTokens: event.output
             )
         case .antigravity:
+            guard let entry = pricing.antigravityEntry(for: event.model) else { return nil }
             let cacheCreation = max(0, event.cacheCreation ?? 0)
             let cacheRead = max(0, event.cache - cacheCreation)
             return CostUsagePricing.antigravityCostUSD(
-                model: event.model,
+                pricing: entry,
                 inputTokens: event.input,
                 cacheReadInputTokens: cacheRead,
                 cacheCreationInputTokens: cacheCreation,
@@ -1464,11 +1678,15 @@ public enum CostUsageScanner {
         file: URL,
         mtime: Date,
         size: Int64,
-        events: [CostUsageScanCache.ParsedEvent]
+        events: [CostUsageScanCache.ParsedEvent],
+        pricing: CostPricingContext
     ) async {
         guard let sink else { return }
         let priced = events.map {
-            PricedUsageEvent(event: $0, costUSD: costUSDIfPriceable(tool: .claude, event: $0))
+            PricedUsageEvent(
+                event: $0,
+                costUSD: costUSDIfPriceable(tool: .claude, event: $0, pricing: pricing)
+            )
         }
         await emit(sink, tool: .claude, file: file, mtime: mtime, size: size, events: priced)
     }
@@ -1577,6 +1795,49 @@ public enum CostUsageScanner {
         var byDayModel: [Date: [String: (cost: Double, tokens: Int)]] = [:]
         var byHourModel: [Date: [String: (cost: Double, tokens: Int)]] = [:]
 
+        /// Calendar bucketing is what a warm pass actually spends its time
+        /// on: `startOfDay`, `component(.weekday:)` and up to two
+        /// `dateInterval(of: .hour:)` calls per event, each a full calendar
+        /// decomposition, times millions of cached events. Events arrive in
+        /// near-chronological runs, so remembering the current day and hour
+        /// windows turns almost all of that into two range comparisons.
+        ///
+        /// Both memos are exact by construction: `startOfDay` returns the
+        /// same value for every instant inside `[dayStart, nextDayStart)`,
+        /// the weekday is constant across a calendar day, and
+        /// `dateInterval(of: .hour:)` returns the same interval for every
+        /// instant inside it. The hour *component* is deliberately left
+        /// uncached — an offset transition can put two different hour
+        /// numbers inside one hour interval.
+        private var dayWindow: (start: Date, end: Date, weekday: Int)?
+        private var hourWindow: (start: Date, end: Date)?
+
+        private mutating func dayBucket(for date: Date) -> (start: Date, weekday: Int) {
+            if let window = dayWindow, date >= window.start, date < window.end {
+                return (window.start, window.weekday)
+            }
+            let start = calendar.startOfDay(for: date)
+            let weekday = calendar.component(.weekday, from: date) - 1  // 0..6, Sunday=0
+            if let end = calendar.date(byAdding: .day, value: 1, to: start), end > start {
+                dayWindow = (start, end, weekday)
+            } else {
+                dayWindow = nil
+            }
+            return (start, weekday)
+        }
+
+        private mutating func hourBucketStart(for date: Date) -> Date? {
+            if let window = hourWindow, date >= window.start, date < window.end {
+                return window.start
+            }
+            guard let interval = calendar.dateInterval(of: .hour, for: date) else {
+                hourWindow = nil
+                return nil
+            }
+            hourWindow = (interval.start, interval.end)
+            return interval.start
+        }
+
         init(tool: ToolType, now: Date) {
             self.tool = tool
             self.now = now
@@ -1610,7 +1871,7 @@ public enum CostUsageScanner {
                 monthTokens += tokens
                 monthRequests += 1
             }
-            let dayKey = calendar.startOfDay(for: date)
+            let (dayKey, weekday) = dayBucket(for: date)
             var bucket = byDay[dayKey] ?? (0, 0)
             bucket.cost += costUSD
             bucket.tokens += tokens
@@ -1619,8 +1880,10 @@ public enum CostUsageScanner {
             // One hourly lane for the whole retained window. Events dated after
             // today are clock skew rather than history, and a future bucket
             // would push the lane past the chart's domain, so they stay out.
-            if date >= hourlyCutoff, dayKey <= startOfToday,
-               let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
+            let hourKey: Date? = (date >= hourlyCutoff && dayKey <= startOfToday)
+                ? hourBucketStart(for: date)
+                : nil
+            if let hourKey {
                 var hourBucket = byHour[hourKey] ?? (0, 0)
                 hourBucket.cost += costUSD
                 hourBucket.tokens += tokens
@@ -1628,7 +1891,6 @@ public enum CostUsageScanner {
                 hourlyDays.insert(dayKey)
             }
 
-            let weekday = calendar.component(.weekday, from: date) - 1     // 0..6, Sunday=0
             let hour = calendar.component(.hour, from: date)
             if weekday >= 0 && weekday < 7 && hour >= 0 && hour < 24 {
                 heatmap[weekday][hour] += tokens
@@ -1653,8 +1915,7 @@ public enum CostUsageScanner {
             dayModels[model] = dayModelEntry
             byDayModel[dayKey] = dayModels
 
-            if date >= hourlyCutoff, dayKey <= startOfToday,
-               let hourKey = calendar.dateInterval(of: .hour, for: date)?.start {
+            if let hourKey {
                 var hourModels = byHourModel[hourKey] ?? [:]
                 var hourModelEntry = hourModels[model] ?? (0, 0)
                 hourModelEntry.cost += costUSD
@@ -1769,7 +2030,10 @@ public enum CostUsageScanner {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let enumerator = FileManager.default.enumerator(
             at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey],
+            includingPropertiesForKeys: [
+                .isRegularFileKey, .isSymbolicLinkKey,
+                .contentModificationDateKey, .fileSizeKey
+            ],
             options: [.skipsHiddenFiles]
         ) else { return [] }
         var out: [URL] = []
@@ -1793,13 +2057,21 @@ public enum CostUsageScanner {
     /// (mtime, size) pair used as the per-file cache fingerprint. Falls back
     /// to `(distantPast, 0)` so a missing-attribute case never hits the
     /// cache, forcing a fresh parse rather than masking corruption.
+    ///
+    /// `URL.resourceValues`, not `FileManager.attributesOfItem`: the latter
+    /// builds a full `NSFileAttribute` dictionary *and* lists the file's
+    /// extended attributes, which showed up as ~23 % of background samples
+    /// across ~15k files per pass. `resourceValues` also reads back the
+    /// values the directory enumerators prefetch, so for enumerated files it
+    /// costs no syscall at all — which is why `collectJSONL` and the
+    /// AntiGravity/Grok listings ask for mtime and size up front.
     private static func fileFingerprint(_ url: URL) -> (Date, Int64) {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+        guard let values = try? url.resourceValues(
+            forKeys: [.contentModificationDateKey, .fileSizeKey]
+        ) else {
             return (.distantPast, 0)
         }
-        let mtime = (attrs[.modificationDate] as? Date) ?? .distantPast
-        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-        return (mtime, size)
+        return (values.contentModificationDate ?? .distantPast, Int64(values.fileSize ?? 0))
     }
 
     private static let isoWithFraction: ISO8601DateFormatter = {

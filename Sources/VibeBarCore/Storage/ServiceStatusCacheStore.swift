@@ -12,7 +12,10 @@ public enum ServiceStatusCacheStore {
         return snapshots
     }
 
+    /// Compact, not pretty-printed: this is a Vibe Bar-owned cache that
+    /// nobody reads by hand, and the pretty form was ~330 KB of indentation
+    /// re-encoded and rewritten on every five-minute status refresh.
     public static func save(_ snapshots: [ToolType: ServiceStatusSnapshot]) throws {
-        try VibeBarLocalStore.writeJSON(snapshots, to: cacheURL)
+        try VibeBarLocalStore.writeCompactJSON(snapshots, to: cacheURL)
     }
 }
