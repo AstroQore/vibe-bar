@@ -853,6 +853,98 @@
     "comment": "Toggle in the setup assistant. macOS-only.",
     "value": "Launch Vibe Bar at login"
   },
+  "platform.macos.menuBar.color.actual": {
+    "comment": "Menu-bar colour basis: colour by the displayed percentage. macOS-only.",
+    "value": "Actual"
+  },
+  "platform.macos.menuBar.color.actualDetail": {
+    "comment": "Caption under the Actual colour basis. macOS-only.",
+    "value": "Colored by the displayed percentage alone, ignoring the forecast."
+  },
+  "platform.macos.menuBar.color.forecast": {
+    "comment": "Menu-bar colour basis: colour by the forecast verdict. macOS-only.",
+    "value": "Forecast"
+  },
+  "platform.macos.menuBar.color.forecastDetail": {
+    "comment": "Caption under the Forecast colour basis. macOS-only.",
+    "value": "Green projected to last · blue a chunk will likely go unused · orange may run short · red projected to run out. Falls back to the percentage while a quota has too little history to forecast."
+  },
+  "platform.macos.menuBar.displayDensity": {
+    "comment": "Picker choosing the popover density from the menu-bar editor. macOS-only.",
+    "value": "Display density"
+  },
+  "platform.macos.menuBar.fieldStyle.label": {
+    "comment": "Menu-bar field style: show the field's name. macOS-only.",
+    "value": "Label"
+  },
+  "platform.macos.menuBar.fieldStyle.labelDetail": {
+    "comment": "Caption under the Label field style. macOS-only.",
+    "value": "The field's name beside its percent."
+  },
+  "platform.macos.menuBar.fieldStyle.logo": {
+    "comment": "Menu-bar field style: show the provider's logo. macOS-only.",
+    "value": "Logo"
+  },
+  "platform.macos.menuBar.fieldStyle.logoAndLabel": {
+    "comment": "Menu-bar field style. macOS-only.",
+    "value": "Logo and label"
+  },
+  "platform.macos.menuBar.fieldStyle.logoAndLabelDetail": {
+    "comment": "Caption under the Logo and label field style. macOS-only.",
+    "value": "Logo, name, and percent."
+  },
+  "platform.macos.menuBar.fieldStyle.logoDetail": {
+    "comment": "Caption under the Logo field style. macOS-only.",
+    "value": "The provider's logo beside the percent — no text."
+  },
+  "platform.macos.menuBar.fields": {
+    "comment": "Heading over the menu-bar field checklist. macOS-only.",
+    "value": "Fields"
+  },
+  "platform.macos.menuBar.layout": {
+    "comment": "Picker choosing how the menu-bar item is laid out. macOS-only. Distinct from the Layout settings section, which is about page layout.",
+    "value": "Layout"
+  },
+  "platform.macos.menuBar.layout.compact": {
+    "comment": "Menu-bar layout option. macOS-only.",
+    "value": "Compact"
+  },
+  "platform.macos.menuBar.layout.iconOnly": {
+    "comment": "Menu-bar layout option. macOS-only.",
+    "value": "Icon Only"
+  },
+  "platform.macos.menuBar.layout.singleLine": {
+    "comment": "Menu-bar layout option. macOS-only.",
+    "value": "Single line"
+  },
+  "platform.macos.menuBar.layout.twoRows": {
+    "comment": "Menu-bar layout option. macOS-only.",
+    "value": "Two rows"
+  },
+  "platform.macos.menuBar.mergeGroupWindows": {
+    "comment": "Toggle that folds a quota group's windows into one entry. macOS-only.",
+    "value": "Combine a group's windows"
+  },
+  "platform.macos.menuBar.mergeGroupWindowsDetail": {
+    "comment": "Caption under the combine toggle. macOS-only.",
+    "value": "Shows 5 Hours and Weekly as 5%/100% instead of two entries."
+  },
+  "platform.macos.menuBar.overview": {
+    "comment": "The menu-bar item that summarises every provider. macOS-only.",
+    "value": "Overview"
+  },
+  "platform.macos.menuBar.percentColor": {
+    "comment": "Picker choosing what colours the menu-bar percentage. macOS-only.",
+    "value": "Percent color"
+  },
+  "platform.macos.menuBar.showInMenuBar": {
+    "comment": "Toggle in the menu-bar item editor. macOS-only: no other client renders a menu-bar extra.",
+    "value": "Show in menu bar"
+  },
+  "platform.macos.menuBar.showTitleText": {
+    "comment": "Toggle in the menu-bar item editor. macOS-only.",
+    "value": "Show title text"
+  },
   "popover.header.machinesSubtitle": {
     "comment": "Subtitle under the Machines page header",
     "value": "End-to-end encrypted remote usage"
@@ -1591,6 +1683,26 @@
     "comment": "Error line",
     "value": "Could not delete saved Grok cookies."
   },
+  "settings.credentialSource.apiOnly": {
+    "comment": "Misc-provider credential source option",
+    "value": "API / OAuth only"
+  },
+  "settings.credentialSource.auto": {
+    "comment": "Misc-provider credential source option",
+    "value": "Auto"
+  },
+  "settings.credentialSource.browserOnly": {
+    "comment": "Misc-provider credential source option",
+    "value": "Browser only"
+  },
+  "settings.credentialSource.manualOnly": {
+    "comment": "Misc-provider credential source option",
+    "value": "Manual only"
+  },
+  "settings.credentialSource.off": {
+    "comment": "Misc-provider credential source option: do not fetch at all",
+    "value": "Off"
+  },
   "settings.cursorNoSession": {
     "comment": "Credential state line",
     "value": "No usable Cursor.app session — import cursor.com cookies below."
@@ -1618,6 +1730,14 @@
   "settings.deleteGrokCookies": {
     "comment": "Button label",
     "value": "Delete Grok cookies"
+  },
+  "settings.displayMode.remaining": {
+    "comment": "Segmented option: the percentage shows what is left. Title case because it is a picker option; quota.mode.remaining is the lowercase caption under a bar.",
+    "value": "Remaining"
+  },
+  "settings.displayMode.used": {
+    "comment": "Segmented option: the percentage shows what has been spent",
+    "value": "Used"
   },
   "settings.externalChange.title": {
     "comment": "Banner shown when a second client overwrote a setting this one had changed",
@@ -1790,6 +1910,30 @@
     "comment": "Empty state under the add-bucket list",
     "value": "Every known bucket is already in this window."
   },
+  "settings.miniWindow.density.narrow": {
+    "comment": "Mini-window strip density",
+    "value": "Narrow"
+  },
+  "settings.miniWindow.density.narrowDetail": {
+    "comment": "Caption under the Narrow strip density",
+    "value": "The menu bar's compact style: the same cells at the small size."
+  },
+  "settings.miniWindow.density.roomy": {
+    "comment": "Mini-window strip density",
+    "value": "Roomy"
+  },
+  "settings.miniWindow.density.roomyDetail": {
+    "comment": "Caption under the Roomy strip density",
+    "value": "The menu bar's single-line style: every bucket, full label beside its number."
+  },
+  "settings.miniWindow.density.twoLines": {
+    "comment": "Mini-window strip density",
+    "value": "Two Lines"
+  },
+  "settings.miniWindow.density.twoLinesDetail": {
+    "comment": "Caption under the Two Lines strip density",
+    "value": "Menu-bar style: buckets pair into stacked columns, label beside each number."
+  },
   "settings.miniWindow.dismissBuiltIn": {
     "comment": "Tooltip on the dismiss button of a built-in bucket",
     "value": "Dismiss this built-in bucket while the provider is not returning it. It comes back the moment the provider does."
@@ -1805,6 +1949,62 @@
   "settings.miniWindow.lastCannotBeRemoved": {
     "comment": "Tooltip explaining a disabled remove button",
     "value": "The last mini window cannot be removed."
+  },
+  "settings.miniWindow.mode.compact": {
+    "comment": "Mini-window display style",
+    "value": "Compact"
+  },
+  "settings.miniWindow.mode.compactDetail": {
+    "comment": "Caption under the Compact mini-window style",
+    "value": "The same three tiers as vertical bars, sized for a corner."
+  },
+  "settings.miniWindow.mode.focus": {
+    "comment": "Mini-window display style",
+    "value": "Focus"
+  },
+  "settings.miniWindow.mode.focusDetail": {
+    "comment": "Caption under the Focus mini-window style",
+    "value": "One selected bucket at a time, large — click to cycle in your order."
+  },
+  "settings.miniWindow.mode.ledger": {
+    "comment": "Mini-window display style",
+    "value": "Ledger"
+  },
+  "settings.miniWindow.mode.ledgerDetail": {
+    "comment": "Caption under the Ledger mini-window style",
+    "value": "One row per quota bucket — fixed width, grows downward."
+  },
+  "settings.miniWindow.mode.rail": {
+    "comment": "Mini-window display style",
+    "value": "Rail"
+  },
+  "settings.miniWindow.mode.railDetail": {
+    "comment": "Caption under the Rail mini-window style",
+    "value": "The next seven days as a refill lane with the coming resets listed."
+  },
+  "settings.miniWindow.mode.regular": {
+    "comment": "Mini-window display style",
+    "value": "Regular"
+  },
+  "settings.miniWindow.mode.regularDetail": {
+    "comment": "Caption under the Regular mini-window style",
+    "value": "Ring gauges grouped company → SubProvider → quota group."
+  },
+  "settings.miniWindow.mode.strip": {
+    "comment": "Mini-window display style",
+    "value": "Strip"
+  },
+  "settings.miniWindow.mode.stripDetail": {
+    "comment": "Caption under the Strip mini-window style",
+    "value": "A slim line mirroring the menu bar's styles — one cell per bucket."
+  },
+  "settings.miniWindow.mode.tiles": {
+    "comment": "Mini-window display style",
+    "value": "Tiles"
+  },
+  "settings.miniWindow.mode.tilesDetail": {
+    "comment": "Caption under the Tiles mini-window style",
+    "value": "A grid of tiles with a big number and a severity stripe."
   },
   "settings.miniWindow.namesAllWindows": {
     "comment": "Segment label: edit the shared names",
@@ -1969,6 +2169,34 @@
     "comment": "Picker label for a provider's service region",
     "value": "Region"
   },
+  "settings.misc.region.auto": {
+    "comment": "Misc-provider region option",
+    "value": "Auto (try both)"
+  },
+  "settings.misc.region.chinaMainland": {
+    "comment": "Alibaba region option",
+    "value": "China mainland (cn-beijing)"
+  },
+  "settings.misc.region.international": {
+    "comment": "Alibaba region option; the region id is never translated",
+    "value": "International (ap-southeast-1)"
+  },
+  "settings.misc.region.minimaxChina": {
+    "comment": "MiniMax region option",
+    "value": "China mainland (minimaxi.com)"
+  },
+  "settings.misc.region.minimaxGlobal": {
+    "comment": "MiniMax region option",
+    "value": "Global (minimax.io)"
+  },
+  "settings.misc.region.zaiChina": {
+    "comment": "Z.ai region option",
+    "value": "China mainland (open.bigmodel.cn)"
+  },
+  "settings.misc.region.zaiGlobal": {
+    "comment": "Z.ai region option; the host is never translated",
+    "value": "Global (api.z.ai)"
+  },
   "settings.misc.removeAkSk": {
     "comment": "Tooltip on the button that clears a stored AK/SK pair",
     "value": "Remove stored {provider} AK/SK"
@@ -2068,6 +2296,30 @@
   "settings.planBadgeDetail": {
     "comment": "Caption under the plan badge field",
     "value": "Leave blank to use the detected account plan."
+  },
+  "settings.popoverDensity.compact": {
+    "comment": "Popover density option",
+    "value": "Compact"
+  },
+  "settings.popoverDensity.compactDetail": {
+    "comment": "Caption under the Compact density",
+    "value": "Tightest spacing, narrowest popover."
+  },
+  "settings.popoverDensity.regular": {
+    "comment": "Popover density option",
+    "value": "Regular"
+  },
+  "settings.popoverDensity.regularDetail": {
+    "comment": "Caption under the Regular density",
+    "value": "Balanced spacing — default."
+  },
+  "settings.popoverDensity.spacious": {
+    "comment": "Popover density option",
+    "value": "Spacious"
+  },
+  "settings.popoverDensity.spaciousDetail": {
+    "comment": "Caption under the Spacious density",
+    "value": "Roomy spacing for big displays."
   },
   "settings.pricing.addOverride": {
     "comment": "Button that appends a blank rate card",
@@ -2340,6 +2592,86 @@
     "comment": "Button label",
     "value": "Rescan cost logs"
   },
+  "settings.route.antigravityLocal": {
+    "comment": "Connection-health row: the local AntiGravity probe or agy CLI",
+    "value": "Local Antigravity / agy"
+  },
+  "settings.route.browserCookies": {
+    "comment": "Connection-health row: cookies imported from a browser",
+    "value": "Chrome/Safari cookies"
+  },
+  "settings.route.cli": {
+    "comment": "Connection-health row: the local CLI credential path",
+    "value": "CLI"
+  },
+  "settings.route.grokAuthFile": {
+    "comment": "Connection-health row: the Grok CLI's credential file. A path, never translated.",
+    "value": "~/.grok/auth.json"
+  },
+  "settings.route.oauth": {
+    "comment": "Connection-health row: the OAuth credential path",
+    "value": "OAuth"
+  },
+  "settings.route.webViewCookies": {
+    "comment": "Connection-health row: cookies from the in-app login window",
+    "value": "WebView cookies"
+  },
+  "settings.routeHealth.agyAvailable": {
+    "comment": "Connection-health detail: the agy CLI is installed",
+    "value": "agy CLI available"
+  },
+  "settings.routeHealth.authFileExpired": {
+    "comment": "Connection-health detail; the filename is never translated",
+    "value": "auth.json expired"
+  },
+  "settings.routeHealth.authFileUnreadable": {
+    "comment": "Connection-health detail",
+    "value": "Could not read auth.json"
+  },
+  "settings.routeHealth.cachedOnly": {
+    "comment": "Connection-health detail",
+    "value": "Cached data only; live quota unavailable"
+  },
+  "settings.routeHealth.credentialUnreadable": {
+    "comment": "Connection-health detail",
+    "value": "Could not read credential"
+  },
+  "settings.routeHealth.credentialsAvailable": {
+    "comment": "Connection-health detail: a usable credential was found",
+    "value": "Credentials available"
+  },
+  "settings.routeHealth.invalidCookie": {
+    "comment": "Connection-health detail",
+    "value": "Invalid cookie data"
+  },
+  "settings.routeHealth.keychainLocked": {
+    "comment": "Connection-health detail",
+    "value": "Keychain locked"
+  },
+  "settings.routeHealth.lspRunning": {
+    "comment": "Connection-health detail: the AntiGravity language server is up",
+    "value": "Local LSP running"
+  },
+  "settings.routeHealth.noAntigravityData": {
+    "comment": "Connection-health detail",
+    "value": "No local Antigravity data"
+  },
+  "settings.routeHealth.noAuthFile": {
+    "comment": "Connection-health detail",
+    "value": "No auth.json"
+  },
+  "settings.routeHealth.noCredential": {
+    "comment": "Connection-health detail",
+    "value": "No credential found"
+  },
+  "settings.routeHealth.noSavedCookie": {
+    "comment": "Connection-health detail",
+    "value": "No saved cookie"
+  },
+  "settings.routeHealth.savedInKeychain": {
+    "comment": "Connection-health detail: a cookie is stored",
+    "value": "Saved in Keychain"
+  },
   "settings.search": {
     "comment": "Placeholder in the settings sidebar's search field",
     "value": "Search settings"
@@ -2355,6 +2687,10 @@
   "settings.section.layout": {
     "comment": "Settings section heading for page layout",
     "value": "Layout"
+  },
+  "settings.section.menuBar": {
+    "comment": "Settings sidebar destination and section heading",
+    "value": "Menu Bar"
   },
   "settings.section.menuBarHealth": {
     "comment": "Settings section heading for the status-item watchdog",
@@ -2375,6 +2711,10 @@
   "settings.section.refreshing": {
     "comment": "Settings section heading for refresh intervals. Distinct from status.overview.refreshing, which says a fetch is in flight.",
     "value": "Refreshing"
+  },
+  "settings.section.remoteProbes": {
+    "comment": "Settings sidebar destination for remote machine sync",
+    "value": "Remote Probes"
   },
   "settings.section.system": {
     "comment": "Settings section heading for login items and the setup assistant. Distinct from settings.language.system, which is a language-picker option meaning 'follow macOS'.",
@@ -2416,13 +2756,165 @@
     "comment": "Explanation on the SpaceXAI settings page",
     "value": "The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota, plus read-only sessions from its local cache — its cloud runs still add no token/cost rows."
   },
+  "settings.terminal.copyOnly": {
+    "comment": "Terminal preference: copy the resume command instead of running it. Terminal and iTerm2 are product names and stay as spelled.",
+    "value": "Copy to clipboard"
+  },
   "settings.updateChannel": {
     "comment": "Picker label",
     "value": "Update channel"
   },
+  "settings.updateChannel.dev": {
+    "comment": "Update channel option",
+    "value": "Dev"
+  },
+  "settings.updateChannel.devDetail": {
+    "comment": "Caption under the Dev channel option",
+    "value": "Preview releases plus all Main releases."
+  },
+  "settings.updateChannel.main": {
+    "comment": "Update channel option",
+    "value": "Main"
+  },
+  "settings.updateChannel.mainDetail": {
+    "comment": "Caption under the Main channel option",
+    "value": "Stable releases only."
+  },
   "settings.updateCheckDetail": {
     "comment": "Caption under the update controls",
     "value": "Checks the selected channel once a day and asks before installing."
+  },
+  "settings.usageMode.antigravity.autoDetail": {
+    "comment": "Caption under an AntiGravity usage-source option",
+    "value": "Use the Antigravity app first, then the installed agy CLI; fall back to imported cookies when the web source is available."
+  },
+  "settings.usageMode.antigravity.localFirstDetail": {
+    "comment": "Caption under an AntiGravity usage-source option",
+    "value": "Use the Antigravity app or agy CLI first; fall back to imported cookies."
+  },
+  "settings.usageMode.antigravity.localOnly": {
+    "comment": "AntiGravity usage-source option",
+    "value": "Local sources only"
+  },
+  "settings.usageMode.antigravity.localOnlyDetail": {
+    "comment": "Caption under an AntiGravity usage-source option",
+    "value": "Only use the Antigravity app or installed agy CLI."
+  },
+  "settings.usageMode.antigravity.localThenWeb": {
+    "comment": "AntiGravity usage-source option",
+    "value": "Local sources, then Web"
+  },
+  "settings.usageMode.antigravity.webFirstDetail": {
+    "comment": "Caption under an AntiGravity usage-source option",
+    "value": "Use imported cookies first; fall back to the Antigravity app or agy CLI."
+  },
+  "settings.usageMode.antigravity.webOnly": {
+    "comment": "AntiGravity usage-source option",
+    "value": "Web only"
+  },
+  "settings.usageMode.antigravity.webOnlyDetail": {
+    "comment": "Caption under an AntiGravity usage-source option",
+    "value": "Only use imported cookies. Falls back to the local probe until the Antigravity Cloud endpoint ships."
+  },
+  "settings.usageMode.antigravity.webThenLocal": {
+    "comment": "AntiGravity usage-source option",
+    "value": "Web, then Local sources"
+  },
+  "settings.usageMode.auto": {
+    "comment": "Usage-source option: let Vibe Bar choose the order",
+    "value": "Auto"
+  },
+  "settings.usageMode.claude.autoDetail": {
+    "comment": "Caption under a Claude usage-source option",
+    "value": "Use saved claude.ai cookies first; fall back to Claude OAuth and Claude Code."
+  },
+  "settings.usageMode.claude.codeFirstDetail": {
+    "comment": "Caption under a Claude usage-source option",
+    "value": "Use Claude Code first; fall back to saved claude.ai cookies."
+  },
+  "settings.usageMode.claude.codeOnly": {
+    "comment": "Claude usage-source option",
+    "value": "Claude Code only"
+  },
+  "settings.usageMode.claude.codeOnlyDetail": {
+    "comment": "Caption under a Claude usage-source option",
+    "value": "Use only local Claude Code OAuth credentials."
+  },
+  "settings.usageMode.claude.codeThenWeb": {
+    "comment": "Claude usage-source option",
+    "value": "Claude Code, then Web"
+  },
+  "settings.usageMode.claude.oauthCodeWeb": {
+    "comment": "Claude usage-source option",
+    "value": "OAuth, then Claude Code, then Web"
+  },
+  "settings.usageMode.claude.oauthFirstDetail": {
+    "comment": "Caption under a Claude usage-source option",
+    "value": "Use Claude OAuth first; fall back to Claude Code and saved claude.ai cookies."
+  },
+  "settings.usageMode.claude.oauthOnly": {
+    "comment": "Claude usage-source option",
+    "value": "OAuth only"
+  },
+  "settings.usageMode.claude.oauthOnlyDetail": {
+    "comment": "Caption under a Claude usage-source option",
+    "value": "Use only Claude OAuth credentials."
+  },
+  "settings.usageMode.claude.webFirstDetail": {
+    "comment": "Caption under a Claude usage-source option",
+    "value": "Use saved claude.ai cookies first; fall back to Claude Code and OAuth."
+  },
+  "settings.usageMode.claude.webOnly": {
+    "comment": "Claude usage-source option",
+    "value": "Claude Web only"
+  },
+  "settings.usageMode.claude.webOnlyDetail": {
+    "comment": "Caption under a Claude usage-source option",
+    "value": "Use only saved claude.ai cookies."
+  },
+  "settings.usageMode.claude.webThenCode": {
+    "comment": "Claude usage-source option",
+    "value": "Claude Web, then Claude Code"
+  },
+  "settings.usageMode.codex.autoDetail": {
+    "comment": "Caption under a Codex usage-source option",
+    "value": "Use local Codex CLI credentials first; fall back to Codex OAuth and saved OpenAI web cookies."
+  },
+  "settings.usageMode.codex.cliOnly": {
+    "comment": "Codex usage-source option",
+    "value": "CLI only"
+  },
+  "settings.usageMode.codex.cliOnlyDetail": {
+    "comment": "Caption under a Codex usage-source option",
+    "value": "Use only local Codex CLI credentials."
+  },
+  "settings.usageMode.codex.cliThenOauth": {
+    "comment": "Codex usage-source option",
+    "value": "CLI, then OAuth"
+  },
+  "settings.usageMode.codex.oauthFirstDetail": {
+    "comment": "Caption under a Codex usage-source option",
+    "value": "Use Codex OAuth first; fall back to local Codex CLI credentials and saved OpenAI web cookies."
+  },
+  "settings.usageMode.codex.oauthOnly": {
+    "comment": "Codex usage-source option",
+    "value": "OAuth only"
+  },
+  "settings.usageMode.codex.oauthOnlyDetail": {
+    "comment": "Caption under a Codex usage-source option",
+    "value": "Use only Codex OAuth credentials from auth.json."
+  },
+  "settings.usageMode.codex.oauthThenCli": {
+    "comment": "Codex usage-source option",
+    "value": "OAuth, then CLI"
+  },
+  "settings.usageMode.gemini.webOnly": {
+    "comment": "Gemini usage-source option",
+    "value": "Gemini Web only"
+  },
+  "settings.usageMode.gemini.webOnlyDetail": {
+    "comment": "Caption under the Gemini usage-source option",
+    "value": "Only fetch imported gemini.google.com cookies."
   },
   "settings.usageSource": {
     "comment": "Picker label choosing where a provider's quota is read from",

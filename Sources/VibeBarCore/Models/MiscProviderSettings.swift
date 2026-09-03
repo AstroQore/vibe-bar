@@ -22,11 +22,11 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
 
         public var label: String {
             switch self {
-            case .auto:        return "Auto"
-            case .browserOnly: return "Browser only"
-            case .manualOnly:  return "Manual only"
-            case .apiOnly:     return "API / OAuth only"
-            case .off:         return "Off"
+            case .auto:        return L10n.Settings.credentialSourceAuto
+            case .browserOnly: return L10n.Settings.credentialSourceBrowserOnly
+            case .manualOnly:  return L10n.Settings.credentialSourceManualOnly
+            case .apiOnly:     return L10n.Settings.credentialSourceApiOnly
+            case .off:         return L10n.Settings.credentialSourceOff
             }
         }
     }

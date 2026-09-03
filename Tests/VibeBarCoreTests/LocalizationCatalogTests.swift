@@ -238,6 +238,41 @@ final class LocalizationCatalogTests: XCTestCase {
         }
     }
 
+    /// A quota label has one renderer and several readers, and the readers
+    /// get forgotten one at a time — the field picker, the rename dialog's
+    /// placeholder, the calendar entry, the menu-bar composer. Each one that
+    /// reads `title` raw is a Chinese screen with an English quota name on
+    /// it, which is how three of them were found. `displayTitle` is the one
+    /// renderer; this pins what it must do.
+    func testAComposedFieldTitleIsResolvedPartByPart() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        func option(_ title: String, default label: String) -> MenuBarFieldOption {
+            MenuBarFieldOption(
+                id: "f", tool: .claude, bucketId: "b", title: title, defaultLabel: label
+            )
+        }
+
+        // Both halves are generic window words, so both translate.
+        XCTAssertEqual(option("All Models · Weekly", default: "Weekly").displayTitle,
+                       "全部模型 · 每周")
+        // A model name is a name: only the window half moves.
+        XCTAssertEqual(option("GPT-5.3 Codex Spark · 5 Hours", default: "5 Hours").displayTitle,
+                       "GPT-5.3 Codex Spark · 5 小时")
+        XCTAssertEqual(option("Weekly", default: "Weekly").displayDefaultLabel, "每周")
+        XCTAssertEqual(option("Sonnet", default: "Sonnet").displayDefaultLabel, "Sonnet")
+
+        // The stored value is a naming-contract value and never moves.
+        XCTAssertEqual(option("All Models · Weekly", default: "Weekly").title,
+                       "All Models · Weekly")
+
+        L10n.languageOverride = .english
+        XCTAssertEqual(option("All Models · Weekly", default: "Weekly").displayTitle,
+                       "All Models · Weekly")
+    }
+
     private func locatePython() throws -> URL? {
         for candidate in ["/usr/bin/python3", "/opt/homebrew/bin/python3", "/usr/local/bin/python3"] {
             if FileManager.default.isExecutableFile(atPath: candidate) {

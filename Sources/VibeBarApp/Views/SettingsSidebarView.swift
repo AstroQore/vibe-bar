@@ -216,7 +216,7 @@ struct SettingsSidebarView: View {
     private var miscLandingMatchesSearch: Bool {
         searchText.isEmpty
             || L10n.Onboarding.doneBrowserCookies.localizedCaseInsensitiveContains(searchText)
-            || "Misc Providers".localizedCaseInsensitiveContains(searchText)
+            || L10n.Popover.tabMisc.localizedCaseInsensitiveContains(searchText)
     }
 
     private func sidebarGroup<Content: View>(

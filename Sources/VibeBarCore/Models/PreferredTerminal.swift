@@ -15,7 +15,7 @@ public enum PreferredTerminal: String, Codable, CaseIterable, Sendable {
         switch self {
         case .terminal: return "Terminal"
         case .iterm2:   return "iTerm2"
-        case .copyOnly: return "Copy to clipboard"
+        case .copyOnly: return L10n.Settings.terminalCopyOnly
         }
     }
 }

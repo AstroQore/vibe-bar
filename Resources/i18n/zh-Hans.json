@@ -590,6 +590,75 @@
   "platform.macos.launchAtLogin.toggle": {
     "value": "登录时启动 Vibe Bar"
   },
+  "platform.macos.menuBar.color.actual": {
+    "value": "实际"
+  },
+  "platform.macos.menuBar.color.actualDetail": {
+    "value": "仅按显示的百分比着色，忽略预测。"
+  },
+  "platform.macos.menuBar.color.forecast": {
+    "value": "预测"
+  },
+  "platform.macos.menuBar.color.forecastDetail": {
+    "value": "绿色表示预计够用 · 蓝色表示预计会有较多闲置 · 橙色表示可能不足 · 红色表示预计会用尽。当某项额度历史过少、无法预测时，回退为按百分比着色。"
+  },
+  "platform.macos.menuBar.displayDensity": {
+    "value": "显示密度"
+  },
+  "platform.macos.menuBar.fieldStyle.label": {
+    "value": "名称"
+  },
+  "platform.macos.menuBar.fieldStyle.labelDetail": {
+    "value": "名称与百分比并列。"
+  },
+  "platform.macos.menuBar.fieldStyle.logo": {
+    "value": "图标"
+  },
+  "platform.macos.menuBar.fieldStyle.logoAndLabel": {
+    "value": "图标与名称"
+  },
+  "platform.macos.menuBar.fieldStyle.logoAndLabelDetail": {
+    "value": "图标、名称与百分比。"
+  },
+  "platform.macos.menuBar.fieldStyle.logoDetail": {
+    "value": "厂商图标与百分比并列 — 不显示文字。"
+  },
+  "platform.macos.menuBar.fields": {
+    "value": "字段"
+  },
+  "platform.macos.menuBar.layout": {
+    "value": "排布"
+  },
+  "platform.macos.menuBar.layout.compact": {
+    "value": "紧凑"
+  },
+  "platform.macos.menuBar.layout.iconOnly": {
+    "value": "仅图标"
+  },
+  "platform.macos.menuBar.layout.singleLine": {
+    "value": "单行"
+  },
+  "platform.macos.menuBar.layout.twoRows": {
+    "value": "双行"
+  },
+  "platform.macos.menuBar.mergeGroupWindows": {
+    "value": "合并同组的窗口"
+  },
+  "platform.macos.menuBar.mergeGroupWindowsDetail": {
+    "value": "把 5 小时与每周显示为 5%/100%，而不是两条独立条目。"
+  },
+  "platform.macos.menuBar.overview": {
+    "value": "总览"
+  },
+  "platform.macos.menuBar.percentColor": {
+    "value": "百分比配色"
+  },
+  "platform.macos.menuBar.showInMenuBar": {
+    "value": "在菜单栏中显示"
+  },
+  "platform.macos.menuBar.showTitleText": {
+    "value": "显示标题文字"
+  },
   "popover.header.machinesSubtitle": {
     "value": "端到端加密的远程用量"
   },
@@ -1064,6 +1133,21 @@
   "settings.couldNotDeleteGrokCookies": {
     "value": "无法删除已保存的 Grok cookies。"
   },
+  "settings.credentialSource.apiOnly": {
+    "value": "仅 API / OAuth"
+  },
+  "settings.credentialSource.auto": {
+    "value": "自动"
+  },
+  "settings.credentialSource.browserOnly": {
+    "value": "仅浏览器"
+  },
+  "settings.credentialSource.manualOnly": {
+    "value": "仅手动"
+  },
+  "settings.credentialSource.off": {
+    "value": "关闭"
+  },
   "settings.cursorNoSession": {
     "value": "没有可用的 Cursor.app 会话 — 请在下方导入 cursor.com 的 cookies。"
   },
@@ -1084,6 +1168,12 @@
   },
   "settings.deleteGrokCookies": {
     "value": "删除 Grok 的 cookies"
+  },
+  "settings.displayMode.remaining": {
+    "value": "剩余"
+  },
+  "settings.displayMode.used": {
+    "value": "已用"
   },
   "settings.externalChange.title": {
     "value": "另一个 Vibe Bar 覆盖了此处的修改"
@@ -1211,6 +1301,24 @@
   "settings.miniWindow.allBucketsIncluded": {
     "value": "已知的 bucket 都已在此窗口中。"
   },
+  "settings.miniWindow.density.narrow": {
+    "value": "紧凑"
+  },
+  "settings.miniWindow.density.narrowDetail": {
+    "value": "菜单栏的紧凑样式：同样的单元，尺寸更小。"
+  },
+  "settings.miniWindow.density.roomy": {
+    "value": "宽松"
+  },
+  "settings.miniWindow.density.roomyDetail": {
+    "value": "菜单栏的单行样式：显示全部 bucket，名称与数字并列。"
+  },
+  "settings.miniWindow.density.twoLines": {
+    "value": "双行"
+  },
+  "settings.miniWindow.density.twoLinesDetail": {
+    "value": "菜单栏样式：bucket 两两成列堆叠，每个数字旁附名称。"
+  },
   "settings.miniWindow.dismissBuiltIn": {
     "value": "在厂商未返回该内置 bucket 期间将其隐藏。厂商一旦恢复返回，它便会重新出现。"
   },
@@ -1222,6 +1330,48 @@
   },
   "settings.miniWindow.lastCannotBeRemoved": {
     "value": "最后一个迷你窗口无法移除。"
+  },
+  "settings.miniWindow.mode.compact": {
+    "value": "紧凑"
+  },
+  "settings.miniWindow.mode.compactDetail": {
+    "value": "同样的三层结构，改为竖条，适合放在屏幕角落。"
+  },
+  "settings.miniWindow.mode.focus": {
+    "value": "聚焦"
+  },
+  "settings.miniWindow.mode.focusDetail": {
+    "value": "一次只显示一个选定 bucket，尺寸更大 — 点击按设定顺序切换。"
+  },
+  "settings.miniWindow.mode.ledger": {
+    "value": "清单"
+  },
+  "settings.miniWindow.mode.ledgerDetail": {
+    "value": "每个额度 bucket 一行 — 宽度固定，向下延伸。"
+  },
+  "settings.miniWindow.mode.rail": {
+    "value": "时间轴"
+  },
+  "settings.miniWindow.mode.railDetail": {
+    "value": "把未来 7 天画成一条补额轴，并列出即将到来的重置。"
+  },
+  "settings.miniWindow.mode.regular": {
+    "value": "标准"
+  },
+  "settings.miniWindow.mode.regularDetail": {
+    "value": "环形仪表，按 company → SubProvider → 额度组分组。"
+  },
+  "settings.miniWindow.mode.strip": {
+    "value": "条带"
+  },
+  "settings.miniWindow.mode.stripDetail": {
+    "value": "与菜单栏样式一致的细长条 — 每个 bucket 一格。"
+  },
+  "settings.miniWindow.mode.tiles": {
+    "value": "磁贴"
+  },
+  "settings.miniWindow.mode.tilesDetail": {
+    "value": "磁贴网格，含大号数字与状态色条。"
   },
   "settings.miniWindow.namesAllWindows": {
     "value": "名称：全部窗口"
@@ -1343,6 +1493,27 @@
   "settings.misc.region": {
     "value": "区域"
   },
+  "settings.misc.region.auto": {
+    "value": "自动（两者都试）"
+  },
+  "settings.misc.region.chinaMainland": {
+    "value": "中国大陆（cn-beijing）"
+  },
+  "settings.misc.region.international": {
+    "value": "国际站（ap-southeast-1）"
+  },
+  "settings.misc.region.minimaxChina": {
+    "value": "中国大陆（minimaxi.com）"
+  },
+  "settings.misc.region.minimaxGlobal": {
+    "value": "全球站（minimax.io）"
+  },
+  "settings.misc.region.zaiChina": {
+    "value": "中国大陆（open.bigmodel.cn）"
+  },
+  "settings.misc.region.zaiGlobal": {
+    "value": "全球站（api.z.ai）"
+  },
   "settings.misc.removeAkSk": {
     "value": "移除已保存的 {provider} AK/SK"
   },
@@ -1417,6 +1588,24 @@
   },
   "settings.planBadgeDetail": {
     "value": "留空则使用自动检测到的账号套餐。"
+  },
+  "settings.popoverDensity.compact": {
+    "value": "紧凑"
+  },
+  "settings.popoverDensity.compactDetail": {
+    "value": "间距最紧，面板最窄。"
+  },
+  "settings.popoverDensity.regular": {
+    "value": "标准"
+  },
+  "settings.popoverDensity.regularDetail": {
+    "value": "间距均衡 — 默认。"
+  },
+  "settings.popoverDensity.spacious": {
+    "value": "宽松"
+  },
+  "settings.popoverDensity.spaciousDetail": {
+    "value": "间距宽裕，适合大屏。"
   },
   "settings.pricing.addOverride": {
     "value": "添加模型覆盖值"
@@ -1619,6 +1808,66 @@
   "settings.rescanCostLogs": {
     "value": "重新扫描花费日志"
   },
+  "settings.route.antigravityLocal": {
+    "value": "本地 Antigravity / agy"
+  },
+  "settings.route.browserCookies": {
+    "value": "Chrome/Safari cookies"
+  },
+  "settings.route.cli": {
+    "value": "CLI"
+  },
+  "settings.route.grokAuthFile": {
+    "value": "~/.grok/auth.json"
+  },
+  "settings.route.oauth": {
+    "value": "OAuth"
+  },
+  "settings.route.webViewCookies": {
+    "value": "WebView cookies"
+  },
+  "settings.routeHealth.agyAvailable": {
+    "value": "agy CLI 可用"
+  },
+  "settings.routeHealth.authFileExpired": {
+    "value": "auth.json 已过期"
+  },
+  "settings.routeHealth.authFileUnreadable": {
+    "value": "无法读取 auth.json"
+  },
+  "settings.routeHealth.cachedOnly": {
+    "value": "仅有缓存数据；无法获取实时额度"
+  },
+  "settings.routeHealth.credentialUnreadable": {
+    "value": "无法读取凭据"
+  },
+  "settings.routeHealth.credentialsAvailable": {
+    "value": "凭据可用"
+  },
+  "settings.routeHealth.invalidCookie": {
+    "value": "cookie 数据无效"
+  },
+  "settings.routeHealth.keychainLocked": {
+    "value": "Keychain 已锁定"
+  },
+  "settings.routeHealth.lspRunning": {
+    "value": "本地 LSP 正在运行"
+  },
+  "settings.routeHealth.noAntigravityData": {
+    "value": "没有本地 Antigravity 数据"
+  },
+  "settings.routeHealth.noAuthFile": {
+    "value": "没有 auth.json"
+  },
+  "settings.routeHealth.noCredential": {
+    "value": "未找到凭据"
+  },
+  "settings.routeHealth.noSavedCookie": {
+    "value": "没有已保存的 cookie"
+  },
+  "settings.routeHealth.savedInKeychain": {
+    "value": "已保存到 Keychain"
+  },
   "settings.search": {
     "value": "搜索设置"
   },
@@ -1630,6 +1879,9 @@
   },
   "settings.section.layout": {
     "value": "布局"
+  },
+  "settings.section.menuBar": {
+    "value": "菜单栏"
   },
   "settings.section.menuBarHealth": {
     "value": "菜单栏健康"
@@ -1645,6 +1897,9 @@
   },
   "settings.section.refreshing": {
     "value": "刷新"
+  },
+  "settings.section.remoteProbes": {
+    "value": "远程探针"
   },
   "settings.section.system": {
     "value": "系统"
@@ -1676,11 +1931,125 @@
   "settings.spaceXAIIntro": {
     "value": "SpaceXAI 页面同时包含 Grok 与 Cursor。Grok 读取 `~/.grok/auth.json` 或 grok.com 的 cookies；Cursor 先读 Cursor.app，再读 cursor.com 的 cookie 槽位。Grok Bot 提供额度，以及来自本地缓存的只读会话 — 其云端运行仍不产生 token 或花费记录。"
   },
+  "settings.terminal.copyOnly": {
+    "value": "复制到剪贴板"
+  },
   "settings.updateChannel": {
     "value": "更新通道"
   },
+  "settings.updateChannel.dev": {
+    "value": "预览版"
+  },
+  "settings.updateChannel.devDetail": {
+    "value": "预览版本，以及全部正式版本。"
+  },
+  "settings.updateChannel.main": {
+    "value": "正式版"
+  },
+  "settings.updateChannel.mainDetail": {
+    "value": "仅稳定版本。"
+  },
   "settings.updateCheckDetail": {
     "value": "每天检查一次所选通道，安装前会先询问。"
+  },
+  "settings.usageMode.antigravity.autoDetail": {
+    "value": "优先使用 Antigravity 应用，其次是本机安装的 agy CLI；在网页来源可用时回退到已导入的 cookies。"
+  },
+  "settings.usageMode.antigravity.localFirstDetail": {
+    "value": "优先使用 Antigravity 应用或 agy CLI；其次回退到已导入的 cookies。"
+  },
+  "settings.usageMode.antigravity.localOnly": {
+    "value": "仅本地来源"
+  },
+  "settings.usageMode.antigravity.localOnlyDetail": {
+    "value": "仅使用 Antigravity 应用或本机安装的 agy CLI。"
+  },
+  "settings.usageMode.antigravity.localThenWeb": {
+    "value": "先本地来源，后网页"
+  },
+  "settings.usageMode.antigravity.webFirstDetail": {
+    "value": "优先使用已导入的 cookies；其次回退到 Antigravity 应用或 agy CLI。"
+  },
+  "settings.usageMode.antigravity.webOnly": {
+    "value": "仅网页"
+  },
+  "settings.usageMode.antigravity.webOnlyDetail": {
+    "value": "仅使用已导入的 cookies。在 Antigravity Cloud 端点上线前会回退到本地探测。"
+  },
+  "settings.usageMode.antigravity.webThenLocal": {
+    "value": "先网页，后本地来源"
+  },
+  "settings.usageMode.auto": {
+    "value": "自动"
+  },
+  "settings.usageMode.claude.autoDetail": {
+    "value": "优先使用已保存的 claude.ai cookies；其次回退到 Claude OAuth 与 Claude Code。"
+  },
+  "settings.usageMode.claude.codeFirstDetail": {
+    "value": "优先使用 Claude Code；其次回退到已保存的 claude.ai cookies。"
+  },
+  "settings.usageMode.claude.codeOnly": {
+    "value": "仅 Claude Code"
+  },
+  "settings.usageMode.claude.codeOnlyDetail": {
+    "value": "仅使用本地 Claude Code 的 OAuth 凭据。"
+  },
+  "settings.usageMode.claude.codeThenWeb": {
+    "value": "先 Claude Code，后网页"
+  },
+  "settings.usageMode.claude.oauthCodeWeb": {
+    "value": "依次使用 OAuth、Claude Code、网页"
+  },
+  "settings.usageMode.claude.oauthFirstDetail": {
+    "value": "优先使用 Claude OAuth；其次回退到 Claude Code 与已保存的 claude.ai cookies。"
+  },
+  "settings.usageMode.claude.oauthOnly": {
+    "value": "仅 OAuth"
+  },
+  "settings.usageMode.claude.oauthOnlyDetail": {
+    "value": "仅使用 Claude OAuth 凭据。"
+  },
+  "settings.usageMode.claude.webFirstDetail": {
+    "value": "优先使用已保存的 claude.ai cookies；其次回退到 Claude Code 与 OAuth。"
+  },
+  "settings.usageMode.claude.webOnly": {
+    "value": "仅 Claude 网页"
+  },
+  "settings.usageMode.claude.webOnlyDetail": {
+    "value": "仅使用已保存的 claude.ai cookies。"
+  },
+  "settings.usageMode.claude.webThenCode": {
+    "value": "先 Claude 网页，后 Claude Code"
+  },
+  "settings.usageMode.codex.autoDetail": {
+    "value": "优先使用本地 Codex CLI 凭据；其次回退到 Codex OAuth 与已保存的 OpenAI 网页 cookies。"
+  },
+  "settings.usageMode.codex.cliOnly": {
+    "value": "仅 CLI"
+  },
+  "settings.usageMode.codex.cliOnlyDetail": {
+    "value": "仅使用本地 Codex CLI 凭据。"
+  },
+  "settings.usageMode.codex.cliThenOauth": {
+    "value": "先 CLI，后 OAuth"
+  },
+  "settings.usageMode.codex.oauthFirstDetail": {
+    "value": "优先使用 Codex OAuth；其次回退到本地 Codex CLI 凭据与已保存的 OpenAI 网页 cookies。"
+  },
+  "settings.usageMode.codex.oauthOnly": {
+    "value": "仅 OAuth"
+  },
+  "settings.usageMode.codex.oauthOnlyDetail": {
+    "value": "仅使用 auth.json 中的 Codex OAuth 凭据。"
+  },
+  "settings.usageMode.codex.oauthThenCli": {
+    "value": "先 OAuth，后 CLI"
+  },
+  "settings.usageMode.gemini.webOnly": {
+    "value": "仅 Gemini Web"
+  },
+  "settings.usageMode.gemini.webOnlyDetail": {
+    "value": "仅读取已导入的 gemini.google.com cookies。"
   },
   "settings.usageSource": {
     "value": "用量来源"

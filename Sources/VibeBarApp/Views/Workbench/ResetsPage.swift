@@ -562,7 +562,7 @@ struct ResetsPage: View {
                         .fill(Theme.providerAccent(for: entry.tool))
                         .frame(width: 4.5, height: 4.5)
                     Text(L10n.Workbench.resetsCalendarDayEntry(
-                        lane: entry.shortLabel,
+                        lane: QuotaGroupLabelLocalizer.display(entry.shortLabel),
                         percent: Int(entry.gainPercent.rounded())
                     ))
                         .font(.system(size: 9, weight: .semibold, design: .rounded).monospacedDigit())

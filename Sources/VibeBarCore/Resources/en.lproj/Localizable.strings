@@ -584,6 +584,75 @@
 /* Toggle in the setup assistant. macOS-only. */
 "platform.macos.launchAtLogin.toggle" = "Launch Vibe Bar at login";
 
+/* Menu-bar colour basis: colour by the displayed percentage. macOS-only. */
+"platform.macos.menuBar.color.actual" = "Actual";
+
+/* Caption under the Actual colour basis. macOS-only. */
+"platform.macos.menuBar.color.actualDetail" = "Colored by the displayed percentage alone, ignoring the forecast.";
+
+/* Menu-bar colour basis: colour by the forecast verdict. macOS-only. */
+"platform.macos.menuBar.color.forecast" = "Forecast";
+
+/* Caption under the Forecast colour basis. macOS-only. */
+"platform.macos.menuBar.color.forecastDetail" = "Green projected to last · blue a chunk will likely go unused · orange may run short · red projected to run out. Falls back to the percentage while a quota has too little history to forecast.";
+
+/* Picker choosing the popover density from the menu-bar editor. macOS-only. */
+"platform.macos.menuBar.displayDensity" = "Display density";
+
+/* Menu-bar field style: show the field's name. macOS-only. */
+"platform.macos.menuBar.fieldStyle.label" = "Label";
+
+/* Caption under the Label field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.labelDetail" = "The field's name beside its percent.";
+
+/* Menu-bar field style: show the provider's logo. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logo" = "Logo";
+
+/* Menu-bar field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logoAndLabel" = "Logo and label";
+
+/* Caption under the Logo and label field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logoAndLabelDetail" = "Logo, name, and percent.";
+
+/* Caption under the Logo field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logoDetail" = "The provider's logo beside the percent — no text.";
+
+/* Heading over the menu-bar field checklist. macOS-only. */
+"platform.macos.menuBar.fields" = "Fields";
+
+/* Picker choosing how the menu-bar item is laid out. macOS-only. Distinct from the Layout settings section, which is about page layout. */
+"platform.macos.menuBar.layout" = "Layout";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.compact" = "Compact";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.iconOnly" = "Icon Only";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.singleLine" = "Single line";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.twoRows" = "Two rows";
+
+/* Toggle that folds a quota group's windows into one entry. macOS-only. */
+"platform.macos.menuBar.mergeGroupWindows" = "Combine a group's windows";
+
+/* Caption under the combine toggle. macOS-only. */
+"platform.macos.menuBar.mergeGroupWindowsDetail" = "Shows 5 Hours and Weekly as 5%/100% instead of two entries.";
+
+/* The menu-bar item that summarises every provider. macOS-only. */
+"platform.macos.menuBar.overview" = "Overview";
+
+/* Picker choosing what colours the menu-bar percentage. macOS-only. */
+"platform.macos.menuBar.percentColor" = "Percent color";
+
+/* Toggle in the menu-bar item editor. macOS-only: no other client renders a menu-bar extra. */
+"platform.macos.menuBar.showInMenuBar" = "Show in menu bar";
+
+/* Toggle in the menu-bar item editor. macOS-only. */
+"platform.macos.menuBar.showTitleText" = "Show title text";
+
 /* Subtitle under the Machines page header */
 "popover.header.machinesSubtitle" = "End-to-end encrypted remote usage";
 
@@ -1040,6 +1109,21 @@
 /* Error line */
 "settings.couldNotDeleteGrokCookies" = "Could not delete saved Grok cookies.";
 
+/* Misc-provider credential source option */
+"settings.credentialSource.apiOnly" = "API / OAuth only";
+
+/* Misc-provider credential source option */
+"settings.credentialSource.auto" = "Auto";
+
+/* Misc-provider credential source option */
+"settings.credentialSource.browserOnly" = "Browser only";
+
+/* Misc-provider credential source option */
+"settings.credentialSource.manualOnly" = "Manual only";
+
+/* Misc-provider credential source option: do not fetch at all */
+"settings.credentialSource.off" = "Off";
+
 /* Credential state line */
 "settings.cursorNoSession" = "No usable Cursor.app session — import cursor.com cookies below.";
 
@@ -1060,6 +1144,12 @@
 
 /* Button label */
 "settings.deleteGrokCookies" = "Delete Grok cookies";
+
+/* Segmented option: the percentage shows what is left. Title case because it is a picker option; quota.mode.remaining is the lowercase caption under a bar. */
+"settings.displayMode.remaining" = "Remaining";
+
+/* Segmented option: the percentage shows what has been spent */
+"settings.displayMode.used" = "Used";
 
 /* Banner shown when a second client overwrote a setting this one had changed */
 "settings.externalChange.title" = "Another Vibe Bar replaced your change";
@@ -1187,6 +1277,24 @@
 /* Empty state under the add-bucket list */
 "settings.miniWindow.allBucketsIncluded" = "Every known bucket is already in this window.";
 
+/* Mini-window strip density */
+"settings.miniWindow.density.narrow" = "Narrow";
+
+/* Caption under the Narrow strip density */
+"settings.miniWindow.density.narrowDetail" = "The menu bar's compact style: the same cells at the small size.";
+
+/* Mini-window strip density */
+"settings.miniWindow.density.roomy" = "Roomy";
+
+/* Caption under the Roomy strip density */
+"settings.miniWindow.density.roomyDetail" = "The menu bar's single-line style: every bucket, full label beside its number.";
+
+/* Mini-window strip density */
+"settings.miniWindow.density.twoLines" = "Two Lines";
+
+/* Caption under the Two Lines strip density */
+"settings.miniWindow.density.twoLinesDetail" = "Menu-bar style: buckets pair into stacked columns, label beside each number.";
+
 /* Tooltip on the dismiss button of a built-in bucket */
 "settings.miniWindow.dismissBuiltIn" = "Dismiss this built-in bucket while the provider is not returning it. It comes back the moment the provider does.";
 
@@ -1198,6 +1306,48 @@
 
 /* Tooltip explaining a disabled remove button */
 "settings.miniWindow.lastCannotBeRemoved" = "The last mini window cannot be removed.";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.compact" = "Compact";
+
+/* Caption under the Compact mini-window style */
+"settings.miniWindow.mode.compactDetail" = "The same three tiers as vertical bars, sized for a corner.";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.focus" = "Focus";
+
+/* Caption under the Focus mini-window style */
+"settings.miniWindow.mode.focusDetail" = "One selected bucket at a time, large — click to cycle in your order.";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.ledger" = "Ledger";
+
+/* Caption under the Ledger mini-window style */
+"settings.miniWindow.mode.ledgerDetail" = "One row per quota bucket — fixed width, grows downward.";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.rail" = "Rail";
+
+/* Caption under the Rail mini-window style */
+"settings.miniWindow.mode.railDetail" = "The next seven days as a refill lane with the coming resets listed.";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.regular" = "Regular";
+
+/* Caption under the Regular mini-window style */
+"settings.miniWindow.mode.regularDetail" = "Ring gauges grouped company → SubProvider → quota group.";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.strip" = "Strip";
+
+/* Caption under the Strip mini-window style */
+"settings.miniWindow.mode.stripDetail" = "A slim line mirroring the menu bar's styles — one cell per bucket.";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.tiles" = "Tiles";
+
+/* Caption under the Tiles mini-window style */
+"settings.miniWindow.mode.tilesDetail" = "A grid of tiles with a big number and a severity stripe.";
 
 /* Segment label: edit the shared names */
 "settings.miniWindow.namesAllWindows" = "Names: all windows";
@@ -1319,6 +1469,27 @@
 /* Picker label for a provider's service region */
 "settings.misc.region" = "Region";
 
+/* Misc-provider region option */
+"settings.misc.region.auto" = "Auto (try both)";
+
+/* Alibaba region option */
+"settings.misc.region.chinaMainland" = "China mainland (cn-beijing)";
+
+/* Alibaba region option; the region id is never translated */
+"settings.misc.region.international" = "International (ap-southeast-1)";
+
+/* MiniMax region option */
+"settings.misc.region.minimaxChina" = "China mainland (minimaxi.com)";
+
+/* MiniMax region option */
+"settings.misc.region.minimaxGlobal" = "Global (minimax.io)";
+
+/* Z.ai region option */
+"settings.misc.region.zaiChina" = "China mainland (open.bigmodel.cn)";
+
+/* Z.ai region option; the host is never translated */
+"settings.misc.region.zaiGlobal" = "Global (api.z.ai)";
+
 /* Tooltip on the button that clears a stored AK/SK pair */
 "settings.misc.removeAkSk" = "Remove stored %1$@ AK/SK";
 
@@ -1393,6 +1564,24 @@
 
 /* Caption under the plan badge field */
 "settings.planBadgeDetail" = "Leave blank to use the detected account plan.";
+
+/* Popover density option */
+"settings.popoverDensity.compact" = "Compact";
+
+/* Caption under the Compact density */
+"settings.popoverDensity.compactDetail" = "Tightest spacing, narrowest popover.";
+
+/* Popover density option */
+"settings.popoverDensity.regular" = "Regular";
+
+/* Caption under the Regular density */
+"settings.popoverDensity.regularDetail" = "Balanced spacing — default.";
+
+/* Popover density option */
+"settings.popoverDensity.spacious" = "Spacious";
+
+/* Caption under the Spacious density */
+"settings.popoverDensity.spaciousDetail" = "Roomy spacing for big displays.";
 
 /* Button that appends a blank rate card */
 "settings.pricing.addOverride" = "Add model override";
@@ -1595,6 +1784,66 @@
 /* Button label */
 "settings.rescanCostLogs" = "Rescan cost logs";
 
+/* Connection-health row: the local AntiGravity probe or agy CLI */
+"settings.route.antigravityLocal" = "Local Antigravity / agy";
+
+/* Connection-health row: cookies imported from a browser */
+"settings.route.browserCookies" = "Chrome/Safari cookies";
+
+/* Connection-health row: the local CLI credential path */
+"settings.route.cli" = "CLI";
+
+/* Connection-health row: the Grok CLI's credential file. A path, never translated. */
+"settings.route.grokAuthFile" = "~/.grok/auth.json";
+
+/* Connection-health row: the OAuth credential path */
+"settings.route.oauth" = "OAuth";
+
+/* Connection-health row: cookies from the in-app login window */
+"settings.route.webViewCookies" = "WebView cookies";
+
+/* Connection-health detail: the agy CLI is installed */
+"settings.routeHealth.agyAvailable" = "agy CLI available";
+
+/* Connection-health detail; the filename is never translated */
+"settings.routeHealth.authFileExpired" = "auth.json expired";
+
+/* Connection-health detail */
+"settings.routeHealth.authFileUnreadable" = "Could not read auth.json";
+
+/* Connection-health detail */
+"settings.routeHealth.cachedOnly" = "Cached data only; live quota unavailable";
+
+/* Connection-health detail */
+"settings.routeHealth.credentialUnreadable" = "Could not read credential";
+
+/* Connection-health detail: a usable credential was found */
+"settings.routeHealth.credentialsAvailable" = "Credentials available";
+
+/* Connection-health detail */
+"settings.routeHealth.invalidCookie" = "Invalid cookie data";
+
+/* Connection-health detail */
+"settings.routeHealth.keychainLocked" = "Keychain locked";
+
+/* Connection-health detail: the AntiGravity language server is up */
+"settings.routeHealth.lspRunning" = "Local LSP running";
+
+/* Connection-health detail */
+"settings.routeHealth.noAntigravityData" = "No local Antigravity data";
+
+/* Connection-health detail */
+"settings.routeHealth.noAuthFile" = "No auth.json";
+
+/* Connection-health detail */
+"settings.routeHealth.noCredential" = "No credential found";
+
+/* Connection-health detail */
+"settings.routeHealth.noSavedCookie" = "No saved cookie";
+
+/* Connection-health detail: a cookie is stored */
+"settings.routeHealth.savedInKeychain" = "Saved in Keychain";
+
 /* Placeholder in the settings sidebar's search field */
 "settings.search" = "Search settings";
 
@@ -1606,6 +1855,9 @@
 
 /* Settings section heading for page layout */
 "settings.section.layout" = "Layout";
+
+/* Settings sidebar destination and section heading */
+"settings.section.menuBar" = "Menu Bar";
 
 /* Settings section heading for the status-item watchdog */
 "settings.section.menuBarHealth" = "Menu Bar Health";
@@ -1621,6 +1873,9 @@
 
 /* Settings section heading for refresh intervals. Distinct from status.overview.refreshing, which says a fetch is in flight. */
 "settings.section.refreshing" = "Refreshing";
+
+/* Settings sidebar destination for remote machine sync */
+"settings.section.remoteProbes" = "Remote Probes";
 
 /* Settings section heading for login items and the setup assistant. Distinct from settings.language.system, which is a language-picker option meaning 'follow macOS'. */
 "settings.section.system" = "System";
@@ -1652,11 +1907,125 @@
 /* Explanation on the SpaceXAI settings page */
 "settings.spaceXAIIntro" = "The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota, plus read-only sessions from its local cache — its cloud runs still add no token/cost rows.";
 
+/* Terminal preference: copy the resume command instead of running it. Terminal and iTerm2 are product names and stay as spelled. */
+"settings.terminal.copyOnly" = "Copy to clipboard";
+
 /* Picker label */
 "settings.updateChannel" = "Update channel";
 
+/* Update channel option */
+"settings.updateChannel.dev" = "Dev";
+
+/* Caption under the Dev channel option */
+"settings.updateChannel.devDetail" = "Preview releases plus all Main releases.";
+
+/* Update channel option */
+"settings.updateChannel.main" = "Main";
+
+/* Caption under the Main channel option */
+"settings.updateChannel.mainDetail" = "Stable releases only.";
+
 /* Caption under the update controls */
 "settings.updateCheckDetail" = "Checks the selected channel once a day and asks before installing.";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.autoDetail" = "Use the Antigravity app first, then the installed agy CLI; fall back to imported cookies when the web source is available.";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.localFirstDetail" = "Use the Antigravity app or agy CLI first; fall back to imported cookies.";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.localOnly" = "Local sources only";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.localOnlyDetail" = "Only use the Antigravity app or installed agy CLI.";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.localThenWeb" = "Local sources, then Web";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.webFirstDetail" = "Use imported cookies first; fall back to the Antigravity app or agy CLI.";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.webOnly" = "Web only";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.webOnlyDetail" = "Only use imported cookies. Falls back to the local probe until the Antigravity Cloud endpoint ships.";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.webThenLocal" = "Web, then Local sources";
+
+/* Usage-source option: let Vibe Bar choose the order */
+"settings.usageMode.auto" = "Auto";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.autoDetail" = "Use saved claude.ai cookies first; fall back to Claude OAuth and Claude Code.";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.codeFirstDetail" = "Use Claude Code first; fall back to saved claude.ai cookies.";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.codeOnly" = "Claude Code only";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.codeOnlyDetail" = "Use only local Claude Code OAuth credentials.";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.codeThenWeb" = "Claude Code, then Web";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.oauthCodeWeb" = "OAuth, then Claude Code, then Web";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.oauthFirstDetail" = "Use Claude OAuth first; fall back to Claude Code and saved claude.ai cookies.";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.oauthOnly" = "OAuth only";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.oauthOnlyDetail" = "Use only Claude OAuth credentials.";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.webFirstDetail" = "Use saved claude.ai cookies first; fall back to Claude Code and OAuth.";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.webOnly" = "Claude Web only";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.webOnlyDetail" = "Use only saved claude.ai cookies.";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.webThenCode" = "Claude Web, then Claude Code";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.autoDetail" = "Use local Codex CLI credentials first; fall back to Codex OAuth and saved OpenAI web cookies.";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.cliOnly" = "CLI only";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.cliOnlyDetail" = "Use only local Codex CLI credentials.";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.cliThenOauth" = "CLI, then OAuth";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.oauthFirstDetail" = "Use Codex OAuth first; fall back to local Codex CLI credentials and saved OpenAI web cookies.";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.oauthOnly" = "OAuth only";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.oauthOnlyDetail" = "Use only Codex OAuth credentials from auth.json.";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.oauthThenCli" = "OAuth, then CLI";
+
+/* Gemini usage-source option */
+"settings.usageMode.gemini.webOnly" = "Gemini Web only";
+
+/* Caption under the Gemini usage-source option */
+"settings.usageMode.gemini.webOnlyDetail" = "Only fetch imported gemini.google.com cookies.";
 
 /* Picker label choosing where a provider's quota is read from */
 "settings.usageSource" = "Usage source";

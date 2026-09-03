@@ -6,7 +6,7 @@ public enum MenuBarItemKind: String, Codable, CaseIterable, Identifiable, Sendab
     public var id: String { rawValue }
 
     public var label: String {
-        "Overview"
+        L10n.Platform.macosMenuBarOverview
     }
 
     public var title: String {
@@ -24,10 +24,10 @@ public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable
 
     public var label: String {
         switch self {
-        case .iconOnly: return "Icon Only"
-        case .singleLine: return "Single line"
-        case .twoRows: return "Two rows"
-        case .compact: return "Compact"
+        case .iconOnly: return L10n.Platform.macosMenuBarLayoutIconOnly
+        case .singleLine: return L10n.Platform.macosMenuBarLayoutSingleLine
+        case .twoRows: return L10n.Platform.macosMenuBarLayoutTwoRows
+        case .compact: return L10n.Platform.macosMenuBarLayoutCompact
         }
     }
 
@@ -51,8 +51,8 @@ public enum MenuBarColorBasis: String, Codable, CaseIterable, Identifiable, Send
 
     public var label: String {
         switch self {
-        case .forecast: return "Forecast"
-        case .actual: return "Actual"
+        case .forecast: return L10n.Platform.macosMenuBarColorForecast
+        case .actual: return L10n.Platform.macosMenuBarColorActual
         }
     }
 
@@ -61,11 +61,9 @@ public enum MenuBarColorBasis: String, Codable, CaseIterable, Identifiable, Send
     public var detail: String {
         switch self {
         case .forecast:
-            return "Green projected to last · blue a chunk will likely go unused · "
-                + "orange may run short · red projected to run out. "
-                + "Falls back to the percentage while a quota has too little history to forecast."
+            return L10n.Platform.macosMenuBarColorForecastDetail
         case .actual:
-            return "Colored by the displayed percentage alone, ignoring the forecast."
+            return L10n.Platform.macosMenuBarColorActualDetail
         }
     }
 }
@@ -137,17 +135,17 @@ public enum MenuBarFieldStyle: String, Codable, CaseIterable, Identifiable, Send
 
     public var label: String {
         switch self {
-        case .labelAndPercent: return "Label"
-        case .logoAndPercent: return "Logo"
-        case .logoLabelAndPercent: return "Logo and label"
+        case .labelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLabel
+        case .logoAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogo
+        case .logoLabelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogoAndLabel
         }
     }
 
     public var detail: String {
         switch self {
-        case .labelAndPercent: return "The field's name beside its percent."
-        case .logoAndPercent: return "The provider's logo beside the percent — no text."
-        case .logoLabelAndPercent: return "Logo, name, and percent."
+        case .labelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLabelDetail
+        case .logoAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogoDetail
+        case .logoLabelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogoAndLabelDetail
         }
     }
 }
@@ -274,6 +272,36 @@ public struct MenuBarFieldOption: Identifiable, Hashable, Sendable {
 ///
 /// The owning tool is part of the identity because one adapter can serve two
 /// SubProviders — Grok Bot rides Cursor's (see `ToolType.quotaSubProviderName`).
+/// The label as it is *shown*, rather than as the naming contract spells it.
+///
+/// `title` is a quota-axis value — `docs/contracts/quota-naming-v1.json` —
+/// and stays English wherever it is stored or compared. Only the rendered
+/// form goes through `QuotaGroupLabelLocalizer`, and a label has several
+/// readers: the field picker, the rename dialog's placeholder, the menu-bar
+/// composer. Each one that reads `title` raw is a Chinese screen with an
+/// English quota name on it, which is how the first two were found.
+///
+/// A composed title ("All Models · Weekly") is resolved part by part, so
+/// "GPT-5.3 Codex Spark · 5 Hours" keeps its product name and translates
+/// only the window.
+///
+/// Spelled to match the definition on the menu-bar composer branch, which
+/// adds the same two properties: whichever lands second resolves a trivial
+/// conflict instead of the app growing two names for one seam.
+extension MenuBarFieldOption {
+    public var displayTitle: String {
+        title
+            .components(separatedBy: " · ")
+            .map(QuotaGroupLabelLocalizer.display)
+            .joined(separator: " · ")
+    }
+
+    /// The short name, resolved the same way.
+    public var displayDefaultLabel: String {
+        QuotaGroupLabelLocalizer.display(defaultLabel)
+    }
+}
+
 public struct MenuBarSubProviderGroup: Equatable, Sendable, Identifiable {
     public let tool: ToolType
     public let name: String

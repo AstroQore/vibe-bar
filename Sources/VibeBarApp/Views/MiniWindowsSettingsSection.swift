@@ -449,7 +449,7 @@ struct MiniWindowsSettingsSection: View {
         let isLive = liveFieldIds.contains(entry.option.id)
         return HStack(spacing: 10) {
             Toggle(isOn: fieldSelectedBinding(entry.option.id)) {
-                Text(entry.option.title)
+                Text(entry.option.displayTitle)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
             }
@@ -676,7 +676,8 @@ struct MiniWindowsSettingsSection: View {
         } ?? groupKey
         let defaultLabel = MiniWindowGroupLabelCatalog.defaultLabel(for: groupKey) ?? fallback
         let resolved = settingsStore.settings.miniWindow
-            .resolvedGroupLabel(config: selectedWindow, key: groupKey) ?? defaultLabel
+            .resolvedGroupLabel(config: selectedWindow, key: groupKey)
+            ?? QuotaGroupLabelLocalizer.display(defaultLabel)
         return HStack(spacing: 8) {
             Text(resolved.uppercased())
                 .font(.system(size: 8, weight: .medium, design: .rounded))
@@ -685,7 +686,8 @@ struct MiniWindowsSettingsSection: View {
             Spacer(minLength: 8)
             nameField(NamingRow(
                 kind: .group, key: groupKey,
-                title: defaultLabel, defaultLabel: defaultLabel
+                title: QuotaGroupLabelLocalizer.display(defaultLabel),
+                defaultLabel: QuotaGroupLabelLocalizer.display(defaultLabel)
             ))
         }
         .padding(.leading, 26)
@@ -716,7 +718,7 @@ struct MiniWindowsSettingsSection: View {
             Circle()
                 .fill(Theme.providerAccent(for: row.option.tool))
                 .frame(width: 6, height: 6)
-            Text(row.option.title)
+            Text(row.option.displayTitle)
                 .font(.system(size: 11.5, weight: .medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -728,7 +730,8 @@ struct MiniWindowsSettingsSection: View {
             Spacer(minLength: 6)
             nameField(NamingRow(
                 kind: .field, key: row.id,
-                title: row.option.title, defaultLabel: row.option.defaultLabel
+                title: row.option.displayTitle,
+                defaultLabel: row.option.displayDefaultLabel
             ))
             if let percent {
                 Text(L10n.Common.percent(value: Int(percent.rounded())))

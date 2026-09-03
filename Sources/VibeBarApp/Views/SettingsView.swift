@@ -22,21 +22,21 @@ enum SettingsSectionID: String {
 
     var title: String {
         switch self {
-        case .menuBar: "Menu Bar"
-        case .menuBarHealth: "Menu Bar Health"
-        case .miniWindow: "Mini Window"
-        case .layout: "Layout"
+        case .menuBar: L10n.Settings.sectionMenuBar
+        case .menuBarHealth: L10n.Settings.sectionMenuBarHealth
+        case .miniWindow: L10n.Settings.sectionMiniWindows
+        case .layout: L10n.Settings.sectionLayout
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
         case .googleAI: "Google AI"
         case .xAI: "SpaceXAI"
-        case .miscProviders: "Misc Providers"
-        case .system: "System"
-        case .costData: "Cost Data"
-        case .pricing: "Model Pricing"
-        case .privacy: "Privacy"
-        case .remote: "Remote Probes"
-        case .mcp: "MCP Server"
+        case .miscProviders: L10n.Popover.tabMisc
+        case .system: L10n.Settings.sectionSystem
+        case .costData: L10n.Settings.sectionCostData
+        case .pricing: L10n.Onboarding.stepPricingTitle
+        case .privacy: L10n.Settings.sectionPrivacy
+        case .remote: L10n.Settings.sectionRemoteProbes
+        case .mcp: L10n.Settings.mcpTitle
         }
     }
 
@@ -790,26 +790,26 @@ struct SettingsView: View {
     private func menuBarOverviewEditor() -> some View {
         let kind = MenuBarItemKind.compact
         return VStack(alignment: .leading, spacing: 10) {
-            Toggle("Show in menu bar", isOn: menuItemVisibleBinding(kind))
-            Toggle("Show title text", isOn: menuItemTitleBinding(kind))
-            Picker("Layout", selection: menuItemLayoutBinding(kind)) {
+            Toggle(L10n.Platform.macosMenuBarShowInMenuBar, isOn: menuItemVisibleBinding(kind))
+            Toggle(L10n.Platform.macosMenuBarShowTitleText, isOn: menuItemTitleBinding(kind))
+            Picker(L10n.Platform.macosMenuBarLayout, selection: menuItemLayoutBinding(kind)) {
                 ForEach(MenuBarLayout.allCases) { layout in
                     Text(layout.label).tag(layout)
                 }
             }
             .pickerStyle(.segmented)
-            Toggle("Combine a group's windows", isOn: menuItemMergeGroupWindowsBinding(kind))
-            Text("Shows 5 Hours and Weekly as 5%/100% instead of two entries.")
+            Toggle(L10n.Platform.macosMenuBarMergeGroupWindows, isOn: menuItemMergeGroupWindowsBinding(kind))
+            Text(L10n.Platform.macosMenuBarMergeGroupWindowsDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Picker("Display density", selection: popoverDensityBinding()) {
+            Picker(L10n.Platform.macosMenuBarDisplayDensity, selection: popoverDensityBinding()) {
                 ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             Text(settingsStore.settings.popoverDensity.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Picker("Percent color", selection: menuBarColorBasisBinding()) {
+            Picker(L10n.Platform.macosMenuBarPercentColor, selection: menuBarColorBasisBinding()) {
                 ForEach(MenuBarColorBasis.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
@@ -817,7 +817,7 @@ struct SettingsView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
-                Text("Fields")
+                Text(L10n.Platform.macosMenuBarFields)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)
@@ -923,7 +923,7 @@ struct SettingsView: View {
     private func fieldToggle(isOn: Binding<Bool>, field: MenuBarFieldOption) -> some View {
         Toggle(isOn: isOn) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(field.title)
+                Text(field.displayTitle)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
             }
@@ -935,7 +935,7 @@ struct SettingsView: View {
     /// `DebouncedSettingsTextField`: a settings mutation fans out to every
     /// open surface, and this page alone shows two dozen of these fields.
     private func fieldLabelTextField(field: MenuBarFieldOption, label: Binding<String>) -> some View {
-        DebouncedSettingsTextField(prompt: field.defaultLabel, value: label)
+        DebouncedSettingsTextField(prompt: field.displayDefaultLabel, value: label)
             .frame(width: 110)
     }
 

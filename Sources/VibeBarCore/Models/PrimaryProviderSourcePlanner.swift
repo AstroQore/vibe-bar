@@ -11,26 +11,26 @@ public enum CodexUsageMode: String, Codable, CaseIterable, Identifiable, Sendabl
 
     public var label: String {
         switch self {
-        case .auto: return "Auto"
-        case .oauthThenCLI: return "OAuth, then CLI"
-        case .cliThenOAuth: return "CLI, then OAuth"
-        case .oauthOnly: return "OAuth only"
-        case .cliOnly: return "CLI only"
+        case .auto: return L10n.Settings.usageModeAuto
+        case .oauthThenCLI: return L10n.Settings.usageModeCodexOauthThenCli
+        case .cliThenOAuth: return L10n.Settings.usageModeCodexCliThenOauth
+        case .oauthOnly: return L10n.Settings.usageModeCodexOauthOnly
+        case .cliOnly: return L10n.Settings.usageModeCodexCliOnly
         }
     }
 
     public var detail: String {
         switch self {
         case .auto:
-            return "Use local Codex CLI credentials first; fall back to Codex OAuth and saved OpenAI web cookies."
+            return L10n.Settings.usageModeCodexAutoDetail
         case .oauthThenCLI:
-            return "Use Codex OAuth first; fall back to local Codex CLI credentials and saved OpenAI web cookies."
+            return L10n.Settings.usageModeCodexOauthFirstDetail
         case .cliThenOAuth:
-            return "Use local Codex CLI credentials first; fall back to Codex OAuth and saved OpenAI web cookies."
+            return L10n.Settings.usageModeCodexAutoDetail
         case .oauthOnly:
-            return "Use only Codex OAuth credentials from auth.json."
+            return L10n.Settings.usageModeCodexOauthOnlyDetail
         case .cliOnly:
-            return "Use only local Codex CLI credentials."
+            return L10n.Settings.usageModeCodexCliOnlyDetail
         }
     }
 }
