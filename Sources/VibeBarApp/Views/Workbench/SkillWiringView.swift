@@ -26,17 +26,17 @@ struct SkillWiringPopover: View {
                             .appendingPathComponent(skill.directory, isDirectory: true)
                     ])
                 } label: {
-                    Label("Reveal", systemImage: "folder")
+                    Label(L10n.Workbench.skillsWiringReveal, systemImage: "folder")
                         .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
                 }
                 .buttonStyle(.vibeBar)
                 .foregroundStyle(.secondary)
-                .help("Show the skill's source directory in Finder")
+                .help(L10n.Workbench.skillsWiringRevealHelp)
             }
 
             wiringRow(
-                title: "Source",
-                lines: [line("One copy of the skill. Every harness below reads this directory or a link to it.")],
+                title: L10n.Workbench.skillsWiringSource,
+                lines: [line(L10n.Workbench.skillsWiringSourceDetail)],
                 path: skill.wiring(for: .codex).sourcePath
             )
 
@@ -48,7 +48,7 @@ struct SkillWiringPopover: View {
 
             Divider().opacity(0.4)
 
-            Text("Vibe Bar writes only inside the skills folders above and the four listed config files, and backs a skill up before uninstalling it.")
+            Text(L10n.Workbench.skillsWiringFooter)
                 .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -95,11 +95,16 @@ struct SkillWiringPopover: View {
     @ViewBuilder
     private func stateLabel(_ wiring: SkillHarnessWiring) -> some View {
         let (text, color): (String, Color) = switch wiring.state {
-        case .enabled: ("On", .green)
-        case .coupled: (wiring.viaGeminiCompatibility ? "On · via Gemini" : "On · shared root", .secondary)
-        case .disabledInHarness: ("Off · native switch", .orange)
-        case .notProjected: ("Off · not linked", .secondary)
-        case .unknown: ("Config unreadable", .orange)
+        case .enabled: (L10n.Common.on, .green)
+        case .coupled: (
+            wiring.viaGeminiCompatibility
+                ? L10n.Workbench.skillsWiringStateCoupledGemini
+                : L10n.Workbench.skillsWiringStateCoupledSharedRoot,
+            .secondary
+        )
+        case .disabledInHarness: (L10n.Workbench.skillsWiringStateNativeOff, .orange)
+        case .notProjected: (L10n.Workbench.skillsWiringStateNotLinked, .secondary)
+        case .unknown: (L10n.Workbench.skillsWiringStateConfigUnreadable, .orange)
         }
         Text(text)
             .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
@@ -110,21 +115,34 @@ struct SkillWiringPopover: View {
     private func mechanismLines(_ wiring: SkillHarnessWiring) -> [String] {
         var lines: [String] = []
         if wiring.viaGeminiCompatibility {
-            lines.append("Also reads the Gemini CLI skills folder, which holds this skill's Gemini projection.")
+            lines.append(L10n.Workbench.skillsWiringMechanismGeminiCompat)
         } else if wiring.discoversSharedRoot {
-            lines.append("Scans the shared root itself — no per-app link needed.")
+            lines.append(L10n.Workbench.skillsWiringMechanismSharedRoot)
         }
         if let projection = wiring.projection {
-            let kind = projection.method == .symlink ? "Symlink" : "Copy"
-            let origin = projection.adopted ? " · adopted from an existing install" : ""
-            lines.append("\(kind) at \(wiring.projectionPath)\(origin)")
+            // Four whole sentences rather than a kind word plus an optional
+            // tail: the adopted clause is not a suffix a second language can
+            // hang off an English frame.
+            let path = wiring.projectionPath
+            switch (projection.method, projection.adopted) {
+            case (.symlink, false):
+                lines.append(L10n.Workbench.skillsWiringProjectionSymlink(path: path))
+            case (.symlink, true):
+                lines.append(L10n.Workbench.skillsWiringProjectionSymlinkAdopted(path: path))
+            case (_, false):
+                lines.append(L10n.Workbench.skillsWiringProjectionCopy(path: path))
+            case (_, true):
+                lines.append(L10n.Workbench.skillsWiringProjectionCopyAdopted(path: path))
+            }
         } else if !wiring.discoversSharedRoot, !wiring.viaGeminiCompatibility {
-            lines.append("No entry at \(wiring.projectionPath) — the harness cannot see this skill.")
+            lines.append(
+                L10n.Workbench.skillsWiringProjectionMissing(path: wiring.projectionPath)
+            )
         }
         if let path = wiring.nativeConfigPath, let key = wiring.nativeConfigKey {
-            lines.append("Per-skill switch: \(key) in \(path)")
+            lines.append(L10n.Workbench.skillsWiringNativeSwitch(key: key, path: path))
         } else {
-            lines.append("No per-skill switch — whatever is discovered is active.")
+            lines.append(L10n.Workbench.skillsWiringNoNativeSwitch)
         }
         return lines
     }
@@ -144,20 +162,20 @@ struct SkillSyncExplainerPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("How skill syncing works")
+            Text(L10n.Workbench.skillsSyncTitle)
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
 
             paragraph(
-                "One source of truth.",
-                "Every skill lives in ~/\(SkillAppCatalog.ssotRelativePath)/<name>. Install, update, and uninstall all happen there and only there."
+                L10n.Workbench.skillsSyncSsotLead,
+                L10n.Workbench.skillsSyncSsotBody(path: SkillAppCatalog.ssotRelativePath)
             )
             paragraph(
-                "Projections.",
-                "Claude Code and AntiGravity read only their own skills folders, so Vibe Bar links (or copies) skills into them. Codex, Gemini CLI, Grok Build, and Cursor scan the shared root themselves — no link needed."
+                L10n.Workbench.skillsSyncProjectionsLead,
+                L10n.Workbench.skillsSyncProjectionsBody
             )
             paragraph(
-                "Native switches.",
-                "Where a harness has its own per-skill off switch, the circles flip that switch. Cursor has none, so every skill in the shared root is always available to it — that is the \u{201C}shared root\u{201D} badge, and there is nothing to toggle."
+                L10n.Workbench.skillsSyncNativeSwitchesLead,
+                L10n.Workbench.skillsSyncNativeSwitchesBody
             )
 
             Divider().opacity(0.4)
@@ -168,7 +186,7 @@ struct SkillSyncExplainerPopover: View {
 
             Divider().opacity(0.4)
 
-            Text("Vibe Bar writes only inside ~/\(SkillAppCatalog.ssotRelativePath), the per-harness skills folders, and the config files above.")
+            Text(L10n.Workbench.skillsSyncFooter(path: SkillAppCatalog.ssotRelativePath))
                 .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -204,15 +222,23 @@ struct SkillSyncExplainerPopover: View {
         var parts: [String] = []
         parts.append(
             app.discoversSharedSkillRoot
-                ? "scans ~/\(SkillAppCatalog.ssotRelativePath) directly"
-                : "reads only ~/\(SkillAppCatalog.relativePath(for: app))"
+                ? L10n.Workbench.skillsSyncScansSharedRoot(
+                    path: SkillAppCatalog.ssotRelativePath
+                )
+                : L10n.Workbench.skillsSyncReadsOwnFolder(
+                    path: SkillAppCatalog.relativePath(for: app)
+                )
         )
         if let key = app.nativeConfigKeyDescription, let path = app.nativeConfigRelativePath {
-            parts.append("per-skill switch \(key) in ~/\(path)")
+            parts.append(L10n.Workbench.skillsSyncPerSkillSwitch(key: key, path: path))
         } else if app == .antigravity {
-            parts.append("no per-skill switch; also reads ~/\(SkillAppCatalog.relativePath(for: .gemini))")
+            parts.append(
+                L10n.Workbench.skillsSyncNoSwitchAlsoReads(
+                    path: SkillAppCatalog.relativePath(for: .gemini)
+                )
+            )
         } else {
-            parts.append("no per-skill switch")
+            parts.append(L10n.Workbench.skillsSyncNoPerSkillSwitch)
         }
         return parts.joined(separator: " · ")
     }

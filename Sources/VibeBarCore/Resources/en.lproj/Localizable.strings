@@ -1171,3 +1171,471 @@
 
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.usageStats" = "Full-window usage and cost analytics are on their way.";
+
+/* Last clause of the per-harness count tooltip: skills linked into the harness but switched off in its own config. */
+"workbench.skills.appCountNativeDisabled" = "%1$lld projected but disabled";
+
+/* Second clause of the per-harness count tooltip, for AntiGravity, which sees skills through the Gemini CLI folder. */
+"workbench.skills.appCountViaGeminiRoot" = "%1$lld enabled + %2$lld via the Gemini CLI compatibility root";
+
+/* Second clause of the per-harness count tooltip, for a harness that scans the shared root itself. */
+"workbench.skills.appCountViaSharedRoot" = "%1$lld enabled + %2$lld via the shared skills root";
+
+/* Skills toolbar button that opens the backups sheet. */
+"workbench.skills.backups" = "Backups";
+
+/* Accessibility label on the trash button in a backup row. */
+"workbench.skills.backups.deleteAccessibility" = "Delete this backup";
+
+/* Message under the delete-backup confirmation title. The path is an identifier. */
+"workbench.skills.backups.deleteConfirmMessage" = "The snapshot is removed from ~/.vibebar and cannot be restored afterwards.";
+
+/* Title of the delete-backup confirmation dialog when the snapshot names its skill. */
+"workbench.skills.backups.deleteConfirmTitle" = "Delete the backup of %1$@?";
+
+/* Title of the delete-backup confirmation dialog when the snapshot has no readable skill name. */
+"workbench.skills.backups.deleteConfirmTitleGeneric" = "Delete this backup?";
+
+/* Empty state of the backups sheet. */
+"workbench.skills.backups.empty" = "No backups yet";
+
+/* Footer of the backups sheet: what a restore does and does not do. */
+"workbench.skills.backups.footer" = "Restoring recreates the shared directory only — enable the skill for the apps you want it in afterwards.";
+
+/* Tooltip on the backups sheet refresh button. */
+"workbench.skills.backups.refreshHelp" = "Re-read the backup directory";
+
+/* Button that copies a backup back into the shared skills directory. */
+"workbench.skills.backups.restore" = "Restore";
+
+/* Tooltip on the Restore button. The path is an identifier. */
+"workbench.skills.backups.restoreHelp" = "Copy the snapshot back into ~/.agents/skills";
+
+/* Subtitle of the backups sheet. */
+"workbench.skills.backups.subtitle" = "Taken automatically before an uninstall or an update.";
+
+/* Title of the backups sheet. */
+"workbench.skills.backups.title" = "Skill Backups";
+
+/* Badge on a discover-sheet row for a skill already installed on this Mac. */
+"workbench.skills.badge.installed" = "INSTALLED";
+
+/* Row badge: the skill is linked into {app} but that harness's own config switches it off. */
+"workbench.skills.badge.nativeOff" = "%1$@ OFF";
+
+/* Tooltip on the row badge that names a harness whose native switch is off. */
+"workbench.skills.badge.nativeOffHelp" = "Projected, but disabled by the harness's own configuration";
+
+/* Row badge: a harness config file could not be parsed, so its per-skill switch is unknown. */
+"workbench.skills.badge.nativeUnknown" = "NATIVE STATE ?";
+
+/* Tooltip on the unknown-native-state row badge. */
+"workbench.skills.badge.nativeUnknownHelp" = "The harness configuration could not be parsed safely";
+
+/* Row badge: the repository this skill came from has a newer version. */
+"workbench.skills.badge.update" = "UPDATE";
+
+/* Skills toolbar button that asks every repository-backed skill whether it has a newer commit. */
+"workbench.skills.checkUpdates" = "Check Updates";
+
+/* Same Skills toolbar button once updates are known. {count} is how many skills can be updated. */
+"workbench.skills.checkUpdatesCount" = "Check Updates · %1$lld";
+
+/* Context-menu item: flip the harness's own per-skill switch off but leave the link on disk. */
+"workbench.skills.contextDisableKeepProjection" = "Disable in %1$@ · Keep Projection";
+
+/* Context-menu item on a skill's harness circle. */
+"workbench.skills.contextEnableIn" = "Enable in %1$@";
+
+/* Context-menu item: delete the link or copy Vibe Bar made inside that harness's skills folder. */
+"workbench.skills.contextRemoveProjection" = "Remove %1$@ Projection";
+
+/* Skills page count caption while the search field filters the list. */
+"workbench.skills.countFiltered" = "%1$lld of %2$lld skills";
+
+/* Skills toolbar and empty-state button that opens the discover sheet. */
+"workbench.skills.discover" = "Discover";
+
+/* Button that adds the typed repository reference to the scan list. */
+"workbench.skills.discover.addRepo" = "Add";
+
+/* Empty state of the discover sheet's available-skills section. */
+"workbench.skills.discover.availableEmpty" = "Scan the configured repositories, or install a skills.sh result, to list what is available.";
+
+/* Discover sheet section title for what the last scan or download turned up. */
+"workbench.skills.discover.availableTitle" = "Available skills";
+
+/* Discover sheet section title for the community index. */
+"workbench.skills.discover.indexTitle" = "skills.sh index";
+
+/* Empty state of the discover sheet's repository list. The reference syntax is an identifier. */
+"workbench.skills.discover.noRepos" = "No repositories configured. Add one as owner/repo, optionally owner/repo@branch.";
+
+/* Accessibility label on the button that removes a repository from the scan list. */
+"workbench.skills.discover.removeRepo" = "Remove %1$@";
+
+/* Placeholder in the add-repository field. The two forms are syntax and stay as spelled. */
+"workbench.skills.discover.repoFieldPlaceholder" = "owner/repo or owner/repo@branch";
+
+/* Hint under the add-repository field while what was typed is not a valid reference. */
+"workbench.skills.discover.repoRules" = "Owners take letters, digits, and hyphens; names and branches also take dots and underscores.";
+
+/* Discover sheet section title, and the source caption once a scan of those repositories finishes. */
+"workbench.skills.discover.reposTitle" = "Configured repositories";
+
+/* Discover sheet button that downloads every configured repository. */
+"workbench.skills.discover.scanRepos" = "Scan repos";
+
+/* Tooltip on the scan button. */
+"workbench.skills.discover.scanReposHelp" = "Download every configured repository";
+
+/* Caption in the skills.sh section before any search has run. */
+"workbench.skills.discover.searchHint" = "Results come back with the repository that publishes them; installing one downloads that repository and lists the rest of it below.";
+
+/* Placeholder in the skills.sh search field. */
+"workbench.skills.discover.searchPlaceholder" = "Search the community index";
+
+/* Discover sheet button that pre-selects every harness for new installs. */
+"workbench.skills.discover.selectAll" = "Select all";
+
+/* Tooltip on the discover sheet's select-all button. */
+"workbench.skills.discover.selectHelp" = "Set which agent CLIs every row installs into";
+
+/* Discover sheet button that clears the harness pre-selection. */
+"workbench.skills.discover.selectNone" = "Select none";
+
+/* Source caption once installing a skills.sh hit has replaced the results with that repository. */
+"workbench.skills.discover.sourceFromSkillsSh" = "%1$@ (from skills.sh)";
+
+/* Tooltip on the scan button while a scan is running and the button cancels it. */
+"workbench.skills.discover.stopScanHelp" = "Stop the running scan";
+
+/* Tooltip on the button that removes a repository from the scan list. */
+"workbench.skills.discover.stopScanningRepo" = "Stop scanning %1$@";
+
+/* Title of the discover sheet. */
+"workbench.skills.discover.title" = "Discover Skills";
+
+/* Tooltip on the Skills page Discover button. */
+"workbench.skills.discoverHelp" = "Browse configured repositories and the skills.sh index";
+
+/* Body of the Skills page empty state. The path is an identifier and stays as spelled. */
+"workbench.skills.empty.body" = "Vibe Bar keeps one copy of every skill in ~/.agents/skills and links it into each agent CLI. Import what is already on this Mac, or install something new from a repository.";
+
+/* Headline of the Skills page empty state. */
+"workbench.skills.empty.headline" = "No skills recorded yet";
+
+/* Accessibility label on the button that empties the Skills search field. */
+"workbench.skills.filterClear" = "Clear the filter";
+
+/* Placeholder in the Skills page search field. */
+"workbench.skills.filterPlaceholder" = "Filter installed skills";
+
+/* Import sheet section header for skills that already live in the shared directory. */
+"workbench.skills.import.alreadyShared" = "Already shared";
+
+/* Caption of the already-shared section. The path and CC Switch are identifiers. */
+"workbench.skills.import.alreadySharedDetail" = "These already live in ~/.agents/skills, including layouts created by CC Switch. Vibe Bar records their existing links; it does not import or copy them again.";
+
+/* Import sheet section header for app folders whose name collides with a shared skill. */
+"workbench.skills.import.conflicts" = "Conflicting app copies";
+
+/* Count beside the conflicts section header. */
+"workbench.skills.import.conflictsCount" = "%1$lld unchanged";
+
+/* Caption of the conflicts section: why nothing was changed and what the user can do. */
+"workbench.skills.import.conflictsDetail" = "A real folder in an app's skills directory has the same name as one in ~/.agents/skills. Vibe Bar will not overwrite it — resolve it by hand, or enable the shared skill for that app once the folder is gone.";
+
+/* Caption under an unmanaged directory naming the harnesses whose folders hold it. {apps} is a comma-separated list of harness names. */
+"workbench.skills.import.foundIn" = "found in %1$@";
+
+/* Label before the harness circles that choose which existing links the import records. */
+"workbench.skills.import.keepEvidenceFor" = "Keep evidence for";
+
+/* Import sheet section header for app-local directories that are not in the shared directory yet. */
+"workbench.skills.import.needsAdoption" = "Needs adoption";
+
+/* Caption of the needs-adoption section: exactly what applying it writes. */
+"workbench.skills.import.needsAdoptionDetail" = "These do not exist in the shared directory yet. Selecting one copies it into ~/.agents/skills, then replaces the chosen app copies with managed links.";
+
+/* Import sheet section header for directories that hold no SKILL.md. */
+"workbench.skills.import.notSkills" = "Not skills";
+
+/* Caption of the not-skills section. The path and the filename are identifiers. */
+"workbench.skills.import.notSkillsDetail" = "Directories in ~/.agents/skills with no SKILL.md. Left exactly as they are.";
+
+/* Count beside the already-shared section header. */
+"workbench.skills.import.recognizedCount" = "%1$lld recognized";
+
+/* Subtitle of the import sheet: what applying it will and will not touch. */
+"workbench.skills.import.subtitle" = "Vibe Bar already recognizes shared skills. Only selected app-local folders will move.";
+
+/* Import sheet footer totals across the scan's four sections. */
+"workbench.skills.import.summary" = "%1$lld already shared · %2$lld need adoption · %3$lld left unchanged";
+
+/* Title of the import sheet. */
+"workbench.skills.import.title" = "Review On-Disk Skills";
+
+/* Skills toolbar and empty-state button that scans the Mac for skills already on disk. */
+"workbench.skills.importExisting" = "Import Existing";
+
+/* Button on a discover-sheet row that installs that skill. */
+"workbench.skills.install" = "Install";
+
+/* Skills toolbar button that opens a file picker for a skill archive. */
+"workbench.skills.installFromZip" = "Install from ZIP";
+
+/* Accessibility label on a skill row's overflow menu button. */
+"workbench.skills.menuMoreActions" = "More actions for %1$@";
+
+/* Overflow-menu item that selects the skill's directory in Finder. */
+"workbench.skills.menuRevealInFinder" = "Reveal in Finder";
+
+/* Overflow-menu item that asks to uninstall the skill. */
+"workbench.skills.menuUninstall" = "Uninstall…";
+
+/* Overflow-menu item that re-fetches the skill from its repository. */
+"workbench.skills.menuUpdateFromRepository" = "Update from repository";
+
+/* Overflow-menu item that opens the per-skill wiring popover. */
+"workbench.skills.menuWiringDetails" = "Wiring Details…";
+
+/* Card shown when the Skills search field matches nothing. {query} is what the user typed. */
+"workbench.skills.noMatch" = "No skill matches “%1$@”";
+
+/* Progress line when the scan covered exactly one repository. */
+"workbench.skills.phase.downloadedOne" = "Downloaded 1 repository";
+
+/* Progress line while a multi-repository scan runs. */
+"workbench.skills.phase.downloadedProgress" = "Downloaded %1$lld of %2$lld repositories";
+
+/* Progress line while a repository is being fetched. */
+"workbench.skills.phase.downloading" = "Downloading %1$@…";
+
+/* Progress line while a downloaded repository is being read. */
+"workbench.skills.phase.scanning" = "Scanning %1$@…";
+
+/* Tooltip on the source badge naming the git branch the skill was fetched from. */
+"workbench.skills.sourceBranch" = "Branch %1$@";
+
+/* Tooltip on the source badge when the skill has no repository. */
+"workbench.skills.sourceInstalledLocally" = "Installed locally";
+
+/* Source badge and result-group heading for a skill with no repository behind it. */
+"workbench.skills.sourceLocal" = "local";
+
+/* Accessibility value of a harness circle: the harness finds the skill without a link of its own. */
+"workbench.skills.state.coupled" = "Available through a shared or compatibility root";
+
+/* Accessibility value of a harness circle: linked, but the harness's own switch is off. */
+"workbench.skills.state.disabledInHarness" = "Projected, disabled in harness";
+
+/* Accessibility value of a harness circle: the skill is linked and switched on. */
+"workbench.skills.state.enabled" = "Enabled";
+
+/* Accessibility value of a harness circle: nothing links the skill into that harness. */
+"workbench.skills.state.notProjected" = "Not projected";
+
+/* Accessibility value of a harness circle: linked, but the harness config could not be read. */
+"workbench.skills.state.unknown" = "Projected, native state unknown";
+
+/* Footer of the sync explainer popover. {path} is the shared skills directory. */
+"workbench.skills.sync.footer" = "Vibe Bar writes only inside ~/%1$@, the per-harness skills folders, and the config files above.";
+
+/* Sync explainer's third paragraph. */
+"workbench.skills.sync.nativeSwitchesBody" = "Where a harness has its own per-skill off switch, the circles flip that switch. Cursor has none, so every skill in the shared root is always available to it — that is the “shared root” badge, and there is nothing to toggle.";
+
+/* Run-in heading of the sync explainer's third paragraph. */
+"workbench.skills.sync.nativeSwitchesLead" = "Native switches.";
+
+/* Clause in a harness's one-line sync summary when it has no switch of its own. */
+"workbench.skills.sync.noPerSkillSwitch" = "no per-skill switch";
+
+/* Clause in AntiGravity's one-line sync summary. {path} is the Gemini CLI skills directory. */
+"workbench.skills.sync.noSwitchAlsoReads" = "no per-skill switch; also reads ~/%1$@";
+
+/* Clause in a harness's one-line sync summary naming its config key and file. */
+"workbench.skills.sync.perSkillSwitch" = "per-skill switch %1$@ in ~/%2$@";
+
+/* Sync explainer's second paragraph. The harness names are identifiers and stay as spelled. */
+"workbench.skills.sync.projectionsBody" = "Claude Code and AntiGravity read only their own skills folders, so Vibe Bar links (or copies) skills into them. Codex, Gemini CLI, Grok Build, and Cursor scan the shared root themselves — no link needed.";
+
+/* Run-in heading of the sync explainer's second paragraph. */
+"workbench.skills.sync.projectionsLead" = "Projections.";
+
+/* Clause in a harness's one-line sync summary. {path} is that harness's own skills directory. */
+"workbench.skills.sync.readsOwnFolder" = "reads only ~/%1$@";
+
+/* Clause in a harness's one-line sync summary. {path} is the shared skills directory. */
+"workbench.skills.sync.scansSharedRoot" = "scans ~/%1$@ directly";
+
+/* Sync explainer's first paragraph. {path} is the shared skills directory and stays as spelled. */
+"workbench.skills.sync.ssotBody" = "Every skill lives in ~/%1$@/<name>. Install, update, and uninstall all happen there and only there.";
+
+/* Run-in heading of the sync explainer's first paragraph. */
+"workbench.skills.sync.ssotLead" = "One source of truth.";
+
+/* Title of the page-level sync explainer popover. */
+"workbench.skills.sync.title" = "How skill syncing works";
+
+/* Tooltip on the question-mark button that opens the sync explainer popover. */
+"workbench.skills.syncExplainerHelp" = "How skill syncing works — roots, links, and native switches";
+
+/* Toast when a scan is asked for with no repositories configured. */
+"workbench.skills.toast.addRepoFirst" = "Add a repository first.";
+
+/* Toast after an update check that found nothing to do. */
+"workbench.skills.toast.allUpToDate" = "Every repository skill is up to date.";
+
+/* Toast after a ZIP import that produced no skill. */
+"workbench.skills.toast.archiveEmpty" = "Nothing in that archive could be installed.";
+
+/* Toast after flipping a harness's own per-skill switch off. */
+"workbench.skills.toast.disabledKeptProjection" = "Disabled %1$@ in %2$@ and kept its projection.";
+
+/* Second sentence of the archive-install toast. {apps} is a list of harness names. */
+"workbench.skills.toast.enabledForApps" = "Enabled for %1$@.";
+
+/* Toast after installing one skill into the selected harnesses. {apps} is a list of harness names. */
+"workbench.skills.toast.installedForApps" = "Installed %1$@ for %2$@.";
+
+/* Toast after installing one skill with no harness selected. */
+"workbench.skills.toast.installedShared" = "Installed %1$@ in the shared library. Check effective harness state in Skills.";
+
+/* Toast when the add-repository field holds something unusable or already listed. */
+"workbench.skills.toast.invalidRepoRef" = "“%1$@” is not a new owner/repo[@branch] reference.";
+
+/* Toast after removing a redundant link from a harness that scans the shared root anyway. */
+"workbench.skills.toast.linkRemovedStillShared" = "Removed the %1$@ link. %2$@ stays available there through the shared skills root.";
+
+/* Toast after a community-index search with no hits. */
+"workbench.skills.toast.noSearchMatches" = "skills.sh returned no matches.";
+
+/* Toast after a scan that read every repository and found nothing. */
+"workbench.skills.toast.noSkillsFound" = "No skills were found in the configured repositories.";
+
+/* Toast when a skills.sh hit is missing from the repository it named. */
+"workbench.skills.toast.notFoundInRepo" = "%1$@ was not found in %2$@.";
+
+/* Toast after removing a projection that turned out to be a real folder Vibe Bar did not create. */
+"workbench.skills.toast.projectionClearedFolderKept" = "%1$@'s Vibe Bar projection was cleared for %2$@, but the existing folder was left in place.";
+
+/* Toast after restoring a backup into the shared directory. */
+"workbench.skills.toast.restored" = "Restored %1$@. Enable it for the apps you want it in.";
+
+/* Toast after cancelling a repository scan. */
+"workbench.skills.toast.scanStopped" = "Stopped scanning.";
+
+/* Second sentence of the archive-install toast when no harness was selected. */
+"workbench.skills.toast.sharedLibraryNote" = "They stay in the shared library. Check effective harness state in Skills.";
+
+/* Toast after clicking a circle that cannot change anything. */
+"workbench.skills.toast.sharedRootNoSwitch" = "%1$@ reads the shared skills root directly — %2$@ is always available there and has no per-skill switch.";
+
+/* Toast after uninstalling a skill that was linked nowhere else. */
+"workbench.skills.toast.uninstalledBackedUp" = "Uninstalled %1$@. A backup was saved.";
+
+/* Toast after an uninstall that left real folders in some harnesses. {apps} is a list of harness names. */
+"workbench.skills.toast.uninstalledLeftInPlace" = "Uninstalled %1$@. Left in place for %2$@.";
+
+/* Toast after re-fetching one skill from its repository. */
+"workbench.skills.toast.updated" = "Updated %1$@.";
+
+/* Tooltip on a harness circle in the discover sheet, where the circles pick install targets. */
+"workbench.skills.toggleHelp.installInto" = "Install into %1$@";
+
+/* Tooltip on a harness circle in the import sheet's already-shared section. */
+"workbench.skills.toggleHelp.keepLinks" = "Keep the %1$@ links already on disk";
+
+/* Tooltip on a harness circle beside an unmanaged directory in the import sheet. */
+"workbench.skills.toggleHelp.linkAfterAdopting" = "Link into %1$@ after adopting";
+
+/* Tooltip on AntiGravity's circle when the skill reaches it through the Gemini CLI folder. */
+"workbench.skills.toggleState.coupledGemini" = "%1$@ — visible through the Gemini CLI projection it also reads. Click to give it its own projection.";
+
+/* Tooltip on a harness circle for a harness that scans the shared root and has no switch. */
+"workbench.skills.toggleState.coupledSharedRoot" = "%1$@ reads the shared skills root directly, so this skill is always available there. There is no per-skill switch to flip.";
+
+/* Tooltip on a harness circle whose harness switched the skill off in its own config. */
+"workbench.skills.toggleState.disabledInHarness" = "%1$@ — projected, but disabled by its native config. Click to enable.";
+
+/* Tooltip on a harness circle that is on purely because Vibe Bar linked the skill there. */
+"workbench.skills.toggleState.enabled" = "%1$@ — enabled by projection. Click to remove it.";
+
+/* Tooltip on a harness circle that is on and whose harness has its own per-skill switch. */
+"workbench.skills.toggleState.enabledNative" = "%1$@ — projected and enabled. Click to disable in the harness; right-click for projection options.";
+
+/* Tooltip on a harness circle that is on for a harness that would find the skill anyway. */
+"workbench.skills.toggleState.enabledSharedRoot" = "%1$@ — has its own link, and also reads the shared skills root directly. There is no per-skill switch; right-click to manage the redundant link.";
+
+/* Tooltip on an installed skill's harness circle when nothing links the skill there. */
+"workbench.skills.toggleState.notProjected" = "%1$@ — not projected. Click to enable.";
+
+/* Tooltip on a harness circle whose harness config could not be read. */
+"workbench.skills.toggleState.unknown" = "%1$@ — projected, but native config could not be parsed. Click to repair as enabled.";
+
+/* Destructive button in the uninstall confirmation dialog. */
+"workbench.skills.uninstall" = "Uninstall";
+
+/* Message under the uninstall confirmation title. */
+"workbench.skills.uninstallConfirmMessage" = "The skill is backed up first, and removed from every app that links to it.";
+
+/* Title of the confirmation dialog for uninstalling a skill. */
+"workbench.skills.uninstallConfirmTitle" = "Uninstall %1$@?";
+
+/* Footer of the per-skill wiring popover: the write scope, in one sentence. */
+"workbench.skills.wiring.footer" = "Vibe Bar writes only inside the skills folders above and the four listed config files, and backs a skill up before uninstalling it.";
+
+/* Wiring popover mechanism line for AntiGravity. */
+"workbench.skills.wiring.mechanismGeminiCompat" = "Also reads the Gemini CLI skills folder, which holds this skill's Gemini projection.";
+
+/* Wiring popover mechanism line for a harness that finds the shared root on its own. */
+"workbench.skills.wiring.mechanismSharedRoot" = "Scans the shared root itself — no per-app link needed.";
+
+/* Wiring popover mechanism line naming the harness config entry that switches this skill on or off. */
+"workbench.skills.wiring.nativeSwitch" = "Per-skill switch: %1$@ in %2$@";
+
+/* Wiring popover mechanism line for a harness with no per-skill switch of its own. */
+"workbench.skills.wiring.noNativeSwitch" = "No per-skill switch — whatever is discovered is active.";
+
+/* Wiring popover mechanism line: Vibe Bar copied the skill into the harness. {path} is a file path. */
+"workbench.skills.wiring.projectionCopy" = "Copy at %1$@";
+
+/* Wiring popover mechanism line for a copy that was already on disk before Vibe Bar recorded it. */
+"workbench.skills.wiring.projectionCopyAdopted" = "Copy at %1$@ · adopted from an existing install";
+
+/* Wiring popover mechanism line when nothing links the skill into a harness that needs a link. */
+"workbench.skills.wiring.projectionMissing" = "No entry at %1$@ — the harness cannot see this skill.";
+
+/* Wiring popover mechanism line: Vibe Bar linked the skill into the harness. {path} is a file path. */
+"workbench.skills.wiring.projectionSymlink" = "Symlink at %1$@";
+
+/* Wiring popover mechanism line for a symlink that was already on disk before Vibe Bar recorded it. */
+"workbench.skills.wiring.projectionSymlinkAdopted" = "Symlink at %1$@ · adopted from an existing install";
+
+/* Button in the per-skill wiring popover that opens the skill's directory in Finder. */
+"workbench.skills.wiring.reveal" = "Reveal";
+
+/* Tooltip on the wiring popover's Reveal button. */
+"workbench.skills.wiring.revealHelp" = "Show the skill's source directory in Finder";
+
+/* Wiring popover row title for the one real copy of the skill. */
+"workbench.skills.wiring.source" = "Source";
+
+/* Caption under the wiring popover's Source row. */
+"workbench.skills.wiring.sourceDetail" = "One copy of the skill. Every harness below reads this directory or a link to it.";
+
+/* Wiring popover state label: the harness config could not be parsed. */
+"workbench.skills.wiring.stateConfigUnreadable" = "Config unreadable";
+
+/* Wiring popover state label: the harness sees the skill through the Gemini CLI folder. */
+"workbench.skills.wiring.stateCoupledGemini" = "On · via Gemini";
+
+/* Wiring popover state label: the harness scans the shared skills root itself. */
+"workbench.skills.wiring.stateCoupledSharedRoot" = "On · shared root";
+
+/* Wiring popover state label: linked, but the harness's own config switches the skill off. */
+"workbench.skills.wiring.stateNativeOff" = "Off · native switch";
+
+/* Wiring popover state label: nothing links the skill into that harness. */
+"workbench.skills.wiring.stateNotLinked" = "Off · not linked";

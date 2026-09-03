@@ -1650,6 +1650,670 @@ extension L10n {
         public static var placeholderUsageStats: String {
             L10n.string("workbench.placeholder.usageStats")
         }
+        /// `workbench.skills.appCountNativeDisabled` — {count} projected but disabled
+        public static func skillsAppCountNativeDisabled(count: Int) -> String {
+            L10n.string("workbench.skills.appCountNativeDisabled", count)
+        }
+        /// `workbench.skills.appCountViaGeminiRoot` — {enabled} enabled + {coupled} via the Gemini CLI compatibility root
+        public static func skillsAppCountViaGeminiRoot(enabled: Int, coupled: Int) -> String {
+            L10n.string("workbench.skills.appCountViaGeminiRoot", enabled, coupled)
+        }
+        /// `workbench.skills.appCountViaSharedRoot` — {enabled} enabled + {coupled} via the shared skills root
+        public static func skillsAppCountViaSharedRoot(enabled: Int, coupled: Int) -> String {
+            L10n.string("workbench.skills.appCountViaSharedRoot", enabled, coupled)
+        }
+        /// `workbench.skills.appSeesCount` — {app} sees {count, plural, one {# skill} other {# skills}}
+        public static func skillsAppSeesCount(app: String, count: Int) -> String {
+            L10n.string("workbench.skills.appSeesCount", app, count)
+        }
+        /// `workbench.skills.backups` — Backups
+        public static var skillsBackups: String {
+            L10n.string("workbench.skills.backups")
+        }
+        /// `workbench.skills.backups.deleteAccessibility` — Delete this backup
+        public static var skillsBackupsDeleteAccessibility: String {
+            L10n.string("workbench.skills.backups.deleteAccessibility")
+        }
+        /// `workbench.skills.backups.deleteConfirmMessage` — The snapshot is removed from ~/.vibebar and cannot be restored afterwards.
+        public static var skillsBackupsDeleteConfirmMessage: String {
+            L10n.string("workbench.skills.backups.deleteConfirmMessage")
+        }
+        /// `workbench.skills.backups.deleteConfirmTitle` — Delete the backup of {skill}?
+        public static func skillsBackupsDeleteConfirmTitle(skill: String) -> String {
+            L10n.string("workbench.skills.backups.deleteConfirmTitle", skill)
+        }
+        /// `workbench.skills.backups.deleteConfirmTitleGeneric` — Delete this backup?
+        public static var skillsBackupsDeleteConfirmTitleGeneric: String {
+            L10n.string("workbench.skills.backups.deleteConfirmTitleGeneric")
+        }
+        /// `workbench.skills.backups.empty` — No backups yet
+        public static var skillsBackupsEmpty: String {
+            L10n.string("workbench.skills.backups.empty")
+        }
+        /// `workbench.skills.backups.footer` — Restoring recreates the shared directory only — enable the skill for the apps you want it in afterwards.
+        public static var skillsBackupsFooter: String {
+            L10n.string("workbench.skills.backups.footer")
+        }
+        /// `workbench.skills.backups.refreshHelp` — Re-read the backup directory
+        public static var skillsBackupsRefreshHelp: String {
+            L10n.string("workbench.skills.backups.refreshHelp")
+        }
+        /// `workbench.skills.backups.restore` — Restore
+        public static var skillsBackupsRestore: String {
+            L10n.string("workbench.skills.backups.restore")
+        }
+        /// `workbench.skills.backups.restoreHelp` — Copy the snapshot back into ~/.agents/skills
+        public static var skillsBackupsRestoreHelp: String {
+            L10n.string("workbench.skills.backups.restoreHelp")
+        }
+        /// `workbench.skills.backups.subtitle` — Taken automatically before an uninstall or an update.
+        public static var skillsBackupsSubtitle: String {
+            L10n.string("workbench.skills.backups.subtitle")
+        }
+        /// `workbench.skills.backups.title` — Skill Backups
+        public static var skillsBackupsTitle: String {
+            L10n.string("workbench.skills.backups.title")
+        }
+        /// `workbench.skills.badge.installed` — INSTALLED
+        public static var skillsBadgeInstalled: String {
+            L10n.string("workbench.skills.badge.installed")
+        }
+        /// `workbench.skills.badge.nativeOff` — {app} OFF
+        public static func skillsBadgeNativeOff(app: String) -> String {
+            L10n.string("workbench.skills.badge.nativeOff", app)
+        }
+        /// `workbench.skills.badge.nativeOffHelp` — Projected, but disabled by the harness's own configuration
+        public static var skillsBadgeNativeOffHelp: String {
+            L10n.string("workbench.skills.badge.nativeOffHelp")
+        }
+        /// `workbench.skills.badge.nativeUnknown` — NATIVE STATE ?
+        public static var skillsBadgeNativeUnknown: String {
+            L10n.string("workbench.skills.badge.nativeUnknown")
+        }
+        /// `workbench.skills.badge.nativeUnknownHelp` — The harness configuration could not be parsed safely
+        public static var skillsBadgeNativeUnknownHelp: String {
+            L10n.string("workbench.skills.badge.nativeUnknownHelp")
+        }
+        /// `workbench.skills.badge.update` — UPDATE
+        public static var skillsBadgeUpdate: String {
+            L10n.string("workbench.skills.badge.update")
+        }
+        /// `workbench.skills.checkUpdates` — Check Updates
+        public static var skillsCheckUpdates: String {
+            L10n.string("workbench.skills.checkUpdates")
+        }
+        /// `workbench.skills.checkUpdatesCount` — Check Updates · {count}
+        public static func skillsCheckUpdatesCount(count: Int) -> String {
+            L10n.string("workbench.skills.checkUpdatesCount", count)
+        }
+        /// `workbench.skills.contextDisableKeepProjection` — Disable in {app} · Keep Projection
+        public static func skillsContextDisableKeepProjection(app: String) -> String {
+            L10n.string("workbench.skills.contextDisableKeepProjection", app)
+        }
+        /// `workbench.skills.contextEnableIn` — Enable in {app}
+        public static func skillsContextEnableIn(app: String) -> String {
+            L10n.string("workbench.skills.contextEnableIn", app)
+        }
+        /// `workbench.skills.contextRemoveProjection` — Remove {app} Projection
+        public static func skillsContextRemoveProjection(app: String) -> String {
+            L10n.string("workbench.skills.contextRemoveProjection", app)
+        }
+        /// `workbench.skills.countFiltered` — {shown} of {total} skills
+        public static func skillsCountFiltered(shown: Int, total: Int) -> String {
+            L10n.string("workbench.skills.countFiltered", shown, total)
+        }
+        /// `workbench.skills.countTotal` — {count, plural, one {# skill} other {# skills}}
+        public static func skillsCountTotal(count: Int) -> String {
+            L10n.string("workbench.skills.countTotal", count)
+        }
+        /// `workbench.skills.discover` — Discover
+        public static var skillsDiscover: String {
+            L10n.string("workbench.skills.discover")
+        }
+        /// `workbench.skills.discover.addRepo` — Add
+        public static var skillsDiscoverAddRepo: String {
+            L10n.string("workbench.skills.discover.addRepo")
+        }
+        /// `workbench.skills.discover.availableEmpty` — Scan the configured repositories, or install a skills.sh result, to list what is available.
+        public static var skillsDiscoverAvailableEmpty: String {
+            L10n.string("workbench.skills.discover.availableEmpty")
+        }
+        /// `workbench.skills.discover.availableTitle` — Available skills
+        public static var skillsDiscoverAvailableTitle: String {
+            L10n.string("workbench.skills.discover.availableTitle")
+        }
+        /// `workbench.skills.discover.indexTitle` — skills.sh index
+        public static var skillsDiscoverIndexTitle: String {
+            L10n.string("workbench.skills.discover.indexTitle")
+        }
+        /// `workbench.skills.discover.installs` — {count, plural, one {# install} other {# installs}}
+        public static func skillsDiscoverInstalls(count: Int) -> String {
+            L10n.string("workbench.skills.discover.installs", count)
+        }
+        /// `workbench.skills.discover.noRepos` — No repositories configured. Add one as owner/repo, optionally owner/repo@branch.
+        public static var skillsDiscoverNoRepos: String {
+            L10n.string("workbench.skills.discover.noRepos")
+        }
+        /// `workbench.skills.discover.removeRepo` — Remove {repo}
+        public static func skillsDiscoverRemoveRepo(repo: String) -> String {
+            L10n.string("workbench.skills.discover.removeRepo", repo)
+        }
+        /// `workbench.skills.discover.repoFieldPlaceholder` — owner/repo or owner/repo@branch
+        public static var skillsDiscoverRepoFieldPlaceholder: String {
+            L10n.string("workbench.skills.discover.repoFieldPlaceholder")
+        }
+        /// `workbench.skills.discover.repoRules` — Owners take letters, digits, and hyphens; names and branches also take dots and underscores.
+        public static var skillsDiscoverRepoRules: String {
+            L10n.string("workbench.skills.discover.repoRules")
+        }
+        /// `workbench.skills.discover.reposTitle` — Configured repositories
+        public static var skillsDiscoverReposTitle: String {
+            L10n.string("workbench.skills.discover.reposTitle")
+        }
+        /// `workbench.skills.discover.scanRepos` — Scan repos
+        public static var skillsDiscoverScanRepos: String {
+            L10n.string("workbench.skills.discover.scanRepos")
+        }
+        /// `workbench.skills.discover.scanReposHelp` — Download every configured repository
+        public static var skillsDiscoverScanReposHelp: String {
+            L10n.string("workbench.skills.discover.scanReposHelp")
+        }
+        /// `workbench.skills.discover.searchHint` — Results come back with the repository that publishes them; installing one downloads that repository and lists the rest of it below.
+        public static var skillsDiscoverSearchHint: String {
+            L10n.string("workbench.skills.discover.searchHint")
+        }
+        /// `workbench.skills.discover.searchPlaceholder` — Search the community index
+        public static var skillsDiscoverSearchPlaceholder: String {
+            L10n.string("workbench.skills.discover.searchPlaceholder")
+        }
+        /// `workbench.skills.discover.selectAll` — Select all
+        public static var skillsDiscoverSelectAll: String {
+            L10n.string("workbench.skills.discover.selectAll")
+        }
+        /// `workbench.skills.discover.selectHelp` — Set which agent CLIs every row installs into
+        public static var skillsDiscoverSelectHelp: String {
+            L10n.string("workbench.skills.discover.selectHelp")
+        }
+        /// `workbench.skills.discover.selectNone` — Select none
+        public static var skillsDiscoverSelectNone: String {
+            L10n.string("workbench.skills.discover.selectNone")
+        }
+        /// `workbench.skills.discover.sourceFromSkillsSh` — {repo} (from skills.sh)
+        public static func skillsDiscoverSourceFromSkillsSh(repo: String) -> String {
+            L10n.string("workbench.skills.discover.sourceFromSkillsSh", repo)
+        }
+        /// `workbench.skills.discover.stopScanHelp` — Stop the running scan
+        public static var skillsDiscoverStopScanHelp: String {
+            L10n.string("workbench.skills.discover.stopScanHelp")
+        }
+        /// `workbench.skills.discover.stopScanningRepo` — Stop scanning {repo}
+        public static func skillsDiscoverStopScanningRepo(repo: String) -> String {
+            L10n.string("workbench.skills.discover.stopScanningRepo", repo)
+        }
+        /// `workbench.skills.discover.title` — Discover Skills
+        public static var skillsDiscoverTitle: String {
+            L10n.string("workbench.skills.discover.title")
+        }
+        /// `workbench.skills.discoverHelp` — Browse configured repositories and the skills.sh index
+        public static var skillsDiscoverHelp: String {
+            L10n.string("workbench.skills.discoverHelp")
+        }
+        /// `workbench.skills.empty.body` — Vibe Bar keeps one copy of every skill in ~/.agents/skills and links it into each agent CLI. Import what is already on this Mac, or install something new from a repository.
+        public static var skillsEmptyBody: String {
+            L10n.string("workbench.skills.empty.body")
+        }
+        /// `workbench.skills.empty.headline` — No skills recorded yet
+        public static var skillsEmptyHeadline: String {
+            L10n.string("workbench.skills.empty.headline")
+        }
+        /// `workbench.skills.filterClear` — Clear the filter
+        public static var skillsFilterClear: String {
+            L10n.string("workbench.skills.filterClear")
+        }
+        /// `workbench.skills.filterPlaceholder` — Filter installed skills
+        public static var skillsFilterPlaceholder: String {
+            L10n.string("workbench.skills.filterPlaceholder")
+        }
+        /// `workbench.skills.import.alreadyShared` — Already shared
+        public static var skillsImportAlreadyShared: String {
+            L10n.string("workbench.skills.import.alreadyShared")
+        }
+        /// `workbench.skills.import.alreadySharedDetail` — These already live in ~/.agents/skills, including layouts created by CC Switch. Vibe Bar records their existing links; it does not import or copy them again.
+        public static var skillsImportAlreadySharedDetail: String {
+            L10n.string("workbench.skills.import.alreadySharedDetail")
+        }
+        /// `workbench.skills.import.apply` — Apply {count, plural, one {# change} other {# changes}}
+        public static func skillsImportApply(count: Int) -> String {
+            L10n.string("workbench.skills.import.apply", count)
+        }
+        /// `workbench.skills.import.conflicts` — Conflicting app copies
+        public static var skillsImportConflicts: String {
+            L10n.string("workbench.skills.import.conflicts")
+        }
+        /// `workbench.skills.import.conflictsCount` — {count} unchanged
+        public static func skillsImportConflictsCount(count: Int) -> String {
+            L10n.string("workbench.skills.import.conflictsCount", count)
+        }
+        /// `workbench.skills.import.conflictsDetail` — A real folder in an app's skills directory has the same name as one in ~/.agents/skills. Vibe Bar will not overwrite it — resolve it by hand, or enable the shared skill for that app once the folder is gone.
+        public static var skillsImportConflictsDetail: String {
+            L10n.string("workbench.skills.import.conflictsDetail")
+        }
+        /// `workbench.skills.import.foundIn` — found in {apps}
+        public static func skillsImportFoundIn(apps: String) -> String {
+            L10n.string("workbench.skills.import.foundIn", apps)
+        }
+        /// `workbench.skills.import.keepEvidenceFor` — Keep evidence for
+        public static var skillsImportKeepEvidenceFor: String {
+            L10n.string("workbench.skills.import.keepEvidenceFor")
+        }
+        /// `workbench.skills.import.needsAdoption` — Needs adoption
+        public static var skillsImportNeedsAdoption: String {
+            L10n.string("workbench.skills.import.needsAdoption")
+        }
+        /// `workbench.skills.import.needsAdoptionDetail` — These do not exist in the shared directory yet. Selecting one copies it into ~/.agents/skills, then replaces the chosen app copies with managed links.
+        public static var skillsImportNeedsAdoptionDetail: String {
+            L10n.string("workbench.skills.import.needsAdoptionDetail")
+        }
+        /// `workbench.skills.import.notSkills` — Not skills
+        public static var skillsImportNotSkills: String {
+            L10n.string("workbench.skills.import.notSkills")
+        }
+        /// `workbench.skills.import.notSkillsDetail` — Directories in ~/.agents/skills with no SKILL.md. Left exactly as they are.
+        public static var skillsImportNotSkillsDetail: String {
+            L10n.string("workbench.skills.import.notSkillsDetail")
+        }
+        /// `workbench.skills.import.recognizedCount` — {count} recognized
+        public static func skillsImportRecognizedCount(count: Int) -> String {
+            L10n.string("workbench.skills.import.recognizedCount", count)
+        }
+        /// `workbench.skills.import.subtitle` — Vibe Bar already recognizes shared skills. Only selected app-local folders will move.
+        public static var skillsImportSubtitle: String {
+            L10n.string("workbench.skills.import.subtitle")
+        }
+        /// `workbench.skills.import.summary` — {adopted} already shared · {unmanaged} need adoption · {conflicts} left unchanged
+        public static func skillsImportSummary(adopted: Int, unmanaged: Int, conflicts: Int) -> String {
+            L10n.string("workbench.skills.import.summary", adopted, unmanaged, conflicts)
+        }
+        /// `workbench.skills.import.title` — Review On-Disk Skills
+        public static var skillsImportTitle: String {
+            L10n.string("workbench.skills.import.title")
+        }
+        /// `workbench.skills.importExisting` — Import Existing
+        public static var skillsImportExisting: String {
+            L10n.string("workbench.skills.importExisting")
+        }
+        /// `workbench.skills.install` — Install
+        public static var skillsInstall: String {
+            L10n.string("workbench.skills.install")
+        }
+        /// `workbench.skills.installFromZip` — Install from ZIP
+        public static var skillsInstallFromZip: String {
+            L10n.string("workbench.skills.installFromZip")
+        }
+        /// `workbench.skills.menuMoreActions` — More actions for {skill}
+        public static func skillsMenuMoreActions(skill: String) -> String {
+            L10n.string("workbench.skills.menuMoreActions", skill)
+        }
+        /// `workbench.skills.menuRevealInFinder` — Reveal in Finder
+        public static var skillsMenuRevealInFinder: String {
+            L10n.string("workbench.skills.menuRevealInFinder")
+        }
+        /// `workbench.skills.menuUninstall` — Uninstall…
+        public static var skillsMenuUninstall: String {
+            L10n.string("workbench.skills.menuUninstall")
+        }
+        /// `workbench.skills.menuUpdateFromRepository` — Update from repository
+        public static var skillsMenuUpdateFromRepository: String {
+            L10n.string("workbench.skills.menuUpdateFromRepository")
+        }
+        /// `workbench.skills.menuWiringDetails` — Wiring Details…
+        public static var skillsMenuWiringDetails: String {
+            L10n.string("workbench.skills.menuWiringDetails")
+        }
+        /// `workbench.skills.noMatch` — No skill matches “{query}”
+        public static func skillsNoMatch(query: String) -> String {
+            L10n.string("workbench.skills.noMatch", query)
+        }
+        /// `workbench.skills.phase.downloadedOne` — Downloaded 1 repository
+        public static var skillsPhaseDownloadedOne: String {
+            L10n.string("workbench.skills.phase.downloadedOne")
+        }
+        /// `workbench.skills.phase.downloadedProgress` — Downloaded {completed} of {total} repositories
+        public static func skillsPhaseDownloadedProgress(completed: Int, total: Int) -> String {
+            L10n.string("workbench.skills.phase.downloadedProgress", completed, total)
+        }
+        /// `workbench.skills.phase.downloading` — Downloading {repo}…
+        public static func skillsPhaseDownloading(repo: String) -> String {
+            L10n.string("workbench.skills.phase.downloading", repo)
+        }
+        /// `workbench.skills.phase.scanning` — Scanning {repo}…
+        public static func skillsPhaseScanning(repo: String) -> String {
+            L10n.string("workbench.skills.phase.scanning", repo)
+        }
+        /// `workbench.skills.sourceBranch` — Branch {branch}
+        public static func skillsSourceBranch(branch: String) -> String {
+            L10n.string("workbench.skills.sourceBranch", branch)
+        }
+        /// `workbench.skills.sourceInstalledLocally` — Installed locally
+        public static var skillsSourceInstalledLocally: String {
+            L10n.string("workbench.skills.sourceInstalledLocally")
+        }
+        /// `workbench.skills.sourceLocal` — local
+        public static var skillsSourceLocal: String {
+            L10n.string("workbench.skills.sourceLocal")
+        }
+        /// `workbench.skills.state.coupled` — Available through a shared or compatibility root
+        public static var skillsStateCoupled: String {
+            L10n.string("workbench.skills.state.coupled")
+        }
+        /// `workbench.skills.state.disabledInHarness` — Projected, disabled in harness
+        public static var skillsStateDisabledInHarness: String {
+            L10n.string("workbench.skills.state.disabledInHarness")
+        }
+        /// `workbench.skills.state.enabled` — Enabled
+        public static var skillsStateEnabled: String {
+            L10n.string("workbench.skills.state.enabled")
+        }
+        /// `workbench.skills.state.notProjected` — Not projected
+        public static var skillsStateNotProjected: String {
+            L10n.string("workbench.skills.state.notProjected")
+        }
+        /// `workbench.skills.state.unknown` — Projected, native state unknown
+        public static var skillsStateUnknown: String {
+            L10n.string("workbench.skills.state.unknown")
+        }
+        /// `workbench.skills.sync.footer` — Vibe Bar writes only inside ~/{path}, the per-harness skills folders, and the config files above.
+        public static func skillsSyncFooter(path: String) -> String {
+            L10n.string("workbench.skills.sync.footer", path)
+        }
+        /// `workbench.skills.sync.nativeSwitchesBody` — Where a harness has its own per-skill off switch, the circles flip that switch. Cursor has none, so every skill in the shared root is always available to it — that is the “shared root” badge, and there is nothing to toggle.
+        public static var skillsSyncNativeSwitchesBody: String {
+            L10n.string("workbench.skills.sync.nativeSwitchesBody")
+        }
+        /// `workbench.skills.sync.nativeSwitchesLead` — Native switches.
+        public static var skillsSyncNativeSwitchesLead: String {
+            L10n.string("workbench.skills.sync.nativeSwitchesLead")
+        }
+        /// `workbench.skills.sync.noPerSkillSwitch` — no per-skill switch
+        public static var skillsSyncNoPerSkillSwitch: String {
+            L10n.string("workbench.skills.sync.noPerSkillSwitch")
+        }
+        /// `workbench.skills.sync.noSwitchAlsoReads` — no per-skill switch; also reads ~/{path}
+        public static func skillsSyncNoSwitchAlsoReads(path: String) -> String {
+            L10n.string("workbench.skills.sync.noSwitchAlsoReads", path)
+        }
+        /// `workbench.skills.sync.perSkillSwitch` — per-skill switch {key} in ~/{path}
+        public static func skillsSyncPerSkillSwitch(key: String, path: String) -> String {
+            L10n.string("workbench.skills.sync.perSkillSwitch", key, path)
+        }
+        /// `workbench.skills.sync.projectionsBody` — Claude Code and AntiGravity read only their own skills folders, so Vibe Bar links (or copies) skills into them. Codex, Gemini CLI, Grok Build, and Cursor scan the shared root themselves — no link needed.
+        public static var skillsSyncProjectionsBody: String {
+            L10n.string("workbench.skills.sync.projectionsBody")
+        }
+        /// `workbench.skills.sync.projectionsLead` — Projections.
+        public static var skillsSyncProjectionsLead: String {
+            L10n.string("workbench.skills.sync.projectionsLead")
+        }
+        /// `workbench.skills.sync.readsOwnFolder` — reads only ~/{path}
+        public static func skillsSyncReadsOwnFolder(path: String) -> String {
+            L10n.string("workbench.skills.sync.readsOwnFolder", path)
+        }
+        /// `workbench.skills.sync.scansSharedRoot` — scans ~/{path} directly
+        public static func skillsSyncScansSharedRoot(path: String) -> String {
+            L10n.string("workbench.skills.sync.scansSharedRoot", path)
+        }
+        /// `workbench.skills.sync.ssotBody` — Every skill lives in ~/{path}/<name>. Install, update, and uninstall all happen there and only there.
+        public static func skillsSyncSsotBody(path: String) -> String {
+            L10n.string("workbench.skills.sync.ssotBody", path)
+        }
+        /// `workbench.skills.sync.ssotLead` — One source of truth.
+        public static var skillsSyncSsotLead: String {
+            L10n.string("workbench.skills.sync.ssotLead")
+        }
+        /// `workbench.skills.sync.title` — How skill syncing works
+        public static var skillsSyncTitle: String {
+            L10n.string("workbench.skills.sync.title")
+        }
+        /// `workbench.skills.syncExplainerHelp` — How skill syncing works — roots, links, and native switches
+        public static var skillsSyncExplainerHelp: String {
+            L10n.string("workbench.skills.syncExplainerHelp")
+        }
+        /// `workbench.skills.toast.addRepoFirst` — Add a repository first.
+        public static var skillsToastAddRepoFirst: String {
+            L10n.string("workbench.skills.toast.addRepoFirst")
+        }
+        /// `workbench.skills.toast.allUpToDate` — Every repository skill is up to date.
+        public static var skillsToastAllUpToDate: String {
+            L10n.string("workbench.skills.toast.allUpToDate")
+        }
+        /// `workbench.skills.toast.archiveEmpty` — Nothing in that archive could be installed.
+        public static var skillsToastArchiveEmpty: String {
+            L10n.string("workbench.skills.toast.archiveEmpty")
+        }
+        /// `workbench.skills.toast.disabledKeptProjection` — Disabled {skill} in {app} and kept its projection.
+        public static func skillsToastDisabledKeptProjection(skill: String, app: String) -> String {
+            L10n.string("workbench.skills.toast.disabledKeptProjection", skill, app)
+        }
+        /// `workbench.skills.toast.enabledForApps` — Enabled for {apps}.
+        public static func skillsToastEnabledForApps(apps: String) -> String {
+            L10n.string("workbench.skills.toast.enabledForApps", apps)
+        }
+        /// `workbench.skills.toast.importConflicts` — Left {count, plural, one {# conflicting app copy} other {# conflicting app copies}} unchanged.
+        public static func skillsToastImportConflicts(count: Int) -> String {
+            L10n.string("workbench.skills.toast.importConflicts", count)
+        }
+        /// `workbench.skills.toast.importRecognized` — Recognized {count, plural, one {# existing skill} other {# existing skills}}.
+        public static func skillsToastImportRecognized(count: Int) -> String {
+            L10n.string("workbench.skills.toast.importRecognized", count)
+        }
+        /// `workbench.skills.toast.installedArchive` — Installed {count, plural, one {# skill} other {# skills}} from the archive.
+        public static func skillsToastInstalledArchive(count: Int) -> String {
+            L10n.string("workbench.skills.toast.installedArchive", count)
+        }
+        /// `workbench.skills.toast.installedForApps` — Installed {skill} for {apps}.
+        public static func skillsToastInstalledForApps(skill: String, apps: String) -> String {
+            L10n.string("workbench.skills.toast.installedForApps", skill, apps)
+        }
+        /// `workbench.skills.toast.installedShared` — Installed {skill} in the shared library. Check effective harness state in Skills.
+        public static func skillsToastInstalledShared(skill: String) -> String {
+            L10n.string("workbench.skills.toast.installedShared", skill)
+        }
+        /// `workbench.skills.toast.invalidRepoRef` — “{input}” is not a new owner/repo[@branch] reference.
+        public static func skillsToastInvalidRepoRef(input: String) -> String {
+            L10n.string("workbench.skills.toast.invalidRepoRef", input)
+        }
+        /// `workbench.skills.toast.linkRemovedStillShared` — Removed the {app} link. {skill} stays available there through the shared skills root.
+        public static func skillsToastLinkRemovedStillShared(app: String, skill: String) -> String {
+            L10n.string("workbench.skills.toast.linkRemovedStillShared", app, skill)
+        }
+        /// `workbench.skills.toast.noSearchMatches` — skills.sh returned no matches.
+        public static var skillsToastNoSearchMatches: String {
+            L10n.string("workbench.skills.toast.noSearchMatches")
+        }
+        /// `workbench.skills.toast.noSkillsFound` — No skills were found in the configured repositories.
+        public static var skillsToastNoSkillsFound: String {
+            L10n.string("workbench.skills.toast.noSkillsFound")
+        }
+        /// `workbench.skills.toast.notFoundInRepo` — {skill} was not found in {repo}.
+        public static func skillsToastNotFoundInRepo(skill: String, repo: String) -> String {
+            L10n.string("workbench.skills.toast.notFoundInRepo", skill, repo)
+        }
+        /// `workbench.skills.toast.projectionClearedFolderKept` — {skill}'s Vibe Bar projection was cleared for {app}, but the existing folder was left in place.
+        public static func skillsToastProjectionClearedFolderKept(skill: String, app: String) -> String {
+            L10n.string("workbench.skills.toast.projectionClearedFolderKept", skill, app)
+        }
+        /// `workbench.skills.toast.recorded` — Recorded {count, plural, one {# skill} other {# skills}}.
+        public static func skillsToastRecorded(count: Int) -> String {
+            L10n.string("workbench.skills.toast.recorded", count)
+        }
+        /// `workbench.skills.toast.reposUnreadable` — {count, plural, one {# repository} other {# repositories}} could not be read.
+        public static func skillsToastReposUnreadable(count: Int) -> String {
+            L10n.string("workbench.skills.toast.reposUnreadable", count)
+        }
+        /// `workbench.skills.toast.restored` — Restored {skill}. Enable it for the apps you want it in.
+        public static func skillsToastRestored(skill: String) -> String {
+            L10n.string("workbench.skills.toast.restored", skill)
+        }
+        /// `workbench.skills.toast.scanStopped` — Stopped scanning.
+        public static var skillsToastScanStopped: String {
+            L10n.string("workbench.skills.toast.scanStopped")
+        }
+        /// `workbench.skills.toast.sharedLibraryNote` — They stay in the shared library. Check effective harness state in Skills.
+        public static var skillsToastSharedLibraryNote: String {
+            L10n.string("workbench.skills.toast.sharedLibraryNote")
+        }
+        /// `workbench.skills.toast.sharedRootNoSwitch` — {app} reads the shared skills root directly — {skill} is always available there and has no per-skill switch.
+        public static func skillsToastSharedRootNoSwitch(app: String, skill: String) -> String {
+            L10n.string("workbench.skills.toast.sharedRootNoSwitch", app, skill)
+        }
+        /// `workbench.skills.toast.uninstalledBackedUp` — Uninstalled {skill}. A backup was saved.
+        public static func skillsToastUninstalledBackedUp(skill: String) -> String {
+            L10n.string("workbench.skills.toast.uninstalledBackedUp", skill)
+        }
+        /// `workbench.skills.toast.uninstalledLeftInPlace` — Uninstalled {skill}. Left in place for {apps}.
+        public static func skillsToastUninstalledLeftInPlace(skill: String, apps: String) -> String {
+            L10n.string("workbench.skills.toast.uninstalledLeftInPlace", skill, apps)
+        }
+        /// `workbench.skills.toast.updated` — Updated {skill}.
+        public static func skillsToastUpdated(skill: String) -> String {
+            L10n.string("workbench.skills.toast.updated", skill)
+        }
+        /// `workbench.skills.toast.updatesAvailable` — {count, plural, one {# skill} other {# skills}} can be updated.
+        public static func skillsToastUpdatesAvailable(count: Int) -> String {
+            L10n.string("workbench.skills.toast.updatesAvailable", count)
+        }
+        /// `workbench.skills.toggleHelp.installInto` — Install into {app}
+        public static func skillsToggleHelpInstallInto(app: String) -> String {
+            L10n.string("workbench.skills.toggleHelp.installInto", app)
+        }
+        /// `workbench.skills.toggleHelp.keepLinks` — Keep the {app} links already on disk
+        public static func skillsToggleHelpKeepLinks(app: String) -> String {
+            L10n.string("workbench.skills.toggleHelp.keepLinks", app)
+        }
+        /// `workbench.skills.toggleHelp.linkAfterAdopting` — Link into {app} after adopting
+        public static func skillsToggleHelpLinkAfterAdopting(app: String) -> String {
+            L10n.string("workbench.skills.toggleHelp.linkAfterAdopting", app)
+        }
+        /// `workbench.skills.toggleState.coupledGemini` — {app} — visible through the Gemini CLI projection it also reads. Click to give it its own projection.
+        public static func skillsToggleStateCoupledGemini(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.coupledGemini", app)
+        }
+        /// `workbench.skills.toggleState.coupledSharedRoot` — {app} reads the shared skills root directly, so this skill is always available there. There is no per-skill switch to flip.
+        public static func skillsToggleStateCoupledSharedRoot(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.coupledSharedRoot", app)
+        }
+        /// `workbench.skills.toggleState.disabledInHarness` — {app} — projected, but disabled by its native config. Click to enable.
+        public static func skillsToggleStateDisabledInHarness(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.disabledInHarness", app)
+        }
+        /// `workbench.skills.toggleState.enabled` — {app} — enabled by projection. Click to remove it.
+        public static func skillsToggleStateEnabled(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.enabled", app)
+        }
+        /// `workbench.skills.toggleState.enabledNative` — {app} — projected and enabled. Click to disable in the harness; right-click for projection options.
+        public static func skillsToggleStateEnabledNative(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.enabledNative", app)
+        }
+        /// `workbench.skills.toggleState.enabledSharedRoot` — {app} — has its own link, and also reads the shared skills root directly. There is no per-skill switch; right-click to manage the redundant link.
+        public static func skillsToggleStateEnabledSharedRoot(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.enabledSharedRoot", app)
+        }
+        /// `workbench.skills.toggleState.notProjected` — {app} — not projected. Click to enable.
+        public static func skillsToggleStateNotProjected(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.notProjected", app)
+        }
+        /// `workbench.skills.toggleState.unknown` — {app} — projected, but native config could not be parsed. Click to repair as enabled.
+        public static func skillsToggleStateUnknown(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.unknown", app)
+        }
+        /// `workbench.skills.uninstall` — Uninstall
+        public static var skillsUninstall: String {
+            L10n.string("workbench.skills.uninstall")
+        }
+        /// `workbench.skills.uninstallConfirmMessage` — The skill is backed up first, and removed from every app that links to it.
+        public static var skillsUninstallConfirmMessage: String {
+            L10n.string("workbench.skills.uninstallConfirmMessage")
+        }
+        /// `workbench.skills.uninstallConfirmTitle` — Uninstall {skill}?
+        public static func skillsUninstallConfirmTitle(skill: String) -> String {
+            L10n.string("workbench.skills.uninstallConfirmTitle", skill)
+        }
+        /// `workbench.skills.wiring.footer` — Vibe Bar writes only inside the skills folders above and the four listed config files, and backs a skill up before uninstalling it.
+        public static var skillsWiringFooter: String {
+            L10n.string("workbench.skills.wiring.footer")
+        }
+        /// `workbench.skills.wiring.mechanismGeminiCompat` — Also reads the Gemini CLI skills folder, which holds this skill's Gemini projection.
+        public static var skillsWiringMechanismGeminiCompat: String {
+            L10n.string("workbench.skills.wiring.mechanismGeminiCompat")
+        }
+        /// `workbench.skills.wiring.mechanismSharedRoot` — Scans the shared root itself — no per-app link needed.
+        public static var skillsWiringMechanismSharedRoot: String {
+            L10n.string("workbench.skills.wiring.mechanismSharedRoot")
+        }
+        /// `workbench.skills.wiring.nativeSwitch` — Per-skill switch: {key} in {path}
+        public static func skillsWiringNativeSwitch(key: String, path: String) -> String {
+            L10n.string("workbench.skills.wiring.nativeSwitch", key, path)
+        }
+        /// `workbench.skills.wiring.noNativeSwitch` — No per-skill switch — whatever is discovered is active.
+        public static var skillsWiringNoNativeSwitch: String {
+            L10n.string("workbench.skills.wiring.noNativeSwitch")
+        }
+        /// `workbench.skills.wiring.projectionCopy` — Copy at {path}
+        public static func skillsWiringProjectionCopy(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionCopy", path)
+        }
+        /// `workbench.skills.wiring.projectionCopyAdopted` — Copy at {path} · adopted from an existing install
+        public static func skillsWiringProjectionCopyAdopted(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionCopyAdopted", path)
+        }
+        /// `workbench.skills.wiring.projectionMissing` — No entry at {path} — the harness cannot see this skill.
+        public static func skillsWiringProjectionMissing(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionMissing", path)
+        }
+        /// `workbench.skills.wiring.projectionSymlink` — Symlink at {path}
+        public static func skillsWiringProjectionSymlink(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionSymlink", path)
+        }
+        /// `workbench.skills.wiring.projectionSymlinkAdopted` — Symlink at {path} · adopted from an existing install
+        public static func skillsWiringProjectionSymlinkAdopted(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionSymlinkAdopted", path)
+        }
+        /// `workbench.skills.wiring.reveal` — Reveal
+        public static var skillsWiringReveal: String {
+            L10n.string("workbench.skills.wiring.reveal")
+        }
+        /// `workbench.skills.wiring.revealHelp` — Show the skill's source directory in Finder
+        public static var skillsWiringRevealHelp: String {
+            L10n.string("workbench.skills.wiring.revealHelp")
+        }
+        /// `workbench.skills.wiring.source` — Source
+        public static var skillsWiringSource: String {
+            L10n.string("workbench.skills.wiring.source")
+        }
+        /// `workbench.skills.wiring.sourceDetail` — One copy of the skill. Every harness below reads this directory or a link to it.
+        public static var skillsWiringSourceDetail: String {
+            L10n.string("workbench.skills.wiring.sourceDetail")
+        }
+        /// `workbench.skills.wiring.stateConfigUnreadable` — Config unreadable
+        public static var skillsWiringStateConfigUnreadable: String {
+            L10n.string("workbench.skills.wiring.stateConfigUnreadable")
+        }
+        /// `workbench.skills.wiring.stateCoupledGemini` — On · via Gemini
+        public static var skillsWiringStateCoupledGemini: String {
+            L10n.string("workbench.skills.wiring.stateCoupledGemini")
+        }
+        /// `workbench.skills.wiring.stateCoupledSharedRoot` — On · shared root
+        public static var skillsWiringStateCoupledSharedRoot: String {
+            L10n.string("workbench.skills.wiring.stateCoupledSharedRoot")
+        }
+        /// `workbench.skills.wiring.stateNativeOff` — Off · native switch
+        public static var skillsWiringStateNativeOff: String {
+            L10n.string("workbench.skills.wiring.stateNativeOff")
+        }
+        /// `workbench.skills.wiring.stateNotLinked` — Off · not linked
+        public static var skillsWiringStateNotLinked: String {
+            L10n.string("workbench.skills.wiring.stateNotLinked")
+        }
     }
 }
 
@@ -2059,6 +2723,172 @@ extension L10n {
         "workbench.placeholder.settings",
         "workbench.placeholder.skillsManager",
         "workbench.placeholder.usageStats",
+        "workbench.skills.appCountNativeDisabled",
+        "workbench.skills.appCountViaGeminiRoot",
+        "workbench.skills.appCountViaSharedRoot",
+        "workbench.skills.appSeesCount",
+        "workbench.skills.backups",
+        "workbench.skills.backups.deleteAccessibility",
+        "workbench.skills.backups.deleteConfirmMessage",
+        "workbench.skills.backups.deleteConfirmTitle",
+        "workbench.skills.backups.deleteConfirmTitleGeneric",
+        "workbench.skills.backups.empty",
+        "workbench.skills.backups.footer",
+        "workbench.skills.backups.refreshHelp",
+        "workbench.skills.backups.restore",
+        "workbench.skills.backups.restoreHelp",
+        "workbench.skills.backups.subtitle",
+        "workbench.skills.backups.title",
+        "workbench.skills.badge.installed",
+        "workbench.skills.badge.nativeOff",
+        "workbench.skills.badge.nativeOffHelp",
+        "workbench.skills.badge.nativeUnknown",
+        "workbench.skills.badge.nativeUnknownHelp",
+        "workbench.skills.badge.update",
+        "workbench.skills.checkUpdates",
+        "workbench.skills.checkUpdatesCount",
+        "workbench.skills.contextDisableKeepProjection",
+        "workbench.skills.contextEnableIn",
+        "workbench.skills.contextRemoveProjection",
+        "workbench.skills.countFiltered",
+        "workbench.skills.countTotal",
+        "workbench.skills.discover",
+        "workbench.skills.discover.addRepo",
+        "workbench.skills.discover.availableEmpty",
+        "workbench.skills.discover.availableTitle",
+        "workbench.skills.discover.indexTitle",
+        "workbench.skills.discover.installs",
+        "workbench.skills.discover.noRepos",
+        "workbench.skills.discover.removeRepo",
+        "workbench.skills.discover.repoFieldPlaceholder",
+        "workbench.skills.discover.repoRules",
+        "workbench.skills.discover.reposTitle",
+        "workbench.skills.discover.scanRepos",
+        "workbench.skills.discover.scanReposHelp",
+        "workbench.skills.discover.searchHint",
+        "workbench.skills.discover.searchPlaceholder",
+        "workbench.skills.discover.selectAll",
+        "workbench.skills.discover.selectHelp",
+        "workbench.skills.discover.selectNone",
+        "workbench.skills.discover.sourceFromSkillsSh",
+        "workbench.skills.discover.stopScanHelp",
+        "workbench.skills.discover.stopScanningRepo",
+        "workbench.skills.discover.title",
+        "workbench.skills.discoverHelp",
+        "workbench.skills.empty.body",
+        "workbench.skills.empty.headline",
+        "workbench.skills.filterClear",
+        "workbench.skills.filterPlaceholder",
+        "workbench.skills.import.alreadyShared",
+        "workbench.skills.import.alreadySharedDetail",
+        "workbench.skills.import.apply",
+        "workbench.skills.import.conflicts",
+        "workbench.skills.import.conflictsCount",
+        "workbench.skills.import.conflictsDetail",
+        "workbench.skills.import.foundIn",
+        "workbench.skills.import.keepEvidenceFor",
+        "workbench.skills.import.needsAdoption",
+        "workbench.skills.import.needsAdoptionDetail",
+        "workbench.skills.import.notSkills",
+        "workbench.skills.import.notSkillsDetail",
+        "workbench.skills.import.recognizedCount",
+        "workbench.skills.import.subtitle",
+        "workbench.skills.import.summary",
+        "workbench.skills.import.title",
+        "workbench.skills.importExisting",
+        "workbench.skills.install",
+        "workbench.skills.installFromZip",
+        "workbench.skills.menuMoreActions",
+        "workbench.skills.menuRevealInFinder",
+        "workbench.skills.menuUninstall",
+        "workbench.skills.menuUpdateFromRepository",
+        "workbench.skills.menuWiringDetails",
+        "workbench.skills.noMatch",
+        "workbench.skills.phase.downloadedOne",
+        "workbench.skills.phase.downloadedProgress",
+        "workbench.skills.phase.downloading",
+        "workbench.skills.phase.scanning",
+        "workbench.skills.sourceBranch",
+        "workbench.skills.sourceInstalledLocally",
+        "workbench.skills.sourceLocal",
+        "workbench.skills.state.coupled",
+        "workbench.skills.state.disabledInHarness",
+        "workbench.skills.state.enabled",
+        "workbench.skills.state.notProjected",
+        "workbench.skills.state.unknown",
+        "workbench.skills.sync.footer",
+        "workbench.skills.sync.nativeSwitchesBody",
+        "workbench.skills.sync.nativeSwitchesLead",
+        "workbench.skills.sync.noPerSkillSwitch",
+        "workbench.skills.sync.noSwitchAlsoReads",
+        "workbench.skills.sync.perSkillSwitch",
+        "workbench.skills.sync.projectionsBody",
+        "workbench.skills.sync.projectionsLead",
+        "workbench.skills.sync.readsOwnFolder",
+        "workbench.skills.sync.scansSharedRoot",
+        "workbench.skills.sync.ssotBody",
+        "workbench.skills.sync.ssotLead",
+        "workbench.skills.sync.title",
+        "workbench.skills.syncExplainerHelp",
+        "workbench.skills.toast.addRepoFirst",
+        "workbench.skills.toast.allUpToDate",
+        "workbench.skills.toast.archiveEmpty",
+        "workbench.skills.toast.disabledKeptProjection",
+        "workbench.skills.toast.enabledForApps",
+        "workbench.skills.toast.importConflicts",
+        "workbench.skills.toast.importRecognized",
+        "workbench.skills.toast.installedArchive",
+        "workbench.skills.toast.installedForApps",
+        "workbench.skills.toast.installedShared",
+        "workbench.skills.toast.invalidRepoRef",
+        "workbench.skills.toast.linkRemovedStillShared",
+        "workbench.skills.toast.noSearchMatches",
+        "workbench.skills.toast.noSkillsFound",
+        "workbench.skills.toast.notFoundInRepo",
+        "workbench.skills.toast.projectionClearedFolderKept",
+        "workbench.skills.toast.recorded",
+        "workbench.skills.toast.reposUnreadable",
+        "workbench.skills.toast.restored",
+        "workbench.skills.toast.scanStopped",
+        "workbench.skills.toast.sharedLibraryNote",
+        "workbench.skills.toast.sharedRootNoSwitch",
+        "workbench.skills.toast.uninstalledBackedUp",
+        "workbench.skills.toast.uninstalledLeftInPlace",
+        "workbench.skills.toast.updated",
+        "workbench.skills.toast.updatesAvailable",
+        "workbench.skills.toggleHelp.installInto",
+        "workbench.skills.toggleHelp.keepLinks",
+        "workbench.skills.toggleHelp.linkAfterAdopting",
+        "workbench.skills.toggleState.coupledGemini",
+        "workbench.skills.toggleState.coupledSharedRoot",
+        "workbench.skills.toggleState.disabledInHarness",
+        "workbench.skills.toggleState.enabled",
+        "workbench.skills.toggleState.enabledNative",
+        "workbench.skills.toggleState.enabledSharedRoot",
+        "workbench.skills.toggleState.notProjected",
+        "workbench.skills.toggleState.unknown",
+        "workbench.skills.uninstall",
+        "workbench.skills.uninstallConfirmMessage",
+        "workbench.skills.uninstallConfirmTitle",
+        "workbench.skills.wiring.footer",
+        "workbench.skills.wiring.mechanismGeminiCompat",
+        "workbench.skills.wiring.mechanismSharedRoot",
+        "workbench.skills.wiring.nativeSwitch",
+        "workbench.skills.wiring.noNativeSwitch",
+        "workbench.skills.wiring.projectionCopy",
+        "workbench.skills.wiring.projectionCopyAdopted",
+        "workbench.skills.wiring.projectionMissing",
+        "workbench.skills.wiring.projectionSymlink",
+        "workbench.skills.wiring.projectionSymlinkAdopted",
+        "workbench.skills.wiring.reveal",
+        "workbench.skills.wiring.revealHelp",
+        "workbench.skills.wiring.source",
+        "workbench.skills.wiring.sourceDetail",
+        "workbench.skills.wiring.stateConfigUnreadable",
+        "workbench.skills.wiring.stateCoupledGemini",
+        "workbench.skills.wiring.stateCoupledSharedRoot",
+        "workbench.skills.wiring.stateNativeOff",
+        "workbench.skills.wiring.stateNotLinked",
     ]
 
     /// Keys whose value is a plural and therefore lives in the
@@ -2076,5 +2906,15 @@ extension L10n {
         "status.card.componentCount",
         "usage.harnessMix.activeCount",
         "usage.hero.unpricedHelp",
+        "workbench.skills.appSeesCount",
+        "workbench.skills.countTotal",
+        "workbench.skills.discover.installs",
+        "workbench.skills.import.apply",
+        "workbench.skills.toast.importConflicts",
+        "workbench.skills.toast.importRecognized",
+        "workbench.skills.toast.installedArchive",
+        "workbench.skills.toast.recorded",
+        "workbench.skills.toast.reposUnreadable",
+        "workbench.skills.toast.updatesAvailable",
     ]
 }
