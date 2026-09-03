@@ -72,10 +72,10 @@ struct SessionManagerPage: View {
             isPresented: deletionBinding,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) { model.confirmDelete() }
-            Button("Cancel", role: .cancel) { model.cancelDelete() }
+            Button(L10n.Common.delete, role: .destructive) { model.confirmDelete() }
+            Button(L10n.Common.cancel, role: .cancel) { model.cancelDelete() }
         } message: {
-            Text("The session logs are removed from disk. This cannot be undone.")
+            Text(L10n.Workbench.sessionsDeleteMessage)
         }
         .task { model.activate() }
     }
@@ -88,8 +88,7 @@ struct SessionManagerPage: View {
     }
 
     private var deletionTitle: String {
-        let count = model.pendingDeletion?.count ?? 0
-        return count == 1 ? "Delete this session?" : "Delete \(count) sessions?"
+        L10n.Workbench.sessionsDeleteConfirm(count: model.pendingDeletion?.count ?? 0)
     }
 
     @ViewBuilder
@@ -141,7 +140,7 @@ struct SessionFiltersBar: View {
                     SectionRefreshButton(isRefreshing: model.indexProgress != nil) {
                         model.refreshIndex()
                     }
-                    .help("Rescan the session logs on disk")
+                    .help(L10n.Workbench.sessionsRefreshHelp)
                     allProvidersChip
                     companyFilterMenu
                     harnessFilterMenu
@@ -166,14 +165,17 @@ struct SessionFiltersBar: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: density.segmentedFontSize - 1))
                 .foregroundStyle(.secondary)
-            TextField("Search sessions", text: $model.searchText)
+            TextField(L10n.Workbench.sessionsSearchPlaceholder, text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: max(12, density.segmentedFontSize)))
                 // A text field draws nothing of its own to say keyboard focus
                 // arrived; the system ring comes back for it alone.
                 .vibeBarSystemControlFocus()
             if !model.searchText.isEmpty {
-                BorderlessIconButton(systemImage: "xmark.circle.fill", help: "Clear the search") {
+                BorderlessIconButton(
+                    systemImage: "xmark.circle.fill",
+                    help: L10n.Workbench.sessionsSearchClearHelp
+                ) {
                     model.searchText = ""
                 }
             }
@@ -194,13 +196,13 @@ struct SessionFiltersBar: View {
             }
             Divider()
             Text(model.isBodyIndexingEnabled
-                ? "Message text is indexed locally."
-                : "Enable message indexing in Options to search transcript content.")
+                ? L10n.Workbench.sessionsSearchBodyIndexed
+                : L10n.Workbench.sessionsSearchBodyNotIndexed)
         } label: {
             menuLabel(
                 systemImage: "text.magnifyingglass",
-                title: "Scope",
-                detail: "\(model.searchScopes.count)"
+                title: L10n.Workbench.sessionsFilterScope,
+                detail: AppLocale.number(model.searchScopes.count)
             )
         }
         .menuStyle(.button)
@@ -215,34 +217,44 @@ struct SessionFiltersBar: View {
         return Button {
             showsDirectoryFilters.toggle()
         } label: {
-            menuLabel(systemImage: "folder.badge.gearshape", title: "Folders", detail: active ? "Filtered" : "All")
+            menuLabel(
+                systemImage: "folder.badge.gearshape",
+                title: L10n.Workbench.sessionsFilterFolders,
+                detail: active ? L10n.Workbench.sessionsFilterFoldersFiltered : L10n.Common.all
+            )
         }
         .buttonStyle(WorkbenchPillButtonStyle(prominent: active))
         .popover(isPresented: $showsDirectoryFilters, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Directory filters")
+                Text(L10n.Workbench.sessionsFoldersTitle)
                     .font(.headline)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Include paths containing")
+                    Text(L10n.Workbench.sessionsFoldersInclude)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("/project/a, /project/b", text: $model.directoryIncludeText)
-                        .textFieldStyle(.roundedBorder)
+                    TextField(
+                        L10n.Workbench.sessionsFoldersIncludePlaceholder,
+                        text: $model.directoryIncludeText
+                    )
+                    .textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Exclude paths containing")
+                    Text(L10n.Workbench.sessionsFoldersExclude)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("/archive, /vendor", text: $model.directoryExcludeText)
-                        .textFieldStyle(.roundedBorder)
+                    TextField(
+                        L10n.Workbench.sessionsFoldersExcludePlaceholder,
+                        text: $model.directoryExcludeText
+                    )
+                    .textFieldStyle(.roundedBorder)
                 }
-                Text("Separate multiple paths with commas, semicolons, or new lines.")
+                Text(L10n.Workbench.sessionsFoldersSeparatorHint)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 HStack {
                     Spacer()
-                    Button("Clear") { model.clearDirectoryFilters() }
-                    Button("Done") { showsDirectoryFilters = false }
+                    Button(L10n.Common.clear) { model.clearDirectoryFilters() }
+                    Button(L10n.Common.done) { showsDirectoryFilters = false }
                         .buttonStyle(.borderedProminent)
                 }
             }
@@ -257,11 +269,11 @@ struct SessionFiltersBar: View {
 
     private func scopeTitle(_ scope: SessionSearchScope) -> String {
         switch scope {
-        case .title: "Titles and session IDs"
-        case .user: "User prompts"
-        case .assistant: "Assistant replies"
-        case .system: "System prompts"
-        case .tool: "Tool and file operations"
+        case .title: L10n.Workbench.sessionsScopeTitle
+        case .user: L10n.Workbench.sessionsScopeUser
+        case .assistant: L10n.Workbench.sessionsScopeAssistant
+        case .system: L10n.Workbench.sessionsScopeSystem
+        case .tool: L10n.Workbench.sessionsScopeTool
         }
     }
 
@@ -272,7 +284,9 @@ struct SessionFiltersBar: View {
                 ProgressView(value: progress.fraction)
                     .progressViewStyle(.linear)
                     .frame(width: 70)
-                Text(progress.total > 0 ? "\(progress.done)/\(progress.total)" : "scanning…")
+                Text(progress.total > 0
+                    ? L10n.Workbench.sessionsFraction(shown: progress.done, total: progress.total)
+                    : L10n.Workbench.sessionsIndexScanning)
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded)
                         .monospacedDigit())
                     .foregroundStyle(.tertiary)
@@ -288,13 +302,15 @@ struct SessionFiltersBar: View {
     }
 
     private var countSummary: String {
-        guard model.isIndexAvailable else { return "index unavailable" }
+        guard model.isIndexAvailable else { return L10n.Workbench.sessionsIndexUnavailable }
         let shown = model.rows.count
         if model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            shown < model.totalSessionCount {
-            return "\(shown) of \(model.totalSessionCount) sessions"
+            return L10n.Workbench.sessionsCountShownOfTotal(
+                shown: shown, total: model.totalSessionCount
+            )
         }
-        return shown == 1 ? "1 session" : "\(shown) sessions"
+        return L10n.Workbench.sessionsCountSessions(count: shown)
     }
 
     // MARK: - Harnesses
@@ -323,7 +339,7 @@ struct SessionFiltersBar: View {
         return Button {
             model.toggleAllHarnesses()
         } label: {
-            Text("All")
+            Text(L10n.Common.all)
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(selected ? .primary : .secondary)
                 .padding(.horizontal, 10)
@@ -331,8 +347,12 @@ struct SessionFiltersBar: View {
         }
         .buttonStyle(.vibeBar)
         .background(chipBackground(tint: .accentColor, selected: selected))
-        .help(selected ? "Click to select no harness" : "Click to show sessions from every harness")
-        .accessibilityLabel(selected ? "Select no harness" : "Show every session source")
+        .help(selected
+            ? L10n.Workbench.sessionsAllChipHelpSelected
+            : L10n.Workbench.sessionsAllChipHelpUnselected)
+        .accessibilityLabel(selected
+            ? L10n.Workbench.sessionsAllChipLabelSelected
+            : L10n.Workbench.sessionsAllChipLabelUnselected)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -350,7 +370,7 @@ struct SessionFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: "building.2",
-                title: "Company",
+                title: L10n.Workbench.sessionsFilterCompany,
                 detail: selectedCompanySummary
             )
         }
@@ -368,7 +388,10 @@ struct SessionFiltersBar: View {
                     set: { _ in model.toggleHarness(harness) }
                 )) {
                     Label {
-                        Text("\(harness.displayName)  \(model.harnessCounts[harness] ?? 0)")
+                        Text(L10n.Workbench.sessionsFilterHarnessCount(
+                            harness: harness.displayName,
+                            count: model.harnessCounts[harness] ?? 0
+                        ))
                     } icon: {
                         ToolBrandIconView(tool: harness.brandTool, size: 12)
                     }
@@ -377,7 +400,7 @@ struct SessionFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: "terminal",
-                title: "Harness",
+                title: L10n.Workbench.sessionsFilterHarness,
                 detail: selectedHarnessSummary
             )
         }
@@ -394,13 +417,17 @@ struct SessionFiltersBar: View {
 
     private var selectedCompanySummary: String {
         let selected = availableCompanyGroups.count(where: isSelected)
-        return selected == availableCompanyGroups.count ? "All" : "\(selected)/\(availableCompanyGroups.count)"
+        guard selected != availableCompanyGroups.count else { return L10n.Common.all }
+        return L10n.Workbench.sessionsFraction(
+            shown: selected, total: availableCompanyGroups.count
+        )
     }
 
     private var selectedHarnessSummary: String {
-        guard let filter = model.harnessFilter else { return "All" }
+        guard let filter = model.harnessFilter else { return L10n.Common.all }
         let count = availableHarnesses.count(where: filter.contains)
-        return count == availableHarnesses.count ? "All" : "\(count)/\(availableHarnesses.count)"
+        guard count != availableHarnesses.count else { return L10n.Common.all }
+        return L10n.Workbench.sessionsFraction(shown: count, total: availableHarnesses.count)
     }
 
     private func chipBackground(tint: Color, selected: Bool) -> some View {
@@ -414,65 +441,75 @@ struct SessionFiltersBar: View {
 
     private var rangeMenu: some View {
         Menu {
-            Picker("Date range", selection: $model.dateRange) {
+            Picker(L10n.Workbench.sessionsFilterDateRange, selection: $model.dateRange) {
                 ForEach(SessionManagerModel.DateRange.allCases) { range in
                     Label(range.title, systemImage: range.systemImage).tag(range)
                 }
             }
             .pickerStyle(.inline)
         } label: {
-            menuLabel(systemImage: "calendar", title: "When", detail: model.dateRange.title)
-        }
-        .menuStyle(.button)
-        .buttonStyle(WorkbenchPillButtonStyle())
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel("Choose how far back to list sessions")
-    }
-
-    private var sortMenu: some View {
-        Menu {
-            Picker("Sort", selection: $model.sortOrder) {
-                ForEach(SessionManagerModel.SortOrder.allCases) { order in
-                    Label(order.title, systemImage: order.systemImage).tag(order)
-                }
-            }
-            .pickerStyle(.inline)
-            Divider()
-            Toggle("Group by project", isOn: $model.groupByProject)
-        } label: {
             menuLabel(
-                systemImage: "arrow.up.arrow.down",
-                title: "Sort",
-                detail: model.groupByProject ? "\(model.sortOrder.title) · grouped" : model.sortOrder.title
+                systemImage: "calendar",
+                title: L10n.Workbench.sessionsFilterWhen,
+                detail: model.dateRange.title
             )
         }
         .menuStyle(.button)
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Choose how the list is ordered")
+        .accessibilityLabel(L10n.Workbench.sessionsFilterWhenHelp)
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker(L10n.Workbench.sessionsFilterSort, selection: $model.sortOrder) {
+                ForEach(SessionManagerModel.SortOrder.allCases) { order in
+                    Label(order.title, systemImage: order.systemImage).tag(order)
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            Toggle(L10n.Workbench.sessionsGroupByProject, isOn: $model.groupByProject)
+        } label: {
+            menuLabel(
+                systemImage: "arrow.up.arrow.down",
+                title: L10n.Workbench.sessionsFilterSort,
+                detail: model.groupByProject
+                    ? L10n.Workbench.sessionsFilterSortGrouped(order: model.sortOrder.title)
+                    : model.sortOrder.title
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel(L10n.Workbench.sessionsFilterSortHelp)
     }
 
     private var optionsMenu: some View {
         Menu {
-            Picker("Open in", selection: terminalBinding) {
+            Picker(L10n.Workbench.sessionsOptionsOpenIn, selection: terminalBinding) {
                 ForEach(PreferredTerminal.allCases, id: \.self) { terminal in
                     Text(terminal.displayName).tag(terminal)
                 }
             }
             .pickerStyle(.inline)
             Divider()
-            Toggle("Index message text", isOn: bodyIndexingBinding)
-            Button("Rebuild index…") { model.rebuildIndex() }
+            Toggle(L10n.Workbench.sessionsOptionsIndexMessageText, isOn: bodyIndexingBinding)
+            Button(L10n.Workbench.sessionsOptionsRebuildIndex) { model.rebuildIndex() }
         } label: {
-            menuLabel(systemImage: "slider.horizontal.3", title: "Options", detail: model.preferredTerminal.displayName)
+            menuLabel(
+                systemImage: "slider.horizontal.3",
+                title: L10n.Workbench.sessionsFilterOptions,
+                detail: model.preferredTerminal.displayName
+            )
         }
         .menuStyle(.button)
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Terminal and index options")
+        .accessibilityLabel(L10n.Workbench.sessionsOptionsHelp)
     }
 
     @ViewBuilder
@@ -481,7 +518,9 @@ struct SessionFiltersBar: View {
             Button(role: .destructive) {
                 model.requestDelete(model.checkedSummaries)
             } label: {
-                Text(model.checkedIDs.isEmpty ? "Delete" : "Delete \(model.checkedIDs.count)")
+                Text(model.checkedIDs.isEmpty
+                    ? L10n.Common.delete
+                    : L10n.Workbench.sessionsDeleteCountButton(count: model.checkedIDs.count))
                     .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
             }
             .buttonStyle(WorkbenchPillButtonStyle(prominent: true, tint: .red))
@@ -491,13 +530,16 @@ struct SessionFiltersBar: View {
         Button {
             model.isDeleteMode.toggle()
         } label: {
-            Label(model.isDeleteMode ? "Done" : "Select", systemImage: "checklist")
+            Label(
+                model.isDeleteMode ? L10n.Common.done : L10n.Workbench.sessionsSelectMode,
+                systemImage: "checklist"
+            )
                 .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                 .labelStyle(.titleAndIcon)
         }
         .buttonStyle(WorkbenchPillButtonStyle())
         .fixedSize()
-        .help("Pick sessions to delete")
+        .help(L10n.Workbench.sessionsSelectModeHelp)
     }
 
     // MARK: - Bindings and labels

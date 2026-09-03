@@ -22,10 +22,10 @@ final class SessionManagerModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .all:   "Any time"
-            case .today: "Today"
-            case .week:  "7 days"
-            case .month: "30 days"
+            case .all:   L10n.Workbench.sessionsRangeAll
+            case .today: L10n.Workbench.sessionsRangeToday
+            case .week:  L10n.Workbench.sessionsRangeWeek
+            case .month: L10n.Workbench.sessionsRangeMonth
             }
         }
 
@@ -58,9 +58,9 @@ final class SessionManagerModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .recentFirst: "Newest first"
-            case .oldestFirst: "Oldest first"
-            case .byProject:   "By project"
+            case .recentFirst: L10n.Workbench.sessionsSortRecentFirst
+            case .oldestFirst: L10n.Workbench.sessionsSortOldestFirst
+            case .byProject:   L10n.Workbench.sessionsSortByProject
             }
         }
 
@@ -84,11 +84,42 @@ final class SessionManagerModel: ObservableObject {
         var id: String { summary.id }
     }
 
+    /// Which project a list row groups under.
+    ///
+    /// The bucket is carried as data rather than as a finished heading. A
+    /// pre-translated title stored in `groupedRows` would outlive a language
+    /// change: nothing about the data moves when the user picks another
+    /// language, so the old wording would sit in the headings until the next
+    /// scan. `.named` holds the directory's own last component, which is not
+    /// copy and is never translated.
+    enum ProjectBucket: Hashable, Sendable {
+        case named(String)
+        case noProject
+        case projectless
+
+        var id: String {
+            switch self {
+            case let .named(name): "d:\(name)"
+            case .noProject:       "n:"
+            case .projectless:     "p:"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case let .named(name): name
+            case .noProject:       L10n.Workbench.sessionsProjectNone
+            case .projectless:     L10n.Workbench.sessionsProjectProjectless
+            }
+        }
+    }
+
     struct ProjectGroup: Identifiable, Sendable {
-        let title: String
+        let project: ProjectBucket
         let rows: [Row]
 
-        var id: String { title }
+        var id: String { project.id }
+        var title: String { project.title }
     }
 
     /// Why the open transcript stops where it does.
@@ -410,7 +441,7 @@ final class SessionManagerModel: ObservableObject {
         Task { [weak self] in
             let cleared = (try? await store.eraseAll()) != nil
             guard let self else { return }
-            if !cleared { self.show(toast: "The session index could not be cleared.") }
+            if !cleared { self.show(toast: L10n.Workbench.sessionsToastIndexNotCleared) }
             self.invalidateIndexDerivedState()
             self.summaries = []
             self.hits = []
@@ -753,29 +784,33 @@ final class SessionManagerModel: ObservableObject {
     }
 
     private nonisolated static func grouped(_ rows: [Row]) -> [ProjectGroup] {
-        var order: [String] = []
-        var buckets: [String: [Row]] = [:]
+        var order: [ProjectBucket] = []
+        var buckets: [ProjectBucket: [Row]] = [:]
         for row in rows {
-            let key = projectTitle(for: row.summary)
+            let key = projectBucket(for: row.summary)
             if buckets[key] == nil {
                 buckets[key] = []
                 order.append(key)
             }
             buckets[key]?.append(row)
         }
-        return order.map { ProjectGroup(title: $0, rows: buckets[$0] ?? []) }
+        return order.map { ProjectGroup(project: $0, rows: buckets[$0] ?? []) }
     }
 
-    nonisolated static func projectTitle(_ projectDir: String?) -> String {
-        guard let projectDir, !projectDir.isEmpty else { return "No project" }
-        return URL(fileURLWithPath: projectDir).lastPathComponent
+    nonisolated static func projectBucket(_ projectDir: String?) -> ProjectBucket {
+        guard let projectDir, !projectDir.isEmpty else { return .noProject }
+        return .named(URL(fileURLWithPath: projectDir).lastPathComponent)
+    }
+
+    nonisolated static func projectBucket(for summary: SessionSummary) -> ProjectBucket {
+        if summary.provider == .codex, isGeneratedProjectlessPath(summary.projectDir) {
+            return .projectless
+        }
+        return projectBucket(summary.projectDir)
     }
 
     nonisolated static func projectTitle(for summary: SessionSummary) -> String {
-        if summary.provider == .codex, isGeneratedProjectlessPath(summary.projectDir) {
-            return "Projectless"
-        }
-        return projectTitle(summary.projectDir)
+        projectBucket(for: summary).title
     }
 
     /// Codex Desktop creates a dated scratch cwd for a projectless task. The
@@ -947,8 +982,11 @@ final class SessionManagerModel: ObservableObject {
         transcriptError = Self.cancelledTranscriptMessage
     }
 
-    static let cancelledTranscriptMessage =
-        "Reading this session was stopped. Select it again to reopen it."
+    /// Computed, and `nonisolated` so the detached parse can read it too: a
+    /// `static let` would freeze the language it was first resolved in.
+    nonisolated static var cancelledTranscriptMessage: String {
+        L10n.Workbench.sessionsTranscriptCancelled
+    }
 
     /// Cancel the parse itself, not just the task waiting on it.
     ///
@@ -985,7 +1023,9 @@ final class SessionManagerModel: ObservableObject {
         }
         guard let adapter = registry.adapter(for: summary.provider) else {
             isLoadingTranscript = false
-            transcriptError = "No reader is registered for \(summary.provider.displayName)."
+            transcriptError = L10n.Workbench.sessionsTranscriptNoReader(
+                provider: summary.provider.displayName
+            )
             return
         }
         let generation = transcriptGeneration
@@ -1092,7 +1132,7 @@ final class SessionManagerModel: ObservableObject {
                     messages.append(SessionMessage(
                         seq: messages.count,
                         role: .system,
-                        text: "Auto Review",
+                        text: L10n.Workbench.sessionsTranscriptAutoReviewDivider,
                         timestamp: review.createdAt
                     ))
                     let childStart = messages.count
@@ -1138,7 +1178,7 @@ final class SessionManagerModel: ObservableObject {
                 return ParsedTranscript(
                     document: nil,
                     errorMessage: (error as? LocalizedError)?.errorDescription
-                        ?? "This session's log could not be read.",
+                        ?? L10n.Workbench.sessionsTranscriptReadFailed,
                     focusSeq: nil,
                     truncation: nil
                 )
@@ -1170,7 +1210,7 @@ final class SessionManagerModel: ObservableObject {
 
     func copyResumeCommand(for summary: SessionSummary) {
         guard let line = resumeShellLine(for: summary) else {
-            show(toast: "This session has no resume command.")
+            show(toast: L10n.Workbench.sessionsToastNoResumeCommand)
             return
         }
         Task { [weak self] in
@@ -1182,7 +1222,7 @@ final class SessionManagerModel: ObservableObject {
 
     func resumeInTerminal(_ summary: SessionSummary) {
         guard let line = resumeShellLine(for: summary) else {
-            show(toast: "This session has no resume command.")
+            show(toast: L10n.Workbench.sessionsToastNoResumeCommand)
             return
         }
         let preferred = settingsStore.settings.preferredTerminal
@@ -1196,9 +1236,10 @@ final class SessionManagerModel: ObservableObject {
     private func report(_ result: TerminalLauncher.Result) {
         switch result {
         case let .launched(target):
-            show(toast: "Opened in \(target.displayName).")
+            show(toast: L10n.Workbench.sessionsToastOpenedIn(terminal: target.displayName))
         case let .copiedToClipboard(reason):
-            show(toast: reason.map { "Copied to the clipboard. \($0)" } ?? "Copied to the clipboard.")
+            show(toast: reason.map { L10n.Workbench.sessionsToastCopiedWithReason(reason: $0) }
+                ?? L10n.Workbench.sessionsToastCopied)
         case let .failed(message):
             show(toast: message)
         }
@@ -1289,13 +1330,15 @@ final class SessionManagerModel: ObservableObject {
 
         let failures = outcomes.filter { !$0.success }
         if failures.isEmpty {
-            show(toast: removed.count == 1
-                ? "Deleted 1 session."
-                : "Deleted \(removed.count) sessions.")
+            show(toast: L10n.Workbench.sessionsToastDeleted(count: removed.count))
         } else if let first = failures.first?.failureReason {
             show(toast: removed.isEmpty
                 ? first.message
-                : "Deleted \(removed.count), kept \(failures.count): \(first.message)")
+                : L10n.Workbench.sessionsToastDeletedPartial(
+                    deleted: removed.count,
+                    kept: failures.count,
+                    reason: first.message
+                ))
         }
     }
 
@@ -1337,8 +1380,8 @@ final class SessionManagerModel: ObservableObject {
             }
             guard let self else { return }
             self.show(toast: dropped
-                ? "Indexed message text removed."
-                : "Clearing the indexed message text failed.")
+                ? L10n.Workbench.sessionsToastBodyIndexDropped
+                : L10n.Workbench.sessionsToastBodyIndexDropFailed)
         }
     }
 

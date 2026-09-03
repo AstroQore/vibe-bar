@@ -1171,3 +1171,384 @@
 
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.usageStats" = "Full-window usage and cost analytics are on their way.";
+
+/* Tooltip on the lit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.helpSelected" = "Click to select no harness";
+
+/* Tooltip on the unlit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.helpUnselected" = "Click to show sessions from every harness";
+
+/* Accessibility label on the lit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.labelSelected" = "Select no harness";
+
+/* Accessibility label on the unlit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.labelUnselected" = "Show every session source";
+
+/* Notice under the transcript Details for an AntiGravity session, explaining why the transcript is partial and cannot be deleted */
+"workbench.sessions.antigravityNotice" = "AntiGravity stores its turns as an undocumented binary payload, so this transcript is a partial reconstruction and its sessions cannot be deleted from here — the IDE keeps them open.";
+
+/* Sessions row context menu and transcript header: copy the shell line that reopens this session */
+"workbench.sessions.copyResumeCommand" = "Copy resume command";
+
+/* Tooltip on the session id line in the transcript header, and on the ID row in Details */
+"workbench.sessions.copySessionID" = "Copy session ID";
+
+/* Accessibility label of the session id copy button. {id} is the identifier itself and is never translated. */
+"workbench.sessions.copySessionIDLabel" = "Session ID %1$@. Copy";
+
+/* Tooltip on the copy button beside the session log's path in Details */
+"workbench.sessions.copySourcePath" = "Copy source path";
+
+/* Tooltip on the copy button beside the CWD row in Details */
+"workbench.sessions.copyWorkingDirectory" = "Copy working directory";
+
+/* Sessions filter bar counter when the list is shorter than the index */
+"workbench.sessions.count.shownOfTotal" = "%1$lld of %2$lld sessions";
+
+/* Destructive button in the Sessions filter bar while sessions are ticked */
+"workbench.sessions.delete.countButton" = "Delete %1$lld";
+
+/* Body of the delete confirmation dialog on the Sessions page */
+"workbench.sessions.delete.message" = "The session logs are removed from disk. This cannot be undone.";
+
+/* Destructive item in the Sessions row context menu; the ellipsis says a confirmation follows */
+"workbench.sessions.deleteEllipsis" = "Delete…";
+
+/* Button that unfolds the session's facts under the transcript header */
+"workbench.sessions.details" = "Details";
+
+/* Accessibility value of the Details button while the facts are hidden */
+"workbench.sessions.details.collapsed" = "Collapsed";
+
+/* Accessibility value of the Details button while the facts are shown */
+"workbench.sessions.details.expanded" = "Expanded";
+
+/* Sessions list empty state when the SQLite index would not open */
+"workbench.sessions.empty.indexUnavailableDetail" = "The index under ~/.vibebar could not be opened, so sessions cannot be listed this session.";
+
+/* Sessions list empty state title when the SQLite index would not open */
+"workbench.sessions.empty.indexUnavailableTitle" = "Session index unavailable";
+
+/* Sessions list empty state when the index is fine but nothing was ever scanned */
+"workbench.sessions.empty.noLogsDetail" = "No session logs were found on this Mac for any of the %1$lld harnesses Vibe Bar scans.";
+
+/* Sessions list empty state title when filters or search exclude everything */
+"workbench.sessions.empty.noMatchTitle" = "No sessions match";
+
+/* Sessions list empty state while the index scan is still running */
+"workbench.sessions.empty.scanningDetail" = "Still scanning the session logs on disk.";
+
+/* Sessions list empty state when the search matched nothing */
+"workbench.sessions.empty.searchNoMatchDetail" = "Nothing in the indexed sessions matches that search.";
+
+/* Details row label: when the session was created */
+"workbench.sessions.fact.created" = "Created";
+
+/* Details row label: the session's working directory */
+"workbench.sessions.fact.cwd" = "CWD";
+
+/* Details row label: the session identifier */
+"workbench.sessions.fact.id" = "ID";
+
+/* Details row label: when the session was last written to */
+"workbench.sessions.fact.lastActive" = "Last active";
+
+/* Details row label: the session log's path on disk */
+"workbench.sessions.fact.source" = "Source";
+
+/* Sessions filter bar menu that ticks whole companies at once */
+"workbench.sessions.filter.company" = "Company";
+
+/* Picker inside the Sessions When menu */
+"workbench.sessions.filter.dateRange" = "Date range";
+
+/* Sessions filter bar button that opens the project-directory filters */
+"workbench.sessions.filter.folders" = "Folders";
+
+/* Value on the Sessions Folders button while a directory filter is set */
+"workbench.sessions.filter.foldersFiltered" = "Filtered";
+
+/* Sessions filter bar menu that ticks individual harnesses */
+"workbench.sessions.filter.harness" = "Harness";
+
+/* One row of the Sessions Harness menu: the harness name and how many sessions it has. The name is never translated. */
+"workbench.sessions.filter.harnessCount" = "%1$@  %2$lld";
+
+/* Sessions filter bar menu holding the terminal and index options */
+"workbench.sessions.filter.options" = "Options";
+
+/* Sessions filter bar menu that picks which parts of a session the search covers */
+"workbench.sessions.filter.scope" = "Scope";
+
+/* Sessions filter bar menu that picks the list order */
+"workbench.sessions.filter.sort" = "Sort";
+
+/* Value on the Sessions Sort menu while Group by project is on. {order} is the chosen order's own label. */
+"workbench.sessions.filter.sortGrouped" = "%1$@ · grouped";
+
+/* Accessibility label of the Sessions Sort menu */
+"workbench.sessions.filter.sortHelp" = "Choose how the list is ordered";
+
+/* Sessions filter bar menu that picks how far back to list */
+"workbench.sessions.filter.when" = "When";
+
+/* Accessibility label of the Sessions When menu */
+"workbench.sessions.filter.whenHelp" = "Choose how far back to list sessions";
+
+/* Tooltip on the next-match button in the transcript find bar */
+"workbench.sessions.find.next" = "Next match";
+
+/* Counter in the transcript find bar when nothing matched */
+"workbench.sessions.find.none" = "none";
+
+/* Placeholder and accessibility label of the transcript find field */
+"workbench.sessions.find.placeholder" = "Find in transcript";
+
+/* Tooltip on the previous-match button in the transcript find bar */
+"workbench.sessions.find.previous" = "Previous match";
+
+/* Field label in the Sessions directory-filter popover */
+"workbench.sessions.folders.exclude" = "Exclude paths containing";
+
+/* Example value in the exclude field of the Sessions directory-filter popover */
+"workbench.sessions.folders.excludePlaceholder" = "/archive, /vendor";
+
+/* Field label in the Sessions directory-filter popover */
+"workbench.sessions.folders.include" = "Include paths containing";
+
+/* Example value in the include field of the Sessions directory-filter popover */
+"workbench.sessions.folders.includePlaceholder" = "/project/a, /project/b";
+
+/* Caption under the Sessions directory-filter fields */
+"workbench.sessions.folders.separatorHint" = "Separate multiple paths with commas, semicolons, or new lines.";
+
+/* Title of the Sessions directory-filter popover */
+"workbench.sessions.folders.title" = "Directory filters";
+
+/* Compact counter used across the Sessions page: index scan progress, how many companies or harnesses are ticked, and which find match is in view */
+"workbench.sessions.fraction" = "%1$lld/%2$lld";
+
+/* Toggle in the Sessions Sort menu */
+"workbench.sessions.groupByProject" = "Group by project";
+
+/* Sessions filter bar status while a scan is running and its total is not known yet */
+"workbench.sessions.index.scanning" = "scanning…";
+
+/* Sessions filter bar status when the SQLite index would not open */
+"workbench.sessions.index.unavailable" = "index unavailable";
+
+/* Notice at the foot of the Sessions list when it stops at the loaded-summary ceiling */
+"workbench.sessions.list.capNotice" = "Showing the first %1$lld of %2$lld sessions. Narrow the filters or search to reach the rest.";
+
+/* Context menu item on a transcript message card */
+"workbench.sessions.message.copy" = "Copy Message";
+
+/* Tooltip and accessibility label of the copy button on a transcript message card */
+"workbench.sessions.message.copyHelp" = "Copy this message";
+
+/* Button that folds a long transcript message back up */
+"workbench.sessions.message.showLess" = "Show less";
+
+/* Button that unfolds a long transcript message; {count} is the message's length in characters */
+"workbench.sessions.message.showMore" = "Show more (%1$lld chars)";
+
+/* Sessions row context menu and transcript resume row: run the resume command in a terminal */
+"workbench.sessions.openInTerminal" = "Open in Terminal";
+
+/* Accessibility label of the Sessions Options menu */
+"workbench.sessions.options.help" = "Terminal and index options";
+
+/* Toggle in the Sessions Options menu that stores message excerpts in the index */
+"workbench.sessions.options.indexMessageText" = "Index message text";
+
+/* Picker in the Sessions Options menu that chooses where a resume command is sent */
+"workbench.sessions.options.openIn" = "Open in";
+
+/* Button in the Sessions Options menu that erases and rescans the index */
+"workbench.sessions.options.rebuildIndex" = "Rebuild index…";
+
+/* Empty state of the transcript outline popover */
+"workbench.sessions.outline.empty" = "This transcript has no user prompts.";
+
+/* Heading of the transcript outline popover */
+"workbench.sessions.outline.heading" = "PROMPTS";
+
+/* Tooltip on the transcript outline button */
+"workbench.sessions.outline.help" = "Jump to a prompt";
+
+/* Accessibility label of the transcript outline button */
+"workbench.sessions.outline.label" = "Show the transcript outline";
+
+/* Button that moves the transcript to the next page of messages */
+"workbench.sessions.page.next" = "Next";
+
+/* Button that moves the transcript to the previous page of messages */
+"workbench.sessions.page.previous" = "Previous";
+
+/* Sessions group heading and footer label for a session with no working directory */
+"workbench.sessions.project.none" = "No project";
+
+/* Sessions group heading, footer label and Details value for a Codex task started without a project */
+"workbench.sessions.project.projectless" = "Projectless";
+
+/* Sessions When menu option: no lower bound */
+"workbench.sessions.range.all" = "Any time";
+
+/* Sessions When menu option: the last thirty days */
+"workbench.sessions.range.month" = "30 days";
+
+/* Sessions When menu option: since midnight */
+"workbench.sessions.range.today" = "Today";
+
+/* Sessions When menu option: the last seven days */
+"workbench.sessions.range.week" = "7 days";
+
+/* Tooltip on the Sessions refresh button */
+"workbench.sessions.refreshHelp" = "Rescan the session logs on disk";
+
+/* Heading above the shell line that reopens a session, in the transcript Details */
+"workbench.sessions.resume.heading" = "RESUME";
+
+/* Shown in the transcript Details when the provider offers no resume command */
+"workbench.sessions.resume.none" = "This session has no command-line entry point.";
+
+/* Role label on a transcript message card */
+"workbench.sessions.role.assistant" = "Assistant";
+
+/* Role label on a transcript message card that is none of the known roles */
+"workbench.sessions.role.other" = "Note";
+
+/* Role label on a transcript message card */
+"workbench.sessions.role.system" = "System";
+
+/* Role label on a transcript message card */
+"workbench.sessions.role.tool" = "Tool";
+
+/* Role label on a transcript message card written by the person */
+"workbench.sessions.role.user" = "You";
+
+/* Tooltip on a Sessions row checkbox while delete mode is on */
+"workbench.sessions.row.includeInDeletion" = "Include this session in the deletion";
+
+/* Accessibility label of a Sessions row checkbox */
+"workbench.sessions.row.select" = "Select this session";
+
+/* Accessibility hint on a Sessions row outside delete mode */
+"workbench.sessions.row.showTranscript" = "Show this transcript";
+
+/* Accessibility hint on a Sessions row while delete mode is on */
+"workbench.sessions.row.toggleForDeletion" = "Toggle this session for deletion";
+
+/* Tooltip on the buttons that hand a resume command to a terminal. {terminal} is the app's own name. */
+"workbench.sessions.runInHelp" = "Run it in %1$@";
+
+/* Sessions search scope */
+"workbench.sessions.scope.assistant" = "Assistant replies";
+
+/* Sessions search scope */
+"workbench.sessions.scope.system" = "System prompts";
+
+/* Sessions search scope */
+"workbench.sessions.scope.title" = "Titles and session IDs";
+
+/* Sessions search scope */
+"workbench.sessions.scope.tool" = "Tool and file operations";
+
+/* Sessions search scope */
+"workbench.sessions.scope.user" = "User prompts";
+
+/* Footer of the Sessions Scope menu while message indexing is on */
+"workbench.sessions.search.bodyIndexed" = "Message text is indexed locally.";
+
+/* Footer of the Sessions Scope menu while message indexing is off */
+"workbench.sessions.search.bodyNotIndexed" = "Enable message indexing in Options to search transcript content.";
+
+/* Tooltip on the clear button inside the Sessions search field */
+"workbench.sessions.search.clearHelp" = "Clear the search";
+
+/* Placeholder of the Sessions search field */
+"workbench.sessions.search.placeholder" = "Search sessions";
+
+/* Button that turns on the Sessions page's delete-selection mode */
+"workbench.sessions.selectMode" = "Select";
+
+/* Tooltip on the Sessions select-mode button */
+"workbench.sessions.selectModeHelp" = "Pick sessions to delete";
+
+/* Sessions Sort menu option */
+"workbench.sessions.sort.byProject" = "By project";
+
+/* Sessions Sort menu option */
+"workbench.sessions.sort.oldestFirst" = "Oldest first";
+
+/* Sessions Sort menu option */
+"workbench.sessions.sort.recentFirst" = "Newest first";
+
+/* Sessions toast after turning message indexing off and the stored excerpts could not be dropped */
+"workbench.sessions.toast.bodyIndexDropFailed" = "Clearing the indexed message text failed.";
+
+/* Sessions toast after turning message indexing off */
+"workbench.sessions.toast.bodyIndexDropped" = "Indexed message text removed.";
+
+/* Sessions toast after a command was put on the pasteboard */
+"workbench.sessions.toast.copied" = "Copied to the clipboard.";
+
+/* Sessions toast after a terminal could not be driven and the command went to the pasteboard instead. {reason} is the launcher's own explanation. */
+"workbench.sessions.toast.copiedWithReason" = "Copied to the clipboard. %1$@";
+
+/* Sessions toast after copying a session's working directory */
+"workbench.sessions.toast.cwdCopied" = "Working directory copied.";
+
+/* Sessions toast after a partial delete. {reason} is the first failure's own message. */
+"workbench.sessions.toast.deletedPartial" = "Deleted %1$lld, kept %2$lld: %3$@";
+
+/* Sessions toast when a rebuild could not erase the index first */
+"workbench.sessions.toast.indexNotCleared" = "The session index could not be cleared.";
+
+/* Sessions toast after copying one transcript message */
+"workbench.sessions.toast.messageCopied" = "Message copied.";
+
+/* Sessions toast when a session cannot be handed back to a CLI */
+"workbench.sessions.toast.noResumeCommand" = "This session has no resume command.";
+
+/* Sessions toast after a resume command was handed to a terminal. {terminal} is the app's own name. */
+"workbench.sessions.toast.openedIn" = "Opened in %1$@.";
+
+/* Sessions toast after copying a session identifier */
+"workbench.sessions.toast.sessionIDCopied" = "Session ID copied.";
+
+/* Sessions toast after copying a session log's path */
+"workbench.sessions.toast.sourcePathCopied" = "Source path copied.";
+
+/* Separator inserted in a transcript where a Codex Auto Review child session is merged in. Auto Review is Codex's own feature name and stays in English. */
+"workbench.sessions.transcript.autoReviewDivider" = "Auto Review";
+
+/* Shown in the transcript pane after the reader was cancelled */
+"workbench.sessions.transcript.cancelled" = "Reading this session was stopped. Select it again to reopen it.";
+
+/* Button on the truncation banner that re-reads a very large session with no byte bound */
+"workbench.sessions.transcript.loadAll" = "Load entire transcript";
+
+/* Shown in the transcript pane while a session file is being parsed */
+"workbench.sessions.transcript.loading" = "Reading the session log…";
+
+/* Shown in the transcript pane when the log parsed to nothing */
+"workbench.sessions.transcript.noMessages" = "This session's log has no readable messages.";
+
+/* Transcript error when no adapter can open this provider's sessions. {provider} is the provider's own name. */
+"workbench.sessions.transcript.noReader" = "No reader is registered for %1$@.";
+
+/* Header of the transcript pager */
+"workbench.sessions.transcript.pageRange" = "Messages %1$lld–%2$lld of %3$lld";
+
+/* Transcript pane placeholder while no session is selected */
+"workbench.sessions.transcript.placeholderDetail" = "Pick a session on the left to read its transcript, copy its resume command, or hand it back to its CLI.";
+
+/* Transcript pane placeholder title while no session is selected */
+"workbench.sessions.transcript.placeholderTitle" = "No session selected";
+
+/* Transcript error when the adapter threw and offered no message of its own */
+"workbench.sessions.transcript.readFailed" = "This session's log could not be read.";
+
+/* Truncation banner detail. Both sizes arrive already formatted as byte counts. */
+"workbench.sessions.transcript.truncatedDetail" = "%1$@ read of %2$@. Reading all of it holds the whole transcript in memory.";

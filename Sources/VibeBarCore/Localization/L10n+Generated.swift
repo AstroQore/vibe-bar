@@ -1650,6 +1650,538 @@ extension L10n {
         public static var placeholderUsageStats: String {
             L10n.string("workbench.placeholder.usageStats")
         }
+        /// `workbench.sessions.allChip.helpSelected` — Click to select no harness
+        public static var sessionsAllChipHelpSelected: String {
+            L10n.string("workbench.sessions.allChip.helpSelected")
+        }
+        /// `workbench.sessions.allChip.helpUnselected` — Click to show sessions from every harness
+        public static var sessionsAllChipHelpUnselected: String {
+            L10n.string("workbench.sessions.allChip.helpUnselected")
+        }
+        /// `workbench.sessions.allChip.labelSelected` — Select no harness
+        public static var sessionsAllChipLabelSelected: String {
+            L10n.string("workbench.sessions.allChip.labelSelected")
+        }
+        /// `workbench.sessions.allChip.labelUnselected` — Show every session source
+        public static var sessionsAllChipLabelUnselected: String {
+            L10n.string("workbench.sessions.allChip.labelUnselected")
+        }
+        /// `workbench.sessions.antigravityNotice` — AntiGravity stores its turns as an undocumented binary payload, so this transcript is a partial reconstruction and its sessions cannot be deleted from here — the IDE keeps them open.
+        public static var sessionsAntigravityNotice: String {
+            L10n.string("workbench.sessions.antigravityNotice")
+        }
+        /// `workbench.sessions.copyResumeCommand` — Copy resume command
+        public static var sessionsCopyResumeCommand: String {
+            L10n.string("workbench.sessions.copyResumeCommand")
+        }
+        /// `workbench.sessions.copySessionID` — Copy session ID
+        public static var sessionsCopySessionID: String {
+            L10n.string("workbench.sessions.copySessionID")
+        }
+        /// `workbench.sessions.copySessionIDLabel` — Session ID {id}. Copy
+        public static func sessionsCopySessionIDLabel(id: String) -> String {
+            L10n.string("workbench.sessions.copySessionIDLabel", id)
+        }
+        /// `workbench.sessions.copySourcePath` — Copy source path
+        public static var sessionsCopySourcePath: String {
+            L10n.string("workbench.sessions.copySourcePath")
+        }
+        /// `workbench.sessions.copyWorkingDirectory` — Copy working directory
+        public static var sessionsCopyWorkingDirectory: String {
+            L10n.string("workbench.sessions.copyWorkingDirectory")
+        }
+        /// `workbench.sessions.count.sessions` — {count, plural, one {1 session} other {# sessions}}
+        public static func sessionsCountSessions(count: Int) -> String {
+            L10n.string("workbench.sessions.count.sessions", count)
+        }
+        /// `workbench.sessions.count.shownOfTotal` — {shown} of {total} sessions
+        public static func sessionsCountShownOfTotal(shown: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.count.shownOfTotal", shown, total)
+        }
+        /// `workbench.sessions.delete.confirm` — {count, plural, one {Delete this session?} other {Delete # sessions?}}
+        public static func sessionsDeleteConfirm(count: Int) -> String {
+            L10n.string("workbench.sessions.delete.confirm", count)
+        }
+        /// `workbench.sessions.delete.countButton` — Delete {count}
+        public static func sessionsDeleteCountButton(count: Int) -> String {
+            L10n.string("workbench.sessions.delete.countButton", count)
+        }
+        /// `workbench.sessions.delete.message` — The session logs are removed from disk. This cannot be undone.
+        public static var sessionsDeleteMessage: String {
+            L10n.string("workbench.sessions.delete.message")
+        }
+        /// `workbench.sessions.deleteEllipsis` — Delete…
+        public static var sessionsDeleteEllipsis: String {
+            L10n.string("workbench.sessions.deleteEllipsis")
+        }
+        /// `workbench.sessions.details` — Details
+        public static var sessionsDetails: String {
+            L10n.string("workbench.sessions.details")
+        }
+        /// `workbench.sessions.details.collapsed` — Collapsed
+        public static var sessionsDetailsCollapsed: String {
+            L10n.string("workbench.sessions.details.collapsed")
+        }
+        /// `workbench.sessions.details.expanded` — Expanded
+        public static var sessionsDetailsExpanded: String {
+            L10n.string("workbench.sessions.details.expanded")
+        }
+        /// `workbench.sessions.empty.indexUnavailableDetail` — The index under ~/.vibebar could not be opened, so sessions cannot be listed this session.
+        public static var sessionsEmptyIndexUnavailableDetail: String {
+            L10n.string("workbench.sessions.empty.indexUnavailableDetail")
+        }
+        /// `workbench.sessions.empty.indexUnavailableTitle` — Session index unavailable
+        public static var sessionsEmptyIndexUnavailableTitle: String {
+            L10n.string("workbench.sessions.empty.indexUnavailableTitle")
+        }
+        /// `workbench.sessions.empty.noLogsDetail` — No session logs were found on this Mac for any of the {count} harnesses Vibe Bar scans.
+        public static func sessionsEmptyNoLogsDetail(count: Int) -> String {
+            L10n.string("workbench.sessions.empty.noLogsDetail", count)
+        }
+        /// `workbench.sessions.empty.noMatchTitle` — No sessions match
+        public static var sessionsEmptyNoMatchTitle: String {
+            L10n.string("workbench.sessions.empty.noMatchTitle")
+        }
+        /// `workbench.sessions.empty.scanningDetail` — Still scanning the session logs on disk.
+        public static var sessionsEmptyScanningDetail: String {
+            L10n.string("workbench.sessions.empty.scanningDetail")
+        }
+        /// `workbench.sessions.empty.searchNoMatchDetail` — Nothing in the indexed sessions matches that search.
+        public static var sessionsEmptySearchNoMatchDetail: String {
+            L10n.string("workbench.sessions.empty.searchNoMatchDetail")
+        }
+        /// `workbench.sessions.fact.created` — Created
+        public static var sessionsFactCreated: String {
+            L10n.string("workbench.sessions.fact.created")
+        }
+        /// `workbench.sessions.fact.cwd` — CWD
+        public static var sessionsFactCwd: String {
+            L10n.string("workbench.sessions.fact.cwd")
+        }
+        /// `workbench.sessions.fact.id` — ID
+        public static var sessionsFactId: String {
+            L10n.string("workbench.sessions.fact.id")
+        }
+        /// `workbench.sessions.fact.lastActive` — Last active
+        public static var sessionsFactLastActive: String {
+            L10n.string("workbench.sessions.fact.lastActive")
+        }
+        /// `workbench.sessions.fact.source` — Source
+        public static var sessionsFactSource: String {
+            L10n.string("workbench.sessions.fact.source")
+        }
+        /// `workbench.sessions.filter.company` — Company
+        public static var sessionsFilterCompany: String {
+            L10n.string("workbench.sessions.filter.company")
+        }
+        /// `workbench.sessions.filter.dateRange` — Date range
+        public static var sessionsFilterDateRange: String {
+            L10n.string("workbench.sessions.filter.dateRange")
+        }
+        /// `workbench.sessions.filter.folders` — Folders
+        public static var sessionsFilterFolders: String {
+            L10n.string("workbench.sessions.filter.folders")
+        }
+        /// `workbench.sessions.filter.foldersFiltered` — Filtered
+        public static var sessionsFilterFoldersFiltered: String {
+            L10n.string("workbench.sessions.filter.foldersFiltered")
+        }
+        /// `workbench.sessions.filter.harness` — Harness
+        public static var sessionsFilterHarness: String {
+            L10n.string("workbench.sessions.filter.harness")
+        }
+        /// `workbench.sessions.filter.harnessCount` — {harness}  {count}
+        public static func sessionsFilterHarnessCount(harness: String, count: Int) -> String {
+            L10n.string("workbench.sessions.filter.harnessCount", harness, count)
+        }
+        /// `workbench.sessions.filter.options` — Options
+        public static var sessionsFilterOptions: String {
+            L10n.string("workbench.sessions.filter.options")
+        }
+        /// `workbench.sessions.filter.scope` — Scope
+        public static var sessionsFilterScope: String {
+            L10n.string("workbench.sessions.filter.scope")
+        }
+        /// `workbench.sessions.filter.sort` — Sort
+        public static var sessionsFilterSort: String {
+            L10n.string("workbench.sessions.filter.sort")
+        }
+        /// `workbench.sessions.filter.sortGrouped` — {order} · grouped
+        public static func sessionsFilterSortGrouped(order: String) -> String {
+            L10n.string("workbench.sessions.filter.sortGrouped", order)
+        }
+        /// `workbench.sessions.filter.sortHelp` — Choose how the list is ordered
+        public static var sessionsFilterSortHelp: String {
+            L10n.string("workbench.sessions.filter.sortHelp")
+        }
+        /// `workbench.sessions.filter.when` — When
+        public static var sessionsFilterWhen: String {
+            L10n.string("workbench.sessions.filter.when")
+        }
+        /// `workbench.sessions.filter.whenHelp` — Choose how far back to list sessions
+        public static var sessionsFilterWhenHelp: String {
+            L10n.string("workbench.sessions.filter.whenHelp")
+        }
+        /// `workbench.sessions.find.next` — Next match
+        public static var sessionsFindNext: String {
+            L10n.string("workbench.sessions.find.next")
+        }
+        /// `workbench.sessions.find.none` — none
+        public static var sessionsFindNone: String {
+            L10n.string("workbench.sessions.find.none")
+        }
+        /// `workbench.sessions.find.placeholder` — Find in transcript
+        public static var sessionsFindPlaceholder: String {
+            L10n.string("workbench.sessions.find.placeholder")
+        }
+        /// `workbench.sessions.find.previous` — Previous match
+        public static var sessionsFindPrevious: String {
+            L10n.string("workbench.sessions.find.previous")
+        }
+        /// `workbench.sessions.folders.exclude` — Exclude paths containing
+        public static var sessionsFoldersExclude: String {
+            L10n.string("workbench.sessions.folders.exclude")
+        }
+        /// `workbench.sessions.folders.excludePlaceholder` — /archive, /vendor
+        public static var sessionsFoldersExcludePlaceholder: String {
+            L10n.string("workbench.sessions.folders.excludePlaceholder")
+        }
+        /// `workbench.sessions.folders.include` — Include paths containing
+        public static var sessionsFoldersInclude: String {
+            L10n.string("workbench.sessions.folders.include")
+        }
+        /// `workbench.sessions.folders.includePlaceholder` — /project/a, /project/b
+        public static var sessionsFoldersIncludePlaceholder: String {
+            L10n.string("workbench.sessions.folders.includePlaceholder")
+        }
+        /// `workbench.sessions.folders.separatorHint` — Separate multiple paths with commas, semicolons, or new lines.
+        public static var sessionsFoldersSeparatorHint: String {
+            L10n.string("workbench.sessions.folders.separatorHint")
+        }
+        /// `workbench.sessions.folders.title` — Directory filters
+        public static var sessionsFoldersTitle: String {
+            L10n.string("workbench.sessions.folders.title")
+        }
+        /// `workbench.sessions.fraction` — {shown}/{total}
+        public static func sessionsFraction(shown: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.fraction", shown, total)
+        }
+        /// `workbench.sessions.groupByProject` — Group by project
+        public static var sessionsGroupByProject: String {
+            L10n.string("workbench.sessions.groupByProject")
+        }
+        /// `workbench.sessions.index.scanning` — scanning…
+        public static var sessionsIndexScanning: String {
+            L10n.string("workbench.sessions.index.scanning")
+        }
+        /// `workbench.sessions.index.unavailable` — index unavailable
+        public static var sessionsIndexUnavailable: String {
+            L10n.string("workbench.sessions.index.unavailable")
+        }
+        /// `workbench.sessions.list.capNotice` — Showing the first {shown} of {total} sessions. Narrow the filters or search to reach the rest.
+        public static func sessionsListCapNotice(shown: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.list.capNotice", shown, total)
+        }
+        /// `workbench.sessions.message.copy` — Copy Message
+        public static var sessionsMessageCopy: String {
+            L10n.string("workbench.sessions.message.copy")
+        }
+        /// `workbench.sessions.message.copyHelp` — Copy this message
+        public static var sessionsMessageCopyHelp: String {
+            L10n.string("workbench.sessions.message.copyHelp")
+        }
+        /// `workbench.sessions.message.showLess` — Show less
+        public static var sessionsMessageShowLess: String {
+            L10n.string("workbench.sessions.message.showLess")
+        }
+        /// `workbench.sessions.message.showMore` — Show more ({count} chars)
+        public static func sessionsMessageShowMore(count: Int) -> String {
+            L10n.string("workbench.sessions.message.showMore", count)
+        }
+        /// `workbench.sessions.openInTerminal` — Open in Terminal
+        public static var sessionsOpenInTerminal: String {
+            L10n.string("workbench.sessions.openInTerminal")
+        }
+        /// `workbench.sessions.options.help` — Terminal and index options
+        public static var sessionsOptionsHelp: String {
+            L10n.string("workbench.sessions.options.help")
+        }
+        /// `workbench.sessions.options.indexMessageText` — Index message text
+        public static var sessionsOptionsIndexMessageText: String {
+            L10n.string("workbench.sessions.options.indexMessageText")
+        }
+        /// `workbench.sessions.options.openIn` — Open in
+        public static var sessionsOptionsOpenIn: String {
+            L10n.string("workbench.sessions.options.openIn")
+        }
+        /// `workbench.sessions.options.rebuildIndex` — Rebuild index…
+        public static var sessionsOptionsRebuildIndex: String {
+            L10n.string("workbench.sessions.options.rebuildIndex")
+        }
+        /// `workbench.sessions.outline.empty` — This transcript has no user prompts.
+        public static var sessionsOutlineEmpty: String {
+            L10n.string("workbench.sessions.outline.empty")
+        }
+        /// `workbench.sessions.outline.heading` — PROMPTS
+        public static var sessionsOutlineHeading: String {
+            L10n.string("workbench.sessions.outline.heading")
+        }
+        /// `workbench.sessions.outline.help` — Jump to a prompt
+        public static var sessionsOutlineHelp: String {
+            L10n.string("workbench.sessions.outline.help")
+        }
+        /// `workbench.sessions.outline.label` — Show the transcript outline
+        public static var sessionsOutlineLabel: String {
+            L10n.string("workbench.sessions.outline.label")
+        }
+        /// `workbench.sessions.page.next` — Next
+        public static var sessionsPageNext: String {
+            L10n.string("workbench.sessions.page.next")
+        }
+        /// `workbench.sessions.page.previous` — Previous
+        public static var sessionsPagePrevious: String {
+            L10n.string("workbench.sessions.page.previous")
+        }
+        /// `workbench.sessions.project.none` — No project
+        public static var sessionsProjectNone: String {
+            L10n.string("workbench.sessions.project.none")
+        }
+        /// `workbench.sessions.project.projectless` — Projectless
+        public static var sessionsProjectProjectless: String {
+            L10n.string("workbench.sessions.project.projectless")
+        }
+        /// `workbench.sessions.range.all` — Any time
+        public static var sessionsRangeAll: String {
+            L10n.string("workbench.sessions.range.all")
+        }
+        /// `workbench.sessions.range.month` — 30 days
+        public static var sessionsRangeMonth: String {
+            L10n.string("workbench.sessions.range.month")
+        }
+        /// `workbench.sessions.range.today` — Today
+        public static var sessionsRangeToday: String {
+            L10n.string("workbench.sessions.range.today")
+        }
+        /// `workbench.sessions.range.week` — 7 days
+        public static var sessionsRangeWeek: String {
+            L10n.string("workbench.sessions.range.week")
+        }
+        /// `workbench.sessions.refreshHelp` — Rescan the session logs on disk
+        public static var sessionsRefreshHelp: String {
+            L10n.string("workbench.sessions.refreshHelp")
+        }
+        /// `workbench.sessions.resume.heading` — RESUME
+        public static var sessionsResumeHeading: String {
+            L10n.string("workbench.sessions.resume.heading")
+        }
+        /// `workbench.sessions.resume.none` — This session has no command-line entry point.
+        public static var sessionsResumeNone: String {
+            L10n.string("workbench.sessions.resume.none")
+        }
+        /// `workbench.sessions.role.assistant` — Assistant
+        public static var sessionsRoleAssistant: String {
+            L10n.string("workbench.sessions.role.assistant")
+        }
+        /// `workbench.sessions.role.other` — Note
+        public static var sessionsRoleOther: String {
+            L10n.string("workbench.sessions.role.other")
+        }
+        /// `workbench.sessions.role.system` — System
+        public static var sessionsRoleSystem: String {
+            L10n.string("workbench.sessions.role.system")
+        }
+        /// `workbench.sessions.role.tool` — Tool
+        public static var sessionsRoleTool: String {
+            L10n.string("workbench.sessions.role.tool")
+        }
+        /// `workbench.sessions.role.user` — You
+        public static var sessionsRoleUser: String {
+            L10n.string("workbench.sessions.role.user")
+        }
+        /// `workbench.sessions.row.autoReviewsMerged` — {count, plural, one {1 Auto Review merged} other {# Auto Reviews merged}}
+        public static func sessionsRowAutoReviewsMerged(count: Int) -> String {
+            L10n.string("workbench.sessions.row.autoReviewsMerged", count)
+        }
+        /// `workbench.sessions.row.includeInDeletion` — Include this session in the deletion
+        public static var sessionsRowIncludeInDeletion: String {
+            L10n.string("workbench.sessions.row.includeInDeletion")
+        }
+        /// `workbench.sessions.row.messageCount` — {count, plural, one {# message} other {# messages}}
+        public static func sessionsRowMessageCount(count: Int) -> String {
+            L10n.string("workbench.sessions.row.messageCount", count)
+        }
+        /// `workbench.sessions.row.select` — Select this session
+        public static var sessionsRowSelect: String {
+            L10n.string("workbench.sessions.row.select")
+        }
+        /// `workbench.sessions.row.showTranscript` — Show this transcript
+        public static var sessionsRowShowTranscript: String {
+            L10n.string("workbench.sessions.row.showTranscript")
+        }
+        /// `workbench.sessions.row.toggleForDeletion` — Toggle this session for deletion
+        public static var sessionsRowToggleForDeletion: String {
+            L10n.string("workbench.sessions.row.toggleForDeletion")
+        }
+        /// `workbench.sessions.runInHelp` — Run it in {terminal}
+        public static func sessionsRunInHelp(terminal: String) -> String {
+            L10n.string("workbench.sessions.runInHelp", terminal)
+        }
+        /// `workbench.sessions.scope.assistant` — Assistant replies
+        public static var sessionsScopeAssistant: String {
+            L10n.string("workbench.sessions.scope.assistant")
+        }
+        /// `workbench.sessions.scope.system` — System prompts
+        public static var sessionsScopeSystem: String {
+            L10n.string("workbench.sessions.scope.system")
+        }
+        /// `workbench.sessions.scope.title` — Titles and session IDs
+        public static var sessionsScopeTitle: String {
+            L10n.string("workbench.sessions.scope.title")
+        }
+        /// `workbench.sessions.scope.tool` — Tool and file operations
+        public static var sessionsScopeTool: String {
+            L10n.string("workbench.sessions.scope.tool")
+        }
+        /// `workbench.sessions.scope.user` — User prompts
+        public static var sessionsScopeUser: String {
+            L10n.string("workbench.sessions.scope.user")
+        }
+        /// `workbench.sessions.search.bodyIndexed` — Message text is indexed locally.
+        public static var sessionsSearchBodyIndexed: String {
+            L10n.string("workbench.sessions.search.bodyIndexed")
+        }
+        /// `workbench.sessions.search.bodyNotIndexed` — Enable message indexing in Options to search transcript content.
+        public static var sessionsSearchBodyNotIndexed: String {
+            L10n.string("workbench.sessions.search.bodyNotIndexed")
+        }
+        /// `workbench.sessions.search.clearHelp` — Clear the search
+        public static var sessionsSearchClearHelp: String {
+            L10n.string("workbench.sessions.search.clearHelp")
+        }
+        /// `workbench.sessions.search.placeholder` — Search sessions
+        public static var sessionsSearchPlaceholder: String {
+            L10n.string("workbench.sessions.search.placeholder")
+        }
+        /// `workbench.sessions.selectMode` — Select
+        public static var sessionsSelectMode: String {
+            L10n.string("workbench.sessions.selectMode")
+        }
+        /// `workbench.sessions.selectModeHelp` — Pick sessions to delete
+        public static var sessionsSelectModeHelp: String {
+            L10n.string("workbench.sessions.selectModeHelp")
+        }
+        /// `workbench.sessions.sort.byProject` — By project
+        public static var sessionsSortByProject: String {
+            L10n.string("workbench.sessions.sort.byProject")
+        }
+        /// `workbench.sessions.sort.oldestFirst` — Oldest first
+        public static var sessionsSortOldestFirst: String {
+            L10n.string("workbench.sessions.sort.oldestFirst")
+        }
+        /// `workbench.sessions.sort.recentFirst` — Newest first
+        public static var sessionsSortRecentFirst: String {
+            L10n.string("workbench.sessions.sort.recentFirst")
+        }
+        /// `workbench.sessions.toast.bodyIndexDropFailed` — Clearing the indexed message text failed.
+        public static var sessionsToastBodyIndexDropFailed: String {
+            L10n.string("workbench.sessions.toast.bodyIndexDropFailed")
+        }
+        /// `workbench.sessions.toast.bodyIndexDropped` — Indexed message text removed.
+        public static var sessionsToastBodyIndexDropped: String {
+            L10n.string("workbench.sessions.toast.bodyIndexDropped")
+        }
+        /// `workbench.sessions.toast.copied` — Copied to the clipboard.
+        public static var sessionsToastCopied: String {
+            L10n.string("workbench.sessions.toast.copied")
+        }
+        /// `workbench.sessions.toast.copiedWithReason` — Copied to the clipboard. {reason}
+        public static func sessionsToastCopiedWithReason(reason: String) -> String {
+            L10n.string("workbench.sessions.toast.copiedWithReason", reason)
+        }
+        /// `workbench.sessions.toast.cwdCopied` — Working directory copied.
+        public static var sessionsToastCwdCopied: String {
+            L10n.string("workbench.sessions.toast.cwdCopied")
+        }
+        /// `workbench.sessions.toast.deleted` — {count, plural, one {Deleted 1 session.} other {Deleted # sessions.}}
+        public static func sessionsToastDeleted(count: Int) -> String {
+            L10n.string("workbench.sessions.toast.deleted", count)
+        }
+        /// `workbench.sessions.toast.deletedPartial` — Deleted {deleted}, kept {kept}: {reason}
+        public static func sessionsToastDeletedPartial(deleted: Int, kept: Int, reason: String) -> String {
+            L10n.string("workbench.sessions.toast.deletedPartial", deleted, kept, reason)
+        }
+        /// `workbench.sessions.toast.indexNotCleared` — The session index could not be cleared.
+        public static var sessionsToastIndexNotCleared: String {
+            L10n.string("workbench.sessions.toast.indexNotCleared")
+        }
+        /// `workbench.sessions.toast.messageCopied` — Message copied.
+        public static var sessionsToastMessageCopied: String {
+            L10n.string("workbench.sessions.toast.messageCopied")
+        }
+        /// `workbench.sessions.toast.noResumeCommand` — This session has no resume command.
+        public static var sessionsToastNoResumeCommand: String {
+            L10n.string("workbench.sessions.toast.noResumeCommand")
+        }
+        /// `workbench.sessions.toast.openedIn` — Opened in {terminal}.
+        public static func sessionsToastOpenedIn(terminal: String) -> String {
+            L10n.string("workbench.sessions.toast.openedIn", terminal)
+        }
+        /// `workbench.sessions.toast.sessionIDCopied` — Session ID copied.
+        public static var sessionsToastSessionIDCopied: String {
+            L10n.string("workbench.sessions.toast.sessionIDCopied")
+        }
+        /// `workbench.sessions.toast.sourcePathCopied` — Source path copied.
+        public static var sessionsToastSourcePathCopied: String {
+            L10n.string("workbench.sessions.toast.sourcePathCopied")
+        }
+        /// `workbench.sessions.transcript.autoReviewDivider` — Auto Review
+        public static var sessionsTranscriptAutoReviewDivider: String {
+            L10n.string("workbench.sessions.transcript.autoReviewDivider")
+        }
+        /// `workbench.sessions.transcript.cancelled` — Reading this session was stopped. Select it again to reopen it.
+        public static var sessionsTranscriptCancelled: String {
+            L10n.string("workbench.sessions.transcript.cancelled")
+        }
+        /// `workbench.sessions.transcript.loadAll` — Load entire transcript
+        public static var sessionsTranscriptLoadAll: String {
+            L10n.string("workbench.sessions.transcript.loadAll")
+        }
+        /// `workbench.sessions.transcript.loading` — Reading the session log…
+        public static var sessionsTranscriptLoading: String {
+            L10n.string("workbench.sessions.transcript.loading")
+        }
+        /// `workbench.sessions.transcript.noMessages` — This session's log has no readable messages.
+        public static var sessionsTranscriptNoMessages: String {
+            L10n.string("workbench.sessions.transcript.noMessages")
+        }
+        /// `workbench.sessions.transcript.noReader` — No reader is registered for {provider}.
+        public static func sessionsTranscriptNoReader(provider: String) -> String {
+            L10n.string("workbench.sessions.transcript.noReader", provider)
+        }
+        /// `workbench.sessions.transcript.pageRange` — Messages {first}–{last} of {total}
+        public static func sessionsTranscriptPageRange(first: Int, last: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.transcript.pageRange", first, last, total)
+        }
+        /// `workbench.sessions.transcript.placeholderDetail` — Pick a session on the left to read its transcript, copy its resume command, or hand it back to its CLI.
+        public static var sessionsTranscriptPlaceholderDetail: String {
+            L10n.string("workbench.sessions.transcript.placeholderDetail")
+        }
+        /// `workbench.sessions.transcript.placeholderTitle` — No session selected
+        public static var sessionsTranscriptPlaceholderTitle: String {
+            L10n.string("workbench.sessions.transcript.placeholderTitle")
+        }
+        /// `workbench.sessions.transcript.readFailed` — This session's log could not be read.
+        public static var sessionsTranscriptReadFailed: String {
+            L10n.string("workbench.sessions.transcript.readFailed")
+        }
+        /// `workbench.sessions.transcript.truncatedDetail` — {parsed} read of {file}. Reading all of it holds the whole transcript in memory.
+        public static func sessionsTranscriptTruncatedDetail(parsed: String, file: String) -> String {
+            L10n.string("workbench.sessions.transcript.truncatedDetail", parsed, file)
+        }
+        /// `workbench.sessions.transcript.truncatedTitle` — Showing the first {count, plural, one {# message} other {# messages}} of a very large log
+        public static func sessionsTranscriptTruncatedTitle(count: Int) -> String {
+            L10n.string("workbench.sessions.transcript.truncatedTitle", count)
+        }
     }
 }
 
@@ -2059,6 +2591,139 @@ extension L10n {
         "workbench.placeholder.settings",
         "workbench.placeholder.skillsManager",
         "workbench.placeholder.usageStats",
+        "workbench.sessions.allChip.helpSelected",
+        "workbench.sessions.allChip.helpUnselected",
+        "workbench.sessions.allChip.labelSelected",
+        "workbench.sessions.allChip.labelUnselected",
+        "workbench.sessions.antigravityNotice",
+        "workbench.sessions.copyResumeCommand",
+        "workbench.sessions.copySessionID",
+        "workbench.sessions.copySessionIDLabel",
+        "workbench.sessions.copySourcePath",
+        "workbench.sessions.copyWorkingDirectory",
+        "workbench.sessions.count.sessions",
+        "workbench.sessions.count.shownOfTotal",
+        "workbench.sessions.delete.confirm",
+        "workbench.sessions.delete.countButton",
+        "workbench.sessions.delete.message",
+        "workbench.sessions.deleteEllipsis",
+        "workbench.sessions.details",
+        "workbench.sessions.details.collapsed",
+        "workbench.sessions.details.expanded",
+        "workbench.sessions.empty.indexUnavailableDetail",
+        "workbench.sessions.empty.indexUnavailableTitle",
+        "workbench.sessions.empty.noLogsDetail",
+        "workbench.sessions.empty.noMatchTitle",
+        "workbench.sessions.empty.scanningDetail",
+        "workbench.sessions.empty.searchNoMatchDetail",
+        "workbench.sessions.fact.created",
+        "workbench.sessions.fact.cwd",
+        "workbench.sessions.fact.id",
+        "workbench.sessions.fact.lastActive",
+        "workbench.sessions.fact.source",
+        "workbench.sessions.filter.company",
+        "workbench.sessions.filter.dateRange",
+        "workbench.sessions.filter.folders",
+        "workbench.sessions.filter.foldersFiltered",
+        "workbench.sessions.filter.harness",
+        "workbench.sessions.filter.harnessCount",
+        "workbench.sessions.filter.options",
+        "workbench.sessions.filter.scope",
+        "workbench.sessions.filter.sort",
+        "workbench.sessions.filter.sortGrouped",
+        "workbench.sessions.filter.sortHelp",
+        "workbench.sessions.filter.when",
+        "workbench.sessions.filter.whenHelp",
+        "workbench.sessions.find.next",
+        "workbench.sessions.find.none",
+        "workbench.sessions.find.placeholder",
+        "workbench.sessions.find.previous",
+        "workbench.sessions.folders.exclude",
+        "workbench.sessions.folders.excludePlaceholder",
+        "workbench.sessions.folders.include",
+        "workbench.sessions.folders.includePlaceholder",
+        "workbench.sessions.folders.separatorHint",
+        "workbench.sessions.folders.title",
+        "workbench.sessions.fraction",
+        "workbench.sessions.groupByProject",
+        "workbench.sessions.index.scanning",
+        "workbench.sessions.index.unavailable",
+        "workbench.sessions.list.capNotice",
+        "workbench.sessions.message.copy",
+        "workbench.sessions.message.copyHelp",
+        "workbench.sessions.message.showLess",
+        "workbench.sessions.message.showMore",
+        "workbench.sessions.openInTerminal",
+        "workbench.sessions.options.help",
+        "workbench.sessions.options.indexMessageText",
+        "workbench.sessions.options.openIn",
+        "workbench.sessions.options.rebuildIndex",
+        "workbench.sessions.outline.empty",
+        "workbench.sessions.outline.heading",
+        "workbench.sessions.outline.help",
+        "workbench.sessions.outline.label",
+        "workbench.sessions.page.next",
+        "workbench.sessions.page.previous",
+        "workbench.sessions.project.none",
+        "workbench.sessions.project.projectless",
+        "workbench.sessions.range.all",
+        "workbench.sessions.range.month",
+        "workbench.sessions.range.today",
+        "workbench.sessions.range.week",
+        "workbench.sessions.refreshHelp",
+        "workbench.sessions.resume.heading",
+        "workbench.sessions.resume.none",
+        "workbench.sessions.role.assistant",
+        "workbench.sessions.role.other",
+        "workbench.sessions.role.system",
+        "workbench.sessions.role.tool",
+        "workbench.sessions.role.user",
+        "workbench.sessions.row.autoReviewsMerged",
+        "workbench.sessions.row.includeInDeletion",
+        "workbench.sessions.row.messageCount",
+        "workbench.sessions.row.select",
+        "workbench.sessions.row.showTranscript",
+        "workbench.sessions.row.toggleForDeletion",
+        "workbench.sessions.runInHelp",
+        "workbench.sessions.scope.assistant",
+        "workbench.sessions.scope.system",
+        "workbench.sessions.scope.title",
+        "workbench.sessions.scope.tool",
+        "workbench.sessions.scope.user",
+        "workbench.sessions.search.bodyIndexed",
+        "workbench.sessions.search.bodyNotIndexed",
+        "workbench.sessions.search.clearHelp",
+        "workbench.sessions.search.placeholder",
+        "workbench.sessions.selectMode",
+        "workbench.sessions.selectModeHelp",
+        "workbench.sessions.sort.byProject",
+        "workbench.sessions.sort.oldestFirst",
+        "workbench.sessions.sort.recentFirst",
+        "workbench.sessions.toast.bodyIndexDropFailed",
+        "workbench.sessions.toast.bodyIndexDropped",
+        "workbench.sessions.toast.copied",
+        "workbench.sessions.toast.copiedWithReason",
+        "workbench.sessions.toast.cwdCopied",
+        "workbench.sessions.toast.deleted",
+        "workbench.sessions.toast.deletedPartial",
+        "workbench.sessions.toast.indexNotCleared",
+        "workbench.sessions.toast.messageCopied",
+        "workbench.sessions.toast.noResumeCommand",
+        "workbench.sessions.toast.openedIn",
+        "workbench.sessions.toast.sessionIDCopied",
+        "workbench.sessions.toast.sourcePathCopied",
+        "workbench.sessions.transcript.autoReviewDivider",
+        "workbench.sessions.transcript.cancelled",
+        "workbench.sessions.transcript.loadAll",
+        "workbench.sessions.transcript.loading",
+        "workbench.sessions.transcript.noMessages",
+        "workbench.sessions.transcript.noReader",
+        "workbench.sessions.transcript.pageRange",
+        "workbench.sessions.transcript.placeholderDetail",
+        "workbench.sessions.transcript.placeholderTitle",
+        "workbench.sessions.transcript.readFailed",
+        "workbench.sessions.transcript.truncatedDetail",
+        "workbench.sessions.transcript.truncatedTitle",
     ]
 
     /// Keys whose value is a plural and therefore lives in the
@@ -2076,5 +2741,11 @@ extension L10n {
         "status.card.componentCount",
         "usage.harnessMix.activeCount",
         "usage.hero.unpricedHelp",
+        "workbench.sessions.count.sessions",
+        "workbench.sessions.delete.confirm",
+        "workbench.sessions.row.autoReviewsMerged",
+        "workbench.sessions.row.messageCount",
+        "workbench.sessions.toast.deleted",
+        "workbench.sessions.transcript.truncatedTitle",
     ]
 }
