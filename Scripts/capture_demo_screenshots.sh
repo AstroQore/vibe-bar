@@ -56,6 +56,17 @@ fi
 
 [[ -x "$APP" ]] || { echo "capture: no app at $APP — run ./Scripts/build_app.sh first" >&2; exit 1; }
 [[ -d "$DEMO_HOME/.vibebar" ]] || { echo "capture: no demo home at $DEMO_HOME — run ./Scripts/demo_home.py first" >&2; exit 1; }
+
+# Machines is hidden until a workspace is connected, so on a Mac with no
+# Remote Core the popover would answer this request with Overview and save
+# it under the Machines name — quietly replacing a published README
+# screenshot with the wrong page. Drop the capture and say so instead:
+# demo_home.py skips the remote build the same way, and a missing screenshot
+# is a visible gap where a wrong one is not.
+if [[ ! -f "$DEMO_HOME/.vibebar/remote_core.json" ]]; then
+  SURFACES=("${SURFACES[@]:#popover-machines=*}")
+  echo "capture: no remote_core.json in the demo home — skipping popover-machines" >&2
+fi
 mkdir -p "$OUT"
 
 capture_one() {
