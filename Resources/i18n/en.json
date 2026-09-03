@@ -1,4 +1,20 @@
 {
+  "common.all": {
+    "comment": "Filter chip or menu entry that selects every item.",
+    "value": "All"
+  },
+  "common.cancel": {
+    "comment": "Button that abandons an action in progress.",
+    "value": "Cancel"
+  },
+  "common.clear": {
+    "comment": "Button that empties a search field or resets a filter.",
+    "value": "Clear"
+  },
+  "common.copy": {
+    "comment": "Button that copies the adjacent value to the clipboard.",
+    "value": "Copy"
+  },
   "common.date.month.1": {
     "comment": "Abbreviated month name used inside an absolute reset time",
     "value": "Jan"
@@ -61,6 +77,18 @@
     "comment": "Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027.",
     "value": "{month} {day}, {year}, {time}"
   },
+  "common.delete": {
+    "comment": "Button that performs a deletion the user has already confirmed.",
+    "value": "Delete"
+  },
+  "common.dismiss": {
+    "comment": "Button that closes a banner without acting on it.",
+    "value": "Dismiss"
+  },
+  "common.done": {
+    "comment": "Button that closes a sheet or leaves an editing mode.",
+    "value": "Done"
+  },
   "common.duration.days": {
     "args": {
       "days": "int"
@@ -113,6 +141,10 @@
   "common.on": {
     "comment": "A toggle's state, read as a value in a summary row",
     "value": "On"
+  },
+  "common.open": {
+    "comment": "Button that opens the selected item in the app that owns it.",
+    "value": "Open"
   },
   "common.openSettings": {
     "comment": "Secondary button on an empty state",
@@ -1627,6 +1659,144 @@
     "comment": "Card title on the Overview's service-status tile row",
     "value": "Status"
   },
+  "usage.breakdown.models": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per model.",
+    "value": "Models"
+  },
+  "usage.breakdown.periods": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per time bucket.",
+    "value": "Periods"
+  },
+  "usage.breakdown.projects": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per project directory.",
+    "value": "Projects"
+  },
+  "usage.breakdown.providers": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per L1 company.",
+    "value": "Providers"
+  },
+  "usage.breakdown.requests": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests.",
+    "value": "Requests"
+  },
+  "usage.filters.allHarnesses": {
+    "comment": "Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled.",
+    "value": "All harnesses"
+  },
+  "usage.filters.allHarnessesHelpEvery": {
+    "comment": "Tooltip on the All harnesses chip while the selection is partial or empty — clicking it selects everything.",
+    "value": "Click to include every harness"
+  },
+  "usage.filters.allHarnessesHelpNone": {
+    "comment": "Tooltip on the All harnesses chip while every harness is in the query — clicking it empties the selection.",
+    "value": "Click to select no harness"
+  },
+  "usage.filters.allHarnessesSelectEvery": {
+    "comment": "Screen-reader label for the All harnesses chip while the selection is partial or empty.",
+    "value": "Show every harness"
+  },
+  "usage.filters.allHarnessesSelectNone": {
+    "comment": "Screen-reader label for the All harnesses chip while every harness is in the query.",
+    "value": "Select no harness"
+  },
+  "usage.filters.allModels": {
+    "comment": "Menu item that clears the model filter on the Usage Stats page. Unrelated to the quota group of the same name, which is quota.group.allModels.",
+    "value": "All models"
+  },
+  "usage.filters.autoMenu": {
+    "comment": "Caption on the auto-refresh pill; the call site uppercases it.",
+    "value": "Auto"
+  },
+  "usage.filters.autoMenuLabel": {
+    "comment": "Screen-reader label for the auto-refresh menu button.",
+    "value": "Choose how often the page re-queries"
+  },
+  "usage.filters.autoRefresh": {
+    "comment": "Picker label inside the auto-refresh menu.",
+    "value": "Auto refresh"
+  },
+  "usage.filters.clearHelp": {
+    "comment": "Tooltip on the Clear button in the Usage Stats filter bar.",
+    "value": "Clear harness, company, and model filters"
+  },
+  "usage.filters.companyHarnesses": {
+    "comment": "Screen-reader label for a company section chip; company is an L1 company name and is never translated.",
+    "value": "{company}, every harness"
+  },
+  "usage.filters.companyHelp": {
+    "comment": "Tooltip on a company section chip, listing the harnesses it toggles. Both arguments are names and stay as spelled.",
+    "value": "{company} · {harnesses}"
+  },
+  "usage.filters.customRangeFrom": {
+    "comment": "Date picker label for the start of a custom range.",
+    "value": "From"
+  },
+  "usage.filters.customRangeHint": {
+    "comment": "Footnote in the custom date-range popover.",
+    "value": "Choose hourly, daily, or weekly buckets from the chart toolbar."
+  },
+  "usage.filters.customRangeTitle": {
+    "comment": "All-caps heading of the custom date-range popover. English sets it in caps by the copy; Chinese has no case and relies on weight and colour.",
+    "value": "CUSTOM RANGE"
+  },
+  "usage.filters.customRangeTo": {
+    "comment": "Date picker label for the end of a custom range.",
+    "value": "To"
+  },
+  "usage.filters.editCustomRange": {
+    "comment": "Menu item that opens the custom date-range editor.",
+    "value": "Edit custom range…"
+  },
+  "usage.filters.harnessHelp": {
+    "comment": "Tooltip on a harness chip. First line names the chip (company and harness names are never translated), second line explains the click and the ⌥-click.",
+    "value": "{company} · {harness}\nClick to toggle · ⌥-click to solo"
+  },
+  "usage.filters.modelsMenu": {
+    "comment": "Caption on the model filter pill; the call site uppercases it.",
+    "value": "Models"
+  },
+  "usage.filters.modelsMenuLabel": {
+    "comment": "Screen-reader label for the model filter menu button.",
+    "value": "Choose which models to include"
+  },
+  "usage.filters.modelsSelected": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Model filter pill value when several models are selected.",
+    "value": "{count, plural, one {1 selected} other {# selected}}"
+  },
+  "usage.filters.noModelsInRange": {
+    "comment": "Placeholder inside the model filter menu when the selected range recorded no model.",
+    "value": "No models in range"
+  },
+  "usage.filters.range14d": {
+    "comment": "Date-range preset: the last 14 local calendar days. The 7- and 30-day presets reuse cost.timeframe.weekShort / monthShort.",
+    "value": "14d"
+  },
+  "usage.filters.range24h": {
+    "comment": "Date-range preset: a rolling 24-hour window ending now.",
+    "value": "24h"
+  },
+  "usage.filters.rangeCustom": {
+    "comment": "Date-range preset: the hand-picked start and end.",
+    "value": "Custom"
+  },
+  "usage.filters.rangeMenu": {
+    "comment": "Screen-reader label for the date-range menu button.",
+    "value": "Choose the date range"
+  },
+  "usage.filters.rangeSpan": {
+    "comment": "Date-range pill value: two already-formatted dates around an en dash.",
+    "value": "{start} – {end}"
+  },
+  "usage.filters.refreshInterval": {
+    "args": {
+      "seconds": "int"
+    },
+    "comment": "A polling interval, read both as an option inside the auto-refresh menu and as the value on the pill that opens it. The off state is common.off.",
+    "value": "{seconds}s"
+  },
   "usage.harnessMix.activeCount": {
     "args": {
       "count": "int"
@@ -1708,6 +1878,77 @@
     "comment": "Empty state when the local per-request ledger could not be opened",
     "value": "Usage ledger unavailable"
   },
+  "usage.mix.donutUnit": {
+    "comment": "Unit under the total in the middle of a donut card.",
+    "value": "tokens"
+  },
+  "usage.mix.harness.subtitle": {
+    "comment": "Caption under the Harness Mix donut title.",
+    "value": "where requests ran"
+  },
+  "usage.mix.harness.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title.",
+    "value": "Harness Mix"
+  },
+  "usage.mix.model.empty": {
+    "comment": "Empty state inside the Model Mix donut card.",
+    "value": "No model traffic in this range"
+  },
+  "usage.mix.model.subtitle": {
+    "comment": "Caption under the Model Mix donut title.",
+    "value": "canonical display names"
+  },
+  "usage.mix.model.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by model.",
+    "value": "Model Mix"
+  },
+  "usage.mix.other": {
+    "comment": "Donut slice that collapses everything below the top five.",
+    "value": "Other"
+  },
+  "usage.mix.otherCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Caption under the collapsed donut slice, counting what it folded in.",
+    "value": "{count, plural, one {1 more} other {# more}}"
+  },
+  "usage.mix.project.empty": {
+    "comment": "Empty state inside the Project Mix donut card; Codex and Claude are harness names and stay as spelled.",
+    "value": "Project attribution appears after a Codex or Claude rescan"
+  },
+  "usage.mix.project.subtitle": {
+    "comment": "Caption under the Project Mix donut title; Codex and Claude are harness names and stay as spelled.",
+    "value": "Codex + Claude cwd · up to 30 d detail"
+  },
+  "usage.mix.project.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by project directory.",
+    "value": "Project Mix"
+  },
+  "usage.mix.provider.empty": {
+    "comment": "Empty state inside the Provider Mix donut card.",
+    "value": "No provider traffic in this range"
+  },
+  "usage.mix.provider.subtitle": {
+    "comment": "Caption under the Provider Mix donut title.",
+    "value": "billing companies"
+  },
+  "usage.mix.provider.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by L1 company.",
+    "value": "Provider Mix"
+  },
+  "usage.mix.tokenFlow.empty": {
+    "comment": "Empty state inside the Token Flow donut card.",
+    "value": "No token traffic in this range"
+  },
+  "usage.mix.tokenFlow.subtitle": {
+    "comment": "Caption under the Token Flow donut title.",
+    "value": "input · cache · output"
+  },
+  "usage.mix.tokenFlow.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by kind.",
+    "value": "Token Flow"
+  },
   "usage.noHarnessSelected.detail": {
     "comment": "Empty state body explaining the All chip",
     "value": "The All harnesses chip is a switch: click it again to put every harness back in the query."
@@ -1719,6 +1960,186 @@
   "usage.requestCount": {
     "comment": "Footer figure; count arrives already grouped by the number formatter",
     "value": "{count} requests"
+  },
+  "usage.table.activeDays": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Periods table when the series is bucketed by day.",
+    "value": "{count, plural, one {1 active day} other {# active days}}"
+  },
+  "usage.table.activeHours": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Periods table when the series is bucketed by hour.",
+    "value": "{count, plural, one {1 active hour} other {# active hours}}"
+  },
+  "usage.table.activeWeeks": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Periods table when the series is bucketed by week.",
+    "value": "{count, plural, one {1 active week} other {# active weeks}}"
+  },
+  "usage.table.cacheReadWrite": {
+    "comment": "Second line of a request row's input cell: cache read and cache write, both already formatted, e.g. 12.3k.",
+    "value": "R {read} · W {write}"
+  },
+  "usage.table.column.average": {
+    "comment": "Models table column header, average cost per request; the call site uppercases it.",
+    "value": "Avg/req"
+  },
+  "usage.table.column.cache": {
+    "comment": "Periods table column header, cache read plus cache write; the call site uppercases it.",
+    "value": "Cache"
+  },
+  "usage.table.column.day": {
+    "comment": "Periods table leading column header when the series is bucketed by day; the call site uppercases it.",
+    "value": "Day"
+  },
+  "usage.table.column.harness": {
+    "comment": "Requests table column header; the call site uppercases it. 'Harness' is the usage-axis unit and stays as spelled.",
+    "value": "Harness"
+  },
+  "usage.table.column.hour": {
+    "comment": "Periods table leading column header when the series is bucketed by hour; the call site uppercases it.",
+    "value": "Hour"
+  },
+  "usage.table.column.input": {
+    "comment": "Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.input.",
+    "value": "Input"
+  },
+  "usage.table.column.model": {
+    "comment": "Requests and Models table column header; the call site uppercases it.",
+    "value": "Model"
+  },
+  "usage.table.column.output": {
+    "comment": "Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.output.",
+    "value": "Output"
+  },
+  "usage.table.column.provider": {
+    "comment": "Providers and Projects table column header; the call site uppercases it.",
+    "value": "Provider"
+  },
+  "usage.table.column.requests": {
+    "comment": "Providers, Projects and Models table column header; the call site uppercases it.",
+    "value": "Requests"
+  },
+  "usage.table.column.tier": {
+    "comment": "Requests table column header, the service tier a request was billed at; the call site uppercases it.",
+    "value": "Tier"
+  },
+  "usage.table.column.time": {
+    "comment": "Requests table column header; the call site uppercases it.",
+    "value": "Time"
+  },
+  "usage.table.column.weekOf": {
+    "comment": "Periods table leading column header when the series is bucketed by week; the cell holds the week's first day.",
+    "value": "Week of"
+  },
+  "usage.table.companyCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Providers table; the rows are L1 companies.",
+    "value": "{count, plural, one {1 company} other {# companies}}"
+  },
+  "usage.table.emptyModels": {
+    "comment": "Empty state in place of the Models table.",
+    "value": "No model totals in this range"
+  },
+  "usage.table.emptyPeriods": {
+    "comment": "Empty state in place of the Periods table.",
+    "value": "No active periods in this range"
+  },
+  "usage.table.emptyProjects": {
+    "comment": "Empty state in place of the Projects table; Codex and Claude are harness names and stay as spelled.",
+    "value": "No project-attributed Codex or Claude usage in this range"
+  },
+  "usage.table.emptyProviders": {
+    "comment": "Empty state in place of the Providers table.",
+    "value": "No provider totals in this range"
+  },
+  "usage.table.emptyRequests": {
+    "comment": "Empty state in place of the Requests table.",
+    "value": "No request-level rows in this range"
+  },
+  "usage.table.harnessHelp": {
+    "comment": "Tooltip on a request row's harness cell; both arguments are names and are never translated.",
+    "value": "{company} · {harness}"
+  },
+  "usage.table.inputHelp": {
+    "comment": "Tooltip on a request row's input cell. One key rather than three: the three lines are one block and a translation may need to reorder them. All three counts arrive formatted.",
+    "value": "Fresh input: {input}\nCache read: {read}\nCache write: {write}"
+  },
+  "usage.table.loadMore": {
+    "args": {
+      "remaining": "int"
+    },
+    "comment": "Button that loads the next page of request rows.",
+    "value": "Load more ({remaining} remaining)"
+  },
+  "usage.table.loadingMore": {
+    "comment": "Button label and spinner label while another page of request rows is loading.",
+    "value": "Loading more requests…"
+  },
+  "usage.table.modelCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Models table.",
+    "value": "{count, plural, one {1 model} other {# models}}"
+  },
+  "usage.table.periodRow": {
+    "comment": "Screen-reader label for a Periods row; every argument arrives already formatted.",
+    "value": "{period}, {tokens}, {cost}"
+  },
+  "usage.table.projectCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Projects table, with the retention window the attribution covers.",
+    "value": "{count, plural, one {1 project} other {# projects}} · up to 30 d detail"
+  },
+  "usage.table.requestRow": {
+    "comment": "Screen-reader label for a Requests row; time, model, tokens and cost arrive formatted and harness is a name.",
+    "value": "{time}, {harness}, {model}, {tokens}, {cost}"
+  },
+  "usage.table.requestsLabel": {
+    "comment": "Screen-reader label for the Requests table's scroll area.",
+    "value": "Request usage table"
+  },
+  "usage.table.requestsLoaded": {
+    "args": {
+      "loaded": "int",
+      "total": "int"
+    },
+    "comment": "Row count over the Requests table while more pages remain.",
+    "value": "{loaded} of {total} requests"
+  },
+  "usage.table.showMorePeriods": {
+    "args": {
+      "count": "int",
+      "total": "int"
+    },
+    "comment": "Button under a clamped Periods table that reveals the next page of rows.",
+    "value": "Show {count} more of {total} periods"
+  },
+  "usage.table.statRow": {
+    "args": {
+      "requests": "int"
+    },
+    "comment": "Screen-reader label for a Providers, Projects or Models row; name is a company, project or model name and tokens and cost arrive formatted.",
+    "value": "{name}, {requests, plural, one {1 request} other {# requests}}, {tokens}, {cost}"
+  },
+  "usage.table.unpriced": {
+    "comment": "Cost cell of a request no price could be resolved for.",
+    "value": "unpriced"
+  },
+  "usage.table.unpricedHelp": {
+    "comment": "Tooltip on the cost cell of a request no price could be resolved for.",
+    "value": "No price was available for this request"
   },
   "usage.tokens.cacheRead": {
     "comment": "Token composition legend: cache read tokens",
@@ -1736,6 +2157,109 @@
     "comment": "Token composition legend: output tokens",
     "value": "Out"
   },
+  "usage.tokens.title": {
+    "comment": "The token metric itself: the chart's Tokens toggle and the TOKENS table column.",
+    "value": "Tokens"
+  },
+  "usage.trend.accessibilitySummary": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Screen-reader value of the trend chart; tokens and cost arrive already formatted, e.g. 3.40M and $12.34.",
+    "value": "{count, plural, one {1 provider} other {# providers}}, {tokens} tokens, {cost}"
+  },
+  "usage.trend.bucketDay": {
+    "comment": "Subtitle under the trend chart title when the series is bucketed by local calendar day.",
+    "value": "Local calendar days"
+  },
+  "usage.trend.bucketHour": {
+    "comment": "Subtitle under the trend chart title when the series is bucketed by hour.",
+    "value": "Hourly buckets"
+  },
+  "usage.trend.bucketWeek": {
+    "comment": "Subtitle under the trend chart title when the series is bucketed by local calendar week.",
+    "value": "Local calendar weeks"
+  },
+  "usage.trend.costChartLabel": {
+    "comment": "Screen-reader label for the trend chart in cost mode.",
+    "value": "Cost over time"
+  },
+  "usage.trend.empty": {
+    "comment": "Empty state in place of the trend chart.",
+    "value": "No usage recorded in this range"
+  },
+  "usage.trend.fit": {
+    "comment": "Button that widens the chart back to the whole selected window.",
+    "value": "Fit"
+  },
+  "usage.trend.fitHelp": {
+    "comment": "Tooltip on the button that widens the chart back to the whole selected window.",
+    "value": "Show the full selected window"
+  },
+  "usage.trend.granularity": {
+    "comment": "Picker label inside the chart granularity menu.",
+    "value": "Granularity"
+  },
+  "usage.trend.granularityAuto": {
+    "comment": "Chart granularity option: let the range pick the bucket.",
+    "value": "Auto"
+  },
+  "usage.trend.granularityDaily": {
+    "comment": "Chart granularity option: one bucket per day. Unrelated to the quota window label quota.group.daily.",
+    "value": "Daily"
+  },
+  "usage.trend.granularityHourly": {
+    "comment": "Chart granularity option: one bucket per hour.",
+    "value": "Hourly"
+  },
+  "usage.trend.granularityLabel": {
+    "comment": "Screen-reader label for the chart granularity menu button.",
+    "value": "Choose chart granularity"
+  },
+  "usage.trend.granularityWeekly": {
+    "comment": "Chart granularity option: one bucket per week. Unrelated to the quota window label quota.group.weekly.",
+    "value": "Weekly"
+  },
+  "usage.trend.hideProvider": {
+    "comment": "Tooltip on a lit provider legend chip; provider is an L1 company name and is never translated.",
+    "value": "Hide {provider}"
+  },
+  "usage.trend.navigatorLabel": {
+    "comment": "Screen-reader description of the brush navigator under the trend chart.",
+    "value": "Usage chart range navigator"
+  },
+  "usage.trend.nextWindow": {
+    "comment": "Tooltip on the chart's step-forward button.",
+    "value": "Next window"
+  },
+  "usage.trend.now": {
+    "comment": "Button that returns the chart to the window ending now.",
+    "value": "Now"
+  },
+  "usage.trend.nowHelp": {
+    "comment": "Tooltip on the button that returns the chart to the window ending now.",
+    "value": "Return to current window"
+  },
+  "usage.trend.previousWindow": {
+    "comment": "Tooltip on the chart's step-backward button.",
+    "value": "Previous window"
+  },
+  "usage.trend.scopeHint": {
+    "comment": "Footnote under the trend chart's brush navigator.",
+    "value": "Drag the navigator handles to focus this chart; filters and tables keep the full window."
+  },
+  "usage.trend.showProvider": {
+    "comment": "Tooltip on an unlit provider legend chip; provider is an L1 company name and is never translated.",
+    "value": "Show {provider}"
+  },
+  "usage.trend.title": {
+    "comment": "All-caps card title over the Usage Stats trend chart. English sets it in caps by the copy; Chinese has no case and relies on weight and colour.",
+    "value": "USAGE OVER TIME"
+  },
+  "usage.trend.tokensChartLabel": {
+    "comment": "Screen-reader label for the trend chart in token mode.",
+    "value": "Token usage over time"
+  },
   "usage.whenYouUse.everything": {
     "comment": "Heatmap title on the Overview, covering every provider at once",
     "value": "When you use everything"
@@ -1747,6 +2271,58 @@
   "usage.whenYouUse.spaceXAI": {
     "comment": "Heatmap title on the SpaceXAI page",
     "value": "When you use SpaceXAI"
+  },
+  "workbench.appearance.useDark": {
+    "comment": "Tooltip on the Workbench header button that switches the window to dark",
+    "value": "Use dark appearance"
+  },
+  "workbench.appearance.useLight": {
+    "comment": "Tooltip on the Workbench header button that switches the window to light",
+    "value": "Use light appearance"
+  },
+  "workbench.header.refreshPage": {
+    "comment": "Tooltip on the Workbench header refresh button; page is the current page's title",
+    "value": "Refresh {page}"
+  },
+  "workbench.page.resets.subtitle": {
+    "comment": "Subtitle under the Resets page title",
+    "value": "Cycles, refills, and run-out forecasts"
+  },
+  "workbench.page.resets.title": {
+    "comment": "Workbench sidebar entry and page title for the resets page",
+    "value": "Resets"
+  },
+  "workbench.page.sessions.subtitle": {
+    "comment": "Subtitle under the Sessions page title",
+    "value": "Search and resume local agent sessions"
+  },
+  "workbench.page.sessions.title": {
+    "comment": "Workbench sidebar entry and page title for the session manager",
+    "value": "Sessions"
+  },
+  "workbench.page.settings.subtitle": {
+    "comment": "Subtitle under the Settings page title inside the Workbench window",
+    "value": "Appearance, providers, data, privacy, and sync"
+  },
+  "workbench.page.settings.title": {
+    "comment": "Workbench sidebar entry and page title for Settings",
+    "value": "Settings"
+  },
+  "workbench.page.skills.subtitle": {
+    "comment": "Subtitle under the Skills page title",
+    "value": "One shared skill library · every agent CLI"
+  },
+  "workbench.page.skills.title": {
+    "comment": "Workbench sidebar entry and page title for the skills manager",
+    "value": "Skills"
+  },
+  "workbench.page.usageStats.subtitle": {
+    "comment": "Subtitle under the Usage Stats page title",
+    "value": "Local per-request ledger · all providers"
+  },
+  "workbench.page.usageStats.title": {
+    "comment": "Workbench sidebar entry and page title for the usage statistics page",
+    "value": "Usage Stats"
   },
   "workbench.placeholder.resets": {
     "comment": "Placeholder body for a Workbench page with no content yet",
@@ -1767,5 +2343,1476 @@
   "workbench.placeholder.usageStats": {
     "comment": "Placeholder body for a Workbench page with no content yet",
     "value": "Full-window usage and cost analytics are on their way."
+  },
+  "workbench.resets.calendar.dayEntry": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "One refill inside a calendar day cell; lane is a SubProvider name",
+    "value": "{lane} +{percent}%"
+  },
+  "workbench.resets.calendar.futureEntry": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Tooltip for a scheduled reset in the calendar; lane names the quota, time is an absolute date and time",
+    "value": "{lane} — resets {time}, +{percent}% back"
+  },
+  "workbench.resets.calendar.moreEntries": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Footer in a calendar day cell that holds more refills than it can list",
+    "value": "+{count} more"
+  },
+  "workbench.resets.calendar.nextMonth": {
+    "comment": "Tooltip on the reset calendar's forward arrow",
+    "value": "Next month"
+  },
+  "workbench.resets.calendar.pastEntry": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Tooltip for a recorded reset in the calendar; lane names the quota, time is an absolute date and time, percent is how much of the window had been spent when it refilled",
+    "value": "{lane} — reset {time} at {percent}% used"
+  },
+  "workbench.resets.calendar.previousMonth": {
+    "comment": "Tooltip on the reset calendar's back arrow",
+    "value": "Previous month"
+  },
+  "workbench.resets.calendar.title": {
+    "comment": "Card title over the month grid of recorded and scheduled resets",
+    "value": "Reset Calendar"
+  },
+  "workbench.resets.calendar.today": {
+    "comment": "Button that returns the reset calendar to the current month",
+    "value": "Today"
+  },
+  "workbench.resets.cycle.curveHelp": {
+    "comment": "Tooltip on a cycle card's fill curve; bucket is the quota window's label",
+    "value": "Remaining % across the current {bucket} cycle"
+  },
+  "workbench.resets.cycle.headline": {
+    "comment": "Caption beside a cycle card's remaining percentage; bucket is the quota window's label, countdown a compact span",
+    "value": "{bucket} · resets {countdown}"
+  },
+  "workbench.resets.refillHorizon.detail": {
+    "comment": "Caption beside the Refill Horizon card title",
+    "value": "next 7 days · column height = how much comes back"
+  },
+  "workbench.resets.refillHorizon.title": {
+    "comment": "Card title over the seven-day refill lane",
+    "value": "Refill Horizon"
+  },
+  "workbench.resets.risk.badge.atRisk": {
+    "comment": "Compact badge on a run-out risk row when the forecast expects the quota to run out before its reset",
+    "value": "RISK"
+  },
+  "workbench.resets.risk.badge.low": {
+    "comment": "Compact badge on a run-out risk row that is simply low, with a calm forecast",
+    "value": "LOW"
+  },
+  "workbench.resets.risk.badge.out": {
+    "comment": "Compact badge on a run-out risk row whose quota is already spent",
+    "value": "OUT"
+  },
+  "workbench.resets.risk.badge.watch": {
+    "comment": "Compact badge on a run-out risk row whose recent burn is above the safe range",
+    "value": "WATCH"
+  },
+  "workbench.resets.risk.detail": {
+    "comment": "Caption beside the Run-out Risk card title",
+    "value": "ranked by the personal forecast"
+  },
+  "workbench.resets.risk.empty": {
+    "comment": "Empty state of the Run-out Risk list when no quota looks uneasy",
+    "value": "Every bucket is projected to last its cycle."
+  },
+  "workbench.resets.risk.remaining": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Trailing figure on a run-out risk row; countdown is a compact span to the refill",
+    "value": "{percent}% · refills {countdown}"
+  },
+  "workbench.resets.risk.title": {
+    "comment": "Card title over the list of quotas the forecast is uneasy about",
+    "value": "Run-out Risk"
+  },
+  "workbench.resets.subDaily.title": {
+    "comment": "Caption over the twenty-four-hour lane for quotas that refill more than once a day",
+    "value": "NEXT 24 HOURS · SUB-DAILY QUOTAS"
+  },
+  "workbench.sessions.allChip.helpSelected": {
+    "comment": "Tooltip on the lit All chip in the Sessions filter bar",
+    "value": "Click to select no harness"
+  },
+  "workbench.sessions.allChip.helpUnselected": {
+    "comment": "Tooltip on the unlit All chip in the Sessions filter bar",
+    "value": "Click to show sessions from every harness"
+  },
+  "workbench.sessions.allChip.labelSelected": {
+    "comment": "Accessibility label on the lit All chip in the Sessions filter bar",
+    "value": "Select no harness"
+  },
+  "workbench.sessions.allChip.labelUnselected": {
+    "comment": "Accessibility label on the unlit All chip in the Sessions filter bar",
+    "value": "Show every session source"
+  },
+  "workbench.sessions.antigravityNotice": {
+    "comment": "Notice under the transcript Details for an AntiGravity session, explaining why the transcript is partial and cannot be deleted",
+    "value": "AntiGravity stores its turns as an undocumented binary payload, so this transcript is a partial reconstruction and its sessions cannot be deleted from here — the IDE keeps them open."
+  },
+  "workbench.sessions.copyResumeCommand": {
+    "comment": "Sessions row context menu and transcript header: copy the shell line that reopens this session",
+    "value": "Copy resume command"
+  },
+  "workbench.sessions.copySessionID": {
+    "comment": "Tooltip on the session id line in the transcript header, and on the ID row in Details",
+    "value": "Copy session ID"
+  },
+  "workbench.sessions.copySessionIDLabel": {
+    "args": {
+      "id": "string"
+    },
+    "comment": "Accessibility label of the session id copy button. {id} is the identifier itself and is never translated.",
+    "value": "Session ID {id}. Copy"
+  },
+  "workbench.sessions.copySourcePath": {
+    "comment": "Tooltip on the copy button beside the session log's path in Details",
+    "value": "Copy source path"
+  },
+  "workbench.sessions.copyWorkingDirectory": {
+    "comment": "Tooltip on the copy button beside the CWD row in Details",
+    "value": "Copy working directory"
+  },
+  "workbench.sessions.count.sessions": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Sessions filter bar counter when the whole filtered list is on screen",
+    "value": "{count, plural, one {1 session} other {# sessions}}"
+  },
+  "workbench.sessions.count.shownOfTotal": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Sessions filter bar counter when the list is shorter than the index",
+    "value": "{shown} of {total} sessions"
+  },
+  "workbench.sessions.delete.confirm": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Title of the delete confirmation dialog on the Sessions page",
+    "value": "{count, plural, one {Delete this session?} other {Delete # sessions?}}"
+  },
+  "workbench.sessions.delete.countButton": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Destructive button in the Sessions filter bar while sessions are ticked",
+    "value": "Delete {count}"
+  },
+  "workbench.sessions.delete.message": {
+    "comment": "Body of the delete confirmation dialog on the Sessions page",
+    "value": "The session logs are removed from disk. This cannot be undone."
+  },
+  "workbench.sessions.deleteEllipsis": {
+    "comment": "Destructive item in the Sessions row context menu; the ellipsis says a confirmation follows",
+    "value": "Delete…"
+  },
+  "workbench.sessions.details": {
+    "comment": "Button that unfolds the session's facts under the transcript header",
+    "value": "Details"
+  },
+  "workbench.sessions.details.collapsed": {
+    "comment": "Accessibility value of the Details button while the facts are hidden",
+    "value": "Collapsed"
+  },
+  "workbench.sessions.details.expanded": {
+    "comment": "Accessibility value of the Details button while the facts are shown",
+    "value": "Expanded"
+  },
+  "workbench.sessions.empty.indexUnavailableDetail": {
+    "comment": "Sessions list empty state when the SQLite index would not open",
+    "value": "The index under ~/.vibebar could not be opened, so sessions cannot be listed this session."
+  },
+  "workbench.sessions.empty.indexUnavailableTitle": {
+    "comment": "Sessions list empty state title when the SQLite index would not open",
+    "value": "Session index unavailable"
+  },
+  "workbench.sessions.empty.noLogsDetail": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Sessions list empty state when the index is fine but nothing was ever scanned",
+    "value": "No session logs were found on this Mac for any of the {count} harnesses Vibe Bar scans."
+  },
+  "workbench.sessions.empty.noMatchTitle": {
+    "comment": "Sessions list empty state title when filters or search exclude everything",
+    "value": "No sessions match"
+  },
+  "workbench.sessions.empty.scanningDetail": {
+    "comment": "Sessions list empty state while the index scan is still running",
+    "value": "Still scanning the session logs on disk."
+  },
+  "workbench.sessions.empty.searchNoMatchDetail": {
+    "comment": "Sessions list empty state when the search matched nothing",
+    "value": "Nothing in the indexed sessions matches that search."
+  },
+  "workbench.sessions.fact.created": {
+    "comment": "Details row label: when the session was created",
+    "value": "Created"
+  },
+  "workbench.sessions.fact.cwd": {
+    "comment": "Details row label: the session's working directory",
+    "value": "CWD"
+  },
+  "workbench.sessions.fact.id": {
+    "comment": "Details row label: the session identifier",
+    "value": "ID"
+  },
+  "workbench.sessions.fact.lastActive": {
+    "comment": "Details row label: when the session was last written to",
+    "value": "Last active"
+  },
+  "workbench.sessions.fact.source": {
+    "comment": "Details row label: the session log's path on disk",
+    "value": "Source"
+  },
+  "workbench.sessions.filter.company": {
+    "comment": "Sessions filter bar menu that ticks whole companies at once",
+    "value": "Company"
+  },
+  "workbench.sessions.filter.dateRange": {
+    "comment": "Picker inside the Sessions When menu",
+    "value": "Date range"
+  },
+  "workbench.sessions.filter.folders": {
+    "comment": "Sessions filter bar button that opens the project-directory filters",
+    "value": "Folders"
+  },
+  "workbench.sessions.filter.foldersFiltered": {
+    "comment": "Value on the Sessions Folders button while a directory filter is set",
+    "value": "Filtered"
+  },
+  "workbench.sessions.filter.harness": {
+    "comment": "Sessions filter bar menu that ticks individual harnesses",
+    "value": "Harness"
+  },
+  "workbench.sessions.filter.harnessCount": {
+    "args": {
+      "count": "int",
+      "harness": "string"
+    },
+    "comment": "One row of the Sessions Harness menu: the harness name and how many sessions it has. The name is never translated.",
+    "value": "{harness}  {count}"
+  },
+  "workbench.sessions.filter.options": {
+    "comment": "Sessions filter bar menu holding the terminal and index options",
+    "value": "Options"
+  },
+  "workbench.sessions.filter.scope": {
+    "comment": "Sessions filter bar menu that picks which parts of a session the search covers",
+    "value": "Scope"
+  },
+  "workbench.sessions.filter.sort": {
+    "comment": "Sessions filter bar menu that picks the list order",
+    "value": "Sort"
+  },
+  "workbench.sessions.filter.sortGrouped": {
+    "args": {
+      "order": "string"
+    },
+    "comment": "Value on the Sessions Sort menu while Group by project is on. {order} is the chosen order's own label.",
+    "value": "{order} · grouped"
+  },
+  "workbench.sessions.filter.sortHelp": {
+    "comment": "Accessibility label of the Sessions Sort menu",
+    "value": "Choose how the list is ordered"
+  },
+  "workbench.sessions.filter.when": {
+    "comment": "Sessions filter bar menu that picks how far back to list",
+    "value": "When"
+  },
+  "workbench.sessions.filter.whenHelp": {
+    "comment": "Accessibility label of the Sessions When menu",
+    "value": "Choose how far back to list sessions"
+  },
+  "workbench.sessions.find.next": {
+    "comment": "Tooltip on the next-match button in the transcript find bar",
+    "value": "Next match"
+  },
+  "workbench.sessions.find.none": {
+    "comment": "Counter in the transcript find bar when nothing matched",
+    "value": "none"
+  },
+  "workbench.sessions.find.placeholder": {
+    "comment": "Placeholder and accessibility label of the transcript find field",
+    "value": "Find in transcript"
+  },
+  "workbench.sessions.find.previous": {
+    "comment": "Tooltip on the previous-match button in the transcript find bar",
+    "value": "Previous match"
+  },
+  "workbench.sessions.folders.exclude": {
+    "comment": "Field label in the Sessions directory-filter popover",
+    "value": "Exclude paths containing"
+  },
+  "workbench.sessions.folders.excludePlaceholder": {
+    "comment": "Example value in the exclude field of the Sessions directory-filter popover",
+    "value": "/archive, /vendor"
+  },
+  "workbench.sessions.folders.include": {
+    "comment": "Field label in the Sessions directory-filter popover",
+    "value": "Include paths containing"
+  },
+  "workbench.sessions.folders.includePlaceholder": {
+    "comment": "Example value in the include field of the Sessions directory-filter popover",
+    "value": "/project/a, /project/b"
+  },
+  "workbench.sessions.folders.separatorHint": {
+    "comment": "Caption under the Sessions directory-filter fields",
+    "value": "Separate multiple paths with commas, semicolons, or new lines."
+  },
+  "workbench.sessions.folders.title": {
+    "comment": "Title of the Sessions directory-filter popover",
+    "value": "Directory filters"
+  },
+  "workbench.sessions.fraction": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Compact counter used across the Sessions page: index scan progress, how many companies or harnesses are ticked, and which find match is in view",
+    "value": "{shown}/{total}"
+  },
+  "workbench.sessions.groupByProject": {
+    "comment": "Toggle in the Sessions Sort menu",
+    "value": "Group by project"
+  },
+  "workbench.sessions.index.scanning": {
+    "comment": "Sessions filter bar status while a scan is running and its total is not known yet",
+    "value": "scanning…"
+  },
+  "workbench.sessions.index.unavailable": {
+    "comment": "Sessions filter bar status when the SQLite index would not open",
+    "value": "index unavailable"
+  },
+  "workbench.sessions.list.capNotice": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Notice at the foot of the Sessions list when it stops at the loaded-summary ceiling",
+    "value": "Showing the first {shown} of {total} sessions. Narrow the filters or search to reach the rest."
+  },
+  "workbench.sessions.message.copy": {
+    "comment": "Context menu item on a transcript message card",
+    "value": "Copy Message"
+  },
+  "workbench.sessions.message.copyHelp": {
+    "comment": "Tooltip and accessibility label of the copy button on a transcript message card",
+    "value": "Copy this message"
+  },
+  "workbench.sessions.message.showLess": {
+    "comment": "Button that folds a long transcript message back up",
+    "value": "Show less"
+  },
+  "workbench.sessions.message.showMore": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Button that unfolds a long transcript message; {count} is the message's length in characters",
+    "value": "Show more ({count} chars)"
+  },
+  "workbench.sessions.openInTerminal": {
+    "comment": "Sessions row context menu and transcript resume row: run the resume command in a terminal",
+    "value": "Open in Terminal"
+  },
+  "workbench.sessions.options.help": {
+    "comment": "Accessibility label of the Sessions Options menu",
+    "value": "Terminal and index options"
+  },
+  "workbench.sessions.options.indexMessageText": {
+    "comment": "Toggle in the Sessions Options menu that stores message excerpts in the index",
+    "value": "Index message text"
+  },
+  "workbench.sessions.options.openIn": {
+    "comment": "Picker in the Sessions Options menu that chooses where a resume command is sent",
+    "value": "Open in"
+  },
+  "workbench.sessions.options.rebuildIndex": {
+    "comment": "Button in the Sessions Options menu that erases and rescans the index",
+    "value": "Rebuild index…"
+  },
+  "workbench.sessions.outline.empty": {
+    "comment": "Empty state of the transcript outline popover",
+    "value": "This transcript has no user prompts."
+  },
+  "workbench.sessions.outline.heading": {
+    "comment": "Heading of the transcript outline popover",
+    "value": "PROMPTS"
+  },
+  "workbench.sessions.outline.help": {
+    "comment": "Tooltip on the transcript outline button",
+    "value": "Jump to a prompt"
+  },
+  "workbench.sessions.outline.label": {
+    "comment": "Accessibility label of the transcript outline button",
+    "value": "Show the transcript outline"
+  },
+  "workbench.sessions.page.next": {
+    "comment": "Button that moves the transcript to the next page of messages",
+    "value": "Next"
+  },
+  "workbench.sessions.page.previous": {
+    "comment": "Button that moves the transcript to the previous page of messages",
+    "value": "Previous"
+  },
+  "workbench.sessions.project.none": {
+    "comment": "Sessions group heading and footer label for a session with no working directory",
+    "value": "No project"
+  },
+  "workbench.sessions.project.projectless": {
+    "comment": "Sessions group heading, footer label and Details value for a Codex task started without a project",
+    "value": "Projectless"
+  },
+  "workbench.sessions.range.all": {
+    "comment": "Sessions When menu option: no lower bound",
+    "value": "Any time"
+  },
+  "workbench.sessions.range.month": {
+    "comment": "Sessions When menu option: the last thirty days",
+    "value": "30 days"
+  },
+  "workbench.sessions.range.today": {
+    "comment": "Sessions When menu option: since midnight",
+    "value": "Today"
+  },
+  "workbench.sessions.range.week": {
+    "comment": "Sessions When menu option: the last seven days",
+    "value": "7 days"
+  },
+  "workbench.sessions.refreshHelp": {
+    "comment": "Tooltip on the Sessions refresh button",
+    "value": "Rescan the session logs on disk"
+  },
+  "workbench.sessions.resume.heading": {
+    "comment": "Heading above the shell line that reopens a session, in the transcript Details",
+    "value": "RESUME"
+  },
+  "workbench.sessions.resume.none": {
+    "comment": "Shown in the transcript Details when the provider offers no resume command",
+    "value": "This session has no command-line entry point."
+  },
+  "workbench.sessions.role.assistant": {
+    "comment": "Role label on a transcript message card",
+    "value": "Assistant"
+  },
+  "workbench.sessions.role.other": {
+    "comment": "Role label on a transcript message card that is none of the known roles",
+    "value": "Note"
+  },
+  "workbench.sessions.role.system": {
+    "comment": "Role label on a transcript message card",
+    "value": "System"
+  },
+  "workbench.sessions.role.tool": {
+    "comment": "Role label on a transcript message card",
+    "value": "Tool"
+  },
+  "workbench.sessions.role.user": {
+    "comment": "Role label on a transcript message card written by the person",
+    "value": "You"
+  },
+  "workbench.sessions.row.autoReviewsMerged": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Tooltip on the review badge of a Sessions row. Auto Review is Codex's own feature name and stays in English.",
+    "value": "{count, plural, one {1 Auto Review merged} other {# Auto Reviews merged}}"
+  },
+  "workbench.sessions.row.includeInDeletion": {
+    "comment": "Tooltip on a Sessions row checkbox while delete mode is on",
+    "value": "Include this session in the deletion"
+  },
+  "workbench.sessions.row.messageCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How many messages a session holds: the tooltip on the Sessions row badge, and the transcript header line",
+    "value": "{count, plural, one {# message} other {# messages}}"
+  },
+  "workbench.sessions.row.select": {
+    "comment": "Accessibility label of a Sessions row checkbox",
+    "value": "Select this session"
+  },
+  "workbench.sessions.row.showTranscript": {
+    "comment": "Accessibility hint on a Sessions row outside delete mode",
+    "value": "Show this transcript"
+  },
+  "workbench.sessions.row.toggleForDeletion": {
+    "comment": "Accessibility hint on a Sessions row while delete mode is on",
+    "value": "Toggle this session for deletion"
+  },
+  "workbench.sessions.runInHelp": {
+    "args": {
+      "terminal": "string"
+    },
+    "comment": "Tooltip on the buttons that hand a resume command to a terminal. {terminal} is the app's own name.",
+    "value": "Run it in {terminal}"
+  },
+  "workbench.sessions.scope.assistant": {
+    "comment": "Sessions search scope",
+    "value": "Assistant replies"
+  },
+  "workbench.sessions.scope.system": {
+    "comment": "Sessions search scope",
+    "value": "System prompts"
+  },
+  "workbench.sessions.scope.title": {
+    "comment": "Sessions search scope",
+    "value": "Titles and session IDs"
+  },
+  "workbench.sessions.scope.tool": {
+    "comment": "Sessions search scope",
+    "value": "Tool and file operations"
+  },
+  "workbench.sessions.scope.user": {
+    "comment": "Sessions search scope",
+    "value": "User prompts"
+  },
+  "workbench.sessions.search.bodyIndexed": {
+    "comment": "Footer of the Sessions Scope menu while message indexing is on",
+    "value": "Message text is indexed locally."
+  },
+  "workbench.sessions.search.bodyNotIndexed": {
+    "comment": "Footer of the Sessions Scope menu while message indexing is off",
+    "value": "Enable message indexing in Options to search transcript content."
+  },
+  "workbench.sessions.search.clearHelp": {
+    "comment": "Tooltip on the clear button inside the Sessions search field",
+    "value": "Clear the search"
+  },
+  "workbench.sessions.search.placeholder": {
+    "comment": "Placeholder of the Sessions search field",
+    "value": "Search sessions"
+  },
+  "workbench.sessions.selectMode": {
+    "comment": "Button that turns on the Sessions page's delete-selection mode",
+    "value": "Select"
+  },
+  "workbench.sessions.selectModeHelp": {
+    "comment": "Tooltip on the Sessions select-mode button",
+    "value": "Pick sessions to delete"
+  },
+  "workbench.sessions.sort.byProject": {
+    "comment": "Sessions Sort menu option",
+    "value": "By project"
+  },
+  "workbench.sessions.sort.oldestFirst": {
+    "comment": "Sessions Sort menu option",
+    "value": "Oldest first"
+  },
+  "workbench.sessions.sort.recentFirst": {
+    "comment": "Sessions Sort menu option",
+    "value": "Newest first"
+  },
+  "workbench.sessions.toast.bodyIndexDropFailed": {
+    "comment": "Sessions toast after turning message indexing off and the stored excerpts could not be dropped",
+    "value": "Clearing the indexed message text failed."
+  },
+  "workbench.sessions.toast.bodyIndexDropped": {
+    "comment": "Sessions toast after turning message indexing off",
+    "value": "Indexed message text removed."
+  },
+  "workbench.sessions.toast.copied": {
+    "comment": "Sessions toast after a command was put on the pasteboard",
+    "value": "Copied to the clipboard."
+  },
+  "workbench.sessions.toast.copiedWithReason": {
+    "args": {
+      "reason": "string"
+    },
+    "comment": "Sessions toast after a terminal could not be driven and the command went to the pasteboard instead. {reason} is the launcher's own explanation.",
+    "value": "Copied to the clipboard. {reason}"
+  },
+  "workbench.sessions.toast.cwdCopied": {
+    "comment": "Sessions toast after copying a session's working directory",
+    "value": "Working directory copied."
+  },
+  "workbench.sessions.toast.deleted": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Sessions toast after every selected session was deleted",
+    "value": "{count, plural, one {Deleted 1 session.} other {Deleted # sessions.}}"
+  },
+  "workbench.sessions.toast.deletedPartial": {
+    "args": {
+      "deleted": "int",
+      "kept": "int",
+      "reason": "string"
+    },
+    "comment": "Sessions toast after a partial delete. {reason} is the first failure's own message.",
+    "value": "Deleted {deleted}, kept {kept}: {reason}"
+  },
+  "workbench.sessions.toast.indexNotCleared": {
+    "comment": "Sessions toast when a rebuild could not erase the index first",
+    "value": "The session index could not be cleared."
+  },
+  "workbench.sessions.toast.messageCopied": {
+    "comment": "Sessions toast after copying one transcript message",
+    "value": "Message copied."
+  },
+  "workbench.sessions.toast.noResumeCommand": {
+    "comment": "Sessions toast when a session cannot be handed back to a CLI",
+    "value": "This session has no resume command."
+  },
+  "workbench.sessions.toast.openedIn": {
+    "args": {
+      "terminal": "string"
+    },
+    "comment": "Sessions toast after a resume command was handed to a terminal. {terminal} is the app's own name.",
+    "value": "Opened in {terminal}."
+  },
+  "workbench.sessions.toast.sessionIDCopied": {
+    "comment": "Sessions toast after copying a session identifier",
+    "value": "Session ID copied."
+  },
+  "workbench.sessions.toast.sourcePathCopied": {
+    "comment": "Sessions toast after copying a session log's path",
+    "value": "Source path copied."
+  },
+  "workbench.sessions.transcript.autoReviewDivider": {
+    "comment": "Separator inserted in a transcript where a Codex Auto Review child session is merged in. Auto Review is Codex's own feature name and stays in English.",
+    "value": "Auto Review"
+  },
+  "workbench.sessions.transcript.cancelled": {
+    "comment": "Shown in the transcript pane after the reader was cancelled",
+    "value": "Reading this session was stopped. Select it again to reopen it."
+  },
+  "workbench.sessions.transcript.loadAll": {
+    "comment": "Button on the truncation banner that re-reads a very large session with no byte bound",
+    "value": "Load entire transcript"
+  },
+  "workbench.sessions.transcript.loading": {
+    "comment": "Shown in the transcript pane while a session file is being parsed",
+    "value": "Reading the session log…"
+  },
+  "workbench.sessions.transcript.noMessages": {
+    "comment": "Shown in the transcript pane when the log parsed to nothing",
+    "value": "This session's log has no readable messages."
+  },
+  "workbench.sessions.transcript.noReader": {
+    "args": {
+      "provider": "string"
+    },
+    "comment": "Transcript error when no adapter can open this provider's sessions. {provider} is the provider's own name.",
+    "value": "No reader is registered for {provider}."
+  },
+  "workbench.sessions.transcript.pageRange": {
+    "args": {
+      "first": "int",
+      "last": "int",
+      "total": "int"
+    },
+    "comment": "Header of the transcript pager",
+    "value": "Messages {first}–{last} of {total}"
+  },
+  "workbench.sessions.transcript.placeholderDetail": {
+    "comment": "Transcript pane placeholder while no session is selected",
+    "value": "Pick a session on the left to read its transcript, copy its resume command, or hand it back to its CLI."
+  },
+  "workbench.sessions.transcript.placeholderTitle": {
+    "comment": "Transcript pane placeholder title while no session is selected",
+    "value": "No session selected"
+  },
+  "workbench.sessions.transcript.readFailed": {
+    "comment": "Transcript error when the adapter threw and offered no message of its own",
+    "value": "This session's log could not be read."
+  },
+  "workbench.sessions.transcript.truncatedDetail": {
+    "args": {
+      "file": "string",
+      "parsed": "string"
+    },
+    "comment": "Truncation banner detail. Both sizes arrive already formatted as byte counts.",
+    "value": "{parsed} read of {file}. Reading all of it holds the whole transcript in memory."
+  },
+  "workbench.sessions.transcript.truncatedTitle": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Truncation banner title when only a head window of a very large session was parsed",
+    "value": "Showing the first {count, plural, one {# message} other {# messages}} of a very large log"
+  },
+  "workbench.skills.appCountNativeDisabled": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Last clause of the per-harness count tooltip: skills linked into the harness but switched off in its own config.",
+    "value": "{count} projected but disabled"
+  },
+  "workbench.skills.appCountViaGeminiRoot": {
+    "args": {
+      "coupled": "int",
+      "enabled": "int"
+    },
+    "comment": "Second clause of the per-harness count tooltip, for AntiGravity, which sees skills through the Gemini CLI folder.",
+    "value": "{enabled} enabled + {coupled} via the Gemini CLI compatibility root"
+  },
+  "workbench.skills.appCountViaSharedRoot": {
+    "args": {
+      "coupled": "int",
+      "enabled": "int"
+    },
+    "comment": "Second clause of the per-harness count tooltip, for a harness that scans the shared root itself.",
+    "value": "{enabled} enabled + {coupled} via the shared skills root"
+  },
+  "workbench.skills.appSeesCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Skills page per-harness count pill: its tooltip and its accessibility label. {app} is a harness display name and is never translated.",
+    "value": "{app} sees {count, plural, one {# skill} other {# skills}}"
+  },
+  "workbench.skills.backups": {
+    "comment": "Skills toolbar button that opens the backups sheet.",
+    "value": "Backups"
+  },
+  "workbench.skills.backups.deleteAccessibility": {
+    "comment": "Accessibility label on the trash button in a backup row.",
+    "value": "Delete this backup"
+  },
+  "workbench.skills.backups.deleteConfirmMessage": {
+    "comment": "Message under the delete-backup confirmation title. The path is an identifier.",
+    "value": "The snapshot is removed from ~/.vibebar and cannot be restored afterwards."
+  },
+  "workbench.skills.backups.deleteConfirmTitle": {
+    "comment": "Title of the delete-backup confirmation dialog when the snapshot names its skill.",
+    "value": "Delete the backup of {skill}?"
+  },
+  "workbench.skills.backups.deleteConfirmTitleGeneric": {
+    "comment": "Title of the delete-backup confirmation dialog when the snapshot has no readable skill name.",
+    "value": "Delete this backup?"
+  },
+  "workbench.skills.backups.empty": {
+    "comment": "Empty state of the backups sheet.",
+    "value": "No backups yet"
+  },
+  "workbench.skills.backups.footer": {
+    "comment": "Footer of the backups sheet: what a restore does and does not do.",
+    "value": "Restoring recreates the shared directory only — enable the skill for the apps you want it in afterwards."
+  },
+  "workbench.skills.backups.refreshHelp": {
+    "comment": "Tooltip on the backups sheet refresh button.",
+    "value": "Re-read the backup directory"
+  },
+  "workbench.skills.backups.restore": {
+    "comment": "Button that copies a backup back into the shared skills directory.",
+    "value": "Restore"
+  },
+  "workbench.skills.backups.restoreHelp": {
+    "comment": "Tooltip on the Restore button. The path is an identifier.",
+    "value": "Copy the snapshot back into ~/.agents/skills"
+  },
+  "workbench.skills.backups.subtitle": {
+    "comment": "Subtitle of the backups sheet.",
+    "value": "Taken automatically before an uninstall or an update."
+  },
+  "workbench.skills.backups.title": {
+    "comment": "Title of the backups sheet.",
+    "value": "Skill Backups"
+  },
+  "workbench.skills.badge.installed": {
+    "comment": "Badge on a discover-sheet row for a skill already installed on this Mac.",
+    "value": "INSTALLED"
+  },
+  "workbench.skills.badge.nativeOff": {
+    "comment": "Row badge: the skill is linked into {app} but that harness's own config switches it off.",
+    "value": "{app} OFF"
+  },
+  "workbench.skills.badge.nativeOffHelp": {
+    "comment": "Tooltip on the row badge that names a harness whose native switch is off.",
+    "value": "Projected, but disabled by the harness's own configuration"
+  },
+  "workbench.skills.badge.nativeUnknown": {
+    "comment": "Row badge: a harness config file could not be parsed, so its per-skill switch is unknown.",
+    "value": "NATIVE STATE ?"
+  },
+  "workbench.skills.badge.nativeUnknownHelp": {
+    "comment": "Tooltip on the unknown-native-state row badge.",
+    "value": "The harness configuration could not be parsed safely"
+  },
+  "workbench.skills.badge.update": {
+    "comment": "Row badge: the repository this skill came from has a newer version.",
+    "value": "UPDATE"
+  },
+  "workbench.skills.checkUpdates": {
+    "comment": "Skills toolbar button that asks every repository-backed skill whether it has a newer commit.",
+    "value": "Check Updates"
+  },
+  "workbench.skills.checkUpdatesCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Same Skills toolbar button once updates are known. {count} is how many skills can be updated.",
+    "value": "Check Updates · {count}"
+  },
+  "workbench.skills.contextDisableKeepProjection": {
+    "comment": "Context-menu item: flip the harness's own per-skill switch off but leave the link on disk.",
+    "value": "Disable in {app} · Keep Projection"
+  },
+  "workbench.skills.contextEnableIn": {
+    "comment": "Context-menu item on a skill's harness circle.",
+    "value": "Enable in {app}"
+  },
+  "workbench.skills.contextRemoveProjection": {
+    "comment": "Context-menu item: delete the link or copy Vibe Bar made inside that harness's skills folder.",
+    "value": "Remove {app} Projection"
+  },
+  "workbench.skills.countFiltered": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Skills page count caption while the search field filters the list.",
+    "value": "{shown} of {total} skills"
+  },
+  "workbench.skills.countTotal": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Skills page count caption when no filter is applied.",
+    "value": "{count, plural, one {# skill} other {# skills}}"
+  },
+  "workbench.skills.discover": {
+    "comment": "Skills toolbar and empty-state button that opens the discover sheet.",
+    "value": "Discover"
+  },
+  "workbench.skills.discover.addRepo": {
+    "comment": "Button that adds the typed repository reference to the scan list.",
+    "value": "Add"
+  },
+  "workbench.skills.discover.availableEmpty": {
+    "comment": "Empty state of the discover sheet's available-skills section.",
+    "value": "Scan the configured repositories, or install a skills.sh result, to list what is available."
+  },
+  "workbench.skills.discover.availableTitle": {
+    "comment": "Discover sheet section title for what the last scan or download turned up.",
+    "value": "Available skills"
+  },
+  "workbench.skills.discover.indexTitle": {
+    "comment": "Discover sheet section title for the community index.",
+    "value": "skills.sh index"
+  },
+  "workbench.skills.discover.installs": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How many times a skills.sh result has been installed, beside its repository.",
+    "value": "{count, plural, one {# install} other {# installs}}"
+  },
+  "workbench.skills.discover.noRepos": {
+    "comment": "Empty state of the discover sheet's repository list. The reference syntax is an identifier.",
+    "value": "No repositories configured. Add one as owner/repo, optionally owner/repo@branch."
+  },
+  "workbench.skills.discover.removeRepo": {
+    "comment": "Accessibility label on the button that removes a repository from the scan list.",
+    "value": "Remove {repo}"
+  },
+  "workbench.skills.discover.repoFieldPlaceholder": {
+    "comment": "Placeholder in the add-repository field. The two forms are syntax and stay as spelled.",
+    "value": "owner/repo or owner/repo@branch"
+  },
+  "workbench.skills.discover.repoRules": {
+    "comment": "Hint under the add-repository field while what was typed is not a valid reference.",
+    "value": "Owners take letters, digits, and hyphens; names and branches also take dots and underscores."
+  },
+  "workbench.skills.discover.reposTitle": {
+    "comment": "Discover sheet section title, and the source caption once a scan of those repositories finishes.",
+    "value": "Configured repositories"
+  },
+  "workbench.skills.discover.scanRepos": {
+    "comment": "Discover sheet button that downloads every configured repository.",
+    "value": "Scan repos"
+  },
+  "workbench.skills.discover.scanReposHelp": {
+    "comment": "Tooltip on the scan button.",
+    "value": "Download every configured repository"
+  },
+  "workbench.skills.discover.searchHint": {
+    "comment": "Caption in the skills.sh section before any search has run.",
+    "value": "Results come back with the repository that publishes them; installing one downloads that repository and lists the rest of it below."
+  },
+  "workbench.skills.discover.searchPlaceholder": {
+    "comment": "Placeholder in the skills.sh search field.",
+    "value": "Search the community index"
+  },
+  "workbench.skills.discover.selectAll": {
+    "comment": "Discover sheet button that pre-selects every harness for new installs.",
+    "value": "Select all"
+  },
+  "workbench.skills.discover.selectHelp": {
+    "comment": "Tooltip on the discover sheet's select-all button.",
+    "value": "Set which agent CLIs every row installs into"
+  },
+  "workbench.skills.discover.selectNone": {
+    "comment": "Discover sheet button that clears the harness pre-selection.",
+    "value": "Select none"
+  },
+  "workbench.skills.discover.sourceFromSkillsSh": {
+    "comment": "Source caption once installing a skills.sh hit has replaced the results with that repository.",
+    "value": "{repo} (from skills.sh)"
+  },
+  "workbench.skills.discover.stopScanHelp": {
+    "comment": "Tooltip on the scan button while a scan is running and the button cancels it.",
+    "value": "Stop the running scan"
+  },
+  "workbench.skills.discover.stopScanningRepo": {
+    "comment": "Tooltip on the button that removes a repository from the scan list.",
+    "value": "Stop scanning {repo}"
+  },
+  "workbench.skills.discover.title": {
+    "comment": "Title of the discover sheet.",
+    "value": "Discover Skills"
+  },
+  "workbench.skills.discoverHelp": {
+    "comment": "Tooltip on the Skills page Discover button.",
+    "value": "Browse configured repositories and the skills.sh index"
+  },
+  "workbench.skills.empty.body": {
+    "comment": "Body of the Skills page empty state. The path is an identifier and stays as spelled.",
+    "value": "Vibe Bar keeps one copy of every skill in ~/.agents/skills and links it into each agent CLI. Import what is already on this Mac, or install something new from a repository."
+  },
+  "workbench.skills.empty.headline": {
+    "comment": "Headline of the Skills page empty state.",
+    "value": "No skills recorded yet"
+  },
+  "workbench.skills.filterClear": {
+    "comment": "Accessibility label on the button that empties the Skills search field.",
+    "value": "Clear the filter"
+  },
+  "workbench.skills.filterPlaceholder": {
+    "comment": "Placeholder in the Skills page search field.",
+    "value": "Filter installed skills"
+  },
+  "workbench.skills.import.alreadyShared": {
+    "comment": "Import sheet section header for skills that already live in the shared directory.",
+    "value": "Already shared"
+  },
+  "workbench.skills.import.alreadySharedDetail": {
+    "comment": "Caption of the already-shared section. The path and CC Switch are identifiers.",
+    "value": "These already live in ~/.agents/skills, including layouts created by CC Switch. Vibe Bar records their existing links; it does not import or copy them again."
+  },
+  "workbench.skills.import.apply": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Confirm button of the import sheet.",
+    "value": "Apply {count, plural, one {# change} other {# changes}}"
+  },
+  "workbench.skills.import.conflicts": {
+    "comment": "Import sheet section header for app folders whose name collides with a shared skill.",
+    "value": "Conflicting app copies"
+  },
+  "workbench.skills.import.conflictsCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Count beside the conflicts section header.",
+    "value": "{count} unchanged"
+  },
+  "workbench.skills.import.conflictsDetail": {
+    "comment": "Caption of the conflicts section: why nothing was changed and what the user can do.",
+    "value": "A real folder in an app's skills directory has the same name as one in ~/.agents/skills. Vibe Bar will not overwrite it — resolve it by hand, or enable the shared skill for that app once the folder is gone."
+  },
+  "workbench.skills.import.foundIn": {
+    "comment": "Caption under an unmanaged directory naming the harnesses whose folders hold it. {apps} is a comma-separated list of harness names.",
+    "value": "found in {apps}"
+  },
+  "workbench.skills.import.keepEvidenceFor": {
+    "comment": "Label before the harness circles that choose which existing links the import records.",
+    "value": "Keep evidence for"
+  },
+  "workbench.skills.import.needsAdoption": {
+    "comment": "Import sheet section header for app-local directories that are not in the shared directory yet.",
+    "value": "Needs adoption"
+  },
+  "workbench.skills.import.needsAdoptionDetail": {
+    "comment": "Caption of the needs-adoption section: exactly what applying it writes.",
+    "value": "These do not exist in the shared directory yet. Selecting one copies it into ~/.agents/skills, then replaces the chosen app copies with managed links."
+  },
+  "workbench.skills.import.notSkills": {
+    "comment": "Import sheet section header for directories that hold no SKILL.md.",
+    "value": "Not skills"
+  },
+  "workbench.skills.import.notSkillsDetail": {
+    "comment": "Caption of the not-skills section. The path and the filename are identifiers.",
+    "value": "Directories in ~/.agents/skills with no SKILL.md. Left exactly as they are."
+  },
+  "workbench.skills.import.recognizedCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Count beside the already-shared section header.",
+    "value": "{count} recognized"
+  },
+  "workbench.skills.import.subtitle": {
+    "comment": "Subtitle of the import sheet: what applying it will and will not touch.",
+    "value": "Vibe Bar already recognizes shared skills. Only selected app-local folders will move."
+  },
+  "workbench.skills.import.summary": {
+    "args": {
+      "adopted": "int",
+      "conflicts": "int",
+      "unmanaged": "int"
+    },
+    "comment": "Import sheet footer totals across the scan's four sections.",
+    "value": "{adopted} already shared · {unmanaged} need adoption · {conflicts} left unchanged"
+  },
+  "workbench.skills.import.title": {
+    "comment": "Title of the import sheet.",
+    "value": "Review On-Disk Skills"
+  },
+  "workbench.skills.importExisting": {
+    "comment": "Skills toolbar and empty-state button that scans the Mac for skills already on disk.",
+    "value": "Import Existing"
+  },
+  "workbench.skills.install": {
+    "comment": "Button on a discover-sheet row that installs that skill.",
+    "value": "Install"
+  },
+  "workbench.skills.installFromZip": {
+    "comment": "Skills toolbar button that opens a file picker for a skill archive.",
+    "value": "Install from ZIP"
+  },
+  "workbench.skills.menuMoreActions": {
+    "comment": "Accessibility label on a skill row's overflow menu button.",
+    "value": "More actions for {skill}"
+  },
+  "workbench.skills.menuRevealInFinder": {
+    "comment": "Overflow-menu item that selects the skill's directory in Finder.",
+    "value": "Reveal in Finder"
+  },
+  "workbench.skills.menuUninstall": {
+    "comment": "Overflow-menu item that asks to uninstall the skill.",
+    "value": "Uninstall…"
+  },
+  "workbench.skills.menuUpdateFromRepository": {
+    "comment": "Overflow-menu item that re-fetches the skill from its repository.",
+    "value": "Update from repository"
+  },
+  "workbench.skills.menuWiringDetails": {
+    "comment": "Overflow-menu item that opens the per-skill wiring popover.",
+    "value": "Wiring Details…"
+  },
+  "workbench.skills.noMatch": {
+    "comment": "Card shown when the Skills search field matches nothing. {query} is what the user typed.",
+    "value": "No skill matches “{query}”"
+  },
+  "workbench.skills.phase.downloadedOne": {
+    "comment": "Progress line when the scan covered exactly one repository.",
+    "value": "Downloaded 1 repository"
+  },
+  "workbench.skills.phase.downloadedProgress": {
+    "args": {
+      "completed": "int",
+      "total": "int"
+    },
+    "comment": "Progress line while a multi-repository scan runs.",
+    "value": "Downloaded {completed} of {total} repositories"
+  },
+  "workbench.skills.phase.downloading": {
+    "comment": "Progress line while a repository is being fetched.",
+    "value": "Downloading {repo}…"
+  },
+  "workbench.skills.phase.scanning": {
+    "comment": "Progress line while a downloaded repository is being read.",
+    "value": "Scanning {repo}…"
+  },
+  "workbench.skills.sourceBranch": {
+    "comment": "Tooltip on the source badge naming the git branch the skill was fetched from.",
+    "value": "Branch {branch}"
+  },
+  "workbench.skills.sourceInstalledLocally": {
+    "comment": "Tooltip on the source badge when the skill has no repository.",
+    "value": "Installed locally"
+  },
+  "workbench.skills.sourceLocal": {
+    "comment": "Source badge and result-group heading for a skill with no repository behind it.",
+    "value": "local"
+  },
+  "workbench.skills.state.coupled": {
+    "comment": "Accessibility value of a harness circle: the harness finds the skill without a link of its own.",
+    "value": "Available through a shared or compatibility root"
+  },
+  "workbench.skills.state.disabledInHarness": {
+    "comment": "Accessibility value of a harness circle: linked, but the harness's own switch is off.",
+    "value": "Projected, disabled in harness"
+  },
+  "workbench.skills.state.enabled": {
+    "comment": "Accessibility value of a harness circle: the skill is linked and switched on.",
+    "value": "Enabled"
+  },
+  "workbench.skills.state.notProjected": {
+    "comment": "Accessibility value of a harness circle: nothing links the skill into that harness.",
+    "value": "Not projected"
+  },
+  "workbench.skills.state.unknown": {
+    "comment": "Accessibility value of a harness circle: linked, but the harness config could not be read.",
+    "value": "Projected, native state unknown"
+  },
+  "workbench.skills.sync.footer": {
+    "comment": "Footer of the sync explainer popover. {path} is the shared skills directory.",
+    "value": "Vibe Bar writes only inside ~/{path}, the per-harness skills folders, and the config files above."
+  },
+  "workbench.skills.sync.nativeSwitchesBody": {
+    "comment": "Sync explainer's third paragraph.",
+    "value": "Where a harness has its own per-skill off switch, the circles flip that switch. Cursor has none, so every skill in the shared root is always available to it — that is the “shared root” badge, and there is nothing to toggle."
+  },
+  "workbench.skills.sync.nativeSwitchesLead": {
+    "comment": "Run-in heading of the sync explainer's third paragraph.",
+    "value": "Native switches."
+  },
+  "workbench.skills.sync.noPerSkillSwitch": {
+    "comment": "Clause in a harness's one-line sync summary when it has no switch of its own.",
+    "value": "no per-skill switch"
+  },
+  "workbench.skills.sync.noSwitchAlsoReads": {
+    "comment": "Clause in AntiGravity's one-line sync summary. {path} is the Gemini CLI skills directory.",
+    "value": "no per-skill switch; also reads ~/{path}"
+  },
+  "workbench.skills.sync.perSkillSwitch": {
+    "comment": "Clause in a harness's one-line sync summary naming its config key and file.",
+    "value": "per-skill switch {key} in ~/{path}"
+  },
+  "workbench.skills.sync.projectionsBody": {
+    "comment": "Sync explainer's second paragraph. The harness names are identifiers and stay as spelled.",
+    "value": "Claude Code and AntiGravity read only their own skills folders, so Vibe Bar links (or copies) skills into them. Codex, Gemini CLI, Grok Build, and Cursor scan the shared root themselves — no link needed."
+  },
+  "workbench.skills.sync.projectionsLead": {
+    "comment": "Run-in heading of the sync explainer's second paragraph.",
+    "value": "Projections."
+  },
+  "workbench.skills.sync.readsOwnFolder": {
+    "comment": "Clause in a harness's one-line sync summary. {path} is that harness's own skills directory.",
+    "value": "reads only ~/{path}"
+  },
+  "workbench.skills.sync.scansSharedRoot": {
+    "comment": "Clause in a harness's one-line sync summary. {path} is the shared skills directory.",
+    "value": "scans ~/{path} directly"
+  },
+  "workbench.skills.sync.ssotBody": {
+    "comment": "Sync explainer's first paragraph. {path} is the shared skills directory and stays as spelled.",
+    "value": "Every skill lives in ~/{path}/<name>. Install, update, and uninstall all happen there and only there."
+  },
+  "workbench.skills.sync.ssotLead": {
+    "comment": "Run-in heading of the sync explainer's first paragraph.",
+    "value": "One source of truth."
+  },
+  "workbench.skills.sync.title": {
+    "comment": "Title of the page-level sync explainer popover.",
+    "value": "How skill syncing works"
+  },
+  "workbench.skills.syncExplainerHelp": {
+    "comment": "Tooltip on the question-mark button that opens the sync explainer popover.",
+    "value": "How skill syncing works — roots, links, and native switches"
+  },
+  "workbench.skills.toast.addRepoFirst": {
+    "comment": "Toast when a scan is asked for with no repositories configured.",
+    "value": "Add a repository first."
+  },
+  "workbench.skills.toast.allUpToDate": {
+    "comment": "Toast after an update check that found nothing to do.",
+    "value": "Every repository skill is up to date."
+  },
+  "workbench.skills.toast.archiveEmpty": {
+    "comment": "Toast after a ZIP import that produced no skill.",
+    "value": "Nothing in that archive could be installed."
+  },
+  "workbench.skills.toast.disabledKeptProjection": {
+    "comment": "Toast after flipping a harness's own per-skill switch off.",
+    "value": "Disabled {skill} in {app} and kept its projection."
+  },
+  "workbench.skills.toast.enabledForApps": {
+    "comment": "Second sentence of the archive-install toast. {apps} is a list of harness names.",
+    "value": "Enabled for {apps}."
+  },
+  "workbench.skills.toast.importConflicts": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Second sentence of the toast after a silent first-run import.",
+    "value": "Left {count, plural, one {# conflicting app copy} other {# conflicting app copies}} unchanged."
+  },
+  "workbench.skills.toast.importRecognized": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "First sentence of the toast after a silent first-run import.",
+    "value": "Recognized {count, plural, one {# existing skill} other {# existing skills}}."
+  },
+  "workbench.skills.toast.installedArchive": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "First sentence of the toast after installing a ZIP that held one or more skills.",
+    "value": "Installed {count, plural, one {# skill} other {# skills}} from the archive."
+  },
+  "workbench.skills.toast.installedForApps": {
+    "comment": "Toast after installing one skill into the selected harnesses. {apps} is a list of harness names.",
+    "value": "Installed {skill} for {apps}."
+  },
+  "workbench.skills.toast.installedShared": {
+    "comment": "Toast after installing one skill with no harness selected.",
+    "value": "Installed {skill} in the shared library. Check effective harness state in Skills."
+  },
+  "workbench.skills.toast.invalidRepoRef": {
+    "comment": "Toast when the add-repository field holds something unusable or already listed.",
+    "value": "“{input}” is not a new owner/repo[@branch] reference."
+  },
+  "workbench.skills.toast.linkRemovedStillShared": {
+    "comment": "Toast after removing a redundant link from a harness that scans the shared root anyway.",
+    "value": "Removed the {app} link. {skill} stays available there through the shared skills root."
+  },
+  "workbench.skills.toast.noSearchMatches": {
+    "comment": "Toast after a community-index search with no hits.",
+    "value": "skills.sh returned no matches."
+  },
+  "workbench.skills.toast.noSkillsFound": {
+    "comment": "Toast after a scan that read every repository and found nothing.",
+    "value": "No skills were found in the configured repositories."
+  },
+  "workbench.skills.toast.notFoundInRepo": {
+    "comment": "Toast when a skills.sh hit is missing from the repository it named.",
+    "value": "{skill} was not found in {repo}."
+  },
+  "workbench.skills.toast.projectionClearedFolderKept": {
+    "comment": "Toast after removing a projection that turned out to be a real folder Vibe Bar did not create.",
+    "value": "{skill}'s Vibe Bar projection was cleared for {app}, but the existing folder was left in place."
+  },
+  "workbench.skills.toast.recorded": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Toast after applying the import sheet.",
+    "value": "Recorded {count, plural, one {# skill} other {# skills}}."
+  },
+  "workbench.skills.toast.reposUnreadable": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Toast after a scan in which more than one repository failed.",
+    "value": "{count, plural, one {# repository} other {# repositories}} could not be read."
+  },
+  "workbench.skills.toast.restored": {
+    "comment": "Toast after restoring a backup into the shared directory.",
+    "value": "Restored {skill}. Enable it for the apps you want it in."
+  },
+  "workbench.skills.toast.scanStopped": {
+    "comment": "Toast after cancelling a repository scan.",
+    "value": "Stopped scanning."
+  },
+  "workbench.skills.toast.sharedLibraryNote": {
+    "comment": "Second sentence of the archive-install toast when no harness was selected.",
+    "value": "They stay in the shared library. Check effective harness state in Skills."
+  },
+  "workbench.skills.toast.sharedRootNoSwitch": {
+    "comment": "Toast after clicking a circle that cannot change anything.",
+    "value": "{app} reads the shared skills root directly — {skill} is always available there and has no per-skill switch."
+  },
+  "workbench.skills.toast.uninstalledBackedUp": {
+    "comment": "Toast after uninstalling a skill that was linked nowhere else.",
+    "value": "Uninstalled {skill}. A backup was saved."
+  },
+  "workbench.skills.toast.uninstalledLeftInPlace": {
+    "comment": "Toast after an uninstall that left real folders in some harnesses. {apps} is a list of harness names.",
+    "value": "Uninstalled {skill}. Left in place for {apps}."
+  },
+  "workbench.skills.toast.updated": {
+    "comment": "Toast after re-fetching one skill from its repository.",
+    "value": "Updated {skill}."
+  },
+  "workbench.skills.toast.updatesAvailable": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Toast after an update check that found newer commits.",
+    "value": "{count, plural, one {# skill} other {# skills}} can be updated."
+  },
+  "workbench.skills.toggleHelp.installInto": {
+    "comment": "Tooltip on a harness circle in the discover sheet, where the circles pick install targets.",
+    "value": "Install into {app}"
+  },
+  "workbench.skills.toggleHelp.keepLinks": {
+    "comment": "Tooltip on a harness circle in the import sheet's already-shared section.",
+    "value": "Keep the {app} links already on disk"
+  },
+  "workbench.skills.toggleHelp.linkAfterAdopting": {
+    "comment": "Tooltip on a harness circle beside an unmanaged directory in the import sheet.",
+    "value": "Link into {app} after adopting"
+  },
+  "workbench.skills.toggleState.coupledGemini": {
+    "comment": "Tooltip on AntiGravity's circle when the skill reaches it through the Gemini CLI folder.",
+    "value": "{app} — visible through the Gemini CLI projection it also reads. Click to give it its own projection."
+  },
+  "workbench.skills.toggleState.coupledSharedRoot": {
+    "comment": "Tooltip on a harness circle for a harness that scans the shared root and has no switch.",
+    "value": "{app} reads the shared skills root directly, so this skill is always available there. There is no per-skill switch to flip."
+  },
+  "workbench.skills.toggleState.disabledInHarness": {
+    "comment": "Tooltip on a harness circle whose harness switched the skill off in its own config.",
+    "value": "{app} — projected, but disabled by its native config. Click to enable."
+  },
+  "workbench.skills.toggleState.enabled": {
+    "comment": "Tooltip on a harness circle that is on purely because Vibe Bar linked the skill there.",
+    "value": "{app} — enabled by projection. Click to remove it."
+  },
+  "workbench.skills.toggleState.enabledNative": {
+    "comment": "Tooltip on a harness circle that is on and whose harness has its own per-skill switch.",
+    "value": "{app} — projected and enabled. Click to disable in the harness; right-click for projection options."
+  },
+  "workbench.skills.toggleState.enabledSharedRoot": {
+    "comment": "Tooltip on a harness circle that is on for a harness that would find the skill anyway.",
+    "value": "{app} — has its own link, and also reads the shared skills root directly. There is no per-skill switch; right-click to manage the redundant link."
+  },
+  "workbench.skills.toggleState.notProjected": {
+    "comment": "Tooltip on an installed skill's harness circle when nothing links the skill there.",
+    "value": "{app} — not projected. Click to enable."
+  },
+  "workbench.skills.toggleState.unknown": {
+    "comment": "Tooltip on a harness circle whose harness config could not be read.",
+    "value": "{app} — projected, but native config could not be parsed. Click to repair as enabled."
+  },
+  "workbench.skills.uninstall": {
+    "comment": "Destructive button in the uninstall confirmation dialog.",
+    "value": "Uninstall"
+  },
+  "workbench.skills.uninstallConfirmMessage": {
+    "comment": "Message under the uninstall confirmation title.",
+    "value": "The skill is backed up first, and removed from every app that links to it."
+  },
+  "workbench.skills.uninstallConfirmTitle": {
+    "comment": "Title of the confirmation dialog for uninstalling a skill.",
+    "value": "Uninstall {skill}?"
+  },
+  "workbench.skills.wiring.footer": {
+    "comment": "Footer of the per-skill wiring popover: the write scope, in one sentence.",
+    "value": "Vibe Bar writes only inside the skills folders above and the four listed config files, and backs a skill up before uninstalling it."
+  },
+  "workbench.skills.wiring.mechanismGeminiCompat": {
+    "comment": "Wiring popover mechanism line for AntiGravity.",
+    "value": "Also reads the Gemini CLI skills folder, which holds this skill's Gemini projection."
+  },
+  "workbench.skills.wiring.mechanismSharedRoot": {
+    "comment": "Wiring popover mechanism line for a harness that finds the shared root on its own.",
+    "value": "Scans the shared root itself — no per-app link needed."
+  },
+  "workbench.skills.wiring.nativeSwitch": {
+    "comment": "Wiring popover mechanism line naming the harness config entry that switches this skill on or off.",
+    "value": "Per-skill switch: {key} in {path}"
+  },
+  "workbench.skills.wiring.noNativeSwitch": {
+    "comment": "Wiring popover mechanism line for a harness with no per-skill switch of its own.",
+    "value": "No per-skill switch — whatever is discovered is active."
+  },
+  "workbench.skills.wiring.projectionCopy": {
+    "comment": "Wiring popover mechanism line: Vibe Bar copied the skill into the harness. {path} is a file path.",
+    "value": "Copy at {path}"
+  },
+  "workbench.skills.wiring.projectionCopyAdopted": {
+    "comment": "Wiring popover mechanism line for a copy that was already on disk before Vibe Bar recorded it.",
+    "value": "Copy at {path} · adopted from an existing install"
+  },
+  "workbench.skills.wiring.projectionMissing": {
+    "comment": "Wiring popover mechanism line when nothing links the skill into a harness that needs a link.",
+    "value": "No entry at {path} — the harness cannot see this skill."
+  },
+  "workbench.skills.wiring.projectionSymlink": {
+    "comment": "Wiring popover mechanism line: Vibe Bar linked the skill into the harness. {path} is a file path.",
+    "value": "Symlink at {path}"
+  },
+  "workbench.skills.wiring.projectionSymlinkAdopted": {
+    "comment": "Wiring popover mechanism line for a symlink that was already on disk before Vibe Bar recorded it.",
+    "value": "Symlink at {path} · adopted from an existing install"
+  },
+  "workbench.skills.wiring.reveal": {
+    "comment": "Button in the per-skill wiring popover that opens the skill's directory in Finder.",
+    "value": "Reveal"
+  },
+  "workbench.skills.wiring.revealHelp": {
+    "comment": "Tooltip on the wiring popover's Reveal button.",
+    "value": "Show the skill's source directory in Finder"
+  },
+  "workbench.skills.wiring.source": {
+    "comment": "Wiring popover row title for the one real copy of the skill.",
+    "value": "Source"
+  },
+  "workbench.skills.wiring.sourceDetail": {
+    "comment": "Caption under the wiring popover's Source row.",
+    "value": "One copy of the skill. Every harness below reads this directory or a link to it."
+  },
+  "workbench.skills.wiring.stateConfigUnreadable": {
+    "comment": "Wiring popover state label: the harness config could not be parsed.",
+    "value": "Config unreadable"
+  },
+  "workbench.skills.wiring.stateCoupledGemini": {
+    "comment": "Wiring popover state label: the harness sees the skill through the Gemini CLI folder.",
+    "value": "On · via Gemini"
+  },
+  "workbench.skills.wiring.stateCoupledSharedRoot": {
+    "comment": "Wiring popover state label: the harness scans the shared skills root itself.",
+    "value": "On · shared root"
+  },
+  "workbench.skills.wiring.stateNativeOff": {
+    "comment": "Wiring popover state label: linked, but the harness's own config switches the skill off.",
+    "value": "Off · native switch"
+  },
+  "workbench.skills.wiring.stateNotLinked": {
+    "comment": "Wiring popover state label: nothing links the skill into that harness.",
+    "value": "Off · not linked"
+  },
+  "workbench.status.cachedQuotas": {
+    "comment": "Workbench header status for the Resets page when no refill is scheduled",
+    "value": "cached quotas"
+  },
+  "workbench.status.indexed": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Workbench header status for the Sessions page: how many sessions the local index holds",
+    "value": "{count} indexed"
+  },
+  "workbench.status.installed": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Workbench header status for the Skills page: how many skills are installed",
+    "value": "{count} installed"
+  },
+  "workbench.status.localIndex": {
+    "comment": "Workbench header status for the Sessions page before anything is indexed",
+    "value": "local index"
+  },
+  "workbench.status.localLedger": {
+    "comment": "Workbench header status for the Usage Stats page before the first query",
+    "value": "local ledger"
+  },
+  "workbench.status.nextRefill": {
+    "comment": "Workbench header status for the Resets page; countdown is a compact span",
+    "value": "next refill {countdown}"
+  },
+  "workbench.status.sharedLibrary": {
+    "comment": "Workbench header status for the Skills page before anything is installed",
+    "value": "shared library"
+  },
+  "workbench.status.updated": {
+    "comment": "Workbench header status for the Usage Stats page; time is a clock time",
+    "value": "updated {time}"
   }
 }

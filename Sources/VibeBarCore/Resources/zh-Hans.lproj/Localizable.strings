@@ -2,6 +2,18 @@
    Resources/i18n/zh-Hans.json. Do not edit: LocalizationCatalogTests
    regenerates this file and fails on a diff. */
 
+/* Filter chip or menu entry that selects every item. */
+"common.all" = "全部";
+
+/* Button that abandons an action in progress. */
+"common.cancel" = "取消";
+
+/* Button that empties a search field or resets a filter. */
+"common.clear" = "清除";
+
+/* Button that copies the adjacent value to the clipboard. */
+"common.copy" = "复制";
+
 /* Abbreviated month name used inside an absolute reset time */
 "common.date.month.1" = "1月";
 
@@ -44,6 +56,15 @@
 /* Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027. */
 "common.date.monthDayYearTime" = "%3$@年%1$@%2$lld日 %4$@";
 
+/* Button that performs a deletion the user has already confirmed. */
+"common.delete" = "删除";
+
+/* Button that closes a banner without acting on it. */
+"common.dismiss" = "关闭";
+
+/* Button that closes a sheet or leaves an editing mode. */
+"common.done" = "完成";
+
 /* Compact countdown, whole days only */
 "common.duration.days" = "%1$lld 天";
 
@@ -70,6 +91,9 @@
 
 /* A toggle's state, read as a value in a summary row */
 "common.on" = "已开启";
+
+/* Button that opens the selected item in the app that owns it. */
+"common.open" = "打开";
 
 /* Secondary button on an empty state */
 "common.openSettings" = "打开设置";
@@ -642,7 +666,7 @@
 "quota.forecast.reset.learning" = "正在学习你的使用规律 · 约剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.surplus" = "大概率用不完 · 预计剩余 %1$lld%%";
+"quota.forecast.reset.surplus" = "大概率有盈余 · 预计剩余 %1$lld%%";
 
 /* One-line forecast summary */
 "quota.forecast.reset.watch" = "可能不够用 · 预计剩余 %1$lld%%";
@@ -657,10 +681,10 @@
 "quota.forecast.status.learning" = "学习中 · 重置时约%1$@";
 
 /* Status line under the quota bar */
-"quota.forecast.status.surplus" = "用不完 · 预计重置时%1$@";
+"quota.forecast.status.surplus" = "盈余 · 预计重置时%1$@";
 
 /* Status line under the quota bar */
-"quota.forecast.status.watch" = "需留意 · 预计重置时%1$@";
+"quota.forecast.status.watch" = "需关注 · 预计重置时%1$@";
 
 /* Use-up line for an at-risk verdict with no ETA */
 "quota.forecast.useUp.beforeReset" = "预计会在重置前用尽";
@@ -693,10 +717,10 @@
 "quota.forecast.verdict.learning" = "学习中";
 
 /* Forecast verdict: a materially large share is likely to expire unused */
-"quota.forecast.verdict.surplus" = "用不完";
+"quota.forecast.verdict.surplus" = "盈余";
 
 /* Forecast verdict: recent burn is above the safe range */
-"quota.forecast.verdict.watch" = "需留意";
+"quota.forecast.verdict.watch" = "需关注";
 
 /* Very short age used inside a freshness badge */
 "quota.freshness.age.days" = "%1$lld 天";
@@ -1055,6 +1079,102 @@
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "状态";
 
+/* Tab over the Usage Stats breakdown table: one row per model. */
+"usage.breakdown.models" = "模型";
+
+/* Tab over the Usage Stats breakdown table: one row per time bucket. */
+"usage.breakdown.periods" = "周期";
+
+/* Tab over the Usage Stats breakdown table: one row per project directory. */
+"usage.breakdown.projects" = "项目";
+
+/* Tab over the Usage Stats breakdown table: one row per L1 company. */
+"usage.breakdown.providers" = "厂商";
+
+/* Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests. */
+"usage.breakdown.requests" = "请求";
+
+/* Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled. */
+"usage.filters.allHarnesses" = "全部 harness";
+
+/* Tooltip on the All harnesses chip while the selection is partial or empty — clicking it selects everything. */
+"usage.filters.allHarnessesHelpEvery" = "点按可选中全部 harness";
+
+/* Tooltip on the All harnesses chip while every harness is in the query — clicking it empties the selection. */
+"usage.filters.allHarnessesHelpNone" = "点按可清空 harness 选择";
+
+/* Screen-reader label for the All harnesses chip while the selection is partial or empty. */
+"usage.filters.allHarnessesSelectEvery" = "显示全部 harness";
+
+/* Screen-reader label for the All harnesses chip while every harness is in the query. */
+"usage.filters.allHarnessesSelectNone" = "不选择任何 harness";
+
+/* Menu item that clears the model filter on the Usage Stats page. Unrelated to the quota group of the same name, which is quota.group.allModels. */
+"usage.filters.allModels" = "全部模型";
+
+/* Caption on the auto-refresh pill; the call site uppercases it. */
+"usage.filters.autoMenu" = "自动";
+
+/* Screen-reader label for the auto-refresh menu button. */
+"usage.filters.autoMenuLabel" = "选择页面重新查询的频率";
+
+/* Picker label inside the auto-refresh menu. */
+"usage.filters.autoRefresh" = "自动刷新";
+
+/* Tooltip on the Clear button in the Usage Stats filter bar. */
+"usage.filters.clearHelp" = "清除 harness、厂商与模型筛选";
+
+/* Screen-reader label for a company section chip; company is an L1 company name and is never translated. */
+"usage.filters.companyHarnesses" = "%1$@，全部 harness";
+
+/* Tooltip on a company section chip, listing the harnesses it toggles. Both arguments are names and stay as spelled. */
+"usage.filters.companyHelp" = "%1$@ · %2$@";
+
+/* Date picker label for the start of a custom range. */
+"usage.filters.customRangeFrom" = "开始";
+
+/* Footnote in the custom date-range popover. */
+"usage.filters.customRangeHint" = "小时、日或周的分桶粒度在图表工具栏中选择。";
+
+/* All-caps heading of the custom date-range popover. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.filters.customRangeTitle" = "自定义区间";
+
+/* Date picker label for the end of a custom range. */
+"usage.filters.customRangeTo" = "结束";
+
+/* Menu item that opens the custom date-range editor. */
+"usage.filters.editCustomRange" = "编辑自定义区间…";
+
+/* Tooltip on a harness chip. First line names the chip (company and harness names are never translated), second line explains the click and the ⌥-click. */
+"usage.filters.harnessHelp" = "%1$@ · %2$@\n点按切换 · ⌥ 点按单独查看";
+
+/* Caption on the model filter pill; the call site uppercases it. */
+"usage.filters.modelsMenu" = "模型";
+
+/* Screen-reader label for the model filter menu button. */
+"usage.filters.modelsMenuLabel" = "选择要纳入的模型";
+
+/* Placeholder inside the model filter menu when the selected range recorded no model. */
+"usage.filters.noModelsInRange" = "所选范围内没有模型";
+
+/* Date-range preset: the last 14 local calendar days. The 7- and 30-day presets reuse cost.timeframe.weekShort / monthShort. */
+"usage.filters.range14d" = "14 天";
+
+/* Date-range preset: a rolling 24-hour window ending now. */
+"usage.filters.range24h" = "24 小时";
+
+/* Date-range preset: the hand-picked start and end. */
+"usage.filters.rangeCustom" = "自定义";
+
+/* Screen-reader label for the date-range menu button. */
+"usage.filters.rangeMenu" = "选择日期区间";
+
+/* Date-range pill value: two already-formatted dates around an en dash. */
+"usage.filters.rangeSpan" = "%1$@ – %2$@";
+
+/* A polling interval, read both as an option inside the auto-refresh menu and as the value on the pill that opens it. The off state is common.off. */
+"usage.filters.refreshInterval" = "%1$lld 秒";
+
 /* Caption saying what the mix is weighted by */
 "usage.harnessMix.byRealTokens" = "按实际 token 计";
 
@@ -1103,6 +1223,54 @@
 /* Empty state when the local per-request ledger could not be opened */
 "usage.ledgerUnavailable.title" = "用量账本不可用";
 
+/* Unit under the total in the middle of a donut card. */
+"usage.mix.donutUnit" = "token";
+
+/* Caption under the Harness Mix donut title. */
+"usage.mix.harness.subtitle" = "请求的运行位置";
+
+/* Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title. */
+"usage.mix.harness.title" = "Harness 分布";
+
+/* Empty state inside the Model Mix donut card. */
+"usage.mix.model.empty" = "所选范围内没有模型流量";
+
+/* Caption under the Model Mix donut title. */
+"usage.mix.model.subtitle" = "规范显示名";
+
+/* Donut card on the Usage Stats distribution wall: tokens by model. */
+"usage.mix.model.title" = "模型分布";
+
+/* Donut slice that collapses everything below the top five. */
+"usage.mix.other" = "其他";
+
+/* Empty state inside the Project Mix donut card; Codex and Claude are harness names and stay as spelled. */
+"usage.mix.project.empty" = "重新扫描 Codex 或 Claude 后才会显示项目归属";
+
+/* Caption under the Project Mix donut title; Codex and Claude are harness names and stay as spelled. */
+"usage.mix.project.subtitle" = "Codex + Claude 工作目录 · 最多 30 天明细";
+
+/* Donut card on the Usage Stats distribution wall: tokens by project directory. */
+"usage.mix.project.title" = "项目分布";
+
+/* Empty state inside the Provider Mix donut card. */
+"usage.mix.provider.empty" = "所选范围内没有厂商流量";
+
+/* Caption under the Provider Mix donut title. */
+"usage.mix.provider.subtitle" = "计费公司";
+
+/* Donut card on the Usage Stats distribution wall: tokens by L1 company. */
+"usage.mix.provider.title" = "厂商分布";
+
+/* Empty state inside the Token Flow donut card. */
+"usage.mix.tokenFlow.empty" = "所选范围内没有 token 流量";
+
+/* Caption under the Token Flow donut title. */
+"usage.mix.tokenFlow.subtitle" = "输入 · 缓存 · 输出";
+
+/* Donut card on the Usage Stats distribution wall: tokens by kind. */
+"usage.mix.tokenFlow.title" = "Token 流向";
+
 /* Empty state body explaining the All chip */
 "usage.noHarnessSelected.detail" = "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。";
 
@@ -1111,6 +1279,96 @@
 
 /* Footer figure; count arrives already grouped by the number formatter */
 "usage.requestCount" = "%1$@ 条请求";
+
+/* Second line of a request row's input cell: cache read and cache write, both already formatted, e.g. 12.3k. */
+"usage.table.cacheReadWrite" = "读 %1$@ · 写 %2$@";
+
+/* Models table column header, average cost per request; the call site uppercases it. */
+"usage.table.column.average" = "每请求均价";
+
+/* Periods table column header, cache read plus cache write; the call site uppercases it. */
+"usage.table.column.cache" = "缓存";
+
+/* Periods table leading column header when the series is bucketed by day; the call site uppercases it. */
+"usage.table.column.day" = "日";
+
+/* Requests table column header; the call site uppercases it. 'Harness' is the usage-axis unit and stays as spelled. */
+"usage.table.column.harness" = "Harness";
+
+/* Periods table leading column header when the series is bucketed by hour; the call site uppercases it. */
+"usage.table.column.hour" = "小时";
+
+/* Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.input. */
+"usage.table.column.input" = "输入";
+
+/* Requests and Models table column header; the call site uppercases it. */
+"usage.table.column.model" = "模型";
+
+/* Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.output. */
+"usage.table.column.output" = "输出";
+
+/* Providers and Projects table column header; the call site uppercases it. */
+"usage.table.column.provider" = "厂商";
+
+/* Providers, Projects and Models table column header; the call site uppercases it. */
+"usage.table.column.requests" = "请求数";
+
+/* Requests table column header, the service tier a request was billed at; the call site uppercases it. */
+"usage.table.column.tier" = "档位";
+
+/* Requests table column header; the call site uppercases it. */
+"usage.table.column.time" = "时间";
+
+/* Periods table leading column header when the series is bucketed by week; the cell holds the week's first day. */
+"usage.table.column.weekOf" = "周起始";
+
+/* Empty state in place of the Models table. */
+"usage.table.emptyModels" = "所选范围内没有模型合计";
+
+/* Empty state in place of the Periods table. */
+"usage.table.emptyPeriods" = "所选范围内没有活跃周期";
+
+/* Empty state in place of the Projects table; Codex and Claude are harness names and stay as spelled. */
+"usage.table.emptyProjects" = "所选范围内没有归属到项目的 Codex 或 Claude 用量";
+
+/* Empty state in place of the Providers table. */
+"usage.table.emptyProviders" = "所选范围内没有厂商合计";
+
+/* Empty state in place of the Requests table. */
+"usage.table.emptyRequests" = "所选范围内没有请求级记录";
+
+/* Tooltip on a request row's harness cell; both arguments are names and are never translated. */
+"usage.table.harnessHelp" = "%1$@ · %2$@";
+
+/* Tooltip on a request row's input cell. One key rather than three: the three lines are one block and a translation may need to reorder them. All three counts arrive formatted. */
+"usage.table.inputHelp" = "新增输入：%1$@\n缓存读取：%2$@\n缓存写入：%3$@";
+
+/* Button that loads the next page of request rows. */
+"usage.table.loadMore" = "加载更多（剩余 %1$lld 条）";
+
+/* Button label and spinner label while another page of request rows is loading. */
+"usage.table.loadingMore" = "正在加载更多请求…";
+
+/* Screen-reader label for a Periods row; every argument arrives already formatted. */
+"usage.table.periodRow" = "%1$@，%2$@，%3$@";
+
+/* Screen-reader label for a Requests row; time, model, tokens and cost arrive formatted and harness is a name. */
+"usage.table.requestRow" = "%1$@，%2$@，%3$@，%4$@，%5$@";
+
+/* Screen-reader label for the Requests table's scroll area. */
+"usage.table.requestsLabel" = "请求用量表格";
+
+/* Row count over the Requests table while more pages remain. */
+"usage.table.requestsLoaded" = "已加载 %1$lld / %2$lld 条请求";
+
+/* Button under a clamped Periods table that reveals the next page of rows. */
+"usage.table.showMorePeriods" = "再显示 %1$lld 个，共 %2$lld 个周期";
+
+/* Cost cell of a request no price could be resolved for. */
+"usage.table.unpriced" = "未计价";
+
+/* Tooltip on the cost cell of a request no price could be resolved for. */
+"usage.table.unpricedHelp" = "该请求没有可用价格";
 
 /* Token composition legend: cache read tokens */
 "usage.tokens.cacheRead" = "缓存读取";
@@ -1124,6 +1382,78 @@
 /* Token composition legend: output tokens */
 "usage.tokens.output" = "输出";
 
+/* The token metric itself: the chart's Tokens toggle and the TOKENS table column. */
+"usage.tokens.title" = "Token";
+
+/* Subtitle under the trend chart title when the series is bucketed by local calendar day. */
+"usage.trend.bucketDay" = "按本地日历日";
+
+/* Subtitle under the trend chart title when the series is bucketed by hour. */
+"usage.trend.bucketHour" = "按小时分桶";
+
+/* Subtitle under the trend chart title when the series is bucketed by local calendar week. */
+"usage.trend.bucketWeek" = "按本地日历周";
+
+/* Screen-reader label for the trend chart in cost mode. */
+"usage.trend.costChartLabel" = "花费随时间变化";
+
+/* Empty state in place of the trend chart. */
+"usage.trend.empty" = "所选范围内没有用量记录";
+
+/* Button that widens the chart back to the whole selected window. */
+"usage.trend.fit" = "全览";
+
+/* Tooltip on the button that widens the chart back to the whole selected window. */
+"usage.trend.fitHelp" = "显示完整的所选区间";
+
+/* Picker label inside the chart granularity menu. */
+"usage.trend.granularity" = "粒度";
+
+/* Chart granularity option: let the range pick the bucket. */
+"usage.trend.granularityAuto" = "自动";
+
+/* Chart granularity option: one bucket per day. Unrelated to the quota window label quota.group.daily. */
+"usage.trend.granularityDaily" = "按日";
+
+/* Chart granularity option: one bucket per hour. */
+"usage.trend.granularityHourly" = "按小时";
+
+/* Screen-reader label for the chart granularity menu button. */
+"usage.trend.granularityLabel" = "选择图表粒度";
+
+/* Chart granularity option: one bucket per week. Unrelated to the quota window label quota.group.weekly. */
+"usage.trend.granularityWeekly" = "按周";
+
+/* Tooltip on a lit provider legend chip; provider is an L1 company name and is never translated. */
+"usage.trend.hideProvider" = "隐藏 %1$@";
+
+/* Screen-reader description of the brush navigator under the trend chart. */
+"usage.trend.navigatorLabel" = "用量图表区间导航条";
+
+/* Tooltip on the chart's step-forward button. */
+"usage.trend.nextWindow" = "下一区间";
+
+/* Button that returns the chart to the window ending now. */
+"usage.trend.now" = "现在";
+
+/* Tooltip on the button that returns the chart to the window ending now. */
+"usage.trend.nowHelp" = "回到当前区间";
+
+/* Tooltip on the chart's step-backward button. */
+"usage.trend.previousWindow" = "上一区间";
+
+/* Footnote under the trend chart's brush navigator. */
+"usage.trend.scopeHint" = "拖动导航条手柄可聚焦此图表；筛选与表格仍按完整区间统计。";
+
+/* Tooltip on an unlit provider legend chip; provider is an L1 company name and is never translated. */
+"usage.trend.showProvider" = "显示 %1$@";
+
+/* All-caps card title over the Usage Stats trend chart. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.trend.title" = "用量趋势";
+
+/* Screen-reader label for the trend chart in token mode. */
+"usage.trend.tokensChartLabel" = "Token 用量随时间变化";
+
 /* Heatmap title on the Overview, covering every provider at once */
 "usage.whenYouUse.everything" = "你什么时候在用";
 
@@ -1132,6 +1462,45 @@
 
 /* Heatmap title on the SpaceXAI page */
 "usage.whenYouUse.spaceXAI" = "你什么时候用 SpaceXAI";
+
+/* Tooltip on the Workbench header button that switches the window to dark */
+"workbench.appearance.useDark" = "使用深色外观";
+
+/* Tooltip on the Workbench header button that switches the window to light */
+"workbench.appearance.useLight" = "使用浅色外观";
+
+/* Tooltip on the Workbench header refresh button; page is the current page's title */
+"workbench.header.refreshPage" = "刷新%1$@";
+
+/* Subtitle under the Resets page title */
+"workbench.page.resets.subtitle" = "周期、补额与耗尽预测";
+
+/* Workbench sidebar entry and page title for the resets page */
+"workbench.page.resets.title" = "重置";
+
+/* Subtitle under the Sessions page title */
+"workbench.page.sessions.subtitle" = "搜索并恢复本机 agent 会话";
+
+/* Workbench sidebar entry and page title for the session manager */
+"workbench.page.sessions.title" = "会话";
+
+/* Subtitle under the Settings page title inside the Workbench window */
+"workbench.page.settings.subtitle" = "外观、厂商、数据、隐私与同步";
+
+/* Workbench sidebar entry and page title for Settings */
+"workbench.page.settings.title" = "设置";
+
+/* Subtitle under the Skills page title */
+"workbench.page.skills.subtitle" = "一个共享技能库 · 覆盖全部 agent CLI";
+
+/* Workbench sidebar entry and page title for the skills manager */
+"workbench.page.skills.title" = "技能";
+
+/* Subtitle under the Usage Stats page title */
+"workbench.page.usageStats.subtitle" = "本地逐请求账本 · 全部厂商";
+
+/* Workbench sidebar entry and page title for the usage statistics page */
+"workbench.page.usageStats.title" = "用量统计";
 
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.resets" = "周期、补额与预测视图即将上线。";
@@ -1147,3 +1516,939 @@
 
 /* Placeholder body for a Workbench page with no content yet */
 "workbench.placeholder.usageStats" = "完整的用量与费用分析即将上线。";
+
+/* One refill inside a calendar day cell; lane is a SubProvider name */
+"workbench.resets.calendar.dayEntry" = "%1$@ +%2$lld%%";
+
+/* Tooltip for a scheduled reset in the calendar; lane names the quota, time is an absolute date and time */
+"workbench.resets.calendar.futureEntry" = "%1$@ — %2$@ 重置，补回 %3$lld%%";
+
+/* Footer in a calendar day cell that holds more refills than it can list */
+"workbench.resets.calendar.moreEntries" = "另 %1$lld 项";
+
+/* Tooltip on the reset calendar's forward arrow */
+"workbench.resets.calendar.nextMonth" = "下一月";
+
+/* Tooltip for a recorded reset in the calendar; lane names the quota, time is an absolute date and time, percent is how much of the window had been spent when it refilled */
+"workbench.resets.calendar.pastEntry" = "%1$@ — %2$@ 重置，用量 %3$lld%%";
+
+/* Tooltip on the reset calendar's back arrow */
+"workbench.resets.calendar.previousMonth" = "上一月";
+
+/* Card title over the month grid of recorded and scheduled resets */
+"workbench.resets.calendar.title" = "重置日历";
+
+/* Button that returns the reset calendar to the current month */
+"workbench.resets.calendar.today" = "今日";
+
+/* Tooltip on a cycle card's fill curve; bucket is the quota window's label */
+"workbench.resets.cycle.curveHelp" = "当前 %1$@ 周期内的剩余百分比";
+
+/* Caption beside a cycle card's remaining percentage; bucket is the quota window's label, countdown a compact span */
+"workbench.resets.cycle.headline" = "%1$@ · 距重置 %2$@";
+
+/* Caption beside the Refill Horizon card title */
+"workbench.resets.refillHorizon.detail" = "未来 7 天 · 柱高即补回的额度";
+
+/* Card title over the seven-day refill lane */
+"workbench.resets.refillHorizon.title" = "补额展望";
+
+/* Compact badge on a run-out risk row when the forecast expects the quota to run out before its reset */
+"workbench.resets.risk.badge.atRisk" = "有风险";
+
+/* Compact badge on a run-out risk row that is simply low, with a calm forecast */
+"workbench.resets.risk.badge.low" = "偏低";
+
+/* Compact badge on a run-out risk row whose quota is already spent */
+"workbench.resets.risk.badge.out" = "耗尽";
+
+/* Compact badge on a run-out risk row whose recent burn is above the safe range */
+"workbench.resets.risk.badge.watch" = "需关注";
+
+/* Caption beside the Run-out Risk card title */
+"workbench.resets.risk.detail" = "按个人预测排序";
+
+/* Empty state of the Run-out Risk list when no quota looks uneasy */
+"workbench.resets.risk.empty" = "所有额度均预计可支撑到本周期结束。";
+
+/* Trailing figure on a run-out risk row; countdown is a compact span to the refill */
+"workbench.resets.risk.remaining" = "%1$lld%% · 距补额 %2$@";
+
+/* Card title over the list of quotas the forecast is uneasy about */
+"workbench.resets.risk.title" = "耗尽风险";
+
+/* Caption over the twenty-four-hour lane for quotas that refill more than once a day */
+"workbench.resets.subDaily.title" = "未来 24 小时 · 日内配额";
+
+/* Tooltip on the lit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.helpSelected" = "点击后不选中任何 harness";
+
+/* Tooltip on the unlit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.helpUnselected" = "点击后显示全部 harness 的会话";
+
+/* Accessibility label on the lit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.labelSelected" = "不选中任何 harness";
+
+/* Accessibility label on the unlit All chip in the Sessions filter bar */
+"workbench.sessions.allChip.labelUnselected" = "显示全部会话来源";
+
+/* Notice under the transcript Details for an AntiGravity session, explaining why the transcript is partial and cannot be deleted */
+"workbench.sessions.antigravityNotice" = "AntiGravity 以未公开的二进制格式保存对话轮次，因此这份对话记录是部分重建的结果，其会话也无法在此删除 — IDE 会一直占用它们。";
+
+/* Sessions row context menu and transcript header: copy the shell line that reopens this session */
+"workbench.sessions.copyResumeCommand" = "复制恢复命令";
+
+/* Tooltip on the session id line in the transcript header, and on the ID row in Details */
+"workbench.sessions.copySessionID" = "复制会话 ID";
+
+/* Accessibility label of the session id copy button. {id} is the identifier itself and is never translated. */
+"workbench.sessions.copySessionIDLabel" = "会话 ID %1$@。复制";
+
+/* Tooltip on the copy button beside the session log's path in Details */
+"workbench.sessions.copySourcePath" = "复制源文件路径";
+
+/* Tooltip on the copy button beside the CWD row in Details */
+"workbench.sessions.copyWorkingDirectory" = "复制工作目录";
+
+/* Sessions filter bar counter when the list is shorter than the index */
+"workbench.sessions.count.shownOfTotal" = "%2$lld 个会话中的 %1$lld 个";
+
+/* Destructive button in the Sessions filter bar while sessions are ticked */
+"workbench.sessions.delete.countButton" = "删除 %1$lld 个";
+
+/* Body of the delete confirmation dialog on the Sessions page */
+"workbench.sessions.delete.message" = "会话日志将从磁盘上删除，此操作无法撤销。";
+
+/* Destructive item in the Sessions row context menu; the ellipsis says a confirmation follows */
+"workbench.sessions.deleteEllipsis" = "删除…";
+
+/* Button that unfolds the session's facts under the transcript header */
+"workbench.sessions.details" = "详情";
+
+/* Accessibility value of the Details button while the facts are hidden */
+"workbench.sessions.details.collapsed" = "已收起";
+
+/* Accessibility value of the Details button while the facts are shown */
+"workbench.sessions.details.expanded" = "已展开";
+
+/* Sessions list empty state when the SQLite index would not open */
+"workbench.sessions.empty.indexUnavailableDetail" = "无法打开 ~/.vibebar 下的会话索引，本次运行期间无法列出会话。";
+
+/* Sessions list empty state title when the SQLite index would not open */
+"workbench.sessions.empty.indexUnavailableTitle" = "会话索引不可用";
+
+/* Sessions list empty state when the index is fine but nothing was ever scanned */
+"workbench.sessions.empty.noLogsDetail" = "这台 Mac 上没有找到 Vibe Bar 扫描的 %1$lld 个 harness 的任何会话日志。";
+
+/* Sessions list empty state title when filters or search exclude everything */
+"workbench.sessions.empty.noMatchTitle" = "没有匹配的会话";
+
+/* Sessions list empty state while the index scan is still running */
+"workbench.sessions.empty.scanningDetail" = "仍在扫描磁盘上的会话日志。";
+
+/* Sessions list empty state when the search matched nothing */
+"workbench.sessions.empty.searchNoMatchDetail" = "已索引的会话中没有匹配该搜索的内容。";
+
+/* Details row label: when the session was created */
+"workbench.sessions.fact.created" = "创建时间";
+
+/* Details row label: the session's working directory */
+"workbench.sessions.fact.cwd" = "工作目录";
+
+/* Details row label: the session identifier */
+"workbench.sessions.fact.id" = "ID";
+
+/* Details row label: when the session was last written to */
+"workbench.sessions.fact.lastActive" = "最后活动";
+
+/* Details row label: the session log's path on disk */
+"workbench.sessions.fact.source" = "来源文件";
+
+/* Sessions filter bar menu that ticks whole companies at once */
+"workbench.sessions.filter.company" = "厂商";
+
+/* Picker inside the Sessions When menu */
+"workbench.sessions.filter.dateRange" = "时间范围";
+
+/* Sessions filter bar button that opens the project-directory filters */
+"workbench.sessions.filter.folders" = "目录";
+
+/* Value on the Sessions Folders button while a directory filter is set */
+"workbench.sessions.filter.foldersFiltered" = "已筛选";
+
+/* Sessions filter bar menu that ticks individual harnesses */
+"workbench.sessions.filter.harness" = "Harness";
+
+/* One row of the Sessions Harness menu: the harness name and how many sessions it has. The name is never translated. */
+"workbench.sessions.filter.harnessCount" = "%1$@  %2$lld";
+
+/* Sessions filter bar menu holding the terminal and index options */
+"workbench.sessions.filter.options" = "选项";
+
+/* Sessions filter bar menu that picks which parts of a session the search covers */
+"workbench.sessions.filter.scope" = "范围";
+
+/* Sessions filter bar menu that picks the list order */
+"workbench.sessions.filter.sort" = "排序";
+
+/* Value on the Sessions Sort menu while Group by project is on. {order} is the chosen order's own label. */
+"workbench.sessions.filter.sortGrouped" = "%1$@ · 已分组";
+
+/* Accessibility label of the Sessions Sort menu */
+"workbench.sessions.filter.sortHelp" = "选择列表的排序方式";
+
+/* Sessions filter bar menu that picks how far back to list */
+"workbench.sessions.filter.when" = "时间";
+
+/* Accessibility label of the Sessions When menu */
+"workbench.sessions.filter.whenHelp" = "选择列出多久以前的会话";
+
+/* Tooltip on the next-match button in the transcript find bar */
+"workbench.sessions.find.next" = "下一处匹配";
+
+/* Counter in the transcript find bar when nothing matched */
+"workbench.sessions.find.none" = "无";
+
+/* Placeholder and accessibility label of the transcript find field */
+"workbench.sessions.find.placeholder" = "在对话记录中查找";
+
+/* Tooltip on the previous-match button in the transcript find bar */
+"workbench.sessions.find.previous" = "上一处匹配";
+
+/* Field label in the Sessions directory-filter popover */
+"workbench.sessions.folders.exclude" = "排除包含以下片段的路径";
+
+/* Example value in the exclude field of the Sessions directory-filter popover */
+"workbench.sessions.folders.excludePlaceholder" = "/archive, /vendor";
+
+/* Field label in the Sessions directory-filter popover */
+"workbench.sessions.folders.include" = "仅包含以下片段的路径";
+
+/* Example value in the include field of the Sessions directory-filter popover */
+"workbench.sessions.folders.includePlaceholder" = "/project/a, /project/b";
+
+/* Caption under the Sessions directory-filter fields */
+"workbench.sessions.folders.separatorHint" = "多个路径用逗号、分号或换行分隔。";
+
+/* Title of the Sessions directory-filter popover */
+"workbench.sessions.folders.title" = "目录筛选";
+
+/* Compact counter used across the Sessions page: index scan progress, how many companies or harnesses are ticked, and which find match is in view */
+"workbench.sessions.fraction" = "%1$lld/%2$lld";
+
+/* Toggle in the Sessions Sort menu */
+"workbench.sessions.groupByProject" = "按项目分组";
+
+/* Sessions filter bar status while a scan is running and its total is not known yet */
+"workbench.sessions.index.scanning" = "扫描中…";
+
+/* Sessions filter bar status when the SQLite index would not open */
+"workbench.sessions.index.unavailable" = "索引不可用";
+
+/* Notice at the foot of the Sessions list when it stops at the loaded-summary ceiling */
+"workbench.sessions.list.capNotice" = "当前只显示 %2$lld 个会话中的前 %1$lld 个。缩小筛选范围或使用搜索以查看其余会话。";
+
+/* Context menu item on a transcript message card */
+"workbench.sessions.message.copy" = "复制消息";
+
+/* Tooltip and accessibility label of the copy button on a transcript message card */
+"workbench.sessions.message.copyHelp" = "复制这条消息";
+
+/* Button that folds a long transcript message back up */
+"workbench.sessions.message.showLess" = "收起";
+
+/* Button that unfolds a long transcript message; {count} is the message's length in characters */
+"workbench.sessions.message.showMore" = "展开全部（%1$lld 字符）";
+
+/* Sessions row context menu and transcript resume row: run the resume command in a terminal */
+"workbench.sessions.openInTerminal" = "在 Terminal 中打开";
+
+/* Accessibility label of the Sessions Options menu */
+"workbench.sessions.options.help" = "终端与索引选项";
+
+/* Toggle in the Sessions Options menu that stores message excerpts in the index */
+"workbench.sessions.options.indexMessageText" = "索引消息正文";
+
+/* Picker in the Sessions Options menu that chooses where a resume command is sent */
+"workbench.sessions.options.openIn" = "打开方式";
+
+/* Button in the Sessions Options menu that erases and rescans the index */
+"workbench.sessions.options.rebuildIndex" = "重建索引…";
+
+/* Empty state of the transcript outline popover */
+"workbench.sessions.outline.empty" = "该对话记录中没有用户提示词。";
+
+/* Heading of the transcript outline popover */
+"workbench.sessions.outline.heading" = "提示词";
+
+/* Tooltip on the transcript outline button */
+"workbench.sessions.outline.help" = "跳转到某条提示词";
+
+/* Accessibility label of the transcript outline button */
+"workbench.sessions.outline.label" = "显示对话记录大纲";
+
+/* Button that moves the transcript to the next page of messages */
+"workbench.sessions.page.next" = "下一页";
+
+/* Button that moves the transcript to the previous page of messages */
+"workbench.sessions.page.previous" = "上一页";
+
+/* Sessions group heading and footer label for a session with no working directory */
+"workbench.sessions.project.none" = "无项目";
+
+/* Sessions group heading, footer label and Details value for a Codex task started without a project */
+"workbench.sessions.project.projectless" = "未指定项目";
+
+/* Sessions When menu option: no lower bound */
+"workbench.sessions.range.all" = "全部时间";
+
+/* Sessions When menu option: the last thirty days */
+"workbench.sessions.range.month" = "30 天";
+
+/* Sessions When menu option: since midnight */
+"workbench.sessions.range.today" = "今日";
+
+/* Sessions When menu option: the last seven days */
+"workbench.sessions.range.week" = "7 天";
+
+/* Tooltip on the Sessions refresh button */
+"workbench.sessions.refreshHelp" = "重新扫描磁盘上的会话日志";
+
+/* Heading above the shell line that reopens a session, in the transcript Details */
+"workbench.sessions.resume.heading" = "恢复命令";
+
+/* Shown in the transcript Details when the provider offers no resume command */
+"workbench.sessions.resume.none" = "该会话没有命令行入口。";
+
+/* Role label on a transcript message card */
+"workbench.sessions.role.assistant" = "助手";
+
+/* Role label on a transcript message card that is none of the known roles */
+"workbench.sessions.role.other" = "备注";
+
+/* Role label on a transcript message card */
+"workbench.sessions.role.system" = "系统";
+
+/* Role label on a transcript message card */
+"workbench.sessions.role.tool" = "工具";
+
+/* Role label on a transcript message card written by the person */
+"workbench.sessions.role.user" = "用户";
+
+/* Tooltip on a Sessions row checkbox while delete mode is on */
+"workbench.sessions.row.includeInDeletion" = "将该会话纳入本次删除";
+
+/* Accessibility label of a Sessions row checkbox */
+"workbench.sessions.row.select" = "选择该会话";
+
+/* Accessibility hint on a Sessions row outside delete mode */
+"workbench.sessions.row.showTranscript" = "显示该会话的对话记录";
+
+/* Accessibility hint on a Sessions row while delete mode is on */
+"workbench.sessions.row.toggleForDeletion" = "切换是否删除该会话";
+
+/* Tooltip on the buttons that hand a resume command to a terminal. {terminal} is the app's own name. */
+"workbench.sessions.runInHelp" = "在 %1$@ 中运行";
+
+/* Sessions search scope */
+"workbench.sessions.scope.assistant" = "助手回复";
+
+/* Sessions search scope */
+"workbench.sessions.scope.system" = "系统提示词";
+
+/* Sessions search scope */
+"workbench.sessions.scope.title" = "标题与会话 ID";
+
+/* Sessions search scope */
+"workbench.sessions.scope.tool" = "工具与文件操作";
+
+/* Sessions search scope */
+"workbench.sessions.scope.user" = "用户提示词";
+
+/* Footer of the Sessions Scope menu while message indexing is on */
+"workbench.sessions.search.bodyIndexed" = "消息正文已在本地建立索引。";
+
+/* Footer of the Sessions Scope menu while message indexing is off */
+"workbench.sessions.search.bodyNotIndexed" = "在「选项」中开启消息索引后即可搜索对话记录内容。";
+
+/* Tooltip on the clear button inside the Sessions search field */
+"workbench.sessions.search.clearHelp" = "清除搜索内容";
+
+/* Placeholder of the Sessions search field */
+"workbench.sessions.search.placeholder" = "搜索会话";
+
+/* Button that turns on the Sessions page's delete-selection mode */
+"workbench.sessions.selectMode" = "选择";
+
+/* Tooltip on the Sessions select-mode button */
+"workbench.sessions.selectModeHelp" = "选择要删除的会话";
+
+/* Sessions Sort menu option */
+"workbench.sessions.sort.byProject" = "按项目";
+
+/* Sessions Sort menu option */
+"workbench.sessions.sort.oldestFirst" = "最早优先";
+
+/* Sessions Sort menu option */
+"workbench.sessions.sort.recentFirst" = "最新优先";
+
+/* Sessions toast after turning message indexing off and the stored excerpts could not be dropped */
+"workbench.sessions.toast.bodyIndexDropFailed" = "清除已索引的消息正文失败。";
+
+/* Sessions toast after turning message indexing off */
+"workbench.sessions.toast.bodyIndexDropped" = "已删除已索引的消息正文。";
+
+/* Sessions toast after a command was put on the pasteboard */
+"workbench.sessions.toast.copied" = "已复制到剪贴板。";
+
+/* Sessions toast after a terminal could not be driven and the command went to the pasteboard instead. {reason} is the launcher's own explanation. */
+"workbench.sessions.toast.copiedWithReason" = "已复制到剪贴板。%1$@";
+
+/* Sessions toast after copying a session's working directory */
+"workbench.sessions.toast.cwdCopied" = "工作目录已复制。";
+
+/* Sessions toast after a partial delete. {reason} is the first failure's own message. */
+"workbench.sessions.toast.deletedPartial" = "已删除 %1$lld 个，保留 %2$lld 个：%3$@";
+
+/* Sessions toast when a rebuild could not erase the index first */
+"workbench.sessions.toast.indexNotCleared" = "无法清空会话索引。";
+
+/* Sessions toast after copying one transcript message */
+"workbench.sessions.toast.messageCopied" = "消息已复制。";
+
+/* Sessions toast when a session cannot be handed back to a CLI */
+"workbench.sessions.toast.noResumeCommand" = "该会话没有恢复命令。";
+
+/* Sessions toast after a resume command was handed to a terminal. {terminal} is the app's own name. */
+"workbench.sessions.toast.openedIn" = "已在 %1$@ 中打开。";
+
+/* Sessions toast after copying a session identifier */
+"workbench.sessions.toast.sessionIDCopied" = "会话 ID 已复制。";
+
+/* Sessions toast after copying a session log's path */
+"workbench.sessions.toast.sourcePathCopied" = "源文件路径已复制。";
+
+/* Separator inserted in a transcript where a Codex Auto Review child session is merged in. Auto Review is Codex's own feature name and stays in English. */
+"workbench.sessions.transcript.autoReviewDivider" = "Auto Review";
+
+/* Shown in the transcript pane after the reader was cancelled */
+"workbench.sessions.transcript.cancelled" = "已停止读取该会话。再次选中它即可重新打开。";
+
+/* Button on the truncation banner that re-reads a very large session with no byte bound */
+"workbench.sessions.transcript.loadAll" = "加载完整对话记录";
+
+/* Shown in the transcript pane while a session file is being parsed */
+"workbench.sessions.transcript.loading" = "正在读取会话日志…";
+
+/* Shown in the transcript pane when the log parsed to nothing */
+"workbench.sessions.transcript.noMessages" = "该会话的日志中没有可读消息。";
+
+/* Transcript error when no adapter can open this provider's sessions. {provider} is the provider's own name. */
+"workbench.sessions.transcript.noReader" = "没有为 %1$@ 注册读取器。";
+
+/* Header of the transcript pager */
+"workbench.sessions.transcript.pageRange" = "第 %1$lld–%2$lld 条消息，共 %3$lld 条";
+
+/* Transcript pane placeholder while no session is selected */
+"workbench.sessions.transcript.placeholderDetail" = "在左侧选择一个会话，即可阅读其对话记录、复制恢复命令，或把它交回对应的 CLI。";
+
+/* Transcript pane placeholder title while no session is selected */
+"workbench.sessions.transcript.placeholderTitle" = "未选择会话";
+
+/* Transcript error when the adapter threw and offered no message of its own */
+"workbench.sessions.transcript.readFailed" = "无法读取该会话的日志。";
+
+/* Truncation banner detail. Both sizes arrive already formatted as byte counts. */
+"workbench.sessions.transcript.truncatedDetail" = "已读取 %2$@ 中的 %1$@。完整读取会把整份对话记录留在内存中。";
+
+/* Last clause of the per-harness count tooltip: skills linked into the harness but switched off in its own config. */
+"workbench.skills.appCountNativeDisabled" = "%1$lld 个已投影但被停用";
+
+/* Second clause of the per-harness count tooltip, for AntiGravity, which sees skills through the Gemini CLI folder. */
+"workbench.skills.appCountViaGeminiRoot" = "%1$lld 个已启用 + %2$lld 个来自 Gemini CLI 兼容根目录";
+
+/* Second clause of the per-harness count tooltip, for a harness that scans the shared root itself. */
+"workbench.skills.appCountViaSharedRoot" = "%1$lld 个已启用 + %2$lld 个来自共享技能根目录";
+
+/* Skills toolbar button that opens the backups sheet. */
+"workbench.skills.backups" = "备份";
+
+/* Accessibility label on the trash button in a backup row. */
+"workbench.skills.backups.deleteAccessibility" = "删除此备份";
+
+/* Message under the delete-backup confirmation title. The path is an identifier. */
+"workbench.skills.backups.deleteConfirmMessage" = "快照将从 ~/.vibebar 中删除，之后无法恢复。";
+
+/* Title of the delete-backup confirmation dialog when the snapshot names its skill. */
+"workbench.skills.backups.deleteConfirmTitle" = "删除 %1$@ 的备份？";
+
+/* Title of the delete-backup confirmation dialog when the snapshot has no readable skill name. */
+"workbench.skills.backups.deleteConfirmTitleGeneric" = "删除此备份？";
+
+/* Empty state of the backups sheet. */
+"workbench.skills.backups.empty" = "暂无备份";
+
+/* Footer of the backups sheet: what a restore does and does not do. */
+"workbench.skills.backups.footer" = "恢复只会重建共享目录 — 之后需要再为相应应用启用该技能。";
+
+/* Tooltip on the backups sheet refresh button. */
+"workbench.skills.backups.refreshHelp" = "重新读取备份目录";
+
+/* Button that copies a backup back into the shared skills directory. */
+"workbench.skills.backups.restore" = "恢复";
+
+/* Tooltip on the Restore button. The path is an identifier. */
+"workbench.skills.backups.restoreHelp" = "把快照复制回 ~/.agents/skills";
+
+/* Subtitle of the backups sheet. */
+"workbench.skills.backups.subtitle" = "在卸载或更新前自动创建。";
+
+/* Title of the backups sheet. */
+"workbench.skills.backups.title" = "技能备份";
+
+/* Badge on a discover-sheet row for a skill already installed on this Mac. */
+"workbench.skills.badge.installed" = "已安装";
+
+/* Row badge: the skill is linked into {app} but that harness's own config switches it off. */
+"workbench.skills.badge.nativeOff" = "%1$@ 已关闭";
+
+/* Tooltip on the row badge that names a harness whose native switch is off. */
+"workbench.skills.badge.nativeOffHelp" = "已投影，但被 harness 自身的配置停用";
+
+/* Row badge: a harness config file could not be parsed, so its per-skill switch is unknown. */
+"workbench.skills.badge.nativeUnknown" = "原生状态未知";
+
+/* Tooltip on the unknown-native-state row badge. */
+"workbench.skills.badge.nativeUnknownHelp" = "无法安全解析 harness 的配置";
+
+/* Row badge: the repository this skill came from has a newer version. */
+"workbench.skills.badge.update" = "可更新";
+
+/* Skills toolbar button that asks every repository-backed skill whether it has a newer commit. */
+"workbench.skills.checkUpdates" = "检查更新";
+
+/* Same Skills toolbar button once updates are known. {count} is how many skills can be updated. */
+"workbench.skills.checkUpdatesCount" = "检查更新 · %1$lld";
+
+/* Context-menu item: flip the harness's own per-skill switch off but leave the link on disk. */
+"workbench.skills.contextDisableKeepProjection" = "在 %1$@ 中停用 · 保留投影";
+
+/* Context-menu item on a skill's harness circle. */
+"workbench.skills.contextEnableIn" = "在 %1$@ 中启用";
+
+/* Context-menu item: delete the link or copy Vibe Bar made inside that harness's skills folder. */
+"workbench.skills.contextRemoveProjection" = "移除 %1$@ 投影";
+
+/* Skills page count caption while the search field filters the list. */
+"workbench.skills.countFiltered" = "%2$lld 个技能中的 %1$lld 个";
+
+/* Skills toolbar and empty-state button that opens the discover sheet. */
+"workbench.skills.discover" = "发现";
+
+/* Button that adds the typed repository reference to the scan list. */
+"workbench.skills.discover.addRepo" = "添加";
+
+/* Empty state of the discover sheet's available-skills section. */
+"workbench.skills.discover.availableEmpty" = "扫描已配置的仓库，或安装一条 skills.sh 结果，即可列出可用技能。";
+
+/* Discover sheet section title for what the last scan or download turned up. */
+"workbench.skills.discover.availableTitle" = "可用技能";
+
+/* Discover sheet section title for the community index. */
+"workbench.skills.discover.indexTitle" = "skills.sh 索引";
+
+/* Empty state of the discover sheet's repository list. The reference syntax is an identifier. */
+"workbench.skills.discover.noRepos" = "尚未配置仓库。可按 owner/repo 添加，也可用 owner/repo@branch。";
+
+/* Accessibility label on the button that removes a repository from the scan list. */
+"workbench.skills.discover.removeRepo" = "移除 %1$@";
+
+/* Placeholder in the add-repository field. The two forms are syntax and stay as spelled. */
+"workbench.skills.discover.repoFieldPlaceholder" = "owner/repo 或 owner/repo@branch";
+
+/* Hint under the add-repository field while what was typed is not a valid reference. */
+"workbench.skills.discover.repoRules" = "owner 只接受字母、数字和连字符；仓库名和分支名还可以包含点和下划线。";
+
+/* Discover sheet section title, and the source caption once a scan of those repositories finishes. */
+"workbench.skills.discover.reposTitle" = "已配置的仓库";
+
+/* Discover sheet button that downloads every configured repository. */
+"workbench.skills.discover.scanRepos" = "扫描仓库";
+
+/* Tooltip on the scan button. */
+"workbench.skills.discover.scanReposHelp" = "下载全部已配置的仓库";
+
+/* Caption in the skills.sh section before any search has run. */
+"workbench.skills.discover.searchHint" = "搜索结果会带上发布它的仓库；安装其中一个会下载该仓库，并在下方列出其余技能。";
+
+/* Placeholder in the skills.sh search field. */
+"workbench.skills.discover.searchPlaceholder" = "搜索社区索引";
+
+/* Discover sheet button that pre-selects every harness for new installs. */
+"workbench.skills.discover.selectAll" = "全选";
+
+/* Tooltip on the discover sheet's select-all button. */
+"workbench.skills.discover.selectHelp" = "设置每一行默认安装到哪些 agent CLI";
+
+/* Discover sheet button that clears the harness pre-selection. */
+"workbench.skills.discover.selectNone" = "全不选";
+
+/* Source caption once installing a skills.sh hit has replaced the results with that repository. */
+"workbench.skills.discover.sourceFromSkillsSh" = "%1$@（来自 skills.sh）";
+
+/* Tooltip on the scan button while a scan is running and the button cancels it. */
+"workbench.skills.discover.stopScanHelp" = "停止正在进行的扫描";
+
+/* Tooltip on the button that removes a repository from the scan list. */
+"workbench.skills.discover.stopScanningRepo" = "不再扫描 %1$@";
+
+/* Title of the discover sheet. */
+"workbench.skills.discover.title" = "发现技能";
+
+/* Tooltip on the Skills page Discover button. */
+"workbench.skills.discoverHelp" = "浏览已配置的仓库和 skills.sh 索引";
+
+/* Body of the Skills page empty state. The path is an identifier and stays as spelled. */
+"workbench.skills.empty.body" = "Vibe Bar 在 ~/.agents/skills 中保存每个技能的唯一副本，并将其链接到各个 agent CLI。可以导入这台 Mac 上已有的技能，也可以从仓库安装新的。";
+
+/* Headline of the Skills page empty state. */
+"workbench.skills.empty.headline" = "尚未记录任何技能";
+
+/* Accessibility label on the button that empties the Skills search field. */
+"workbench.skills.filterClear" = "清除筛选";
+
+/* Placeholder in the Skills page search field. */
+"workbench.skills.filterPlaceholder" = "筛选已安装的技能";
+
+/* Import sheet section header for skills that already live in the shared directory. */
+"workbench.skills.import.alreadyShared" = "已共享";
+
+/* Caption of the already-shared section. The path and CC Switch are identifiers. */
+"workbench.skills.import.alreadySharedDetail" = "这些技能已经位于 ~/.agents/skills，包括 CC Switch 建立的目录结构。Vibe Bar 只记录它们已有的链接，不会再次导入或复制。";
+
+/* Import sheet section header for app folders whose name collides with a shared skill. */
+"workbench.skills.import.conflicts" = "冲突的应用副本";
+
+/* Count beside the conflicts section header. */
+"workbench.skills.import.conflictsCount" = "%1$lld 个保持不变";
+
+/* Caption of the conflicts section: why nothing was changed and what the user can do. */
+"workbench.skills.import.conflictsDetail" = "某个应用技能目录中的真实文件夹与 ~/.agents/skills 中的同名。Vibe Bar 不会覆盖它 — 需手动处理，或在该文件夹删除后再为该应用启用共享技能。";
+
+/* Caption under an unmanaged directory naming the harnesses whose folders hold it. {apps} is a comma-separated list of harness names. */
+"workbench.skills.import.foundIn" = "发现于 %1$@";
+
+/* Label before the harness circles that choose which existing links the import records. */
+"workbench.skills.import.keepEvidenceFor" = "为以下应用保留记录";
+
+/* Import sheet section header for app-local directories that are not in the shared directory yet. */
+"workbench.skills.import.needsAdoption" = "待接管";
+
+/* Caption of the needs-adoption section: exactly what applying it writes. */
+"workbench.skills.import.needsAdoptionDetail" = "这些技能还不在共享目录中。选中后会把它复制到 ~/.agents/skills，再把所选应用中的副本替换为受管链接。";
+
+/* Import sheet section header for directories that hold no SKILL.md. */
+"workbench.skills.import.notSkills" = "非技能目录";
+
+/* Caption of the not-skills section. The path and the filename are identifiers. */
+"workbench.skills.import.notSkillsDetail" = "~/.agents/skills 中没有 SKILL.md 的目录。将保持原样。";
+
+/* Count beside the already-shared section header. */
+"workbench.skills.import.recognizedCount" = "已识别 %1$lld 个";
+
+/* Subtitle of the import sheet: what applying it will and will not touch. */
+"workbench.skills.import.subtitle" = "Vibe Bar 已识别共享技能。只有选中的应用本地目录会被移动。";
+
+/* Import sheet footer totals across the scan's four sections. */
+"workbench.skills.import.summary" = "%1$lld 个已共享 · %2$lld 个待接管 · %3$lld 个保持不变";
+
+/* Title of the import sheet. */
+"workbench.skills.import.title" = "检查磁盘上的技能";
+
+/* Skills toolbar and empty-state button that scans the Mac for skills already on disk. */
+"workbench.skills.importExisting" = "导入已有技能";
+
+/* Button on a discover-sheet row that installs that skill. */
+"workbench.skills.install" = "安装";
+
+/* Skills toolbar button that opens a file picker for a skill archive. */
+"workbench.skills.installFromZip" = "从 ZIP 安装";
+
+/* Accessibility label on a skill row's overflow menu button. */
+"workbench.skills.menuMoreActions" = "%1$@ 的更多操作";
+
+/* Overflow-menu item that selects the skill's directory in Finder. */
+"workbench.skills.menuRevealInFinder" = "在 Finder 中显示";
+
+/* Overflow-menu item that asks to uninstall the skill. */
+"workbench.skills.menuUninstall" = "卸载…";
+
+/* Overflow-menu item that re-fetches the skill from its repository. */
+"workbench.skills.menuUpdateFromRepository" = "从仓库更新";
+
+/* Overflow-menu item that opens the per-skill wiring popover. */
+"workbench.skills.menuWiringDetails" = "连接详情…";
+
+/* Card shown when the Skills search field matches nothing. {query} is what the user typed. */
+"workbench.skills.noMatch" = "没有技能匹配「%1$@」";
+
+/* Progress line when the scan covered exactly one repository. */
+"workbench.skills.phase.downloadedOne" = "已下载 1 个仓库";
+
+/* Progress line while a multi-repository scan runs. */
+"workbench.skills.phase.downloadedProgress" = "已下载 %2$lld 个仓库中的 %1$lld 个";
+
+/* Progress line while a repository is being fetched. */
+"workbench.skills.phase.downloading" = "正在下载 %1$@…";
+
+/* Progress line while a downloaded repository is being read. */
+"workbench.skills.phase.scanning" = "正在扫描 %1$@…";
+
+/* Tooltip on the source badge naming the git branch the skill was fetched from. */
+"workbench.skills.sourceBranch" = "分支 %1$@";
+
+/* Tooltip on the source badge when the skill has no repository. */
+"workbench.skills.sourceInstalledLocally" = "本地安装";
+
+/* Source badge and result-group heading for a skill with no repository behind it. */
+"workbench.skills.sourceLocal" = "本地";
+
+/* Accessibility value of a harness circle: the harness finds the skill without a link of its own. */
+"workbench.skills.state.coupled" = "通过共享根目录或兼容根目录可用";
+
+/* Accessibility value of a harness circle: linked, but the harness's own switch is off. */
+"workbench.skills.state.disabledInHarness" = "已投影，在 harness 中停用";
+
+/* Accessibility value of a harness circle: the skill is linked and switched on. */
+"workbench.skills.state.enabled" = "已启用";
+
+/* Accessibility value of a harness circle: nothing links the skill into that harness. */
+"workbench.skills.state.notProjected" = "未投影";
+
+/* Accessibility value of a harness circle: linked, but the harness config could not be read. */
+"workbench.skills.state.unknown" = "已投影，原生状态未知";
+
+/* Footer of the sync explainer popover. {path} is the shared skills directory. */
+"workbench.skills.sync.footer" = "Vibe Bar 只写入 ~/%1$@、各 harness 的技能目录以及上面列出的配置文件。";
+
+/* Sync explainer's third paragraph. */
+"workbench.skills.sync.nativeSwitchesBody" = "如果某个 harness 有自己的按技能开关，圆形按钮切换的就是那个开关。Cursor 没有，因此共享根目录里的每个技能对它都始终可用 — 这就是「共享根目录」标记的含义，没有可切换的开关。";
+
+/* Run-in heading of the sync explainer's third paragraph. */
+"workbench.skills.sync.nativeSwitchesLead" = "原生开关。";
+
+/* Clause in a harness's one-line sync summary when it has no switch of its own. */
+"workbench.skills.sync.noPerSkillSwitch" = "无按技能开关";
+
+/* Clause in AntiGravity's one-line sync summary. {path} is the Gemini CLI skills directory. */
+"workbench.skills.sync.noSwitchAlsoReads" = "无按技能开关；同时读取 ~/%1$@";
+
+/* Clause in a harness's one-line sync summary naming its config key and file. */
+"workbench.skills.sync.perSkillSwitch" = "按技能开关 %1$@ 位于 ~/%2$@";
+
+/* Sync explainer's second paragraph. The harness names are identifiers and stay as spelled. */
+"workbench.skills.sync.projectionsBody" = "Claude Code 和 AntiGravity 只读取各自的技能目录，因此 Vibe Bar 会把技能链接（或复制）进去。Codex、Gemini CLI、Grok Build 和 Cursor 会自行扫描共享根目录，无需链接。";
+
+/* Run-in heading of the sync explainer's second paragraph. */
+"workbench.skills.sync.projectionsLead" = "投影。";
+
+/* Clause in a harness's one-line sync summary. {path} is that harness's own skills directory. */
+"workbench.skills.sync.readsOwnFolder" = "只读取 ~/%1$@";
+
+/* Clause in a harness's one-line sync summary. {path} is the shared skills directory. */
+"workbench.skills.sync.scansSharedRoot" = "直接扫描 ~/%1$@";
+
+/* Sync explainer's first paragraph. {path} is the shared skills directory and stays as spelled. */
+"workbench.skills.sync.ssotBody" = "每个技能都存放在 ~/%1$@/<name>。安装、更新和卸载都只在那里发生。";
+
+/* Run-in heading of the sync explainer's first paragraph. */
+"workbench.skills.sync.ssotLead" = "唯一真相源。";
+
+/* Title of the page-level sync explainer popover. */
+"workbench.skills.sync.title" = "技能同步的原理";
+
+/* Tooltip on the question-mark button that opens the sync explainer popover. */
+"workbench.skills.syncExplainerHelp" = "技能同步的原理 — 根目录、链接与原生开关";
+
+/* Toast when a scan is asked for with no repositories configured. */
+"workbench.skills.toast.addRepoFirst" = "请先添加一个仓库。";
+
+/* Toast after an update check that found nothing to do. */
+"workbench.skills.toast.allUpToDate" = "所有来自仓库的技能都是最新的。";
+
+/* Toast after a ZIP import that produced no skill. */
+"workbench.skills.toast.archiveEmpty" = "该压缩包中没有可安装的内容。";
+
+/* Toast after flipping a harness's own per-skill switch off. */
+"workbench.skills.toast.disabledKeptProjection" = "已在 %2$@ 中停用 %1$@，并保留其投影。";
+
+/* Second sentence of the archive-install toast. {apps} is a list of harness names. */
+"workbench.skills.toast.enabledForApps" = "已为 %1$@ 启用。";
+
+/* Toast after installing one skill into the selected harnesses. {apps} is a list of harness names. */
+"workbench.skills.toast.installedForApps" = "已为 %2$@ 安装 %1$@。";
+
+/* Toast after installing one skill with no harness selected. */
+"workbench.skills.toast.installedShared" = "已把 %1$@ 安装到共享库。可在「技能」页查看各 harness 的实际状态。";
+
+/* Toast when the add-repository field holds something unusable or already listed. */
+"workbench.skills.toast.invalidRepoRef" = "「%1$@」不是一条新的 owner/repo[@branch] 引用。";
+
+/* Toast after removing a redundant link from a harness that scans the shared root anyway. */
+"workbench.skills.toast.linkRemovedStillShared" = "已移除 %1$@ 的链接。%2$@ 仍可通过共享技能根目录在其中使用。";
+
+/* Toast after a community-index search with no hits. */
+"workbench.skills.toast.noSearchMatches" = "skills.sh 没有返回匹配结果。";
+
+/* Toast after a scan that read every repository and found nothing. */
+"workbench.skills.toast.noSkillsFound" = "在已配置的仓库中没有找到技能。";
+
+/* Toast when a skills.sh hit is missing from the repository it named. */
+"workbench.skills.toast.notFoundInRepo" = "在 %2$@ 中未找到 %1$@。";
+
+/* Toast after removing a projection that turned out to be a real folder Vibe Bar did not create. */
+"workbench.skills.toast.projectionClearedFolderKept" = "已清除 %1$@ 在 %2$@ 的 Vibe Bar 投影记录，但原有文件夹保留在原处。";
+
+/* Toast after restoring a backup into the shared directory. */
+"workbench.skills.toast.restored" = "已恢复 %1$@。可按需为相应应用启用。";
+
+/* Toast after cancelling a repository scan. */
+"workbench.skills.toast.scanStopped" = "已停止扫描。";
+
+/* Second sentence of the archive-install toast when no harness was selected. */
+"workbench.skills.toast.sharedLibraryNote" = "它们保留在共享库中。可在「技能」页查看各 harness 的实际状态。";
+
+/* Toast after clicking a circle that cannot change anything. */
+"workbench.skills.toast.sharedRootNoSwitch" = "%1$@ 直接读取共享技能根目录 — %2$@ 在其中始终可用，且没有按技能的开关。";
+
+/* Toast after uninstalling a skill that was linked nowhere else. */
+"workbench.skills.toast.uninstalledBackedUp" = "已卸载 %1$@。备份已保存。";
+
+/* Toast after an uninstall that left real folders in some harnesses. {apps} is a list of harness names. */
+"workbench.skills.toast.uninstalledLeftInPlace" = "已卸载 %1$@。在 %2$@ 中保持原样。";
+
+/* Toast after re-fetching one skill from its repository. */
+"workbench.skills.toast.updated" = "已更新 %1$@。";
+
+/* Tooltip on a harness circle in the discover sheet, where the circles pick install targets. */
+"workbench.skills.toggleHelp.installInto" = "安装到 %1$@";
+
+/* Tooltip on a harness circle in the import sheet's already-shared section. */
+"workbench.skills.toggleHelp.keepLinks" = "保留磁盘上已有的 %1$@ 链接";
+
+/* Tooltip on a harness circle beside an unmanaged directory in the import sheet. */
+"workbench.skills.toggleHelp.linkAfterAdopting" = "接管后链接到 %1$@";
+
+/* Tooltip on AntiGravity's circle when the skill reaches it through the Gemini CLI folder. */
+"workbench.skills.toggleState.coupledGemini" = "%1$@ — 通过它同样读取的 Gemini CLI 投影可见。点按可为其建立独立投影。";
+
+/* Tooltip on a harness circle for a harness that scans the shared root and has no switch. */
+"workbench.skills.toggleState.coupledSharedRoot" = "%1$@ 直接读取共享技能根目录，该技能在其中始终可用。没有按技能的开关可切换。";
+
+/* Tooltip on a harness circle whose harness switched the skill off in its own config. */
+"workbench.skills.toggleState.disabledInHarness" = "%1$@ — 已投影，但被其原生配置停用。点按即可启用。";
+
+/* Tooltip on a harness circle that is on purely because Vibe Bar linked the skill there. */
+"workbench.skills.toggleState.enabled" = "%1$@ — 通过投影启用。点按即可移除。";
+
+/* Tooltip on a harness circle that is on and whose harness has its own per-skill switch. */
+"workbench.skills.toggleState.enabledNative" = "%1$@ — 已投影并启用。点按可在该 harness 中停用；右键可管理投影选项。";
+
+/* Tooltip on a harness circle that is on for a harness that would find the skill anyway. */
+"workbench.skills.toggleState.enabledSharedRoot" = "%1$@ — 既有自己的链接，也会直接读取共享技能根目录。没有按技能的开关；右键可管理这条多余的链接。";
+
+/* Tooltip on an installed skill's harness circle when nothing links the skill there. */
+"workbench.skills.toggleState.notProjected" = "%1$@ — 未投影。点按即可启用。";
+
+/* Tooltip on a harness circle whose harness config could not be read. */
+"workbench.skills.toggleState.unknown" = "%1$@ — 已投影，但原生配置无法解析。点按可按启用状态修复。";
+
+/* Destructive button in the uninstall confirmation dialog. */
+"workbench.skills.uninstall" = "卸载";
+
+/* Message under the uninstall confirmation title. */
+"workbench.skills.uninstallConfirmMessage" = "会先备份该技能，再从所有链接到它的应用中移除。";
+
+/* Title of the confirmation dialog for uninstalling a skill. */
+"workbench.skills.uninstallConfirmTitle" = "卸载 %1$@？";
+
+/* Footer of the per-skill wiring popover: the write scope, in one sentence. */
+"workbench.skills.wiring.footer" = "Vibe Bar 只写入上面的技能目录和列出的四个配置文件，并在卸载前先备份技能。";
+
+/* Wiring popover mechanism line for AntiGravity. */
+"workbench.skills.wiring.mechanismGeminiCompat" = "同时读取 Gemini CLI 的技能目录，该技能的 Gemini 投影就在其中。";
+
+/* Wiring popover mechanism line for a harness that finds the shared root on its own. */
+"workbench.skills.wiring.mechanismSharedRoot" = "自行扫描共享根目录 — 无需为其单独建立链接。";
+
+/* Wiring popover mechanism line naming the harness config entry that switches this skill on or off. */
+"workbench.skills.wiring.nativeSwitch" = "按技能开关：%2$@ 中的 %1$@";
+
+/* Wiring popover mechanism line for a harness with no per-skill switch of its own. */
+"workbench.skills.wiring.noNativeSwitch" = "没有按技能开关 — 凡是被发现的都处于生效状态。";
+
+/* Wiring popover mechanism line: Vibe Bar copied the skill into the harness. {path} is a file path. */
+"workbench.skills.wiring.projectionCopy" = "副本位于 %1$@";
+
+/* Wiring popover mechanism line for a copy that was already on disk before Vibe Bar recorded it. */
+"workbench.skills.wiring.projectionCopyAdopted" = "副本位于 %1$@ · 接管自已有安装";
+
+/* Wiring popover mechanism line when nothing links the skill into a harness that needs a link. */
+"workbench.skills.wiring.projectionMissing" = "%1$@ 下没有条目 — 该 harness 看不到这个技能。";
+
+/* Wiring popover mechanism line: Vibe Bar linked the skill into the harness. {path} is a file path. */
+"workbench.skills.wiring.projectionSymlink" = "符号链接位于 %1$@";
+
+/* Wiring popover mechanism line for a symlink that was already on disk before Vibe Bar recorded it. */
+"workbench.skills.wiring.projectionSymlinkAdopted" = "符号链接位于 %1$@ · 接管自已有安装";
+
+/* Button in the per-skill wiring popover that opens the skill's directory in Finder. */
+"workbench.skills.wiring.reveal" = "显示";
+
+/* Tooltip on the wiring popover's Reveal button. */
+"workbench.skills.wiring.revealHelp" = "在 Finder 中显示该技能的源目录";
+
+/* Wiring popover row title for the one real copy of the skill. */
+"workbench.skills.wiring.source" = "源目录";
+
+/* Caption under the wiring popover's Source row. */
+"workbench.skills.wiring.sourceDetail" = "技能的唯一副本。下方每个 harness 读取的都是这个目录或指向它的链接。";
+
+/* Wiring popover state label: the harness config could not be parsed. */
+"workbench.skills.wiring.stateConfigUnreadable" = "配置无法读取";
+
+/* Wiring popover state label: the harness sees the skill through the Gemini CLI folder. */
+"workbench.skills.wiring.stateCoupledGemini" = "已开启 · 经由 Gemini";
+
+/* Wiring popover state label: the harness scans the shared skills root itself. */
+"workbench.skills.wiring.stateCoupledSharedRoot" = "已开启 · 共享根目录";
+
+/* Wiring popover state label: linked, but the harness's own config switches the skill off. */
+"workbench.skills.wiring.stateNativeOff" = "已关闭 · 原生开关";
+
+/* Wiring popover state label: nothing links the skill into that harness. */
+"workbench.skills.wiring.stateNotLinked" = "已关闭 · 未链接";
+
+/* Workbench header status for the Resets page when no refill is scheduled */
+"workbench.status.cachedQuotas" = "缓存额度";
+
+/* Workbench header status for the Sessions page: how many sessions the local index holds */
+"workbench.status.indexed" = "已索引 %1$lld";
+
+/* Workbench header status for the Skills page: how many skills are installed */
+"workbench.status.installed" = "已安装 %1$lld";
+
+/* Workbench header status for the Sessions page before anything is indexed */
+"workbench.status.localIndex" = "本地索引";
+
+/* Workbench header status for the Usage Stats page before the first query */
+"workbench.status.localLedger" = "本地账本";
+
+/* Workbench header status for the Resets page; countdown is a compact span */
+"workbench.status.nextRefill" = "下次补额 %1$@";
+
+/* Workbench header status for the Skills page before anything is installed */
+"workbench.status.sharedLibrary" = "共享库";
+
+/* Workbench header status for the Usage Stats page; time is a clock time */
+"workbench.status.updated" = "更新于 %1$@";

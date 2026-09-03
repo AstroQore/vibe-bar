@@ -55,9 +55,9 @@ struct SkillImportSheet: View {
     private var header: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Review On-Disk Skills")
+                Text(L10n.Workbench.skillsImportTitle)
                     .font(.system(size: density.titleFontSize, weight: .semibold))
-                Text("Vibe Bar already recognizes shared skills. Only selected app-local folders will move.")
+                Text(L10n.Workbench.skillsImportSubtitle)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             }
@@ -73,7 +73,7 @@ struct SkillImportSheet: View {
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            Button("Cancel") {
+            Button(L10n.Common.cancel) {
                 model.isImportSheetPresented = false
                 dismiss()
             }
@@ -88,8 +88,9 @@ struct SkillImportSheet: View {
                     if model.isBusy(SkillsManagerModel.BusyKey.importing) {
                         ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 12, height: 12)
                     }
-                    Text("Apply \(report.adopted.count + adopting.count) change"
-                        + (report.adopted.count + adopting.count == 1 ? "" : "s"))
+                    Text(L10n.Workbench.skillsImportApply(
+                        count: report.adopted.count + adopting.count
+                    ))
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -101,8 +102,11 @@ struct SkillImportSheet: View {
     }
 
     private func summary(_ report: SkillImportReport) -> String {
-        "\(report.adopted.count) already shared · \(report.unmanagedDirectories.count) need adoption "
-            + "· \(report.conflicts.count) left unchanged"
+        L10n.Workbench.skillsImportSummary(
+            adopted: report.adopted.count,
+            unmanaged: report.unmanagedDirectories.count,
+            conflicts: report.conflicts.count
+        )
     }
 
     // MARK: - Adopted
@@ -112,7 +116,7 @@ struct SkillImportSheet: View {
             DisclosureGroup(isExpanded: $showsExistingSkills) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        Text("Keep evidence for")
+                        Text(L10n.Workbench.skillsImportKeepEvidenceFor)
                             .font(.system(size: max(10, density.resetCountdownFontSize)))
                             .foregroundStyle(.tertiary)
                         SkillAppToggleRow(
@@ -121,7 +125,9 @@ struct SkillImportSheet: View {
                             diameter: 22,
                             glyphSize: 11,
                             spacing: 3,
-                            helpSuffix: "keep the links already on disk"
+                            helpOverride: {
+                                L10n.Workbench.skillsToggleHelpKeepLinks(app: $0.displayName)
+                            }
                         )
                     }
                     LazyVStack(alignment: .leading, spacing: 2) {
@@ -144,12 +150,13 @@ struct SkillImportSheet: View {
                 .padding(.top, 8)
             } label: {
                 sectionHeader(
-                    "Already shared",
-                    detail: "\(report.adopted.count) recognized"
+                    L10n.Workbench.skillsImportAlreadyShared,
+                    detail: L10n.Workbench.skillsImportRecognizedCount(
+                        count: report.adopted.count
+                    )
                 )
             }
-            Text("These already live in ~/.agents/skills, including layouts created by CC Switch. "
-                + "Vibe Bar records their existing links; it does not import or copy them again.")
+            Text(L10n.Workbench.skillsImportAlreadySharedDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
         }
@@ -160,11 +167,10 @@ struct SkillImportSheet: View {
     private func unmanagedSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             sectionHeader(
-                "Needs adoption",
-                detail: "\(report.unmanagedDirectories.count)"
+                L10n.Workbench.skillsImportNeedsAdoption,
+                detail: AppLocale.number(report.unmanagedDirectories.count)
             )
-            Text("These do not exist in the shared directory yet. Selecting one copies it into "
-                + "~/.agents/skills, then replaces the chosen app copies with managed links.")
+            Text(L10n.Workbench.skillsImportNeedsAdoptionDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             ForEach(report.unmanagedDirectories, id: \.directoryName) { entry in
@@ -186,7 +192,9 @@ struct SkillImportSheet: View {
                     Text(entry.name ?? entry.directoryName)
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                         .lineLimit(1)
-                    Text("found in " + entry.foundIn.map(\.displayName).joined(separator: ", "))
+                    Text(L10n.Workbench.skillsImportFoundIn(
+                        apps: entry.foundIn.map(\.displayName).joined(separator: ", ")
+                    ))
                         .font(.system(size: max(10, density.resetCountdownFontSize)))
                         .foregroundStyle(.tertiary)
                 }
@@ -203,7 +211,9 @@ struct SkillImportSheet: View {
                 diameter: 22,
                 glyphSize: 11,
                 spacing: 3,
-                helpSuffix: "link into after adopting"
+                helpOverride: {
+                    L10n.Workbench.skillsToggleHelpLinkAfterAdopting(app: $0.displayName)
+                }
             )
         }
         .padding(.vertical, 2)
@@ -213,8 +223,11 @@ struct SkillImportSheet: View {
 
     private func unrecognizedSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
-            sectionHeader("Not skills", detail: "\(report.unrecognized.count)")
-            Text("Directories in ~/.agents/skills with no SKILL.md. Left exactly as they are.")
+            sectionHeader(
+                L10n.Workbench.skillsImportNotSkills,
+                detail: AppLocale.number(report.unrecognized.count)
+            )
+            Text(L10n.Workbench.skillsImportNotSkillsDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             Text(report.unrecognized.joined(separator: ", "))
@@ -226,10 +239,11 @@ struct SkillImportSheet: View {
 
     private func conflictsSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
-            sectionHeader("Conflicting app copies", detail: "\(report.conflicts.count) unchanged")
-            Text("A real folder in an app's skills directory has the same name as one in "
-                + "~/.agents/skills. Vibe Bar will not overwrite it — resolve it by hand, or "
-                + "enable the shared skill for that app once the folder is gone.")
+            sectionHeader(
+                L10n.Workbench.skillsImportConflicts,
+                detail: L10n.Workbench.skillsImportConflictsCount(count: report.conflicts.count)
+            )
+            Text(L10n.Workbench.skillsImportConflictsDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             ForEach(report.conflicts, id: \.self) { conflict in

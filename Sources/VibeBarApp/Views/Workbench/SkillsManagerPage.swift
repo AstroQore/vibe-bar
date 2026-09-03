@@ -100,7 +100,7 @@ struct SkillsManagerPage: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(.secondary)
-            TextField("Filter installed skills", text: $model.searchText)
+            TextField(L10n.Workbench.skillsFilterPlaceholder, text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: max(12, density.segmentedFontSize)))
                 // A text field draws nothing of its own to say keyboard focus
@@ -114,7 +114,7 @@ struct SkillsManagerPage: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.vibeBar)
-                .accessibilityLabel("Clear the filter")
+                .accessibilityLabel(L10n.Workbench.skillsFilterClear)
             }
         }
         .padding(.horizontal, 10)
@@ -134,8 +134,8 @@ struct SkillsManagerPage: View {
                 buttonLabel(
                     systemImage: "arrow.triangle.2.circlepath",
                     title: model.updatesAvailableCount > 0
-                        ? "Check Updates · \(model.updatesAvailableCount)"
-                        : "Check Updates",
+                        ? L10n.Workbench.skillsCheckUpdatesCount(count: model.updatesAvailableCount)
+                        : L10n.Workbench.skillsCheckUpdates,
                     busy: model.isBusy(SkillsManagerModel.BusyKey.updates)
                 )
                 .porcelainToolbarButton()
@@ -148,7 +148,7 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(
                     systemImage: "doc.zipper",
-                    title: "Install from ZIP",
+                    title: L10n.Workbench.skillsInstallFromZip,
                     busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
                 )
                 .porcelainToolbarButton()
@@ -160,7 +160,7 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(
                     systemImage: "square.and.arrow.down.on.square",
-                    title: "Import Existing",
+                    title: L10n.Workbench.skillsImportExisting,
                     busy: model.isBusy(SkillsManagerModel.BusyKey.importing)
                 )
                 .porcelainToolbarButton()
@@ -170,19 +170,27 @@ struct SkillsManagerPage: View {
             Button {
                 model.presentBackupsSheet()
             } label: {
-                buttonLabel(systemImage: "clock.arrow.circlepath", title: "Backups", busy: false)
-                    .porcelainToolbarButton()
+                buttonLabel(
+                    systemImage: "clock.arrow.circlepath",
+                    title: L10n.Workbench.skillsBackups,
+                    busy: false
+                )
+                .porcelainToolbarButton()
             }
             .buttonStyle(.vibeBar(cornerRadius: 11))
 
             Button {
                 model.isDiscoverSheetPresented = true
             } label: {
-                buttonLabel(systemImage: "sparkle.magnifyingglass", title: "Discover", busy: false)
-                    .porcelainToolbarButton(prominent: true)
+                buttonLabel(
+                    systemImage: "sparkle.magnifyingglass",
+                    title: L10n.Workbench.skillsDiscover,
+                    busy: false
+                )
+                .porcelainToolbarButton(prominent: true)
             }
             .buttonStyle(.vibeBar(cornerRadius: 11))
-            .help("Browse configured repositories and the skills.sh index")
+            .help(L10n.Workbench.skillsDiscoverHelp)
         }
     }
 
@@ -215,7 +223,7 @@ struct SkillsManagerPage: View {
                 let coupled = model.coupledCount(for: app)
                 HStack(spacing: 4) {
                     SkillAppGlyph(app: app, size: density.segmentedFontSize)
-                    Text("\(count)")
+                    Text(AppLocale.number(count))
                         .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold,
                                       design: .rounded).monospacedDigit())
                 }
@@ -232,7 +240,9 @@ struct SkillsManagerPage: View {
                     coupled: coupled,
                     nativeDisabled: nativeDisabled
                 ))
-                .accessibilityLabel("\(app.displayName), sees \(count) skills")
+                .accessibilityLabel(
+                    L10n.Workbench.skillsAppSeesCount(app: app.displayName, count: count)
+                )
             }
             Button {
                 showingSyncExplainer = true
@@ -244,7 +254,7 @@ struct SkillsManagerPage: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.vibeBar)
-            .help("How skill syncing works — roots, links, and native switches")
+            .help(L10n.Workbench.skillsSyncExplainerHelp)
             .popover(isPresented: $showingSyncExplainer, arrowEdge: .bottom) {
                 SkillSyncExplainerPopover(density: density)
                     .vibeBarNoInitialFocus()
@@ -265,18 +275,20 @@ struct SkillsManagerPage: View {
         coupled: Int,
         nativeDisabled: Int
     ) -> String {
-        var help = "\(app.displayName) sees \(count) skill\(count == 1 ? "" : "s")"
+        var help = L10n.Workbench.skillsAppSeesCount(app: app.displayName, count: count)
         if coupled > 0 {
             // AntiGravity's coupled skills arrive through the Gemini CLI
             // compatibility root, not the shared root it never scans — name
-            // the mechanism the harness actually uses.
-            let root = app.discoversSharedSkillRoot
-                ? "the shared skills root"
-                : "the Gemini CLI compatibility root"
-            help += " · \(enabled) enabled + \(coupled) via \(root)"
+            // the mechanism the harness actually uses. Each variant is one
+            // whole clause: a translated sentence cannot be built by dropping
+            // a noun phrase into an English frame.
+            let clause = app.discoversSharedSkillRoot
+                ? L10n.Workbench.skillsAppCountViaSharedRoot(enabled: enabled, coupled: coupled)
+                : L10n.Workbench.skillsAppCountViaGeminiRoot(enabled: enabled, coupled: coupled)
+            help += " · " + clause
         }
         if nativeDisabled > 0 {
-            help += " · \(nativeDisabled) projected but disabled"
+            help += " · " + L10n.Workbench.skillsAppCountNativeDisabled(count: nativeDisabled)
         }
         return help
     }
@@ -284,8 +296,8 @@ struct SkillsManagerPage: View {
     private var countSummary: String {
         let total = model.skills.count
         let shown = model.filteredSkills.count
-        if shown == total { return "\(total) skill\(total == 1 ? "" : "s")" }
-        return "\(shown) of \(total) skills"
+        if shown == total { return L10n.Workbench.skillsCountTotal(count: total) }
+        return L10n.Workbench.skillsCountFiltered(shown: shown, total: total)
     }
 
     // MARK: - List
@@ -296,7 +308,7 @@ struct SkillsManagerPage: View {
             emptyCard
         } else if model.filteredSkills.isEmpty {
             CardShell(density: density, alignment: .center) {
-                Text("No skill matches \"\(model.searchText)\"")
+                Text(L10n.Workbench.skillsNoMatch(query: model.searchText))
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             }
@@ -332,19 +344,17 @@ struct SkillsManagerPage: View {
             Image(systemName: "puzzlepiece.extension")
                 .font(.system(size: 26, weight: .light))
                 .foregroundStyle(.secondary)
-            Text("No skills recorded yet")
+            Text(L10n.Workbench.skillsEmptyHeadline)
                 .font(.system(size: density.titleFontSize, weight: .semibold))
-            Text("Vibe Bar keeps one copy of every skill in ~/.agents/skills and links it into "
-                + "each agent CLI. Import what is already on this Mac, or install something new "
-                + "from a repository.")
+            Text(L10n.Workbench.skillsEmptyBody)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 440)
             HStack(spacing: 10) {
-                Button("Import Existing") { model.presentImportSheet() }
+                Button(L10n.Workbench.skillsImportExisting) { model.presentImportSheet() }
                     .buttonStyle(WorkbenchPillButtonStyle())
-                Button("Discover") { model.isDiscoverSheetPresented = true }
+                Button(L10n.Workbench.skillsDiscover) { model.isDiscoverSheetPresented = true }
                     .buttonStyle(WorkbenchPillButtonStyle(prominent: true))
             }
         }
@@ -368,7 +378,7 @@ struct SkillsManagerPage: View {
                         .font(.system(size: density.subtitleFontSize - 2, weight: .semibold))
                 }
                 .buttonStyle(.vibeBar)
-                .accessibilityLabel("Dismiss")
+                .accessibilityLabel(L10n.Common.dismiss)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)

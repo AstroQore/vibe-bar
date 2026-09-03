@@ -12,6 +12,22 @@ import Foundation
 
 extension L10n {
     public enum Common {
+        /// `common.all` — All
+        public static var all: String {
+            L10n.string("common.all")
+        }
+        /// `common.cancel` — Cancel
+        public static var cancel: String {
+            L10n.string("common.cancel")
+        }
+        /// `common.clear` — Clear
+        public static var clear: String {
+            L10n.string("common.clear")
+        }
+        /// `common.copy` — Copy
+        public static var copy: String {
+            L10n.string("common.copy")
+        }
         /// `common.date.month.1` — Jan
         public static var dateMonth1: String {
             L10n.string("common.date.month.1")
@@ -68,6 +84,18 @@ extension L10n {
         public static func dateMonthDayYearTime(month: String, day: Int, year: String, time: String) -> String {
             L10n.string("common.date.monthDayYearTime", month, day, year, time)
         }
+        /// `common.delete` — Delete
+        public static var delete: String {
+            L10n.string("common.delete")
+        }
+        /// `common.dismiss` — Dismiss
+        public static var dismiss: String {
+            L10n.string("common.dismiss")
+        }
+        /// `common.done` — Done
+        public static var done: String {
+            L10n.string("common.done")
+        }
         /// `common.duration.days` — {days}d
         public static func durationDays(days: Int) -> String {
             L10n.string("common.duration.days", days)
@@ -103,6 +131,10 @@ extension L10n {
         /// `common.on` — On
         public static var on: String {
             L10n.string("common.on")
+        }
+        /// `common.open` — Open
+        public static var open: String {
+            L10n.string("common.open")
         }
         /// `common.openSettings` — Open Settings
         public static var openSettings: String {
@@ -1483,6 +1515,138 @@ extension L10n {
     }
 
     public enum Usage {
+        /// `usage.breakdown.models` — Models
+        public static var breakdownModels: String {
+            L10n.string("usage.breakdown.models")
+        }
+        /// `usage.breakdown.periods` — Periods
+        public static var breakdownPeriods: String {
+            L10n.string("usage.breakdown.periods")
+        }
+        /// `usage.breakdown.projects` — Projects
+        public static var breakdownProjects: String {
+            L10n.string("usage.breakdown.projects")
+        }
+        /// `usage.breakdown.providers` — Providers
+        public static var breakdownProviders: String {
+            L10n.string("usage.breakdown.providers")
+        }
+        /// `usage.breakdown.requests` — Requests
+        public static var breakdownRequests: String {
+            L10n.string("usage.breakdown.requests")
+        }
+        /// `usage.filters.allHarnesses` — All harnesses
+        public static var filtersAllHarnesses: String {
+            L10n.string("usage.filters.allHarnesses")
+        }
+        /// `usage.filters.allHarnessesHelpEvery` — Click to include every harness
+        public static var filtersAllHarnessesHelpEvery: String {
+            L10n.string("usage.filters.allHarnessesHelpEvery")
+        }
+        /// `usage.filters.allHarnessesHelpNone` — Click to select no harness
+        public static var filtersAllHarnessesHelpNone: String {
+            L10n.string("usage.filters.allHarnessesHelpNone")
+        }
+        /// `usage.filters.allHarnessesSelectEvery` — Show every harness
+        public static var filtersAllHarnessesSelectEvery: String {
+            L10n.string("usage.filters.allHarnessesSelectEvery")
+        }
+        /// `usage.filters.allHarnessesSelectNone` — Select no harness
+        public static var filtersAllHarnessesSelectNone: String {
+            L10n.string("usage.filters.allHarnessesSelectNone")
+        }
+        /// `usage.filters.allModels` — All models
+        public static var filtersAllModels: String {
+            L10n.string("usage.filters.allModels")
+        }
+        /// `usage.filters.autoMenu` — Auto
+        public static var filtersAutoMenu: String {
+            L10n.string("usage.filters.autoMenu")
+        }
+        /// `usage.filters.autoMenuLabel` — Choose how often the page re-queries
+        public static var filtersAutoMenuLabel: String {
+            L10n.string("usage.filters.autoMenuLabel")
+        }
+        /// `usage.filters.autoRefresh` — Auto refresh
+        public static var filtersAutoRefresh: String {
+            L10n.string("usage.filters.autoRefresh")
+        }
+        /// `usage.filters.clearHelp` — Clear harness, company, and model filters
+        public static var filtersClearHelp: String {
+            L10n.string("usage.filters.clearHelp")
+        }
+        /// `usage.filters.companyHarnesses` — {company}, every harness
+        public static func filtersCompanyHarnesses(company: String) -> String {
+            L10n.string("usage.filters.companyHarnesses", company)
+        }
+        /// `usage.filters.companyHelp` — {company} · {harnesses}
+        public static func filtersCompanyHelp(company: String, harnesses: String) -> String {
+            L10n.string("usage.filters.companyHelp", company, harnesses)
+        }
+        /// `usage.filters.customRangeFrom` — From
+        public static var filtersCustomRangeFrom: String {
+            L10n.string("usage.filters.customRangeFrom")
+        }
+        /// `usage.filters.customRangeHint` — Choose hourly, daily, or weekly buckets from the chart toolbar.
+        public static var filtersCustomRangeHint: String {
+            L10n.string("usage.filters.customRangeHint")
+        }
+        /// `usage.filters.customRangeTitle` — CUSTOM RANGE
+        public static var filtersCustomRangeTitle: String {
+            L10n.string("usage.filters.customRangeTitle")
+        }
+        /// `usage.filters.customRangeTo` — To
+        public static var filtersCustomRangeTo: String {
+            L10n.string("usage.filters.customRangeTo")
+        }
+        /// `usage.filters.editCustomRange` — Edit custom range…
+        public static var filtersEditCustomRange: String {
+            L10n.string("usage.filters.editCustomRange")
+        }
+        /// `usage.filters.harnessHelp` — {company} · {harness}\nClick to toggle · ⌥-click to solo
+        public static func filtersHarnessHelp(company: String, harness: String) -> String {
+            L10n.string("usage.filters.harnessHelp", company, harness)
+        }
+        /// `usage.filters.modelsMenu` — Models
+        public static var filtersModelsMenu: String {
+            L10n.string("usage.filters.modelsMenu")
+        }
+        /// `usage.filters.modelsMenuLabel` — Choose which models to include
+        public static var filtersModelsMenuLabel: String {
+            L10n.string("usage.filters.modelsMenuLabel")
+        }
+        /// `usage.filters.modelsSelected` — {count, plural, one {1 selected} other {# selected}}
+        public static func filtersModelsSelected(count: Int) -> String {
+            L10n.string("usage.filters.modelsSelected", count)
+        }
+        /// `usage.filters.noModelsInRange` — No models in range
+        public static var filtersNoModelsInRange: String {
+            L10n.string("usage.filters.noModelsInRange")
+        }
+        /// `usage.filters.range14d` — 14d
+        public static var filtersRange14d: String {
+            L10n.string("usage.filters.range14d")
+        }
+        /// `usage.filters.range24h` — 24h
+        public static var filtersRange24h: String {
+            L10n.string("usage.filters.range24h")
+        }
+        /// `usage.filters.rangeCustom` — Custom
+        public static var filtersRangeCustom: String {
+            L10n.string("usage.filters.rangeCustom")
+        }
+        /// `usage.filters.rangeMenu` — Choose the date range
+        public static var filtersRangeMenu: String {
+            L10n.string("usage.filters.rangeMenu")
+        }
+        /// `usage.filters.rangeSpan` — {start} – {end}
+        public static func filtersRangeSpan(start: String, end: String) -> String {
+            L10n.string("usage.filters.rangeSpan", start, end)
+        }
+        /// `usage.filters.refreshInterval` — {seconds}s
+        public static func filtersRefreshInterval(seconds: Int) -> String {
+            L10n.string("usage.filters.refreshInterval", seconds)
+        }
         /// `usage.harnessMix.activeCount` — {count, plural, one {1 harness} other {# harnesses}} active in range
         public static func harnessMixActiveCount(count: Int) -> String {
             L10n.string("usage.harnessMix.activeCount", count)
@@ -1555,6 +1719,74 @@ extension L10n {
         public static var ledgerUnavailableTitle: String {
             L10n.string("usage.ledgerUnavailable.title")
         }
+        /// `usage.mix.donutUnit` — tokens
+        public static var mixDonutUnit: String {
+            L10n.string("usage.mix.donutUnit")
+        }
+        /// `usage.mix.harness.subtitle` — where requests ran
+        public static var mixHarnessSubtitle: String {
+            L10n.string("usage.mix.harness.subtitle")
+        }
+        /// `usage.mix.harness.title` — Harness Mix
+        public static var mixHarnessTitle: String {
+            L10n.string("usage.mix.harness.title")
+        }
+        /// `usage.mix.model.empty` — No model traffic in this range
+        public static var mixModelEmpty: String {
+            L10n.string("usage.mix.model.empty")
+        }
+        /// `usage.mix.model.subtitle` — canonical display names
+        public static var mixModelSubtitle: String {
+            L10n.string("usage.mix.model.subtitle")
+        }
+        /// `usage.mix.model.title` — Model Mix
+        public static var mixModelTitle: String {
+            L10n.string("usage.mix.model.title")
+        }
+        /// `usage.mix.other` — Other
+        public static var mixOther: String {
+            L10n.string("usage.mix.other")
+        }
+        /// `usage.mix.otherCount` — {count, plural, one {1 more} other {# more}}
+        public static func mixOtherCount(count: Int) -> String {
+            L10n.string("usage.mix.otherCount", count)
+        }
+        /// `usage.mix.project.empty` — Project attribution appears after a Codex or Claude rescan
+        public static var mixProjectEmpty: String {
+            L10n.string("usage.mix.project.empty")
+        }
+        /// `usage.mix.project.subtitle` — Codex + Claude cwd · up to 30 d detail
+        public static var mixProjectSubtitle: String {
+            L10n.string("usage.mix.project.subtitle")
+        }
+        /// `usage.mix.project.title` — Project Mix
+        public static var mixProjectTitle: String {
+            L10n.string("usage.mix.project.title")
+        }
+        /// `usage.mix.provider.empty` — No provider traffic in this range
+        public static var mixProviderEmpty: String {
+            L10n.string("usage.mix.provider.empty")
+        }
+        /// `usage.mix.provider.subtitle` — billing companies
+        public static var mixProviderSubtitle: String {
+            L10n.string("usage.mix.provider.subtitle")
+        }
+        /// `usage.mix.provider.title` — Provider Mix
+        public static var mixProviderTitle: String {
+            L10n.string("usage.mix.provider.title")
+        }
+        /// `usage.mix.tokenFlow.empty` — No token traffic in this range
+        public static var mixTokenFlowEmpty: String {
+            L10n.string("usage.mix.tokenFlow.empty")
+        }
+        /// `usage.mix.tokenFlow.subtitle` — input · cache · output
+        public static var mixTokenFlowSubtitle: String {
+            L10n.string("usage.mix.tokenFlow.subtitle")
+        }
+        /// `usage.mix.tokenFlow.title` — Token Flow
+        public static var mixTokenFlowTitle: String {
+            L10n.string("usage.mix.tokenFlow.title")
+        }
         /// `usage.noHarnessSelected.detail` — The All harnesses chip is a switch: click it again to put every harness back in the query.
         public static var noHarnessSelectedDetail: String {
             L10n.string("usage.noHarnessSelected.detail")
@@ -1566,6 +1798,154 @@ extension L10n {
         /// `usage.requestCount` — {count} requests
         public static func requestCount(count: String) -> String {
             L10n.string("usage.requestCount", count)
+        }
+        /// `usage.table.activeDays` — {count, plural, one {1 active day} other {# active days}}
+        public static func tableActiveDays(count: Int) -> String {
+            L10n.string("usage.table.activeDays", count)
+        }
+        /// `usage.table.activeHours` — {count, plural, one {1 active hour} other {# active hours}}
+        public static func tableActiveHours(count: Int) -> String {
+            L10n.string("usage.table.activeHours", count)
+        }
+        /// `usage.table.activeWeeks` — {count, plural, one {1 active week} other {# active weeks}}
+        public static func tableActiveWeeks(count: Int) -> String {
+            L10n.string("usage.table.activeWeeks", count)
+        }
+        /// `usage.table.cacheReadWrite` — R {read} · W {write}
+        public static func tableCacheReadWrite(read: String, write: String) -> String {
+            L10n.string("usage.table.cacheReadWrite", read, write)
+        }
+        /// `usage.table.column.average` — Avg/req
+        public static var tableColumnAverage: String {
+            L10n.string("usage.table.column.average")
+        }
+        /// `usage.table.column.cache` — Cache
+        public static var tableColumnCache: String {
+            L10n.string("usage.table.column.cache")
+        }
+        /// `usage.table.column.day` — Day
+        public static var tableColumnDay: String {
+            L10n.string("usage.table.column.day")
+        }
+        /// `usage.table.column.harness` — Harness
+        public static var tableColumnHarness: String {
+            L10n.string("usage.table.column.harness")
+        }
+        /// `usage.table.column.hour` — Hour
+        public static var tableColumnHour: String {
+            L10n.string("usage.table.column.hour")
+        }
+        /// `usage.table.column.input` — Input
+        public static var tableColumnInput: String {
+            L10n.string("usage.table.column.input")
+        }
+        /// `usage.table.column.model` — Model
+        public static var tableColumnModel: String {
+            L10n.string("usage.table.column.model")
+        }
+        /// `usage.table.column.output` — Output
+        public static var tableColumnOutput: String {
+            L10n.string("usage.table.column.output")
+        }
+        /// `usage.table.column.provider` — Provider
+        public static var tableColumnProvider: String {
+            L10n.string("usage.table.column.provider")
+        }
+        /// `usage.table.column.requests` — Requests
+        public static var tableColumnRequests: String {
+            L10n.string("usage.table.column.requests")
+        }
+        /// `usage.table.column.tier` — Tier
+        public static var tableColumnTier: String {
+            L10n.string("usage.table.column.tier")
+        }
+        /// `usage.table.column.time` — Time
+        public static var tableColumnTime: String {
+            L10n.string("usage.table.column.time")
+        }
+        /// `usage.table.column.weekOf` — Week of
+        public static var tableColumnWeekOf: String {
+            L10n.string("usage.table.column.weekOf")
+        }
+        /// `usage.table.companyCount` — {count, plural, one {1 company} other {# companies}}
+        public static func tableCompanyCount(count: Int) -> String {
+            L10n.string("usage.table.companyCount", count)
+        }
+        /// `usage.table.emptyModels` — No model totals in this range
+        public static var tableEmptyModels: String {
+            L10n.string("usage.table.emptyModels")
+        }
+        /// `usage.table.emptyPeriods` — No active periods in this range
+        public static var tableEmptyPeriods: String {
+            L10n.string("usage.table.emptyPeriods")
+        }
+        /// `usage.table.emptyProjects` — No project-attributed Codex or Claude usage in this range
+        public static var tableEmptyProjects: String {
+            L10n.string("usage.table.emptyProjects")
+        }
+        /// `usage.table.emptyProviders` — No provider totals in this range
+        public static var tableEmptyProviders: String {
+            L10n.string("usage.table.emptyProviders")
+        }
+        /// `usage.table.emptyRequests` — No request-level rows in this range
+        public static var tableEmptyRequests: String {
+            L10n.string("usage.table.emptyRequests")
+        }
+        /// `usage.table.harnessHelp` — {company} · {harness}
+        public static func tableHarnessHelp(company: String, harness: String) -> String {
+            L10n.string("usage.table.harnessHelp", company, harness)
+        }
+        /// `usage.table.inputHelp` — Fresh input: {input}\nCache read: {read}\nCache write: {write}
+        public static func tableInputHelp(input: String, read: String, write: String) -> String {
+            L10n.string("usage.table.inputHelp", input, read, write)
+        }
+        /// `usage.table.loadMore` — Load more ({remaining} remaining)
+        public static func tableLoadMore(remaining: Int) -> String {
+            L10n.string("usage.table.loadMore", remaining)
+        }
+        /// `usage.table.loadingMore` — Loading more requests…
+        public static var tableLoadingMore: String {
+            L10n.string("usage.table.loadingMore")
+        }
+        /// `usage.table.modelCount` — {count, plural, one {1 model} other {# models}}
+        public static func tableModelCount(count: Int) -> String {
+            L10n.string("usage.table.modelCount", count)
+        }
+        /// `usage.table.periodRow` — {period}, {tokens}, {cost}
+        public static func tablePeriodRow(period: String, tokens: String, cost: String) -> String {
+            L10n.string("usage.table.periodRow", period, tokens, cost)
+        }
+        /// `usage.table.projectCount` — {count, plural, one {1 project} other {# projects}} · up to 30 d detail
+        public static func tableProjectCount(count: Int) -> String {
+            L10n.string("usage.table.projectCount", count)
+        }
+        /// `usage.table.requestRow` — {time}, {harness}, {model}, {tokens}, {cost}
+        public static func tableRequestRow(time: String, harness: String, model: String, tokens: String, cost: String) -> String {
+            L10n.string("usage.table.requestRow", time, harness, model, tokens, cost)
+        }
+        /// `usage.table.requestsLabel` — Request usage table
+        public static var tableRequestsLabel: String {
+            L10n.string("usage.table.requestsLabel")
+        }
+        /// `usage.table.requestsLoaded` — {loaded} of {total} requests
+        public static func tableRequestsLoaded(loaded: Int, total: Int) -> String {
+            L10n.string("usage.table.requestsLoaded", loaded, total)
+        }
+        /// `usage.table.showMorePeriods` — Show {count} more of {total} periods
+        public static func tableShowMorePeriods(count: Int, total: Int) -> String {
+            L10n.string("usage.table.showMorePeriods", count, total)
+        }
+        /// `usage.table.statRow` — {name}, {requests, plural, one {1 request} other {# requests}}, {tokens}, {cost}
+        public static func tableStatRow(name: String, requests: Int, tokens: String, cost: String) -> String {
+            L10n.string("usage.table.statRow", name, requests, tokens, cost)
+        }
+        /// `usage.table.unpriced` — unpriced
+        public static var tableUnpriced: String {
+            L10n.string("usage.table.unpriced")
+        }
+        /// `usage.table.unpricedHelp` — No price was available for this request
+        public static var tableUnpricedHelp: String {
+            L10n.string("usage.table.unpricedHelp")
         }
         /// `usage.tokens.cacheRead` — Cache read
         public static var tokensCacheRead: String {
@@ -1583,6 +1963,106 @@ extension L10n {
         public static var tokensOutput: String {
             L10n.string("usage.tokens.output")
         }
+        /// `usage.tokens.title` — Tokens
+        public static var tokensTitle: String {
+            L10n.string("usage.tokens.title")
+        }
+        /// `usage.trend.accessibilitySummary` — {count, plural, one {1 provider} other {# providers}}, {tokens} tokens, {cost}
+        public static func trendAccessibilitySummary(count: Int, tokens: String, cost: String) -> String {
+            L10n.string("usage.trend.accessibilitySummary", count, tokens, cost)
+        }
+        /// `usage.trend.bucketDay` — Local calendar days
+        public static var trendBucketDay: String {
+            L10n.string("usage.trend.bucketDay")
+        }
+        /// `usage.trend.bucketHour` — Hourly buckets
+        public static var trendBucketHour: String {
+            L10n.string("usage.trend.bucketHour")
+        }
+        /// `usage.trend.bucketWeek` — Local calendar weeks
+        public static var trendBucketWeek: String {
+            L10n.string("usage.trend.bucketWeek")
+        }
+        /// `usage.trend.costChartLabel` — Cost over time
+        public static var trendCostChartLabel: String {
+            L10n.string("usage.trend.costChartLabel")
+        }
+        /// `usage.trend.empty` — No usage recorded in this range
+        public static var trendEmpty: String {
+            L10n.string("usage.trend.empty")
+        }
+        /// `usage.trend.fit` — Fit
+        public static var trendFit: String {
+            L10n.string("usage.trend.fit")
+        }
+        /// `usage.trend.fitHelp` — Show the full selected window
+        public static var trendFitHelp: String {
+            L10n.string("usage.trend.fitHelp")
+        }
+        /// `usage.trend.granularity` — Granularity
+        public static var trendGranularity: String {
+            L10n.string("usage.trend.granularity")
+        }
+        /// `usage.trend.granularityAuto` — Auto
+        public static var trendGranularityAuto: String {
+            L10n.string("usage.trend.granularityAuto")
+        }
+        /// `usage.trend.granularityDaily` — Daily
+        public static var trendGranularityDaily: String {
+            L10n.string("usage.trend.granularityDaily")
+        }
+        /// `usage.trend.granularityHourly` — Hourly
+        public static var trendGranularityHourly: String {
+            L10n.string("usage.trend.granularityHourly")
+        }
+        /// `usage.trend.granularityLabel` — Choose chart granularity
+        public static var trendGranularityLabel: String {
+            L10n.string("usage.trend.granularityLabel")
+        }
+        /// `usage.trend.granularityWeekly` — Weekly
+        public static var trendGranularityWeekly: String {
+            L10n.string("usage.trend.granularityWeekly")
+        }
+        /// `usage.trend.hideProvider` — Hide {provider}
+        public static func trendHideProvider(provider: String) -> String {
+            L10n.string("usage.trend.hideProvider", provider)
+        }
+        /// `usage.trend.navigatorLabel` — Usage chart range navigator
+        public static var trendNavigatorLabel: String {
+            L10n.string("usage.trend.navigatorLabel")
+        }
+        /// `usage.trend.nextWindow` — Next window
+        public static var trendNextWindow: String {
+            L10n.string("usage.trend.nextWindow")
+        }
+        /// `usage.trend.now` — Now
+        public static var trendNow: String {
+            L10n.string("usage.trend.now")
+        }
+        /// `usage.trend.nowHelp` — Return to current window
+        public static var trendNowHelp: String {
+            L10n.string("usage.trend.nowHelp")
+        }
+        /// `usage.trend.previousWindow` — Previous window
+        public static var trendPreviousWindow: String {
+            L10n.string("usage.trend.previousWindow")
+        }
+        /// `usage.trend.scopeHint` — Drag the navigator handles to focus this chart; filters and tables keep the full window.
+        public static var trendScopeHint: String {
+            L10n.string("usage.trend.scopeHint")
+        }
+        /// `usage.trend.showProvider` — Show {provider}
+        public static func trendShowProvider(provider: String) -> String {
+            L10n.string("usage.trend.showProvider", provider)
+        }
+        /// `usage.trend.title` — USAGE OVER TIME
+        public static var trendTitle: String {
+            L10n.string("usage.trend.title")
+        }
+        /// `usage.trend.tokensChartLabel` — Token usage over time
+        public static var trendTokensChartLabel: String {
+            L10n.string("usage.trend.tokensChartLabel")
+        }
         /// `usage.whenYouUse.everything` — When you use everything
         public static var whenYouUseEverything: String {
             L10n.string("usage.whenYouUse.everything")
@@ -1598,6 +2078,58 @@ extension L10n {
     }
 
     public enum Workbench {
+        /// `workbench.appearance.useDark` — Use dark appearance
+        public static var appearanceUseDark: String {
+            L10n.string("workbench.appearance.useDark")
+        }
+        /// `workbench.appearance.useLight` — Use light appearance
+        public static var appearanceUseLight: String {
+            L10n.string("workbench.appearance.useLight")
+        }
+        /// `workbench.header.refreshPage` — Refresh {page}
+        public static func headerRefreshPage(page: String) -> String {
+            L10n.string("workbench.header.refreshPage", page)
+        }
+        /// `workbench.page.resets.subtitle` — Cycles, refills, and run-out forecasts
+        public static var pageResetsSubtitle: String {
+            L10n.string("workbench.page.resets.subtitle")
+        }
+        /// `workbench.page.resets.title` — Resets
+        public static var pageResetsTitle: String {
+            L10n.string("workbench.page.resets.title")
+        }
+        /// `workbench.page.sessions.subtitle` — Search and resume local agent sessions
+        public static var pageSessionsSubtitle: String {
+            L10n.string("workbench.page.sessions.subtitle")
+        }
+        /// `workbench.page.sessions.title` — Sessions
+        public static var pageSessionsTitle: String {
+            L10n.string("workbench.page.sessions.title")
+        }
+        /// `workbench.page.settings.subtitle` — Appearance, providers, data, privacy, and sync
+        public static var pageSettingsSubtitle: String {
+            L10n.string("workbench.page.settings.subtitle")
+        }
+        /// `workbench.page.settings.title` — Settings
+        public static var pageSettingsTitle: String {
+            L10n.string("workbench.page.settings.title")
+        }
+        /// `workbench.page.skills.subtitle` — One shared skill library · every agent CLI
+        public static var pageSkillsSubtitle: String {
+            L10n.string("workbench.page.skills.subtitle")
+        }
+        /// `workbench.page.skills.title` — Skills
+        public static var pageSkillsTitle: String {
+            L10n.string("workbench.page.skills.title")
+        }
+        /// `workbench.page.usageStats.subtitle` — Local per-request ledger · all providers
+        public static var pageUsageStatsSubtitle: String {
+            L10n.string("workbench.page.usageStats.subtitle")
+        }
+        /// `workbench.page.usageStats.title` — Usage Stats
+        public static var pageUsageStatsTitle: String {
+            L10n.string("workbench.page.usageStats.title")
+        }
         /// `workbench.placeholder.resets` — Cycle, refill and forecast views are on their way.
         public static var placeholderResets: String {
             L10n.string("workbench.placeholder.resets")
@@ -1618,6 +2150,1318 @@ extension L10n {
         public static var placeholderUsageStats: String {
             L10n.string("workbench.placeholder.usageStats")
         }
+        /// `workbench.resets.calendar.dayEntry` — {lane} +{percent}%
+        public static func resetsCalendarDayEntry(lane: String, percent: Int) -> String {
+            L10n.string("workbench.resets.calendar.dayEntry", lane, percent)
+        }
+        /// `workbench.resets.calendar.futureEntry` — {lane} — resets {time}, +{percent}% back
+        public static func resetsCalendarFutureEntry(lane: String, time: String, percent: Int) -> String {
+            L10n.string("workbench.resets.calendar.futureEntry", lane, time, percent)
+        }
+        /// `workbench.resets.calendar.moreEntries` — +{count} more
+        public static func resetsCalendarMoreEntries(count: Int) -> String {
+            L10n.string("workbench.resets.calendar.moreEntries", count)
+        }
+        /// `workbench.resets.calendar.nextMonth` — Next month
+        public static var resetsCalendarNextMonth: String {
+            L10n.string("workbench.resets.calendar.nextMonth")
+        }
+        /// `workbench.resets.calendar.pastEntry` — {lane} — reset {time} at {percent}% used
+        public static func resetsCalendarPastEntry(lane: String, time: String, percent: Int) -> String {
+            L10n.string("workbench.resets.calendar.pastEntry", lane, time, percent)
+        }
+        /// `workbench.resets.calendar.previousMonth` — Previous month
+        public static var resetsCalendarPreviousMonth: String {
+            L10n.string("workbench.resets.calendar.previousMonth")
+        }
+        /// `workbench.resets.calendar.title` — Reset Calendar
+        public static var resetsCalendarTitle: String {
+            L10n.string("workbench.resets.calendar.title")
+        }
+        /// `workbench.resets.calendar.today` — Today
+        public static var resetsCalendarToday: String {
+            L10n.string("workbench.resets.calendar.today")
+        }
+        /// `workbench.resets.cycle.curveHelp` — Remaining % across the current {bucket} cycle
+        public static func resetsCycleCurveHelp(bucket: String) -> String {
+            L10n.string("workbench.resets.cycle.curveHelp", bucket)
+        }
+        /// `workbench.resets.cycle.headline` — {bucket} · resets {countdown}
+        public static func resetsCycleHeadline(bucket: String, countdown: String) -> String {
+            L10n.string("workbench.resets.cycle.headline", bucket, countdown)
+        }
+        /// `workbench.resets.refillHorizon.detail` — next 7 days · column height = how much comes back
+        public static var resetsRefillHorizonDetail: String {
+            L10n.string("workbench.resets.refillHorizon.detail")
+        }
+        /// `workbench.resets.refillHorizon.title` — Refill Horizon
+        public static var resetsRefillHorizonTitle: String {
+            L10n.string("workbench.resets.refillHorizon.title")
+        }
+        /// `workbench.resets.risk.badge.atRisk` — RISK
+        public static var resetsRiskBadgeAtRisk: String {
+            L10n.string("workbench.resets.risk.badge.atRisk")
+        }
+        /// `workbench.resets.risk.badge.low` — LOW
+        public static var resetsRiskBadgeLow: String {
+            L10n.string("workbench.resets.risk.badge.low")
+        }
+        /// `workbench.resets.risk.badge.out` — OUT
+        public static var resetsRiskBadgeOut: String {
+            L10n.string("workbench.resets.risk.badge.out")
+        }
+        /// `workbench.resets.risk.badge.watch` — WATCH
+        public static var resetsRiskBadgeWatch: String {
+            L10n.string("workbench.resets.risk.badge.watch")
+        }
+        /// `workbench.resets.risk.detail` — ranked by the personal forecast
+        public static var resetsRiskDetail: String {
+            L10n.string("workbench.resets.risk.detail")
+        }
+        /// `workbench.resets.risk.empty` — Every bucket is projected to last its cycle.
+        public static var resetsRiskEmpty: String {
+            L10n.string("workbench.resets.risk.empty")
+        }
+        /// `workbench.resets.risk.remaining` — {percent}% · refills {countdown}
+        public static func resetsRiskRemaining(percent: Int, countdown: String) -> String {
+            L10n.string("workbench.resets.risk.remaining", percent, countdown)
+        }
+        /// `workbench.resets.risk.title` — Run-out Risk
+        public static var resetsRiskTitle: String {
+            L10n.string("workbench.resets.risk.title")
+        }
+        /// `workbench.resets.subDaily.title` — NEXT 24 HOURS · SUB-DAILY QUOTAS
+        public static var resetsSubDailyTitle: String {
+            L10n.string("workbench.resets.subDaily.title")
+        }
+        /// `workbench.sessions.allChip.helpSelected` — Click to select no harness
+        public static var sessionsAllChipHelpSelected: String {
+            L10n.string("workbench.sessions.allChip.helpSelected")
+        }
+        /// `workbench.sessions.allChip.helpUnselected` — Click to show sessions from every harness
+        public static var sessionsAllChipHelpUnselected: String {
+            L10n.string("workbench.sessions.allChip.helpUnselected")
+        }
+        /// `workbench.sessions.allChip.labelSelected` — Select no harness
+        public static var sessionsAllChipLabelSelected: String {
+            L10n.string("workbench.sessions.allChip.labelSelected")
+        }
+        /// `workbench.sessions.allChip.labelUnselected` — Show every session source
+        public static var sessionsAllChipLabelUnselected: String {
+            L10n.string("workbench.sessions.allChip.labelUnselected")
+        }
+        /// `workbench.sessions.antigravityNotice` — AntiGravity stores its turns as an undocumented binary payload, so this transcript is a partial reconstruction and its sessions cannot be deleted from here — the IDE keeps them open.
+        public static var sessionsAntigravityNotice: String {
+            L10n.string("workbench.sessions.antigravityNotice")
+        }
+        /// `workbench.sessions.copyResumeCommand` — Copy resume command
+        public static var sessionsCopyResumeCommand: String {
+            L10n.string("workbench.sessions.copyResumeCommand")
+        }
+        /// `workbench.sessions.copySessionID` — Copy session ID
+        public static var sessionsCopySessionID: String {
+            L10n.string("workbench.sessions.copySessionID")
+        }
+        /// `workbench.sessions.copySessionIDLabel` — Session ID {id}. Copy
+        public static func sessionsCopySessionIDLabel(id: String) -> String {
+            L10n.string("workbench.sessions.copySessionIDLabel", id)
+        }
+        /// `workbench.sessions.copySourcePath` — Copy source path
+        public static var sessionsCopySourcePath: String {
+            L10n.string("workbench.sessions.copySourcePath")
+        }
+        /// `workbench.sessions.copyWorkingDirectory` — Copy working directory
+        public static var sessionsCopyWorkingDirectory: String {
+            L10n.string("workbench.sessions.copyWorkingDirectory")
+        }
+        /// `workbench.sessions.count.sessions` — {count, plural, one {1 session} other {# sessions}}
+        public static func sessionsCountSessions(count: Int) -> String {
+            L10n.string("workbench.sessions.count.sessions", count)
+        }
+        /// `workbench.sessions.count.shownOfTotal` — {shown} of {total} sessions
+        public static func sessionsCountShownOfTotal(shown: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.count.shownOfTotal", shown, total)
+        }
+        /// `workbench.sessions.delete.confirm` — {count, plural, one {Delete this session?} other {Delete # sessions?}}
+        public static func sessionsDeleteConfirm(count: Int) -> String {
+            L10n.string("workbench.sessions.delete.confirm", count)
+        }
+        /// `workbench.sessions.delete.countButton` — Delete {count}
+        public static func sessionsDeleteCountButton(count: Int) -> String {
+            L10n.string("workbench.sessions.delete.countButton", count)
+        }
+        /// `workbench.sessions.delete.message` — The session logs are removed from disk. This cannot be undone.
+        public static var sessionsDeleteMessage: String {
+            L10n.string("workbench.sessions.delete.message")
+        }
+        /// `workbench.sessions.deleteEllipsis` — Delete…
+        public static var sessionsDeleteEllipsis: String {
+            L10n.string("workbench.sessions.deleteEllipsis")
+        }
+        /// `workbench.sessions.details` — Details
+        public static var sessionsDetails: String {
+            L10n.string("workbench.sessions.details")
+        }
+        /// `workbench.sessions.details.collapsed` — Collapsed
+        public static var sessionsDetailsCollapsed: String {
+            L10n.string("workbench.sessions.details.collapsed")
+        }
+        /// `workbench.sessions.details.expanded` — Expanded
+        public static var sessionsDetailsExpanded: String {
+            L10n.string("workbench.sessions.details.expanded")
+        }
+        /// `workbench.sessions.empty.indexUnavailableDetail` — The index under ~/.vibebar could not be opened, so sessions cannot be listed this session.
+        public static var sessionsEmptyIndexUnavailableDetail: String {
+            L10n.string("workbench.sessions.empty.indexUnavailableDetail")
+        }
+        /// `workbench.sessions.empty.indexUnavailableTitle` — Session index unavailable
+        public static var sessionsEmptyIndexUnavailableTitle: String {
+            L10n.string("workbench.sessions.empty.indexUnavailableTitle")
+        }
+        /// `workbench.sessions.empty.noLogsDetail` — No session logs were found on this Mac for any of the {count} harnesses Vibe Bar scans.
+        public static func sessionsEmptyNoLogsDetail(count: Int) -> String {
+            L10n.string("workbench.sessions.empty.noLogsDetail", count)
+        }
+        /// `workbench.sessions.empty.noMatchTitle` — No sessions match
+        public static var sessionsEmptyNoMatchTitle: String {
+            L10n.string("workbench.sessions.empty.noMatchTitle")
+        }
+        /// `workbench.sessions.empty.scanningDetail` — Still scanning the session logs on disk.
+        public static var sessionsEmptyScanningDetail: String {
+            L10n.string("workbench.sessions.empty.scanningDetail")
+        }
+        /// `workbench.sessions.empty.searchNoMatchDetail` — Nothing in the indexed sessions matches that search.
+        public static var sessionsEmptySearchNoMatchDetail: String {
+            L10n.string("workbench.sessions.empty.searchNoMatchDetail")
+        }
+        /// `workbench.sessions.fact.created` — Created
+        public static var sessionsFactCreated: String {
+            L10n.string("workbench.sessions.fact.created")
+        }
+        /// `workbench.sessions.fact.cwd` — CWD
+        public static var sessionsFactCwd: String {
+            L10n.string("workbench.sessions.fact.cwd")
+        }
+        /// `workbench.sessions.fact.id` — ID
+        public static var sessionsFactId: String {
+            L10n.string("workbench.sessions.fact.id")
+        }
+        /// `workbench.sessions.fact.lastActive` — Last active
+        public static var sessionsFactLastActive: String {
+            L10n.string("workbench.sessions.fact.lastActive")
+        }
+        /// `workbench.sessions.fact.source` — Source
+        public static var sessionsFactSource: String {
+            L10n.string("workbench.sessions.fact.source")
+        }
+        /// `workbench.sessions.filter.company` — Company
+        public static var sessionsFilterCompany: String {
+            L10n.string("workbench.sessions.filter.company")
+        }
+        /// `workbench.sessions.filter.dateRange` — Date range
+        public static var sessionsFilterDateRange: String {
+            L10n.string("workbench.sessions.filter.dateRange")
+        }
+        /// `workbench.sessions.filter.folders` — Folders
+        public static var sessionsFilterFolders: String {
+            L10n.string("workbench.sessions.filter.folders")
+        }
+        /// `workbench.sessions.filter.foldersFiltered` — Filtered
+        public static var sessionsFilterFoldersFiltered: String {
+            L10n.string("workbench.sessions.filter.foldersFiltered")
+        }
+        /// `workbench.sessions.filter.harness` — Harness
+        public static var sessionsFilterHarness: String {
+            L10n.string("workbench.sessions.filter.harness")
+        }
+        /// `workbench.sessions.filter.harnessCount` — {harness}  {count}
+        public static func sessionsFilterHarnessCount(harness: String, count: Int) -> String {
+            L10n.string("workbench.sessions.filter.harnessCount", harness, count)
+        }
+        /// `workbench.sessions.filter.options` — Options
+        public static var sessionsFilterOptions: String {
+            L10n.string("workbench.sessions.filter.options")
+        }
+        /// `workbench.sessions.filter.scope` — Scope
+        public static var sessionsFilterScope: String {
+            L10n.string("workbench.sessions.filter.scope")
+        }
+        /// `workbench.sessions.filter.sort` — Sort
+        public static var sessionsFilterSort: String {
+            L10n.string("workbench.sessions.filter.sort")
+        }
+        /// `workbench.sessions.filter.sortGrouped` — {order} · grouped
+        public static func sessionsFilterSortGrouped(order: String) -> String {
+            L10n.string("workbench.sessions.filter.sortGrouped", order)
+        }
+        /// `workbench.sessions.filter.sortHelp` — Choose how the list is ordered
+        public static var sessionsFilterSortHelp: String {
+            L10n.string("workbench.sessions.filter.sortHelp")
+        }
+        /// `workbench.sessions.filter.when` — When
+        public static var sessionsFilterWhen: String {
+            L10n.string("workbench.sessions.filter.when")
+        }
+        /// `workbench.sessions.filter.whenHelp` — Choose how far back to list sessions
+        public static var sessionsFilterWhenHelp: String {
+            L10n.string("workbench.sessions.filter.whenHelp")
+        }
+        /// `workbench.sessions.find.next` — Next match
+        public static var sessionsFindNext: String {
+            L10n.string("workbench.sessions.find.next")
+        }
+        /// `workbench.sessions.find.none` — none
+        public static var sessionsFindNone: String {
+            L10n.string("workbench.sessions.find.none")
+        }
+        /// `workbench.sessions.find.placeholder` — Find in transcript
+        public static var sessionsFindPlaceholder: String {
+            L10n.string("workbench.sessions.find.placeholder")
+        }
+        /// `workbench.sessions.find.previous` — Previous match
+        public static var sessionsFindPrevious: String {
+            L10n.string("workbench.sessions.find.previous")
+        }
+        /// `workbench.sessions.folders.exclude` — Exclude paths containing
+        public static var sessionsFoldersExclude: String {
+            L10n.string("workbench.sessions.folders.exclude")
+        }
+        /// `workbench.sessions.folders.excludePlaceholder` — /archive, /vendor
+        public static var sessionsFoldersExcludePlaceholder: String {
+            L10n.string("workbench.sessions.folders.excludePlaceholder")
+        }
+        /// `workbench.sessions.folders.include` — Include paths containing
+        public static var sessionsFoldersInclude: String {
+            L10n.string("workbench.sessions.folders.include")
+        }
+        /// `workbench.sessions.folders.includePlaceholder` — /project/a, /project/b
+        public static var sessionsFoldersIncludePlaceholder: String {
+            L10n.string("workbench.sessions.folders.includePlaceholder")
+        }
+        /// `workbench.sessions.folders.separatorHint` — Separate multiple paths with commas, semicolons, or new lines.
+        public static var sessionsFoldersSeparatorHint: String {
+            L10n.string("workbench.sessions.folders.separatorHint")
+        }
+        /// `workbench.sessions.folders.title` — Directory filters
+        public static var sessionsFoldersTitle: String {
+            L10n.string("workbench.sessions.folders.title")
+        }
+        /// `workbench.sessions.fraction` — {shown}/{total}
+        public static func sessionsFraction(shown: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.fraction", shown, total)
+        }
+        /// `workbench.sessions.groupByProject` — Group by project
+        public static var sessionsGroupByProject: String {
+            L10n.string("workbench.sessions.groupByProject")
+        }
+        /// `workbench.sessions.index.scanning` — scanning…
+        public static var sessionsIndexScanning: String {
+            L10n.string("workbench.sessions.index.scanning")
+        }
+        /// `workbench.sessions.index.unavailable` — index unavailable
+        public static var sessionsIndexUnavailable: String {
+            L10n.string("workbench.sessions.index.unavailable")
+        }
+        /// `workbench.sessions.list.capNotice` — Showing the first {shown} of {total} sessions. Narrow the filters or search to reach the rest.
+        public static func sessionsListCapNotice(shown: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.list.capNotice", shown, total)
+        }
+        /// `workbench.sessions.message.copy` — Copy Message
+        public static var sessionsMessageCopy: String {
+            L10n.string("workbench.sessions.message.copy")
+        }
+        /// `workbench.sessions.message.copyHelp` — Copy this message
+        public static var sessionsMessageCopyHelp: String {
+            L10n.string("workbench.sessions.message.copyHelp")
+        }
+        /// `workbench.sessions.message.showLess` — Show less
+        public static var sessionsMessageShowLess: String {
+            L10n.string("workbench.sessions.message.showLess")
+        }
+        /// `workbench.sessions.message.showMore` — Show more ({count} chars)
+        public static func sessionsMessageShowMore(count: Int) -> String {
+            L10n.string("workbench.sessions.message.showMore", count)
+        }
+        /// `workbench.sessions.openInTerminal` — Open in Terminal
+        public static var sessionsOpenInTerminal: String {
+            L10n.string("workbench.sessions.openInTerminal")
+        }
+        /// `workbench.sessions.options.help` — Terminal and index options
+        public static var sessionsOptionsHelp: String {
+            L10n.string("workbench.sessions.options.help")
+        }
+        /// `workbench.sessions.options.indexMessageText` — Index message text
+        public static var sessionsOptionsIndexMessageText: String {
+            L10n.string("workbench.sessions.options.indexMessageText")
+        }
+        /// `workbench.sessions.options.openIn` — Open in
+        public static var sessionsOptionsOpenIn: String {
+            L10n.string("workbench.sessions.options.openIn")
+        }
+        /// `workbench.sessions.options.rebuildIndex` — Rebuild index…
+        public static var sessionsOptionsRebuildIndex: String {
+            L10n.string("workbench.sessions.options.rebuildIndex")
+        }
+        /// `workbench.sessions.outline.empty` — This transcript has no user prompts.
+        public static var sessionsOutlineEmpty: String {
+            L10n.string("workbench.sessions.outline.empty")
+        }
+        /// `workbench.sessions.outline.heading` — PROMPTS
+        public static var sessionsOutlineHeading: String {
+            L10n.string("workbench.sessions.outline.heading")
+        }
+        /// `workbench.sessions.outline.help` — Jump to a prompt
+        public static var sessionsOutlineHelp: String {
+            L10n.string("workbench.sessions.outline.help")
+        }
+        /// `workbench.sessions.outline.label` — Show the transcript outline
+        public static var sessionsOutlineLabel: String {
+            L10n.string("workbench.sessions.outline.label")
+        }
+        /// `workbench.sessions.page.next` — Next
+        public static var sessionsPageNext: String {
+            L10n.string("workbench.sessions.page.next")
+        }
+        /// `workbench.sessions.page.previous` — Previous
+        public static var sessionsPagePrevious: String {
+            L10n.string("workbench.sessions.page.previous")
+        }
+        /// `workbench.sessions.project.none` — No project
+        public static var sessionsProjectNone: String {
+            L10n.string("workbench.sessions.project.none")
+        }
+        /// `workbench.sessions.project.projectless` — Projectless
+        public static var sessionsProjectProjectless: String {
+            L10n.string("workbench.sessions.project.projectless")
+        }
+        /// `workbench.sessions.range.all` — Any time
+        public static var sessionsRangeAll: String {
+            L10n.string("workbench.sessions.range.all")
+        }
+        /// `workbench.sessions.range.month` — 30 days
+        public static var sessionsRangeMonth: String {
+            L10n.string("workbench.sessions.range.month")
+        }
+        /// `workbench.sessions.range.today` — Today
+        public static var sessionsRangeToday: String {
+            L10n.string("workbench.sessions.range.today")
+        }
+        /// `workbench.sessions.range.week` — 7 days
+        public static var sessionsRangeWeek: String {
+            L10n.string("workbench.sessions.range.week")
+        }
+        /// `workbench.sessions.refreshHelp` — Rescan the session logs on disk
+        public static var sessionsRefreshHelp: String {
+            L10n.string("workbench.sessions.refreshHelp")
+        }
+        /// `workbench.sessions.resume.heading` — RESUME
+        public static var sessionsResumeHeading: String {
+            L10n.string("workbench.sessions.resume.heading")
+        }
+        /// `workbench.sessions.resume.none` — This session has no command-line entry point.
+        public static var sessionsResumeNone: String {
+            L10n.string("workbench.sessions.resume.none")
+        }
+        /// `workbench.sessions.role.assistant` — Assistant
+        public static var sessionsRoleAssistant: String {
+            L10n.string("workbench.sessions.role.assistant")
+        }
+        /// `workbench.sessions.role.other` — Note
+        public static var sessionsRoleOther: String {
+            L10n.string("workbench.sessions.role.other")
+        }
+        /// `workbench.sessions.role.system` — System
+        public static var sessionsRoleSystem: String {
+            L10n.string("workbench.sessions.role.system")
+        }
+        /// `workbench.sessions.role.tool` — Tool
+        public static var sessionsRoleTool: String {
+            L10n.string("workbench.sessions.role.tool")
+        }
+        /// `workbench.sessions.role.user` — You
+        public static var sessionsRoleUser: String {
+            L10n.string("workbench.sessions.role.user")
+        }
+        /// `workbench.sessions.row.autoReviewsMerged` — {count, plural, one {1 Auto Review merged} other {# Auto Reviews merged}}
+        public static func sessionsRowAutoReviewsMerged(count: Int) -> String {
+            L10n.string("workbench.sessions.row.autoReviewsMerged", count)
+        }
+        /// `workbench.sessions.row.includeInDeletion` — Include this session in the deletion
+        public static var sessionsRowIncludeInDeletion: String {
+            L10n.string("workbench.sessions.row.includeInDeletion")
+        }
+        /// `workbench.sessions.row.messageCount` — {count, plural, one {# message} other {# messages}}
+        public static func sessionsRowMessageCount(count: Int) -> String {
+            L10n.string("workbench.sessions.row.messageCount", count)
+        }
+        /// `workbench.sessions.row.select` — Select this session
+        public static var sessionsRowSelect: String {
+            L10n.string("workbench.sessions.row.select")
+        }
+        /// `workbench.sessions.row.showTranscript` — Show this transcript
+        public static var sessionsRowShowTranscript: String {
+            L10n.string("workbench.sessions.row.showTranscript")
+        }
+        /// `workbench.sessions.row.toggleForDeletion` — Toggle this session for deletion
+        public static var sessionsRowToggleForDeletion: String {
+            L10n.string("workbench.sessions.row.toggleForDeletion")
+        }
+        /// `workbench.sessions.runInHelp` — Run it in {terminal}
+        public static func sessionsRunInHelp(terminal: String) -> String {
+            L10n.string("workbench.sessions.runInHelp", terminal)
+        }
+        /// `workbench.sessions.scope.assistant` — Assistant replies
+        public static var sessionsScopeAssistant: String {
+            L10n.string("workbench.sessions.scope.assistant")
+        }
+        /// `workbench.sessions.scope.system` — System prompts
+        public static var sessionsScopeSystem: String {
+            L10n.string("workbench.sessions.scope.system")
+        }
+        /// `workbench.sessions.scope.title` — Titles and session IDs
+        public static var sessionsScopeTitle: String {
+            L10n.string("workbench.sessions.scope.title")
+        }
+        /// `workbench.sessions.scope.tool` — Tool and file operations
+        public static var sessionsScopeTool: String {
+            L10n.string("workbench.sessions.scope.tool")
+        }
+        /// `workbench.sessions.scope.user` — User prompts
+        public static var sessionsScopeUser: String {
+            L10n.string("workbench.sessions.scope.user")
+        }
+        /// `workbench.sessions.search.bodyIndexed` — Message text is indexed locally.
+        public static var sessionsSearchBodyIndexed: String {
+            L10n.string("workbench.sessions.search.bodyIndexed")
+        }
+        /// `workbench.sessions.search.bodyNotIndexed` — Enable message indexing in Options to search transcript content.
+        public static var sessionsSearchBodyNotIndexed: String {
+            L10n.string("workbench.sessions.search.bodyNotIndexed")
+        }
+        /// `workbench.sessions.search.clearHelp` — Clear the search
+        public static var sessionsSearchClearHelp: String {
+            L10n.string("workbench.sessions.search.clearHelp")
+        }
+        /// `workbench.sessions.search.placeholder` — Search sessions
+        public static var sessionsSearchPlaceholder: String {
+            L10n.string("workbench.sessions.search.placeholder")
+        }
+        /// `workbench.sessions.selectMode` — Select
+        public static var sessionsSelectMode: String {
+            L10n.string("workbench.sessions.selectMode")
+        }
+        /// `workbench.sessions.selectModeHelp` — Pick sessions to delete
+        public static var sessionsSelectModeHelp: String {
+            L10n.string("workbench.sessions.selectModeHelp")
+        }
+        /// `workbench.sessions.sort.byProject` — By project
+        public static var sessionsSortByProject: String {
+            L10n.string("workbench.sessions.sort.byProject")
+        }
+        /// `workbench.sessions.sort.oldestFirst` — Oldest first
+        public static var sessionsSortOldestFirst: String {
+            L10n.string("workbench.sessions.sort.oldestFirst")
+        }
+        /// `workbench.sessions.sort.recentFirst` — Newest first
+        public static var sessionsSortRecentFirst: String {
+            L10n.string("workbench.sessions.sort.recentFirst")
+        }
+        /// `workbench.sessions.toast.bodyIndexDropFailed` — Clearing the indexed message text failed.
+        public static var sessionsToastBodyIndexDropFailed: String {
+            L10n.string("workbench.sessions.toast.bodyIndexDropFailed")
+        }
+        /// `workbench.sessions.toast.bodyIndexDropped` — Indexed message text removed.
+        public static var sessionsToastBodyIndexDropped: String {
+            L10n.string("workbench.sessions.toast.bodyIndexDropped")
+        }
+        /// `workbench.sessions.toast.copied` — Copied to the clipboard.
+        public static var sessionsToastCopied: String {
+            L10n.string("workbench.sessions.toast.copied")
+        }
+        /// `workbench.sessions.toast.copiedWithReason` — Copied to the clipboard. {reason}
+        public static func sessionsToastCopiedWithReason(reason: String) -> String {
+            L10n.string("workbench.sessions.toast.copiedWithReason", reason)
+        }
+        /// `workbench.sessions.toast.cwdCopied` — Working directory copied.
+        public static var sessionsToastCwdCopied: String {
+            L10n.string("workbench.sessions.toast.cwdCopied")
+        }
+        /// `workbench.sessions.toast.deleted` — {count, plural, one {Deleted 1 session.} other {Deleted # sessions.}}
+        public static func sessionsToastDeleted(count: Int) -> String {
+            L10n.string("workbench.sessions.toast.deleted", count)
+        }
+        /// `workbench.sessions.toast.deletedPartial` — Deleted {deleted}, kept {kept}: {reason}
+        public static func sessionsToastDeletedPartial(deleted: Int, kept: Int, reason: String) -> String {
+            L10n.string("workbench.sessions.toast.deletedPartial", deleted, kept, reason)
+        }
+        /// `workbench.sessions.toast.indexNotCleared` — The session index could not be cleared.
+        public static var sessionsToastIndexNotCleared: String {
+            L10n.string("workbench.sessions.toast.indexNotCleared")
+        }
+        /// `workbench.sessions.toast.messageCopied` — Message copied.
+        public static var sessionsToastMessageCopied: String {
+            L10n.string("workbench.sessions.toast.messageCopied")
+        }
+        /// `workbench.sessions.toast.noResumeCommand` — This session has no resume command.
+        public static var sessionsToastNoResumeCommand: String {
+            L10n.string("workbench.sessions.toast.noResumeCommand")
+        }
+        /// `workbench.sessions.toast.openedIn` — Opened in {terminal}.
+        public static func sessionsToastOpenedIn(terminal: String) -> String {
+            L10n.string("workbench.sessions.toast.openedIn", terminal)
+        }
+        /// `workbench.sessions.toast.sessionIDCopied` — Session ID copied.
+        public static var sessionsToastSessionIDCopied: String {
+            L10n.string("workbench.sessions.toast.sessionIDCopied")
+        }
+        /// `workbench.sessions.toast.sourcePathCopied` — Source path copied.
+        public static var sessionsToastSourcePathCopied: String {
+            L10n.string("workbench.sessions.toast.sourcePathCopied")
+        }
+        /// `workbench.sessions.transcript.autoReviewDivider` — Auto Review
+        public static var sessionsTranscriptAutoReviewDivider: String {
+            L10n.string("workbench.sessions.transcript.autoReviewDivider")
+        }
+        /// `workbench.sessions.transcript.cancelled` — Reading this session was stopped. Select it again to reopen it.
+        public static var sessionsTranscriptCancelled: String {
+            L10n.string("workbench.sessions.transcript.cancelled")
+        }
+        /// `workbench.sessions.transcript.loadAll` — Load entire transcript
+        public static var sessionsTranscriptLoadAll: String {
+            L10n.string("workbench.sessions.transcript.loadAll")
+        }
+        /// `workbench.sessions.transcript.loading` — Reading the session log…
+        public static var sessionsTranscriptLoading: String {
+            L10n.string("workbench.sessions.transcript.loading")
+        }
+        /// `workbench.sessions.transcript.noMessages` — This session's log has no readable messages.
+        public static var sessionsTranscriptNoMessages: String {
+            L10n.string("workbench.sessions.transcript.noMessages")
+        }
+        /// `workbench.sessions.transcript.noReader` — No reader is registered for {provider}.
+        public static func sessionsTranscriptNoReader(provider: String) -> String {
+            L10n.string("workbench.sessions.transcript.noReader", provider)
+        }
+        /// `workbench.sessions.transcript.pageRange` — Messages {first}–{last} of {total}
+        public static func sessionsTranscriptPageRange(first: Int, last: Int, total: Int) -> String {
+            L10n.string("workbench.sessions.transcript.pageRange", first, last, total)
+        }
+        /// `workbench.sessions.transcript.placeholderDetail` — Pick a session on the left to read its transcript, copy its resume command, or hand it back to its CLI.
+        public static var sessionsTranscriptPlaceholderDetail: String {
+            L10n.string("workbench.sessions.transcript.placeholderDetail")
+        }
+        /// `workbench.sessions.transcript.placeholderTitle` — No session selected
+        public static var sessionsTranscriptPlaceholderTitle: String {
+            L10n.string("workbench.sessions.transcript.placeholderTitle")
+        }
+        /// `workbench.sessions.transcript.readFailed` — This session's log could not be read.
+        public static var sessionsTranscriptReadFailed: String {
+            L10n.string("workbench.sessions.transcript.readFailed")
+        }
+        /// `workbench.sessions.transcript.truncatedDetail` — {parsed} read of {file}. Reading all of it holds the whole transcript in memory.
+        public static func sessionsTranscriptTruncatedDetail(parsed: String, file: String) -> String {
+            L10n.string("workbench.sessions.transcript.truncatedDetail", parsed, file)
+        }
+        /// `workbench.sessions.transcript.truncatedTitle` — Showing the first {count, plural, one {# message} other {# messages}} of a very large log
+        public static func sessionsTranscriptTruncatedTitle(count: Int) -> String {
+            L10n.string("workbench.sessions.transcript.truncatedTitle", count)
+        }
+        /// `workbench.skills.appCountNativeDisabled` — {count} projected but disabled
+        public static func skillsAppCountNativeDisabled(count: Int) -> String {
+            L10n.string("workbench.skills.appCountNativeDisabled", count)
+        }
+        /// `workbench.skills.appCountViaGeminiRoot` — {enabled} enabled + {coupled} via the Gemini CLI compatibility root
+        public static func skillsAppCountViaGeminiRoot(enabled: Int, coupled: Int) -> String {
+            L10n.string("workbench.skills.appCountViaGeminiRoot", enabled, coupled)
+        }
+        /// `workbench.skills.appCountViaSharedRoot` — {enabled} enabled + {coupled} via the shared skills root
+        public static func skillsAppCountViaSharedRoot(enabled: Int, coupled: Int) -> String {
+            L10n.string("workbench.skills.appCountViaSharedRoot", enabled, coupled)
+        }
+        /// `workbench.skills.appSeesCount` — {app} sees {count, plural, one {# skill} other {# skills}}
+        public static func skillsAppSeesCount(app: String, count: Int) -> String {
+            L10n.string("workbench.skills.appSeesCount", app, count)
+        }
+        /// `workbench.skills.backups` — Backups
+        public static var skillsBackups: String {
+            L10n.string("workbench.skills.backups")
+        }
+        /// `workbench.skills.backups.deleteAccessibility` — Delete this backup
+        public static var skillsBackupsDeleteAccessibility: String {
+            L10n.string("workbench.skills.backups.deleteAccessibility")
+        }
+        /// `workbench.skills.backups.deleteConfirmMessage` — The snapshot is removed from ~/.vibebar and cannot be restored afterwards.
+        public static var skillsBackupsDeleteConfirmMessage: String {
+            L10n.string("workbench.skills.backups.deleteConfirmMessage")
+        }
+        /// `workbench.skills.backups.deleteConfirmTitle` — Delete the backup of {skill}?
+        public static func skillsBackupsDeleteConfirmTitle(skill: String) -> String {
+            L10n.string("workbench.skills.backups.deleteConfirmTitle", skill)
+        }
+        /// `workbench.skills.backups.deleteConfirmTitleGeneric` — Delete this backup?
+        public static var skillsBackupsDeleteConfirmTitleGeneric: String {
+            L10n.string("workbench.skills.backups.deleteConfirmTitleGeneric")
+        }
+        /// `workbench.skills.backups.empty` — No backups yet
+        public static var skillsBackupsEmpty: String {
+            L10n.string("workbench.skills.backups.empty")
+        }
+        /// `workbench.skills.backups.footer` — Restoring recreates the shared directory only — enable the skill for the apps you want it in afterwards.
+        public static var skillsBackupsFooter: String {
+            L10n.string("workbench.skills.backups.footer")
+        }
+        /// `workbench.skills.backups.refreshHelp` — Re-read the backup directory
+        public static var skillsBackupsRefreshHelp: String {
+            L10n.string("workbench.skills.backups.refreshHelp")
+        }
+        /// `workbench.skills.backups.restore` — Restore
+        public static var skillsBackupsRestore: String {
+            L10n.string("workbench.skills.backups.restore")
+        }
+        /// `workbench.skills.backups.restoreHelp` — Copy the snapshot back into ~/.agents/skills
+        public static var skillsBackupsRestoreHelp: String {
+            L10n.string("workbench.skills.backups.restoreHelp")
+        }
+        /// `workbench.skills.backups.subtitle` — Taken automatically before an uninstall or an update.
+        public static var skillsBackupsSubtitle: String {
+            L10n.string("workbench.skills.backups.subtitle")
+        }
+        /// `workbench.skills.backups.title` — Skill Backups
+        public static var skillsBackupsTitle: String {
+            L10n.string("workbench.skills.backups.title")
+        }
+        /// `workbench.skills.badge.installed` — INSTALLED
+        public static var skillsBadgeInstalled: String {
+            L10n.string("workbench.skills.badge.installed")
+        }
+        /// `workbench.skills.badge.nativeOff` — {app} OFF
+        public static func skillsBadgeNativeOff(app: String) -> String {
+            L10n.string("workbench.skills.badge.nativeOff", app)
+        }
+        /// `workbench.skills.badge.nativeOffHelp` — Projected, but disabled by the harness's own configuration
+        public static var skillsBadgeNativeOffHelp: String {
+            L10n.string("workbench.skills.badge.nativeOffHelp")
+        }
+        /// `workbench.skills.badge.nativeUnknown` — NATIVE STATE ?
+        public static var skillsBadgeNativeUnknown: String {
+            L10n.string("workbench.skills.badge.nativeUnknown")
+        }
+        /// `workbench.skills.badge.nativeUnknownHelp` — The harness configuration could not be parsed safely
+        public static var skillsBadgeNativeUnknownHelp: String {
+            L10n.string("workbench.skills.badge.nativeUnknownHelp")
+        }
+        /// `workbench.skills.badge.update` — UPDATE
+        public static var skillsBadgeUpdate: String {
+            L10n.string("workbench.skills.badge.update")
+        }
+        /// `workbench.skills.checkUpdates` — Check Updates
+        public static var skillsCheckUpdates: String {
+            L10n.string("workbench.skills.checkUpdates")
+        }
+        /// `workbench.skills.checkUpdatesCount` — Check Updates · {count}
+        public static func skillsCheckUpdatesCount(count: Int) -> String {
+            L10n.string("workbench.skills.checkUpdatesCount", count)
+        }
+        /// `workbench.skills.contextDisableKeepProjection` — Disable in {app} · Keep Projection
+        public static func skillsContextDisableKeepProjection(app: String) -> String {
+            L10n.string("workbench.skills.contextDisableKeepProjection", app)
+        }
+        /// `workbench.skills.contextEnableIn` — Enable in {app}
+        public static func skillsContextEnableIn(app: String) -> String {
+            L10n.string("workbench.skills.contextEnableIn", app)
+        }
+        /// `workbench.skills.contextRemoveProjection` — Remove {app} Projection
+        public static func skillsContextRemoveProjection(app: String) -> String {
+            L10n.string("workbench.skills.contextRemoveProjection", app)
+        }
+        /// `workbench.skills.countFiltered` — {shown} of {total} skills
+        public static func skillsCountFiltered(shown: Int, total: Int) -> String {
+            L10n.string("workbench.skills.countFiltered", shown, total)
+        }
+        /// `workbench.skills.countTotal` — {count, plural, one {# skill} other {# skills}}
+        public static func skillsCountTotal(count: Int) -> String {
+            L10n.string("workbench.skills.countTotal", count)
+        }
+        /// `workbench.skills.discover` — Discover
+        public static var skillsDiscover: String {
+            L10n.string("workbench.skills.discover")
+        }
+        /// `workbench.skills.discover.addRepo` — Add
+        public static var skillsDiscoverAddRepo: String {
+            L10n.string("workbench.skills.discover.addRepo")
+        }
+        /// `workbench.skills.discover.availableEmpty` — Scan the configured repositories, or install a skills.sh result, to list what is available.
+        public static var skillsDiscoverAvailableEmpty: String {
+            L10n.string("workbench.skills.discover.availableEmpty")
+        }
+        /// `workbench.skills.discover.availableTitle` — Available skills
+        public static var skillsDiscoverAvailableTitle: String {
+            L10n.string("workbench.skills.discover.availableTitle")
+        }
+        /// `workbench.skills.discover.indexTitle` — skills.sh index
+        public static var skillsDiscoverIndexTitle: String {
+            L10n.string("workbench.skills.discover.indexTitle")
+        }
+        /// `workbench.skills.discover.installs` — {count, plural, one {# install} other {# installs}}
+        public static func skillsDiscoverInstalls(count: Int) -> String {
+            L10n.string("workbench.skills.discover.installs", count)
+        }
+        /// `workbench.skills.discover.noRepos` — No repositories configured. Add one as owner/repo, optionally owner/repo@branch.
+        public static var skillsDiscoverNoRepos: String {
+            L10n.string("workbench.skills.discover.noRepos")
+        }
+        /// `workbench.skills.discover.removeRepo` — Remove {repo}
+        public static func skillsDiscoverRemoveRepo(repo: String) -> String {
+            L10n.string("workbench.skills.discover.removeRepo", repo)
+        }
+        /// `workbench.skills.discover.repoFieldPlaceholder` — owner/repo or owner/repo@branch
+        public static var skillsDiscoverRepoFieldPlaceholder: String {
+            L10n.string("workbench.skills.discover.repoFieldPlaceholder")
+        }
+        /// `workbench.skills.discover.repoRules` — Owners take letters, digits, and hyphens; names and branches also take dots and underscores.
+        public static var skillsDiscoverRepoRules: String {
+            L10n.string("workbench.skills.discover.repoRules")
+        }
+        /// `workbench.skills.discover.reposTitle` — Configured repositories
+        public static var skillsDiscoverReposTitle: String {
+            L10n.string("workbench.skills.discover.reposTitle")
+        }
+        /// `workbench.skills.discover.scanRepos` — Scan repos
+        public static var skillsDiscoverScanRepos: String {
+            L10n.string("workbench.skills.discover.scanRepos")
+        }
+        /// `workbench.skills.discover.scanReposHelp` — Download every configured repository
+        public static var skillsDiscoverScanReposHelp: String {
+            L10n.string("workbench.skills.discover.scanReposHelp")
+        }
+        /// `workbench.skills.discover.searchHint` — Results come back with the repository that publishes them; installing one downloads that repository and lists the rest of it below.
+        public static var skillsDiscoverSearchHint: String {
+            L10n.string("workbench.skills.discover.searchHint")
+        }
+        /// `workbench.skills.discover.searchPlaceholder` — Search the community index
+        public static var skillsDiscoverSearchPlaceholder: String {
+            L10n.string("workbench.skills.discover.searchPlaceholder")
+        }
+        /// `workbench.skills.discover.selectAll` — Select all
+        public static var skillsDiscoverSelectAll: String {
+            L10n.string("workbench.skills.discover.selectAll")
+        }
+        /// `workbench.skills.discover.selectHelp` — Set which agent CLIs every row installs into
+        public static var skillsDiscoverSelectHelp: String {
+            L10n.string("workbench.skills.discover.selectHelp")
+        }
+        /// `workbench.skills.discover.selectNone` — Select none
+        public static var skillsDiscoverSelectNone: String {
+            L10n.string("workbench.skills.discover.selectNone")
+        }
+        /// `workbench.skills.discover.sourceFromSkillsSh` — {repo} (from skills.sh)
+        public static func skillsDiscoverSourceFromSkillsSh(repo: String) -> String {
+            L10n.string("workbench.skills.discover.sourceFromSkillsSh", repo)
+        }
+        /// `workbench.skills.discover.stopScanHelp` — Stop the running scan
+        public static var skillsDiscoverStopScanHelp: String {
+            L10n.string("workbench.skills.discover.stopScanHelp")
+        }
+        /// `workbench.skills.discover.stopScanningRepo` — Stop scanning {repo}
+        public static func skillsDiscoverStopScanningRepo(repo: String) -> String {
+            L10n.string("workbench.skills.discover.stopScanningRepo", repo)
+        }
+        /// `workbench.skills.discover.title` — Discover Skills
+        public static var skillsDiscoverTitle: String {
+            L10n.string("workbench.skills.discover.title")
+        }
+        /// `workbench.skills.discoverHelp` — Browse configured repositories and the skills.sh index
+        public static var skillsDiscoverHelp: String {
+            L10n.string("workbench.skills.discoverHelp")
+        }
+        /// `workbench.skills.empty.body` — Vibe Bar keeps one copy of every skill in ~/.agents/skills and links it into each agent CLI. Import what is already on this Mac, or install something new from a repository.
+        public static var skillsEmptyBody: String {
+            L10n.string("workbench.skills.empty.body")
+        }
+        /// `workbench.skills.empty.headline` — No skills recorded yet
+        public static var skillsEmptyHeadline: String {
+            L10n.string("workbench.skills.empty.headline")
+        }
+        /// `workbench.skills.filterClear` — Clear the filter
+        public static var skillsFilterClear: String {
+            L10n.string("workbench.skills.filterClear")
+        }
+        /// `workbench.skills.filterPlaceholder` — Filter installed skills
+        public static var skillsFilterPlaceholder: String {
+            L10n.string("workbench.skills.filterPlaceholder")
+        }
+        /// `workbench.skills.import.alreadyShared` — Already shared
+        public static var skillsImportAlreadyShared: String {
+            L10n.string("workbench.skills.import.alreadyShared")
+        }
+        /// `workbench.skills.import.alreadySharedDetail` — These already live in ~/.agents/skills, including layouts created by CC Switch. Vibe Bar records their existing links; it does not import or copy them again.
+        public static var skillsImportAlreadySharedDetail: String {
+            L10n.string("workbench.skills.import.alreadySharedDetail")
+        }
+        /// `workbench.skills.import.apply` — Apply {count, plural, one {# change} other {# changes}}
+        public static func skillsImportApply(count: Int) -> String {
+            L10n.string("workbench.skills.import.apply", count)
+        }
+        /// `workbench.skills.import.conflicts` — Conflicting app copies
+        public static var skillsImportConflicts: String {
+            L10n.string("workbench.skills.import.conflicts")
+        }
+        /// `workbench.skills.import.conflictsCount` — {count} unchanged
+        public static func skillsImportConflictsCount(count: Int) -> String {
+            L10n.string("workbench.skills.import.conflictsCount", count)
+        }
+        /// `workbench.skills.import.conflictsDetail` — A real folder in an app's skills directory has the same name as one in ~/.agents/skills. Vibe Bar will not overwrite it — resolve it by hand, or enable the shared skill for that app once the folder is gone.
+        public static var skillsImportConflictsDetail: String {
+            L10n.string("workbench.skills.import.conflictsDetail")
+        }
+        /// `workbench.skills.import.foundIn` — found in {apps}
+        public static func skillsImportFoundIn(apps: String) -> String {
+            L10n.string("workbench.skills.import.foundIn", apps)
+        }
+        /// `workbench.skills.import.keepEvidenceFor` — Keep evidence for
+        public static var skillsImportKeepEvidenceFor: String {
+            L10n.string("workbench.skills.import.keepEvidenceFor")
+        }
+        /// `workbench.skills.import.needsAdoption` — Needs adoption
+        public static var skillsImportNeedsAdoption: String {
+            L10n.string("workbench.skills.import.needsAdoption")
+        }
+        /// `workbench.skills.import.needsAdoptionDetail` — These do not exist in the shared directory yet. Selecting one copies it into ~/.agents/skills, then replaces the chosen app copies with managed links.
+        public static var skillsImportNeedsAdoptionDetail: String {
+            L10n.string("workbench.skills.import.needsAdoptionDetail")
+        }
+        /// `workbench.skills.import.notSkills` — Not skills
+        public static var skillsImportNotSkills: String {
+            L10n.string("workbench.skills.import.notSkills")
+        }
+        /// `workbench.skills.import.notSkillsDetail` — Directories in ~/.agents/skills with no SKILL.md. Left exactly as they are.
+        public static var skillsImportNotSkillsDetail: String {
+            L10n.string("workbench.skills.import.notSkillsDetail")
+        }
+        /// `workbench.skills.import.recognizedCount` — {count} recognized
+        public static func skillsImportRecognizedCount(count: Int) -> String {
+            L10n.string("workbench.skills.import.recognizedCount", count)
+        }
+        /// `workbench.skills.import.subtitle` — Vibe Bar already recognizes shared skills. Only selected app-local folders will move.
+        public static var skillsImportSubtitle: String {
+            L10n.string("workbench.skills.import.subtitle")
+        }
+        /// `workbench.skills.import.summary` — {adopted} already shared · {unmanaged} need adoption · {conflicts} left unchanged
+        public static func skillsImportSummary(adopted: Int, unmanaged: Int, conflicts: Int) -> String {
+            L10n.string("workbench.skills.import.summary", adopted, unmanaged, conflicts)
+        }
+        /// `workbench.skills.import.title` — Review On-Disk Skills
+        public static var skillsImportTitle: String {
+            L10n.string("workbench.skills.import.title")
+        }
+        /// `workbench.skills.importExisting` — Import Existing
+        public static var skillsImportExisting: String {
+            L10n.string("workbench.skills.importExisting")
+        }
+        /// `workbench.skills.install` — Install
+        public static var skillsInstall: String {
+            L10n.string("workbench.skills.install")
+        }
+        /// `workbench.skills.installFromZip` — Install from ZIP
+        public static var skillsInstallFromZip: String {
+            L10n.string("workbench.skills.installFromZip")
+        }
+        /// `workbench.skills.menuMoreActions` — More actions for {skill}
+        public static func skillsMenuMoreActions(skill: String) -> String {
+            L10n.string("workbench.skills.menuMoreActions", skill)
+        }
+        /// `workbench.skills.menuRevealInFinder` — Reveal in Finder
+        public static var skillsMenuRevealInFinder: String {
+            L10n.string("workbench.skills.menuRevealInFinder")
+        }
+        /// `workbench.skills.menuUninstall` — Uninstall…
+        public static var skillsMenuUninstall: String {
+            L10n.string("workbench.skills.menuUninstall")
+        }
+        /// `workbench.skills.menuUpdateFromRepository` — Update from repository
+        public static var skillsMenuUpdateFromRepository: String {
+            L10n.string("workbench.skills.menuUpdateFromRepository")
+        }
+        /// `workbench.skills.menuWiringDetails` — Wiring Details…
+        public static var skillsMenuWiringDetails: String {
+            L10n.string("workbench.skills.menuWiringDetails")
+        }
+        /// `workbench.skills.noMatch` — No skill matches “{query}”
+        public static func skillsNoMatch(query: String) -> String {
+            L10n.string("workbench.skills.noMatch", query)
+        }
+        /// `workbench.skills.phase.downloadedOne` — Downloaded 1 repository
+        public static var skillsPhaseDownloadedOne: String {
+            L10n.string("workbench.skills.phase.downloadedOne")
+        }
+        /// `workbench.skills.phase.downloadedProgress` — Downloaded {completed} of {total} repositories
+        public static func skillsPhaseDownloadedProgress(completed: Int, total: Int) -> String {
+            L10n.string("workbench.skills.phase.downloadedProgress", completed, total)
+        }
+        /// `workbench.skills.phase.downloading` — Downloading {repo}…
+        public static func skillsPhaseDownloading(repo: String) -> String {
+            L10n.string("workbench.skills.phase.downloading", repo)
+        }
+        /// `workbench.skills.phase.scanning` — Scanning {repo}…
+        public static func skillsPhaseScanning(repo: String) -> String {
+            L10n.string("workbench.skills.phase.scanning", repo)
+        }
+        /// `workbench.skills.sourceBranch` — Branch {branch}
+        public static func skillsSourceBranch(branch: String) -> String {
+            L10n.string("workbench.skills.sourceBranch", branch)
+        }
+        /// `workbench.skills.sourceInstalledLocally` — Installed locally
+        public static var skillsSourceInstalledLocally: String {
+            L10n.string("workbench.skills.sourceInstalledLocally")
+        }
+        /// `workbench.skills.sourceLocal` — local
+        public static var skillsSourceLocal: String {
+            L10n.string("workbench.skills.sourceLocal")
+        }
+        /// `workbench.skills.state.coupled` — Available through a shared or compatibility root
+        public static var skillsStateCoupled: String {
+            L10n.string("workbench.skills.state.coupled")
+        }
+        /// `workbench.skills.state.disabledInHarness` — Projected, disabled in harness
+        public static var skillsStateDisabledInHarness: String {
+            L10n.string("workbench.skills.state.disabledInHarness")
+        }
+        /// `workbench.skills.state.enabled` — Enabled
+        public static var skillsStateEnabled: String {
+            L10n.string("workbench.skills.state.enabled")
+        }
+        /// `workbench.skills.state.notProjected` — Not projected
+        public static var skillsStateNotProjected: String {
+            L10n.string("workbench.skills.state.notProjected")
+        }
+        /// `workbench.skills.state.unknown` — Projected, native state unknown
+        public static var skillsStateUnknown: String {
+            L10n.string("workbench.skills.state.unknown")
+        }
+        /// `workbench.skills.sync.footer` — Vibe Bar writes only inside ~/{path}, the per-harness skills folders, and the config files above.
+        public static func skillsSyncFooter(path: String) -> String {
+            L10n.string("workbench.skills.sync.footer", path)
+        }
+        /// `workbench.skills.sync.nativeSwitchesBody` — Where a harness has its own per-skill off switch, the circles flip that switch. Cursor has none, so every skill in the shared root is always available to it — that is the “shared root” badge, and there is nothing to toggle.
+        public static var skillsSyncNativeSwitchesBody: String {
+            L10n.string("workbench.skills.sync.nativeSwitchesBody")
+        }
+        /// `workbench.skills.sync.nativeSwitchesLead` — Native switches.
+        public static var skillsSyncNativeSwitchesLead: String {
+            L10n.string("workbench.skills.sync.nativeSwitchesLead")
+        }
+        /// `workbench.skills.sync.noPerSkillSwitch` — no per-skill switch
+        public static var skillsSyncNoPerSkillSwitch: String {
+            L10n.string("workbench.skills.sync.noPerSkillSwitch")
+        }
+        /// `workbench.skills.sync.noSwitchAlsoReads` — no per-skill switch; also reads ~/{path}
+        public static func skillsSyncNoSwitchAlsoReads(path: String) -> String {
+            L10n.string("workbench.skills.sync.noSwitchAlsoReads", path)
+        }
+        /// `workbench.skills.sync.perSkillSwitch` — per-skill switch {key} in ~/{path}
+        public static func skillsSyncPerSkillSwitch(key: String, path: String) -> String {
+            L10n.string("workbench.skills.sync.perSkillSwitch", key, path)
+        }
+        /// `workbench.skills.sync.projectionsBody` — Claude Code and AntiGravity read only their own skills folders, so Vibe Bar links (or copies) skills into them. Codex, Gemini CLI, Grok Build, and Cursor scan the shared root themselves — no link needed.
+        public static var skillsSyncProjectionsBody: String {
+            L10n.string("workbench.skills.sync.projectionsBody")
+        }
+        /// `workbench.skills.sync.projectionsLead` — Projections.
+        public static var skillsSyncProjectionsLead: String {
+            L10n.string("workbench.skills.sync.projectionsLead")
+        }
+        /// `workbench.skills.sync.readsOwnFolder` — reads only ~/{path}
+        public static func skillsSyncReadsOwnFolder(path: String) -> String {
+            L10n.string("workbench.skills.sync.readsOwnFolder", path)
+        }
+        /// `workbench.skills.sync.scansSharedRoot` — scans ~/{path} directly
+        public static func skillsSyncScansSharedRoot(path: String) -> String {
+            L10n.string("workbench.skills.sync.scansSharedRoot", path)
+        }
+        /// `workbench.skills.sync.ssotBody` — Every skill lives in ~/{path}/<name>. Install, update, and uninstall all happen there and only there.
+        public static func skillsSyncSsotBody(path: String) -> String {
+            L10n.string("workbench.skills.sync.ssotBody", path)
+        }
+        /// `workbench.skills.sync.ssotLead` — One source of truth.
+        public static var skillsSyncSsotLead: String {
+            L10n.string("workbench.skills.sync.ssotLead")
+        }
+        /// `workbench.skills.sync.title` — How skill syncing works
+        public static var skillsSyncTitle: String {
+            L10n.string("workbench.skills.sync.title")
+        }
+        /// `workbench.skills.syncExplainerHelp` — How skill syncing works — roots, links, and native switches
+        public static var skillsSyncExplainerHelp: String {
+            L10n.string("workbench.skills.syncExplainerHelp")
+        }
+        /// `workbench.skills.toast.addRepoFirst` — Add a repository first.
+        public static var skillsToastAddRepoFirst: String {
+            L10n.string("workbench.skills.toast.addRepoFirst")
+        }
+        /// `workbench.skills.toast.allUpToDate` — Every repository skill is up to date.
+        public static var skillsToastAllUpToDate: String {
+            L10n.string("workbench.skills.toast.allUpToDate")
+        }
+        /// `workbench.skills.toast.archiveEmpty` — Nothing in that archive could be installed.
+        public static var skillsToastArchiveEmpty: String {
+            L10n.string("workbench.skills.toast.archiveEmpty")
+        }
+        /// `workbench.skills.toast.disabledKeptProjection` — Disabled {skill} in {app} and kept its projection.
+        public static func skillsToastDisabledKeptProjection(skill: String, app: String) -> String {
+            L10n.string("workbench.skills.toast.disabledKeptProjection", skill, app)
+        }
+        /// `workbench.skills.toast.enabledForApps` — Enabled for {apps}.
+        public static func skillsToastEnabledForApps(apps: String) -> String {
+            L10n.string("workbench.skills.toast.enabledForApps", apps)
+        }
+        /// `workbench.skills.toast.importConflicts` — Left {count, plural, one {# conflicting app copy} other {# conflicting app copies}} unchanged.
+        public static func skillsToastImportConflicts(count: Int) -> String {
+            L10n.string("workbench.skills.toast.importConflicts", count)
+        }
+        /// `workbench.skills.toast.importRecognized` — Recognized {count, plural, one {# existing skill} other {# existing skills}}.
+        public static func skillsToastImportRecognized(count: Int) -> String {
+            L10n.string("workbench.skills.toast.importRecognized", count)
+        }
+        /// `workbench.skills.toast.installedArchive` — Installed {count, plural, one {# skill} other {# skills}} from the archive.
+        public static func skillsToastInstalledArchive(count: Int) -> String {
+            L10n.string("workbench.skills.toast.installedArchive", count)
+        }
+        /// `workbench.skills.toast.installedForApps` — Installed {skill} for {apps}.
+        public static func skillsToastInstalledForApps(skill: String, apps: String) -> String {
+            L10n.string("workbench.skills.toast.installedForApps", skill, apps)
+        }
+        /// `workbench.skills.toast.installedShared` — Installed {skill} in the shared library. Check effective harness state in Skills.
+        public static func skillsToastInstalledShared(skill: String) -> String {
+            L10n.string("workbench.skills.toast.installedShared", skill)
+        }
+        /// `workbench.skills.toast.invalidRepoRef` — “{input}” is not a new owner/repo[@branch] reference.
+        public static func skillsToastInvalidRepoRef(input: String) -> String {
+            L10n.string("workbench.skills.toast.invalidRepoRef", input)
+        }
+        /// `workbench.skills.toast.linkRemovedStillShared` — Removed the {app} link. {skill} stays available there through the shared skills root.
+        public static func skillsToastLinkRemovedStillShared(app: String, skill: String) -> String {
+            L10n.string("workbench.skills.toast.linkRemovedStillShared", app, skill)
+        }
+        /// `workbench.skills.toast.noSearchMatches` — skills.sh returned no matches.
+        public static var skillsToastNoSearchMatches: String {
+            L10n.string("workbench.skills.toast.noSearchMatches")
+        }
+        /// `workbench.skills.toast.noSkillsFound` — No skills were found in the configured repositories.
+        public static var skillsToastNoSkillsFound: String {
+            L10n.string("workbench.skills.toast.noSkillsFound")
+        }
+        /// `workbench.skills.toast.notFoundInRepo` — {skill} was not found in {repo}.
+        public static func skillsToastNotFoundInRepo(skill: String, repo: String) -> String {
+            L10n.string("workbench.skills.toast.notFoundInRepo", skill, repo)
+        }
+        /// `workbench.skills.toast.projectionClearedFolderKept` — {skill}'s Vibe Bar projection was cleared for {app}, but the existing folder was left in place.
+        public static func skillsToastProjectionClearedFolderKept(skill: String, app: String) -> String {
+            L10n.string("workbench.skills.toast.projectionClearedFolderKept", skill, app)
+        }
+        /// `workbench.skills.toast.recorded` — Recorded {count, plural, one {# skill} other {# skills}}.
+        public static func skillsToastRecorded(count: Int) -> String {
+            L10n.string("workbench.skills.toast.recorded", count)
+        }
+        /// `workbench.skills.toast.reposUnreadable` — {count, plural, one {# repository} other {# repositories}} could not be read.
+        public static func skillsToastReposUnreadable(count: Int) -> String {
+            L10n.string("workbench.skills.toast.reposUnreadable", count)
+        }
+        /// `workbench.skills.toast.restored` — Restored {skill}. Enable it for the apps you want it in.
+        public static func skillsToastRestored(skill: String) -> String {
+            L10n.string("workbench.skills.toast.restored", skill)
+        }
+        /// `workbench.skills.toast.scanStopped` — Stopped scanning.
+        public static var skillsToastScanStopped: String {
+            L10n.string("workbench.skills.toast.scanStopped")
+        }
+        /// `workbench.skills.toast.sharedLibraryNote` — They stay in the shared library. Check effective harness state in Skills.
+        public static var skillsToastSharedLibraryNote: String {
+            L10n.string("workbench.skills.toast.sharedLibraryNote")
+        }
+        /// `workbench.skills.toast.sharedRootNoSwitch` — {app} reads the shared skills root directly — {skill} is always available there and has no per-skill switch.
+        public static func skillsToastSharedRootNoSwitch(app: String, skill: String) -> String {
+            L10n.string("workbench.skills.toast.sharedRootNoSwitch", app, skill)
+        }
+        /// `workbench.skills.toast.uninstalledBackedUp` — Uninstalled {skill}. A backup was saved.
+        public static func skillsToastUninstalledBackedUp(skill: String) -> String {
+            L10n.string("workbench.skills.toast.uninstalledBackedUp", skill)
+        }
+        /// `workbench.skills.toast.uninstalledLeftInPlace` — Uninstalled {skill}. Left in place for {apps}.
+        public static func skillsToastUninstalledLeftInPlace(skill: String, apps: String) -> String {
+            L10n.string("workbench.skills.toast.uninstalledLeftInPlace", skill, apps)
+        }
+        /// `workbench.skills.toast.updated` — Updated {skill}.
+        public static func skillsToastUpdated(skill: String) -> String {
+            L10n.string("workbench.skills.toast.updated", skill)
+        }
+        /// `workbench.skills.toast.updatesAvailable` — {count, plural, one {# skill} other {# skills}} can be updated.
+        public static func skillsToastUpdatesAvailable(count: Int) -> String {
+            L10n.string("workbench.skills.toast.updatesAvailable", count)
+        }
+        /// `workbench.skills.toggleHelp.installInto` — Install into {app}
+        public static func skillsToggleHelpInstallInto(app: String) -> String {
+            L10n.string("workbench.skills.toggleHelp.installInto", app)
+        }
+        /// `workbench.skills.toggleHelp.keepLinks` — Keep the {app} links already on disk
+        public static func skillsToggleHelpKeepLinks(app: String) -> String {
+            L10n.string("workbench.skills.toggleHelp.keepLinks", app)
+        }
+        /// `workbench.skills.toggleHelp.linkAfterAdopting` — Link into {app} after adopting
+        public static func skillsToggleHelpLinkAfterAdopting(app: String) -> String {
+            L10n.string("workbench.skills.toggleHelp.linkAfterAdopting", app)
+        }
+        /// `workbench.skills.toggleState.coupledGemini` — {app} — visible through the Gemini CLI projection it also reads. Click to give it its own projection.
+        public static func skillsToggleStateCoupledGemini(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.coupledGemini", app)
+        }
+        /// `workbench.skills.toggleState.coupledSharedRoot` — {app} reads the shared skills root directly, so this skill is always available there. There is no per-skill switch to flip.
+        public static func skillsToggleStateCoupledSharedRoot(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.coupledSharedRoot", app)
+        }
+        /// `workbench.skills.toggleState.disabledInHarness` — {app} — projected, but disabled by its native config. Click to enable.
+        public static func skillsToggleStateDisabledInHarness(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.disabledInHarness", app)
+        }
+        /// `workbench.skills.toggleState.enabled` — {app} — enabled by projection. Click to remove it.
+        public static func skillsToggleStateEnabled(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.enabled", app)
+        }
+        /// `workbench.skills.toggleState.enabledNative` — {app} — projected and enabled. Click to disable in the harness; right-click for projection options.
+        public static func skillsToggleStateEnabledNative(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.enabledNative", app)
+        }
+        /// `workbench.skills.toggleState.enabledSharedRoot` — {app} — has its own link, and also reads the shared skills root directly. There is no per-skill switch; right-click to manage the redundant link.
+        public static func skillsToggleStateEnabledSharedRoot(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.enabledSharedRoot", app)
+        }
+        /// `workbench.skills.toggleState.notProjected` — {app} — not projected. Click to enable.
+        public static func skillsToggleStateNotProjected(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.notProjected", app)
+        }
+        /// `workbench.skills.toggleState.unknown` — {app} — projected, but native config could not be parsed. Click to repair as enabled.
+        public static func skillsToggleStateUnknown(app: String) -> String {
+            L10n.string("workbench.skills.toggleState.unknown", app)
+        }
+        /// `workbench.skills.uninstall` — Uninstall
+        public static var skillsUninstall: String {
+            L10n.string("workbench.skills.uninstall")
+        }
+        /// `workbench.skills.uninstallConfirmMessage` — The skill is backed up first, and removed from every app that links to it.
+        public static var skillsUninstallConfirmMessage: String {
+            L10n.string("workbench.skills.uninstallConfirmMessage")
+        }
+        /// `workbench.skills.uninstallConfirmTitle` — Uninstall {skill}?
+        public static func skillsUninstallConfirmTitle(skill: String) -> String {
+            L10n.string("workbench.skills.uninstallConfirmTitle", skill)
+        }
+        /// `workbench.skills.wiring.footer` — Vibe Bar writes only inside the skills folders above and the four listed config files, and backs a skill up before uninstalling it.
+        public static var skillsWiringFooter: String {
+            L10n.string("workbench.skills.wiring.footer")
+        }
+        /// `workbench.skills.wiring.mechanismGeminiCompat` — Also reads the Gemini CLI skills folder, which holds this skill's Gemini projection.
+        public static var skillsWiringMechanismGeminiCompat: String {
+            L10n.string("workbench.skills.wiring.mechanismGeminiCompat")
+        }
+        /// `workbench.skills.wiring.mechanismSharedRoot` — Scans the shared root itself — no per-app link needed.
+        public static var skillsWiringMechanismSharedRoot: String {
+            L10n.string("workbench.skills.wiring.mechanismSharedRoot")
+        }
+        /// `workbench.skills.wiring.nativeSwitch` — Per-skill switch: {key} in {path}
+        public static func skillsWiringNativeSwitch(key: String, path: String) -> String {
+            L10n.string("workbench.skills.wiring.nativeSwitch", key, path)
+        }
+        /// `workbench.skills.wiring.noNativeSwitch` — No per-skill switch — whatever is discovered is active.
+        public static var skillsWiringNoNativeSwitch: String {
+            L10n.string("workbench.skills.wiring.noNativeSwitch")
+        }
+        /// `workbench.skills.wiring.projectionCopy` — Copy at {path}
+        public static func skillsWiringProjectionCopy(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionCopy", path)
+        }
+        /// `workbench.skills.wiring.projectionCopyAdopted` — Copy at {path} · adopted from an existing install
+        public static func skillsWiringProjectionCopyAdopted(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionCopyAdopted", path)
+        }
+        /// `workbench.skills.wiring.projectionMissing` — No entry at {path} — the harness cannot see this skill.
+        public static func skillsWiringProjectionMissing(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionMissing", path)
+        }
+        /// `workbench.skills.wiring.projectionSymlink` — Symlink at {path}
+        public static func skillsWiringProjectionSymlink(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionSymlink", path)
+        }
+        /// `workbench.skills.wiring.projectionSymlinkAdopted` — Symlink at {path} · adopted from an existing install
+        public static func skillsWiringProjectionSymlinkAdopted(path: String) -> String {
+            L10n.string("workbench.skills.wiring.projectionSymlinkAdopted", path)
+        }
+        /// `workbench.skills.wiring.reveal` — Reveal
+        public static var skillsWiringReveal: String {
+            L10n.string("workbench.skills.wiring.reveal")
+        }
+        /// `workbench.skills.wiring.revealHelp` — Show the skill's source directory in Finder
+        public static var skillsWiringRevealHelp: String {
+            L10n.string("workbench.skills.wiring.revealHelp")
+        }
+        /// `workbench.skills.wiring.source` — Source
+        public static var skillsWiringSource: String {
+            L10n.string("workbench.skills.wiring.source")
+        }
+        /// `workbench.skills.wiring.sourceDetail` — One copy of the skill. Every harness below reads this directory or a link to it.
+        public static var skillsWiringSourceDetail: String {
+            L10n.string("workbench.skills.wiring.sourceDetail")
+        }
+        /// `workbench.skills.wiring.stateConfigUnreadable` — Config unreadable
+        public static var skillsWiringStateConfigUnreadable: String {
+            L10n.string("workbench.skills.wiring.stateConfigUnreadable")
+        }
+        /// `workbench.skills.wiring.stateCoupledGemini` — On · via Gemini
+        public static var skillsWiringStateCoupledGemini: String {
+            L10n.string("workbench.skills.wiring.stateCoupledGemini")
+        }
+        /// `workbench.skills.wiring.stateCoupledSharedRoot` — On · shared root
+        public static var skillsWiringStateCoupledSharedRoot: String {
+            L10n.string("workbench.skills.wiring.stateCoupledSharedRoot")
+        }
+        /// `workbench.skills.wiring.stateNativeOff` — Off · native switch
+        public static var skillsWiringStateNativeOff: String {
+            L10n.string("workbench.skills.wiring.stateNativeOff")
+        }
+        /// `workbench.skills.wiring.stateNotLinked` — Off · not linked
+        public static var skillsWiringStateNotLinked: String {
+            L10n.string("workbench.skills.wiring.stateNotLinked")
+        }
+        /// `workbench.status.cachedQuotas` — cached quotas
+        public static var statusCachedQuotas: String {
+            L10n.string("workbench.status.cachedQuotas")
+        }
+        /// `workbench.status.indexed` — {count} indexed
+        public static func statusIndexed(count: Int) -> String {
+            L10n.string("workbench.status.indexed", count)
+        }
+        /// `workbench.status.installed` — {count} installed
+        public static func statusInstalled(count: Int) -> String {
+            L10n.string("workbench.status.installed", count)
+        }
+        /// `workbench.status.localIndex` — local index
+        public static var statusLocalIndex: String {
+            L10n.string("workbench.status.localIndex")
+        }
+        /// `workbench.status.localLedger` — local ledger
+        public static var statusLocalLedger: String {
+            L10n.string("workbench.status.localLedger")
+        }
+        /// `workbench.status.nextRefill` — next refill {countdown}
+        public static func statusNextRefill(countdown: String) -> String {
+            L10n.string("workbench.status.nextRefill", countdown)
+        }
+        /// `workbench.status.sharedLibrary` — shared library
+        public static var statusSharedLibrary: String {
+            L10n.string("workbench.status.sharedLibrary")
+        }
+        /// `workbench.status.updated` — updated {time}
+        public static func statusUpdated(time: String) -> String {
+            L10n.string("workbench.status.updated", time)
+        }
     }
 }
 
@@ -1625,6 +3469,10 @@ extension L10n {
     /// Every key the catalog defines, for the tests that assert the
     /// shipped `.strings` resolve and that no key is unreachable.
     static let allKeys: [String] = [
+        "common.all",
+        "common.cancel",
+        "common.clear",
+        "common.copy",
         "common.date.month.1",
         "common.date.month.10",
         "common.date.month.11",
@@ -1639,6 +3487,9 @@ extension L10n {
         "common.date.month.9",
         "common.date.monthDayTime",
         "common.date.monthDayYearTime",
+        "common.delete",
+        "common.dismiss",
+        "common.done",
         "common.duration.days",
         "common.duration.daysHours",
         "common.duration.hours",
@@ -1648,6 +3499,7 @@ extension L10n {
         "common.duration.now",
         "common.off",
         "common.on",
+        "common.open",
         "common.openSettings",
         "common.percent",
         "common.refresh",
@@ -1986,6 +3838,39 @@ extension L10n {
         "status.overview.partialOutage",
         "status.overview.refreshing",
         "status.overview.title",
+        "usage.breakdown.models",
+        "usage.breakdown.periods",
+        "usage.breakdown.projects",
+        "usage.breakdown.providers",
+        "usage.breakdown.requests",
+        "usage.filters.allHarnesses",
+        "usage.filters.allHarnessesHelpEvery",
+        "usage.filters.allHarnessesHelpNone",
+        "usage.filters.allHarnessesSelectEvery",
+        "usage.filters.allHarnessesSelectNone",
+        "usage.filters.allModels",
+        "usage.filters.autoMenu",
+        "usage.filters.autoMenuLabel",
+        "usage.filters.autoRefresh",
+        "usage.filters.clearHelp",
+        "usage.filters.companyHarnesses",
+        "usage.filters.companyHelp",
+        "usage.filters.customRangeFrom",
+        "usage.filters.customRangeHint",
+        "usage.filters.customRangeTitle",
+        "usage.filters.customRangeTo",
+        "usage.filters.editCustomRange",
+        "usage.filters.harnessHelp",
+        "usage.filters.modelsMenu",
+        "usage.filters.modelsMenuLabel",
+        "usage.filters.modelsSelected",
+        "usage.filters.noModelsInRange",
+        "usage.filters.range14d",
+        "usage.filters.range24h",
+        "usage.filters.rangeCustom",
+        "usage.filters.rangeMenu",
+        "usage.filters.rangeSpan",
+        "usage.filters.refreshInterval",
         "usage.harnessMix.activeCount",
         "usage.harnessMix.byRealTokens",
         "usage.harnessMix.empty",
@@ -2004,21 +3889,441 @@ extension L10n {
         "usage.hero.unpricedHelp",
         "usage.ledgerUnavailable.detail",
         "usage.ledgerUnavailable.title",
+        "usage.mix.donutUnit",
+        "usage.mix.harness.subtitle",
+        "usage.mix.harness.title",
+        "usage.mix.model.empty",
+        "usage.mix.model.subtitle",
+        "usage.mix.model.title",
+        "usage.mix.other",
+        "usage.mix.otherCount",
+        "usage.mix.project.empty",
+        "usage.mix.project.subtitle",
+        "usage.mix.project.title",
+        "usage.mix.provider.empty",
+        "usage.mix.provider.subtitle",
+        "usage.mix.provider.title",
+        "usage.mix.tokenFlow.empty",
+        "usage.mix.tokenFlow.subtitle",
+        "usage.mix.tokenFlow.title",
         "usage.noHarnessSelected.detail",
         "usage.noHarnessSelected.title",
         "usage.requestCount",
+        "usage.table.activeDays",
+        "usage.table.activeHours",
+        "usage.table.activeWeeks",
+        "usage.table.cacheReadWrite",
+        "usage.table.column.average",
+        "usage.table.column.cache",
+        "usage.table.column.day",
+        "usage.table.column.harness",
+        "usage.table.column.hour",
+        "usage.table.column.input",
+        "usage.table.column.model",
+        "usage.table.column.output",
+        "usage.table.column.provider",
+        "usage.table.column.requests",
+        "usage.table.column.tier",
+        "usage.table.column.time",
+        "usage.table.column.weekOf",
+        "usage.table.companyCount",
+        "usage.table.emptyModels",
+        "usage.table.emptyPeriods",
+        "usage.table.emptyProjects",
+        "usage.table.emptyProviders",
+        "usage.table.emptyRequests",
+        "usage.table.harnessHelp",
+        "usage.table.inputHelp",
+        "usage.table.loadMore",
+        "usage.table.loadingMore",
+        "usage.table.modelCount",
+        "usage.table.periodRow",
+        "usage.table.projectCount",
+        "usage.table.requestRow",
+        "usage.table.requestsLabel",
+        "usage.table.requestsLoaded",
+        "usage.table.showMorePeriods",
+        "usage.table.statRow",
+        "usage.table.unpriced",
+        "usage.table.unpricedHelp",
         "usage.tokens.cacheRead",
         "usage.tokens.cacheWrite",
         "usage.tokens.input",
         "usage.tokens.output",
+        "usage.tokens.title",
+        "usage.trend.accessibilitySummary",
+        "usage.trend.bucketDay",
+        "usage.trend.bucketHour",
+        "usage.trend.bucketWeek",
+        "usage.trend.costChartLabel",
+        "usage.trend.empty",
+        "usage.trend.fit",
+        "usage.trend.fitHelp",
+        "usage.trend.granularity",
+        "usage.trend.granularityAuto",
+        "usage.trend.granularityDaily",
+        "usage.trend.granularityHourly",
+        "usage.trend.granularityLabel",
+        "usage.trend.granularityWeekly",
+        "usage.trend.hideProvider",
+        "usage.trend.navigatorLabel",
+        "usage.trend.nextWindow",
+        "usage.trend.now",
+        "usage.trend.nowHelp",
+        "usage.trend.previousWindow",
+        "usage.trend.scopeHint",
+        "usage.trend.showProvider",
+        "usage.trend.title",
+        "usage.trend.tokensChartLabel",
         "usage.whenYouUse.everything",
         "usage.whenYouUse.googleAI",
         "usage.whenYouUse.spaceXAI",
+        "workbench.appearance.useDark",
+        "workbench.appearance.useLight",
+        "workbench.header.refreshPage",
+        "workbench.page.resets.subtitle",
+        "workbench.page.resets.title",
+        "workbench.page.sessions.subtitle",
+        "workbench.page.sessions.title",
+        "workbench.page.settings.subtitle",
+        "workbench.page.settings.title",
+        "workbench.page.skills.subtitle",
+        "workbench.page.skills.title",
+        "workbench.page.usageStats.subtitle",
+        "workbench.page.usageStats.title",
         "workbench.placeholder.resets",
         "workbench.placeholder.sessionManager",
         "workbench.placeholder.settings",
         "workbench.placeholder.skillsManager",
         "workbench.placeholder.usageStats",
+        "workbench.resets.calendar.dayEntry",
+        "workbench.resets.calendar.futureEntry",
+        "workbench.resets.calendar.moreEntries",
+        "workbench.resets.calendar.nextMonth",
+        "workbench.resets.calendar.pastEntry",
+        "workbench.resets.calendar.previousMonth",
+        "workbench.resets.calendar.title",
+        "workbench.resets.calendar.today",
+        "workbench.resets.cycle.curveHelp",
+        "workbench.resets.cycle.headline",
+        "workbench.resets.refillHorizon.detail",
+        "workbench.resets.refillHorizon.title",
+        "workbench.resets.risk.badge.atRisk",
+        "workbench.resets.risk.badge.low",
+        "workbench.resets.risk.badge.out",
+        "workbench.resets.risk.badge.watch",
+        "workbench.resets.risk.detail",
+        "workbench.resets.risk.empty",
+        "workbench.resets.risk.remaining",
+        "workbench.resets.risk.title",
+        "workbench.resets.subDaily.title",
+        "workbench.sessions.allChip.helpSelected",
+        "workbench.sessions.allChip.helpUnselected",
+        "workbench.sessions.allChip.labelSelected",
+        "workbench.sessions.allChip.labelUnselected",
+        "workbench.sessions.antigravityNotice",
+        "workbench.sessions.copyResumeCommand",
+        "workbench.sessions.copySessionID",
+        "workbench.sessions.copySessionIDLabel",
+        "workbench.sessions.copySourcePath",
+        "workbench.sessions.copyWorkingDirectory",
+        "workbench.sessions.count.sessions",
+        "workbench.sessions.count.shownOfTotal",
+        "workbench.sessions.delete.confirm",
+        "workbench.sessions.delete.countButton",
+        "workbench.sessions.delete.message",
+        "workbench.sessions.deleteEllipsis",
+        "workbench.sessions.details",
+        "workbench.sessions.details.collapsed",
+        "workbench.sessions.details.expanded",
+        "workbench.sessions.empty.indexUnavailableDetail",
+        "workbench.sessions.empty.indexUnavailableTitle",
+        "workbench.sessions.empty.noLogsDetail",
+        "workbench.sessions.empty.noMatchTitle",
+        "workbench.sessions.empty.scanningDetail",
+        "workbench.sessions.empty.searchNoMatchDetail",
+        "workbench.sessions.fact.created",
+        "workbench.sessions.fact.cwd",
+        "workbench.sessions.fact.id",
+        "workbench.sessions.fact.lastActive",
+        "workbench.sessions.fact.source",
+        "workbench.sessions.filter.company",
+        "workbench.sessions.filter.dateRange",
+        "workbench.sessions.filter.folders",
+        "workbench.sessions.filter.foldersFiltered",
+        "workbench.sessions.filter.harness",
+        "workbench.sessions.filter.harnessCount",
+        "workbench.sessions.filter.options",
+        "workbench.sessions.filter.scope",
+        "workbench.sessions.filter.sort",
+        "workbench.sessions.filter.sortGrouped",
+        "workbench.sessions.filter.sortHelp",
+        "workbench.sessions.filter.when",
+        "workbench.sessions.filter.whenHelp",
+        "workbench.sessions.find.next",
+        "workbench.sessions.find.none",
+        "workbench.sessions.find.placeholder",
+        "workbench.sessions.find.previous",
+        "workbench.sessions.folders.exclude",
+        "workbench.sessions.folders.excludePlaceholder",
+        "workbench.sessions.folders.include",
+        "workbench.sessions.folders.includePlaceholder",
+        "workbench.sessions.folders.separatorHint",
+        "workbench.sessions.folders.title",
+        "workbench.sessions.fraction",
+        "workbench.sessions.groupByProject",
+        "workbench.sessions.index.scanning",
+        "workbench.sessions.index.unavailable",
+        "workbench.sessions.list.capNotice",
+        "workbench.sessions.message.copy",
+        "workbench.sessions.message.copyHelp",
+        "workbench.sessions.message.showLess",
+        "workbench.sessions.message.showMore",
+        "workbench.sessions.openInTerminal",
+        "workbench.sessions.options.help",
+        "workbench.sessions.options.indexMessageText",
+        "workbench.sessions.options.openIn",
+        "workbench.sessions.options.rebuildIndex",
+        "workbench.sessions.outline.empty",
+        "workbench.sessions.outline.heading",
+        "workbench.sessions.outline.help",
+        "workbench.sessions.outline.label",
+        "workbench.sessions.page.next",
+        "workbench.sessions.page.previous",
+        "workbench.sessions.project.none",
+        "workbench.sessions.project.projectless",
+        "workbench.sessions.range.all",
+        "workbench.sessions.range.month",
+        "workbench.sessions.range.today",
+        "workbench.sessions.range.week",
+        "workbench.sessions.refreshHelp",
+        "workbench.sessions.resume.heading",
+        "workbench.sessions.resume.none",
+        "workbench.sessions.role.assistant",
+        "workbench.sessions.role.other",
+        "workbench.sessions.role.system",
+        "workbench.sessions.role.tool",
+        "workbench.sessions.role.user",
+        "workbench.sessions.row.autoReviewsMerged",
+        "workbench.sessions.row.includeInDeletion",
+        "workbench.sessions.row.messageCount",
+        "workbench.sessions.row.select",
+        "workbench.sessions.row.showTranscript",
+        "workbench.sessions.row.toggleForDeletion",
+        "workbench.sessions.runInHelp",
+        "workbench.sessions.scope.assistant",
+        "workbench.sessions.scope.system",
+        "workbench.sessions.scope.title",
+        "workbench.sessions.scope.tool",
+        "workbench.sessions.scope.user",
+        "workbench.sessions.search.bodyIndexed",
+        "workbench.sessions.search.bodyNotIndexed",
+        "workbench.sessions.search.clearHelp",
+        "workbench.sessions.search.placeholder",
+        "workbench.sessions.selectMode",
+        "workbench.sessions.selectModeHelp",
+        "workbench.sessions.sort.byProject",
+        "workbench.sessions.sort.oldestFirst",
+        "workbench.sessions.sort.recentFirst",
+        "workbench.sessions.toast.bodyIndexDropFailed",
+        "workbench.sessions.toast.bodyIndexDropped",
+        "workbench.sessions.toast.copied",
+        "workbench.sessions.toast.copiedWithReason",
+        "workbench.sessions.toast.cwdCopied",
+        "workbench.sessions.toast.deleted",
+        "workbench.sessions.toast.deletedPartial",
+        "workbench.sessions.toast.indexNotCleared",
+        "workbench.sessions.toast.messageCopied",
+        "workbench.sessions.toast.noResumeCommand",
+        "workbench.sessions.toast.openedIn",
+        "workbench.sessions.toast.sessionIDCopied",
+        "workbench.sessions.toast.sourcePathCopied",
+        "workbench.sessions.transcript.autoReviewDivider",
+        "workbench.sessions.transcript.cancelled",
+        "workbench.sessions.transcript.loadAll",
+        "workbench.sessions.transcript.loading",
+        "workbench.sessions.transcript.noMessages",
+        "workbench.sessions.transcript.noReader",
+        "workbench.sessions.transcript.pageRange",
+        "workbench.sessions.transcript.placeholderDetail",
+        "workbench.sessions.transcript.placeholderTitle",
+        "workbench.sessions.transcript.readFailed",
+        "workbench.sessions.transcript.truncatedDetail",
+        "workbench.sessions.transcript.truncatedTitle",
+        "workbench.skills.appCountNativeDisabled",
+        "workbench.skills.appCountViaGeminiRoot",
+        "workbench.skills.appCountViaSharedRoot",
+        "workbench.skills.appSeesCount",
+        "workbench.skills.backups",
+        "workbench.skills.backups.deleteAccessibility",
+        "workbench.skills.backups.deleteConfirmMessage",
+        "workbench.skills.backups.deleteConfirmTitle",
+        "workbench.skills.backups.deleteConfirmTitleGeneric",
+        "workbench.skills.backups.empty",
+        "workbench.skills.backups.footer",
+        "workbench.skills.backups.refreshHelp",
+        "workbench.skills.backups.restore",
+        "workbench.skills.backups.restoreHelp",
+        "workbench.skills.backups.subtitle",
+        "workbench.skills.backups.title",
+        "workbench.skills.badge.installed",
+        "workbench.skills.badge.nativeOff",
+        "workbench.skills.badge.nativeOffHelp",
+        "workbench.skills.badge.nativeUnknown",
+        "workbench.skills.badge.nativeUnknownHelp",
+        "workbench.skills.badge.update",
+        "workbench.skills.checkUpdates",
+        "workbench.skills.checkUpdatesCount",
+        "workbench.skills.contextDisableKeepProjection",
+        "workbench.skills.contextEnableIn",
+        "workbench.skills.contextRemoveProjection",
+        "workbench.skills.countFiltered",
+        "workbench.skills.countTotal",
+        "workbench.skills.discover",
+        "workbench.skills.discover.addRepo",
+        "workbench.skills.discover.availableEmpty",
+        "workbench.skills.discover.availableTitle",
+        "workbench.skills.discover.indexTitle",
+        "workbench.skills.discover.installs",
+        "workbench.skills.discover.noRepos",
+        "workbench.skills.discover.removeRepo",
+        "workbench.skills.discover.repoFieldPlaceholder",
+        "workbench.skills.discover.repoRules",
+        "workbench.skills.discover.reposTitle",
+        "workbench.skills.discover.scanRepos",
+        "workbench.skills.discover.scanReposHelp",
+        "workbench.skills.discover.searchHint",
+        "workbench.skills.discover.searchPlaceholder",
+        "workbench.skills.discover.selectAll",
+        "workbench.skills.discover.selectHelp",
+        "workbench.skills.discover.selectNone",
+        "workbench.skills.discover.sourceFromSkillsSh",
+        "workbench.skills.discover.stopScanHelp",
+        "workbench.skills.discover.stopScanningRepo",
+        "workbench.skills.discover.title",
+        "workbench.skills.discoverHelp",
+        "workbench.skills.empty.body",
+        "workbench.skills.empty.headline",
+        "workbench.skills.filterClear",
+        "workbench.skills.filterPlaceholder",
+        "workbench.skills.import.alreadyShared",
+        "workbench.skills.import.alreadySharedDetail",
+        "workbench.skills.import.apply",
+        "workbench.skills.import.conflicts",
+        "workbench.skills.import.conflictsCount",
+        "workbench.skills.import.conflictsDetail",
+        "workbench.skills.import.foundIn",
+        "workbench.skills.import.keepEvidenceFor",
+        "workbench.skills.import.needsAdoption",
+        "workbench.skills.import.needsAdoptionDetail",
+        "workbench.skills.import.notSkills",
+        "workbench.skills.import.notSkillsDetail",
+        "workbench.skills.import.recognizedCount",
+        "workbench.skills.import.subtitle",
+        "workbench.skills.import.summary",
+        "workbench.skills.import.title",
+        "workbench.skills.importExisting",
+        "workbench.skills.install",
+        "workbench.skills.installFromZip",
+        "workbench.skills.menuMoreActions",
+        "workbench.skills.menuRevealInFinder",
+        "workbench.skills.menuUninstall",
+        "workbench.skills.menuUpdateFromRepository",
+        "workbench.skills.menuWiringDetails",
+        "workbench.skills.noMatch",
+        "workbench.skills.phase.downloadedOne",
+        "workbench.skills.phase.downloadedProgress",
+        "workbench.skills.phase.downloading",
+        "workbench.skills.phase.scanning",
+        "workbench.skills.sourceBranch",
+        "workbench.skills.sourceInstalledLocally",
+        "workbench.skills.sourceLocal",
+        "workbench.skills.state.coupled",
+        "workbench.skills.state.disabledInHarness",
+        "workbench.skills.state.enabled",
+        "workbench.skills.state.notProjected",
+        "workbench.skills.state.unknown",
+        "workbench.skills.sync.footer",
+        "workbench.skills.sync.nativeSwitchesBody",
+        "workbench.skills.sync.nativeSwitchesLead",
+        "workbench.skills.sync.noPerSkillSwitch",
+        "workbench.skills.sync.noSwitchAlsoReads",
+        "workbench.skills.sync.perSkillSwitch",
+        "workbench.skills.sync.projectionsBody",
+        "workbench.skills.sync.projectionsLead",
+        "workbench.skills.sync.readsOwnFolder",
+        "workbench.skills.sync.scansSharedRoot",
+        "workbench.skills.sync.ssotBody",
+        "workbench.skills.sync.ssotLead",
+        "workbench.skills.sync.title",
+        "workbench.skills.syncExplainerHelp",
+        "workbench.skills.toast.addRepoFirst",
+        "workbench.skills.toast.allUpToDate",
+        "workbench.skills.toast.archiveEmpty",
+        "workbench.skills.toast.disabledKeptProjection",
+        "workbench.skills.toast.enabledForApps",
+        "workbench.skills.toast.importConflicts",
+        "workbench.skills.toast.importRecognized",
+        "workbench.skills.toast.installedArchive",
+        "workbench.skills.toast.installedForApps",
+        "workbench.skills.toast.installedShared",
+        "workbench.skills.toast.invalidRepoRef",
+        "workbench.skills.toast.linkRemovedStillShared",
+        "workbench.skills.toast.noSearchMatches",
+        "workbench.skills.toast.noSkillsFound",
+        "workbench.skills.toast.notFoundInRepo",
+        "workbench.skills.toast.projectionClearedFolderKept",
+        "workbench.skills.toast.recorded",
+        "workbench.skills.toast.reposUnreadable",
+        "workbench.skills.toast.restored",
+        "workbench.skills.toast.scanStopped",
+        "workbench.skills.toast.sharedLibraryNote",
+        "workbench.skills.toast.sharedRootNoSwitch",
+        "workbench.skills.toast.uninstalledBackedUp",
+        "workbench.skills.toast.uninstalledLeftInPlace",
+        "workbench.skills.toast.updated",
+        "workbench.skills.toast.updatesAvailable",
+        "workbench.skills.toggleHelp.installInto",
+        "workbench.skills.toggleHelp.keepLinks",
+        "workbench.skills.toggleHelp.linkAfterAdopting",
+        "workbench.skills.toggleState.coupledGemini",
+        "workbench.skills.toggleState.coupledSharedRoot",
+        "workbench.skills.toggleState.disabledInHarness",
+        "workbench.skills.toggleState.enabled",
+        "workbench.skills.toggleState.enabledNative",
+        "workbench.skills.toggleState.enabledSharedRoot",
+        "workbench.skills.toggleState.notProjected",
+        "workbench.skills.toggleState.unknown",
+        "workbench.skills.uninstall",
+        "workbench.skills.uninstallConfirmMessage",
+        "workbench.skills.uninstallConfirmTitle",
+        "workbench.skills.wiring.footer",
+        "workbench.skills.wiring.mechanismGeminiCompat",
+        "workbench.skills.wiring.mechanismSharedRoot",
+        "workbench.skills.wiring.nativeSwitch",
+        "workbench.skills.wiring.noNativeSwitch",
+        "workbench.skills.wiring.projectionCopy",
+        "workbench.skills.wiring.projectionCopyAdopted",
+        "workbench.skills.wiring.projectionMissing",
+        "workbench.skills.wiring.projectionSymlink",
+        "workbench.skills.wiring.projectionSymlinkAdopted",
+        "workbench.skills.wiring.reveal",
+        "workbench.skills.wiring.revealHelp",
+        "workbench.skills.wiring.source",
+        "workbench.skills.wiring.sourceDetail",
+        "workbench.skills.wiring.stateConfigUnreadable",
+        "workbench.skills.wiring.stateCoupledGemini",
+        "workbench.skills.wiring.stateCoupledSharedRoot",
+        "workbench.skills.wiring.stateNativeOff",
+        "workbench.skills.wiring.stateNotLinked",
+        "workbench.status.cachedQuotas",
+        "workbench.status.indexed",
+        "workbench.status.installed",
+        "workbench.status.localIndex",
+        "workbench.status.localLedger",
+        "workbench.status.nextRefill",
+        "workbench.status.sharedLibrary",
+        "workbench.status.updated",
     ]
 
     /// Keys whose value is a plural and therefore lives in the
@@ -2034,7 +4339,33 @@ extension L10n {
         "quota.resetHistory.verdict.leaky",
         "quota.resetHistory.verdict.wasteful",
         "status.card.componentCount",
+        "usage.filters.modelsSelected",
         "usage.harnessMix.activeCount",
         "usage.hero.unpricedHelp",
+        "usage.mix.otherCount",
+        "usage.table.activeDays",
+        "usage.table.activeHours",
+        "usage.table.activeWeeks",
+        "usage.table.companyCount",
+        "usage.table.modelCount",
+        "usage.table.projectCount",
+        "usage.table.statRow",
+        "usage.trend.accessibilitySummary",
+        "workbench.sessions.count.sessions",
+        "workbench.sessions.delete.confirm",
+        "workbench.sessions.row.autoReviewsMerged",
+        "workbench.sessions.row.messageCount",
+        "workbench.sessions.toast.deleted",
+        "workbench.sessions.transcript.truncatedTitle",
+        "workbench.skills.appSeesCount",
+        "workbench.skills.countTotal",
+        "workbench.skills.discover.installs",
+        "workbench.skills.import.apply",
+        "workbench.skills.toast.importConflicts",
+        "workbench.skills.toast.importRecognized",
+        "workbench.skills.toast.installedArchive",
+        "workbench.skills.toast.recorded",
+        "workbench.skills.toast.reposUnreadable",
+        "workbench.skills.toast.updatesAvailable",
     ]
 }

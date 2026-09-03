@@ -90,12 +90,16 @@ struct SessionListView: View {
     @ViewBuilder
     private func contextMenu(for row: SessionManagerModel.Row) -> some View {
         let canResume = model.resumeCommand(for: row.summary) != nil
-        Button("Open in Terminal") { model.resumeInTerminal(row.summary) }
+        Button(L10n.Workbench.sessionsOpenInTerminal) { model.resumeInTerminal(row.summary) }
             .disabled(!canResume)
-        Button("Copy resume command") { model.copyResumeCommand(for: row.summary) }
-            .disabled(!canResume)
+        Button(L10n.Workbench.sessionsCopyResumeCommand) {
+            model.copyResumeCommand(for: row.summary)
+        }
+        .disabled(!canResume)
         Divider()
-        Button("Delete…", role: .destructive) { model.requestDelete([row.summary]) }
+        Button(L10n.Workbench.sessionsDeleteEllipsis, role: .destructive) {
+            model.requestDelete([row.summary])
+        }
             .disabled(!SessionManagerModel.isDeletable(row.summary))
     }
 
@@ -103,8 +107,10 @@ struct SessionListView: View {
     /// builds rows lazily and then keeps every one of them. Saying so beats
     /// letting the scroll quietly end short of an 11 000-session index.
     private var capNotice: some View {
-        Text("Showing the first \(SessionManagerModel.maximumLoadedSummaries) of "
-            + "\(model.totalSessionCount) sessions. Narrow the filters or search to reach the rest.")
+        Text(L10n.Workbench.sessionsListCapNotice(
+            shown: SessionManagerModel.maximumLoadedSummaries,
+            total: model.totalSessionCount
+        ))
             .font(.system(size: max(10, density.resetCountdownFontSize)))
             .foregroundStyle(.tertiary)
             .multilineTextAlignment(.center)
@@ -145,21 +151,24 @@ struct SessionListView: View {
     /// The explicit empty selection the All chip can reach is its own state:
     /// "no sessions match" would blame the data for a filter the user set.
     private var emptyTitle: String {
-        guard model.isIndexAvailable else { return "Session index unavailable" }
-        return hasNoHarnessSelected ? "No harness selected — pick one above" : "No sessions match"
+        guard model.isIndexAvailable else {
+            return L10n.Workbench.sessionsEmptyIndexUnavailableTitle
+        }
+        return hasNoHarnessSelected
+            ? L10n.Usage.noHarnessSelectedTitle
+            : L10n.Workbench.sessionsEmptyNoMatchTitle
     }
 
     private var emptyDetail: String {
         guard model.isIndexAvailable else {
-            return "The index under ~/.vibebar could not be opened, so sessions cannot be listed this session."
+            return L10n.Workbench.sessionsEmptyIndexUnavailableDetail
         }
-        if hasNoHarnessSelected {
-            return "The All chip is a switch: click it again to list every harness."
+        if hasNoHarnessSelected { return L10n.Usage.noHarnessSelectedDetail }
+        if model.indexProgress != nil { return L10n.Workbench.sessionsEmptyScanningDetail }
+        if !model.searchText.isEmpty {
+            return L10n.Workbench.sessionsEmptySearchNoMatchDetail
         }
-        if model.indexProgress != nil { return "Still scanning the session logs on disk." }
-        if !model.searchText.isEmpty { return "Nothing in the indexed sessions matches that search." }
-        return "No session logs were found on this Mac for any of the "
-            + "\(Harness.allCases.count) harnesses Vibe Bar scans."
+        return L10n.Workbench.sessionsEmptyNoLogsDetail(count: Harness.allCases.count)
     }
 }
 
@@ -230,7 +239,9 @@ private struct SessionRow: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityHint(isDeleteMode ? "Toggle this session for deletion" : "Show this transcript")
+        .accessibilityHint(isDeleteMode
+            ? L10n.Workbench.sessionsRowToggleForDeletion
+            : L10n.Workbench.sessionsRowShowTranscript)
     }
 
     private var rowFill: Color {
@@ -250,9 +261,9 @@ private struct SessionRow: View {
             .opacity(SessionManagerModel.isDeletable(summary) ? 1 : 0.3)
             .padding(.top, 2)
             .help(SessionManagerModel.isDeletable(summary)
-                ? "Include this session in the deletion"
+                ? L10n.Workbench.sessionsRowIncludeInDeletion
                 : SessionDeleteError.providerIsReadOnly(summary.provider).message)
-            .accessibilityLabel("Select this session")
+            .accessibilityLabel(L10n.Workbench.sessionsRowSelect)
     }
 
     private var title: String {
@@ -305,16 +316,16 @@ private struct SessionRow: View {
             }
             Spacer(minLength: 0)
             if summary.hasKnownMessageCount {
-                Text("\(summary.messageCount)")
+                Text(AppLocale.number(summary.messageCount))
                     .monospacedDigit()
                     .padding(.horizontal, 5)
                     .frame(minHeight: 14)
                     .background(Capsule().fill(Color.primary.opacity(0.07)))
-                    .help("\(summary.messageCount) messages")
+                    .help(L10n.Workbench.sessionsRowMessageCount(count: summary.messageCount))
             }
             if row.reviewCount > 0 {
-                Label("\(row.reviewCount)", systemImage: "checkmark.bubble")
-                    .help(row.reviewCount == 1 ? "1 Auto Review merged" : "\(row.reviewCount) Auto Reviews merged")
+                Label(AppLocale.number(row.reviewCount), systemImage: "checkmark.bubble")
+                    .help(L10n.Workbench.sessionsRowAutoReviewsMerged(count: row.reviewCount))
             }
         }
         .font(.system(size: max(10, density.resetCountdownFontSize - 1)))

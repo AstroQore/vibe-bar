@@ -42,7 +42,10 @@ struct ResetsPage: View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 14) {
                 box {
-                    boxHeader("Refill Horizon", detail: "next 7 days · column height = how much comes back")
+                    boxHeader(
+                        L10n.Workbench.resetsRefillHorizonTitle,
+                        detail: L10n.Workbench.resetsRefillHorizonDetail
+                    )
                     ResetLaneView(
                         events: events.filter { $0.resetAt.timeIntervalSince(now) <= 7 * 86_400 },
                         now: now,
@@ -62,7 +65,10 @@ struct ResetsPage: View {
                     }
                     .frame(maxWidth: .infinity)
                     box {
-                        boxHeader("Run-out Risk", detail: "ranked by the personal forecast")
+                        boxHeader(
+                            L10n.Workbench.resetsRiskTitle,
+                            detail: L10n.Workbench.resetsRiskDetail
+                        )
                         riskList(cycles, now: now)
                     }
                     .frame(width: 320)
@@ -91,7 +97,14 @@ struct ResetsPage: View {
         let headline: QuotaBucket
         let forecast: QuotaPaceForecast?
         var id: String { "\(accountId)/\(subProviderName)/\(groupTitle ?? "")" }
-        var name: String { groupTitle.map { "\(subProviderName) · \($0)" } ?? subProviderName }
+        /// The SubProvider name is a proper noun and stays as its owner spells
+        /// it; the group beside it may be a generic window word ("Weekly"),
+        /// whose contract value is English and whose *shown* label is not.
+        var name: String {
+            groupTitle
+                .map { "\(subProviderName) · \(QuotaGroupLabelLocalizer.display($0))" }
+                ?? subProviderName
+        }
     }
 
     private func subProviderCycles(now: Date) -> [SubProviderCycle] {
@@ -203,10 +216,15 @@ struct ResetsPage: View {
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(Int(remaining.rounded()))%")
+                Text(L10n.Common.percent(value: Int(remaining.rounded())))
                     .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(color)
-                Text("\(cycle.headline.title) · resets \(ResetCountdownFormatter.string(from: cycle.headline.resetAt, now: now) ?? "—")")
+                Text(L10n.Workbench.resetsCycleHeadline(
+                    bucket: QuotaGroupLabelLocalizer.display(cycle.headline.title),
+                    countdown: ResetCountdownFormatter.string(
+                        from: cycle.headline.resetAt, now: now
+                    ) ?? "—"
+                ))
                     .font(.system(size: 10, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -234,13 +252,13 @@ struct ResetsPage: View {
             ForEach(cycle.buckets.filter { $0.id != cycle.headline.id }, id: \.id) { bucket in
                 let remaining = max(0, 100 - bucket.usedPercent)
                 HStack(spacing: 5) {
-                    Text(bucket.title)
+                    Text(QuotaGroupLabelLocalizer.display(bucket.title))
                         .font(.system(size: 9.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     Spacer(minLength: 4)
-                    Text("\(Int(remaining.rounded()))%")
+                    Text(L10n.Common.percent(value: Int(remaining.rounded())))
                         .font(.system(size: 9.5, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(Theme.barColor(percent: remaining, mode: .remaining))
                     Text(ResetCountdownFormatter.string(from: bucket.resetAt, now: now) ?? "—")
@@ -274,7 +292,9 @@ struct ResetsPage: View {
                 )
             }
             .frame(height: 30)
-            .help("Remaining % across the current \(cycle.headline.title) cycle")
+            .help(L10n.Workbench.resetsCycleCurveHelp(
+                bucket: QuotaGroupLabelLocalizer.display(cycle.headline.title)
+            ))
         }
     }
 
@@ -357,7 +377,7 @@ struct ResetsPage: View {
             }
         if !events.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                Text("NEXT 24 HOURS · SUB-DAILY QUOTAS")
+                Text(L10n.Workbench.resetsSubDailyTitle)
                     .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.tertiary)
                     .tracking(1.2)
@@ -370,7 +390,7 @@ struct ResetsPage: View {
     private func calendarHeader(now: Date) -> some View {
         let monthStart = displayedMonthStart(now: now)
         return HStack(spacing: 8) {
-            Text("Reset Calendar")
+            Text(L10n.Workbench.resetsCalendarTitle)
                 .font(.system(size: 12, weight: .semibold))
             Spacer(minLength: 6)
             Button {
@@ -381,7 +401,7 @@ struct ResetsPage: View {
                     .frame(width: 20, height: 20)
             }
             .buttonStyle(.vibeBar)
-            .help("Previous month")
+            .help(L10n.Workbench.resetsCalendarPreviousMonth)
             Text(Self.monthTitleFormatter.string(from: monthStart))
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .frame(minWidth: 110)
@@ -393,9 +413,9 @@ struct ResetsPage: View {
                     .frame(width: 20, height: 20)
             }
             .buttonStyle(.vibeBar)
-            .help("Next month")
+            .help(L10n.Workbench.resetsCalendarNextMonth)
             if calendarMonthOffset != 0 {
-                Button("Today") {
+                Button(L10n.Workbench.resetsCalendarToday) {
                     calendarMonthOffset = 0
                 }
                 .font(.system(size: 10, weight: .semibold))
@@ -423,11 +443,15 @@ struct ResetsPage: View {
                 else { continue }
                 let sub = sample.tool.quotaSubProviderName(bucketID: sample.bucketId)
                 let title = quota?.bucket(id: sample.bucketId)?.title
-                let name = title.map { "\(sub) · \($0)" } ?? sub
+                let name = title.map { "\(sub) · \(QuotaGroupLabelLocalizer.display($0))" } ?? sub
                 out.append(CalendarEntry(
                     id: "past.\(key.accountId).\(sample.bucketId).\(at.timeIntervalSinceReferenceDate)",
                     tool: sample.tool,
-                    label: "\(name) — reset \(Self.entryTimeFormatter.string(from: at)) at \(Int(sample.lastUsedPercent.rounded()))% used",
+                    label: L10n.Workbench.resetsCalendarPastEntry(
+                        lane: name,
+                        time: Self.entryTimeFormatter.string(from: at),
+                        percent: Int(sample.lastUsedPercent.rounded())
+                    ),
                     shortLabel: sub,
                     gainPercent: sample.lastUsedPercent,
                     at: at,
@@ -450,7 +474,11 @@ struct ResetsPage: View {
                     out.append(CalendarEntry(
                         id: "next.\(account.id).\(bucket.id)",
                         tool: tool,
-                        label: "\(sub) · \(bucket.title) — resets \(Self.entryTimeFormatter.string(from: resetAt)), +\(Int(bucket.usedPercent.rounded()))% back",
+                        label: L10n.Workbench.resetsCalendarFutureEntry(
+                            lane: "\(sub) · \(QuotaGroupLabelLocalizer.display(bucket.title))",
+                            time: Self.entryTimeFormatter.string(from: resetAt),
+                            percent: Int(bucket.usedPercent.rounded())
+                        ),
                         shortLabel: sub,
                         gainPercent: bucket.usedPercent,
                         at: resetAt,
@@ -505,8 +533,14 @@ struct ResetsPage: View {
         }
     }
 
+    /// Week starts where the user's region says it does; the symbols
+    /// themselves are read in the app's language, not the system's — a
+    /// `Calendar.current` untouched here spells "Mon" on an English Mac
+    /// while the rest of the page is Chinese.
     private func orderedWeekdaySymbols(_ calendar: Calendar) -> [String] {
-        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        var localized = calendar
+        localized.locale = AppLocale.current
+        let symbols = localized.veryShortStandaloneWeekdaySymbols
         let first = calendar.firstWeekday - 1
         return Array(symbols[first...] + symbols[..<first])
     }
@@ -519,7 +553,7 @@ struct ResetsPage: View {
         entries: [CalendarEntry]
     ) -> some View {
         VStack(alignment: .leading, spacing: 2.5) {
-            Text("\(day)")
+            Text(AppLocale.number(day))
                 .font(.system(size: 10.5, weight: isToday ? .bold : .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(isToday ? Color.accentColor : (isPast ? Color.secondary : Color.primary))
             ForEach(entries.prefix(3)) { entry in
@@ -527,7 +561,10 @@ struct ResetsPage: View {
                     Circle()
                         .fill(Theme.providerAccent(for: entry.tool))
                         .frame(width: 4.5, height: 4.5)
-                    Text("\(entry.shortLabel) +\(Int(entry.gainPercent.rounded()))%")
+                    Text(L10n.Workbench.resetsCalendarDayEntry(
+                        lane: entry.shortLabel,
+                        percent: Int(entry.gainPercent.rounded())
+                    ))
                         .font(.system(size: 9, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(entry.isPast ? .tertiary : .secondary)
                         .lineLimit(1)
@@ -536,7 +573,7 @@ struct ResetsPage: View {
                 .help(entry.label)
             }
             if entries.count > 3 {
-                Text("+\(entries.count - 3) more")
+                Text(L10n.Workbench.resetsCalendarMoreEntries(count: entries.count - 3))
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundStyle(.tertiary)
             }
@@ -585,7 +622,7 @@ struct ResetsPage: View {
         }
         return VStack(alignment: .leading, spacing: 0) {
             if rows.isEmpty {
-                Text("Every bucket is projected to last its cycle.")
+                Text(L10n.Workbench.resetsRiskEmpty)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 8)
@@ -604,12 +641,17 @@ struct ResetsPage: View {
                         .background(
                             Capsule().fill(Theme.barColor(percent: remaining, mode: .remaining))
                         )
-                    Text("\(row.cycle.name)\(row.cycle.accountLabel.map { " · \($0)" } ?? "") · \(row.bucket.groupTitle.map { "\($0) · " } ?? "")\(row.bucket.title)")
+                    Text(riskRowLabel(cycle: row.cycle, bucket: row.bucket))
                         .font(.system(size: 10))
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     Spacer(minLength: 4)
-                    Text("\(Int(remaining.rounded()))% · refills \(ResetCountdownFormatter.string(from: row.bucket.resetAt, now: now) ?? "—")")
+                    Text(L10n.Workbench.resetsRiskRemaining(
+                        percent: Int(remaining.rounded()),
+                        countdown: ResetCountdownFormatter.string(
+                            from: row.bucket.resetAt, now: now
+                        ) ?? "—"
+                    ))
                         .font(.system(size: 9, design: .rounded).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -618,14 +660,27 @@ struct ResetsPage: View {
         }
     }
 
+    /// "Claude · Fable · Weekly" — the SubProvider and the account label are
+    /// names and stay as their owners spell them; the group and bucket beside
+    /// them may be generic window words, whose shown label is translated.
+    private func riskRowLabel(cycle: SubProviderCycle, bucket: QuotaBucket) -> String {
+        var parts = [cycle.name]
+        if let accountLabel = cycle.accountLabel { parts.append(accountLabel) }
+        if let group = bucket.groupTitle {
+            parts.append(QuotaGroupLabelLocalizer.display(group))
+        }
+        parts.append(QuotaGroupLabelLocalizer.display(bucket.title))
+        return parts.joined(separator: " · ")
+    }
+
     private func riskBadge(remaining: Double, forecast: QuotaPaceForecast?) -> String {
         // OUT means exhausted, full stop; a calm or still-learning bucket
         // that happens to be low is LOW, and only the forecast may escalate.
-        if remaining <= 1 { return "OUT" }
+        if remaining <= 1 { return L10n.Workbench.resetsRiskBadgeOut }
         switch forecast?.verdict {
-        case .atRisk: return "RISK"
-        case .watch: return "WATCH"
-        default: return "LOW"
+        case .atRisk: return L10n.Workbench.resetsRiskBadgeAtRisk
+        case .watch: return L10n.Workbench.resetsRiskBadgeWatch
+        default: return L10n.Workbench.resetsRiskBadgeLow
         }
     }
 
