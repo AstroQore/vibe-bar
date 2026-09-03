@@ -6,10 +6,14 @@ description: >-
   when the user asks about "my AI quota", "how much Codex / Claude / Gemini /
   Grok / Cursor do I have left", "when does my 5-hour window reset", "am I
   going to run out", "refresh my usage", "what did I spend this month", "who
-  used the most tokens", "why is this costing so much", "is Anthropic down", or
-  "find my session about …". Also installs agent skills through Vibe Bar's
-  Skills manager ("install this skill", "set me up with the Vibe Bar skill").
-  Requires the Vibe Bar app to be running with its MCP server enabled.
+  used the most tokens", "why is this costing so much", or "is Anthropic
+  down". Also the local session manager for agent work on this Mac: find any
+  CLI session by keyword, project or time and read its transcript — "find the
+  session about …", "what was Codex doing in this repo", "what did that other
+  agent already try", "show me that conversation". Also installs agent skills
+  through Vibe Bar's Skills manager ("install this skill", "set me up with the
+  Vibe Bar skill"). Requires the Vibe Bar app to be running with its MCP
+  server enabled.
 ---
 
 # Vibe Bar
@@ -59,8 +63,9 @@ never infer a model that a log recorded as absent.
 | "which model costs me the most?" | `usage.summary` with `groupBy: "model"` |
 | "show my usage over time" | `usage.trend` |
 | "what were my last N requests?" | `usage.requests` |
-| "find my session about X" | `sessions.search` |
-| "what have I been working on?" | `sessions.list` |
+| "find the session about X" / "which session was that in?" | `sessions.search` |
+| "what ran in this repo lately?" / "what have I been working on?" | `sessions.list` |
+| "what did that agent actually do?" / "show me the match in context" | `sessions.transcript` |
 | "is <provider> down?" | `status.get` |
 | "why is this model so expensive?" | `pricing.effective` |
 | "install this skill" / "set me up with the Vibe Bar skill" | `skills.install` |
@@ -94,6 +99,8 @@ would rather read it than trust this copy.
 - **Cursor has no local token counters.** Its sessions are listed locally, but
   its cost comes from the dashboard. A Cursor session with real messages and no
   tokens is expected, not a bug.
+- **Never open `sourcePath` yourself.** Read sessions through
+  `sessions.transcript`. See the section below for why.
 - **Empty filter lists mean "nothing"**, not "everything". Omit a filter to
   mean everything.
 - **`skills.install` is the only tool that writes.** It installs into
@@ -101,6 +108,90 @@ would rather read it than trust this copy.
   nowhere else, and never over a folder a different skill already holds. Pass
   `apps` or the skill is on the machine switched on for nobody. It can be
   turned off in Settings → MCP Server, in which case it says so.
+
+## Sessions: the local session manager
+
+Every coding agent on this Mac leaves a session log behind — Codex rollouts,
+Claude Code projects, Gemini chats, Grok updates, Cursor stores. Vibe Bar
+indexes all of them, which makes these three tools the way one agent finds and
+reads what another agent did. That is the point of them: you are usually not
+answering "find *my* session about X" for a human, you are picking up work
+someone else started.
+
+### Locate
+
+`sessions.search` when you know what was said — it matches titles, project
+paths and message bodies, substring, so partial words and CJK both work.
+`sessions.list` when you know *where* or *when* instead. Both narrow the same
+way, with the same argument names `usage.*` uses:
+
+| Argument | Means |
+| --- | --- |
+| `harnesses` | the CLI or app that produced it (`codex`, `claudeCode`, …) |
+| `providers` | the on-disk store — prefer `harnesses` unless you want a specific store |
+| `projectDir` | case-insensitive **substring** of the working directory |
+| `from` / `to` | ISO-8601 bounds on last activity, `from` inclusive, `to` exclusive |
+| `models` | raw vendor model ids, exact and case-insensitive |
+
+`projectDir` being a substring is deliberate and useful: pass a repo name to
+match every checkout of it, or a full absolute path for an exact one.
+`sessions.list` also still accepts `since` as an alias for `from`.
+
+### What comes back, and what to use it for
+
+| Field | Use it for |
+| --- | --- |
+| `sessionId` | resuming with that CLI — the id its own `--resume` wants |
+| `projectDir` | where the work happened; `cd` there before continuing it |
+| `harness` / `harnessName` | which agent produced it (the usage axis, not a quota name) |
+| `title` / `summary` | naming the session to the user |
+| `lastActiveAt` | how stale the work is |
+| `matchedSeq` (search) | the message index of the hit — feed straight to `sessions.transcript` |
+| `snippet` (search) | the excerpt, `<b>` around the match — render as emphasis or strip, never print raw |
+| `sourcePath` | telling two sessions apart, or a command the *user* runs. **Not** for you to open |
+| `id` | naming the session to `sessions.transcript` |
+
+`sourcePath` is a last resort. On a busy Mac these logs reach hundreds of
+megabytes; reading one yourself burns your context and can stall the tool
+call. `sessions.transcript` exists so you never have to.
+
+### Read
+
+`sessions.transcript` takes `id`, or `sessionId` plus `provider`. Two window
+shapes:
+
+- **`around: <seq>`** with `radius` (default 20) — a match in context. Pass a
+  search hit's `matchedSeq` directly; it always resolves.
+- **`from` / `limit`** — paging. Feed the response's `nextFrom` back as `from`
+  until `hasMore` is false.
+
+`roles` thins a window (`["user"]` for just the prompts). It does *not* search
+past the window, so "the 20 messages around seq 400, user turns only" stays
+inside 380–420.
+
+Responses are capped three ways — message count, a total byte budget, and per
+message — so one 40 KB tool dump cannot swallow the answer. When a cap bites,
+`truncated` is true, `truncationReasons` names which (`messageLimit`,
+`byteBudget`, `messageText`, `readCeiling`), and `notice` is a sentence you can
+relay. Relay it: silently reporting a clipped transcript as the whole one is
+the failure mode here.
+
+### The honest limits
+
+- **The index is as fresh as the last sweep.** A session being written right
+  now is searchable up to that sweep, not up to its newest message. If a
+  colleague's agent just started, wait or ask them.
+- **Body search needs body indexing on.** With it off (Vibe Bar → Settings),
+  titles and project paths still match, but the words inside messages do not —
+  so an empty result means "not indexed", not "never happened".
+- **`totalMessageCount` is usually absent.** The reader stops as soon as it has
+  your window, so it genuinely does not know how long the log is. Use
+  `hasMore` / `nextFrom`, not arithmetic on a total.
+- **A window past the readable region comes back empty** with `readCeiling`
+  and no cursor. Retrying the identical call will not help; that part of the
+  log is past what a bounded read reaches.
+- **Sessions are read-only here.** There is no edit, no delete, no resume.
+  Hand the user a resume command; do not try to drive another agent's session.
 
 ## Worked patterns
 
@@ -115,11 +206,19 @@ percent, reset time, and the forecast verdict if the confidence is not
 `totalTokens`, quote `costUSD` alongside. Answer in harness names ("Claude
 Code", "Codex"), and only mention companies if the user asked at that level.
 
-**"Find that session where I fixed the socket server."**
-`sessions.search` with the user's own words as `query`. Show the title,
-project directory, harness and last-active time, and offer the `sourcePath` so
-they can open the transcript. The `<b>` markers in `snippet` mark the match —
-render them as emphasis or strip them, do not print them raw.
+**"Another agent was working on the socket server here — what did it try?"**
+`sessions.search` with `query: "socket server"` and `projectDir` set to the
+repo you are in. Take the newest hit, then `sessions.transcript` with its `id`
+and `around: <matchedSeq>` to read the match in context. Widen with `radius`,
+or page from `nextFrom`, before concluding anything — one message is rarely
+the whole attempt. Report the harness and `lastActiveAt` so the user knows
+whose work it was and how old.
+
+**"What has Codex been doing in this repo this week?"**
+`sessions.list` with `harnesses: ["codex"]`, `projectDir` set to the repo, and
+`from` seven days back. Summarize by title and last-active time. Open the
+interesting ones with `sessions.transcript` and `roles: ["user"]` — the
+prompts are the outline of what was attempted.
 
 **"Refresh and tell me where I stand."**
 `quota.refresh` (no `force`), wait a couple of seconds, then `quota.get`. If

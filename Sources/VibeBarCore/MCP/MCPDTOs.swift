@@ -594,24 +594,123 @@ public struct MCPSessionSummaryDTO: Codable, Equatable, Sendable {
 public struct MCPSessionListDTO: Codable, Equatable, Sendable {
     public let generatedAt: Date
     public let sessions: [MCPSessionSummaryDTO]
-    /// Total matching the filter, for `sessions.list`. Search does not count
-    /// past its own limit, so it is absent there.
+    /// Total matching the filter, for `sessions.list`. Absent for search,
+    /// which does not count past its own limit — and absent for a list whose
+    /// `to` or `models` filter the index cannot answer in SQL, because then
+    /// the store's count describes a wider set than the rows returned.
+    /// `hasMore` is the reliable signal in both cases.
     public let totalCount: Int?
     public let offset: Int?
     public let limit: Int
+    /// True when another page exists past this one.
+    public let hasMore: Bool?
+    /// Set when a host-side filter stopped at its scan cap, so the answer is
+    /// "the first N matches" rather than "all of them".
+    public let notice: String?
 
     public init(
         generatedAt: Date,
         sessions: [MCPSessionSummaryDTO],
         totalCount: Int?,
         offset: Int?,
-        limit: Int
+        limit: Int,
+        hasMore: Bool? = nil,
+        notice: String? = nil
     ) {
         self.generatedAt = generatedAt
         self.sessions = sessions
         self.totalCount = totalCount
         self.offset = offset
         self.limit = limit
+        self.hasMore = hasMore
+        self.notice = notice
+    }
+}
+
+// MARK: - sessions.transcript
+
+public struct MCPTranscriptMessageDTO: Codable, Equatable, Sendable {
+    /// Index of this message in the session, and the unit every window
+    /// argument speaks: `around`, `from`, `nextFrom` and a search hit's
+    /// `matchedSeq` are all this number.
+    public let seq: Int
+    /// `user` / `assistant` / `tool` / `system` / `other`.
+    public let role: String
+    public let text: String
+    public let timestamp: Date?
+    /// Present and true only when `text` is a prefix of what the log holds.
+    public let textTruncated: Bool?
+    /// UTF-8 length of the message's full text, whether or not it was cut.
+    public let textBytes: Int
+
+    public init(message: SessionMessage, textTruncated: Bool, textBytes: Int) {
+        self.seq = message.seq
+        self.role = message.role.rawValue
+        self.text = message.text
+        self.timestamp = message.timestamp
+        self.textTruncated = textTruncated ? true : nil
+        self.textBytes = textBytes
+    }
+}
+
+public struct MCPTranscriptDTO: Codable, Equatable, Sendable {
+    public let generatedAt: Date
+    /// Who this transcript belongs to, so a caller that started from a
+    /// `sessionId` does not need a second round trip to label the answer.
+    public let session: MCPSessionSummaryDTO
+    public let messages: [MCPTranscriptMessageDTO]
+    public let firstSeq: Int?
+    public let lastSeq: Int?
+    /// Messages in the whole session. Absent whenever the read stopped
+    /// before the end of the log — which a bounded read usually does, since
+    /// it stops as soon as it has the requested window. The count of a prefix
+    /// is not the count of the log.
+    public let totalMessageCount: Int?
+    public let hasMore: Bool
+    /// Pass back as `from` to continue. Absent when there is nothing more to
+    /// read, and also when the request pointed past the readable window, so
+    /// retrying the same call cannot loop.
+    public let nextFrom: Int?
+    public let truncated: Bool
+    /// Machine-readable: `messageLimit`, `byteBudget`, `messageText`,
+    /// `readCeiling`.
+    public let truncationReasons: [String]
+    /// One sentence to relay when something was cut.
+    public let notice: String?
+    /// Bytes of the log parsed to answer this, and its size on disk.
+    public let bytesRead: Int64
+    public let fileBytes: Int64
+
+    public init(generatedAt: Date, result: SessionTranscriptResult) {
+        let window = result.window
+        self.generatedAt = generatedAt
+        self.session = MCPSessionSummaryDTO(summary: result.summary)
+        self.messages = zip(
+            window.messages,
+            zip(window.textTruncated, window.textBytes)
+        ).map { message, meta in
+            MCPTranscriptMessageDTO(message: message, textTruncated: meta.0, textBytes: meta.1)
+        }
+        self.firstSeq = window.messages.first?.seq
+        self.lastSeq = window.messages.last?.seq
+        self.totalMessageCount = window.totalMessageCount
+        self.hasMore = window.hasMore
+        self.nextFrom = window.nextFrom
+        self.truncated = window.isTruncated
+        self.truncationReasons = window.reasons.map(\.rawValue)
+        self.notice = window.notice { Self.megabytes($0) }
+        self.bytesRead = window.bytesRead
+        self.fileBytes = window.fileBytes
+    }
+
+    /// Deliberately not `ByteCountFormatter`: this string goes into a JSON
+    /// payload a model will quote, and a locale-dependent separator there is
+    /// a reproducibility problem, not a nicety.
+    static func megabytes(_ bytes: Int64) -> String {
+        let mb = Double(bytes) / (1024 * 1024)
+        return mb >= 10
+            ? "\(Int(mb.rounded())) MB"
+            : String(format: "%.1f MB", mb)
     }
 }
 
