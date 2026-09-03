@@ -68,8 +68,28 @@ public struct UsagePace: Sendable, Equatable {
         now: Date = Date(),
         allowsPostResetGrace: Bool = false
     ) -> UsagePace? {
-        guard let resetsAt = bucket.resetAt else { return nil }
-        guard let windowSeconds = bucket.rawWindowSeconds, windowSeconds > 0 else { return nil }
+        compute(
+            usedPercent: bucket.usedPercent,
+            resetAt: bucket.resetAt,
+            rawWindowSeconds: bucket.rawWindowSeconds,
+            now: now,
+            allowsPostResetGrace: allowsPostResetGrace
+        )
+    }
+
+    /// Value-typed twin, for callers that hold a bucket's numbers rather than
+    /// the bucket — the menu-bar strip computes pace at draw time, from a
+    /// snapshot, so the figure advances with the clock instead of being frozen
+    /// at the moment the snapshot was resolved.
+    public static func compute(
+        usedPercent: Double,
+        resetAt: Date?,
+        rawWindowSeconds: Int?,
+        now: Date = Date(),
+        allowsPostResetGrace: Bool = false
+    ) -> UsagePace? {
+        guard let resetsAt = resetAt else { return nil }
+        guard let windowSeconds = rawWindowSeconds, windowSeconds > 0 else { return nil }
         guard let evaluationDate = QuotaWindowEvaluation.date(
             resetAt: resetsAt,
             now: now,
@@ -83,7 +103,7 @@ public struct UsagePace: Sendable, Equatable {
 
         let elapsed = clamp(duration - timeUntilReset, lower: 0, upper: duration)
         let expected = clamp((elapsed / duration) * 100, lower: 0, upper: 100)
-        let actual = clamp(bucket.usedPercent, lower: 0, upper: 100)
+        let actual = clamp(usedPercent, lower: 0, upper: 100)
 
         // Edge case: zero elapsed but non-zero usage means a fresh window with backfilled state — bail out.
         if elapsed == 0, actual > 0 { return nil }

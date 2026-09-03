@@ -1,6 +1,54 @@
 import AppKit
+import Combine
 import SwiftUI
 import VibeBarCore
+
+/// The measurements a composed strip is drawn at.
+///
+/// One table, because the status item and the Settings preview draw the same
+/// strip: a preview at a different face, a different glyph cap, or without the
+/// bar's fit-to-height pass is a preview of a different strip.
+enum MenuBarStripMetrics {
+    /// The face a one-row strip is drawn at — the status item's own.
+    static var singleRowFontSize: CGFloat { NSFont.smallSystemFontSize }
+    /// ...and a rasterized two-row strip, which has half the height each.
+    static let twoRowFontSize: CGFloat = 9
+    /// Deliberate negative tuck between the two bands.
+    static let twoRowLineSpacing: CGFloat = -2
+    static let twoRowVerticalPadding: CGFloat = 1
+    /// Past this it is the glyph, not the type, that sets the row height.
+    static let maximumGlyphSide: CGFloat = 12
+    /// System text occupies roughly this much vertical space per point of
+    /// font size. Only used to *estimate* the preview's height; the status
+    /// item measures its real attributed strings.
+    static let lineHeightRatio: CGFloat = 1.2
+
+    static func baseFontSize(rowCount: Int) -> CGFloat {
+        rowCount >= 2 ? twoRowFontSize : singleRowFontSize
+    }
+
+    /// Height the rasterized image actually has for content, after padding.
+    static func twoRowAvailableHeight() -> CGFloat {
+        max(18, NSStatusBar.system.thickness - 2) - twoRowVerticalPadding * 2
+    }
+
+    /// The fit-to-height scale for a plan drawn at `baseFontSize`, estimated
+    /// from the type metrics rather than measured. The status item applies the
+    /// same `MenuBarStripFit` rule to its real measurements — this is the
+    /// preview's approximation of it, so a two-row strip previews at roughly
+    /// the size it will actually be drawn.
+    static func estimatedFitScale(rows: [MenuBarRenderRow], baseFontSize: CGFloat) -> CGFloat {
+        guard rows.count >= 2 else { return 1 }
+        let heights = rows.map { row in
+            baseFontSize * (row.tokens.map(\.fontScale).max() ?? 1) * lineHeightRatio
+        }
+        let content = heights.reduce(0, +) + twoRowLineSpacing * CGFloat(rows.count - 1)
+        return CGFloat(MenuBarStripFit.scale(
+            contentHeight: Double(content),
+            availableHeight: Double(twoRowAvailableHeight())
+        ))
+    }
+}
 
 /// The paint a composed block ends up wearing.
 ///
@@ -154,6 +202,43 @@ enum MenuBarStripPalette {
 /// under the forecast basis.
 @MainActor
 enum MenuBarStripResolver {
+    /// Every publisher a composed strip's inputs arrive on.
+    ///
+    /// One list with two consumers — the status item's render pipeline and the
+    /// Settings preview — because two lists is two chances to forget one, and
+    /// forgetting one is invisible: the preview simply keeps showing the
+    /// previous generation while the bar beside it updates.
+    ///
+    /// Everything `snapshots(...)` and `liveFieldIds(...)` read has to be here:
+    ///
+    /// | What the resolver reads | Publisher |
+    /// | --- | --- |
+    /// | display mode, colour basis, custom labels, the composition itself | `settingsStore.$settings` |
+    /// | the live buckets | `quotaService.$lastSuccessByAccount`, `$lastErrorByAccount` |
+    /// | discovered fields, so a new bucket resolves | `quotaService.$fieldRegistry` |
+    /// | forecast evidence | `quotaService.$observationsByAccountBucket`, `$historyByAccountBucket` |
+    /// | forecast activity weighting | `costService.$snapshots` |
+    /// | the account id a forecast is keyed on | `accountStore.$accounts` |
+    /// | the field path's provider status | `serviceStatus.$snapshotByTool` |
+    ///
+    /// A refresh publishes the quota first and records observations in a
+    /// follow-up task, so the later ones are not redundant — they are the
+    /// difference between a forecast colour describing this refresh and the
+    /// previous one.
+    static func inputPublishers(environment: AppEnvironment) -> [AnyPublisher<Void, Never>] {
+        [
+            environment.settingsStore.$settings.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$lastSuccessByAccount.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$lastErrorByAccount.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$fieldRegistry.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$observationsByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
+            environment.quotaService.$historyByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
+            environment.costService.$snapshots.map { _ in () }.eraseToAnyPublisher(),
+            environment.accountStore.$accounts.map { _ in () }.eraseToAnyPublisher(),
+            environment.serviceStatus.$snapshotByTool.map { _ in () }.eraseToAnyPublisher()
+        ]
+    }
+
     static func snapshots(
         for composition: MenuBarComposition,
         itemSettings: MenuBarItemSettings,
@@ -180,9 +265,6 @@ enum MenuBarStripResolver {
                     runOutAt: computed.runOutAt
                 )
             }
-            let pace = requirement.needsPace
-                ? UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
-                : nil
             out.append(MenuBarQuotaSnapshot(
                 fieldId: field.id,
                 tool: field.tool,
@@ -190,7 +272,7 @@ enum MenuBarStripResolver {
                 usedPercent: bucket.usedPercent,
                 displayPercent: bucket.displayPercent(settings.displayMode, tool: field.tool),
                 resetAt: bucket.resetAt,
-                paceDeltaPercent: pace?.deltaPercent,
+                rawWindowSeconds: bucket.rawWindowSeconds,
                 forecast: forecast
             ))
         }
@@ -242,6 +324,29 @@ enum MenuBarStripResolver {
     }
 }
 
+/// Subscribes once to `MenuBarStripResolver.inputPublishers` and republishes a
+/// counter.
+///
+/// A SwiftUI surface cannot subscribe to a merged publisher directly without
+/// rebuilding it on every body pass, so this holds the subscription for the
+/// life of the view and lets the view depend on exactly the inputs the status
+/// item depends on.
+@MainActor
+final class MenuBarStripInputObserver: ObservableObject {
+    @Published private(set) var generation = 0
+    private var cancellables: Set<AnyCancellable> = []
+
+    func start(environment: AppEnvironment) {
+        guard cancellables.isEmpty else { return }
+        Publishers.MergeMany(MenuBarStripResolver.inputPublishers(environment: environment))
+            // The same 120 ms coalescing the status item uses: one refresh
+            // publishes several of these back to back.
+            .throttle(for: .milliseconds(120), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] _ in self?.generation &+= 1 }
+            .store(in: &cancellables)
+    }
+}
+
 /// The composed strip, drawn in SwiftUI.
 ///
 /// This is the editor's preview, and it consumes exactly the plan the status
@@ -257,7 +362,8 @@ struct MenuBarStripView: View {
     let plan: MenuBarRenderPlan
     let quotas: [MenuBarQuotaSnapshot]
     let displayMode: DisplayMode
-    var baseFontSize: CGFloat = 12
+    /// The face the status item would draw this plan at.
+    var baseFontSize: CGFloat = MenuBarStripMetrics.singleRowFontSize
     /// Draws the id'd block with a selection ring, so the editor's chip
     /// selection is visible in the preview too.
     var highlighted: UUID?
@@ -306,7 +412,11 @@ struct MenuBarStripView: View {
         )
         Group {
             if let glyph = token.glyph {
-                MenuBarStripGlyph(glyph: glyph, side: size + 1, paint: paint)
+                MenuBarStripGlyph(
+                    glyph: glyph,
+                    side: min(size + 1, MenuBarStripMetrics.maximumGlyphSide),
+                    paint: paint
+                )
             } else if let text = token.text {
                 Text(text)
                     .font(font(for: token, size: size))
@@ -401,10 +511,18 @@ struct MenuBarStripPreview: View {
     }
 
     private func ground(scheme: ColorScheme) -> some View {
-        MenuBarStripView(
+        // The bar draws a one-row strip at the small system face and a
+        // rasterized two-row strip at 9pt, then shrinks two rows that do not
+        // fit. The preview does all three, or it is previewing a strip the
+        // user will never see.
+        let rows = plan.rows.filter { !$0.isEmpty }
+        let base = MenuBarStripMetrics.baseFontSize(rowCount: rows.count)
+        let fit = MenuBarStripMetrics.estimatedFitScale(rows: rows, baseFontSize: base)
+        return MenuBarStripView(
             plan: plan,
             quotas: quotas,
             displayMode: displayMode,
+            baseFontSize: base * fit,
             highlighted: highlighted
         )
         .environment(\.colorScheme, scheme)

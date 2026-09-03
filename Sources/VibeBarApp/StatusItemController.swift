@@ -4,11 +4,11 @@ import Combine
 import VibeBarCore
 
 private enum MenuBarStatusMetrics {
-    static let twoRowFontSize: CGFloat = 9
+    static let twoRowFontSize = MenuBarStripMetrics.twoRowFontSize
     static let twoRowColumnSpacing: CGFloat = 8
-    static let twoRowLineSpacing: CGFloat = -2
+    static let twoRowLineSpacing = MenuBarStripMetrics.twoRowLineSpacing
     static let twoRowHorizontalPadding: CGFloat = 2
-    static let twoRowVerticalPadding: CGFloat = 1
+    static let twoRowVerticalPadding = MenuBarStripMetrics.twoRowVerticalPadding
     static let minimumTwoRowLength: CGFloat = 24
     static let twoRowContentIdentifier = NSUserInterfaceItemIdentifier("VibeBarTwoRowStatusContent")
     /// Manually drawn beside the text in each ~10pt row band; see
@@ -17,7 +17,7 @@ private enum MenuBarStatusMetrics {
     static let twoRowLogoGap: CGFloat = 2
     /// Ceiling for a composed glyph in a two-row strip: past this it is the
     /// glyph, not the type, that decides the row height.
-    static let twoRowMaximumGlyphSide: CGFloat = 12
+    static let twoRowMaximumGlyphSide = MenuBarStripMetrics.maximumGlyphSide
 }
 
 /// One cell of the rasterized two-row status image, drawn left to right.
@@ -308,25 +308,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // Coalesce all render triggers into one throttled pipeline so a burst
-        // of quota, settings, account, and status updates only redraws once.
-        //
-        // Observations, cycle history, and cost snapshots are in the set
-        // because forecast coloring depends on them, and they land *after*
-        // `$lastSuccessByAccount` — a refresh publishes the new quota first and
-        // records the observation in a follow-up task. Without them the color
-        // would always describe the previous refresh. The extra churn is
-        // bounded: observations publish once per account per refresh.
-        let renderTriggers: [AnyPublisher<Void, Never>] = [
-            environment.settingsStore.$settings.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$lastSuccessByAccount.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$lastErrorByAccount.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$observationsByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$historyByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
-            environment.costService.$snapshots.map { _ in () }.eraseToAnyPublisher(),
-            environment.accountStore.$accounts.map { _ in () }.eraseToAnyPublisher(),
-            environment.serviceStatus.$snapshotByTool.map { _ in () }.eraseToAnyPublisher()
-        ]
+        // Coalesce every input a composed or field strip reads into one
+        // throttled pipeline, so a burst of quota, settings, account, and
+        // status updates only redraws once. The list itself lives with the
+        // resolver that reads those inputs — see
+        // `MenuBarStripResolver.inputPublishers`, which the Settings preview
+        // subscribes to as well.
+        let renderTriggers = MenuBarStripResolver.inputPublishers(environment: environment)
         Publishers.MergeMany(renderTriggers)
             .throttle(for: .milliseconds(120), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.renderMenuBar() }
@@ -1748,9 +1736,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     /// Height the rasterized image actually has for content, after padding.
+    /// Shared with the preview so both fit against the same canvas.
     nonisolated private static func twoRowAvailableHeight() -> CGFloat {
-        max(18, NSStatusBar.system.thickness - 2)
-            - MenuBarStatusMetrics.twoRowVerticalPadding * 2
+        MenuBarStripMetrics.twoRowAvailableHeight()
     }
 
     private func twoRowImage(for columns: [TwoRowMenuColumn], appearance: NSAppearance) -> NSImage {

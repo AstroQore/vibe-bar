@@ -65,17 +65,15 @@ public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Whether this metric needs the linear burn-rate pace for its bucket.
-    var needsPace: Bool { self == .pace }
-
     /// Whether the string this metric renders goes stale on its own, with no
-    /// new data — a countdown ticks down between refreshes, and an absolute
-    /// reset time re-words itself once it crosses a day boundary. A strip
-    /// containing one of these needs a clock; a strip without one must not
-    /// start a timer at all.
+    /// new data — a countdown ticks down between refreshes, an absolute reset
+    /// time re-words itself once it crosses a day boundary, and pace drifts
+    /// because the expectation it is measured against advances with the clock.
+    /// A strip containing one of these needs a clock; a strip without one must
+    /// not start a timer at all.
     public var isTimeBased: Bool {
         switch self {
-        case .resetsIn, .resetAt, .runsOutIn: return true
+        case .resetsIn, .resetAt, .runsOutIn, .pace: return true
         default: return false
         }
     }
@@ -423,30 +421,27 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         // of quotas at most — scanning that array beats allocating a hash
         // table every tick.
         var out: [MenuBarQuotaRequirement] = []
-        func requirement(_ fieldId: String, forecast: Bool, pace: Bool) {
+        func requirement(_ fieldId: String, forecast: Bool) {
             if let position = out.firstIndex(where: { $0.fieldId == fieldId }) {
                 out[position].needsForecast = out[position].needsForecast || forecast
-                out[position].needsPace = out[position].needsPace || pace
             } else {
-                out.append(MenuBarQuotaRequirement(
-                    fieldId: fieldId, needsForecast: forecast, needsPace: pace
-                ))
+                out.append(MenuBarQuotaRequirement(fieldId: fieldId, needsForecast: forecast))
             }
         }
         for token in tokens {
             if let fieldId = token.quotaFieldId, let metric = token.metric {
-                requirement(fieldId, forecast: metric.needsForecast, pace: metric.needsPace)
+                requirement(fieldId, forecast: metric.needsForecast)
             }
             // A colour that follows the block's own quota names no field, so
             // it has to be attributed here or nobody ever asks for its verdict.
             if token.style.color.followsOwnQuota, let fieldId = token.quotaFieldId {
-                requirement(fieldId, forecast: token.style.color.needsForecast, pace: false)
+                requirement(fieldId, forecast: token.style.color.needsForecast)
             }
             if let fieldId = token.style.color.fieldId {
-                requirement(fieldId, forecast: token.style.color.needsForecast, pace: false)
+                requirement(fieldId, forecast: token.style.color.needsForecast)
             }
             if let fieldId = token.visibility.fieldId {
-                requirement(fieldId, forecast: token.visibility.needsForecast, pace: false)
+                requirement(fieldId, forecast: token.visibility.needsForecast)
             }
         }
         return out
@@ -795,15 +790,16 @@ private struct LossyMenuBarToken: Codable {
 /// What the renderer must resolve for one quota before it can build the plan.
 public struct MenuBarQuotaRequirement: Equatable, Sendable {
     public var fieldId: String
-    /// Some token, colour, or rule reads the personal forecast.
+    /// Some token, colour, or rule reads the personal forecast — the one
+    /// genuinely expensive input. Pace is not here: it is arithmetic over
+    /// numbers the snapshot already carries, so the planner does it at draw
+    /// time and it advances with the clock instead of freezing at whatever the
+    /// last refresh computed.
     public var needsForecast: Bool
-    /// Some token reads the linear burn-rate pace.
-    public var needsPace: Bool
 
-    public init(fieldId: String, needsForecast: Bool, needsPace: Bool) {
+    public init(fieldId: String, needsForecast: Bool) {
         self.fieldId = fieldId
         self.needsForecast = needsForecast
-        self.needsPace = needsPace
     }
 }
 
@@ -844,8 +840,9 @@ public struct MenuBarQuotaSnapshot: Equatable, Sendable {
     /// Remaining setting.
     public var displayPercent: Double
     public var resetAt: Date?
-    /// `UsagePace.deltaPercent` — actual minus linear expectation.
-    public var paceDeltaPercent: Double?
+    /// The bucket's window length, so pace can be computed at draw time rather
+    /// than frozen into the snapshot.
+    public var rawWindowSeconds: Int?
     public var forecast: Forecast?
 
     public init(
@@ -855,7 +852,7 @@ public struct MenuBarQuotaSnapshot: Equatable, Sendable {
         usedPercent: Double,
         displayPercent: Double,
         resetAt: Date? = nil,
-        paceDeltaPercent: Double? = nil,
+        rawWindowSeconds: Int? = nil,
         forecast: Forecast? = nil
     ) {
         self.fieldId = fieldId
@@ -864,7 +861,7 @@ public struct MenuBarQuotaSnapshot: Equatable, Sendable {
         self.usedPercent = usedPercent
         self.displayPercent = displayPercent
         self.resetAt = resetAt
-        self.paceDeltaPercent = paceDeltaPercent
+        self.rawWindowSeconds = rawWindowSeconds
         self.forecast = forecast
     }
 
@@ -992,6 +989,10 @@ public extension MenuBarComposition {
         now: Date = Date()
     ) -> MenuBarRenderPlan {
         let scale = effectiveFontScale
+        // A seeded strip draws `5 Hours` and then `5 Hours 73% used`. That is
+        // what the bar has always looked like, so the block keeps drawing —
+        // but read aloud it stutters every field name, so it stops speaking.
+        let echoed = Self.labelEchoTokenIds(tokens: tokens, quotas: quotas)
         var rows: [MenuBarRenderRow] = [MenuBarRenderRow()]
         var spokenRows: [[String]] = [[]]
 
@@ -1026,6 +1027,7 @@ public extension MenuBarComposition {
                 quotas: quotas,
                 colorBasis: colorBasis
             )
+            let spoken = echoed.contains(token.id) ? nil : content.spoken
             rows[rows.count - 1].tokens.append(MenuBarRenderedToken(
                 id: token.id,
                 text: content.text,
@@ -1034,9 +1036,9 @@ public extension MenuBarComposition {
                 fontScale: scale * token.style.size.multiplier,
                 weight: token.style.weight,
                 monospacedDigits: token.style.monospacedDigits,
-                spoken: content.spoken
+                spoken: spoken
             ))
-            if let spoken = content.spoken {
+            if let spoken {
                 spokenRows[spokenRows.count - 1].append(spoken)
             }
         }
@@ -1051,6 +1053,43 @@ public extension MenuBarComposition {
             fontScale: scale,
             spokenDescription: spoken
         )
+    }
+
+    /// Text blocks that only repeat the name of the quota block right after
+    /// them, and so contribute nothing to a spoken description.
+    ///
+    /// Purely a speech concern: the strip still draws the label, because that
+    /// is what a seeded strip looks like and what the user arranged. Only
+    /// blocks separated from the quota by nothing but spacing count — a row
+    /// break, a logo, or another word in between means the label is doing its
+    /// own work and is read out.
+    static func labelEchoTokenIds(
+        tokens: [MenuBarToken],
+        quotas: [MenuBarQuotaSnapshot]
+    ) -> Set<UUID> {
+        var echoed: Set<UUID> = []
+        for (index, token) in tokens.enumerated() {
+            guard case let .text(text) = token.kind else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            var cursor = index + 1
+            scan: while cursor < tokens.count {
+                switch tokens[cursor].kind {
+                case .space, .separator:
+                    cursor += 1
+                case let .quota(fieldId, _):
+                    if let quota = quotas.first(where: { $0.fieldId == fieldId }),
+                       quota.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                           .caseInsensitiveCompare(trimmed) == .orderedSame {
+                        echoed.insert(token.id)
+                    }
+                    break scan
+                default:
+                    break scan
+                }
+            }
+        }
+        return echoed
     }
 
     // MARK: Visibility
@@ -1145,8 +1184,17 @@ public extension MenuBarComposition {
         case .displayPercent:
             return percent(quota.displayPercent)
         case .pace:
-            guard let delta = quota.paceDeltaPercent else { return nil }
-            let rounded = Int(delta.rounded())
+            // Computed here, not in the snapshot: the linear expectation pace
+            // is measured against advances every minute, so a value frozen at
+            // resolve time would drift until the next refresh.
+            guard let pace = UsagePace.compute(
+                usedPercent: quota.usedPercent,
+                resetAt: quota.resetAt,
+                rawWindowSeconds: quota.rawWindowSeconds,
+                now: now,
+                allowsPostResetGrace: true
+            ) else { return nil }
+            let rounded = Int(pace.deltaPercent.rounded())
             if rounded == 0 { return "±0%" }
             return rounded > 0 ? "+\(rounded)%" : "\(rounded)%"
         case .forecastPercent:

@@ -22,6 +22,9 @@ struct MenuBarComposerEditor: View {
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
 
+    /// Holds the subscription to the one list of things a composed strip
+    /// depends on. Without it the preview drifts a generation behind the bar.
+    @StateObject private var inputs = MenuBarStripInputObserver()
     @State private var selection: UUID?
     @State private var draggedTokenId: UUID?
     /// The order the strip *would* have if the drag ended here.
@@ -90,36 +93,28 @@ struct MenuBarComposerEditor: View {
 
     var body: some View {
         let composition = displayedComposition
-        let plan = composition.plan(
-            quotas: snapshots,
-            displayMode: settingsStore.settings.displayMode,
-            colorBasis: settingsStore.settings.menuBarColorBasis
-        )
         let availability = composition.availability(liveFieldIds: liveFieldIds)
 
         VStack(alignment: .leading, spacing: density.cardSpacing + 4) {
             templateRow(composition)
-            previewRow(plan: plan)
+            previewRow(composition)
             stripRow(composition, availability: availability)
             paletteRow(composition)
             inspectorRow(composition, availability: availability)
             footerRow(availability: availability)
         }
         .onAppear {
+            inputs.start(environment: environment)
             rebuildCatalog()
             rebuildSnapshots()
         }
-        .onChange(of: quotaService.fieldRegistry) { _, _ in
+        // Exactly what the status item re-renders on — one list, two
+        // consumers. Subscribing to a subset of it is how the preview ended up
+        // a generation behind the bar for forecasts, colours and rules.
+        .onReceive(inputs.$generation) { _ in
             rebuildCatalog()
             rebuildSnapshots()
         }
-        .onReceive(quotaService.$lastSuccessByAccount) { _ in rebuildSnapshots() }
-        // The same inputs the status item re-renders on. A refresh publishes
-        // the quota first and records the observation in a follow-up task, so
-        // without these the preview's forecast colour would describe the
-        // previous refresh while the bar beside it showed the current one.
-        .onReceive(quotaService.$observationsByAccountBucket) { _ in rebuildSnapshots() }
-        .onReceive(environment.costService.$snapshots) { _ in rebuildSnapshots() }
         // Changing what the strip asks of a quota rebuilds; editing a word
         // does not. That is what keeps a forecast off the typing path while
         // still letting a metric swap show up immediately.
@@ -144,24 +139,46 @@ struct MenuBarComposerEditor: View {
 
     // MARK: - Preview
 
-    private func previewRow(plan: MenuBarRenderPlan) -> some View {
+    private func previewRow(_ composition: MenuBarComposition) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             caption("Preview")
-            MenuBarStripPreview(
-                plan: plan,
-                quotas: snapshots,
-                displayMode: settingsStore.settings.displayMode,
-                highlighted: selection
-            )
-            Text("Light and dark menu bars, side by side — a fixed colour that reads well on one can vanish on the other.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            if plan.rows.filter({ !$0.isEmpty }).count >= 2 {
-                Text("Two rows have to share the menu bar's height, so large sizes are scaled down to fit. The preview above shows the size you set, not the scaled one.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+            // A countdown block is wrong a minute later with no new data
+            // behind it, and nothing else here invalidates the view. Gated on
+            // the strip actually printing one: `QuotaClockSchedule` yields a
+            // single entry and starts no timer when inactive, so a strip of
+            // percentages still costs nothing. Same phase anchor the popover's
+            // clocks and the status item's tick use, so the preview and the
+            // bar never show two different countdowns for one quota.
+            TimelineView(
+                QuotaClockSchedule(
+                    isActive: composition.hasTimeBasedBlock,
+                    interval: MenuBarCountdownClock.interval
+                )
+            ) { context in
+                let plan = composition.plan(
+                    quotas: snapshots,
+                    displayMode: settingsStore.settings.displayMode,
+                    colorBasis: settingsStore.settings.menuBarColorBasis,
+                    now: context.date
+                )
+                VStack(alignment: .leading, spacing: 4) {
+                    MenuBarStripPreview(
+                        plan: plan,
+                        quotas: snapshots,
+                        displayMode: settingsStore.settings.displayMode,
+                        highlighted: selection
+                    )
+                    Text("Light and dark menu bars, side by side — a fixed colour that reads well on one can vanish on the other.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if plan.rows.filter({ !$0.isEmpty }).count >= 2 {
+                        Text("Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
     }

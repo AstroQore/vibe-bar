@@ -14,7 +14,7 @@ final class MenuBarCompositionTests: XCTestCase {
         used: Double = 73,
         display: Double? = nil,
         resetAt: Date? = nil,
-        pace: Double? = nil,
+        windowSeconds: Int? = nil,
         forecast: MenuBarQuotaSnapshot.Forecast? = nil
     ) -> MenuBarQuotaSnapshot {
         MenuBarQuotaSnapshot(
@@ -24,8 +24,24 @@ final class MenuBarCompositionTests: XCTestCase {
             usedPercent: used,
             displayPercent: display ?? used,
             resetAt: resetAt,
-            paceDeltaPercent: pace,
+            rawWindowSeconds: windowSeconds,
             forecast: forecast
+        )
+    }
+
+    /// A bucket halfway through its window, so the linear expectation is 50%
+    /// and pace is `used - 50`.
+    private func halfwayQuota(
+        _ fieldId: String = "claude.five_hour",
+        label: String = "5 Hours",
+        used: Double
+    ) -> MenuBarQuotaSnapshot {
+        quota(
+            fieldId,
+            label: label,
+            used: used,
+            resetAt: reference.addingTimeInterval(1800),
+            windowSeconds: 3600
         )
     }
 
@@ -70,11 +86,38 @@ final class MenuBarCompositionTests: XCTestCase {
     }
 
     func testPaceRendersASignedDelta() {
-        XCTAssertEqual(metric(.pace, quota(pace: 12.4)), "+12%")
-        XCTAssertEqual(metric(.pace, quota(pace: -8)), "-8%")
-        XCTAssertEqual(metric(.pace, quota(pace: 0.2)), "±0%")
-        // No window, no reset date, or a cycle past its grace: nothing to say.
-        XCTAssertNil(metric(.pace, quota(pace: nil)))
+        // Halfway through the window, so the linear expectation is 50%.
+        XCTAssertEqual(metric(.pace, halfwayQuota(used: 62)), "+12%")
+        XCTAssertEqual(metric(.pace, halfwayQuota(used: 42)), "-8%")
+        XCTAssertEqual(metric(.pace, halfwayQuota(used: 50)), "±0%")
+        // No window or no reset date: nothing to say.
+        XCTAssertNil(metric(.pace, quota()))
+        XCTAssertNil(metric(.pace, quota(resetAt: reference.addingTimeInterval(60))))
+    }
+
+    func testPaceIsComputedAtDrawTimeSoItAdvancesWithTheClock() {
+        // The same snapshot, read a quarter of an hour later: the expectation
+        // it is measured against has moved, so the figure has to move with it.
+        // Freezing pace into the snapshot is what made it stale between
+        // refreshes — and made the preview and the bar disagree.
+        let snapshot = quota(
+            used: 50,
+            resetAt: reference.addingTimeInterval(1800),
+            windowSeconds: 3600
+        )
+        XCTAssertEqual(
+            MenuBarComposition.value(of: .pace, in: snapshot, displayMode: .used, now: reference),
+            "±0%"
+        )
+        XCTAssertEqual(
+            MenuBarComposition.value(
+                of: .pace,
+                in: snapshot,
+                displayMode: .used,
+                now: reference.addingTimeInterval(900)
+            ),
+            "-25%"
+        )
     }
 
     func testForecastMetricsReadTheProjection() {
@@ -403,9 +446,9 @@ final class MenuBarCompositionTests: XCTestCase {
             uniqueKeysWithValues: composed.quotaRequirements.map { ($0.fieldId, $0) }
         )
         XCTAssertEqual(byField["a.x"]?.needsForecast, false)
-        XCTAssertEqual(byField["a.x"]?.needsPace, false)
         XCTAssertEqual(byField["b.x"]?.needsForecast, true)
-        XCTAssertEqual(byField["c.x"]?.needsPace, true)
+        // Pace is arithmetic over what the snapshot already carries, so it
+        // asks for nothing and stays free.
         XCTAssertEqual(byField["c.x"]?.needsForecast, false)
     }
 
@@ -416,7 +459,6 @@ final class MenuBarCompositionTests: XCTestCase {
             MenuBarToken(kind: .quota(fieldId: "a.x", metric: .forecastPercent))
         ])
         XCTAssertEqual(composed.quotaRequirements.count, 1)
-        XCTAssertEqual(composed.quotaRequirements[0].needsPace, true)
         XCTAssertEqual(composed.quotaRequirements[0].needsForecast, true)
     }
 
@@ -787,7 +829,7 @@ final class MenuBarCompositionTests: XCTestCase {
 
     func testOnlyTimeBasedMetricsAskForAClock() {
         for metric in MenuBarQuotaMetric.allCases {
-            let expected = [.resetsIn, .resetAt, .runsOutIn].contains(metric)
+            let expected = [.resetsIn, .resetAt, .runsOutIn, .pace].contains(metric)
             XCTAssertEqual(metric.isTimeBased, expected, "\(metric)")
             let composed = composition([
                 MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: metric))
@@ -1042,32 +1084,31 @@ final class MenuBarCompositionTests: XCTestCase {
         let percent = composition([
             MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .displayPercent))
         ])
-        let pace = composition([
-            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .pace))
-        ])
-        // The field set is identical, which is why keying a cache on it missed
-        // the edit and left the preview showing nothing for the block.
-        XCTAssertEqual(percent.referencedFieldIds, pace.referencedFieldIds)
-        XCTAssertNotEqual(percent.quotaRequirements, pace.quotaRequirements)
-        XCTAssertEqual(pace.quotaRequirements[0].needsPace, true)
-        XCTAssertEqual(percent.quotaRequirements[0].needsPace, false)
-
-        // Same for a metric that starts needing a forecast.
         let runsOut = composition([
             MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .runsOutIn))
         ])
+        // The field set is identical, which is why keying a cache on it missed
+        // the edit and left the preview showing nothing for the block.
         XCTAssertEqual(percent.referencedFieldIds, runsOut.referencedFieldIds)
         XCTAssertNotEqual(percent.quotaRequirements, runsOut.quotaRequirements)
+        XCTAssertEqual(runsOut.quotaRequirements[0].needsForecast, true)
+        XCTAssertEqual(percent.quotaRequirements[0].needsForecast, false)
     }
 
-    func testAPaceBlockRendersAsSoonAsItsSnapshotCarriesPace() {
-        // What the stale cache produced: a snapshot resolved for a percentage
-        // block has no pace, so the pace block draws nothing.
-        let stale = quota("claude.weekly", label: "Weekly", used: 50, pace: nil)
-        let fresh = quota("claude.weekly", label: "Weekly", used: 50, pace: 12)
-        let tokens = [MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .pace))]
+    func testAForecastBlockRendersOnlyOnceItsSnapshotCarriesAForecast() {
+        // What a stale cache produces: a snapshot resolved for a percentage
+        // block carries no forecast, so a forecast block draws nothing until
+        // the cache notices the metric changed.
+        let stale = quota("claude.weekly", label: "Weekly", used: 50)
+        let fresh = quota(
+            "claude.weekly",
+            label: "Weekly",
+            used: 50,
+            forecast: .init(verdict: .watch, projectedRemainingPercent: 18)
+        )
+        let tokens = [MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .forecastPercent))]
         XCTAssertTrue(plan(tokens, quotas: [stale]).isEmpty)
-        XCTAssertEqual(texts(plan(tokens, quotas: [fresh])), [["+12%"]])
+        XCTAssertEqual(texts(plan(tokens, quotas: [fresh])), [["18%"]])
     }
 
     // MARK: - Two-row run gap (review thread 3)
@@ -1098,6 +1139,99 @@ final class MenuBarCompositionTests: XCTestCase {
         // Degenerate shapes stay sane.
         XCTAssertEqual(MenuBarStripGeometry.cellWidth(runWidths: [], gap: 5), 0)
         XCTAssertEqual(MenuBarStripGeometry.cellWidth(runWidths: [7], gap: 5), 7)
+    }
+
+    // MARK: - Seeded labels are not spoken twice (review thread 3)
+
+    func testASeededStripDrawsItsLabelsButSaysEachFieldOnce() {
+        // End to end: seed the way switching to Custom seeds, then plan it
+        // against live buckets.
+        var seeded = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+        seeded.isEnabled = true
+        let rendered = seeded.plan(
+            quotas: [
+                quota("claude.five_hour", label: "5 Hours", used: 73, display: 73),
+                quota("claude.weekly", label: "Weekly", used: 100, display: 100)
+            ],
+            displayMode: .used,
+            colorBasis: .actual,
+            now: reference
+        )
+        // The strip still *draws* the label blocks — that is what the seeded
+        // bar looks like today.
+        XCTAssertEqual(texts(rendered), [["5 Hours", "73%", " · ", "Weekly", "100%"]])
+        // ...and says each field name exactly once.
+        XCTAssertEqual(rendered.spokenDescription, "5 Hours 73% used, Weekly 100% used")
+    }
+
+    func testALabelBlockDoingItsOwnWorkIsStillSpoken() {
+        let quotas = [quota("claude.five_hour", label: "5 Hours", used: 40, display: 40)]
+        // A word that is not the quota's name is the user's own and is read.
+        let custom = plan(
+            [
+                MenuBarToken(kind: .text("Claude")),
+                MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent))
+            ],
+            quotas: quotas
+        )
+        XCTAssertEqual(custom.spokenDescription, "Claude, 5 Hours 40% used")
+
+        // A row break between them means the label is heading its own row.
+        let split = plan(
+            [
+                MenuBarToken(kind: .text("5 Hours")),
+                MenuBarToken(kind: .lineBreak),
+                MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent))
+            ],
+            quotas: quotas
+        )
+        XCTAssertEqual(split.spokenDescription, "5 Hours · 5 Hours 40% used")
+
+        // A label with no quota after it at all is still read.
+        let alone = plan([MenuBarToken(kind: .text("5 Hours"))], quotas: quotas)
+        XCTAssertEqual(alone.spokenDescription, "5 Hours")
+    }
+
+    func testAnEchoedLabelIsSuppressedThroughSpacingOnly() {
+        let quotas = [quota("claude.weekly", label: "Weekly", used: 20, display: 20)]
+        // Spacing between the label and its number does not make it a
+        // different block.
+        let spaced = plan(
+            [
+                MenuBarToken(kind: .text("Weekly")),
+                MenuBarToken(kind: .space),
+                MenuBarToken(kind: .separator(":")),
+                MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .displayPercent))
+            ],
+            quotas: quotas
+        )
+        XCTAssertEqual(spaced.spokenDescription, "Weekly 20% used")
+        // Case and surrounding whitespace do not make it a different word.
+        let sloppy = plan(
+            [
+                MenuBarToken(kind: .text(" weekly ")),
+                MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .displayPercent))
+            ],
+            quotas: quotas
+        )
+        XCTAssertEqual(sloppy.spokenDescription, "Weekly 20% used")
+        // The rendered token also stops carrying the clause, so every consumer
+        // agrees rather than only the joined description.
+        XCTAssertNil(sloppy.rows[0].tokens[0].spoken)
+        XCTAssertEqual(sloppy.rows[0].tokens[0].text, " weekly ")
+    }
+
+    func testAnEchoedLabelBeforeAnUnavailableQuotaIsStillSpoken() {
+        // The number is gone, so the label is the only thing left describing
+        // the block — suppressing it would leave the strip silent.
+        let rendered = plan(
+            [
+                MenuBarToken(kind: .text("5 Hours")),
+                MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent))
+            ],
+            quotas: []
+        )
+        XCTAssertEqual(rendered.spokenDescription, "5 Hours")
     }
 
     // MARK: - Persistence
