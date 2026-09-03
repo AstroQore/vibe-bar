@@ -129,7 +129,7 @@ struct MiscProviderCredentialRows: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             credentialControls
-            MiscProviderSetupNote(tool: tool)
+            MiscProviderSetupNote(tool: tool, instanceID: instanceID)
         }
     }
 
@@ -363,6 +363,11 @@ struct MiscProviderCredentialRows: View {
 /// to one field.
 struct MiscProviderSetupNote: View {
     let tool: ToolType
+    /// Read live from the store rather than from a snapshot, so switching
+    /// the Region picker re-points the console link in the same frame.
+    let instanceID: String
+
+    @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
         if let note = tool.miscSetupNote {
@@ -371,62 +376,31 @@ struct MiscProviderSetupNote: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Link(destination: tool.miscConsoleURL) {
-                    Text("\(tool.miscConsoleLinkTitle) →")
-                        .font(.caption)
+                // Two links when a region-aware provider is on "Auto":
+                // either console could be the one holding the credential.
+                ForEach(consoleLinks) { link in
+                    Link(destination: link.url) {
+                        Text("\(link.title) →")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .help(link.url.absoluteString)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-                .help(tool.miscConsoleURL.absoluteString)
             }
             .padding(.top, 2)
         }
     }
+
+    private var consoleLinks: [MiscProviderConsole.Link] {
+        MiscProviderConsole.links(
+            for: tool,
+            settings: settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
+        )
+    }
 }
 
 extension ToolType {
-    /// Where the user goes to obtain or check this provider's credential.
-    ///
-    /// `statusPageURL` already points at the console for every misc
-    /// provider (including Agent Plan's `advancedActiveKey=agentPlan` deep
-    /// link); Copilot is the exception, whose entry there is GitHub's
-    /// status page rather than anything you can get a token from. Kept as
-    /// a local accessor so `ToolType.swift` stays untouched.
-    var miscConsoleURL: URL {
-        switch self {
-        case .copilot:
-            return URL(string: "https://github.com/settings/copilot")!
-        default:
-            return statusPageURL
-        }
-    }
-
-    /// Link label. Names the destination rather than saying "console" for
-    /// providers whose page is a product site or a settings screen.
-    var miscConsoleLinkTitle: String {
-        switch self {
-        case .alibaba, .alibabaTokenPlan:         return "Open Bailian console"
-        case .copilot:                            return "Open GitHub Copilot settings"
-        case .zai:                                return "Open z.ai"
-        case .minimax:                            return "Open platform.minimax.io"
-        case .kimi:                               return "Open kimi.com"
-        case .mimo:                               return "Open platform.xiaomimimo.com"
-        case .iflytek:                            return "Open maas.xfyun.cn"
-        case .tencentHunyuan, .tencentTokenPlan:  return "Open Tencent Cloud console"
-        case .volcengine:                         return "Open Ark console"
-        case .volcengineAgentPlan:                return "Open Agent Plan console"
-        case .baiduQianfan:                       return "Open Qianfan console"
-        case .openCodeGo:                         return "Open opencode.ai"
-        case .kilo:                               return "Open app.kilo.ai"
-        case .kiro:                               return "Open kiro.dev"
-        case .ollama:                             return "Open ollama.com"
-        case .openRouter:                         return "Open openrouter.ai"
-        case .warp:                               return "Open app.warp.dev"
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
-            return "Open status page"
-        }
-    }
-
     /// nil for the providers that have no misc-card credential row.
     var miscSetupNote: String? {
         switch self {

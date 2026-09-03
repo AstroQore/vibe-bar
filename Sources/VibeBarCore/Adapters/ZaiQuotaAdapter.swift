@@ -48,17 +48,8 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
             throw QuotaError.noCredential
         }
 
-        let snapshot: ZaiResponseParser.Snapshot
-        do {
-            snapshot = try await fetchSnapshot(url: settings.quotaURL, apiKey: apiKey)
-        } catch let error as QuotaError where Self.isWrongHostSignal(error) && settings.fallbackQuotaURL != nil {
-            // "Auto (try both)": a Global key on the mainland console (or
-            // the reverse) answers 401/403 or an empty body, which is
-            // indistinguishable from a bad key until we have tried the
-            // other host. Only Auto reaches here — an explicitly chosen
-            // region is honoured exactly as picked.
-            guard let fallback = settings.fallbackQuotaURL else { throw error }
-            snapshot = try await fetchSnapshot(url: fallback, apiKey: apiKey)
+        let snapshot = try await Self.resolveSnapshot(settings: settings) { url in
+            try await self.fetchSnapshot(url: url, apiKey: apiKey)
         }
         return AccountQuota(
             accountId: account.id,
@@ -103,6 +94,46 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
         }
 
         return try ZaiResponseParser.parse(data: data, now: now())
+    }
+
+    /// The "Auto (try both)" retry, factored out of `fetch` so the decision
+    /// can be exercised without a network or a Keychain.
+    ///
+    /// Two things look identical from the wrong host, and only one of them
+    /// throws:
+    ///
+    /// - the host rejects the key outright (401/403, or an empty body), and
+    /// - the host answers a perfectly good HTTP 200 whose envelope carries
+    ///   no limits at all, because the key belongs to the other region.
+    ///
+    /// The second case used to end the fetch with zero buckets and no
+    /// error, which the card renders as "Not configured" — the fallback
+    /// host was never tried. Both now retry.
+    ///
+    /// If the other host also comes back empty we keep the *first* answer:
+    /// it was a successful 200, so it is the more authoritative "this
+    /// account has no quota" of the two. A throw from the retry is likewise
+    /// swallowed in favour of the first host's empty result, and only
+    /// surfaces when the first host threw as well.
+    static func resolveSnapshot(
+        settings: ZaiSettings,
+        fetch: (URL) async throws -> ZaiResponseParser.Snapshot
+    ) async throws -> ZaiResponseParser.Snapshot {
+        let first: ZaiResponseParser.Snapshot
+        do {
+            first = try await fetch(settings.quotaURL)
+        } catch let error as QuotaError where isWrongHostSignal(error) {
+            guard let fallback = settings.fallbackQuotaURL else { throw error }
+            return try await fetch(fallback)
+        }
+
+        guard first.buckets.isEmpty, let fallback = settings.fallbackQuotaURL else {
+            return first
+        }
+        guard let retried = try? await fetch(fallback), !retried.buckets.isEmpty else {
+            return first
+        }
+        return retried
     }
 
     /// Failures that could equally mean "right key, wrong host". Anything

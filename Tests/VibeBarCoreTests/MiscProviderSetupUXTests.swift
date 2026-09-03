@@ -114,6 +114,115 @@ final class MiscProviderSetupUXTests: XCTestCase {
         XCTAssertNil(settings.fallbackQuotaURL)
     }
 
+    /// The gap the Auto retry originally missed: the first host answers a
+    /// perfectly good HTTP 200 whose envelope carries no limits, so nothing
+    /// throws, the fetch "succeeds" with zero buckets, and the card renders
+    /// "Not configured" without the other host ever being tried.
+    func testAutoRetriesTheOtherHostWhenTheFirstReturnsNoBuckets() async throws {
+        let settings = ZaiSettings(
+            quotaURL: ZaiRegion.global.quotaURL,
+            fallbackQuotaURL: ZaiRegion.bigmodelCN.quotaURL
+        )
+        let tried = Tried()
+
+        let snapshot = try await ZaiQuotaAdapter.resolveSnapshot(settings: settings) { url in
+            await tried.record(url)
+            return url == ZaiRegion.bigmodelCN.quotaURL
+                ? ZaiResponseParser.Snapshot(buckets: [Self.bucket], planName: "GLM Coding Plan")
+                : ZaiResponseParser.Snapshot(buckets: [], planName: nil)
+        }
+
+        XCTAssertEqual(snapshot.buckets.map(\.id), ["zai.tokens"])
+        let visited = await tried.urls
+        XCTAssertEqual(visited, [ZaiRegion.global.quotaURL, ZaiRegion.bigmodelCN.quotaURL])
+    }
+
+    func testAHostThatAnswersWithBucketsIsAcceptedWithoutASecondCall() async throws {
+        let settings = ZaiSettings(
+            quotaURL: ZaiRegion.global.quotaURL,
+            fallbackQuotaURL: ZaiRegion.bigmodelCN.quotaURL
+        )
+        let tried = Tried()
+
+        _ = try await ZaiQuotaAdapter.resolveSnapshot(settings: settings) { url in
+            await tried.record(url)
+            return ZaiResponseParser.Snapshot(buckets: [Self.bucket], planName: nil)
+        }
+
+        let visited = await tried.urls
+        XCTAssertEqual(visited, [ZaiRegion.global.quotaURL])
+    }
+
+    /// A pinned region has no fallback, so an empty answer is the answer.
+    func testAPinnedRegionNeverTriesTheOtherHost() async throws {
+        let settings = ZaiSettings(quotaURL: ZaiRegion.bigmodelCN.quotaURL)
+        let tried = Tried()
+
+        let snapshot = try await ZaiQuotaAdapter.resolveSnapshot(settings: settings) { url in
+            await tried.record(url)
+            return ZaiResponseParser.Snapshot(buckets: [], planName: nil)
+        }
+
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        let visited = await tried.urls
+        XCTAssertEqual(visited, [ZaiRegion.bigmodelCN.quotaURL])
+    }
+
+    /// Both hosts empty means the account really has no quota — keep the
+    /// first host's answer rather than reporting the retry's.
+    func testTwoEmptyHostsKeepTheFirstAnswer() async throws {
+        let settings = ZaiSettings(
+            quotaURL: ZaiRegion.global.quotaURL,
+            fallbackQuotaURL: ZaiRegion.bigmodelCN.quotaURL
+        )
+        let snapshot = try await ZaiQuotaAdapter.resolveSnapshot(settings: settings) { _ in
+            ZaiResponseParser.Snapshot(buckets: [], planName: "empty")
+        }
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertEqual(snapshot.planName, "empty")
+    }
+
+    /// A retry that throws must not replace a successful-but-empty first
+    /// answer with the second host's error.
+    func testAThrowingRetryDoesNotMaskTheFirstHostsAnswer() async throws {
+        let settings = ZaiSettings(
+            quotaURL: ZaiRegion.global.quotaURL,
+            fallbackQuotaURL: ZaiRegion.bigmodelCN.quotaURL
+        )
+        let snapshot = try await ZaiQuotaAdapter.resolveSnapshot(settings: settings) { url in
+            if url == ZaiRegion.bigmodelCN.quotaURL { throw QuotaError.rateLimited }
+            return ZaiResponseParser.Snapshot(buckets: [], planName: "first")
+        }
+        XCTAssertEqual(snapshot.planName, "first")
+    }
+
+    func testAThrownWrongHostSignalStillRetries() async throws {
+        let settings = ZaiSettings(
+            quotaURL: ZaiRegion.global.quotaURL,
+            fallbackQuotaURL: ZaiRegion.bigmodelCN.quotaURL
+        )
+        let snapshot = try await ZaiQuotaAdapter.resolveSnapshot(settings: settings) { url in
+            if url == ZaiRegion.global.quotaURL {
+                throw QuotaError.credentialRejected(ZaiQuotaAdapter.rejectedKeyMessage)
+            }
+            return ZaiResponseParser.Snapshot(buckets: [Self.bucket], planName: nil)
+        }
+        XCTAssertEqual(snapshot.buckets.map(\.id), ["zai.tokens"])
+    }
+
+    private static let bucket = QuotaBucket(
+        id: "zai.tokens",
+        title: "Tokens",
+        shortLabel: "Tok",
+        usedPercent: 12
+    )
+
+    /// Records the hosts a retry policy actually reached.
+    private actor Tried {
+        private(set) var urls: [URL] = []
+        func record(_ url: URL) { urls.append(url) }
+    }
+
     func testOnlyAmbiguousFailuresTriggerTheOtherHost() {
         XCTAssertTrue(ZaiQuotaAdapter.isWrongHostSignal(.credentialRejected("x")))
         XCTAssertTrue(ZaiQuotaAdapter.isWrongHostSignal(.needsLogin))

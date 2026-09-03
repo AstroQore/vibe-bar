@@ -38,6 +38,35 @@ public enum QuotaError: Error, Equatable, Hashable, Sendable {
         }
     }
 
+    /// The same text, safe to hand to `os_log`.
+    ///
+    /// `userFacingMessage` can carry a payload an adapter lifted verbatim
+    /// out of a provider response, and `os_log` lines written at
+    /// `.public` are readable outside this process and end up in
+    /// sysdiagnose bundles.
+    ///
+    /// Both redactors run, because neither is sufficient alone:
+    /// `SafeLog.sanitize` masks 20+ character token runs but an address
+    /// splits at the `@` into two shorter ones, so `EmailMasker` has to go
+    /// first. The pair is deliberately aggressive here — it also eats
+    /// dotted hostnames, which a log line can afford to lose.
+    public var logSafeMessage: String {
+        SafeLog.sanitize(ProviderDiagnosticRedactor.maskEmails(in: userFacingMessage))
+    }
+
+    /// The projection for the MCP surface, where the reader is an agent
+    /// rather than the person whose machine this is.
+    ///
+    /// Same concern as `logSafeMessage`, different trade-off: an agent
+    /// acting on "no Coding Plan subscription — set up the Agent Plan
+    /// card" needs the actionable half of the message intact, so this
+    /// masks addresses and opaque identifiers without flattening ordinary
+    /// hostnames, and caps the length so a provider stack trace cannot
+    /// flood the agent's context.
+    public var agentFacingMessage: String {
+        ProviderDiagnosticRedactor.redact(userFacingMessage)
+    }
+
     /// True when the failure is about *which credential we hold* rather
     /// than about the response. Drives the cached-quota grace period in
     /// `QuotaService` and the silent cookie re-import in
